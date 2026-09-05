@@ -1,7 +1,7 @@
 # Vercel deployment
 
 - Project: `client_turn`, connected to `Blackwellen/ClientTurn` (`main`).
-- Production URL: https://www.clientturn.com (also available at https://clientturn.vercel.app)
+- Production URL: https://clientturn.com (also available at https://www.clientturn.com and https://clientturn.vercel.app)
 - Production variables are stored in Vercel. Local `.env*` files remain ignored.
 - Billing uses Stripe test mode. Its webhook is `/api/webhooks/stripe`, with
   `STRIPE_WEBHOOK_SECRET_CLIENTTURN` configured for this endpoint.

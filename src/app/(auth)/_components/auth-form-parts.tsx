@@ -42,15 +42,19 @@ export function AuthSuccess({ message }: { message?: string }) {
 export function SubmitButton({
   children,
   pendingLabel,
+  busy = false,
 }: {
   children: React.ReactNode;
   pendingLabel?: string;
+  busy?: boolean;
 }) {
   const { pending } = useFormStatus();
+  const working = pending || busy;
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={working}
+      aria-busy={working}
       className={cn(
         "group relative flex h-[56px] w-full items-center justify-center gap-2 overflow-hidden rounded-[11px] text-[16px] font-bold",
         "bg-[var(--auth-lime)] text-[var(--auth-on-lime)] transition-all duration-200",
@@ -65,7 +69,7 @@ export function SubmitButton({
         className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12 bg-white/35 opacity-0 transition-[transform,opacity] duration-700 ease-out group-hover:translate-x-[340%] group-hover:opacity-100"
       />
       <span className="relative flex items-center gap-2">
-        {pending ? (
+        {working ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden />
             {pendingLabel ?? "Working…"}

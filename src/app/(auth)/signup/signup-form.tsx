@@ -139,7 +139,7 @@ export function SignupForm() {
         )}
       </div>
 
-      <SubmitButton pendingLabel="Creating account…">Create your account</SubmitButton>
+      <SubmitButton pendingLabel="Creating account…" busy={Boolean(state?.ok && state.redirectTo)}>Create your account</SubmitButton>
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Already have an account?{" "}

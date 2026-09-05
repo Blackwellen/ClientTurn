@@ -31,8 +31,7 @@ export function LoginForm({
 
   React.useEffect(() => {
     if (state?.ok && state.redirectTo) {
-      router.push(state.redirectTo);
-      router.refresh();
+      router.replace(state.redirectTo);
     }
   }, [state, router]);
 
@@ -94,7 +93,7 @@ export function LoginForm({
         </Link>
       </div>
 
-      <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
+      <SubmitButton pendingLabel="Signing in…" busy={Boolean(state?.ok && state.redirectTo)}>Sign in</SubmitButton>
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Don&apos;t have an account?{" "}
