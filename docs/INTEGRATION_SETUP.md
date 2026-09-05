@@ -7,9 +7,9 @@ itself from "Not yet available" to a working Connect button automatically.
 
 **How to apply a value:** add it to `.env.local` (local dev) and to the
 project's environment variables in Vercel (production), then restart the dev
-server / redeploy. Never commit real secrets to `.env` — that file is checked
-into the repo history for this project and currently holds Propvora's *live*
-Stripe keys, so treat it as sensitive already.
+server / redeploy. Local `.env*` files are ignored by Git. They contain sensitive
+credentials, including another product's live Stripe keys; never commit them.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the current deployment status.
 
 **Universal OAuth redirect URI.** Every OAuth-based provider below uses the
 same callback path, generated automatically — you only need to register this

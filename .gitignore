@@ -46,3 +46,4 @@ next-env.d.ts
 /lint-story.json
 /lint-world.json
 /supabase/.temp/
+.vercel
