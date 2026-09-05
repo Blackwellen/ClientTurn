@@ -1,0 +1,465 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   ClientTurn design tokens
+
+   Midnight foundations with a performance-lime accent.
+   Green = healthy, amber = warning, red = action required.
+   Every colour is defined on :root first so no value exists only inside a
+   media query. Dark mode redefines the same names.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- ClientTurn brand palette --- */
+  --ct-midnight: #0b1020;
+  --ct-lime: #b7f34a;
+  --ct-lime-soft: #e7ffc0;
+  --ct-cloud: #f7f9fc;
+  --ct-white: #ffffff;
+  --lr-primary: var(--ct-lime);
+  --lr-primary-hover: #a6e238;
+  --lr-primary-active: #96cf2c;
+  --lr-on-primary: var(--ct-midnight);
+
+  /* --- neutral ramp --- */
+  --lr-neutral-0: var(--ct-white);
+  --lr-neutral-25: #fcfcfd;
+  --lr-neutral-50: var(--ct-cloud);
+  --lr-neutral-100: #f1f5f9;
+  --lr-neutral-200: #e5eaf1;
+  --lr-neutral-300: #d3dae5;
+  --lr-neutral-400: #9aa7b8;
+  --lr-neutral-500: #6b7a8f;
+  --lr-neutral-600: #4d5b6e;
+  --lr-neutral-700: #364152;
+  --lr-neutral-800: #212936;
+  --lr-neutral-900: var(--ct-midnight);
+  --lr-neutral-950: #070b16;
+
+  /* --- accent --- */
+  --lr-accent-50: #f3ffe5;
+  --lr-accent-100: var(--ct-lime-soft);
+  --lr-accent-200: #d5f99b;
+  --lr-accent-300: #c6f779;
+  --lr-accent-400: #bff55e;
+  --lr-accent-500: var(--ct-lime);
+  /* Dark shades keep small text and white-on-accent controls legible. */
+  --lr-accent-600: #486b12;
+  --lr-accent-700: #38530e;
+  --lr-accent-800: #293e0c;
+  --lr-accent-900: #1c2c08;
+
+  /* --- status --- */
+  --lr-success-50: #ecfdf3;
+  --lr-success-100: #d1fadf;
+  --lr-success-500: #12b76a;
+  --lr-success-600: #039855;
+  --lr-success-700: #027a48;
+
+  --lr-warning-50: #fffaeb;
+  --lr-warning-100: #fef0c7;
+  --lr-warning-500: #f79009;
+  --lr-warning-600: #dc6803;
+  --lr-warning-700: #b54708;
+
+  --lr-danger-50: #fef3f2;
+  --lr-danger-100: #fee4e2;
+  --lr-danger-500: #f04438;
+  --lr-danger-600: #d92d20;
+  --lr-danger-700: #b42318;
+
+  --lr-info-50: #f0f9ff;
+  --lr-info-100: #e0f2fe;
+  --lr-info-500: #0ba5ec;
+  --lr-info-600: #0086c9;
+  --lr-info-700: #026aa2;
+
+  --lr-purple-50: #f4f3ff;
+  --lr-purple-100: #ebe9fe;
+  --lr-purple-500: #7a5af8;
+  --lr-purple-600: #6938ef;
+  --lr-purple-700: #5925dc;
+
+  /* --- semantic surfaces --- */
+  --lr-bg: var(--lr-neutral-50);
+  --lr-surface: var(--lr-neutral-0);
+  --lr-surface-raised: var(--lr-neutral-0);
+  --lr-surface-sunken: var(--lr-neutral-100);
+  --lr-surface-hover: var(--lr-neutral-50);
+  --lr-surface-active: var(--lr-neutral-100);
+  --lr-overlay: rgb(16 24 40 / 0.55);
+
+  /* --- semantic text --- */
+  --lr-text: var(--lr-neutral-900);
+  --lr-text-secondary: var(--lr-neutral-600);
+  --lr-text-muted: var(--lr-neutral-500);
+  --lr-text-subtle: var(--lr-neutral-400);
+  --lr-text-inverse: var(--lr-neutral-0);
+  --lr-text-accent: var(--lr-accent-700);
+
+  /* --- borders --- */
+  --lr-border: var(--lr-neutral-200);
+  --lr-border-strong: var(--lr-neutral-300);
+  --lr-border-subtle: var(--lr-neutral-100);
+  --lr-border-accent: var(--lr-accent-500);
+  --lr-ring: color-mix(in oklab, var(--lr-text-accent) 45%, transparent);
+
+  /* --- radius: moderate, never bubbly --- */
+  --lr-radius-xs: 4px;
+  --lr-radius-sm: 6px;
+  --lr-radius-md: 8px;
+  --lr-radius-lg: 10px;
+  --lr-radius-xl: 14px;
+  --lr-radius-2xl: 18px;
+  --lr-radius-full: 9999px;
+
+  /* --- elevation --- */
+  --lr-shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.05);
+  --lr-shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.08), 0 1px 2px -1px rgb(16 24 40 / 0.04);
+  --lr-shadow-md: 0 4px 8px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
+  --lr-shadow-lg: 0 12px 16px -4px rgb(16 24 40 / 0.08), 0 4px 6px -2px rgb(16 24 40 / 0.03);
+  --lr-shadow-xl: 0 20px 24px -4px rgb(16 24 40 / 0.10), 0 8px 8px -4px rgb(16 24 40 / 0.04);
+
+  /* --- typography --- */
+  --lr-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --lr-font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- motion --- */
+  --lr-duration-fast: 120ms;
+  --lr-duration-base: 180ms;
+  --lr-duration-slow: 280ms;
+  --lr-ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* --- layout --- */
+  --lr-sidebar-width: 256px;
+  --lr-sidebar-collapsed: 72px;
+  --lr-topbar-height: 72px;
+
+  /* --- shell chrome ---
+     The sidebar rail is fixed near-black brand chrome in both the app and
+     admin shells, independent of the light/dark content theme below (the
+     same treatment the logo already gives its "dark" variant). */
+  --ct-shell-sidebar-from: #090e14;
+  --ct-shell-sidebar-via: #0a1017;
+  --ct-shell-sidebar-to: #080d13;
+  --ct-shell-sidebar-border: rgba(255, 255, 255, 0.055);
+  --ct-shell-divider: rgba(255, 255, 255, 0.07);
+  --ct-shell-text: #cdd4de;
+  --ct-shell-text-muted: #abb6c5;
+  --ct-shell-hover: rgba(255, 255, 255, 0.045);
+  --ct-shell-active-bg: rgba(183, 243, 74, 0.1);
+  --ct-shell-card-bg: rgba(255, 255, 255, 0.025);
+  --ct-shell-card-border: rgba(255, 255, 255, 0.05);
+  --ct-shell-card-hover: rgba(255, 255, 255, 0.045);
+}
+
+/* ClientTurn renders light, always. There is no dark theme and no system
+   preference to follow: the product's surfaces are white on cloud, and the
+   only dark chrome is the sidebar rail and the auth/onboarding shell below,
+   both of which are deliberate brand decisions rather than a colour scheme. */
+
+/* Scoped dark surface for auth/onboarding, independent of system theme —
+   these flows always render on a black background regardless of the
+   visitor's light/dark preference. */
+.ct-force-dark {
+  color-scheme: dark;
+
+  --lr-bg: var(--lr-neutral-950);
+  --lr-surface: var(--lr-neutral-900);
+  --lr-surface-raised: var(--lr-neutral-800);
+  --lr-surface-sunken: #070b11;
+  --lr-surface-hover: color-mix(in oklab, var(--lr-neutral-800) 70%, transparent);
+  --lr-surface-active: var(--lr-neutral-800);
+  --lr-overlay: rgb(3 6 10 / 0.7);
+
+  --lr-text: var(--lr-neutral-50);
+  --lr-text-secondary: var(--lr-neutral-300);
+  --lr-text-muted: var(--lr-neutral-400);
+  --lr-text-subtle: var(--lr-neutral-500);
+  --lr-text-inverse: var(--lr-neutral-900);
+  --lr-text-accent: var(--lr-accent-300);
+
+  --lr-border: color-mix(in oklab, var(--lr-neutral-0) 12%, transparent);
+  --lr-border-strong: color-mix(in oklab, var(--lr-neutral-0) 20%, transparent);
+  --lr-border-subtle: color-mix(in oklab, var(--lr-neutral-0) 7%, transparent);
+
+  --lr-success-50: color-mix(in oklab, var(--lr-success-500) 16%, transparent);
+  --lr-success-100: color-mix(in oklab, var(--lr-success-500) 26%, transparent);
+  --lr-warning-50: color-mix(in oklab, var(--lr-warning-500) 16%, transparent);
+  --lr-warning-100: color-mix(in oklab, var(--lr-warning-500) 26%, transparent);
+  --lr-danger-50: color-mix(in oklab, var(--lr-danger-500) 16%, transparent);
+  --lr-danger-100: color-mix(in oklab, var(--lr-danger-500) 26%, transparent);
+  --lr-info-50: color-mix(in oklab, var(--lr-info-500) 16%, transparent);
+  --lr-info-100: color-mix(in oklab, var(--lr-info-500) 26%, transparent);
+  --lr-accent-50: color-mix(in oklab, var(--lr-accent-500) 16%, transparent);
+  --lr-accent-100: color-mix(in oklab, var(--lr-accent-500) 26%, transparent);
+  --lr-purple-50: color-mix(in oklab, var(--lr-purple-500) 16%, transparent);
+  --lr-purple-100: color-mix(in oklab, var(--lr-purple-500) 26%, transparent);
+
+  --lr-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --lr-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.45);
+  --lr-shadow-md: 0 4px 10px -2px rgb(0 0 0 / 0.5);
+  --lr-shadow-lg: 0 14px 22px -6px rgb(0 0 0 / 0.55);
+  --lr-shadow-xl: 0 24px 32px -8px rgb(0 0 0 / 0.6);
+}
+
+/* ------------------------------------------------------- auth surface ---
+   Scoped tokens for the sign-up / sign-in / forgot / reset experience. This
+   reads as true black, independent of the shell's midnight-neutral ramp
+   above, per the approved auth mockups. */
+.ct-auth {
+  color-scheme: dark;
+  --auth-bg: #030609;
+  --auth-bg-raised: #04070b;
+  --auth-card-from: rgba(14, 23, 32, 0.96);
+  --auth-card-to: rgba(7, 13, 20, 0.98);
+  --auth-card-border: rgba(154, 174, 197, 0.24);
+  --auth-input-bg: #0b131c;
+  --auth-input-border: rgba(141, 163, 187, 0.34);
+  --auth-lime: #a8ff1f;
+  --auth-lime-hover: #b7ff43;
+  --auth-lime-soft: #c8ff70;
+  --auth-on-lime: #071009;
+  --auth-text: #f8fafc;
+  --auth-text-muted: #afbac9;
+  --auth-text-secondary: #9da9ba;
+  --auth-text-subtle: #748194;
+  --auth-eyebrow: #b0bac7;
+  --auth-danger: #ff5f64;
+  --auth-danger-text: #ff7a80;
+  --auth-radius-card: 20px;
+  --auth-radius-input: 11px;
+}
+
+@keyframes ct-orb-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(1.5%, -2%, 0) scale(1.03); }
+}
+
+@keyframes ct-wave-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+@keyframes ct-card-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ct-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.ct-auth-orb {
+  animation: ct-orb-drift 10s var(--lr-ease) infinite;
+}
+
+.ct-auth-wave {
+  animation: ct-wave-pulse 6s ease-in-out infinite;
+}
+
+.ct-auth-card-in {
+  animation: ct-card-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ct-auth-float {
+  animation: ct-float 7s ease-in-out infinite;
+}
+
+@keyframes ct-shimmer-sweep {
+  0% { transform: translateX(-120%); }
+  60%, 100% { transform: translateX(220%); }
+}
+
+.ct-auth-shimmer {
+  animation: ct-shimmer-sweep 3.2s ease-in-out infinite;
+}
+
+@keyframes ct-glow-breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.85; }
+}
+
+.ct-auth-glow-breathe {
+  animation: ct-glow-breathe 4.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-auth-orb,
+  .ct-auth-wave,
+  .ct-auth-card-in,
+  .ct-auth-float,
+  .ct-auth-shimmer,
+  .ct-auth-glow-breathe {
+    animation: none !important;
+  }
+}
+
+/* The wordmark no longer swaps: the chrome that hosts it (sidebar rail, auth
+   and onboarding shells, marketing site) is always dark, so `Logo` renders the
+   dark-background lockup everywhere and needs no theme-driven rules. */
+
+/* ---------------------------------------------------- Tailwind bindings --- */
+@theme inline {
+  --color-brand-midnight: var(--ct-midnight);
+  --color-brand-lime: var(--ct-lime);
+  --color-brand-lime-soft: var(--ct-lime-soft);
+  --color-brand-cloud: var(--ct-cloud);
+  --color-primary: var(--lr-primary);
+  --color-primary-hover: var(--lr-primary-hover);
+  --color-primary-active: var(--lr-primary-active);
+  --color-on-primary: var(--lr-on-primary);
+  --color-content-accent: var(--lr-text-accent);
+  --color-bg: var(--lr-bg);
+  --color-surface: var(--lr-surface);
+  --color-surface-raised: var(--lr-surface-raised);
+  --color-surface-sunken: var(--lr-surface-sunken);
+  --color-surface-hover: var(--lr-surface-hover);
+  --color-surface-active: var(--lr-surface-active);
+
+  --color-content: var(--lr-text);
+  --color-content-secondary: var(--lr-text-secondary);
+  --color-content-muted: var(--lr-text-muted);
+  --color-content-subtle: var(--lr-text-subtle);
+  --color-content-inverse: var(--lr-text-inverse);
+
+  --color-line: var(--lr-border);
+  --color-line-strong: var(--lr-border-strong);
+  --color-line-subtle: var(--lr-border-subtle);
+
+  --color-accent-50: var(--lr-accent-50);
+  --color-accent-100: var(--lr-accent-100);
+  --color-accent-200: var(--lr-accent-200);
+  --color-accent-300: var(--lr-accent-300);
+  --color-accent-400: var(--lr-accent-400);
+  --color-accent-500: var(--lr-accent-500);
+  --color-accent-600: var(--lr-accent-600);
+  --color-accent-700: var(--lr-accent-700);
+  --color-accent-800: var(--lr-accent-800);
+  --color-accent-900: var(--lr-accent-900);
+
+  --color-success-50: var(--lr-success-50);
+  --color-success-100: var(--lr-success-100);
+  --color-success-500: var(--lr-success-500);
+  --color-success-600: var(--lr-success-600);
+  --color-success-700: var(--lr-success-700);
+
+  --color-warning-50: var(--lr-warning-50);
+  --color-warning-100: var(--lr-warning-100);
+  --color-warning-500: var(--lr-warning-500);
+  --color-warning-600: var(--lr-warning-600);
+  --color-warning-700: var(--lr-warning-700);
+
+  --color-danger-50: var(--lr-danger-50);
+  --color-danger-100: var(--lr-danger-100);
+  --color-danger-500: var(--lr-danger-500);
+  --color-danger-600: var(--lr-danger-600);
+  --color-danger-700: var(--lr-danger-700);
+
+  --color-info-50: var(--lr-info-50);
+  --color-info-100: var(--lr-info-100);
+  --color-info-500: var(--lr-info-500);
+  --color-info-600: var(--lr-info-600);
+  --color-info-700: var(--lr-info-700);
+
+  --color-purple-50: var(--lr-purple-50);
+  --color-purple-100: var(--lr-purple-100);
+  --color-purple-500: var(--lr-purple-500);
+  --color-purple-600: var(--lr-purple-600);
+  --color-purple-700: var(--lr-purple-700);
+
+  --radius-xs: var(--lr-radius-xs);
+  --radius-sm: var(--lr-radius-sm);
+  --radius-md: var(--lr-radius-md);
+  --radius-lg: var(--lr-radius-lg);
+  --radius-xl: var(--lr-radius-xl);
+  --radius-2xl: var(--lr-radius-2xl);
+
+  --shadow-xs: var(--lr-shadow-xs);
+  --shadow-sm: var(--lr-shadow-sm);
+  --shadow-md: var(--lr-shadow-md);
+  --shadow-lg: var(--lr-shadow-lg);
+  --shadow-xl: var(--lr-shadow-xl);
+
+  --font-sans: var(--lr-font-sans);
+  --font-mono: var(--lr-font-mono);
+}
+
+/* ------------------------------------------------------------- base --- */
+* {
+  border-color: var(--lr-border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--lr-bg);
+  color: var(--lr-text);
+  font-family: var(--lr-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--lr-accent-500) 22%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--lr-text-accent);
+  outline-offset: 2px;
+  border-radius: var(--lr-radius-xs);
+}
+
+/* Numeric columns stay aligned across rows. */
+.lr-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dashboard: lead funnel gets most of the row, needs-attention the rest. */
+.dashboard-middle-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .dashboard-middle-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(320px, 0.95fr);
+  }
+}
+
+@keyframes lr-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes lr-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lr-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lr-slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
