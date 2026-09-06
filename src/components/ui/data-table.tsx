@@ -46,6 +46,9 @@ export type DataTableProps<T> = {
   total?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  /** Pluralised noun for the count line, e.g. "prospects". */
+  paginationNoun?: string;
+  pageSizeOptions?: number[];
   className?: string;
 };
 
@@ -70,6 +73,8 @@ export function DataTable<T>({
   total,
   onPageChange,
   onPageSizeChange,
+  paginationNoun,
+  pageSizeOptions,
   className,
 }: DataTableProps<T>) {
   const selectable = !!onSelectionChange;
@@ -241,6 +246,8 @@ export function DataTable<T>({
           total={total}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
+          pageSizeOptions={pageSizeOptions}
+          noun={paginationNoun}
         />
       )}
     </div>

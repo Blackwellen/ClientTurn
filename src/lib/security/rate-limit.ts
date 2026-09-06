@@ -40,6 +40,11 @@ export const RATE_LIMITS = {
   "admin:event_retry": { limit: 30, windowSeconds: 300 },
   "admin:provider_refresh": { limit: 6, windowSeconds: 300 },
   "admin:search": { limit: 120, windowSeconds: 60 },
+  // Affiliate programme. Applications are per IP; the click endpoint is high
+  // volume by design and is bounded generously, with bot filtering doing the
+  // real work of keeping junk out of the attribution record.
+  "affiliate:apply": { limit: 5, windowSeconds: 3600 },
+  "affiliate:click": { limit: 240, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

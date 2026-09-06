@@ -7,6 +7,7 @@
  */
 
 import type { OutreachEligibility } from "../policy/types.ts";
+import type { ProspectActivity } from "./activity.ts";
 
 export type ProspectStatus =
   | "DISCOVERED"
@@ -88,6 +89,9 @@ export type ProspectListRow = {
   intent: ProspectIntentBadge | null;
   source_provider: string | null;
   last_activity_at: string | null;
+  /** What that last activity actually was, resolved from the underlying rows.
+   *  Null when nothing has happened since sourcing. */
+  lastActivity: ProspectActivity | null;
   created_at: string;
   promoted_to_lead_id: string | null;
 };
@@ -139,6 +143,21 @@ export type ProspectQuickCounts = {
   replied: number;
   review: number;
 };
+
+/**
+ * The reasons a person may suppress a prospect from the drawer (§13.2).
+ *
+ * A subset of `SuppressionReason`: BOUNCE, INVALID and PROVIDER are outcomes
+ * the system records for itself, not decisions a human takes.
+ */
+export const SUPPRESSION_REASON_OPTIONS = [
+  { value: "OPT_OUT", label: "They asked not to be contacted" },
+  { value: "COMPLAINT", label: "They complained" },
+  { value: "MANUAL", label: "Wrong person, bad data or a duplicate" },
+  { value: "LEGAL", label: "Legal or policy reason" },
+] as const;
+
+export type ManualSuppressionReason = (typeof SUPPRESSION_REASON_OPTIONS)[number]["value"];
 
 /* ---------------------------------------------------------- display helpers */
 

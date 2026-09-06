@@ -120,6 +120,8 @@ export type AuditAction =
   | "prospect.approved"
   | "prospect.promoted_to_lead"
   | "prospect.added_to_campaign"
+  | "prospect.removed_from_campaign"
+  | "prospect.marked_for_review"
   | "recurring_search.created"
   | "recurring_search.paused"
   | "recurring_search.resumed"
@@ -134,7 +136,22 @@ export type AuditAction =
   | "intent_category.updated"
   | "intent_category.deleted"
   | "intent_monitor.created"
-  | "intent_monitor.updated";
+  | "intent_monitor.updated"
+  // Platform support desk (V4 §39). Reading another tenant's thread is already
+  // logged as `admin.support_view`; these are the writes.
+  | "admin.support_replied"
+  | "admin.support_note_added"
+  | "admin.support_status_changed"
+  | "admin.support_assigned"
+  // Affiliate programme (V4 §41-43).
+  | "affiliate.applied"
+  | "affiliate.approved"
+  | "affiliate.rejected"
+  | "affiliate.suspended"
+  | "affiliate.link_created"
+  | "affiliate.payout_marked_paid"
+  | "affiliate.commission_approved"
+  | "affiliate.commission_rejected";
 
 export async function recordAudit(entry: {
   businessId: string | null;
@@ -142,7 +159,7 @@ export async function recordAudit(entry: {
   actorType?: "user" | "system" | "platform_admin" | "provider";
   action: AuditAction;
   entityType?: string;
-  entityId?: string;
+  entityId?: string | null;
   metadata?: Record<string, unknown>;
 }) {
   const supabase = createAdminClient();

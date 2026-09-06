@@ -77,11 +77,18 @@ describe("admin shell navigation", () => {
   test("exposes exactly the destinations that have routes", () => {
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.href),
-      ["/admin", "/admin/customers", "/admin/economics", "/admin/system"],
+      [
+        "/admin",
+        "/admin/customers",
+        "/admin/economics",
+        "/admin/support",
+        "/admin/affiliates",
+        "/admin/system",
+      ],
     );
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.label),
-      ["Overview", "Customers", "Usage & Margins", "System"],
+      ["Overview", "Customers", "Usage & Margins", "Support", "Affiliates", "System"],
     );
   });
 
@@ -93,7 +100,8 @@ describe("admin shell navigation", () => {
       "/admin/jobs",
       "/admin/integrations",
       "/admin/analytics",
-      "/admin/support",
+      // /admin/support and /admin/affiliates are no longer forbidden: V4
+      // sections 39 and 41 reinstate both, and the routes now exist.
       "/admin/billing",
       "/admin/settings",
       "/admin/usage",

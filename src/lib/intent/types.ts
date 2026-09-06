@@ -175,15 +175,53 @@ export type IntentCategoryRow = {
   name: string;
   description: string | null;
   signalTypes: SignalSourceKey[];
+  /** Structured terms used as classifier features, never as raw search input. */
+  keywords: string[];
   freshnessDays: number;
   scoreImpact: number;
+  /** Empty means every ICP — the stored scope is {mode:"ALL"} in that case. */
+  icpProfileIds: string[];
   autoAddToSearch: boolean;
+  defaultCadence: "DAILY" | "WEEKLY" | "FORTNIGHTLY" | "MONTHLY";
   active: boolean;
   /** Live signals inside the freshness window. */
   liveSignals: number;
+  /** Signals observed in the last 30 days, whether or not still live. */
+  signals30d: number;
+  /**
+   * Change against the previous 30 days, as a fraction. Null when there is no
+   * previous period to compare against — a category created last week has no
+   * honest trend, and "+100%" would be a claim about a baseline that never
+   * existed.
+   */
+  signalTrend: number | null;
   matchedProspects: number;
   monitorCount: number;
   createdAt: string;
+};
+
+/**
+ * A company being watched by name (§15.6).
+ *
+ * Assembled from the `NAMED_COMPANIES` monitors that reference it, so the row
+ * shows every category watching that company rather than one row per monitor.
+ */
+export type MonitoredCompanyRow = {
+  key: string;
+  name: string;
+  domain: string | null;
+  categories: string[];
+  lastSignalAt: string | null;
+  /** "Intent detected" once a signal has landed; "Monitoring" until then. */
+  status: "INTENT_DETECTED" | "MONITORING" | "PAUSED";
+};
+
+/** Where this month's signals actually came from, by source family (§15.7). */
+export type IntentSourceUsage = {
+  source: SignalSourceKey;
+  events: number;
+  /** Share of this month's events, 0-100. */
+  percent: number;
 };
 
 export type IntentMonitorRow = {
@@ -218,13 +256,27 @@ export type IntentEventRow = {
 
 export type IntentOverview = {
   activeCategories: number;
+  /** Every category, active or not — the KPI reads "8 / 12". */
+  totalCategories: number;
   activeMonitors: number;
   liveSignals: number;
+  /** Signals observed in the last 30 days, and the 30 days before that. */
+  signals30d: number;
+  signalsPrior30d: number;
+  companiesWithIntent: number;
+  /** Prospects whose live intent comes from a high-impact category. */
+  highIntentProspects: number;
   prospectsWithIntent: number;
   signalsLast7Days: number;
+  monitoredCompanies: number;
   monitorLimit: number;
   monitorsUsed: number;
 };
+
+/** A category is "high intent" when it contributes at least this much. Fixed
+ *  rather than configurable so the KPI means the same thing in every
+ *  workspace. */
+export const HIGH_INTENT_SCORE_IMPACT = 15;
 
 /* ------------------------------------------------------------------ bounds */
 
@@ -241,6 +293,38 @@ export function clampScoreImpact(value: number): number {
 export function clampFreshness(value: number): number {
   if (!Number.isFinite(value)) return 90;
   return Math.max(MIN_FRESHNESS_DAYS, Math.min(MAX_FRESHNESS_DAYS, Math.round(value)));
+}
+
+export type MonitorCadence = "DAILY" | "WEEKLY" | "FORTNIGHTLY" | "MONTHLY";
+
+export const MONITOR_CADENCES: MonitorCadence[] = [
+  "DAILY",
+  "WEEKLY",
+  "FORTNIGHTLY",
+  "MONTHLY",
+];
+
+/**
+ * Daily monitoring costs roughly seven times what weekly costs to serve, so it
+ * is a plan feature rather than a free choice (§15.8). The rule is expressed
+ * against the monitor allowance the plan already carries rather than as a
+ * separate flag, so there is one thing to configure per plan and not two that
+ * can disagree.
+ */
+export const DAILY_CADENCE_MIN_MONITOR_ALLOWANCE = 5;
+
+export function cadenceAvailable(cadence: MonitorCadence, monitorLimit: number): boolean {
+  if (cadence !== "DAILY") return true;
+  return monitorLimit >= DAILY_CADENCE_MIN_MONITOR_ALLOWANCE;
+}
+
+/** Why a cadence is unavailable, in the customer's terms. Null when it is. */
+export function cadenceUnavailableReason(
+  cadence: MonitorCadence,
+  monitorLimit: number,
+): string | null {
+  if (cadenceAvailable(cadence, monitorLimit)) return null;
+  return "Daily monitoring is available on plans with a larger monitoring allowance. Weekly is the fastest cadence on your plan.";
 }
 
 /* ------------------------------------------------------------ display maps */
@@ -299,6 +383,34 @@ export type IntentViewData = {
   overview: IntentOverview;
   categories: IntentCategoryRow[];
   monitors: IntentMonitorRow[];
+  monitoredCompanies: MonitoredCompanyRow[];
   events: IntentEventRow[];
+  sourceUsage: IntentSourceUsage[];
   icpProfiles: { id: string; name: string }[];
 };
+
+/** Freshness windows offered in the builder. Bounded by `clampFreshness`, and
+ *  each one is a window a provider can actually answer for. */
+export const FRESHNESS_WINDOW_OPTIONS = [
+  { value: 1, label: "Last 24 hours" },
+  { value: 7, label: "Last 7 days" },
+  { value: 30, label: "Last 30 days" },
+  { value: 60, label: "Last 60 days" },
+  { value: 90, label: "Last 90 days" },
+  { value: 180, label: "Last 180 days" },
+] as const;
+
+/**
+ * Score-impact choices.
+ *
+ * A workspace picks a band, not a number: §15.4 caps the contribution at
+ * `MAX_SCORE_IMPACT`, and offering a free numeric field invites someone to type
+ * 100 and then wonder why it was silently clamped.
+ */
+export const SCORE_IMPACT_OPTIONS = [
+  { value: 5, label: "+5 (Low)" },
+  { value: 10, label: "+10 (Moderate)" },
+  { value: 15, label: "+15 (Notable)" },
+  { value: 20, label: "+20 (Strong)" },
+  { value: 25, label: "+25 (High)" },
+] as const;

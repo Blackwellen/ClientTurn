@@ -7,7 +7,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertCapacity, getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
 import { recordAudit } from "@/lib/audit";
-import { SIGNAL_SOURCES, clampFreshness, clampScoreImpact } from "./types";
+import {
+  SIGNAL_SOURCES,
+  cadenceUnavailableReason,
+  clampFreshness,
+  clampScoreImpact,
+} from "./types";
 
 /**
  * Intent mutations.
@@ -30,9 +35,18 @@ const categorySchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(400).default(""),
   signalTypes: z.array(z.enum(SOURCE_KEYS)).min(1).max(SOURCE_KEYS.length),
+  /**
+   * Structured terms, used as features for the classifier — never as raw
+   * search injection. §15.4: a keyword narrows what counts as this category,
+   * it does not become a query someone can point anywhere they like.
+   */
+  keywords: z.array(z.string().trim().min(1).max(60)).max(40).default([]),
   freshnessDays: z.coerce.number().int(),
   scoreImpact: z.coerce.number(),
+  /** ALL, or a named set of ICP profiles this category applies to. */
+  icpProfileIds: z.array(z.uuid()).max(20).default([]),
   autoAddToSearch: z.boolean().default(false),
+  cadence: z.enum(["DAILY", "WEEKLY", "FORTNIGHTLY", "MONTHLY"]).default("WEEKLY"),
 });
 
 export async function saveIntentCategory(input: unknown): Promise<ActionResult> {
@@ -45,16 +59,28 @@ export async function saveIntentCategory(input: unknown): Promise<ActionResult> 
   const value = parsed.data;
   const db = createAdminClient();
 
+  // Cadence is a plan feature. Checked here rather than only in the picker:
+  // hiding the option is a courtesy, this is the enforcement.
+  const entitlements = await getV4Entitlements(workspace.businessId);
+  const monitorLimit = entitlements.allowances.intent_monitor.hardLimit;
+  const cadenceProblem = cadenceUnavailableReason(value.cadence, monitorLimit);
+  if (cadenceProblem) return { ok: false, error: cadenceProblem };
+
   const row = {
     business_id: workspace.businessId,
     name: value.name,
     description: value.description || null,
     signal_types: value.signalTypes as never,
+    keywords_entities: { terms: value.keywords } as never,
+    icp_scope: (value.icpProfileIds.length > 0
+      ? { mode: "SELECTED", icpProfileIds: value.icpProfileIds }
+      : { mode: "ALL" }) as never,
     // Clamped, not validated-and-rejected: a form that offers 0-25 should not
     // fail because someone typed 30, it should record 25.
     freshness_days: clampFreshness(value.freshnessDays),
     score_impact: clampScoreImpact(value.scoreImpact),
     auto_add_to_search: value.autoAddToSearch,
+    default_cadence: value.cadence,
   };
 
   if (value.id) {
@@ -65,13 +91,22 @@ export async function saveIntentCategory(input: unknown): Promise<ActionResult> 
       .eq("business_id", workspace.businessId);
     if (error) return { ok: false, error: "That category could not be saved." };
 
+    // The cadence the builder shows is the one the customer expects this
+    // category to actually run at, so it is written through to the monitors
+    // already watching for it rather than only applying to the next one.
+    await db
+      .from("intent_monitors")
+      .update({ cadence: value.cadence })
+      .eq("business_id", workspace.businessId)
+      .eq("intent_category_id", value.id);
+
     await recordAudit({
       businessId: workspace.businessId,
       actorUserId: workspace.userId,
       action: "intent_category.updated",
       entityType: "intent_category",
       entityId: value.id,
-      metadata: { name: value.name },
+      metadata: { name: value.name, cadence: value.cadence },
     });
 
     revalidatePath("/app/find-leads");
@@ -96,7 +131,7 @@ export async function saveIntentCategory(input: unknown): Promise<ActionResult> 
     action: "intent_category.created",
     entityType: "intent_category",
     entityId: data.id,
-    metadata: { name: value.name },
+    metadata: { name: value.name, cadence: value.cadence },
   });
 
   revalidatePath("/app/find-leads");
@@ -160,6 +195,15 @@ export async function createIntentMonitor(input: unknown): Promise<ActionResult>
     if (error instanceof EntitlementError) return { ok: false, error: error.message };
     return { ok: false, error: "Monitor capacity could not be confirmed." };
   }
+
+  // How often it runs is a plan feature too, and a faster cadence is the more
+  // expensive half of that decision.
+  const monitorEntitlements = await getV4Entitlements(workspace.businessId);
+  const cadenceProblem = cadenceUnavailableReason(
+    value.cadence,
+    monitorEntitlements.allowances.intent_monitor.hardLimit,
+  );
+  if (cadenceProblem) return { ok: false, error: cadenceProblem };
 
   const db = createAdminClient();
 

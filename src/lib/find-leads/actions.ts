@@ -113,6 +113,22 @@ async function loadOwnedSession(businessId: string, sessionId: string) {
 
 const messageSchema = z.string().trim().min(1).max(2000);
 
+/**
+ * A session title from the customer's first message.
+ *
+ * Cut at a word boundary rather than mid-word: "…who manage multiple proper"
+ * reads as a rendering bug, and the title is the label in the sessions rail
+ * that someone has to recognise their own search by.
+ */
+function titleFromMessage(message: string): string {
+  const clean = message.trim().replace(/\s+/g, " ");
+  if (clean.length <= 60) return clean;
+
+  const cut = clean.slice(0, 60);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 24 ? cut.slice(0, lastSpace) : cut).replace(/[,.;:]$/, "")}…`;
+}
+
 export async function createSearchSessionAction(
   firstMessage?: unknown,
 ): Promise<ActionResult<{ sessionId: string }>> {
@@ -125,7 +141,7 @@ export async function createSearchSessionAction(
   const sessionId = await createSession({
     businessId: access.workspace.businessId,
     userId: access.workspace.userId,
-    title: message?.success ? message.data.slice(0, 80) : "New search",
+    title: message?.success ? titleFromMessage(message.data) : "New search",
   });
 
   await recordAudit({
@@ -201,13 +217,13 @@ export async function sendSearchMessageAction(
 
     // The session's name follows the plan until a person renames it, so the
     // rail reads as a list of searches rather than a list of "New search".
-    if (session.title === "New search" || session.title === text.data.slice(0, 80)) {
+    if (session.title === "New search" || session.title === titleFromMessage(text.data)) {
       await renameSession(
         access.workspace.businessId,
         id.data,
         turn.plan.industries.length && turn.plan.locations.length
           ? `${turn.plan.industries[0]} in ${turn.plan.locations[0].city ?? turn.plan.locations[0].region ?? turn.plan.locations[0].country}`
-          : text.data.slice(0, 80),
+          : titleFromMessage(text.data),
       );
     }
   }

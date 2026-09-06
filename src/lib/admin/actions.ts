@@ -6,24 +6,18 @@ import { headers } from "next/headers";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recordAudit, type AuditAction } from "@/lib/audit";
+import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { getPlatformOperator } from "./guard";
+import { guarded, operatorOrForbidden, type AdminActionResult } from "./guarded";
 import { MAX_SAFE_RETRIES, parseEventId } from "./events";
 import { runProviderProbes, recordProbeResults } from "./providers";
 import { searchAdmin } from "./search";
 import { referenceFor } from "./errors-shared";
-import {
-  clearStepUp,
-  grantStepUp,
-  requireStepUp,
-  StepUpRequiredError,
-} from "./step-up";
+import { clearStepUp, grantStepUp } from "./step-up";
 import type { AdminSearchResult, ErrorTriageStatus } from "./types";
 
-export type AdminActionResult =
-  | { ok: true; message?: string; redirectTo?: string }
-  | { ok: false; error: string; code?: "step_up_required" | "forbidden" };
+export type { AdminActionResult } from "./guarded";
 
 const GENERIC_SIGN_IN_ERROR =
   "Those credentials are not valid for platform operations.";
@@ -32,65 +26,6 @@ const credentials = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 });
-
-async function operatorOrForbidden() {
-  const operator = await getPlatformOperator();
-  if (!operator) throw new Error("FORBIDDEN");
-  return operator;
-}
-
-/**
- * Wraps a mutating operation so every platform-admin action is authorised,
- * step-up protected, timed and audited by the same path. A missing or expired
- * step-up surfaces as a result the UI can act on rather than an exception.
- */
-async function guarded(
-  action: AuditAction,
-  run: (operator: { id: string; email: string }) => Promise<AdminActionResult>,
-): Promise<AdminActionResult> {
-  const startedAt = Date.now();
-  try {
-    const operator = await operatorOrForbidden();
-    await requireStepUp(operator.id);
-    const result = await run(operator);
-    if (!result.ok) {
-      await recordAudit({
-        businessId: null,
-        actorUserId: operator.id,
-        actorType: "platform_admin",
-        action,
-        metadata: {
-          outcome: "failed",
-          reason: result.error,
-          duration_ms: Date.now() - startedAt,
-        },
-      });
-    }
-    return result;
-  } catch (error) {
-    if (error instanceof StepUpRequiredError) {
-      return {
-        ok: false,
-        code: "step_up_required",
-        error: "Confirm your password to continue.",
-      };
-    }
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      // Recorded without an actor: the caller was not a platform admin.
-      await recordAudit({
-        businessId: null,
-        actorType: "platform_admin",
-        action: "admin.action_denied",
-        metadata: { attempted: action, duration_ms: Date.now() - startedAt },
-      });
-      return { ok: false, code: "forbidden", error: "Not permitted." };
-    }
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Action failed.",
-    };
-  }
-}
 
 /* ----------------------------------------------------------------- auth --- */
 

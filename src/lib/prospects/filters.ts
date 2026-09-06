@@ -25,13 +25,27 @@ export const PROSPECT_VIEWS = ["discover", "prospects", "intent", "campaigns"] a
 export type FindLeadsView = (typeof PROSPECT_VIEWS)[number];
 
 export const PROSPECT_SORTS = [
+  "relevance",
   "score",
+  "intent",
   "recent",
   "activity",
   "company",
   "name",
 ] as const;
 export type ProspectSort = (typeof PROSPECT_SORTS)[number];
+
+/** Toolbar labels. "Relevance" is the default because it is what the search
+ *  that produced these prospects was actually optimising for. */
+export const PROSPECT_SORT_LABELS: Record<ProspectSort, string> = {
+  relevance: "Relevance",
+  score: "Score: high to low",
+  intent: "Intent freshness",
+  recent: "Newest sourced",
+  activity: "Last activity",
+  company: "Company",
+  name: "Role and name",
+};
 
 export const GRADES: Grade[] = ["A+", "A", "B", "C", "D"];
 
@@ -70,6 +84,7 @@ export type ProspectFilters = {
   eligibility: string[];
   industries: string[];
   locations: string[];
+  companySizes: string[];
   roles: string[];
   intentCategoryIds: string[];
   /** Only count intent signals observed within this many days. */
@@ -87,8 +102,10 @@ export type ProspectFilters = {
   pageSize: number;
 };
 
-export const DEFAULT_PAGE_SIZE = 25;
-const PAGE_SIZES = [10, 25, 50, 100];
+/** Ten rows, matching the reference: the table is dense enough that a taller
+ *  page pushes the pagination control below the fold on a laptop. */
+export const DEFAULT_PAGE_SIZE = 10;
+export const PAGE_SIZES = [10, 25, 50, 100];
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -145,6 +162,7 @@ export function parseProspectFilters(params: Params): ProspectFilters {
     ),
     industries: list(params, "industry").slice(0, 20),
     locations: list(params, "location").slice(0, 20),
+    companySizes: list(params, "size_band").slice(0, 10),
     roles: list(params, "role").slice(0, 20),
     intentCategoryIds: list(params, "intent").slice(0, 20),
     intentWithinDays: intOrNull(first(params, "intentDays"), 1, 365),
@@ -154,7 +172,7 @@ export function parseProspectFilters(params: Params): ProspectFilters {
     sourceProvider: first(params, "provider") ?? null,
     minScore: intOrNull(first(params, "minScore"), 0, 100),
     range: oneOf(first(params, "range"), ["7d", "30d", "90d", "all"] as const, "all"),
-    sort: oneOf(first(params, "sort"), PROSPECT_SORTS, "score"),
+    sort: oneOf(first(params, "sort"), PROSPECT_SORTS, "relevance"),
     page: intOrNull(first(params, "page"), 1, 10000) ?? 1,
     pageSize: pageSizeRaw && PAGE_SIZES.includes(pageSizeRaw) ? pageSizeRaw : DEFAULT_PAGE_SIZE,
   };
@@ -179,6 +197,7 @@ export function prospectFiltersToParams(filters: ProspectFilters): URLSearchPara
   setList("eligibility", filters.eligibility);
   setList("industry", filters.industries);
   setList("location", filters.locations);
+  setList("size_band", filters.companySizes);
   setList("role", filters.roles);
   setList("intent", filters.intentCategoryIds);
   if (filters.intentWithinDays) set("intentDays", String(filters.intentWithinDays));
@@ -188,7 +207,7 @@ export function prospectFiltersToParams(filters: ProspectFilters): URLSearchPara
   set("provider", filters.sourceProvider);
   if (filters.minScore !== null) set("minScore", String(filters.minScore));
   if (filters.range !== "all") set("range", filters.range);
-  if (filters.sort !== "score") set("sort", filters.sort);
+  if (filters.sort !== "relevance") set("sort", filters.sort);
   if (filters.page > 1) set("page", String(filters.page));
   if (filters.pageSize !== DEFAULT_PAGE_SIZE) set("size", String(filters.pageSize));
 
@@ -204,6 +223,7 @@ export function activeFilterCount(filters: ProspectFilters): number {
     filters.eligibility.length +
     filters.industries.length +
     filters.locations.length +
+    filters.companySizes.length +
     filters.roles.length +
     filters.intentCategoryIds.length +
     (filters.intentWithinDays ? 1 : 0) +
@@ -217,7 +237,7 @@ export function activeFilterCount(filters: ProspectFilters): number {
 
 export const QUICK_FILTER_LABELS: Record<ProspectQuickFilter, string> = {
   all: "All",
-  "a-grade": "A grade",
+  "a-grade": "A Grade",
   intent: "Intent",
   ready: "Ready",
   contacted: "Contacted",

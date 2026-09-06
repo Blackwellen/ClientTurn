@@ -3,9 +3,11 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { parseProspectFilters } from "@/lib/prospects/filters";
 import {
   getProspectFilterOptions,
+  getProspectKpis,
   getProspectQuickCounts,
   listProspects,
 } from "@/lib/prospects/queries";
@@ -28,6 +30,24 @@ const VIEW_COOKIE = "ct-find-leads-list-mode";
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * The signed-in person's first name, for the assistant's greeting.
+ *
+ * Falls back to an empty string rather than a placeholder: "Tell me about the
+ * businesses you want to find" reads perfectly well without a name, and
+ * "Hi there" from a product that knows who you are reads worse than nothing.
+ */
+async function greetingName(userId: string): Promise<string> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("first_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return data?.first_name?.trim().split(" ")[0] ?? "";
 }
 
 export default async function FindLeadsPage({
@@ -82,26 +102,38 @@ export default async function FindLeadsPage({
   // Nothing below depends on anything else, so the page never waterfalls. The
   // prospect list is only fetched for the view that shows it — Discover must
   // not pay to page a table nobody is looking at.
-  const [prospects, counts, options, discoverData, intentData, campaignData] =
-    await Promise.all([
+  const [
+    prospects,
+    counts,
+    options,
+    prospectKpis,
+    discoverData,
+    intentData,
+    campaignData,
+  ] = await Promise.all([
     filters.view === "prospects"
       ? listProspects(workspace.businessId, filters)
       : Promise.resolve({ rows: [], total: 0, page: 1, pageSize: filters.pageSize }),
     getProspectQuickCounts(workspace.businessId),
     getProspectFilterOptions(workspace.businessId),
+    getProspectKpis(workspace.businessId),
     loadDiscoverData(workspace.businessId),
     filters.view === "intent" ? loadIntentData(workspace.businessId) : Promise.resolve(null),
     filters.view === "campaigns" ? listCampaigns(workspace.businessId) : Promise.resolve(null),
   ]);
 
   const canManage = hasRole(workspace.role, "admin");
-  const firstName = workspace.businessName.split(" ")[0] ?? "";
+
+  // The assistant greets the person, not the company. Reading the business
+  // name here produced "Hi Blackwellen", which is nobody's name.
+  const firstName = await greetingName(workspace.userId);
 
   return (
     <>
       <FindLeadsView
         filters={filters}
         kpis={discoverData.kpis}
+        prospectKpis={prospectKpis}
         prospects={{ rows: prospects.rows, total: prospects.total }}
         counts={counts}
         options={options}

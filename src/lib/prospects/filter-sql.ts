@@ -45,6 +45,20 @@ function escapeOr(value: string): string {
   return value.replace(/[,()\\]/g, " ").trim();
 }
 
+/**
+ * True when a filter reaches into the company row, which the caller must then
+ * embed as `prospect_companies!inner(...)`. With a plain embed PostgREST
+ * filters the *embedded* rows and leaves every parent in place, so the filter
+ * would appear to do nothing.
+ */
+export function needsCompanyJoin(filters: ProspectFilters): boolean {
+  return (
+    filters.industries.length > 0 ||
+    filters.companySizes.length > 0 ||
+    filters.locations.length > 0
+  );
+}
+
 export function applyProspectFilters<T>(query: T, filters: ProspectFilters): T {
   let q = query as FilterOps;
 
@@ -75,6 +89,21 @@ export function applyProspectFilters<T>(query: T, filters: ProspectFilters): T {
   if (filters.sourceRunId) q = q.eq("source_run_id", filters.sourceRunId);
   if (filters.sourceProvider) q = q.eq("source_provider", filters.sourceProvider);
   if (filters.minScore !== null) q = q.gte("score", filters.minScore);
+
+  /* Company-scoped predicates. These only restrict the parent rows when the
+   * company is embedded with `!inner` — see `needsCompanyJoin` — so the caller
+   * picks its select accordingly. Applied through the embedded resource rather
+   * than by pre-resolving company ids, which would not scale past a workspace
+   * with a few thousand companies. */
+  if (filters.industries.length > 0) {
+    q = q.in("prospect_companies.industry", filters.industries);
+  }
+  if (filters.companySizes.length > 0) {
+    q = q.in("prospect_companies.company_size", filters.companySizes);
+  }
+  if (filters.locations.length > 0) {
+    q = q.in("prospect_companies.location_json->>city", filters.locations);
+  }
 
   if (filters.roles.length > 0) {
     // Role titles are free text from providers, so this matches the recorded

@@ -113,6 +113,7 @@ export const notificationSendPayload = z.object({
       "integration_failure",
       "message_failed",
       "campaign_complete",
+      "campaign_paused",
       "billing",
       "usage_limit",
       "lead_attention",

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { attributeSignup } from "@/lib/affiliates/attribution";
 import { activatePendingInvites } from "./invites";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import {
@@ -255,6 +256,16 @@ export async function signUp(
     await recordAttribution(formData, userId);
   } catch {
     // Attribution must never block account creation.
+  }
+
+  try {
+    // Credits the workspace to whichever partner's link was clicked last, if
+    // any. Runs after the workspace exists so an affiliate is never shown a
+    // referral for an account that failed to provision, and swallows its own
+    // errors for the same reason as the marketing attribution above.
+    await attributeSignup({ userId, businessId: businessId! });
+  } catch {
+    // Referral credit must never block account creation either.
   }
 
   revalidatePath("/", "layout");

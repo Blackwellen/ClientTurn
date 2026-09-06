@@ -5163,6 +5163,7 @@ export type Database = {
           auto_add_to_search: boolean
           business_id: string
           created_at: string
+          default_cadence: string
           description: string | null
           freshness_days: number
           icp_scope: Json
@@ -5179,6 +5180,7 @@ export type Database = {
           auto_add_to_search?: boolean
           business_id: string
           created_at?: string
+          default_cadence?: string
           description?: string | null
           freshness_days?: number
           icp_scope?: Json
@@ -5195,6 +5197,7 @@ export type Database = {
           auto_add_to_search?: boolean
           business_id?: string
           created_at?: string
+          default_cadence?: string
           description?: string | null
           freshness_days?: number
           icp_scope?: Json
@@ -7092,6 +7095,168 @@ export type Database = {
           },
         ]
       }
+      outreach_campaign_costs: {
+        Row: {
+          business_id: string
+          campaign_id: string
+          category: string
+          cost_minor: number
+          id: string
+          occurred_at: string
+          quantity: number
+          reference: string | null
+        }
+        Insert: {
+          business_id: string
+          campaign_id: string
+          category: string
+          cost_minor?: number
+          id?: string
+          occurred_at?: string
+          quantity?: number
+          reference?: string | null
+        }
+        Update: {
+          business_id?: string
+          campaign_id?: string
+          category?: string
+          cost_minor?: number
+          id?: string
+          occurred_at?: string
+          quantity?: number
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_campaign_costs_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_campaign_costs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outreach_campaign_events: {
+        Row: {
+          actor_type: string
+          actor_user_id: string | null
+          business_id: string
+          campaign_id: string
+          created_at: string
+          event_type: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          summary: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_type?: string
+          actor_user_id?: string | null
+          business_id: string
+          campaign_id: string
+          created_at?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          summary?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_type?: string
+          actor_user_id?: string | null
+          business_id?: string
+          campaign_id?: string
+          created_at?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          summary?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_campaign_events_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_campaign_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outreach_campaign_usage: {
+        Row: {
+          business_id: string
+          campaign_id: string
+          communication_reserved: number
+          communication_used: number
+          daily_contact_count: number
+          daily_contact_on: string | null
+          monthly_contact_count: number
+          monthly_contact_month: string | null
+          provider_cost_actual_minor: number
+          provider_cost_reserved_minor: number
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          campaign_id: string
+          communication_reserved?: number
+          communication_used?: number
+          daily_contact_count?: number
+          daily_contact_on?: string | null
+          monthly_contact_count?: number
+          monthly_contact_month?: string | null
+          provider_cost_actual_minor?: number
+          provider_cost_reserved_minor?: number
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          campaign_id?: string
+          communication_reserved?: number
+          communication_used?: number
+          daily_contact_count?: number
+          daily_contact_on?: string | null
+          monthly_contact_count?: number
+          monthly_contact_month?: string | null
+          provider_cost_actual_minor?: number
+          provider_cost_reserved_minor?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_campaign_usage_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_campaign_usage_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "outreach_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outreach_campaign_versions: {
         Row: {
           business_id: string
@@ -7146,20 +7311,28 @@ export type Database = {
       outreach_campaigns: {
         Row: {
           active_sequence_id: string | null
+          archived_at: string | null
           audience_json: Json
           auto_optimize: boolean
+          auto_optimize_config: Json
           auto_overage: boolean
           business_id: string
+          communication_allowance: number
           completed_at: string | null
+          compliance_policy_version: string | null
           conversion_goal_id: string | null
+          conversion_goal_type: string | null
           created_at: string
           created_by: string | null
           daily_contact_cap: number
           description: string | null
+          draft_step: string | null
+          exclusions_json: Json
           icp_profile_id: string | null
           id: string
           intent_filter_json: Json
           intent_required: boolean
+          launch_mode: string
           launch_validated_at: string | null
           launched_at: string | null
           launched_by: string | null
@@ -7168,34 +7341,53 @@ export type Database = {
           minimum_grade: string
           monthly_contact_cap: number
           name: string
+          named_companies: Json
+          pause_reason: string | null
           paused_at: string | null
           priority: number
+          promotion_rule: string
+          prospect_source: string
           prospects_per_run: number
+          reply_rules_json: Json
           reserved_allowance_minor: number
           review_before_outreach: boolean
+          review_threshold: number
+          scoring_policy_version: string | null
+          search_session_id: string | null
           sender_identity_id: string | null
           service_id: string | null
           spent_cost_minor: number
           status: string
           stopped_at: string | null
+          success_event: string | null
           updated_at: string
+          variants_enabled: boolean
+          variants_per_step: number
         }
         Insert: {
           active_sequence_id?: string | null
+          archived_at?: string | null
           audience_json?: Json
           auto_optimize?: boolean
+          auto_optimize_config?: Json
           auto_overage?: boolean
           business_id: string
+          communication_allowance?: number
           completed_at?: string | null
+          compliance_policy_version?: string | null
           conversion_goal_id?: string | null
+          conversion_goal_type?: string | null
           created_at?: string
           created_by?: string | null
           daily_contact_cap?: number
           description?: string | null
+          draft_step?: string | null
+          exclusions_json?: Json
           icp_profile_id?: string | null
           id?: string
           intent_filter_json?: Json
           intent_required?: boolean
+          launch_mode?: string
           launch_validated_at?: string | null
           launched_at?: string | null
           launched_by?: string | null
@@ -7204,34 +7396,53 @@ export type Database = {
           minimum_grade?: string
           monthly_contact_cap?: number
           name: string
+          named_companies?: Json
+          pause_reason?: string | null
           paused_at?: string | null
           priority?: number
+          promotion_rule?: string
+          prospect_source?: string
           prospects_per_run?: number
+          reply_rules_json?: Json
           reserved_allowance_minor?: number
           review_before_outreach?: boolean
+          review_threshold?: number
+          scoring_policy_version?: string | null
+          search_session_id?: string | null
           sender_identity_id?: string | null
           service_id?: string | null
           spent_cost_minor?: number
           status?: string
           stopped_at?: string | null
+          success_event?: string | null
           updated_at?: string
+          variants_enabled?: boolean
+          variants_per_step?: number
         }
         Update: {
           active_sequence_id?: string | null
+          archived_at?: string | null
           audience_json?: Json
           auto_optimize?: boolean
+          auto_optimize_config?: Json
           auto_overage?: boolean
           business_id?: string
+          communication_allowance?: number
           completed_at?: string | null
+          compliance_policy_version?: string | null
           conversion_goal_id?: string | null
+          conversion_goal_type?: string | null
           created_at?: string
           created_by?: string | null
           daily_contact_cap?: number
           description?: string | null
+          draft_step?: string | null
+          exclusions_json?: Json
           icp_profile_id?: string | null
           id?: string
           intent_filter_json?: Json
           intent_required?: boolean
+          launch_mode?: string
           launch_validated_at?: string | null
           launched_at?: string | null
           launched_by?: string | null
@@ -7240,17 +7451,28 @@ export type Database = {
           minimum_grade?: string
           monthly_contact_cap?: number
           name?: string
+          named_companies?: Json
+          pause_reason?: string | null
           paused_at?: string | null
           priority?: number
+          promotion_rule?: string
+          prospect_source?: string
           prospects_per_run?: number
+          reply_rules_json?: Json
           reserved_allowance_minor?: number
           review_before_outreach?: boolean
+          review_threshold?: number
+          scoring_policy_version?: string | null
+          search_session_id?: string | null
           sender_identity_id?: string | null
           service_id?: string | null
           spent_cost_minor?: number
           status?: string
           stopped_at?: string | null
+          success_event?: string | null
           updated_at?: string
+          variants_enabled?: boolean
+          variants_per_step?: number
         }
         Relationships: [
           {
@@ -7272,6 +7494,13 @@ export type Database = {
             columns: ["icp_profile_id"]
             isOneToOne: false
             referencedRelation: "icp_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_campaigns_search_session_id_fkey"
+            columns: ["search_session_id"]
+            isOneToOne: false
+            referencedRelation: "search_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -8249,6 +8478,7 @@ export type Database = {
           is_test: boolean
           last_activity_at: string | null
           last_contacted_at: string | null
+          last_intent_at: string | null
           last_name: string | null
           linkedin_url: string | null
           location_json: Json
@@ -8264,6 +8494,9 @@ export type Database = {
           source_run_id: string | null
           status: string
           subscriber_type: string
+          suppressed_at: string | null
+          suppressed_by: string | null
+          suppression_reason: string | null
           unsubscribe_token: string
           updated_at: string
           verification_status: string
@@ -8286,6 +8519,7 @@ export type Database = {
           is_test?: boolean
           last_activity_at?: string | null
           last_contacted_at?: string | null
+          last_intent_at?: string | null
           last_name?: string | null
           linkedin_url?: string | null
           location_json?: Json
@@ -8301,6 +8535,9 @@ export type Database = {
           source_run_id?: string | null
           status?: string
           subscriber_type?: string
+          suppressed_at?: string | null
+          suppressed_by?: string | null
+          suppression_reason?: string | null
           unsubscribe_token?: string
           updated_at?: string
           verification_status?: string
@@ -8323,6 +8560,7 @@ export type Database = {
           is_test?: boolean
           last_activity_at?: string | null
           last_contacted_at?: string | null
+          last_intent_at?: string | null
           last_name?: string | null
           linkedin_url?: string | null
           location_json?: Json
@@ -8338,6 +8576,9 @@ export type Database = {
           source_run_id?: string | null
           status?: string
           subscriber_type?: string
+          suppressed_at?: string | null
+          suppressed_by?: string | null
+          suppression_reason?: string | null
           unsubscribe_token?: string
           updated_at?: string
           verification_status?: string
@@ -10615,6 +10856,19 @@ export type Database = {
           metric: string
         }[]
       }
+      affiliate_summaries: {
+        Args: never
+        Returns: {
+          affiliate_id: string
+          click_count: number
+          lifetime_minor: number
+          paid_minor: number
+          payable_minor: number
+          paying_count: number
+          pending_minor: number
+          referral_count: number
+        }[]
+      }
       agent_summaries: {
         Args: { p_business_id: string }
         Returns: {
@@ -10626,6 +10880,7 @@ export type Database = {
           queued: number
         }[]
       }
+      approve_due_commissions: { Args: never; Returns: number }
       check_suppression: {
         Args: {
           p_business_id: string
@@ -10644,8 +10899,8 @@ export type Database = {
         Args: { lock_seconds?: number; target_conversation_id: string }
         Returns: number
       }
-      claim_sender_send_slot: {
-        Args: { p_business_id: string; p_sender_id: string }
+      claim_campaign_contact_slot: {
+        Args: { p_business_id: string; p_campaign_id: string }
         Returns: boolean
       }
       claim_jobs: {
@@ -10658,6 +10913,10 @@ export type Database = {
           payload: Json
           type: string
         }[]
+      }
+      claim_sender_send_slot: {
+        Args: { p_business_id: string; p_sender_id: string }
+        Returns: boolean
       }
       clientturn_dispatch_cron: {
         Args: { endpoint_path: string }
@@ -10718,12 +10977,65 @@ export type Database = {
           unread: number
         }[]
       }
+      increment_affiliate_link_click: {
+        Args: { p_link_id: string }
+        Returns: undefined
+      }
+      increment_affiliate_link_paid: {
+        Args: { p_link_id: string }
+        Returns: undefined
+      }
+      increment_affiliate_link_signup: {
+        Args: { p_link_id: string }
+        Returns: undefined
+      }
       is_active_affiliate: { Args: never; Returns: boolean }
       is_business_member: {
         Args: { target_business_id: string }
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      outreach_campaign_bookings: {
+        Args: { p_business_id: string; p_campaign_id: string }
+        Returns: number
+      }
+      outreach_campaign_budget_detail: {
+        Args: { p_business_id: string; p_campaign_id: string }
+        Returns: {
+          cap_minor: number
+          category: string
+          category_minor: number
+          reserved_minor: number
+          spent_minor: number
+        }[]
+      }
+      outreach_campaign_budget_usage: {
+        Args: { p_business_id: string }
+        Returns: {
+          campaign_id: string
+          has_cap: boolean
+          percent_used: number
+        }[]
+      }
+      outreach_campaign_daily_series: {
+        Args: { p_business_id: string; p_campaign_id: string; p_days?: number }
+        Returns: {
+          booked: number
+          contacts_sent: number
+          day: string
+          qualified: number
+          replies: number
+        }[]
+      }
+      outreach_campaign_performance: {
+        Args: { p_business_id: string; p_days?: number }
+        Returns: {
+          contacted: number
+          prior_qualified: number
+          qualified: number
+          replies: number
+        }[]
+      }
       outreach_campaign_results: {
         Args: { p_business_id: string; p_campaign_id?: string }
         Returns: {
@@ -10739,6 +11051,15 @@ export type Database = {
           promoted_count: number
           reply_count: number
           stopped_count: number
+        }[]
+      }
+      outreach_upcoming_sends: {
+        Args: { p_business_id: string; p_limit?: number }
+        Returns: {
+          campaign_id: string
+          campaign_name: string
+          due_at: string
+          prospect_count: number
         }[]
       }
       process_workspace_app_event: {
@@ -10810,6 +11131,10 @@ export type Database = {
       release_agent_turn: {
         Args: { target_conversation_id: string; turn_seq: number }
         Returns: boolean
+      }
+      release_campaign_contact_slot: {
+        Args: { p_business_id: string; p_campaign_id: string }
+        Returns: undefined
       }
       rollup_business_cost_daily: {
         Args: { p_business_id: string; p_date: string }

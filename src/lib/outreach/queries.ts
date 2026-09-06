@@ -3,11 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { loadEmailAccount } from "@/lib/email/store";
 import {
   EMPTY_FUNNEL,
+  type CampaignAudience,
   type CampaignFunnel,
   type CampaignListData,
+  type CampaignPerformance,
   type CampaignRow,
   type CampaignStatus,
   type SenderIdentityRow,
+  type UpcomingSend,
 } from "./types";
 
 export * from "./types";
@@ -34,13 +37,16 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     readyCount,
     senderRows,
     mailbox,
+    { data: budgetRows },
+    { data: performanceRows },
+    { data: upcomingRows },
   ] = await Promise.all([
       supabase
         .from("outreach_campaigns")
         .select(
           `id, name, description, status, minimum_grade, priority, auto_optimize,
            review_before_outreach, daily_contact_cap, monthly_contact_cap,
-           sender_identity_id, active_sequence_id, launched_at, updated_at,
+           sender_identity_id, active_sequence_id, audience_json, launched_at, updated_at,
            conversion_goals ( name ), icp_profiles ( name )`,
         )
         .eq("business_id", businessId)
@@ -66,7 +72,23 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
         .eq("active", true)
         .order("created_at", { ascending: true }),
       loadEmailAccount(businessId),
+      // Budget as a ratio only. The amounts stay behind the definer function —
+      // see 0041 and 0051.
+      supabase.rpc("outreach_campaign_budget_usage", { p_business_id: businessId }),
+      supabase.rpc("outreach_campaign_performance", {
+        p_business_id: businessId,
+        p_days: 30,
+      }),
+      supabase.rpc("outreach_upcoming_sends", { p_business_id: businessId, p_limit: 6 }),
     ]);
+
+  const budgetByCampaign = new Map<string, { percent: number | null; hasCap: boolean }>();
+  for (const row of budgetRows ?? []) {
+    budgetByCampaign.set(row.campaign_id, {
+      percent: row.percent_used === null ? null : Number(row.percent_used),
+      hasCap: row.has_cap,
+    });
+  }
 
   const funnelByCampaign = new Map<string, CampaignFunnel>();
   for (const row of results ?? []) {
@@ -93,8 +115,12 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
   const campaigns: CampaignRow[] = (rows ?? []).map((row) => {
     const goal = row.conversion_goals as unknown as { name: string } | null;
     const icp = row.icp_profiles as unknown as { name: string } | null;
+    const budget = budgetByCampaign.get(row.id);
 
     return {
+      audience: readAudience(row.audience_json, icp?.name ?? null),
+      budgetPercent: budget?.percent ?? null,
+      hasBudgetCap: budget?.hasCap ?? false,
       id: row.id,
       name: row.name,
       description: row.description,
@@ -129,8 +155,20 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     hasPostalFooter: Boolean(row.postal_footer),
   }));
 
+  const performanceRow = Array.isArray(performanceRows) ? performanceRows[0] : null;
+  const performance = toPerformance(performanceRow);
+
+  const upcomingSends: UpcomingSend[] = (upcomingRows ?? []).map((row) => ({
+    campaignId: row.campaign_id,
+    campaignName: row.campaign_name,
+    prospectCount: Number(row.prospect_count),
+    dueAt: row.due_at,
+  }));
+
   return {
     campaigns,
+    performance,
+    upcomingSends,
     unassignedReady: readyCount.count ?? 0,
     // "Has a sender" means one that could actually run a cold campaign.
     hasSender: senders.some(
@@ -138,5 +176,55 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     ),
     senders,
     mailboxConnected: Boolean(mailbox),
+  };
+}
+
+/**
+ * The stored audience blob, read defensively.
+ *
+ * `audience_json` is written by the campaign builder and by the search planner,
+ * so a campaign created by an older version may carry a different shape. Every
+ * field is optional and anything unrecognised is dropped rather than rendered:
+ * a malformed blob must produce a thinner card, not a broken one.
+ */
+function readAudience(value: unknown, icpName: string | null): CampaignAudience {
+  const blob = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+
+  const locations = Array.isArray(blob.locations)
+    ? blob.locations.filter((v): v is string => typeof v === "string" && v.trim() !== "")
+    : [];
+
+  const radius =
+    typeof blob.radiusMiles === "number" && Number.isFinite(blob.radiusMiles)
+      ? blob.radiusMiles
+      : null;
+
+  const segment =
+    typeof blob.segment === "string" && blob.segment.trim() ? blob.segment.trim() : icpName;
+
+  return { segment, locations: locations.slice(0, 4), radiusMiles: radius };
+}
+
+function toPerformance(
+  row: {
+    contacted: number;
+    replies: number;
+    qualified: number;
+    prior_qualified: number;
+  } | null,
+): CampaignPerformance {
+  const contacted = row?.contacted ?? 0;
+  const qualified = row?.qualified ?? 0;
+  const prior = row?.prior_qualified ?? 0;
+
+  return {
+    contacted,
+    replies: row?.replies ?? 0,
+    qualified,
+    priorQualified: prior,
+    conversionRate: contacted > 0 ? qualified / contacted : null,
+    // No previous window means the trend is unknown, not flat. Rendering +0%
+    // against a month with no data would be a claim we cannot support.
+    qualifiedTrend: prior > 0 ? (qualified - prior) / prior : null,
   };
 }
