@@ -53,7 +53,9 @@ function toDraft(steps: AutomationDetail["steps"]): DraftStep[] {
     key: step.id,
     delaySeconds: step.delaySeconds,
     channel: step.channel,
+    subject: step.subject,
     template: step.template,
+    senderIdentityId: step.senderIdentityId,
     enabled: step.enabled,
   }));
 }
@@ -62,7 +64,9 @@ function toInputs(rows: DraftStep[]): StepInput[] {
   return rows.map((row) => ({
     delaySeconds: row.delaySeconds,
     channel: row.channel,
+    subject: row.channel === "email" ? (row.subject ?? "") : null,
     template: row.template,
+    senderIdentityId: row.senderIdentityId,
     enabled: row.enabled,
   }));
 }
@@ -128,7 +132,9 @@ export function AutomationEditor({
         key: newKey(),
         delaySeconds: rows.length === 0 ? 0 : 86400,
         channel: "sms",
+        subject: null,
         template: "",
+        senderIdentityId: null,
         enabled: true,
       },
     ]);

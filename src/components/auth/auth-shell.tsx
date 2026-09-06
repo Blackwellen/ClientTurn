@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
-import { AuthBrandPanel, type AuthVariant } from "./auth-brand-panel";
+import { AuthBrandPanel, isInternalVariant, type AuthVariant } from "./auth-brand-panel";
 
 const SWITCH: Record<AuthVariant, { prompt: string; label: string; href: string }> = {
   signup: { prompt: "Already have an account?", label: "Sign in", href: "/login" },
   login: { prompt: "Need an account?", label: "Sign up", href: "/signup" },
   forgot: { prompt: "Already have an account?", label: "Sign in", href: "/login" },
   reset: { prompt: "Already have an account?", label: "Sign in", href: "/login" },
+  // Each door switches within its own audience. A partner is never offered
+  // customer signup, and the operator door offers nothing at all.
+  partner: { prompt: "Not a partner yet?", label: "Join the programme", href: "/affiliates/signup" },
+  "partner-signup": { prompt: "Already a partner?", label: "Sign in", href: "/affiliates/login" },
+  admin: { prompt: "", label: "", href: "" },
 };
 
 export function AuthShell({
@@ -23,6 +28,7 @@ export function AuthShell({
     <div className="mx-auto flex min-h-dvh w-full max-w-[1720px] flex-col px-5 pt-6 pb-8 sm:px-8 sm:pt-8 sm:pb-10 lg:px-16 lg:pt-10 lg:pb-12 xl:px-20">
       <header className="flex items-center justify-between gap-4">
         <Logo height={80} />
+        {!isInternalVariant(variant) && (
         <div className="hidden items-center gap-3 sm:flex">
           <span className="text-[13.5px] text-[var(--auth-text-muted)]">{sw.prompt}</span>
           <Link
@@ -32,6 +38,7 @@ export function AuthShell({
             {sw.label}
           </Link>
         </div>
+        )}
       </header>
 
       <div className="mt-8 grid flex-1 items-center gap-x-12 gap-y-10 lg:mt-4 lg:grid-cols-[1.05fr_minmax(500px,0.95fr)] lg:gap-x-14 xl:gap-x-16">

@@ -4,6 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { OutreachEligibility } from "@/lib/policy/types";
 import { ACTIVE_INTENT_ONLY, applyProspectFilters, needsCompanyJoin } from "./filter-sql";
+import {
+  researchRefreshState,
+  type ResearchRefreshState,
+} from "@/lib/find-leads/server/research";
+import {
+  readStoredResearchSummary,
+  type ResearchSummary,
+} from "@/lib/find-leads/server/research-summary";
 import type { ProspectActivity, ProspectActivityKind } from "./activity";
 import type { ProspectFilters } from "./filters";
 import type {
@@ -371,6 +379,10 @@ export type ProspectDetail = {
     verifiedAt: string;
   }[];
   conversationId: string | null;
+  /** Whether a research refresh may run now, and why not when it may not. */
+  researchRefresh: ResearchRefreshState;
+  /** The most recent stored AI synthesis, if one has been generated. */
+  researchSummary: ResearchSummary | null;
   messages: {
     id: string;
     direction: string;
@@ -492,6 +504,14 @@ export async function getProspectDetail(
       .eq("subject_id", prospectId),
   ]);
 
+  // Both are cheap reads against indexed columns, and both are needed by the
+  // Research tab on open. Fetched alongside rather than on tab switch, so the
+  // tab does not spin the first time someone clicks it.
+  const [researchRefresh, researchSummary] = await Promise.all([
+    researchRefreshState(businessId, prospectId),
+    readStoredResearchSummary(businessId, prospectId),
+  ]);
+
   const scoreRow = scoreResult.data;
   let score: ProspectScore | null = null;
 
@@ -576,6 +596,8 @@ export async function getProspectDetail(
       verifiedAt: row.verified_at,
     })),
     conversationId: prospectRaw.conversation_id,
+    researchRefresh,
+    researchSummary,
     messages: (messagesResult.data ?? []).map((row) => ({
       id: row.id,
       direction: row.direction,

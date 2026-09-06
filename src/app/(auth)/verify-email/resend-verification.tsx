@@ -7,7 +7,18 @@ import { AuthError, AuthSuccess } from "../_components/auth-form-parts";
 
 const COOLDOWN_SECONDS = 60;
 
-export function ResendVerification({ email }: { email: string }) {
+export function ResendVerification({
+  email,
+  next = "/onboarding",
+}: {
+  email: string;
+  /**
+   * Where the confirmation link lands. Defaults to customer onboarding; the
+   * partner door passes its own, so a resent link does not quietly move a
+   * partner into the customer flow.
+   */
+  next?: string;
+}) {
   const [pending, setPending] = React.useState(false);
   const [cooldown, setCooldown] = React.useState(0);
   const [message, setMessage] = React.useState<string>();
@@ -31,7 +42,9 @@ export function ResendVerification({ email }: { email: string }) {
       const { error: resendError } = await supabase.auth.resend({
         type: "signup",
         email,
-        options: { emailRedirectTo: `${origin}/auth/callback?next=/onboarding` },
+        options: {
+          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
       });
       if (resendError) throw resendError;
       setMessage("Verification email sent. Check your inbox.");

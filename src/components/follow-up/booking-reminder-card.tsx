@@ -105,7 +105,11 @@ export function BookingReminderCard({
             // "24 hours before" is the reading, the scheduler does the offset.
             delaySeconds: minutes * 60,
             channel: step?.channel ?? "sms",
+            // Booking reminders are SMS/WhatsApp; an email reminder would need
+            // its own subject, which this card does not collect.
+            subject: null,
             template: body,
+            senderIdentityId: null,
             enabled: true,
           },
         ],

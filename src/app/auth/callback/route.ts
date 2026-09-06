@@ -9,6 +9,19 @@ function safeNext(value: string | null): string | null {
   return value;
 }
 
+/**
+ * Which sign-in door a failed link should return to.
+ *
+ * Derived from the destination rather than carried as its own parameter: the
+ * two can then never disagree. A partner sent to the customer login is being
+ * told to sign in somewhere they may have no account.
+ */
+function doorFor(next: string | null): string {
+  if (next?.startsWith("/affiliates")) return "/affiliates/login";
+  if (next?.startsWith("/admin")) return "/admin/login";
+  return "/login";
+}
+
 async function defaultDestination(userId: string): Promise<string> {
   const admin = createAdminClient();
   const { data } = await admin
@@ -31,7 +44,7 @@ export async function GET(request: NextRequest) {
 
   if (errorDescription || !code) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("link_invalid")}`,
+      `${origin}${doorFor(next)}?error=${encodeURIComponent("link_invalid")}`,
     );
   }
 
@@ -40,7 +53,7 @@ export async function GET(request: NextRequest) {
 
   if (error || !data.user) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("link_invalid")}`,
+      `${origin}${doorFor(next)}?error=${encodeURIComponent("link_invalid")}`,
     );
   }
 

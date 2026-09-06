@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { getPlatformOperator } from "./guard";
-import { guarded, operatorOrForbidden, type AdminActionResult } from "./guarded";
+import { guarded, type AdminActionResult } from "./guarded";
 import { MAX_SAFE_RETRIES, parseEventId } from "./events";
 import { runProviderProbes, recordProbeResults } from "./providers";
 import { searchAdmin } from "./search";

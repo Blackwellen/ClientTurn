@@ -3,6 +3,14 @@
  * the worker re-reads live state and calls these before every send.
  */
 
+// A relative path with the extension, not the `@/` alias: this module is pure
+// so that `node --test` can load it directly, and the runner does not resolve
+// tsconfig path aliases.
+import {
+  renderPreview,
+  unknownTokens,
+} from "../messaging/merge-fields.ts";
+
 export type StopReason =
   | "replied"
   | "booked"
@@ -130,36 +138,22 @@ export function computeNextRunAt(
   );
 }
 
-const MERGE_FIELDS = [
-  "first_name",
-  "last_name",
-  "full_name",
-  "business_name",
-  "service_name",
-  "booking_link",
-  "business_phone",
-] as const;
-
-export type MergeField = (typeof MERGE_FIELDS)[number];
+/**
+ * Warm follow-up merge fields now come from the canonical registry in
+ * `@/lib/messaging/merge-fields`. The two helpers below are kept as named
+ * exports so the many existing callers do not all have to change, but there is
+ * only one list behind them.
+ */
+export type MergeField = string;
 
 /** Unknown tokens block publishing rather than shipping a broken message. */
 export function findUnknownMergeFields(template: string): string[] {
-  const found = template.match(/\{\{\s*([a-z_]+)\s*\}\}/gi) ?? [];
-  return [
-    ...new Set(
-      found
-        .map((token) => token.replace(/[{}\s]/g, ""))
-        .filter((token) => !MERGE_FIELDS.includes(token as MergeField)),
-    ),
-  ];
+  return unknownTokens(template, "follow-up");
 }
 
 export function renderTemplate(
   template: string,
-  values: Partial<Record<MergeField, string>>,
+  values: Partial<Record<string, string>>,
 ): string {
-  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (match, key: string) => {
-    const value = values[key as MergeField];
-    return value ?? match;
-  });
+  return renderPreview(template, values, "follow-up");
 }

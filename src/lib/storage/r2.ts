@@ -13,7 +13,22 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES: Record<string, string[]> = {
   logo: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"],
   import: ["text/csv", "application/vnd.ms-excel"],
+  // Support attachments (V4 §23.7). Screenshots, exports and log excerpts —
+  // the things people actually attach to a ticket. No archives and no
+  // executables: an unopenable attachment is an inconvenience, an executable
+  // one is a liability.
+  support: [
+    "image/png",
+    "image/jpeg",
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "application/vnd.ms-excel",
+    "text/x-log",
+  ],
 };
+
+export type UploadKind = keyof typeof ALLOWED_TYPES;
 
 let client: S3Client | null = null;
 
@@ -35,7 +50,7 @@ function r2() {
 /** Keys are namespaced by tenant so one workspace can never guess another's. */
 export function objectKey(
   businessId: string,
-  kind: "logo" | "import",
+  kind: UploadKind,
   filename: string,
 ) {
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
@@ -43,7 +58,7 @@ export function objectKey(
 }
 
 export function assertUploadAllowed(
-  kind: "logo" | "import",
+  kind: UploadKind,
   contentType: string,
   size: number,
 ) {

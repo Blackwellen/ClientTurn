@@ -2027,6 +2027,8 @@ export type Database = {
           enabled: boolean
           id: string
           position: number
+          sender_identity_id: string | null
+          subject: string | null
           template: string
           updated_at: string
           version_id: string
@@ -2039,6 +2041,8 @@ export type Database = {
           enabled?: boolean
           id?: string
           position: number
+          sender_identity_id?: string | null
+          subject?: string | null
           template: string
           updated_at?: string
           version_id: string
@@ -2051,6 +2055,8 @@ export type Database = {
           enabled?: boolean
           id?: string
           position?: number
+          sender_identity_id?: string | null
+          subject?: string | null
           template?: string
           updated_at?: string
           version_id?: string
@@ -2061,6 +2067,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_steps_sender_identity_id_fkey"
+            columns: ["sender_identity_id"]
+            isOneToOne: false
+            referencedRelation: "sender_identities"
             referencedColumns: ["id"]
           },
           {
@@ -2915,7 +2928,9 @@ export type Database = {
           business_id: string
           created_at: string
           default_channel: string
+          default_sender_identity_id: string | null
           fallback_channel: string | null
+          follow_up_fallback_enabled: boolean
           message_signature: string | null
           notify_booking: boolean
           notify_campaign_complete: boolean
@@ -2941,7 +2956,9 @@ export type Database = {
           business_id: string
           created_at?: string
           default_channel?: string
+          default_sender_identity_id?: string | null
           fallback_channel?: string | null
+          follow_up_fallback_enabled?: boolean
           message_signature?: string | null
           notify_booking?: boolean
           notify_campaign_complete?: boolean
@@ -2967,7 +2984,9 @@ export type Database = {
           business_id?: string
           created_at?: string
           default_channel?: string
+          default_sender_identity_id?: string | null
           fallback_channel?: string | null
+          follow_up_fallback_enabled?: boolean
           message_signature?: string | null
           notify_booking?: boolean
           notify_campaign_complete?: boolean
@@ -6770,6 +6789,7 @@ export type Database = {
           bounced_at: string | null
           business_id: string
           campaign_id: string | null
+          campaign_variant_id: string | null
           channel: string
           complained_at: string | null
           conversation_id: string
@@ -6818,6 +6838,7 @@ export type Database = {
           bounced_at?: string | null
           business_id: string
           campaign_id?: string | null
+          campaign_variant_id?: string | null
           channel: string
           complained_at?: string | null
           conversation_id: string
@@ -6866,6 +6887,7 @@ export type Database = {
           bounced_at?: string | null
           business_id?: string
           campaign_id?: string | null
+          campaign_variant_id?: string | null
           channel?: string
           complained_at?: string | null
           conversation_id?: string
@@ -6926,6 +6948,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_campaign_variant_id_fkey"
+            columns: ["campaign_variant_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_variants"
             referencedColumns: ["id"]
           },
           {
@@ -7338,6 +7367,7 @@ export type Database = {
           launched_by: string | null
           max_cost_minor: number
           max_intent_age_days: number | null
+          min_gap_days: number
           minimum_grade: string
           monthly_contact_cap: number
           name: string
@@ -7354,6 +7384,9 @@ export type Database = {
           review_threshold: number
           scoring_policy_version: string | null
           search_session_id: string | null
+          send_timezone: string
+          send_window_end: string | null
+          send_window_start: string | null
           sender_identity_id: string | null
           service_id: string | null
           spent_cost_minor: number
@@ -7393,6 +7426,7 @@ export type Database = {
           launched_by?: string | null
           max_cost_minor?: number
           max_intent_age_days?: number | null
+          min_gap_days?: number
           minimum_grade?: string
           monthly_contact_cap?: number
           name: string
@@ -7409,6 +7443,9 @@ export type Database = {
           review_threshold?: number
           scoring_policy_version?: string | null
           search_session_id?: string | null
+          send_timezone?: string
+          send_window_end?: string | null
+          send_window_start?: string | null
           sender_identity_id?: string | null
           service_id?: string | null
           spent_cost_minor?: number
@@ -7448,6 +7485,7 @@ export type Database = {
           launched_by?: string | null
           max_cost_minor?: number
           max_intent_age_days?: number | null
+          min_gap_days?: number
           minimum_grade?: string
           monthly_contact_cap?: number
           name?: string
@@ -7464,6 +7502,9 @@ export type Database = {
           review_threshold?: number
           scoring_policy_version?: string | null
           search_session_id?: string | null
+          send_timezone?: string
+          send_window_end?: string | null
+          send_window_start?: string | null
           sender_identity_id?: string | null
           service_id?: string | null
           spent_cost_minor?: number
@@ -7531,6 +7572,7 @@ export type Database = {
           bounced_at: string | null
           business_id: string
           campaign_id: string
+          campaign_variant_id: string | null
           completed_at: string | null
           conversation_id: string | null
           created_at: string
@@ -7551,6 +7593,7 @@ export type Database = {
           bounced_at?: string | null
           business_id: string
           campaign_id: string
+          campaign_variant_id?: string | null
           completed_at?: string | null
           conversation_id?: string | null
           created_at?: string
@@ -7571,6 +7614,7 @@ export type Database = {
           bounced_at?: string | null
           business_id?: string
           campaign_id?: string
+          campaign_variant_id?: string | null
           completed_at?: string | null
           conversation_id?: string | null
           created_at?: string
@@ -7600,6 +7644,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "outreach_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_recipient_runs_campaign_variant_id_fkey"
+            columns: ["campaign_variant_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_variants"
             referencedColumns: ["id"]
           },
           {
@@ -9346,6 +9397,8 @@ export type Database = {
           updated_at: string
           verified_at: string | null
           warm_enabled: boolean
+          warmup_days: number
+          warmup_started_at: string | null
         }
         Insert: {
           active?: boolean
@@ -9374,6 +9427,8 @@ export type Database = {
           updated_at?: string
           verified_at?: string | null
           warm_enabled?: boolean
+          warmup_days?: number
+          warmup_started_at?: string | null
         }
         Update: {
           active?: boolean
@@ -9402,6 +9457,8 @@ export type Database = {
           updated_at?: string
           verified_at?: string | null
           warm_enabled?: boolean
+          warmup_days?: number
+          warmup_started_at?: string | null
         }
         Relationships: [
           {
@@ -10831,6 +10888,44 @@ export type Database = {
           },
         ]
       }
+      workspace_stream_events: {
+        Row: {
+          business_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: number
+          kind: string
+          surface: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: number
+          kind: string
+          surface: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: number
+          kind?: string
+          surface?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_stream_events_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       cron_job_health: {
@@ -10963,6 +11058,16 @@ export type Database = {
         Returns: number
       }
       current_affiliate_id: { Args: never; Returns: string }
+      emit_stream_event: {
+        Args: {
+          p_business_id: string
+          p_entity_id: string
+          p_entity_type: string
+          p_kind: string
+          p_surface: string
+        }
+        Returns: undefined
+      }
       expire_intent_matches: { Args: never; Returns: number }
       expire_usage_reservations: { Args: never; Returns: number }
       has_business_role: {
@@ -10998,6 +11103,16 @@ export type Database = {
       outreach_campaign_bookings: {
         Args: { p_business_id: string; p_campaign_id: string }
         Returns: number
+      }
+      outreach_campaign_budget: {
+        Args: { p_business_id: string }
+        Returns: {
+          budget_cap_minor: number
+          budget_spent_minor: number
+          campaign_id: string
+          has_cap: boolean
+          percent_used: number
+        }[]
       }
       outreach_campaign_budget_detail: {
         Args: { p_business_id: string; p_campaign_id: string }
@@ -11100,6 +11215,7 @@ export type Database = {
       }
       prune_oauth_states: { Args: never; Returns: number }
       prune_rate_limits: { Args: { older_than?: string }; Returns: number }
+      prune_workspace_stream_events: { Args: never; Returns: number }
       reactivation_campaign_results: {
         Args: { p_business_id: string; p_campaign_id?: string }
         Returns: {
@@ -11143,6 +11259,12 @@ export type Database = {
       rollup_business_margin_monthly: {
         Args: { p_business_id: string; p_month: string }
         Returns: undefined
+      }
+      sender_daily_allowance: {
+        Args: {
+          p_sender: Database["public"]["Tables"]["sender_identities"]["Row"]
+        }
+        Returns: number
       }
       sourcing_run_counters: {
         Args: { p_business_id: string; p_run_id: string }

@@ -108,15 +108,27 @@ export type CampaignRow = {
   priority: number;
   audience: CampaignAudience;
   /**
-   * How full the campaign's own budget is, 0-100, or null when uncapped.
+   * The campaign's own budget, in pence, and how full it is.
    *
-   * A percentage rather than an amount: `max_cost_minor` and `spent_cost_minor`
-   * are withheld from the browser role (0041) because provider spend is
-   * admin-only, and a ratio answers "can this keep running" without crossing
-   * that line.
+   * These come from `outreach_campaign_budget` (0055) rather than from the
+   * columns directly: 0041 withholds `max_cost_minor` and `spent_cost_minor`
+   * from the browser role, and that grant is unchanged. What the definer
+   * function exposes is narrower than the grant covered — a cap the customer
+   * set and that campaign's consumption of it. Provider unit economics stay
+   * admin-only and are not returned.
+   *
+   * Null cap means uncapped, and `budgetPercent` is null with it: rendering 0%
+   * for a campaign with no cap would read as "nothing spent", which is a
+   * different and false claim.
    */
+  budgetCapMinor: number | null;
+  budgetSpentMinor: number;
   budgetPercent: number | null;
   hasBudgetCap: boolean;
+  /** Who created it. Null for a campaign whose creator has left the workspace. */
+  ownerId: string | null;
+  ownerName: string | null;
+  createdAt: string | null;
   autoOptimize: boolean;
   reviewBeforeOutreach: boolean;
   dailyContactCap: number;
@@ -160,6 +172,18 @@ export function campaignStatusTone(
     default:
       return "neutral";
   }
+}
+
+/**
+ * Pence to a UK money string, dropping the pence on a round amount so a
+ * budget reads "£500" rather than "£500.00".
+ */
+export function formatMoneyMinor(minor: number): string {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
+  }).format(minor / 100);
 }
 
 /** A ratio that is null rather than 0 when the denominator is empty — "0% reply
@@ -245,6 +269,8 @@ export type UpcomingSend = {
 
 export type CampaignListData = {
   campaigns: CampaignRow[];
+  /** Distinct owners with at least one campaign, for the Owner filter. */
+  owners: { id: string; name: string }[];
   /** Prospects ready and approved but not yet in any campaign. */
   unassignedReady: number;
   hasSender: boolean;

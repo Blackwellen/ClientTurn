@@ -16,6 +16,7 @@ export const TASK_TYPES = [
   "reactivation_copy",
   "agent_decision",
   "search_planning",
+  "research_summary",
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -92,6 +93,36 @@ export const searchPlanningSchema = z.object({
 });
 export type SearchPlanningResult = z.infer<typeof searchPlanningSchema>;
 
+/**
+ * The prospect research synthesis (V4 §13.3).
+ *
+ * Every sentence must be traceable. `claims` is the whole output: each one
+ * carries the ids of the evidence rows it rests on, and the caller drops any
+ * claim whose ids are not in the set it supplied. That is what stops the model
+ * asserting something the evidence does not support — the guard is structural
+ * rather than a plea in the prompt.
+ *
+ * There is deliberately no free-text `summary` field. A prose blob could not be
+ * checked against evidence, and would be indistinguishable from a fabricated
+ * one.
+ */
+export const researchSummarySchema = z.object({
+  claims: z
+    .array(
+      z.object({
+        /** One plain sentence about the prospect or their company. */
+        text: z.string().min(1).max(400),
+        /** Evidence ids from the supplied set. A claim with none is dropped. */
+        evidence_ids: z.array(z.string()).min(1).max(8),
+      }),
+    )
+    .max(6)
+    .default([]),
+  /** Set when the evidence genuinely does not support any claim. */
+  insufficient_evidence: z.boolean().default(false),
+});
+export type ResearchSummaryResult = z.infer<typeof researchSummarySchema>;
+
 export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   intent_classification: leadIntentSchema,
   answer_extraction: qualificationExtractionSchema,
@@ -106,6 +137,9 @@ export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   // Mini tier: interpreting a plain-English targeting request is exactly the
   // ambiguity-handling work nano is not for.
   search_planning: searchPlanningSchema,
+  // Mini tier: synthesising evidence into readable claims is generation work,
+  // and the citation requirement needs a model that can follow it.
+  research_summary: researchSummarySchema,
 };
 
 /**

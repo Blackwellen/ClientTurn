@@ -4,6 +4,7 @@ import { recordAudit } from "@/lib/audit";
 import { evaluate } from "@/lib/policy/service";
 import { sendEmail, unsubscribeUrl } from "@/lib/email/smtp";
 import { normaliseEmail } from "@/lib/prospects/dedupe";
+import { assignVariant, recordVariantEvent } from "./variant-assignment";
 import { checkSuppression } from "@/lib/policy/suppression";
 import { evaluateEligibility } from "./campaign-eligibility";
 import { autoPauseIfUnsafe } from "./campaigns/lifecycle";
@@ -140,7 +141,7 @@ export async function dispatchCampaign(input: {
   const { data: due } = await admin
     .from("outreach_recipient_runs")
     .select(
-      `id, prospect_id, conversation_id, status, current_step_position, steps_sent,
+      `id, prospect_id, conversation_id, status, current_step_position, steps_sent, campaign_variant_id,
        prospects ( id, first_name, last_name, role_title, email, unsubscribe_token, status,
                    outreach_eligibility, grade, score, promoted_to_lead_id,
                    prospect_companies ( name, domain, is_existing_customer, location_json ) )`,
@@ -352,9 +353,23 @@ export async function dispatchCampaign(input: {
       booking_link: bookingLink,
     };
 
-    const subject = renderTemplate(step.subjectTemplate ?? "", values) || campaign.name;
+    // A running experiment on this step replaces the wording, and only the
+    // wording — the recipient, the caps and every compliance check are
+    // identical across variants, so a difference in replies is attributable to
+    // the message rather than to who received it.
+    const variant = await assignVariant({
+      businessId: input.businessId,
+      campaignId: input.campaignId,
+      stepId: step.id,
+      recipientRunId: run.id,
+      existingVariantId: run.campaign_variant_id ?? null,
+    });
+
+    const subject =
+      renderTemplate(variant?.subject ?? step.subjectTemplate ?? "", values) ||
+      campaign.name;
     const body = [
-      renderTemplate(step.bodyTemplate, values),
+      renderTemplate(variant?.body ?? step.bodyTemplate, values),
       // Cold B2B email in the UK must identify the sender in the message.
       await senderSignature(input.businessId, sender.id),
     ]
@@ -399,6 +414,14 @@ export async function dispatchCampaign(input: {
         .eq("business_id", input.businessId)
         .eq("id", run.id);
 
+      if (result.permanent && variant) {
+        await recordVariantEvent({
+          businessId: input.businessId,
+          variantId: variant.id,
+          event: "bounce",
+        });
+      }
+
       if (result.permanent) {
         await admin
           .from("prospects")
@@ -420,6 +443,7 @@ export async function dispatchCampaign(input: {
       prospect_id: prospect.id,
       campaign_id: input.campaignId,
       outreach_step_id: step.id,
+      campaign_variant_id: variant?.id ?? null,
       sender_identity_id: sender.id,
       channel: "email",
       direction: "outbound",
@@ -439,6 +463,9 @@ export async function dispatchCampaign(input: {
         status: nextStep ? "SCHEDULED" : "COMPLETED",
         conversation_id: conversationId,
         steps_sent: run.steps_sent + 1,
+        // Sticky for the rest of the sequence: switching a person between
+        // variants mid-sequence makes every later reply unattributable.
+        campaign_variant_id: variant?.id ?? run.campaign_variant_id ?? null,
         last_sent_at: new Date().toISOString(),
         next_step_due_at: nextStep
           ? new Date(Date.now() + nextStep.delaySeconds * 1000).toISOString()
@@ -448,6 +475,14 @@ export async function dispatchCampaign(input: {
       })
       .eq("business_id", input.businessId)
       .eq("id", run.id);
+
+    if (variant) {
+      await recordVariantEvent({
+        businessId: input.businessId,
+        variantId: variant.id,
+        event: "sent",
+      });
+    }
 
     await admin
       .from("prospects")

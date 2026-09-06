@@ -122,6 +122,9 @@ export type AuditAction =
   | "prospect.added_to_campaign"
   | "prospect.removed_from_campaign"
   | "prospect.marked_for_review"
+  | "prospect.research_refreshed"
+  | "prospect.research_summarised"
+  | "prospect.exported"
   | "recurring_search.created"
   | "recurring_search.paused"
   | "recurring_search.resumed"
@@ -151,7 +154,27 @@ export type AuditAction =
   | "affiliate.link_created"
   | "affiliate.payout_marked_paid"
   | "affiliate.commission_approved"
-  | "affiliate.commission_rejected";
+  | "affiliate.commission_rejected"
+  // V4 expansion (§19-§28). Every meaningful write on the nine new surfaces.
+  | "analytics.exported"
+  | "follow_up.sender_changed"
+  | "follow_up.fallback_changed"
+  | "integration.test_email_sent"
+  | "business_fact.saved"
+  | "business_fact.verified"
+  | "business_fact.unlocked"
+  | "knowledge_source.added"
+  | "knowledge_source.removed"
+  | "outreach_guidance.updated"
+  | "billing.allocation_changed"
+  | "billing.overage_changed"
+  | "billing.spend_cap_changed"
+  | "support.ticket_created"
+  | "support.ticket_replied"
+  // Copilot writes. The Copilot never writes to a table directly; this records
+  // that it invoked a domain service, and that a human confirmed it (§28.9).
+  | "copilot.action_executed"
+  | "copilot.action_denied";
 
 export async function recordAudit(entry: {
   businessId: string | null;

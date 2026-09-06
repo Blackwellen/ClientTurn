@@ -17,6 +17,9 @@ import {
 import type { ProspectListRow, ProspectQuickCounts } from "@/lib/prospects/types";
 import type { ProspectFilterOptions } from "@/lib/prospects/queries";
 import { useFindLeadsParams } from "./use-find-leads-params";
+
+/** Read server-side by the Find Leads page — see `VIEW_COOKIE` there. */
+const LIST_MODE_COOKIE = "ct-find-leads-list-mode";
 import { ProspectFilterPanel } from "./prospect-filter-panel";
 import { ProspectCard } from "./prospect-card";
 import { ProspectQuickFilters } from "./prospects/prospect-quick-filters";
@@ -71,6 +74,14 @@ export function ProspectsView({
   const params = useFindLeadsParams();
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [mode, setMode] = React.useState<ViewMode>(viewMode);
+
+  // Persisted so the page can render the right shape server-side next time and
+  // a table user never sees a flash of cards. Written here rather than in an
+  // effect so it only records a deliberate choice, not the initial value.
+  const changeMode = React.useCallback((next: ViewMode) => {
+    setMode(next);
+    document.cookie = `${LIST_MODE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+  }, []);
   const [selected, setSelected] = React.useState<string[]>([]);
 
   const filterCount = activeFilterCount(filters);
@@ -158,7 +169,7 @@ export function ProspectsView({
         filters={filters}
         options={options}
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={changeMode}
         onOpenFilterPanel={() => setFiltersOpen((open) => !open)}
       />
 

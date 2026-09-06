@@ -71,6 +71,8 @@ destructured a sixth promise that was never in the array.
 Affiliate portal (`/affiliates`), admin Support, admin Affiliates. All three are
 self-contained; the schema for each has existed since `0033`/`0034`.
 
+**Built in the third pass — see `V4_PASS_3.md`.**
+
 ## Verification
 
 ```

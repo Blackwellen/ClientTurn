@@ -22,6 +22,8 @@ const ACCOUNT_LINKS = [
   { label: "Log in", href: "/login" },
   { label: "Start free", href: "/signup" },
   { label: "Contact sales", href: "/contact-sales" },
+  { label: "Partner programme", href: "/affiliates" },
+  { label: "Partner sign in", href: "/affiliates/login" },
 ] as const;
 
 function LinkColumn({

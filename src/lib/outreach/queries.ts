@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { loadEmailAccount } from "@/lib/email/store";
 import {
   EMPTY_FUNNEL,
@@ -46,7 +47,8 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
         .select(
           `id, name, description, status, minimum_grade, priority, auto_optimize,
            review_before_outreach, daily_contact_cap, monthly_contact_cap,
-           sender_identity_id, active_sequence_id, audience_json, launched_at, updated_at,
+           sender_identity_id, active_sequence_id, audience_json, created_by,
+           created_at, launched_at, updated_at,
            conversion_goals ( name ), icp_profiles ( name )`,
         )
         .eq("business_id", businessId)
@@ -72,9 +74,9 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
         .eq("active", true)
         .order("created_at", { ascending: true }),
       loadEmailAccount(businessId),
-      // Budget as a ratio only. The amounts stay behind the definer function —
-      // see 0041 and 0051.
-      supabase.rpc("outreach_campaign_budget_usage", { p_business_id: businessId }),
+      // Through the definer function, never the columns: 0041 withholds the
+      // spend columns from this role and that grant is unchanged.
+      supabase.rpc("outreach_campaign_budget", { p_business_id: businessId }),
       supabase.rpc("outreach_campaign_performance", {
         p_business_id: businessId,
         p_days: 30,
@@ -82,9 +84,14 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
       supabase.rpc("outreach_upcoming_sends", { p_business_id: businessId, p_limit: 6 }),
     ]);
 
-  const budgetByCampaign = new Map<string, { percent: number | null; hasCap: boolean }>();
+  const budgetByCampaign = new Map<
+    string,
+    { capMinor: number | null; spentMinor: number; percent: number | null; hasCap: boolean }
+  >();
   for (const row of budgetRows ?? []) {
     budgetByCampaign.set(row.campaign_id, {
+      capMinor: row.has_cap ? Number(row.budget_cap_minor) : null,
+      spentMinor: Number(row.budget_spent_minor ?? 0),
       percent: row.percent_used === null ? null : Number(row.percent_used),
       hasCap: row.has_cap,
     });
@@ -112,6 +119,15 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     stepsBySequence.set(row.sequence_id, (stepsBySequence.get(row.sequence_id) ?? 0) + 1);
   }
 
+  // Owner names, for the Owner filter and the byline under Updated. Read with
+  // the service role and hard-scoped to this workspace: `profiles` is not
+  // readable member-to-member under RLS, and leaving the column unresolved
+  // would make the filter a list of UUIDs.
+  const ownerNames = await loadOwnerNames(
+    businessId,
+    (rows ?? []).map((row) => row.created_by).filter((v): v is string => Boolean(v)),
+  );
+
   const campaigns: CampaignRow[] = (rows ?? []).map((row) => {
     const goal = row.conversion_goals as unknown as { name: string } | null;
     const icp = row.icp_profiles as unknown as { name: string } | null;
@@ -119,8 +135,13 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
 
     return {
       audience: readAudience(row.audience_json, icp?.name ?? null),
+      budgetCapMinor: budget?.capMinor ?? null,
+      budgetSpentMinor: budget?.spentMinor ?? 0,
       budgetPercent: budget?.percent ?? null,
       hasBudgetCap: budget?.hasCap ?? false,
+      ownerId: row.created_by,
+      ownerName: ownerNames.get(row.created_by ?? "") ?? null,
+      createdAt: row.created_at,
       id: row.id,
       name: row.name,
       description: row.description,
@@ -165,8 +186,15 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     dueAt: row.due_at,
   }));
 
+  // Distinct owners actually present, so the filter can never offer someone
+  // with no campaigns.
+  const owners = [...ownerNames.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "en-GB"));
+
   return {
     campaigns,
+    owners,
     performance,
     upcomingSends,
     unassignedReady: readyCount.count ?? 0,
@@ -227,4 +255,43 @@ function toPerformance(
     // against a month with no data would be a claim we cannot support.
     qualifiedTrend: prior > 0 ? (qualified - prior) / prior : null,
   };
+}
+
+/**
+ * Resolves user ids to display names.
+ *
+ * Falls back to the email, then to "Unknown" — never to the raw id. A UUID in
+ * an Owner filter is worse than no filter, because it looks like data.
+ */
+async function loadOwnerNames(
+  businessId: string,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return out;
+
+  const admin = createAdminClient();
+
+  // Only members of *this* workspace. A campaign whose creator has since joined
+  // another business must not become a route to that person's profile from
+  // here.
+  const [{ data: members }, { data: profiles }] = await Promise.all([
+    admin
+      .from("business_members")
+      .select("user_id")
+      .eq("business_id", businessId)
+      .in("user_id", unique),
+    admin.from("profiles").select("id, first_name, last_name, email").in("id", unique),
+  ]);
+
+  const allowed = new Set((members ?? []).map((row) => row.user_id));
+
+  for (const profile of profiles ?? []) {
+    if (!allowed.has(profile.id)) continue;
+    const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim();
+    out.set(profile.id, name || profile.email || "Unknown");
+  }
+
+  return out;
 }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BarChart3,
@@ -31,6 +32,7 @@ import {
   campaignStatusLabel,
   campaignStatusTone,
   complianceSummary,
+  formatMoneyMinor,
   formatRate,
   isSpendingStatus,
   launchBlockers,
@@ -65,6 +67,20 @@ import { CampaignControls } from "./campaign-controls";
 
 type SortKey = "updated" | "name" | "status" | "budget";
 
+/**
+ * Date filter windows, applied to a campaign's `updatedAt`.
+ *
+ * Updated rather than created, because the question this filter answers on a
+ * campaign list is "what has been touched recently", not "what is old".
+ */
+const DATE_WINDOWS = [
+  { value: "7d", label: "Updated in 7 days", days: 7 },
+  { value: "30d", label: "Updated in 30 days", days: 30 },
+  { value: "90d", label: "Updated in 90 days", days: 90 },
+] as const;
+
+type DateWindow = (typeof DATE_WINDOWS)[number]["value"];
+
 export function CampaignsView({
   data,
   canManage,
@@ -77,6 +93,9 @@ export function CampaignsView({
   const [search, setSearch] = React.useState("");
   const [statuses, setStatuses] = React.useState<CampaignStatus[]>([]);
   const [goals, setGoals] = React.useState<string[]>([]);
+  const [owners, setOwners] = React.useState<string[]>([]);
+  const [dateWindow, setDateWindow] = React.useState<DateWindow | null>(null);
+  const [filterNow, setFilterNow] = React.useState(0);
   const [sort, setSort] = React.useState<SortKey>("updated");
 
   const goalOptions = React.useMemo(
@@ -88,9 +107,20 @@ export function CampaignsView({
   const visible = React.useMemo(() => {
     const term = search.trim().toLowerCase();
 
+    const cutoff = dateWindow
+      ? filterNow - (DATE_WINDOWS.find((w) => w.value === dateWindow)?.days ?? 30) * 864e5
+      : null;
+
     const filtered = campaigns.filter((campaign) => {
       if (statuses.length > 0 && !statuses.includes(campaign.status)) return false;
       if (goals.length > 0 && !goals.includes(campaign.conversionGoalName ?? "")) return false;
+      if (owners.length > 0 && !owners.includes(campaign.ownerId ?? "")) return false;
+      if (cutoff !== null) {
+        // A campaign with no recorded update cannot satisfy a recency window;
+        // treating it as recent would quietly widen the filter.
+        if (!campaign.updatedAt) return false;
+        if (new Date(campaign.updatedAt).getTime() < cutoff) return false;
+      }
       if (!term) return true;
       return [campaign.name, campaign.description, campaign.audience.segment]
         .filter(Boolean)
@@ -109,7 +139,7 @@ export function CampaignsView({
           return (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
       }
     });
-  }, [campaigns, search, statuses, goals, sort]);
+  }, [campaigns, search, statuses, goals, owners, dateWindow, filterNow, sort]);
 
   return (
     <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -156,6 +186,14 @@ export function CampaignsView({
           goals={goals}
           goalOptions={goalOptions}
           onGoals={setGoals}
+          owners={owners}
+          ownerOptions={data.owners}
+          onOwners={setOwners}
+          dateWindow={dateWindow}
+          onDateWindow={(value) => {
+            setFilterNow(Date.now());
+            setDateWindow(value);
+          }}
           sort={sort}
           onSort={setSort}
           builder={
@@ -189,6 +227,8 @@ export function CampaignsView({
                     setSearch("");
                     setStatuses([]);
                     setGoals([]);
+                    setOwners([]);
+                    setDateWindow(null);
                   }}
                 >
                   Clear filters
@@ -223,23 +263,17 @@ export function CampaignsView({
 /* --------------------------------------------------------------------- kpis */
 
 function CampaignKpiStrip({ data }: { data: CampaignListData }) {
-  const { campaigns, performance } = data;
+  const { campaigns } = data;
 
   const active = campaigns.filter((c) => isSpendingStatus(c.status)).length;
   const inOutreach = campaigns.reduce((sum, c) => sum + c.funnel.contacted, 0);
   const replies = campaigns.reduce((sum, c) => sum + c.funnel.replies, 0);
   const qualified = campaigns.reduce((sum, c) => sum + c.funnel.promoted, 0);
 
-  // Budget is a proportion of the caps that exist, never an amount: the money
-  // columns are withheld from the browser role, and a mean of percentages is
-  // what the server can honestly supply.
-  const capped = campaigns.filter((c) => c.hasBudgetCap && c.budgetPercent !== null);
-  const budgetPercent =
-    capped.length > 0
-      ? Math.round(
-          capped.reduce((sum, c) => sum + (c.budgetPercent ?? 0), 0) / capped.length,
-        )
-      : null;
+  // Every campaign's consumption of its own budget, summed. Campaigns with no
+  // cap still spend, so they are included in the total — a figure that only
+  // counted capped campaigns would understate what the workspace has used.
+  const budgetSpentMinor = campaigns.reduce((sum, c) => sum + c.budgetSpentMinor, 0);
 
   const cards = [
     { key: "active", icon: Megaphone, label: "Active campaigns", value: String(active) },
@@ -265,11 +299,7 @@ function CampaignKpiStrip({ data }: { data: CampaignListData }) {
       key: "budget",
       icon: Coins,
       label: "Budget used this month",
-      value: budgetPercent === null ? "No cap set" : `${budgetPercent}%`,
-      trend:
-        performance.qualifiedTrend !== null && budgetPercent !== null
-          ? null
-          : null,
+      value: formatMoneyMinor(budgetSpentMinor),
     },
   ];
 
@@ -312,6 +342,11 @@ function Toolbar({
   goals,
   goalOptions,
   onGoals,
+  owners,
+  ownerOptions,
+  onOwners,
+  dateWindow,
+  onDateWindow,
   sort,
   onSort,
   builder,
@@ -323,6 +358,11 @@ function Toolbar({
   goals: string[];
   goalOptions: string[];
   onGoals: (value: string[]) => void;
+  owners: string[];
+  ownerOptions: { id: string; name: string }[];
+  onOwners: (value: string[]) => void;
+  dateWindow: DateWindow | null;
+  onDateWindow: (value: DateWindow | null) => void;
   sort: SortKey;
   onSort: (value: SortKey) => void;
   builder: React.ReactNode;
@@ -380,8 +420,33 @@ function Toolbar({
       </Tooltip>
 
       <ChipSelect
+        label="Owner"
+        options={ownerOptions.map((owner) => ({ value: owner.id, label: owner.name }))}
+        selected={owners}
+        onToggle={(value) =>
+          onOwners(
+            owners.includes(value) ? owners.filter((o) => o !== value) : [...owners, value],
+          )
+        }
+      />
+
+      <ChipSelect
+        label="Date"
+        single
+        options={DATE_WINDOWS.map((window) => ({
+          value: window.value,
+          label: window.label,
+        }))}
+        selected={dateWindow ? [dateWindow] : []}
+        onToggle={(value) =>
+          onDateWindow(dateWindow === value ? null : (value as DateWindow))
+        }
+      />
+
+      <ChipSelect
         label="Sort"
         single
+        alwaysSet
         options={[
           { value: "updated", label: "Last updated" },
           { value: "name", label: "Name" },
@@ -403,14 +468,17 @@ function ChipSelect({
   selected,
   onToggle,
   single,
+  alwaysSet,
 }: {
   label: string;
   options: { value: string; label: string }[];
   selected: string[];
   onToggle: (value: string) => void;
   single?: boolean;
+  /** Sort always holds a value, so highlighting it would mean "always on". */
+  alwaysSet?: boolean;
 }) {
-  const active = single ? false : selected.length > 0;
+  const active = !alwaysSet && selected.length > 0;
   const summary = single
     ? (options.find((o) => o.value === selected[0])?.label ?? "")
     : selected.length === 1
@@ -538,6 +606,7 @@ function CampaignRowView({
   campaign: CampaignRow;
   canManage: boolean;
 }) {
+  const router = useRouter();
   const blockers = launchBlockers(campaign);
   const audience = campaign.audience;
 
@@ -626,9 +695,14 @@ function CampaignRowView({
       </Td>
 
       <Td>
-        <span className="text-[11.5px] text-content-muted">
+        <span className="block text-[11.5px] text-content-muted">
           {campaign.updatedAt ? shortAgo(campaign.updatedAt) : "—"}
         </span>
+        {campaign.ownerName && (
+          <span className="block text-[11px] text-content-subtle">
+            by {campaign.ownerName}
+          </span>
+        )}
       </Td>
 
       <Td align="right">
@@ -649,9 +723,7 @@ function CampaignRowView({
           >
             <DropdownItem
               onSelect={() =>
-                window.location.assign(
-                  `/app/find-leads?view=prospects&campaign=${campaign.id}`,
-                )
+                router.push(`/app/find-leads?view=prospects&campaign=${campaign.id}`)
               }
             >
               View prospects in this campaign
@@ -664,16 +736,17 @@ function CampaignRowView({
 }
 
 /**
- * Budget as a proportion.
+ * Budget usage: the amounts, then the proportion.
  *
- * There is no monetary figure here on purpose: the amount columns are revoked
- * from the browser role (0041), and the ratio is what actually answers the
- * question the bar is asked — is this campaign about to stop.
+ * The pounds come from `outreach_campaign_budget` (0055), a definer function
+ * that returns a campaign's own cap and that campaign's consumption of it.
+ * The withheld columns from 0041 are still withheld — provider unit economics
+ * are not on this row, and nothing here is derived from them.
  */
 function BudgetUsage({ campaign }: { campaign: CampaignRow }) {
   if (!campaign.hasBudgetCap || campaign.budgetPercent === null) {
     return (
-      <Tooltip content="No spend cap is set for this campaign. Your workspace and plan ceilings still apply.">
+      <Tooltip content="No spend cap is set for this campaign. Your workspace and plan ceilings still apply to every send.">
         <span className="text-[11.5px] text-content-subtle">No cap</span>
       </Tooltip>
     );
@@ -683,33 +756,42 @@ function BudgetUsage({ campaign }: { campaign: CampaignRow }) {
   const near = campaign.budgetPercent >= 80;
 
   return (
-    <div className="w-[104px]">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[11.5px] text-content-muted">of cap</span>
+    <div className="w-[116px]">
+      <p className="text-[12px] tabular-nums text-content">
+        <span className="font-semibold">
+          {formatMoneyMinor(campaign.budgetSpentMinor)}
+        </span>
+        <span className="text-content-muted">
+          {" / "}
+          {formatMoneyMinor(campaign.budgetCapMinor ?? 0)}
+        </span>
+      </p>
+
+      <div className="mt-1 flex items-center gap-2">
+        <div
+          className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-sunken"
+          role="progressbar"
+          aria-valuenow={campaign.budgetPercent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${campaign.name} budget used`}
+        >
+          <div
+            className={cn(
+              "h-full rounded-full",
+              full ? "bg-danger-500" : near ? "bg-warning-500" : "bg-accent-500",
+            )}
+            style={{ width: `${campaign.budgetPercent}%` }}
+          />
+        </div>
         <span
           className={cn(
-            "text-[12px] font-semibold tabular-nums",
-            full ? "text-danger-600" : near ? "text-warning-700" : "text-content",
+            "shrink-0 text-[11px] tabular-nums",
+            full ? "text-danger-600" : near ? "text-warning-700" : "text-content-muted",
           )}
         >
           {campaign.budgetPercent}%
         </span>
-      </div>
-      <div
-        className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-sunken"
-        role="progressbar"
-        aria-valuenow={campaign.budgetPercent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${campaign.name} budget used`}
-      >
-        <div
-          className={cn(
-            "h-full rounded-full",
-            full ? "bg-danger-500" : near ? "bg-warning-500" : "bg-accent-500",
-          )}
-          style={{ width: `${campaign.budgetPercent}%` }}
-        />
       </div>
     </div>
   );
@@ -932,7 +1014,7 @@ function BudgetAllocationCard({ campaigns }: { campaigns: CampaignRow[] }) {
         <ul className="space-y-2.5">
           {active.map((campaign) => (
             <li key={campaign.id} className="flex items-center gap-2.5">
-              <span className="w-[7.5rem] shrink-0 truncate text-[12px] text-content-secondary">
+              <span className="w-[6.5rem] shrink-0 truncate text-[12px] text-content-secondary">
                 {campaign.name}
               </span>
               <span
@@ -957,6 +1039,13 @@ function BudgetAllocationCard({ campaigns }: { campaigns: CampaignRow[] }) {
               </span>
               <span className="w-9 shrink-0 text-right text-[11.5px] tabular-nums text-content-muted">
                 {campaign.budgetPercent}%
+              </span>
+              <span className="w-[6.5rem] shrink-0 text-right text-[11.5px] tabular-nums text-content-secondary">
+                {formatMoneyMinor(campaign.budgetSpentMinor)}
+                <span className="text-content-subtle">
+                  {" / "}
+                  {formatMoneyMinor(campaign.budgetCapMinor ?? 0)}
+                </span>
               </span>
             </li>
           ))}

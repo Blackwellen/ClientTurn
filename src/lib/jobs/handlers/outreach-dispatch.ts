@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { enqueue } from "@/lib/jobs/queue";
 import { dispatchCampaign } from "@/lib/outreach/dispatch";
+import { scheduleNextWake } from "@/lib/outreach/sequence-scheduler";
 
 /**
  * Sends the next batch of a cold outreach campaign.
@@ -38,6 +39,14 @@ export async function handleOutreachDispatch(job: ClaimedJob): Promise<void> {
   }
 
   if (outcome.haltReason) return;
+
+  if (!outcome.more) {
+    // No work right now, but a later step may be due in an hour or three days.
+    // Without this the sequence stops after step 1: the dispatcher schedules
+    // `next_step_due_at` and nothing ever comes back to act on it.
+    await scheduleNextWake({ businessId, campaignId });
+    return;
+  }
 
   if (outcome.more) {
     await enqueue(

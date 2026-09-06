@@ -30,7 +30,9 @@ type StepRow = {
   position: number;
   delay_seconds: number;
   channel: string;
+  subject: string | null;
   template: string;
+  sender_identity_id: string | null;
   enabled: boolean;
 };
 
@@ -40,7 +42,9 @@ function toStep(row: StepRow): AutomationStep {
     position: row.position,
     delaySeconds: row.delay_seconds,
     channel: row.channel as Channel,
+    subject: row.subject,
     template: row.template,
+    senderIdentityId: row.sender_identity_id,
     enabled: row.enabled,
   };
 }
@@ -94,7 +98,9 @@ export async function listAutomations(
   if (versionIds.length > 0) {
     const { data } = await supabase
       .from("automation_steps")
-      .select("id, version_id, position, delay_seconds, channel, template, enabled")
+      .select(
+        "id, version_id, position, delay_seconds, channel, subject, template, sender_identity_id, enabled",
+      )
       .eq("business_id", businessId)
       .in("version_id", versionIds)
       .order("position");
@@ -169,7 +175,9 @@ export async function getAutomation(
   if (versionIds.length > 0) {
     const { data } = await supabase
       .from("automation_steps")
-      .select("id, version_id, position, delay_seconds, channel, template, enabled")
+      .select(
+        "id, version_id, position, delay_seconds, channel, subject, template, sender_identity_id, enabled",
+      )
       .eq("business_id", businessId)
       .in("version_id", versionIds)
       .order("position");

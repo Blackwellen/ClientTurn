@@ -21,6 +21,10 @@ export type AutomationEventType =
   | "automation.started"
   | "automation.step_due"
   | "automation.step_completed"
+  // A step whose channel is not permitted for this lead and has no fallback.
+  // Recorded rather than silently retried, because the resolution is a human
+  // decision (V4 §19.6).
+  | "automation.step_blocked"
   | "automation.stopped"
   | "automation.failed"
   | "qualification.answer_received"

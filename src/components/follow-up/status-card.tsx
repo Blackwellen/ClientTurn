@@ -5,12 +5,13 @@ import {
   CircleCheck,
   CircleDashed,
   MoreVertical,
+  Pause,
   PauseCircle,
   Play,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { IconButton } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { DropdownItem, DropdownMenu } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -126,7 +127,22 @@ export function FollowUpStatusCard({
           </div>
 
           {canEdit && automation && status.state !== "draft" && (
-            <div className="shrink-0">
+            <div className="flex shrink-0 items-center gap-1.5">
+              {/* Pausing is the one action people come to this card for, so it
+                  is a button rather than something to be found in a menu. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirming(true)}
+              >
+                {automation.enabled ? (
+                  <Pause className="size-3.5" aria-hidden />
+                ) : (
+                  <Play className="size-3.5" aria-hidden />
+                )}
+                {automation.enabled ? "Pause sequence" : "Resume sequence"}
+              </Button>
+
               <DropdownMenu
                 trigger={
                   <IconButton variant="ghost" size="sm" label="Follow-up options">

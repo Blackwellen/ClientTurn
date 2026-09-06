@@ -7,6 +7,14 @@ import {
   ShieldCheck,
   RotateCw,
   UserCheck2,
+  Link2,
+  Wallet,
+  LineChart,
+  Megaphone,
+  BadgePoundSterling,
+  ShieldAlert,
+  Server,
+  ScrollText,
 } from "lucide-react";
 import { Annotation } from "./annotation";
 import { FeatureList, type AuthFeature } from "./feature-list";
@@ -14,7 +22,24 @@ import { DashboardPreview, SecurityPreview, StackedCardsPreview } from "./produc
 import { TiltWrapper } from "./tilt-wrapper";
 import { WorksWithStrip } from "./works-with-strip";
 
-export type AuthVariant = "signup" | "login" | "forgot" | "reset";
+export type AuthVariant =
+  | "signup"
+  | "login"
+  | "forgot"
+  | "reset"
+  | "partner"
+  | "partner-signup"
+  | "admin";
+
+/**
+ * The operator door is an internal tool, not a storefront. It borrows the same
+ * shell and card so the product feels like one thing, but it never carries
+ * customer marketing: no "trusted by" logos, no growth claims, no handwritten
+ * note. Someone signing in here already works here.
+ */
+export function isInternalVariant(variant: AuthVariant): boolean {
+  return variant === "admin";
+}
 
 const FEATURES: Record<AuthVariant, AuthFeature[]> = {
   signup: [
@@ -38,6 +63,23 @@ const FEATURES: Record<AuthVariant, AuthFeature[]> = {
     { icon: Lock, title: "Secure", description: "Your account stays protected." },
     { icon: ShieldCheck, title: "Strong by default", description: "Choose a strong new password." },
     { icon: RotateCw, title: "Back in minutes", description: "Continue where you left off." },
+  ],
+  "partner-signup": [
+    { icon: Megaphone, title: "Share what you already recommend", description: "Tracked links you can put anywhere you reach people." },
+    { icon: Users, title: "Introduce the businesses you know", description: "Trade and service firms who need to answer leads faster." },
+    { icon: BadgePoundSterling, title: "Earn on what they pay", description: "Recurring commission, confirmed after the refund hold." },
+    { icon: Wallet, title: "Get paid on a schedule", description: "Monthly payouts once approved commission clears the minimum." },
+  ],
+  admin: [
+    { icon: ShieldAlert, title: "Step-up on every change", description: "Confirm your password before anything mutates." },
+    { icon: ScrollText, title: "Written to the audit log", description: "Every operator action is attributable." },
+    { icon: Server, title: "Platform-wide visibility", description: "Customers, usage, margins and system health." },
+  ],
+  partner: [
+    { icon: Link2, title: "Your referral links", description: "Share a link and see every click it earns." },
+    { icon: Users, title: "Referrals you introduced", description: "Follow each one from signup to active." },
+    { icon: LineChart, title: "Commission as it accrues", description: "See what has been approved and what is pending." },
+    { icon: Wallet, title: "Payouts and statements", description: "Every payment, with the detail behind it." },
   ],
 };
 
@@ -66,6 +108,24 @@ const COPY: Record<
     support: "Set a strong password and get back to your leads, bookings and revenue.",
     annotation: ["Secure today", "Stronger tomorrow"],
   },
+  "partner-signup": {
+    headline: ["Get paid for the", "introductions you make."],
+    support:
+      "Join the ClientTurn partner programme, share tracked links, and earn recurring commission on the businesses you introduce.",
+    annotation: ["Share a link", "Earn on every", "customer"],
+  },
+  admin: {
+    headline: ["Platform", "operations."],
+    support:
+      "Internal access for ClientTurn staff. Every sign-in and every change is recorded against your account.",
+    annotation: ["Staff only"],
+  },
+  partner: {
+    headline: ["Welcome back,", "partner."],
+    support:
+      "Sign in to the ClientTurn partner portal for your links, referrals, commission and payouts.",
+    annotation: ["Your links", "Your referrals", "Your commission"],
+  },
 };
 
 const RECENT_LEADS = [
@@ -92,6 +152,12 @@ const ANNOTATION_POSITION: Record<AuthVariant, string> = {
     "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
   reset:
     "bottom-[175px] -right-[60px] min-[1536px]:right-[0px] min-[1700px]:bottom-[200px] min-[1700px]:right-[70px]",
+  partner:
+    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
+  "partner-signup":
+    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
+  // Never rendered -- the operator door has no handwritten note.
+  admin: "",
 };
 
 function ProductVisual({ variant }: { variant: AuthVariant }) {
@@ -144,18 +210,30 @@ function ProductVisual({ variant }: { variant: AuthVariant }) {
       />
     );
   }
-  if (variant === "forgot") return <StackedCardsPreview />;
+  if (variant === "forgot" || variant === "partner" || variant === "partner-signup")
+    return <StackedCardsPreview />;
   return <SecurityPreview />;
 }
 
+const EYEBROW: Record<AuthVariant, string> = {
+  signup: "More leads. More bookings. More growth.",
+  login: "More leads. More bookings. More growth.",
+  forgot: "More leads. More bookings. More growth.",
+  reset: "More leads. More bookings. More growth.",
+  partner: "ClientTurn partner programme",
+  "partner-signup": "ClientTurn partner programme",
+  admin: "ClientTurn internal",
+};
+
 export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
+  const internal = isInternalVariant(variant);
   const copy = COPY[variant];
   const features = FEATURES[variant];
 
   return (
     <div className="relative flex flex-col justify-center py-10 lg:py-0">
       <p className="text-[13px] font-medium tracking-[0.24em] text-[var(--auth-eyebrow)] uppercase">
-        More leads. More bookings. More growth.
+        {EYEBROW[variant]}
       </p>
 
       <h1
@@ -199,18 +277,28 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
       {/* The handwritten note needs the opposite: its own wrapper carries the
           z-index, so the stacking context the transform creates sits ABOVE the
           auth card rather than being trapped underneath it. */}
+      {!internal && (
       <div className="pointer-events-none absolute top-1/2 right-0 z-40 hidden -translate-y-1/2 min-[1440px]:block">
         <div className={`absolute w-max ${ANNOTATION_POSITION[variant]}`}>
           <Annotation
             lines={copy.annotation}
-            arrow={variant === "forgot" ? "up-right" : "down-left"}
+            arrow={
+              variant === "forgot" ||
+              variant === "partner" ||
+              variant === "partner-signup"
+                ? "up-right"
+                : "down-left"
+            }
           />
         </div>
       </div>
+      )}
 
-      <div className="mt-12 lg:mt-16">
-        <WorksWithStrip />
-      </div>
+      {!internal && (
+        <div className="mt-12 lg:mt-16">
+          <WorksWithStrip />
+        </div>
+      )}
     </div>
   );
 }

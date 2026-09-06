@@ -327,11 +327,37 @@ export async function signIn(
   return { ok: true, redirectTo: destination };
 }
 
-export async function signOut(): Promise<AuthResult> {
+/**
+ * The sign-in surfaces a sign-out is allowed to land on.
+ *
+ * The product has three separate front doors -- `/login` for customers,
+ * `/admin/login` for platform operators, `/affiliates/login` for partners -- and
+ * signing out has to return you to the one you came in through. Landing a
+ * partner on the customer login tells them to go somewhere they have no account
+ * for.
+ *
+ * An allow-list rather than a same-origin check: this value decides where a
+ * just-signed-out person is sent, so it is never a free-form path.
+ */
+const SIGN_OUT_DESTINATIONS = [
+  "/login",
+  "/admin/login",
+  "/affiliates/login",
+] as const;
+
+export type SignOutDestination = (typeof SIGN_OUT_DESTINATIONS)[number];
+
+export async function signOut(destination?: SignOutDestination): Promise<AuthResult> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
-  redirect("/login");
+
+  // Fails closed to the customer login if anything unrecognised arrives.
+  redirect(
+    destination && SIGN_OUT_DESTINATIONS.includes(destination)
+      ? destination
+      : "/login",
+  );
 }
 
 export async function requestPasswordReset(

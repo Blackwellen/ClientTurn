@@ -258,7 +258,13 @@ export async function saveFollowUpStep(
   const draft = await saveAutomationDraft({
     automationId: definition.id,
     name: "New lead follow-up",
-    steps: parsed.data.steps,
+    // Onboarding only ever seeds SMS/WhatsApp steps, so neither a subject nor
+    // a sending identity applies. Email steps are added later, in Follow-Up.
+    steps: parsed.data.steps.map((step) => ({
+      ...step,
+      subject: null,
+      senderIdentityId: null,
+    })),
   });
   if (!draft.ok) return fail(draft.error);
 

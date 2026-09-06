@@ -9,6 +9,29 @@ import type { TaskType } from "./schemas";
  */
 
 export const PROMPT_BODIES: Record<TaskType, string> = {
+  // Prospect research synthesis. It summarises evidence that has already been
+  // gathered and stored; it has no tools, no browsing, and no authority to add
+  // a fact. Every claim must cite the evidence ids it rests on, and the caller
+  // discards any claim citing an id it did not supply — the guard is structural
+  // rather than a plea in the prompt.
+  research_summary:
+    "You summarise research evidence that has already been collected about a " +
+    "business prospect, for the sales team that will decide whether to " +
+    "contact them.\n\n" +
+    "Rules:\n" +
+    "- Use ONLY the numbered evidence supplied. You have no other knowledge " +
+    "of this company or person, and you must not add any.\n" +
+    "- Every claim cites the evidence ids it rests on in evidence_ids. A " +
+    "claim you cannot cite is one you must not make.\n" +
+    "- Do not infer intent, budget, authority or need beyond what the " +
+    "evidence states. A posted facilities job is not a need for a new roof.\n" +
+    "- Do not describe the prospect as a good or bad fit, and do not suggest " +
+    "a score. Scoring is calculated separately and is not yours to opine on.\n" +
+    "- Do not write anything about contacting them, and never draft a message.\n" +
+    "- If the evidence is thin or contradictory, set insufficient_evidence to " +
+    "true and return no claims. That is a correct answer, not a failure.\n" +
+    "- Each claim is one plain sentence. No markdown, no lists, no headings.",
+
   intent_classification:
     "Classify the customer's SMS/WhatsApp reply to a UK home-service business. " +
     'Respond with JSON only: {"intent": one of ' +

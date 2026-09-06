@@ -70,7 +70,13 @@ export type AutomationStep = {
   position: number;
   delaySeconds: number;
   channel: Channel;
+  /** Email only. Null on SMS and WhatsApp steps, enforced by a check
+   *  constraint so no code path can store a subject that would never be used. */
+  subject: string | null;
   template: string;
+  /** Preferred sending identity for an email step. Advisory: the send path
+   *  re-resolves and re-validates it immediately before every send. */
+  senderIdentityId: string | null;
   enabled: boolean;
 };
 
@@ -217,12 +223,34 @@ export const SEQUENCE_SCOPE_NOTE =
 
 // ------------------------------------------------------------------ schemas
 
-export const stepInputSchema = z.object({
-  delaySeconds: z.coerce.number().int().min(0).max(2_592_000),
-  channel: z.enum(CHANNELS),
-  template: z.string().trim().min(1).max(1200),
-  enabled: z.boolean(),
-});
+export const MAX_EMAIL_SUBJECT_LENGTH = 160;
+
+export const stepInputSchema = z
+  .object({
+    delaySeconds: z.coerce.number().int().min(0).max(2_592_000),
+    channel: z.enum(CHANNELS),
+    subject: z
+      .string()
+      .trim()
+      .max(MAX_EMAIL_SUBJECT_LENGTH)
+      .nullable()
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : null)),
+    template: z.string().trim().min(1).max(5000),
+    senderIdentityId: z.uuid().nullable().optional().default(null),
+    enabled: z.boolean(),
+  })
+  // An email without a subject is not sendable, and a subject on an SMS is
+  // dead data. Rejecting both here keeps the database constraint from ever
+  // being the first thing that notices.
+  .refine((step) => step.channel !== "email" || Boolean(step.subject), {
+    path: ["subject"],
+    message: "Every email step needs a subject line.",
+  })
+  .refine((step) => step.channel === "email" || step.subject === null, {
+    path: ["subject"],
+    message: "Only email steps carry a subject line.",
+  });
 
 export type StepInput = z.infer<typeof stepInputSchema>;
 

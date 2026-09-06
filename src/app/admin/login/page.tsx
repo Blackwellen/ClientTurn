@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
 import { getPlatformOperator } from "@/lib/admin/guard";
-import { Logo } from "@/components/ui/logo";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { AdminLoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -11,37 +14,56 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The operator door.
+ *
+ * Same shell and card as the customer and partner doors so the product reads
+ * as one thing, with the marketing stripped out: no trust logos, no growth
+ * claims, no sign-up switch. Someone arriving here already works here.
+ */
 export default async function AdminLoginPage() {
   // An operator who is already signed in has no reason to see this.
   if (await getPlatformOperator()) redirect("/admin");
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-[#0B1020] px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <Logo href={null} height={64} />
-          <p className="text-[11px] tracking-wide text-white/50 uppercase">
-            Platform operations
+    <AuthShell variant="admin">
+      <AuthCard>
+        <AuthCardHeader
+          eyebrow="Platform operations"
+          title="Operator sign in"
+          description="Internal access for ClientTurn staff. Your platform role is checked against the database on every request."
+        />
+
+        <AdminLoginForm />
+
+        <div className="mt-7 flex items-start gap-3 rounded-[12px] border border-white/8 bg-white/[0.03] px-4 py-3.5">
+          <ShieldCheck
+            className="mt-px size-4 shrink-0 text-[var(--auth-lime)]"
+            aria-hidden
+          />
+          <p className="text-[12.5px] leading-relaxed text-[var(--auth-text-muted)]">
+            Every sign-in is recorded, and each change asks you to confirm your
+            password again before it is applied.
           </p>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
-          <h1 className="text-[16px] font-semibold text-white">
-            Operator sign in
-          </h1>
-          <p className="mt-1 text-[13px] text-white/60">
-            This area is for Client Turn staff. Customer accounts sign in at the
-            main login.
-          </p>
-
-          <AdminLoginForm />
-        </div>
-
-        <p className="mt-4 text-[12px] text-white/40">
-          Access is checked against the platform role held in the database. All
-          sign-ins are recorded.
+        <p className="mt-6 border-t border-white/8 pt-5 text-center text-[13px] text-[var(--auth-text-muted)]">
+          Not staff?{" "}
+          <Link
+            href="/login"
+            className="font-medium underline underline-offset-4 hover:text-[var(--auth-text)]"
+          >
+            Customer sign in
+          </Link>{" "}
+          ·{" "}
+          <Link
+            href="/affiliates/login"
+            className="font-medium underline underline-offset-4 hover:text-[var(--auth-text)]"
+          >
+            Partner sign in
+          </Link>
         </p>
-      </div>
-    </div>
+      </AuthCard>
+    </AuthShell>
   );
 }

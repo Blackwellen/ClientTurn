@@ -170,7 +170,9 @@ export async function saveAutomationDraft(input: {
       position: index + 1,
       delay_seconds: step.delaySeconds,
       channel: step.channel,
+      subject: step.subject,
       template: step.template,
+      sender_identity_id: step.senderIdentityId ?? null,
       enabled: step.enabled,
     })),
   );
@@ -247,7 +249,7 @@ export async function publishAutomation(input: {
 
   const { data: steps } = await supabase
     .from("automation_steps")
-    .select("template, channel, enabled")
+    .select("template, channel, subject, enabled")
     .eq("version_id", draft.id)
     .order("position");
 
@@ -258,8 +260,15 @@ export async function publishAutomation(input: {
     return fail("At least one step must be switched on before publishing.");
   }
 
+  // A subject is part of the message: an unresolvable token there is as
+  // broken as one in the body, so both are scanned before publishing.
   const unknown = [
-    ...new Set(steps.flatMap((step) => findUnknownMergeFields(step.template))),
+    ...new Set(
+      steps.flatMap((step) => [
+        ...findUnknownMergeFields(step.template),
+        ...(step.subject ? findUnknownMergeFields(step.subject) : []),
+      ]),
+    ),
   ];
   if (unknown.length > 0) {
     return fail(

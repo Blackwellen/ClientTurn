@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claimJobs, completeJob, failJob, type ClaimedJob } from "@/lib/jobs/queue";
+import { claimJobs, completeJob, enqueue, failJob, type ClaimedJob } from "@/lib/jobs/queue";
 import { handleJob } from "@/lib/jobs/registry";
 // Side-effect import: registers every job handler before the loop runs.
 import "@/lib/jobs/register";
@@ -12,6 +12,23 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const BATCH_SIZE = 25;
+
+/**
+ * Queues the outreach sequence sweep, at most once every five minutes.
+ *
+ * The worker ticks every thirty seconds, and sweeping that often would be
+ * waste — but a follow-up due at 09:00 must not wait for the nightly job
+ * either. The idempotency key is bucketed to a five-minute window, so however
+ * often this runs, only one sweep is ever queued per window.
+ */
+async function scheduleOutreachTick() {
+  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  await enqueue(
+    "outreach.tick",
+    {},
+    { idempotencyKey: `outreach.tick:${bucket}` },
+  );
+}
 
 export async function GET(request: Request) {
   const startedAt = Date.now();
@@ -32,6 +49,7 @@ export async function GET(request: Request) {
   // already pending or running is never queued twice.
   await scheduleEmailPolls();
   await scheduleAgents();
+  await scheduleOutreachTick();
 
   const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
   let claimed = 0;

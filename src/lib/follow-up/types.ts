@@ -8,6 +8,8 @@
  */
 
 import { z } from "zod";
+import { fieldsForSurface } from "../messaging/merge-fields.ts";
+import { MAX_EMAIL_SUBJECT_LENGTH } from "../automations/types.ts";
 
 export const FOLLOW_UP_VIEWS = ["follow-up", "qualification"] as const;
 export type FollowUpViewValue = (typeof FOLLOW_UP_VIEWS)[number];
@@ -33,7 +35,30 @@ export const FOLLOW_UP_VIEW_META: Record<
   },
 };
 
+/**
+ * The four sub-views inside Follow-Up (V4 §19.4).
+ *
+ * Cold Outreach is deliberately absent. A cold sequence belongs to the
+ * acquisition campaign that owns its audience, budget and sender, and adding it
+ * as a fifth tab here would sever it from all three (§20.1).
+ */
+export const FOLLOW_UP_TABS = [
+  { id: "sequence", label: "Sequence" },
+  { id: "settings", label: "Settings" },
+  { id: "enrolment", label: "Enrolment rules" },
+  { id: "performance", label: "Performance" },
+] as const;
+
+export type FollowUpTab = (typeof FOLLOW_UP_TABS)[number]["id"];
+
+const FOLLOW_UP_TAB_IDS = FOLLOW_UP_TABS.map((tab) => tab.id) as [
+  FollowUpTab,
+  ...FollowUpTab[],
+];
+
 export const followUpFilterSchema = z.object({
+  /** Which of the four sub-views is open. */
+  tab: z.enum(FOLLOW_UP_TAB_IDS).default("sequence").catch("sequence"),
   view: z.enum(FOLLOW_UP_VIEWS).default("follow-up").catch("follow-up"),
   /** Which sequence the Follow-Up editor has open. */
   sequence: z.string().trim().max(64).optional().catch(undefined),
@@ -52,6 +77,7 @@ export function parseFollowUpFilters(
 ): FollowUpFilters {
   return followUpFilterSchema.parse({
     view: first(params.view),
+    tab: first(params.tab),
     sequence: first(params.sequence),
     service: first(params.service),
   });
@@ -77,6 +103,7 @@ export function followUpHref(
   }
   // The default view carries no param, keeping the plain URL the linkable one.
   if (params.get("view") === "follow-up") params.delete("view");
+  if (params.get("tab") === "sequence") params.delete("tab");
   const query = params.toString();
   return query ? `/app/follow-up?${query}` : "/app/follow-up";
 }
@@ -141,37 +168,19 @@ export type FollowUpStatus = {
 
 /**
  * The `{ }` popover only ever offers fields the send pipeline can actually
- * resolve. This list is asserted against `MERGE_FIELDS` in
- * `@/lib/automation/scheduler` by the unit tests, so the picker can never
- * offer a token that would then block publishing.
+ * resolve, because both come from the same canonical registry in
+ * `@/lib/messaging/merge-fields`. The picker can no longer offer a token that
+ * would then block publishing.
  */
 export const MERGE_FIELD_OPTIONS: {
   token: string;
   label: string;
   hint: string;
-}[] = [
-  { token: "{{first_name}}", label: "First name", hint: "The lead's first name" },
-  {
-    token: "{{business_name}}",
-    label: "Business name",
-    hint: "Your business name",
-  },
-  {
-    token: "{{service_name}}",
-    label: "Service",
-    hint: "The service the lead asked about",
-  },
-  {
-    token: "{{booking_link}}",
-    label: "Booking link",
-    hint: "Your configured booking destination",
-  },
-  {
-    token: "{{business_phone}}",
-    label: "Business phone",
-    hint: "Your business phone number",
-  },
-];
+}[] = fieldsForSurface("follow-up").map((field) => ({
+  token: `{{${field.key}}}`,
+  label: field.label,
+  hint: field.hint,
+}));
 
 /* --------------------------------------------------------- delay value/unit */
 
@@ -286,6 +295,7 @@ export function validateSequence(
   steps: {
     key: string;
     delaySeconds: number;
+    subject?: string | null;
     template: string;
     enabled: boolean;
     channel: string;
@@ -293,6 +303,8 @@ export function validateSequence(
   options: {
     unknownTokensFor: (template: string) => string[];
     whatsappEnabled: boolean;
+    /** Channels the workspace can currently offer at all. */
+    available?: Record<string, boolean>;
   },
 ): SequenceIssue[] {
   const issues: SequenceIssue[] = [];
@@ -319,7 +331,30 @@ export function validateSequence(
         message: `${label} sends at the same moment as the step before it.`,
       });
     }
-    const unknown = options.unknownTokensFor(step.template);
+    if (step.channel === "email" && (step.subject ?? "").trim().length === 0) {
+      issues.push({
+        key: `${step.key}-subject`,
+        message: `${label} is an email with no subject line.`,
+      });
+    }
+    if (
+      step.channel === "email" &&
+      (step.subject ?? "").length > MAX_EMAIL_SUBJECT_LENGTH
+    ) {
+      issues.push({
+        key: `${step.key}-subject-length`,
+        message: `${label}'s subject is longer than ${MAX_EMAIL_SUBJECT_LENGTH} characters.`,
+      });
+    }
+
+    // The subject is part of the message, so an unresolvable token there is as
+    // blocking as one in the body.
+    const unknown = [
+      ...new Set([
+        ...options.unknownTokensFor(step.template),
+        ...(step.subject ? options.unknownTokensFor(step.subject) : []),
+      ]),
+    ];
     if (unknown.length > 0) {
       issues.push({
         key: `${step.key}-tokens`,
@@ -332,6 +367,15 @@ export function validateSequence(
       issues.push({
         key: `${step.key}-channel`,
         message: `${label} uses WhatsApp, which is not on your plan.`,
+      });
+    }
+    // A channel that is not usable at all is a configuration error worth
+    // blocking on. Per-lead availability is a different question and is
+    // answered at send time, never here.
+    if (options.available && options.available[step.channel] === false) {
+      issues.push({
+        key: `${step.key}-unavailable`,
+        message: `${label} uses ${step.channel === "sms" ? "SMS" : step.channel === "email" ? "Email" : "WhatsApp"}, which is not available for this workspace right now.`,
       });
     }
   });

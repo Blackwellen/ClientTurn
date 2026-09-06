@@ -36,7 +36,6 @@ import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/poli
 import { shortAgo } from "@/lib/prospects/activity";
 import {
   SUPPRESSION_REASON_OPTIONS,
-  gradeTone,
   locationLabel,
   prospectDisplayName,
   prospectStatusLabel,

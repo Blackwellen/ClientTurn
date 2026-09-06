@@ -4,20 +4,16 @@ import * as React from "react";
 import {
   ArrowDown,
   ArrowUp,
-  Check,
   Copy,
-  FileText,
   Mail,
   MessageCircle,
   MessageSquare,
   MoreVertical,
   Plus,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button, IconButton } from "@/components/ui/button";
-import { Select, Switch, Textarea } from "@/components/ui/form";
+import { Input, Select, Switch, Textarea } from "@/components/ui/form";
 import {
   DropdownItem,
   DropdownMenu,
@@ -26,38 +22,32 @@ import {
 import { Popover } from "@/components/ui/popover";
 import { EmptyState } from "@/components/ui/feedback";
 import { ConfirmDialog } from "@/components/ui/modal";
-import { useToast } from "@/components/ui/toast";
-import { SectionHeader } from "@/components/app/page-header";
 import { MergeFieldMenu } from "@/components/follow-up/merge-field-menu";
 import { findUnknownMergeFields } from "@/lib/automation/scheduler";
 import {
-  createAutomation,
-  updateFollowUpSequence,
-} from "@/lib/automations/actions";
-import {
   CHANNELS,
   CHANNEL_LABEL,
-  type AutomationDetail,
+  MAX_EMAIL_SUBJECT_LENGTH,
   type Channel,
-  type StepInput,
 } from "@/lib/automations/types";
 import {
   DELAY_UNITS,
   DELAY_UNIT_META,
-  MAX_SEQUENCE_STEPS,
   formatStepDelay,
   joinDelay,
   splitDelay,
-  validateSequence,
   type DelayUnit,
 } from "@/lib/follow-up/types";
 import { cn } from "@/lib/cn";
 
-type DraftStep = {
+export type DraftStep = {
   key: string;
   delaySeconds: number;
   channel: Channel;
+  /** Email only; null on SMS and WhatsApp. */
+  subject: string | null;
   template: string;
+  senderIdentityId: string | null;
   enabled: boolean;
 };
 
@@ -67,275 +57,114 @@ const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: string }>>
   email: Mail,
 };
 
-function newKey() {
-  return `step-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function toDraft(steps: AutomationDetail["steps"]): DraftStep[] {
-  return steps.map((step) => ({
-    key: step.id,
-    delaySeconds: step.delaySeconds,
-    channel: step.channel,
-    template: step.template,
-    enabled: step.enabled,
-  }));
-}
-
-function toInputs(rows: DraftStep[]): StepInput[] {
-  return rows.map((row) => ({
-    delaySeconds: row.delaySeconds,
-    channel: row.channel,
-    template: row.template,
-    enabled: row.enabled,
-  }));
-}
-
 /**
- * The Follow-Up sequence editor.
+ * The Follow-Up sequence list (V4 §19.4).
  *
- * One compact row per step — delay, channel, message, merge fields, on/off —
- * because the thing being configured is a short list of messages, not a
- * workflow graph. "Update sequence" saves the draft and publishes it in one
- * press; the underlying versioning is unchanged, so leads part-way through a
- * sequence still finish on the version they started.
+ * Controlled: the draft lives in `FollowUpWorkspace` so the message preview,
+ * the usage estimate and the save bar all read the same unsaved state. This
+ * component renders and mutates it, and owns nothing.
+ *
+ * One compact row per step — timing, channel, subject (email only), message,
+ * on/off — because what is being configured is a short list of messages, not a
+ * workflow graph.
  */
 export function SequenceEditor({
-  automation,
+  steps,
   canEdit,
+  available,
   whatsappEnabled,
+  onChange,
+  onAdd,
 }: {
-  automation: AutomationDetail | null;
+  steps: DraftStep[];
   canEdit: boolean;
+  /** Which channels the workspace can currently offer at all. */
+  available: Record<Channel, boolean>;
   whatsappEnabled: boolean;
+  onChange: (next: DraftStep[]) => void;
+  onAdd: () => void;
 }) {
-  const { toast } = useToast();
-  const [steps, setSteps] = React.useState<DraftStep[]>(() =>
-    automation ? toDraft(automation.steps) : [],
-  );
-  const [saving, setSaving] = React.useState(false);
-  const [creating, setCreating] = React.useState(false);
   const [confirmRemove, setConfirmRemove] = React.useState<DraftStep | null>(null);
   const templateRefs = React.useRef<Record<string, HTMLTextAreaElement | null>>({});
-  const focusNext = React.useRef<string | null>(null);
-
-  // Re-seed when the server sends a new version of the sequence (after a
-  // publish, or when the user opens a different sequence).
-  const signature = React.useMemo(
-    () => JSON.stringify(automation ? toInputs(toDraft(automation.steps)) : []),
-    [automation],
-  );
-  const [seeded, setSeeded] = React.useState(signature);
-  if (seeded !== signature) {
-    setSeeded(signature);
-    setSteps(automation ? toDraft(automation.steps) : []);
-  }
-
-  const edited = JSON.stringify(toInputs(steps)) !== signature;
-  // A draft saved earlier but never published is still "unpublished work",
-  // otherwise the only way to publish it would be to edit it first.
-  const dirty = edited || (automation?.editingIsDraft ?? false);
-
-  // Focus a newly added or duplicated step so the keyboard stays in flow.
-  React.useEffect(() => {
-    if (!focusNext.current) return;
-    templateRefs.current[focusNext.current]?.focus();
-    focusNext.current = null;
-  });
-
-  const issues = validateSequence(steps, {
-    unknownTokensFor: findUnknownMergeFields,
-    whatsappEnabled,
-  });
 
   function patch(key: string, next: Partial<DraftStep>) {
-    setSteps((rows) =>
-      rows.map((row) => (row.key === key ? { ...row, ...next } : row)),
+    onChange(
+      steps.map((row) => {
+        if (row.key !== key) return row;
+        const merged = { ...row, ...next };
+        // A subject only exists on email. Switching away from email drops it
+        // rather than carrying dead data that the schema would then reject.
+        if (merged.channel !== "email") merged.subject = null;
+        else if (merged.subject === null) merged.subject = "";
+        return merged;
+      }),
     );
   }
 
   function move(index: number, direction: -1 | 1) {
-    setSteps((rows) => {
-      const target = index + direction;
-      if (target < 0 || target >= rows.length) return rows;
-      const next = [...rows];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  function addStep() {
-    if (steps.length >= MAX_SEQUENCE_STEPS) {
-      toast({
-        variant: "error",
-        title: `A sequence can hold at most ${MAX_SEQUENCE_STEPS} steps.`,
-      });
-      return;
-    }
-    const key = newKey();
-    focusNext.current = key;
-    setSteps((rows) => [
-      ...rows,
-      {
-        key,
-        // The first step normally fires while the enquiry is still warm;
-        // anything after it defaults to a day later.
-        delaySeconds: rows.length === 0 ? 0 : 86400,
-        channel: "sms",
-        template: "",
-        enabled: true,
-      },
-    ]);
+    const target = index + direction;
+    if (target < 0 || target >= steps.length) return;
+    const next = [...steps];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
   }
 
   function duplicate(index: number) {
     const source = steps[index];
-    const key = newKey();
-    focusNext.current = key;
-    setSteps((rows) => [
-      ...rows.slice(0, index + 1),
-      { ...source, key },
-      ...rows.slice(index + 1),
+    onChange([
+      ...steps.slice(0, index + 1),
+      { ...source, key: `step-${crypto.randomUUID()}` },
+      ...steps.slice(index + 1),
     ]);
   }
 
-  async function createSequence() {
-    setCreating(true);
-    try {
-      const result = await createAutomation({ type: "new_lead" });
-      if (result.ok) {
-        toast({ variant: "success", title: "Follow-up sequence created" });
-      } else {
-        toast({ variant: "error", title: result.error });
-      }
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function publish() {
-    if (!automation) return;
-    setSaving(true);
-    try {
-      const result = await updateFollowUpSequence({
-        automationId: automation.id,
-        name: automation.name,
-        steps: toInputs(steps),
-      });
-      if (result.ok) {
-        toast({ variant: "success", title: "Follow-up sequence updated" });
-      } else {
-        toast({ variant: "error", title: result.error });
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!automation) {
+  if (steps.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-0">
-          <EmptyState
-            icon={MessageSquare}
-            title="No follow-up sequence yet"
-            description="A sequence chases every new lead automatically until they reply, book, or the sequence ends. Nothing sends until you publish it."
-            action={
-              canEdit ? (
-                <Button onClick={createSequence} loading={creating}>
-                  <Plus className="size-3.5" />
-                  Create follow-up sequence
-                </Button>
-              ) : undefined
-            }
-          />
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={MessageSquare}
+        title="No steps yet"
+        description="A sequence needs at least one message. The first step usually goes out immediately, while the enquiry is still fresh."
+        action={
+          canEdit ? (
+            <Button size="sm" onClick={onAdd}>
+              <Plus className="size-3.5" />
+              Add the first step
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 
   return (
     <>
-      <Card>
-        <CardHeader className="border-b-0 px-5 pt-5 pb-0">
-          <SectionHeader
-            icon={FileText}
-            tone="info"
-            title="Follow-up sequence"
-            description="Send a series of automated messages to new leads who haven't booked yet."
+      <ol className="space-y-3">
+        {steps.map((step, index) => (
+          <SequenceRow
+            key={step.key}
+            step={step}
+            index={index}
+            total={steps.length}
+            canEdit={canEdit}
+            available={available}
+            whatsappEnabled={whatsappEnabled}
+            textareaRef={(element) => {
+              templateRefs.current[step.key] = element;
+            }}
+            getRef={() => ({ current: templateRefs.current[step.key] ?? null })}
+            onPatch={(next) => patch(step.key, next)}
+            onMove={(direction) => move(index, direction)}
+            onDuplicate={() => duplicate(index)}
+            onRemove={() => setConfirmRemove(step)}
           />
-        </CardHeader>
-
-        <CardContent className="space-y-3 px-5 pt-4 pb-5">
-          {steps.length === 0 ? (
-            <EmptyState
-              icon={MessageSquare}
-              title="No steps yet"
-              description="A sequence needs at least one message. The first step usually goes out immediately, while the enquiry is still fresh."
-              action={
-                canEdit ? (
-                  <Button size="sm" onClick={addStep}>
-                    <Plus className="size-3.5" />
-                    Add the first step
-                  </Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <ol className="space-y-3">
-              {steps.map((step, index) => (
-                <SequenceRow
-                  key={step.key}
-                  step={step}
-                  index={index}
-                  total={steps.length}
-                  canEdit={canEdit}
-                  whatsappEnabled={whatsappEnabled}
-                  textareaRef={(element) => {
-                    templateRefs.current[step.key] = element;
-                  }}
-                  getRef={() => ({ current: templateRefs.current[step.key] ?? null })}
-                  onPatch={(next) => patch(step.key, next)}
-                  onMove={(direction) => move(index, direction)}
-                  onDuplicate={() => duplicate(index)}
-                  onRemove={() => setConfirmRemove(step)}
-                />
-              ))}
-            </ol>
-          )}
-
-          {canEdit && steps.length > 0 && (
-            <button
-              type="button"
-              onClick={addStep}
-              className={cn(
-                "border-line text-content hover:bg-surface-hover hover:border-line-strong",
-                "inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-medium",
-                "transition-colors duration-[var(--lr-duration-fast)]",
-                "focus-visible:outline-content-accent focus-visible:outline-2 focus-visible:outline-offset-2",
-              )}
-            >
-              <Plus className="text-content-muted size-4" aria-hidden />
-              Add another step
-            </button>
-          )}
-
-          {steps.length > 0 && (
-            <SequenceFooter
-              issues={issues}
-              canEdit={canEdit}
-              dirty={dirty}
-              saving={saving}
-              onPublish={publish}
-            />
-          )}
-        </CardContent>
-      </Card>
+        ))}
+      </ol>
 
       <ConfirmDialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
         onConfirm={() => {
-          setSteps((rows) => rows.filter((row) => row.key !== confirmRemove?.key));
+          onChange(steps.filter((row) => row.key !== confirmRemove?.key));
           setConfirmRemove(null);
         }}
         variant="danger"
@@ -416,25 +245,18 @@ function DelayEditor({
             <label className="sr-only" htmlFor={`${fieldId}-value`}>
               Amount
             </label>
-            <input
+            <Input
               id={`${fieldId}-value`}
               type="number"
               min={1}
-              max={999}
-              inputMode="numeric"
+              max={30}
               value={value}
+              className="h-9 w-20"
               onChange={(event) =>
                 onPatch({
-                  delaySeconds: joinDelay(
-                    Math.min(999, Math.max(1, Number(event.target.value) || 1)),
-                    unit,
-                  ),
+                  delaySeconds: joinDelay(Number(event.target.value) || 1, unit),
                 })
               }
-              className={cn(
-                "bg-surface text-content border-line-strong shadow-xs h-9 w-16 rounded-md border px-2 text-center text-[13px]",
-                "focus:border-accent-500 focus:ring-[var(--lr-ring)] focus:ring-2 focus:outline-none",
-              )}
             />
           </>
         )}
@@ -443,24 +265,20 @@ function DelayEditor({
         </label>
         <Select
           id={`${fieldId}-unit`}
-          className="h-9 flex-1 text-[13px]"
+          className="h-9"
           value={unit}
-          onChange={(event) => {
-            const next = event.target.value as DelayUnit;
-            onPatch({ delaySeconds: joinDelay(value || 1, next) });
-          }}
+          onChange={(event) =>
+            onPatch({
+              delaySeconds: joinDelay(
+                Math.max(value, 1),
+                event.target.value as DelayUnit,
+              ),
+            })
+          }
         >
           {DELAY_UNITS.map((option) => (
-            <option
-              key={option}
-              value={option}
-              // Only the opening step may fire with no delay; anything later
-              // would land in the same instant as the step before it.
-              disabled={option === "immediate" && index > 0}
-            >
-              {option === "immediate"
-                ? "Immediately"
-                : DELAY_UNIT_META[option].plural}
+            <option key={option} value={option}>
+              {DELAY_UNIT_META[option].plural}
             </option>
           ))}
         </Select>
@@ -481,6 +299,7 @@ function SequenceRow({
   index,
   total,
   canEdit,
+  available,
   whatsappEnabled,
   textareaRef,
   getRef,
@@ -493,6 +312,7 @@ function SequenceRow({
   index: number;
   total: number;
   canEdit: boolean;
+  available: Record<Channel, boolean>;
   whatsappEnabled: boolean;
   textareaRef: (element: HTMLTextAreaElement | null) => void;
   getRef: () => React.RefObject<HTMLTextAreaElement | null>;
@@ -501,10 +321,17 @@ function SequenceRow({
   onDuplicate: () => void;
   onRemove: () => void;
 }) {
-  const unknown = findUnknownMergeFields(step.template);
+  const isEmail = step.channel === "email";
+  const unknown = [
+    ...new Set([
+      ...findUnknownMergeFields(step.template),
+      ...(step.subject ? findUnknownMergeFields(step.subject) : []),
+    ]),
+  ];
   const ChannelIcon = CHANNEL_ICON[step.channel];
   const empty = step.template.trim() === "";
-  const invalid = unknown.length > 0 || empty;
+  const missingSubject = isEmail && (step.subject ?? "").trim() === "";
+  const invalid = unknown.length > 0 || empty || missingSubject;
   const rowId = `step-${step.key}`;
 
   return (
@@ -534,7 +361,7 @@ function SequenceRow({
         </div>
 
         {/* channel */}
-        <div className="xl:w-[7.5rem] xl:shrink-0 xl:pt-0.5">
+        <div className="xl:w-[8.25rem] xl:shrink-0 xl:pt-0.5">
           <label className="sr-only" htmlFor={`${rowId}-channel`}>
             {`Step ${index + 1} channel`}
           </label>
@@ -566,10 +393,37 @@ function SequenceRow({
               ))}
             </Select>
           </div>
+          {/* Configuring a channel is not the same as it being usable. Say so
+              on the row rather than only in the policy card. */}
+          {!available[step.channel] && (
+            <p className="mt-1 text-[11px] leading-tight text-warning-700">
+              Not available right now — ClientTurn evaluates each lead before
+              sending.
+            </p>
+          )}
         </div>
 
-        {/* message */}
-        <div className="min-w-0 flex-1">
+        {/* subject + message */}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          {isEmail && (
+            <div>
+              <label className="sr-only" htmlFor={`${rowId}-subject`}>
+                {`Step ${index + 1} subject`}
+              </label>
+              <Input
+                id={`${rowId}-subject`}
+                value={step.subject ?? ""}
+                disabled={!canEdit}
+                maxLength={MAX_EMAIL_SUBJECT_LENGTH}
+                required
+                aria-invalid={missingSubject || undefined}
+                placeholder="Subject line…"
+                className="h-8 px-2.5 text-[12px] font-medium"
+                onChange={(event) => onPatch({ subject: event.target.value })}
+              />
+            </div>
+          )}
+
           <label className="sr-only" htmlFor={`${rowId}-template`}>
             {`Step ${index + 1} message`}
           </label>
@@ -578,12 +432,19 @@ function SequenceRow({
               id={`${rowId}-template`}
               ref={textareaRef}
               rows={4}
-              maxLength={1200}
+              // Email bodies are longer than an SMS by nature; the schema
+              // permits 5,000 characters and the control should not be the
+              // thing that disagrees.
+              maxLength={isEmail ? 5000 : 1200}
               value={step.template}
               disabled={!canEdit}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? `${rowId}-error` : undefined}
-              placeholder="Write the message this step sends…"
+              placeholder={
+                isEmail
+                  ? "Write the email this step sends. Plain text and links only."
+                  : "Write the message this step sends…"
+              }
               className="min-h-[4.75rem] flex-1 resize-y px-2.5 py-1 text-[12px] leading-[1.35]"
               onChange={(event) => onPatch({ template: event.target.value })}
             />
@@ -596,12 +457,14 @@ function SequenceRow({
             />
           </div>
           {invalid && (
-            <p id={`${rowId}-error`} className="text-danger-600 mt-1 text-[12px]">
-              {empty
-                ? "This step has no message."
-                : `Unknown merge ${
-                    unknown.length === 1 ? "field" : "fields"
-                  }: ${unknown.map((token) => `{{${token}}}`).join(", ")}`}
+            <p id={`${rowId}-error`} className="text-danger-600 text-[12px]">
+              {missingSubject
+                ? "Every email step needs a subject line."
+                : empty
+                  ? "This step has no message."
+                  : `Unknown merge ${
+                      unknown.length === 1 ? "field" : "fields"
+                    }: ${unknown.map((token) => `{{${token}}}`).join(", ")}`}
             </p>
           )}
         </div>
@@ -654,92 +517,5 @@ function SequenceRow({
         </div>
       </div>
     </li>
-  );
-}
-
-/* ---------------------------------------------------------------- footer */
-
-function SequenceFooter({
-  issues,
-  canEdit,
-  dirty,
-  saving,
-  onPublish,
-}: {
-  issues: { key: string; message: string }[];
-  canEdit: boolean;
-  dirty: boolean;
-  saving: boolean;
-  onPublish: () => void;
-}) {
-  const valid = issues.length === 0;
-
-  return (
-    <div
-      className={cn(
-        "mt-1 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border px-4 py-3.5",
-        valid
-          ? "border-success-100 bg-success-50"
-          : "border-danger-100 bg-danger-50",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-full text-white",
-          valid ? "bg-success-500" : "bg-danger-500",
-        )}
-      >
-        {valid ? (
-          <Check className="size-4" strokeWidth={3} />
-        ) : (
-          <TriangleAlert className="size-4" />
-        )}
-      </span>
-
-      <div className="min-w-[11rem] flex-1">
-        {valid ? (
-          <>
-            <p className="text-content text-[13px] font-semibold">
-              Sequence looks good!
-            </p>
-            <p className="text-content-secondary mt-0.5 text-[12.5px]">
-              All steps are properly configured.
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-danger-700 text-[13px] font-semibold">
-              {issues.length === 1
-                ? "One thing to fix before publishing"
-                : `${issues.length} things to fix before publishing`}
-            </p>
-            <ul className="text-content-secondary mt-1 space-y-0.5 text-[13px]">
-              {issues.slice(0, 4).map((issue) => (
-                <li key={issue.key}>{issue.message}</li>
-              ))}
-              {issues.length > 4 && (
-                <li className="text-content-subtle">
-                  and {issues.length - 4} more.
-                </li>
-              )}
-            </ul>
-          </>
-        )}
-      </div>
-
-      {canEdit && (
-        <div className="shrink-0 text-right">
-          <Button onClick={onPublish} loading={saving} disabled={!valid || !dirty}>
-            Update sequence
-          </Button>
-          <p className="text-content-subtle mt-1.5 text-[11.5px]">
-            {dirty
-              ? "Your changes will be published immediately."
-              : "No unpublished changes."}
-          </p>
-        </div>
-      )}
-    </div>
   );
 }

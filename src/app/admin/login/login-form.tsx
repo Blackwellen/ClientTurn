@@ -2,24 +2,26 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { Mail } from "lucide-react";
 import { adminSignIn } from "@/lib/admin/actions";
 import type { AdminActionResult } from "@/lib/admin/actions";
+import {
+  AuthError,
+  PasswordField,
+  SubmitButton,
+  TextField,
+} from "@/app/(auth)/_components/auth-form-parts";
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="mt-4 inline-flex h-9 w-full items-center justify-center rounded-lg bg-white px-3 text-[13px] font-semibold text-[#0B1020] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-60"
-    >
-      {pending ? "Checking…" : "Sign in"}
-    </button>
-  );
-}
-
+/**
+ * Operator sign-in.
+ *
+ * Uses the same field and button components as the customer and partner doors,
+ * so all three look like one product. What it deliberately does not borrow:
+ * there is no "keep me signed in", no password reset link and no sign-up
+ * switch. Operator accounts are provisioned, not self-served, and a long-lived
+ * session on a platform-wide account is not a convenience worth having.
+ */
 export function AdminLoginForm() {
   const router = useRouter();
   const [state, action] = useActionState<AdminActionResult | null, FormData>(
@@ -35,51 +37,35 @@ export function AdminLoginForm() {
   }, [state, router]);
 
   return (
-    <form action={action} className="mt-4 space-y-3">
-      {state && !state.ok && (
-        <p
-          role="alert"
-          className="border-danger-500/30 bg-danger-500/10 text-danger-200 rounded-lg border px-3 py-2 text-[13px]"
-        >
-          {state.error}
-        </p>
-      )}
+    <form action={action} className="space-y-5">
+      <AuthError message={state && !state.ok ? state.error : undefined} />
 
-      <div>
-        <label
-          htmlFor="admin-email"
-          className="block text-[12px] font-medium text-white/70"
-        >
-          Work email
-        </label>
-        <input
-          id="admin-email"
-          name="email"
-          type="email"
-          required
-          autoComplete="username"
-          className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-[13px] text-white placeholder:text-white/30 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white/40"
-        />
-      </div>
+      <TextField
+        id="admin-email"
+        name="email"
+        label="Work email"
+        type="email"
+        inputMode="email"
+        autoComplete="username"
+        placeholder="you@clientturn.com"
+        icon={Mail}
+        required
+      />
 
-      <div>
-        <label
-          htmlFor="admin-password"
-          className="block text-[12px] font-medium text-white/70"
-        >
-          Password
-        </label>
-        <input
-          id="admin-password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-white/5 px-3 text-[13px] text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white/40"
-        />
-      </div>
+      <PasswordField
+        id="admin-password"
+        name="password"
+        label="Password"
+        autoComplete="current-password"
+        required
+      />
 
-      <SubmitButton />
+      <SubmitButton
+        pendingLabel="Checking…"
+        busy={Boolean(state?.ok && state.redirectTo)}
+      >
+        Sign in
+      </SubmitButton>
     </form>
   );
 }

@@ -162,10 +162,24 @@ describe("merge fields", () => {
     );
   });
 
-  test("a missing value leaves the token rather than printing undefined", () => {
+  test("a missing value with a safe fallback previews as that fallback", () => {
+    // The preview has to show what would actually send. `first_name` falls
+    // back to "there", so rendering the raw token would misrepresent the
+    // message the customer is about to approve.
+    assert.equal(renderTemplate("Hi {{first_name}}", {}), "Hi there");
+  });
+
+  test("a missing value with no safe fallback keeps its token visible", () => {
+    // `business_phone` has no fallback: there is no safe thing to say instead
+    // of a phone number, so the token stays on screen as the editor's signal
+    // that this one still needs a value.
     assert.equal(
-      renderTemplate("Hi {{first_name}}", {}),
-      "Hi {{first_name}}",
+      renderTemplate("Call us on {{business_phone}}", {}),
+      "Call us on {{business_phone}}",
     );
+  });
+
+  test("an unknown token is never silently emptied", () => {
+    assert.equal(renderTemplate("Hi {{nickname}}", {}), "Hi {{nickname}}");
   });
 });

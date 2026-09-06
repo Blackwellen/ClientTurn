@@ -23,6 +23,8 @@ import { handleSourcingRun } from "./handlers/sourcing-run";
 import { handleBusinessAnalyse } from "./handlers/business-analyse";
 import { handleRecurringSearchTick } from "./handlers/recurring-search";
 import { handleOutreachDispatch } from "./handlers/outreach-dispatch";
+import { handleOutreachTick } from "./handlers/outreach-tick";
+import { handleOutreachAudience } from "./handlers/outreach-audience";
 import { handleAppIngest } from "./handlers/app-ingest";
 import "@/lib/integrations/providers/google-ads";
 import "@/lib/integrations/providers/microsoft-ads";
@@ -67,6 +69,8 @@ export function registerJobHandlers() {
   registerHandler("business.analyse", handleBusinessAnalyse);
   registerHandler("recurring_search.tick", handleRecurringSearchTick);
   registerHandler("outreach.dispatch", handleOutreachDispatch);
+  registerHandler("outreach.tick", handleOutreachTick);
+  registerHandler("outreach.audience", handleOutreachAudience);
   registerHandler("app.ingest", handleAppIngest);
 }
 
