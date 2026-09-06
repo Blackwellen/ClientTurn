@@ -108,58 +108,47 @@ export function UpgradeCard({
   return (
     <div
       className={cn(
-        "relative mb-3 overflow-hidden rounded-[12px] p-3.5",
-        "border border-[rgba(183,243,74,0.16)]",
+        "mb-3 rounded-[12px] p-3",
+        "border border-[var(--ct-shell-divider)] bg-[var(--ct-shell-card-bg)]",
       )}
-      style={{
-        background:
-          "linear-gradient(155deg, rgba(183,243,74,0.10) 0%, rgba(183,243,74,0.035) 45%, var(--ct-shell-card-bg) 100%)",
-      }}
     >
-      {/* A soft lime bloom behind the icon, so the card reads as a highlight
-          rather than another nav row. Purely decorative. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-6 -top-8 size-24 rounded-full blur-2xl"
-        style={{ background: "rgba(183,243,74,0.22)" }}
-      />
-
-      <div className="relative">
+      {/* Icon and title share a row. Stacking them cost a whole line of
+          height in a rail that is already the tightest column on the page,
+          and separating the mark from the words it belongs to read as two
+          unrelated things rather than one heading. */}
+      <div className="flex items-center gap-2.5">
         <span
-          className="flex size-9 items-center justify-center rounded-[9px]"
-          style={{
-            background: "rgba(183,243,74,0.16)",
-            border: "1px solid rgba(183,243,74,0.22)",
-          }}
+          aria-hidden
+          className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[rgba(183,243,74,0.14)]"
         >
-          <Icon className="size-[18px] text-[var(--ct-lime)]" aria-hidden />
+          <Icon className="size-4 text-[var(--ct-lime)]" />
         </span>
-
-        <p className="mt-2.5 text-[14px] font-semibold leading-tight text-white">
+        <p className="text-[13.5px] font-semibold leading-tight text-white">
           {pitch.title}
         </p>
-        <p className="mt-1 text-[12px] leading-snug text-[var(--ct-shell-text-muted)]">
-          {pitch.body}
-        </p>
-
-        <Link
-          href={pitch.href}
-          onClick={onNavigate}
-          className={cn(
-            "mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px]",
-            "bg-[var(--ct-lime)] text-[13px] font-semibold text-[#0B1020]",
-            "transition-[filter,transform] duration-150 hover:brightness-105 active:translate-y-px",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
-          )}
-        >
-          {target ? (
-            <Sparkles className="size-3.5 shrink-0" aria-hidden />
-          ) : (
-            <ArrowRight className="size-3.5 shrink-0" aria-hidden />
-          )}
-          {pitch.cta}
-        </Link>
       </div>
+
+      <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ct-shell-text-muted)]">
+        {pitch.body}
+      </p>
+
+      <Link
+        href={pitch.href}
+        onClick={onNavigate}
+        className={cn(
+          "mt-2.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-[8px]",
+          "bg-[var(--ct-lime)] text-[12.5px] font-semibold text-[#0B1020]",
+          "transition-[filter,transform] duration-150 hover:brightness-105 active:translate-y-px",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
+        )}
+      >
+        {target ? (
+          <Sparkles className="size-3.5 shrink-0" aria-hidden />
+        ) : (
+          <ArrowRight className="size-3.5 shrink-0" aria-hidden />
+        )}
+        {pitch.cta}
+      </Link>
     </div>
   );
 }

@@ -501,4 +501,19 @@ body {
   }
 }
 
+/* Scrollable, but with no visible track or thumb.
+   Used by the sidebar rail, where a scrollbar cuts across the nav and reads
+   as a seam in the panel. Scrolling, keyboard paging and overflow behaviour
+   are untouched -- only the chrome is hidden. */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* touch: force Tailwind CSS rebuild */

@@ -208,7 +208,10 @@ export function SidebarContent({
 
       <WorkspaceCard collapsed={collapsed} businessName={businessName} planLabel={planLabel} />
 
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2.5 pt-3">
+      <nav
+        aria-label="Main"
+        className="scrollbar-none flex-1 overflow-y-auto px-2.5 pt-3"
+      >
         <ul className="space-y-1.5">
           {primaryNav.map((item) => (
             <li key={item.href}>
