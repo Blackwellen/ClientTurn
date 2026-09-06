@@ -42,6 +42,7 @@ next-env.d.ts
 
 # local credentials and generated artifacts
 /QA.local.md
+/.qa-artifacts/
 *.log
 /lint-story.json
 /lint-world.json

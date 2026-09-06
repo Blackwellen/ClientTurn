@@ -86,7 +86,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-3 py-1.5">
+    <div className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-2.5 py-1.5">
       <dt className="text-[12.5px] text-content-muted">{label}</dt>
       <dd className="min-w-0 text-[12.5px] text-content">{children}</dd>
     </div>
@@ -129,10 +129,12 @@ function Rate({ label, value }: { label: string; value: number }) {
 function ResultMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className="min-w-0">
-      <p className="lr-tabular truncate text-[15px] font-semibold leading-none text-content">
+      <p className="lr-tabular truncate text-[14.5px] font-semibold leading-none text-content">
         {value.toLocaleString("en-GB")}
       </p>
-      <p className="mt-1 truncate text-[11px] text-content-muted">{label}</p>
+      {/* Four figures share a ~190px card, so the labels run out of room
+          before the numbers do — they shrink, the numbers do not. */}
+      <p className="mt-1 truncate text-[9.5px] text-content-muted">{label}</p>
     </div>
   );
 }
@@ -186,7 +188,7 @@ export function ReactivationDetailDrawer({
         size="panel"
         anchor="content"
         title={campaign.name}
-        bodyClassName="px-4 py-4"
+        bodyClassName="@container/drawer px-4 py-4"
         header={
           <div className="shrink-0 border-b border-line">
             <DrawerHeader className="items-center border-b-0 px-4 pb-3 pt-3.5">
@@ -297,7 +299,7 @@ export function ReactivationDetailDrawer({
               description="This campaign cannot send until a messaging provider is connected. Results below reflect what has already been sent."
               action={
                 <a
-                  href="/app/settings/connections"
+                  href="/app/settings?section=connections"
                   className="text-content-accent text-[13px] font-medium"
                 >
                   Open connections
@@ -306,7 +308,7 @@ export function ReactivationDetailDrawer({
             />
           )}
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="grid gap-4 @min-[520px]/drawer:grid-cols-[minmax(0,1fr)_220px]">
             <dl className="min-w-0 divide-y divide-line-subtle">
               <Field label="Name">{campaign.name}</Field>
               <Field label="Description">
@@ -336,7 +338,7 @@ export function ReactivationDetailDrawer({
                 ) : (
                   <span className="flex flex-wrap gap-1.5">
                     {campaign.tags.map((tag) => (
-                      <Badge key={tag} tone="info">
+                      <Badge key={tag} tone="info" className="px-1.5 text-[10.5px]">
                         {tag}
                       </Badge>
                     ))}
@@ -347,7 +349,7 @@ export function ReactivationDetailDrawer({
 
             <div className="space-y-3">
               <Panel title="Results">
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-4 gap-1.5">
                   <ResultMetric label="Sent" value={totals.sent} />
                   <ResultMetric label="Replies" value={totals.replies} />
                   <ResultMetric label="Qualified" value={totals.qualified} />
@@ -376,7 +378,7 @@ export function ReactivationDetailDrawer({
                   />
                   <Rate
                     label="Booking rate"
-                    value={bookingRate(totals.sent, totals.booked)}
+                    value={bookingRate(totals.replies, totals.booked)}
                   />
                 </div>
               </Panel>
@@ -614,7 +616,7 @@ export function ReactivationDetailDrawer({
                 />
                 <Rate
                   label="Booking rate"
-                  value={bookingRate(totals.sent, totals.booked)}
+                  value={bookingRate(totals.replies, totals.booked)}
                 />
               </div>
             </Panel>

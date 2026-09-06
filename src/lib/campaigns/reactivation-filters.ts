@@ -13,8 +13,8 @@ import { z } from "zod";
 import {
   CAMPAIGN_STATUSES,
   type CampaignStatus,
-} from "./types";
-import type { ReactivationCampaignRow } from "./reactivation-types";
+} from "./types.ts";
+import type { ReactivationCampaignRow } from "./reactivation-types.ts";
 
 export const REACTIVATION_VIEWS = ["cards", "list"] as const;
 export type ReactivationView = (typeof REACTIVATION_VIEWS)[number];

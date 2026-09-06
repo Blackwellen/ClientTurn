@@ -1,4 +1,5 @@
 import { captureAttribution, type Attribution } from "./attribution";
+import { hasAnalyticsConsent } from "./consent";
 
 export type CtaPlacement =
   | "header"
@@ -80,6 +81,8 @@ function payload(placement: CtaPlacement, attribution: Attribution) {
  */
 export function trackCta(placement: CtaPlacement): void {
   if (typeof window === "undefined") return;
+  // No consent, no analytics event. The Cookie Policy says this happens.
+  if (!hasAnalyticsConsent()) return;
 
   const body = JSON.stringify(payload(placement, captureAttribution()));
 

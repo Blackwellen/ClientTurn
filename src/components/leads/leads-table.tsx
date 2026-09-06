@@ -12,7 +12,7 @@ import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/form";
 import { StatusBadge } from "@/components/ui/badge";
-import { formatDate, formatRelative } from "@/lib/dates";
+import { formatDate, formatRelative, formatTime } from "@/lib/dates";
 import {
   attentionReasonLabel,
   lastActivity,
@@ -24,15 +24,6 @@ import type { LeadFilters, SortColumn } from "@/lib/leads/filters";
 import { LeadSourceBadge } from "./lead-source-badge";
 import { LeadRowActions } from "./lead-row-actions";
 import { useLeadParams } from "./use-lead-params";
-
-/** Time-of-day beneath the date, in the workspace's own timezone. */
-function timeLabel(value: string) {
-  return new Date(value).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
 
 function SortHeader({
   column,
@@ -179,7 +170,7 @@ export function LeadsTable({
                   row.opted_out && "opacity-75",
                 )}
               >
-                <td className="px-4 py-2 align-middle">
+                <td className="px-4 py-1.5 align-middle">
                   <span onClick={(event) => event.stopPropagation()}>
                     <Checkbox
                       checked={selected.has(row.id)}
@@ -190,10 +181,10 @@ export function LeadsTable({
                 </td>
 
                 {/* identity — name over contact details, two dense lines */}
-                <td className="px-3 py-2 align-middle">
+                <td className="px-3 py-1.5 align-middle">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <Avatar name={name} src={row.avatarUrl} size="md" />
-                    <div className="min-w-0 leading-[1.35]">
+                    <div className="min-w-0 leading-[1.2]">
                       <div className="flex items-center gap-1.5">
                         {row.needs_attention && (
                           <AlertCircle
@@ -229,23 +220,23 @@ export function LeadsTable({
                   </div>
                 </td>
 
-                <td className="max-w-[180px] px-3 py-2 align-middle">
+                <td className="max-w-[180px] px-3 py-1.5 align-middle">
                   <span className="block truncate text-[13px] text-content-secondary">
                     {row.services?.name ?? "—"}
                   </span>
                 </td>
 
-                <td className="px-3 py-2 align-middle">
+                <td className="px-3 py-1.5 align-middle">
                   <LeadSourceBadge source={row.lead_sources} size="sm" />
                 </td>
 
                 {/* Status and attention are separate facts: a lead can be
                     Qualified *and* need attention, so they never share a chip. */}
-                <td className="px-3 py-2 align-middle">
+                <td className="px-3 py-1.5 align-middle">
                   <StatusBadge kind="lead" value={row.status} />
                 </td>
 
-                <td className="px-3 py-2 align-middle">
+                <td className="px-3 py-1.5 align-middle">
                   {assignee ? (
                     <span className="flex min-w-0 items-center gap-2">
                       <Avatar name={assignee} size="sm" />
@@ -261,22 +252,22 @@ export function LeadsTable({
                   )}
                 </td>
 
-                <td className="px-3 py-2 align-middle">
-                  <p className="lr-tabular whitespace-nowrap text-[12px] leading-[1.35] text-content-secondary">
+                <td className="px-3 py-1.5 align-middle">
+                  <p className="lr-tabular whitespace-nowrap text-[12px] leading-[1.2] text-content-secondary">
                     {formatDate(row.created_at)}
                   </p>
-                  <p className="lr-tabular whitespace-nowrap text-[11px] leading-[1.35] text-content-subtle">
-                    {timeLabel(row.created_at)}
+                  <p className="lr-tabular whitespace-nowrap text-[11px] leading-[1.2] text-content-subtle">
+                    {formatTime(row.created_at)}
                   </p>
                 </td>
 
-                <td className="px-3 py-2 align-middle">
-                  <p className="whitespace-nowrap text-[12px] leading-[1.35] text-content-secondary">
+                <td className="px-3 py-1.5 align-middle">
+                  <p className="whitespace-nowrap text-[12px] leading-[1.2] text-content-secondary">
                     {formatRelative(activity.at)}
                   </p>
                   <p
                     className={cn(
-                      "max-w-[140px] truncate text-[11px] leading-[1.35]",
+                      "max-w-[140px] truncate text-[11px] leading-[1.2]",
                       row.needs_attention ? "text-danger-600" : "text-content-subtle",
                     )}
                   >
@@ -284,7 +275,7 @@ export function LeadsTable({
                   </p>
                 </td>
 
-                <td className="px-3 py-2 text-right align-middle">
+                <td className="px-3 py-1.5 text-right align-middle">
                   <LeadRowActions
                     leadId={row.id}
                     leadName={name}

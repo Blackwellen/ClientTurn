@@ -305,21 +305,28 @@ export function PasswordRequirements({ value }: { value: string }) {
 export function AuthSuccessState({
   title,
   description,
+  tone = "success",
 }: {
   title: string;
   description: string;
+  /** "info" states what will happen; "success" confirms what just did. */
+  tone?: "success" | "info";
 }) {
   return (
     <div
-      className="mt-6 flex items-start gap-3.5 rounded-[14px] p-4"
+      className={cn("flex items-start gap-4 rounded-[16px] p-5", tone === "success" && "mt-6")}
+      role={tone === "success" ? "status" : undefined}
+      aria-live={tone === "success" ? "polite" : undefined}
       style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[rgba(168,255,31,0.1)] text-[var(--auth-lime)]">
-        <Mail className="size-4.5" aria-hidden />
+      <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[rgba(168,255,31,0.1)] text-[var(--auth-lime)]">
+        <Mail className="size-5" aria-hidden />
       </span>
       <div>
-        <p className="text-[14.5px] font-semibold text-[var(--auth-text)]">{title}</p>
-        <p className="mt-1 text-[13px] leading-relaxed text-[var(--auth-text-muted)]">{description}</p>
+        <p className="text-[15.5px] font-semibold text-[var(--auth-text)]">{title}</p>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--auth-text-muted)]">
+          {description}
+        </p>
       </div>
     </div>
   );

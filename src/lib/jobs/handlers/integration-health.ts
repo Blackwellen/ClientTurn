@@ -102,24 +102,40 @@ async function probe(providerType: string, integrationId: string): Promise<Probe
   return probeToken(integrationId);
 }
 
-export async function handleIntegrationHealthCheck(job: ClaimedJob) {
-  const payload = parsePayload(integrationHealthPayload, job.payload);
-  const admin = createAdminClient();
+export type HealthCheckOutcome = {
+  integrationId: string;
+  providerType: string;
+  status: "HEALTHY" | "DEGRADED" | "ACTION_REQUIRED";
+  errorMessage: string | null;
+};
 
-  const business = await loadBusinessContext(payload.businessId);
+/**
+ * Probes every live connection for one workspace (or a single connection) and
+ * writes the result back. Shared by the queued health job and by the Refresh
+ * control on Settings → Connections, so both can never drift apart.
+ */
+export async function runIntegrationHealthChecks(params: {
+  businessId: string;
+  integrationId?: string | null;
+  /** Notifications belong to the background job, not to a user pressing Refresh. */
+  notify?: boolean;
+}): Promise<HealthCheckOutcome[]> {
+  const admin = createAdminClient();
+  const business = await loadBusinessContext(params.businessId);
   if (!business) {
-    throw new PermanentJobError(`Business ${payload.businessId} is gone.`);
+    throw new PermanentJobError(`Business ${params.businessId} is gone.`);
   }
 
   let query = admin
     .from("integrations")
     .select("id, provider_type, status")
-    .eq("business_id", payload.businessId)
+    .eq("business_id", params.businessId)
     .neq("status", "DISCONNECTED");
 
-  if (payload.integrationId) query = query.eq("id", payload.integrationId);
+  if (params.integrationId) query = query.eq("id", params.integrationId);
 
   const { data: integrations } = await query;
+  const outcomes: HealthCheckOutcome[] = [];
 
   for (const integration of integrations ?? []) {
     const result = await probe(integration.provider_type, integration.id);
@@ -136,22 +152,40 @@ export async function handleIntegrationHealthCheck(job: ClaimedJob) {
       })
       .eq("id", integration.id);
 
+    outcomes.push({
+      integrationId: integration.id,
+      providerType: integration.provider_type,
+      status: result.status,
+      errorMessage: result.errorMessage,
+    });
+
     const becameBroken =
       result.status === "ACTION_REQUIRED" &&
       integration.status !== "ACTION_REQUIRED";
 
-    if (becameBroken && business.notify.integrationFailure) {
+    if (params.notify && becameBroken && business.notify.integrationFailure) {
       await queueNotification({
-        businessId: payload.businessId,
+        businessId: params.businessId,
         type: "integration_failure",
         severity: "error",
         title: `${integration.provider_type.replace(/_/g, " ")} needs attention`,
         body: result.errorMessage ?? undefined,
         entityType: "integration",
         entityId: integration.id,
-        linkUrl: "/app/settings/connections",
+        linkUrl: "/app/settings?section=connections",
         dedupeKey: `integration_failure:${integration.id}:${result.errorCode}`,
       });
     }
   }
+
+  return outcomes;
+}
+
+export async function handleIntegrationHealthCheck(job: ClaimedJob) {
+  const payload = parsePayload(integrationHealthPayload, job.payload);
+  await runIntegrationHealthChecks({
+    businessId: payload.businessId,
+    integrationId: payload.integrationId,
+    notify: true,
+  });
 }

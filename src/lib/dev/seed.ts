@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { REACTIVATION_FIXTURES } from "@/lib/campaigns/reactivation-fixtures";
 
 /**
  * Builds a realistic UK home-services workspace so every surface can be
@@ -153,6 +154,7 @@ export type SeedResult = {
   leads: number;
   messages: number;
   bookings: number;
+  campaigns: number;
 };
 
 export async function seedWorkspace(
@@ -169,6 +171,8 @@ export async function seedWorkspace(
 
   if (options.reset) {
     // Messages, answers and bookings cascade from leads.
+    // Campaign contacts cascade from campaigns and from leads.
+    await admin.from("campaigns").delete().eq("business_id", businessId);
     await admin.from("leads").delete().eq("business_id", businessId);
     await admin.from("lead_sources").delete().eq("business_id", businessId);
     await admin.from("qualification_questions").delete().eq("business_id", businessId);
@@ -200,6 +204,7 @@ export async function seedWorkspace(
   let messageCount = 0;
   let bookingCount = 0;
   let leadCount = 0;
+  const seededLeadIds: string[] = [];
   let nameIndex = 0;
 
   for (const plan of PLAN) {
@@ -271,6 +276,7 @@ export async function seedWorkspace(
         .single();
       if (leadError) throw leadError;
       leadCount++;
+      seededLeadIds.push(lead!.id);
 
       if (!plan.contacted) continue;
 
@@ -440,6 +446,13 @@ export async function seedWorkspace(
     }
   }
 
+  const campaignCount = await seedReactivationCampaigns(
+    admin,
+    businessId,
+    seededLeadIds,
+    now,
+  );
+
   return {
     services: services!.length,
     sources: sources!.length,
@@ -447,5 +460,122 @@ export async function seedWorkspace(
     leads: leadCount,
     messages: messageCount,
     bookings: bookingCount,
+    campaigns: campaignCount,
   };
+}
+
+/**
+ * Seeds the reference reactivation campaign set from the design screens, so
+ * `/app/reactivation` has all six statuses to render in a fresh workspace.
+ *
+ * Campaign membership is drawn from the leads seeded above rather than
+ * inventing thousands of contacts: the card and drawer figures then come from
+ * the same live rollup production uses, and stay internally consistent.
+ * `estimated_audience_size` carries the headline figure from the design.
+ */
+async function seedReactivationCampaigns(
+  admin: ReturnType<typeof createAdminClient>,
+  businessId: string,
+  leadIds: string[],
+  now: number,
+): Promise<number> {
+  let created = 0;
+
+  for (const [index, fixture] of REACTIVATION_FIXTURES.entries()) {
+    const createdAt = new Date(fixture.created + "T09:34:00.000Z");
+    const updatedAt = new Date(now - fixture.updatedHoursAgo * 3600_000);
+    const started =
+      fixture.status === "DRAFT" || fixture.status === "SCHEDULED"
+        ? null
+        : createdAt.toISOString();
+
+    const { data: campaign, error } = await admin
+      .from("campaigns")
+      .insert({
+        business_id: businessId,
+        name: fixture.name,
+        description: fixture.description,
+        status: fixture.status,
+        channel: fixture.channel,
+        audience_label: fixture.audienceLabel,
+        tags: fixture.tags,
+        message_template:
+          "Hi {{first_name}}, it's {{business_name}}. We're booking " +
+          fixture.audienceLabel.toLowerCase() +
+          " visits in your area — would you like us to take another look? " +
+          "Reply STOP to opt out.",
+        followup_template:
+          "Hi {{first_name}}, just checking you saw this — we still have a " +
+          "couple of slots left this month. {{business_phone}}",
+        followup_delay_seconds: 48 * 3600,
+        estimated_audience_size: fixture.sent,
+        send_window_start: "08:00",
+        send_window_end: "20:00",
+        filter_config: { statuses: [], lastContactedBeforeDays: 90 } as never,
+        scheduled_at:
+          fixture.status === "SCHEDULED"
+            ? new Date(now + 2 * 864e5).toISOString()
+            : createdAt.toISOString(),
+        launched_at: started,
+        started_at: started,
+        paused_at:
+          fixture.status === "PAUSED"
+            ? new Date(now - 72 * 3600_000).toISOString()
+            : null,
+        completed_at:
+          fixture.status === "COMPLETED" ? updatedAt.toISOString() : null,
+        cancelled_at:
+          fixture.status === "CANCELLED" ? updatedAt.toISOString() : null,
+        created_at: createdAt.toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    created++;
+
+    // A draft has never expanded its audience, so it gets no contacts.
+    if (fixture.status === "DRAFT" || leadIds.length === 0) continue;
+
+    // Give each campaign a distinct, deterministic slice of the seeded leads.
+    const size = Math.max(3, Math.round(leadIds.length / 2));
+    const slice = Array.from({ length: size }, (_, offset) => {
+      return leadIds[(index * 5 + offset) % leadIds.length];
+    });
+
+    const contacts = [...new Set(slice)].map((leadId, position) => {
+      const sent = fixture.sent > 0 && position < size * 0.9;
+      const replied = sent && position < size * 0.2;
+      const state = !sent
+        ? fixture.status === "SCHEDULED"
+          ? "scheduled"
+          : "pending"
+        : replied
+          ? "replied"
+          : "delivered";
+
+      return {
+        business_id: businessId,
+        campaign_id: campaign!.id,
+        lead_id: leadId,
+        state,
+        sent_at: sent
+          ? new Date(createdAt.getTime() + position * 36e5).toISOString()
+          : null,
+        delivered_at: sent
+          ? new Date(createdAt.getTime() + position * 36e5 + 6e4).toISOString()
+          : null,
+        replied_at: replied
+          ? new Date(createdAt.getTime() + position * 36e5 + 18e5).toISOString()
+          : null,
+      };
+    });
+
+    const { error: contactError } = await admin
+      .from("campaign_contacts")
+      .upsert(contacts, { onConflict: "campaign_id,lead_id" });
+    if (contactError) throw contactError;
+  }
+
+  return created;
 }

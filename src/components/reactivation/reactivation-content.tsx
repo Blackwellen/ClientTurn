@@ -34,21 +34,28 @@ function CampaignCardGrid({
   onOpen: (id: string) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "@container/grid grid grid-cols-1 gap-3",
-        "sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
-      )}
-    >
-      {campaigns.map((campaign) => (
-        <CampaignCard
-          key={campaign.id}
-          campaign={campaign}
-          canManage={canManage}
-          selected={campaign.id === openCampaignId}
-          onOpen={() => onOpen(campaign.id)}
-        />
-      ))}
+    // Container queries, not viewport breakpoints: when the detail drawer
+    // opens it takes ~40% of the page, and the grid has to drop from four
+    // columns to two even though the window has not changed size.
+    <div className="@container/grid">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3",
+          "@min-[500px]/grid:grid-cols-2",
+          "@min-[820px]/grid:grid-cols-3",
+          "@min-[1080px]/grid:grid-cols-4",
+        )}
+      >
+        {campaigns.map((campaign) => (
+          <CampaignCard
+            key={campaign.id}
+            campaign={campaign}
+            canManage={canManage}
+            selected={campaign.id === openCampaignId}
+            onOpen={() => onOpen(campaign.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

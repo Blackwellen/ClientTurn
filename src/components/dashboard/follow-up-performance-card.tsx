@@ -11,6 +11,7 @@ import type { FollowUpMetric, FollowUpMetricKey } from "@/lib/dashboard/types";
 import { formatDuration, formatPercent } from "@/lib/dates";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SectionHeader } from "@/components/app/page-header";
+import { CardActionLink } from "./card-action-link";
 import { cn } from "@/lib/cn";
 
 const ICONS: Record<
@@ -102,14 +103,7 @@ export function FollowUpPerformanceCard({
       <CardHeader>
         <SectionHeader
           title="Follow-up performance"
-          action={
-            <Link
-              href="/app/follow-up"
-              className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              Manage
-            </Link>
-          }
+          action={<CardActionLink href="/app/follow-up">Manage</CardActionLink>}
         />
       </CardHeader>
       <CardContent className="flex-1 pt-0">

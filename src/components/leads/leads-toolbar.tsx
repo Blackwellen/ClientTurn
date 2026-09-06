@@ -200,17 +200,21 @@ export function LeadsToolbar({
   const chips = useActiveChips(filters, options);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-2">
       <LeadSearchInput
         value={filters.q ?? ""}
         onChange={(value) => setFilter({ q: value || null })}
-        className="w-full sm:w-[380px] xl:w-[460px]"
+        className="w-full shrink-0 sm:w-[380px] xl:w-[460px]"
       />
 
-      <LeadFilterButton filters={filters} options={options} />
+      <div className="shrink-0">
+        <LeadFilterButton filters={filters} options={options} />
+      </div>
 
       {chips.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        // Chips scroll rather than wrap, so a long filter set can never push
+        // the view toggle onto a second row and double the toolbar height.
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {chips.map((chip) => (
             <ActiveFilterChip
               key={chip.key}
@@ -218,19 +222,22 @@ export function LeadsToolbar({
               onRemove={() => setFilter(chip.patch)}
             />
           ))}
-          {hasActiveFilters(filters) && chips.length > 1 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="h-8 shrink-0 rounded-lg px-2 text-[12px] font-medium text-content-muted transition-colors hover:text-content focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent"
-            >
-              Clear all
-            </button>
-          )}
         </div>
       )}
 
-      <div className="ml-auto">
+      {/* Pinned outside the scroller: the escape hatch must never be the part
+          that scrolls out of reach. */}
+      {chips.length > 1 && hasActiveFilters(filters) && (
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="h-8 shrink-0 rounded-lg px-2 text-[12px] font-medium text-content-muted transition-colors hover:text-content focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent"
+        >
+          Clear all
+        </button>
+      )}
+
+      <div className="ml-auto shrink-0">
         <LeadViewToggle value={filters.view} />
       </div>
     </div>

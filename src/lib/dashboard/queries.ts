@@ -5,6 +5,7 @@ import { leadDisplayName, sourceLabel } from "@/lib/leads/types";
 import type { LeadListRow, LeadSourceRef } from "@/lib/leads/types";
 import { getBookingDestination } from "@/lib/bookings/queries";
 import {
+  attentionKindForReason,
   attentionLabel,
   type AttentionItem,
   type DashboardData,
@@ -39,6 +40,7 @@ type CohortRow = {
   won_at: string | null;
   opted_out: boolean;
   source_id: string | null;
+  services: { average_value: number | null } | null;
   lead_sources: LeadSourceRef | null;
 };
 
@@ -70,11 +72,43 @@ function summarise(rows: CohortRow[]): PeriodCounts {
  * window. Every point is a real count — a workspace with no history gets a
  * flat line rather than an invented shape.
  */
-function buildSeries(rows: CohortRow[], range: ResolvedRange): DashboardSeries {
-  const points = Math.max(2, Math.min(range.days, MAX_SERIES_POINTS));
+function bucketIndexer(range: ResolvedRange, points: number) {
   const start = range.from.getTime();
-  const span = Math.max(1, range.to.getTime() - start);
-  const bucketMs = span / points;
+  const end = range.to.getTime();
+  const bucketMs = Math.max(1, end - start) / points;
+  return (value: string | null) => {
+    if (!value) return null;
+    const time = new Date(value).getTime();
+    if (Number.isNaN(time) || time < start || time >= end) return null;
+    return Math.min(points - 1, Math.floor((time - start) / bucketMs));
+  };
+}
+
+function seriesPoints(range: ResolvedRange) {
+  return Math.max(2, Math.min(range.days, MAX_SERIES_POINTS));
+}
+
+/** Value qualified per bucket — the pipeline the period actually added. */
+function buildPipelineSeries(
+  rows: CohortRow[],
+  range: ResolvedRange,
+): number[] {
+  const points = seriesPoints(range);
+  const indexFor = bucketIndexer(range, points);
+  const series = new Array<number>(points).fill(0);
+
+  for (const row of rows) {
+    const index = indexFor(row.qualified_at);
+    if (index === null) continue;
+    series[index] += Number(row.services?.average_value ?? 0);
+  }
+
+  return series;
+}
+
+function buildSeries(rows: CohortRow[], range: ResolvedRange): DashboardSeries {
+  const points = seriesPoints(range);
+  const indexFor = bucketIndexer(range, points);
 
   const empty = () => new Array<number>(points).fill(0);
   const series: DashboardSeries = {
@@ -84,15 +118,6 @@ function buildSeries(rows: CohortRow[], range: ResolvedRange): DashboardSeries {
     qualified: empty(),
     booked: empty(),
     bookingRate: empty(),
-  };
-
-  const indexFor = (value: string | null) => {
-    if (!value) return null;
-    const time = new Date(value).getTime();
-    if (Number.isNaN(time) || time < start || time >= range.to.getTime()) {
-      return null;
-    }
-    return Math.min(points - 1, Math.floor((time - start) / bucketMs));
   };
 
   const bump = (key: keyof DashboardSeries, value: string | null) => {
@@ -295,6 +320,7 @@ function followUpMetrics(
 
 const COHORT_SELECT = `id, created_at, first_contacted_at, first_replied_at,
   qualified_at, booked_at, won_at, opted_out, source_id,
+  services ( average_value ),
   lead_sources ( id, provider, source_name, form_name, campaign_name,
                  campaign_id, ad_name, adset_name, page_name )`;
 
@@ -441,6 +467,7 @@ export async function getDashboardData(
     const service = row.services?.name;
     return {
       id: `lead-${row.id}`,
+      kind: attentionKindForReason(row.attention_reason),
       title: attentionLabel(row.attention_reason),
       detail: service ? `${name} · ${service}` : name,
       at: row.last_contact_at ?? row.created_at,
@@ -460,6 +487,7 @@ export async function getDashboardData(
     series: buildSeries(currentRows, range),
     estimatedPipeline,
     qualifyingLeads: pipelineRows.length,
+    pipelineSeries: buildPipelineSeries(currentRows, range),
     recentLeads: (recentResult.data ?? []) as unknown as LeadListRow[],
     sources: [...sourceMap.values()]
       .sort((a, b) => b.leads - a.leads)
@@ -599,7 +627,7 @@ export async function getHealthStripData(
           ? "No pages or forms selected"
           : `${countLabel(pages, "page")} · ${countLabel(forms, "form")}`
         : "Connect Meta to receive lead ads",
-      href: "/app/settings/connections",
+      href: "/app/settings?section=connections",
     },
     {
       key: "messaging",
@@ -612,7 +640,7 @@ export async function getHealthStripData(
         channels.length > 0
           ? channels.join(" · ")
           : "No sending channel configured",
-      href: "/app/settings/connections",
+      href: "/app/settings?section=connections",
     },
     {
       key: "booking",
@@ -620,7 +648,7 @@ export async function getHealthStripData(
       status: destination.configured ? "healthy" : "error",
       statusLabel: destination.configured ? "Configured" : "Not configured",
       detail: destination.label,
-      href: "/app/settings/workspace",
+      href: "/app/settings?section=workspace",
     },
     {
       key: "followup",

@@ -1,12 +1,13 @@
 import * as React from "react";
 import Link from "next/link";
-import { CalendarClock, ChevronRight, ExternalLink } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronRight } from "lucide-react";
 import type { BookingListRow } from "@/lib/bookings/types";
 import { formatTimeInZone } from "@/lib/bookings/types";
 import { BOOKING_PROVIDER_LABEL } from "@/lib/bookings/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/app/page-header";
+import { CardActionLink } from "./card-action-link";
 
 /** "THU" over "4 SEP", in the workspace's own timezone. */
 function dateBlock(value: string | null, timezone: string) {
@@ -47,14 +48,7 @@ export function UpcomingBookingsCard({
       <CardHeader>
         <SectionHeader
           title="Upcoming bookings"
-          action={
-            <Link
-              href="/app/leads?tab=BOOKED"
-              className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              View all
-            </Link>
-          }
+          action={<CardActionLink href="/app/leads?tab=BOOKED" />}
         />
       </CardHeader>
       <CardContent className="flex-1 pt-0">
@@ -65,7 +59,7 @@ export function UpcomingBookingsCard({
             description="Connect Calendly or Google Calendar, or use human handover, so qualified leads can be booked."
             action={
               <Link
-                href="/app/settings/workspace"
+                href="/app/settings?section=workspace"
                 className="text-content-accent text-[13px] font-medium"
               >
                 Set a booking destination
@@ -83,16 +77,13 @@ export function UpcomingBookingsCard({
             {rows.map((row) => {
               const { weekday, day } = dateBlock(row.startsAt, timezone);
               return (
-                <li key={row.id} className="group relative">
+                <li key={row.id} className="group relative has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-content-accent">
                   <div className="hover:bg-surface-hover -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 transition-colors duration-[var(--lr-duration-fast)]">
-                    <span
-                      aria-hidden
-                      className="bg-surface-sunken border-line-subtle flex w-12 shrink-0 flex-col items-center rounded-lg border py-1.5"
-                    >
-                      <span className="text-content-muted text-[10px] font-semibold tracking-wide">
+                    <span aria-hidden className="w-12 shrink-0 text-center">
+                      <span className="text-content-muted block text-[10px] leading-tight font-semibold tracking-[0.06em]">
                         {weekday}
                       </span>
-                      <span className="text-content text-[12px] font-semibold">
+                      <span className="text-content block text-[12.5px] leading-tight font-semibold">
                         {day}
                       </span>
                     </span>
@@ -104,7 +95,7 @@ export function UpcomingBookingsCard({
                     <span className="min-w-0 flex-1">
                       <Link
                         href={`/app/leads?lead=${row.leadId}`}
-                        className="text-content group-hover:text-content-accent block truncate text-[13px] font-medium after:absolute after:inset-0 focus-visible:outline-none"
+                        className="text-content group-hover:text-content-accent block truncate text-[13px] font-medium after:absolute after:inset-0 focus-visible:outline-none!"
                       >
                         {row.leadName}
                       </Link>
@@ -120,12 +111,12 @@ export function UpcomingBookingsCard({
                         rel="noopener noreferrer"
                         // Sits above the stretched row link so the provider
                         // link stays reachable.
-                        className="text-content-subtle hover:text-content-accent hover:bg-surface-active focus-visible:outline-content-accent relative z-10 flex size-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2"
+                        className="text-info-600 hover:text-info-700 hover:bg-info-50 focus-visible:outline-content-accent relative z-10 flex size-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2"
                         aria-label={`Open ${row.leadName}'s booking in ${
                           BOOKING_PROVIDER_LABEL[row.provider] ?? row.provider
                         }`}
                       >
-                        <ExternalLink className="size-3.5" />
+                        <CalendarDays className="size-4" />
                       </a>
                     ) : (
                       <span className="text-content-subtle shrink-0 text-[11px] whitespace-nowrap">

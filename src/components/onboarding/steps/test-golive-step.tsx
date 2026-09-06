@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  ArrowRight,
   BarChart3,
   Calendar,
   CheckCircle2,
@@ -12,8 +13,9 @@ import {
   Users,
   Wifi,
   XCircle,
+  Zap,
 } from "lucide-react";
-import { OBadge, OButton, OField, OInput, OPanel, OSectionTitle, OSelect } from "../ui";
+import { OButton, OField, OInput, OPanel, OSectionTitle, OSelect } from "../ui";
 import type { StepActions } from "../step-types";
 import type { ActivationCheck } from "@/lib/onboarding/provision";
 import type { TestLeadOutcome } from "@/lib/onboarding/test-lead";
@@ -26,11 +28,11 @@ const HEALTH_ROWS: { key: string; label: string; icon: React.ComponentType<{ cla
 ];
 
 const JOURNEY_STAGES = [
-  { key: "received", label: "Lead received" },
-  { key: "reply", label: "Auto-reply sent" },
-  { key: "qualified", label: "Qualified" },
-  { key: "booking", label: "Booking ready" },
-  { key: "complete", label: "Test complete" },
+  { key: "received", label: "Lead received", icon: Zap },
+  { key: "reply", label: "Auto-reply sent", icon: MessageCircle },
+  { key: "qualified", label: "Qualified", icon: Users },
+  { key: "booking", label: "Booking ready", icon: Calendar },
+  { key: "complete", label: "Test complete", icon: CheckCircle2 },
 ];
 
 function checkStatus(check: ActivationCheck | undefined) {
@@ -132,6 +134,12 @@ export function TestGoLiveStep({
         <ul className="space-y-1.5">
           {checks.map((check) => {
             const status = checkStatus(check);
+            const statusColor =
+              status.tone === "success"
+                ? "text-[#96a1b3]"
+                : status.tone === "danger"
+                  ? "text-[#ff6b70]"
+                  : "text-[#ffb020]";
             return (
               <li
                 key={check.key}
@@ -148,7 +156,7 @@ export function TestGoLiveStep({
                   )}
                   {check.label}
                 </span>
-                <OBadge tone={status.tone}>{status.label}</OBadge>
+                <span className={`text-[12.5px] font-medium ${statusColor}`}>{status.label}</span>
               </li>
             );
           })}
@@ -192,31 +200,36 @@ export function TestGoLiveStep({
           <OSectionTitle hint="See your test lead travel through the same internal process as a real lead.">
             Test lead journey
           </OSectionTitle>
-          <div className="flex items-start justify-between gap-1 overflow-x-auto pb-1">
+          <div className="flex items-start overflow-x-auto pb-1">
             {JOURNEY_STAGES.map((stage, i) => {
               const reached = i <= stageIndex;
               const isFailure = failed && i === 1;
+              const StageIcon = isFailure ? XCircle : stage.icon;
               return (
-                <div key={stage.key} className="flex flex-1 flex-col items-center gap-1.5 text-center">
-                  <span
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-full border-2 ${
-                      isFailure
-                        ? "border-[#ff6b70] text-[#ff6b70]"
-                        : reached
-                          ? "border-[var(--auth-lime)] text-[var(--auth-lime)]"
-                          : "border-[#4a5568] text-[#5c6981]"
-                    }`}
-                  >
-                    {isFailure ? (
-                      <XCircle className="size-4" aria-hidden />
-                    ) : (
-                      <CheckCircle2 className="size-4" aria-hidden />
-                    )}
-                  </span>
-                  <p className="text-[11.5px] leading-tight font-medium text-[#c1cad6]">
-                    {stage.label}
-                  </p>
-                </div>
+                <React.Fragment key={stage.key}>
+                  {i > 0 && (
+                    <ArrowRight
+                      className={`mt-3.5 size-3.5 shrink-0 ${reached ? "text-[var(--auth-lime)]" : "text-[#4a5568]"}`}
+                      aria-hidden
+                    />
+                  )}
+                  <div className="flex flex-1 flex-col items-center gap-1.5 text-center">
+                    <span
+                      className={`flex size-9 shrink-0 items-center justify-center rounded-full border-2 ${
+                        isFailure
+                          ? "border-[#ff6b70] text-[#ff6b70]"
+                          : reached
+                            ? "border-[var(--auth-lime)] text-[var(--auth-lime)]"
+                            : "border-[#4a5568] text-[#5c6981]"
+                      }`}
+                    >
+                      <StageIcon className="size-4" aria-hidden />
+                    </span>
+                    <p className="text-[11.5px] leading-tight font-medium text-[#c1cad6]">
+                      {stage.label}
+                    </p>
+                  </div>
+                </React.Fragment>
               );
             })}
           </div>
@@ -229,14 +242,17 @@ export function TestGoLiveStep({
               const check = checks.find((c) => c.key === row.key);
               const healthy = check?.passed ?? false;
               return (
-                <OPanel key={row.key} className="flex flex-col items-center gap-1 bg-[#0c151d] py-3 text-center">
-                  <row.icon className="size-4 text-[#9ad84a]" aria-hidden />
-                  <p className="text-[11.5px] font-medium text-[#dbe1ea]">{row.label}</p>
-                  <span
-                    className={`flex items-center gap-1 text-[10.5px] ${healthy ? "text-[var(--auth-lime)]" : "text-[#ffb020]"}`}
-                  >
-                    <span className="size-1.5 rounded-full bg-current" /> {healthy ? "Healthy" : "Attention"}
-                  </span>
+                <OPanel key={row.key} className="flex items-center gap-2 bg-[#0c151d] py-2.5">
+                  <row.icon className="size-4 shrink-0 text-[#9ad84a]" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="truncate text-[11.5px] font-medium text-[#dbe1ea]">{row.label}</p>
+                    <span
+                      className={`flex items-center gap-1 text-[10.5px] ${healthy ? "text-[var(--auth-lime)]" : "text-[#ffb020]"}`}
+                    >
+                      <span className="size-1.5 shrink-0 rounded-full bg-current" />
+                      {healthy ? "Healthy" : "Attention"}
+                    </span>
+                  </div>
                 </OPanel>
               );
             })}

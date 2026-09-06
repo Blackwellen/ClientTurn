@@ -4,8 +4,9 @@ import * as React from "react";
 import {
   ArrowDown,
   ArrowUp,
-  CircleCheck,
+  Check,
   Copy,
+  FileText,
   MessageCircle,
   MessageSquare,
   MoreVertical,
@@ -21,6 +22,7 @@ import {
   DropdownMenu,
   DropdownSeparator,
 } from "@/components/ui/dropdown";
+import { Popover } from "@/components/ui/popover";
 import { EmptyState } from "@/components/ui/feedback";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -126,7 +128,10 @@ export function SequenceEditor({
     setSteps(automation ? toDraft(automation.steps) : []);
   }
 
-  const dirty = JSON.stringify(toInputs(steps)) !== signature;
+  const edited = JSON.stringify(toInputs(steps)) !== signature;
+  // A draft saved earlier but never published is still "unpublished work",
+  // otherwise the only way to publish it would be to edit it first.
+  const dirty = edited || (automation?.editingIsDraft ?? false);
 
   // Focus a newly added or duplicated step so the keyboard stays in flow.
   React.useEffect(() => {
@@ -249,16 +254,16 @@ export function SequenceEditor({
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="border-b-0 px-5 pt-5 pb-0">
           <SectionHeader
-            icon={MessageSquare}
+            icon={FileText}
             tone="info"
             title="Follow-up sequence"
             description="Send a series of automated messages to new leads who haven't booked yet."
           />
         </CardHeader>
 
-        <CardContent className="space-y-2.5 pt-4">
+        <CardContent className="space-y-3 px-5 pt-4 pb-5">
           {steps.length === 0 ? (
             <EmptyState
               icon={MessageSquare}
@@ -274,7 +279,7 @@ export function SequenceEditor({
               }
             />
           ) : (
-            <ol className="space-y-2.5">
+            <ol className="space-y-3">
               {steps.map((step, index) => (
                 <SequenceRow
                   key={step.key}
@@ -301,13 +306,13 @@ export function SequenceEditor({
               type="button"
               onClick={addStep}
               className={cn(
-                "border-line-strong text-content-secondary hover:bg-surface-hover hover:text-content",
-                "flex h-10 w-auto items-center gap-2 rounded-lg border px-4 text-[13px] font-medium",
+                "border-line text-content hover:bg-surface-hover hover:border-line-strong",
+                "inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-medium",
                 "transition-colors duration-[var(--lr-duration-fast)]",
                 "focus-visible:outline-content-accent focus-visible:outline-2 focus-visible:outline-offset-2",
               )}
             >
-              <Plus className="size-4" aria-hidden />
+              <Plus className="text-content-muted size-4" aria-hidden />
               Add another step
             </button>
           )}
@@ -347,6 +352,126 @@ export function SequenceEditor({
   );
 }
 
+/* ---------------------------------------------------------- delay editor */
+
+/**
+ * The timing reads as a sentence in the row and opens an editor on click.
+ * Keeping the amount and the unit out of the row is what lets five steps fit
+ * on one screen without the eye having to parse five pairs of form controls.
+ */
+function DelayEditor({
+  step,
+  index,
+  canEdit,
+  onPatch,
+}: {
+  step: DraftStep;
+  index: number;
+  canEdit: boolean;
+  onPatch: (next: Partial<DraftStep>) => void;
+}) {
+  const { value, unit } = splitDelay(step.delaySeconds);
+  const fieldId = `delay-${step.key}`;
+
+  const summary = (
+    <>
+      <span className="text-content block text-[12.5px] font-semibold whitespace-nowrap">
+        {formatStepDelay(step.delaySeconds)}
+      </span>
+      <span className="text-content-subtle block text-[10px] whitespace-nowrap">
+        {index === 0 ? "Send right away" : "After previous message"}
+      </span>
+    </>
+  );
+
+  if (!canEdit) return <div className="min-w-0">{summary}</div>;
+
+  return (
+    <Popover
+      align="start"
+      label={`Timing for step ${index + 1}`}
+      trigger={
+        <button
+          type="button"
+          title="Change the timing"
+          className={cn(
+            "-m-1 min-w-0 rounded-md p-1 text-left",
+            "hover:bg-surface-hover transition-colors duration-[var(--lr-duration-fast)]",
+            "focus-visible:outline-content-accent focus-visible:outline-2 focus-visible:outline-offset-1",
+          )}
+        >
+          {summary}
+          <span className="sr-only">Change the timing</span>
+        </button>
+      }
+    >
+      <p className="text-content text-[13px] font-medium">
+        {index === 0 ? "Send this step" : "Send after the previous message"}
+      </p>
+      <div className="mt-2.5 flex items-center gap-2">
+        {unit !== "immediate" && (
+          <>
+            <label className="sr-only" htmlFor={`${fieldId}-value`}>
+              Amount
+            </label>
+            <input
+              id={`${fieldId}-value`}
+              type="number"
+              min={1}
+              max={999}
+              inputMode="numeric"
+              value={value}
+              onChange={(event) =>
+                onPatch({
+                  delaySeconds: joinDelay(
+                    Math.min(999, Math.max(1, Number(event.target.value) || 1)),
+                    unit,
+                  ),
+                })
+              }
+              className={cn(
+                "bg-surface text-content border-line-strong shadow-xs h-9 w-16 rounded-md border px-2 text-center text-[13px]",
+                "focus:border-accent-500 focus:ring-[var(--lr-ring)] focus:ring-2 focus:outline-none",
+              )}
+            />
+          </>
+        )}
+        <label className="sr-only" htmlFor={`${fieldId}-unit`}>
+          Unit
+        </label>
+        <Select
+          id={`${fieldId}-unit`}
+          className="h-9 flex-1 text-[13px]"
+          value={unit}
+          onChange={(event) => {
+            const next = event.target.value as DelayUnit;
+            onPatch({ delaySeconds: joinDelay(value || 1, next) });
+          }}
+        >
+          {DELAY_UNITS.map((option) => (
+            <option
+              key={option}
+              value={option}
+              // Only the opening step may fire with no delay; anything later
+              // would land in the same instant as the step before it.
+              disabled={option === "immediate" && index > 0}
+            >
+              {option === "immediate"
+                ? "Immediately"
+                : DELAY_UNIT_META[option].plural}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {index > 0 && (
+        <p className="text-content-subtle mt-2 text-[11.5px]">
+          Counted from the moment the previous message was sent.
+        </p>
+      )}
+    </Popover>
+  );
+}
+
 /* ------------------------------------------------------------------- row */
 
 function SequenceRow({
@@ -374,7 +499,6 @@ function SequenceRow({
   onDuplicate: () => void;
   onRemove: () => void;
 }) {
-  const { value, unit } = splitDelay(step.delaySeconds);
   const unknown = findUnknownMergeFields(step.template);
   const ChannelIcon = CHANNEL_ICON[step.channel];
   const empty = step.template.trim() === "";
@@ -384,93 +508,31 @@ function SequenceRow({
   return (
     <li
       className={cn(
-        "border-line bg-surface rounded-lg border p-3",
-        "focus-within:border-accent-500 transition-colors duration-[var(--lr-duration-fast)]",
+        "border-line bg-surface rounded-lg border px-3 py-2",
+        "transition-colors duration-[var(--lr-duration-fast)]",
         invalid && "border-danger-500/60",
         !step.enabled && "opacity-70",
       )}
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start">
         {/* number + timing */}
-        <div className="flex items-center gap-2.5 lg:w-[9.5rem] lg:shrink-0 lg:pt-1.5">
+        <div className="flex items-start gap-2 xl:w-[8.5rem] xl:shrink-0 xl:pt-1">
           <span
             aria-hidden
             className="bg-surface-sunken border-line text-content lr-tabular flex size-7 shrink-0 items-center justify-center rounded-md border text-[12px] font-semibold"
           >
             {index + 1}
           </span>
-          <div className="min-w-0">
-            <p className="text-content text-[13px] font-semibold">
-              {formatStepDelay(step.delaySeconds)}
-            </p>
-            <p className="text-content-subtle text-[12px]">
-              {index === 0 ? "Send right away" : "After previous message"}
-            </p>
-          </div>
-        </div>
-
-        {/* delay editor */}
-        <div className="flex items-start gap-2 lg:w-[11rem] lg:shrink-0">
-          <label className="sr-only" htmlFor={`${rowId}-unit`}>
-            {`Step ${index + 1} delay unit`}
-          </label>
-          {unit !== "immediate" && (
-            <>
-              <label className="sr-only" htmlFor={`${rowId}-value`}>
-                {`Step ${index + 1} delay amount`}
-              </label>
-              <input
-                id={`${rowId}-value`}
-                type="number"
-                min={1}
-                max={999}
-                inputMode="numeric"
-                value={value}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  onPatch({
-                    delaySeconds: joinDelay(
-                      Math.max(1, Number(event.target.value) || 1),
-                      unit,
-                    ),
-                  })
-                }
-                className={cn(
-                  "bg-surface text-content border-line-strong shadow-xs h-9 w-14 rounded-md border px-2 text-center text-[13px]",
-                  "focus:border-accent-500 focus:ring-[var(--lr-ring)] focus:ring-2 focus:outline-none",
-                  "disabled:bg-surface-sunken disabled:text-content-muted",
-                )}
-              />
-            </>
-          )}
-          <Select
-            id={`${rowId}-unit`}
-            className="h-9 text-[13px]"
-            value={unit}
-            disabled={!canEdit}
-            onChange={(event) => {
-              const next = event.target.value as DelayUnit;
-              onPatch({ delaySeconds: joinDelay(value || 1, next) });
-            }}
-          >
-            {DELAY_UNITS.map((option) => (
-              <option
-                key={option}
-                value={option}
-                // Only the opening step may fire with no delay; anything else
-                // would send two messages in the same instant.
-                disabled={option === "immediate" && index > 0}
-              >
-                {option === "immediate"
-                  ? "Immediately"
-                  : DELAY_UNIT_META[option].plural}
-              </option>
-            ))}
-          </Select>
+          <DelayEditor
+            step={step}
+            index={index}
+            canEdit={canEdit}
+            onPatch={onPatch}
+          />
         </div>
 
         {/* channel */}
-        <div className="lg:w-[8.5rem] lg:shrink-0">
+        <div className="xl:w-[7.5rem] xl:shrink-0 xl:pt-0.5">
           <label className="sr-only" htmlFor={`${rowId}-channel`}>
             {`Step ${index + 1} channel`}
           </label>
@@ -481,7 +543,7 @@ function SequenceRow({
             />
             <Select
               id={`${rowId}-channel`}
-              className="h-9 pl-8 text-[13px]"
+              className="h-9 pr-6 pl-7 text-[12.5px]"
               value={step.channel}
               disabled={!canEdit}
               onChange={(event) =>
@@ -509,18 +571,18 @@ function SequenceRow({
           <label className="sr-only" htmlFor={`${rowId}-template`}>
             {`Step ${index + 1} message`}
           </label>
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-1.5">
             <Textarea
               id={`${rowId}-template`}
               ref={textareaRef}
-              rows={3}
+              rows={4}
               maxLength={1200}
               value={step.template}
               disabled={!canEdit}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? `${rowId}-error` : undefined}
               placeholder="Write the message this step sends…"
-              className="min-h-[4.75rem] flex-1 text-[13px] leading-[1.45]"
+              className="min-h-[4.75rem] flex-1 resize-y px-2.5 py-1 text-[12px] leading-[1.35]"
               onChange={(event) => onPatch({ template: event.target.value })}
             />
             <MergeFieldMenu
@@ -543,10 +605,12 @@ function SequenceRow({
         </div>
 
         {/* toggle + menu */}
-        <div className="flex shrink-0 items-center gap-1 lg:pt-1.5">
+        <div className="flex shrink-0 items-center gap-0.5 xl:pt-1.5">
           <Switch
             checked={step.enabled}
             disabled={!canEdit}
+            tone="success"
+            size="lg"
             onCheckedChange={(next) => onPatch({ enabled: next })}
             label={`Send step ${index + 1}`}
           />
@@ -625,19 +689,19 @@ function SequenceFooter({
         )}
       >
         {valid ? (
-          <CircleCheck className="size-4" />
+          <Check className="size-4" strokeWidth={3} />
         ) : (
           <TriangleAlert className="size-4" />
         )}
       </span>
 
-      <div className="min-w-[12rem] flex-1">
+      <div className="min-w-[11rem] flex-1">
         {valid ? (
           <>
             <p className="text-content text-[13px] font-semibold">
               Sequence looks good!
             </p>
-            <p className="text-content-secondary mt-0.5 text-[13px]">
+            <p className="text-content-secondary mt-0.5 text-[12.5px]">
               All steps are properly configured.
             </p>
           </>
@@ -667,7 +731,7 @@ function SequenceFooter({
           <Button onClick={onPublish} loading={saving} disabled={!valid || !dirty}>
             Update sequence
           </Button>
-          <p className="text-content-subtle mt-1 text-[12px]">
+          <p className="text-content-subtle mt-1.5 text-[11.5px]">
             {dirty
               ? "Your changes will be published immediately."
               : "No unpublished changes."}

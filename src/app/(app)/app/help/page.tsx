@@ -22,7 +22,7 @@ import { PageHeader, SectionHeader } from "@/components/app/page-header";
 export const metadata: Metadata = { title: "Help · Client Turn" };
 export const dynamic = "force-dynamic";
 
-const SUPPORT_EMAIL = "support@clientturn.co.uk";
+const SUPPORT_EMAIL = "support@clientturn.com";
 
 const GUIDES: {
   label: string;
@@ -51,7 +51,7 @@ const GUIDES: {
   {
     label: "Integrations",
     description: "Connect a lead source, a messaging channel and a calendar.",
-    href: "/app/settings/connections",
+    href: "/app/settings?section=connections",
     icon: Plug,
   },
 ];
@@ -67,6 +67,13 @@ export default async function HelpPage() {
 
   return (
     <div className="space-y-5">
+      <Card id="app-installs" className="space-y-3 p-5">
+        <h2 className="font-semibold">Install an app with the webhook bridge</h2>
+        <p className="text-sm text-content-muted">In Settings → Connections, install an app using a random signing secret of at least 32 characters. Configure a code step in your provider or automation service to POST JSON to the installation URL. This is a contact-import bridge, not native two-way sync.</p>
+        <pre className="overflow-x-auto rounded-lg bg-bg p-4 text-xs">{`{"eventId":"unique-contact-event-123","firstName":"Alex","email":"alex@example.com"}`}</pre>
+        <p className="text-sm text-content-muted">Send x-clientturn-timestamp as the current Unix time in seconds. Send x-clientturn-signature as the hexadecimal HMAC-SHA256 of timestamp + &quot;.&quot; + the exact JSON request body, using your signing secret. Requests expire after five minutes. Reuse the eventId when retrying the same event.</p>
+        <p className="text-sm text-content-muted">A 202 response means the event is queued. The contact appears in Find Leads after background processing. Optional fields: lastName and phone (E.164 format). Imported data remains subject to review and contactability rules. Uninstalling immediately blocks further receipts.</p>
+      </Card>
       <PageHeader
         title="Help"
         description="Get set up, understand what Client Turn is doing, and reach a human when you need one."

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
+import { Filter, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Select } from "@/components/ui/form";
@@ -152,7 +152,7 @@ export function CampaignFilterPopover({
         onClick={() => (open ? setOpen(false) : openPanel())}
         className={cn(
           CONTROL,
-          "inline-flex items-center gap-2 rounded-lg border px-3 text-[13px] font-medium",
+          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium",
           "transition-colors duration-[var(--lr-duration-fast)]",
           "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
           count > 0 || open
@@ -160,7 +160,7 @@ export function CampaignFilterPopover({
             : "border-line-strong bg-surface text-content-secondary hover:bg-surface-hover",
         )}
       >
-        <SlidersHorizontal className="size-4" aria-hidden />
+        <Filter className="size-4" aria-hidden />
         More filters
         {count > 0 && (
           <span className="lr-tabular rounded-full bg-accent-500 px-1.5 text-[10px] font-semibold text-[var(--lr-on-primary)]">
@@ -293,13 +293,13 @@ export function CampaignToolbar({
 
   return (
     <div className="rounded-xl border border-line bg-surface px-3 py-2.5 shadow-xs">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <SearchInput
           defaultValue={filters.q ?? ""}
           placeholder="Search campaigns..."
           label="Search campaigns"
           onChange={(value) => setFilter({ q: value || null })}
-          className="w-full sm:w-[260px] xl:w-[300px]"
+          className="w-full min-w-0 sm:w-[196px] xl:w-[232px]"
         />
 
         <Select
@@ -310,7 +310,7 @@ export function CampaignToolbar({
               status: event.target.value === "all" ? null : event.target.value,
             })
           }
-          className={cn(CONTROL, "w-auto min-w-[124px] rounded-lg text-[13px]")}
+          className={cn(CONTROL, "w-[112px] max-w-full rounded-lg text-[13px]")}
         >
           {CAMPAIGN_STATUS_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -323,7 +323,7 @@ export function CampaignToolbar({
           aria-label="Audience"
           value={filters.audience ?? ""}
           onChange={(event) => setFilter({ audience: event.target.value || null })}
-          className={cn(CONTROL, "w-auto min-w-[136px] rounded-lg text-[13px]")}
+          className={cn(CONTROL, "w-[132px] max-w-full rounded-lg text-[13px]")}
         >
           <option value="">Audience</option>
           {audiences.map((audience) => (
@@ -345,7 +345,7 @@ export function CampaignToolbar({
               to: event.target.value === "custom" ? filters.to ?? null : null,
             })
           }
-          className={cn(CONTROL, "w-auto min-w-[136px] rounded-lg text-[13px]")}
+          className={cn(CONTROL, "w-[132px] max-w-full rounded-lg text-[13px]")}
         >
           {REACTIVATION_RANGE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -382,7 +382,7 @@ export function CampaignToolbar({
 
         <CampaignFilterPopover filters={filters} tags={tags} />
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 sm:ml-auto">
           <label
             htmlFor="reactivation-sort"
             className="hidden text-[13px] text-content-muted sm:block"
@@ -394,7 +394,7 @@ export function CampaignToolbar({
             aria-label="Sort by"
             value={filters.sort}
             onChange={(event) => setFilter({ sort: event.target.value })}
-            className={cn(CONTROL, "w-auto min-w-[152px] rounded-lg text-[13px]")}
+            className={cn(CONTROL, "w-[150px] max-w-full rounded-lg text-[13px]")}
           >
             {REACTIVATION_SORT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>

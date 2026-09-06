@@ -1,11 +1,11 @@
 import * as React from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   CalendarCheck,
   MessageSquare,
   Megaphone,
-  TrendingDown,
-  TrendingUp,
   UserRoundCheck,
   Users,
 } from "lucide-react";
@@ -49,28 +49,28 @@ export function SummaryStatCard({
   trend?: ReactivationTrend | null;
   className?: string;
 }) {
-  const TrendIcon = trend?.direction === "down" ? TrendingDown : TrendingUp;
+  const TrendIcon = trend?.direction === "down" ? ArrowDown : ArrowUp;
 
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-xs",
+        "flex min-w-0 items-center gap-2 rounded-xl border border-line bg-surface px-2 py-2.5 shadow-xs",
         className,
       )}
     >
       <span
         aria-hidden
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-xl",
+          "flex size-8 shrink-0 items-center justify-center rounded-[9px]",
           TILE_TONES[tone],
         )}
       >
-        <Icon className="size-[18px]" />
+        <Icon className="size-[15px]" />
       </span>
 
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="lr-tabular truncate text-[21px] font-semibold leading-none tracking-[-0.02em] text-content">
+          <p className="lr-tabular truncate text-[20px] font-semibold leading-none tracking-[-0.02em] text-content">
             {value}
           </p>
           {trend && (
@@ -80,16 +80,22 @@ export function SummaryStatCard({
                 trend.direction === "up" ? "text-success-600" : "text-danger-600",
               )}
             >
-              <TrendIcon className="size-3" aria-hidden />
+              <TrendIcon className="size-2.5" aria-hidden />
               <span className="lr-tabular">{trend.value}</span>
               <span className="sr-only">vs. the previous 30 days</span>
             </span>
           )}
         </div>
-        <p className="mt-1 truncate text-[13px] font-medium text-content-secondary">
+        <p className="mt-1 truncate text-[12.5px] font-medium text-content-secondary">
           {label}
         </p>
-        <p className="mt-0.5 truncate text-[11px] text-content-subtle" title={hint}>
+        {/* The support line wraps rather than truncating: at six across it is
+            the first thing to run out of room, and a clipped explanation is
+            worse than a second line. */}
+        <p
+          className="mt-0.5 truncate text-[9px] leading-[12px] text-content-subtle"
+          title={hint}
+        >
           {hint}
         </p>
       </div>
@@ -98,7 +104,7 @@ export function SummaryStatCard({
 }
 
 const GRID =
-  "grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6";
+  "grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6";
 
 export function ReactivationSummarySkeleton() {
   return (
@@ -106,9 +112,9 @@ export function ReactivationSummarySkeleton() {
       {Array.from({ length: 6 }).map((_, index) => (
         <div
           key={index}
-          className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-xs"
+          className="flex items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-2.5 shadow-xs"
         >
-          <Skeleton className="size-10 shrink-0 rounded-xl" />
+          <Skeleton className="size-8 shrink-0 rounded-[9px]" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-5 w-16" />
             <Skeleton className="h-3 w-20" />

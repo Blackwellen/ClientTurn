@@ -10,16 +10,9 @@ import { SectionHeader } from "@/components/app/page-header";
 import { saveQuietHours } from "@/lib/automations/actions";
 import { saveFollowUpTimezone } from "@/lib/follow-up/actions";
 import { TIMEZONES } from "@/lib/settings/types";
+import { formatTimezoneLabel } from "@/lib/dates";
 import type { QuietHoursSettings } from "@/lib/automations/types";
 
-const TIMEZONE_LABEL: Record<string, string> = {
-  "Europe/London": "(GMT+00:00) United Kingdom",
-  "Europe/Dublin": "(GMT+00:00) Ireland",
-  "Europe/Lisbon": "(GMT+00:00) Portugal",
-  "Europe/Paris": "(GMT+01:00) Central European Time",
-  "Europe/Madrid": "(GMT+01:00) Spain",
-  UTC: "(GMT+00:00) Coordinated Universal Time",
-};
 
 /**
  * Quiet hours are a scheduling instruction, not a display preference: the
@@ -72,10 +65,11 @@ export function QuietHoursCard({
 
   return (
     <Card>
-      <CardHeader className="flex-col items-stretch gap-0">
+      <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
         <SectionHeader
+          dense
           icon={Moon}
-          tone="info"
+          tone="purple"
           title="Quiet hours"
           description="Messages will only be sent during this time window. Messages outside this window will be sent at the next valid time."
           action={
@@ -84,6 +78,8 @@ export function QuietHoursCard({
                 checked={enabled}
                 onCheckedChange={setEnabled}
                 disabled={saving}
+                tone="success"
+                size="lg"
                 label="Hold automated messages during quiet hours"
               />
             ) : undefined
@@ -91,23 +87,29 @@ export function QuietHoursCard({
         />
       </CardHeader>
 
-      <CardContent className="space-y-3 pt-4">
+      <CardContent className="space-y-3 px-5 pt-4 pb-5">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="quiet-start">Start time</Label>
+            <Label className="text-[12px] font-normal" htmlFor="quiet-start">
+              Start time
+            </Label>
             <Input
               id="quiet-start"
               type="time"
+              className="text-[13px]"
               value={start}
               disabled={!canEdit || !enabled || saving}
               onChange={(event) => setStart(event.target.value)}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="quiet-end">End time</Label>
+            <Label className="text-[12px] font-normal" htmlFor="quiet-end">
+              End time
+            </Label>
             <Input
               id="quiet-end"
               type="time"
+              className="text-[13px]"
               value={end}
               disabled={!canEdit || !enabled || saving}
               onChange={(event) => setEnd(event.target.value)}
@@ -116,26 +118,25 @@ export function QuietHoursCard({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="quiet-timezone">Timezone</Label>
+          <Label className="text-[12px] font-normal" htmlFor="quiet-timezone">
+            Timezone
+          </Label>
           <Select
             id="quiet-timezone"
+            className="text-[13px]"
             value={timezone}
             disabled={!canEdit || saving}
             onChange={(event) => setTimezone(event.target.value)}
           >
             {TIMEZONES.map((zone) => (
               <option key={zone} value={zone}>
-                {TIMEZONE_LABEL[zone] ?? zone}
+                {formatTimezoneLabel(zone)}
               </option>
             ))}
             {!TIMEZONES.includes(timezone as (typeof TIMEZONES)[number]) && (
-              <option value={timezone}>{timezone}</option>
+              <option value={timezone}>{formatTimezoneLabel(timezone)}</option>
             )}
           </Select>
-          <p className="text-content-subtle text-[12px]">
-            Times are in the business timezone, not the timezone of whoever is
-            looking at this screen.
-          </p>
         </div>
 
         {sameTime && (
@@ -145,14 +146,13 @@ export function QuietHoursCard({
         )}
 
         {canEdit ? (
-          <Button
-            size="sm"
-            onClick={save}
-            loading={saving}
-            disabled={!dirty || sameTime}
-          >
-            Save quiet hours
-          </Button>
+          // Only surfaces once something has actually changed, so the card
+          // reads as settings rather than a form waiting to be submitted.
+          (dirty || saving) && (
+            <Button size="sm" onClick={save} loading={saving} disabled={sameTime}>
+              Save quiet hours
+            </Button>
+          )
         ) : (
           <p className="text-content-subtle text-[12px]">
             Only an owner or admin can change quiet hours.

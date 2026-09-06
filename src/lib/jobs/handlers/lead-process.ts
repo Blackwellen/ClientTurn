@@ -219,7 +219,7 @@ export async function handleLeadProcess(job: ClaimedJob) {
               ? "Lead limit reached"
               : "Subscription inactive",
           body: `${error.message} New leads are being kept but not contacted.`,
-          linkUrl: "/app/settings/billing",
+          linkUrl: "/app/settings?section=billing",
           dedupeKey: `${error.code}:${business.businessId}:${new Date().toISOString().slice(0, 10)}`,
         });
         return;

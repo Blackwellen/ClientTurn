@@ -5,11 +5,18 @@
  */
 
 import { z } from "zod";
-import { LEAD_STATUSES } from "@/lib/leads/filters";
+import { htmlToPlainText, sanitizeEmailHtml } from "../email/rich-text.ts";
+import { LEAD_STATUSES } from "../leads/filters.ts";
 import {
   findUnknownMergeFields,
   renderTemplate,
-} from "@/lib/automation/scheduler";
+} from "../automation/scheduler.ts";
+import {
+  SUPPRESSION_REASONS,
+  suppressionReasonLabel,
+  type AudienceBreakdowns,
+  type SuppressionReason,
+} from "./reactivation-audience.ts";
 
 export const CAMPAIGN_STATUSES = [
   "DRAFT",
@@ -51,27 +58,35 @@ export const MAX_CAMPAIGN_AUDIENCE = 5000;
 export const DEFAULT_COOLDOWN_DAYS = 30;
 export const MAX_MESSAGE_LENGTH = 640;
 
-export const SUPPRESSION_LABELS: Record<string, string> = {
-  opted_out: "Opted out of messages",
-  invalid_number: "No usable mobile number",
-  suppressed: "Number is on the suppression list",
-  already_booked: "Already booked or won",
-  contacted_recently: "Contacted too recently",
-  active_conversation: "Conversation already in progress",
-};
+/**
+ * Email is not billed per segment, so the body limit exists only to keep a
+ * campaign message a message rather than a newsletter. The subject limit is
+ * the point past which every major client truncates in the inbox list.
+ */
+export const MAX_EMAIL_BODY_LENGTH = 5000;
+export const MAX_SUBJECT_LENGTH = 150;
 
 export { findUnknownMergeFields, renderTemplate };
 
-export function suppressionLabel(reason: string) {
-  return (
-    SUPPRESSION_LABELS[reason] ??
-    reason.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
-  );
+/**
+ * Suppression labels live in `reactivation-audience.ts` alongside the rules
+ * that produce them, so a reason can never be renamed in one place and not
+ * the other. This wrapper keeps the older call sites (drawer, campaign
+ * detail) working with a plain string reason.
+ */
+export function suppressionLabel(reason: string, cooldownDays?: number) {
+  return (SUPPRESSION_REASONS as readonly string[]).includes(reason)
+    ? suppressionReasonLabel(reason as SuppressionReason, cooldownDays)
+    : reason.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
 /* ------------------------------------------------------------- schemas --- */
 
 const uuid = z.uuid();
+
+/** Wizard default: leads that have gone quiet for a full quarter. */
+export const DEFAULT_OLDER_THAN_DAYS = 90;
+export const MAX_OLDER_THAN_DAYS = 3650;
 
 export const audienceFilterSchema = z.object({
   serviceId: uuid.optional(),
@@ -79,6 +94,19 @@ export const audienceFilterSchema = z.object({
   statuses: z.array(z.enum(LEAD_STATUSES)).max(7).default([]),
   createdAfter: z.iso.date().optional(),
   createdBefore: z.iso.date().optional(),
+  /** Lead age: only leads first received longer ago than this are considered. */
+  olderThanDays: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_OLDER_THAN_DAYS)
+    .default(DEFAULT_OLDER_THAN_DAYS),
+  /** Only leads that have never replied to anything. */
+  noReply: z.boolean().default(false),
+  /** Only leads explicitly marked lost. */
+  markedLost: z.boolean().default(false),
+  /** Exclude anyone who has ever reached a booking. */
+  notBooked: z.boolean().default(true),
   lastContactedBeforeDays: z.coerce
     .number()
     .int()
@@ -91,25 +119,88 @@ export type AudienceFilter = z.infer<typeof audienceFilterSchema>;
 
 export const DEFAULT_AUDIENCE_FILTER: AudienceFilter = {
   statuses: [],
+  olderThanDays: DEFAULT_OLDER_THAN_DAYS,
+  noReply: true,
+  markedLost: false,
+  notBooked: true,
   lastContactedBeforeDays: DEFAULT_COOLDOWN_DAYS,
 };
 
-export const campaignDraftSchema = z.object({
+const campaignDraftShape = z.object({
   name: z.string().trim().min(2).max(80),
   /** Card/list/drawer copy — one line on what the campaign is for. */
   description: z.string().trim().max(280).optional(),
   /** Human name for the audience; `audience` below stays the definition. */
   audienceLabel: z.string().trim().max(160).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(8).default([]),
-  channel: z.enum(["sms", "whatsapp"]).default("sms"),
+  channel: z.enum(["sms", "whatsapp", "email"]).default("sms"),
   audience: audienceFilterSchema,
-  message: z.string().trim().min(10).max(MAX_MESSAGE_LENGTH),
-  followup: z.string().trim().max(MAX_MESSAGE_LENGTH).optional(),
+  /** Required on an email campaign; rejected on SMS/WhatsApp by the refine below. */
+  subject: z.string().trim().max(MAX_SUBJECT_LENGTH).optional(),
+  followupSubject: z.string().trim().max(MAX_SUBJECT_LENGTH).optional(),
+  message: z.string().trim().min(10).max(MAX_EMAIL_BODY_LENGTH),
+  followup: z.string().trim().max(MAX_EMAIL_BODY_LENGTH).optional(),
   followupDelayHours: z.coerce.number().int().min(1).max(336).default(48),
   sendMode: z.enum(["now", "schedule"]).default("now"),
   scheduledAt: z.string().trim().max(40).optional(),
   sendRatePerMinute: z.coerce.number().int().min(1).max(60).default(20),
   aiPersonalize: z.boolean().default(false),
+});
+
+/**
+ * The body limit and the subject requirement both depend on the channel, so
+ * they are enforced here rather than on the individual fields. This is the
+ * schema the server action parses, so neither rule can be skipped by calling
+ * the action directly.
+ */
+export const campaignDraftSchema = campaignDraftShape
+  .transform((value) => {
+    // An email body is markup and is reduced to the allowlist here, at the
+    // single point every write passes through, so nothing downstream has to
+    // trust what the browser sent. SMS and WhatsApp bodies are plain text and
+    // are left exactly as written.
+    if (value.channel !== "email") return value;
+    return {
+      ...value,
+      message: sanitizeEmailHtml(value.message),
+      followup: value.followup ? sanitizeEmailHtml(value.followup) : value.followup,
+    };
+  })
+  .superRefine((value, ctx) => {
+  const limit = value.channel === "email" ? MAX_EMAIL_BODY_LENGTH : MAX_MESSAGE_LENGTH;
+
+  const measure = (body: string) =>
+    value.channel === "email" ? htmlToPlainText(body).length : body.length;
+
+  for (const [field, body] of [
+    ["message", value.message],
+    ["followup", value.followup],
+  ] as const) {
+    if (body && measure(body) > limit) {
+      ctx.addIssue({
+        code: "custom",
+        path: [field],
+        message: `Keep the ${field === "message" ? "message" : "follow-up"} under ${limit} characters.`,
+      });
+    }
+  }
+
+  if (value.channel === "email") {
+    if (!value.subject || value.subject.trim().length < 3) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["subject"],
+        message: "An email campaign needs a subject line.",
+      });
+    }
+    if (value.followup && !value.followupSubject) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["followupSubject"],
+        message: "An email follow-up needs its own subject line.",
+      });
+    }
+  }
 });
 
 export type CampaignDraft = z.infer<typeof campaignDraftSchema>;
@@ -138,22 +229,34 @@ export function parseCampaignContactsParams(
 
 /* ------------------------------------------------------- merge fields --- */
 
+/**
+ * Only tokens the send worker's `mergeValues` can actually resolve appear
+ * here — an unresolvable token would ship as literal `{{...}}` to a customer.
+ */
 export const MERGE_FIELDS = [
-  { token: "{{first_name}}", label: "First name", sample: "Sarah" },
+  { token: "{{first_name}}", label: "First name", sample: "Jamie" },
+  { token: "{{last_name}}", label: "Last name", sample: "Bell" },
+  { token: "{{full_name}}", label: "Full name", sample: "Jamie Bell" },
+  { token: "{{service_name}}", label: "Service", sample: "roof repair" },
   { token: "{{business_name}}", label: "Your business", sample: "Your business" },
-  { token: "{{service_name}}", label: "Service", sample: "Boiler service" },
+  { token: "{{booking_link}}", label: "Booking link", sample: "https://yourbookinglink.com" },
   { token: "{{business_phone}}", label: "Your phone", sample: "0161 000 0000" },
-  { token: "{{booking_link}}", label: "Booking link", sample: "your booking link" },
 ] as const;
 
 /** Preview uses the same renderer the worker uses, so what you see is sent. */
-export function previewTemplate(template: string, businessName: string) {
+export function previewTemplate(
+  template: string,
+  businessName: string,
+  overrides?: { serviceName?: string },
+) {
   return renderTemplate(template, {
-    first_name: "Sarah",
+    first_name: "Jamie",
+    last_name: "Bell",
+    full_name: "Jamie Bell",
     business_name: businessName,
-    service_name: "Boiler service",
+    service_name: overrides?.serviceName ?? "roof repair",
     business_phone: "0161 000 0000",
-    booking_link: "your booking link",
+    booking_link: "https://yourbookinglink.com",
   });
 }
 
@@ -229,6 +332,19 @@ export type SuppressionGroup = {
   count: number;
 };
 
+/** Every reason, in engine order, including the ones that matched nobody. */
+export function fullSuppressionBreakdown(
+  groups: readonly SuppressionGroup[],
+  cooldownDays: number,
+): SuppressionGroup[] {
+  const byReason = new Map(groups.map((group) => [group.reason, group.count]));
+  return SUPPRESSION_REASONS.map((reason) => ({
+    reason,
+    label: suppressionReasonLabel(reason, cooldownDays),
+    count: byReason.get(reason) ?? 0,
+  }));
+}
+
 export type AudienceSampleRow = {
   id: string;
   name: string;
@@ -238,13 +354,38 @@ export type AudienceSampleRow = {
 };
 
 export type AudiencePreview = {
+  /** Every non-test lead in the workspace, before any filter. */
+  totalLeads: number;
+  /** Leads left after the Step 1 filters, before suppression. */
   matched: number;
   eligible: number;
+  /**
+   * Unique leads excluded by suppression. Per-reason counts in `suppressed`
+   * are mutually exclusive (first matching rule wins) and sum to this.
+   */
+  suppressedTotal: number;
   suppressed: SuppressionGroup[];
+  breakdowns: AudienceBreakdowns;
+  /** The cooldown window the suppression run used, for labelling. */
+  cooldownDays: number;
   sample: AudienceSampleRow[];
   excludedSample: (AudienceSampleRow & { reason: string })[];
   cappedAt: number | null;
   truncated: boolean;
+};
+
+export const EMPTY_AUDIENCE_PREVIEW: AudiencePreview = {
+  totalLeads: 0,
+  matched: 0,
+  eligible: 0,
+  suppressedTotal: 0,
+  suppressed: [],
+  breakdowns: { service: [], source: [], status: [], age: [] },
+  cooldownDays: DEFAULT_COOLDOWN_DAYS,
+  sample: [],
+  excludedSample: [],
+  cappedAt: null,
+  truncated: false,
 };
 
 export type CampaignContactRow = {

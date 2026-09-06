@@ -1,5 +1,6 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
+import { createEmailProvider } from "./email-provider";
 import { createStubProvider } from "./stub";
 import { createTwilioProvider, isTwilioConfigured, twilioConfigProblems } from "./twilio";
 import type { MessagingProvider } from "./types";
@@ -14,6 +15,32 @@ function announce(provider: MessagingProvider, reason: string) {
 }
 
 /**
+ * Routes each send to the transport that owns its channel: email goes out
+ * through the workspace's own SMTP server, everything else through the
+ * configured SMS/WhatsApp carrier. One object so `performSend` stays a single
+ * guarded path rather than branching per channel at every call site.
+ */
+function withEmailRouting(carrier: MessagingProvider): MessagingProvider {
+  const email = createEmailProvider();
+
+  return {
+    get name() {
+      return carrier.name;
+    },
+    send(request) {
+      return request.channel === "email"
+        ? email.send(request)
+        : carrier.send(request);
+    },
+    // Inbound and status callbacks only ever come from the carrier: a customer
+    // mailbox is polled, never posted to.
+    verifyWebhook: (request, rawBody) => carrier.verifyWebhook(request, rawBody),
+    parseInbound: (rawBody) => carrier.parseInbound(rawBody),
+    parseStatus: (rawBody) => carrier.parseStatus(rawBody),
+  };
+}
+
+/**
  * Provider selection is explicit and logged: a workspace must never be left
  * guessing whether a message reached a carrier or a development sink.
  */
@@ -23,13 +50,13 @@ export function getMessagingProvider(): MessagingProvider {
   const forced = serverEnv.messagingProvider?.toLowerCase();
 
   if (forced === "stub") {
-    cached = createStubProvider();
+    cached = withEmailRouting(createStubProvider());
     announce(cached, "forced by MESSAGING_PROVIDER");
     return cached;
   }
 
   if (forced === "twilio" || isTwilioConfigured()) {
-    cached = createTwilioProvider();
+    cached = withEmailRouting(createTwilioProvider());
     announce(
       cached,
       isTwilioConfigured()
@@ -39,7 +66,7 @@ export function getMessagingProvider(): MessagingProvider {
     return cached;
   }
 
-  cached = createStubProvider();
+  cached = withEmailRouting(createStubProvider());
   announce(cached, `Twilio not configured: missing ${twilioConfigProblems().join(", ")}`);
   return cached;
 }

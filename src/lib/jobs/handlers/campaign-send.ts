@@ -71,7 +71,7 @@ export async function handleCampaignSend(job: ClaimedJob) {
 
   const { data: campaign } = await admin
     .from("campaigns")
-    .select("id, business_id, status, channel, message_template, ai_personalize")
+    .select("id, business_id, status, channel, message_template, subject_template, ai_personalize")
     .eq("id", payload.campaignId)
     .maybeSingle();
 
@@ -103,7 +103,15 @@ export async function handleCampaignSend(job: ClaimedJob) {
   const { data: contacts } = await query;
 
   const provider = getMessagingProvider();
-  const channel: Channel = campaign.channel === "whatsapp" ? "whatsapp" : "sms";
+  const channel = campaign.channel as Channel;
+
+  // An email campaign without a subject cannot be sent, and failing here — at
+  // the campaign, once — is clearer than failing per contact.
+  if (channel === "email" && !campaign.subject_template?.trim()) {
+    throw new PermanentJobError(
+      `Campaign ${campaign.id} is an email campaign with no subject line.`,
+    );
+  }
 
   for (const contact of (contacts ?? []) as ContactRow[]) {
     const lead = await loadLead(contact.lead_id);
@@ -144,6 +152,10 @@ export async function handleCampaignSend(job: ClaimedJob) {
       leadId: lead.id,
       channel,
       body,
+      subject:
+        channel === "email"
+          ? renderTemplate(campaign.subject_template ?? "", values).trim()
+          : null,
       origin: "campaign",
       campaignId: campaign.id,
       sendKey: `campaign:${campaign.id}:${contact.id}`,

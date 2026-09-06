@@ -11,7 +11,7 @@ export function AuthCard({
   width?: "sm" | "md" | "lg";
 }) {
   const maxWidth =
-    width === "sm" ? "max-w-[560px]" : width === "lg" ? "max-w-[620px]" : "max-w-[600px]";
+    width === "sm" ? "max-w-[580px]" : width === "lg" ? "max-w-[660px]" : "max-w-[640px]";
 
   return (
     <div className={cn("relative w-full", maxWidth)}>
@@ -63,9 +63,9 @@ export function AuthCardEyebrow({ children }: { children: ReactNode }) {
 
 export function AuthCardTitle({ children }: { children: ReactNode }) {
   return (
-    <h1 className="mt-3 text-[30px] leading-[1.06] font-bold tracking-[-0.025em] text-[var(--auth-text)] text-balance sm:text-[36px] lg:text-[38px]">
+    <h2 className="mt-3 text-[30px] leading-[1.06] font-bold tracking-[-0.025em] text-[var(--auth-text)] text-balance sm:text-[32px] 2xl:text-[38px]">
       {children}
-    </h1>
+    </h2>
   );
 }
 

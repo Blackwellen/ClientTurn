@@ -33,6 +33,7 @@ export default async function FollowUpPage({
   return (
     <div className="space-y-5">
       <PageHeader
+        size="lg"
         title={FOLLOW_UP_PAGE_TITLE}
         description={FOLLOW_UP_VIEW_META[filters.view].description}
         action={<SegmentedViewSwitch value={filters.view} />}

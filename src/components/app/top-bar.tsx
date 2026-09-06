@@ -14,7 +14,7 @@ import {
   NotificationTray,
   type NotificationRow,
 } from "./notification-tray";
-import { ProfileMenu } from "./profile-menu";
+import { ProfilePopover } from "./profile-popover";
 
 const HEALTH_DOT: Record<string, string> = {
   HEALTHY: "bg-success-500",
@@ -29,11 +29,17 @@ export function TopBar({
   integrationStatus,
   notifications,
   user,
+  businessName,
+  planLabel,
+  onOpenAccount,
 }: {
   onOpenNav: () => void;
   integrationStatus: string;
   notifications: NotificationRow[];
   user: { name: string; email: string; avatarUrl?: string | null };
+  businessName: string;
+  planLabel: string;
+  onOpenAccount: () => void;
 }) {
   const pathname = usePathname();
   const [trayOpen, setTrayOpen] = React.useState(false);
@@ -88,7 +94,7 @@ export function TopBar({
         >
           <Search className="size-4 shrink-0" aria-hidden />
           <span className="truncate">Search leads, bookings, campaigns…</span>
-          <kbd className="ml-auto hidden shrink-0 items-center rounded-[5px] border border-line px-1.5 py-0.5 text-[11px] font-medium text-content-subtle lg:inline-flex">
+          <kbd className="ml-auto hidden shrink-0 items-center rounded-[6px] bg-surface-sunken px-1.5 py-1 text-[11px] font-medium text-content-subtle lg:inline-flex">
             ⌘K
           </kbd>
         </button>
@@ -106,10 +112,10 @@ export function TopBar({
 
         <Tooltip content={`Integrations: ${health.label}`}>
           <Link
-            href="/app/settings/connections"
+            href="/app/settings?section=connections"
             className={cn(
               "hidden sm:inline-flex items-center gap-2 rounded-full border border-line",
-              "h-9 px-3 text-[12px] font-medium text-content-secondary",
+              "h-9 px-3 text-[12px] font-semibold text-content",
               "hover:bg-surface-hover transition-colors duration-[var(--lr-duration-fast)]",
             )}
           >
@@ -137,17 +143,18 @@ export function TopBar({
           {unread > 0 && (
             <span
               aria-hidden
-              className="lr-tabular pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-semibold text-white"
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
+              className="pointer-events-none absolute right-0.5 top-0.5 size-2 rounded-full bg-success-500 ring-2 ring-[var(--lr-surface)]"
+            />
           )}
         </div>
 
-        <ProfileMenu
+        <ProfilePopover
           name={user.name}
           email={user.email}
           avatarUrl={user.avatarUrl}
+          businessName={businessName}
+          planLabel={planLabel}
+          onOpenAccount={onOpenAccount}
         />
       </div>
 

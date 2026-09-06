@@ -65,8 +65,27 @@ export type SourceSnapshotRow = {
 
 export type AttentionTone = "danger" | "warning" | "info";
 
+/**
+ * What kind of problem this is, which drives the row's icon. Severity picks
+ * the colour; the kind picks the glyph, so a failed message and a stalled
+ * lead never look like the same issue.
+ */
+export type AttentionKind =
+  | "human_request"
+  | "message_failed"
+  | "form_mapping"
+  | "out_of_area"
+  | "review"
+  | "no_response"
+  | "meta"
+  | "messaging"
+  | "booking"
+  | "followup"
+  | "other";
+
 export type AttentionItem = {
   id: string;
+  kind: AttentionKind;
   title: string;
   detail: string;
   /** When the event happened. Null for a standing configuration problem. */
@@ -74,6 +93,26 @@ export type AttentionItem = {
   href: string;
   tone: AttentionTone;
 };
+
+/** Maps a lead's `attention_reason` onto the icon vocabulary. */
+export function attentionKindForReason(reason: string | null): AttentionKind {
+  switch (reason) {
+    case "human_requested":
+      return "human_request";
+    case "message_failed":
+      return "message_failed";
+    case "form_mapping":
+      return "form_mapping";
+    case "out_of_area":
+      return "out_of_area";
+    case "unmatched_answer":
+      return "review";
+    case "no_response":
+      return "no_response";
+    default:
+      return "other";
+  }
+}
 
 /** Known `attention_reason` codes written by the pipeline. */
 const ATTENTION_LABELS: Record<string, string> = {
@@ -148,6 +187,7 @@ export function systemAttentionItems(
     if (entry.status === "healthy") continue;
     items.push({
       id: `system-${entry.key}`,
+      kind: entry.key,
       title: SYSTEM_ATTENTION_TITLES[entry.key],
       detail: entry.statusLabel,
       at: null,
@@ -159,6 +199,7 @@ export function systemAttentionItems(
   if (failedMessages > 0) {
     items.push({
       id: "system-message-failures",
+      kind: "message_failed",
       title: "Messages failed to send",
       detail: `${failedMessages.toLocaleString("en-GB")} ${
         failedMessages === 1 ? "message" : "messages"
@@ -200,6 +241,12 @@ export type DashboardData = {
   series: DashboardSeries;
   estimatedPipeline: number;
   qualifyingLeads: number;
+  /**
+   * Estimated value added to the pipeline per bucket — the average job value
+   * of the leads that qualified in each slice of the window. Companion to
+   * `estimatedPipeline`, which is the open total as it stands now.
+   */
+  pipelineSeries: number[];
   recentLeads: LeadListRow[];
   sources: SourceSnapshotRow[];
   followUp: FollowUpMetric[];

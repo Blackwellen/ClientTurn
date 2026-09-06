@@ -18,6 +18,7 @@ import {
   type Question,
 } from "./engine.ts";
 import { usesOptions, type DraftQuestion } from "./draft.ts";
+import { answerValues, readRouting } from "./routing.ts";
 import type { ResponseType, ServiceAreaSettings, ServiceRef } from "./types.ts";
 
 /**
@@ -168,3 +169,42 @@ export const PREVIEW_RESULT_COPY: Record<
       "A required question has not been answered yet, so this enquiry would wait rather than being routed.",
   },
 };
+
+/**
+ * A representative "good fit" enquiry to open the preview on.
+ *
+ * An empty preview answers the least interesting question — it always reads
+ * PENDING. Seeding the happy path means the panel immediately shows what a
+ * qualifying enquiry looks like, and every answer stays editable, so changing
+ * one re-evaluates through the same engine.
+ *
+ * Only values the configuration itself implies are used: a routed-to-continue
+ * option, or a postcode inside the configured service area. Nothing is
+ * invented, so a question with no safe default is simply left blank.
+ */
+export function seedPreviewAnswers(
+  questions: DraftQuestion[],
+  serviceArea: ServiceAreaSettings,
+): Record<string, string> {
+  const answers: Record<string, string> = {};
+
+  for (const question of questions) {
+    if (!question.active || question.questionText.trim() === "") continue;
+
+    if (question.responseType === "postcode") {
+      const prefix = serviceArea.allowedPrefixes[0];
+      if (prefix) answers[question.key] = `${prefix.toUpperCase()} 6AA`;
+      continue;
+    }
+
+    const values = answerValues(question);
+    if (values.length === 0) continue;
+
+    const routing = readRouting(question);
+    const passing =
+      values.find((entry) => routing[entry.value] === "continue") ?? values[0];
+    answers[question.key] = passing.value;
+  }
+
+  return answers;
+}

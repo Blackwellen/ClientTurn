@@ -4,7 +4,7 @@
  * client (or a React Server Component marker) into scope.
  */
 
-export type Channel = "sms" | "whatsapp";
+export type Channel = "sms" | "whatsapp" | "email";
 
 export type SendRequest = {
   businessId: string;
@@ -13,6 +13,10 @@ export type SendRequest = {
   /** Idempotency key so a retried send cannot duplicate a message. */
   sendKey: string;
   channel: Channel;
+  /** Email only. SMS and WhatsApp have no subject line. */
+  subject?: string | null;
+  /** Email only. Marketing mail must carry a working unsubscribe. */
+  unsubscribeUrl?: string | null;
 };
 
 export type SendResult =

@@ -135,12 +135,17 @@ export function Switch({
   onCheckedChange,
   disabled,
   label,
+  tone = "accent",
+  size = "md",
   className,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
   label: string;
+  /** "success" reads as "this is on and healthy" rather than a brand accent. */
+  tone?: "accent" | "success";
+  size?: "md" | "lg";
   className?: string;
 }) {
   return (
@@ -152,19 +157,29 @@ export function Switch({
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full",
+        "relative inline-flex shrink-0 items-center rounded-full",
         "transition-colors duration-[var(--lr-duration-fast)]",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
         "disabled:cursor-not-allowed disabled:opacity-60",
-        checked ? "bg-accent-600" : "bg-line-strong",
+        size === "lg" ? "h-[22px] w-10" : "h-5 w-9",
+        checked
+          ? tone === "success"
+            ? "bg-success-500"
+            : "bg-accent-600"
+          : "bg-line-strong",
         className,
       )}
     >
       <span
         className={cn(
-          "inline-block size-4 rounded-full bg-white shadow-sm",
+          "inline-block rounded-full bg-white shadow-sm",
           "transition-transform duration-[var(--lr-duration-fast)]",
-          checked ? "translate-x-4.5" : "translate-x-0.5",
+          size === "lg" ? "size-[18px]" : "size-4",
+          checked
+            ? size === "lg"
+              ? "translate-x-[20px]"
+              : "translate-x-4.5"
+            : "translate-x-0.5",
         )}
       />
     </button>

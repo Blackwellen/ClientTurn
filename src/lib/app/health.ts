@@ -89,7 +89,7 @@ export const getWorkspaceHealth = cache(
           integration.last_error_message ??
           "Leads and messages that depend on this connection are not flowing.",
         actionLabel: "Open integrations",
-        actionHref: "/app/settings/connections",
+        actionHref: "/app/settings?section=connections",
       });
     }
 
@@ -101,7 +101,7 @@ export const getWorkspaceHealth = cache(
         title: "Lead limit reached",
         description: `You have used all ${entitlements.leadLimit} leads in this billing period. New leads are not being processed.`,
         actionLabel: "Review plan",
-        actionHref: "/app/settings/billing",
+        actionHref: "/app/settings?section=billing",
       });
     }
 
@@ -113,7 +113,7 @@ export const getWorkspaceHealth = cache(
         description:
           "Follow-up, qualification and booking are paused until billing is resolved.",
         actionLabel: "Review billing",
-        actionHref: "/app/settings/billing",
+        actionHref: "/app/settings?section=billing",
       });
     }
 

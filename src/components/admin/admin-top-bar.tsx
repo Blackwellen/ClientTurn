@@ -1,21 +1,30 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { Building2, Menu, Search } from "lucide-react";
+import * as React from "react";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
+import { Bell, Building2, ChevronDown, Menu } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
+import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown";
 import { Tooltip } from "@/components/ui/tooltip";
 import { titleForAdminPath } from "@/lib/admin/nav";
 import { AdminProfileMenu } from "./admin-profile-menu";
+import { AdminSearch } from "./admin-search";
 
 export function AdminTopBar({
   onOpenNav,
   operator,
+  recentCustomers,
+  alertCount,
 }: {
   onOpenNav: () => void;
   operator: { name: string; email: string };
+  recentCustomers: { id: string; name: string }[];
+  alertCount: number;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <header
@@ -35,45 +44,86 @@ export function AdminTopBar({
         {titleForAdminPath(pathname)}
       </h1>
 
-      <div className="hidden min-w-0 flex-1 lg:flex lg:max-w-[690px]">
-        <Tooltip content="Platform-wide search is not wired up yet">
-          <div
-            aria-disabled="true"
-            className={cn(
-              "flex h-11 w-full cursor-not-allowed items-center gap-2.5 rounded-[11px] border border-line-strong bg-surface px-3.5",
-              "text-[14px] text-content-subtle opacity-70 shadow-xs",
-            )}
-          >
-            <Search className="size-4 shrink-0" aria-hidden />
-            <span className="truncate">Search customers, leads, jobs, settings…</span>
-          </div>
-        </Tooltip>
+      <div className="hidden min-w-0 flex-1 lg:flex">
+        <AdminSearch />
       </div>
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5">
-        <Tooltip content="Scoping admin views to a single customer is not wired up yet">
-          <button
-            type="button"
-            disabled
+        {/* Scope selector. Choosing a customer opens their support drawer —
+            it is navigation, not a hidden global filter. */}
+        <DropdownMenu
+          trigger={
+            <button
+              type="button"
+              aria-label="Customer scope"
+              className={cn(
+                "hidden h-9 items-center gap-2 rounded-full border border-line px-3 sm:inline-flex",
+                "text-[12px] font-medium text-content-secondary",
+                "transition-colors hover:bg-surface-hover hover:text-content",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
+              )}
+            >
+              <Building2 className="size-3.5" aria-hidden />
+              All customers
+              <ChevronDown className="size-3.5" aria-hidden />
+            </button>
+          }
+        >
+          <DropdownItem onSelect={() => router.push("/admin/customers")}>
+            All customers
+          </DropdownItem>
+          {recentCustomers.length > 0 && (
+            <>
+              <DropdownSeparator />
+              <DropdownLabel>Recent</DropdownLabel>
+              {recentCustomers.map((customer) => (
+                <DropdownItem
+                  key={customer.id}
+                  onSelect={() =>
+                    router.push(`/admin/customers?customer=${customer.id}`)
+                  }
+                >
+                  {customer.name}
+                </DropdownItem>
+              ))}
+            </>
+          )}
+        </DropdownMenu>
+
+        {/* One environment exists, so this reports rather than switches. */}
+        <Tooltip content="This deployment serves the live platform. There is no second environment to switch to.">
+          <span
             className={cn(
-              "hidden sm:inline-flex items-center gap-2 rounded-full border border-line",
-              "h-9 cursor-not-allowed px-3 text-[12px] font-medium text-content-secondary opacity-70",
+              "hidden h-9 items-center gap-2 rounded-full border border-line px-3 sm:inline-flex",
+              "text-[12px] font-medium text-content-secondary",
             )}
           >
-            <Building2 className="size-3.5" aria-hidden />
-            All customers
-          </button>
+            <span aria-hidden className="size-1.5 rounded-full bg-success-500" />
+            Live Platform
+          </span>
         </Tooltip>
 
-        <span
+        <Link
+          href="/admin"
+          aria-label={
+            alertCount > 0
+              ? `${alertCount} items need attention`
+              : "Nothing needs attention"
+          }
           className={cn(
-            "hidden sm:inline-flex items-center gap-2 rounded-full border border-line",
-            "h-9 px-3 text-[12px] font-medium text-content-secondary",
+            "relative inline-flex size-9 items-center justify-center rounded-full",
+            "text-content-muted transition-colors hover:bg-surface-hover hover:text-content",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
           )}
         >
-          <span aria-hidden className="size-1.5 rounded-full bg-success-500" />
-          Live Platform
-        </span>
+          <Bell className="size-4" aria-hidden />
+          {alertCount > 0 && (
+            <span
+              aria-hidden
+              className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger-500 ring-2 ring-surface"
+            />
+          )}
+        </Link>
 
         <AdminProfileMenu name={operator.name} email={operator.email} />
       </div>

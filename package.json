@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"tests/qualification.test.ts\" \"tests/qualification-editor.test.ts\" \"tests/follow-up.test.ts\" \"tests/scheduler.test.ts\" \"tests/send-guard.test.ts\" \"tests/messaging.test.ts\" \"tests/onboarding.test.ts\"",
-    "typecheck": "tsc --noEmit",
-    "test:rls": "node --env-file=.env.local --test \"tests/rls.test.ts\""
+    "test": "node --test \"tests/qualification.test.ts\" \"tests/qualification-editor.test.ts\" \"tests/follow-up.test.ts\" \"tests/scheduler.test.ts\" \"tests/send-guard.test.ts\" \"tests/messaging.test.ts\" \"tests/onboarding.test.ts\" \"tests/admin.test.ts\" \"tests/reactivation-wizard.test.ts\" \"tests/settings.test.ts\" \"tests/reactivation.test.ts\" \"tests/email.test.ts\" \"tests/add-lead-wizard.test.ts\" \"tests/rich-text.test.ts\" \"tests/policy.test.ts\" \"tests/prospect-scoring.test.ts\"",
+    "typecheck": "node --max-old-space-size=6144 ./node_modules/typescript/bin/tsc --noEmit",
+    "test:rls": "node --env-file=.env.local --test \"tests/rls.test.ts\"",
+    "test:rls:v4": "node --env-file=.env.local --test \"tests/rls-v4.test.ts\"",
+    "test:rls:all": "node --env-file=.env.local --test \"tests/rls.test.ts\" \"tests/rls-v4.test.ts\"",
+    "audit:db": "node scripts/audit-db-refs.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
@@ -21,9 +24,12 @@
     "@supabase/supabase-js": "^2.115.0",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
+    "imapflow": "^1.7.8",
     "lucide-react": "^1.41.0",
+    "mailparser": "^3.9.20",
     "motion": "^13.2.0",
     "next": "16.3.4",
+    "nodemailer": "^10.0.0",
     "postprocessing": "^6.39.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -35,7 +41,9 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.185.4",

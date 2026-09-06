@@ -4,7 +4,18 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Database, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  CircleUserRound,
+  Database,
+  HelpCircle,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Modal } from "@/components/ui/modal";
+import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
+import { adminSignOut } from "@/lib/admin/actions";
 import { cn } from "@/lib/cn";
 import { ADMIN_NAV, isActiveAdminRoute, type NavItem } from "@/lib/admin/nav";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -31,7 +42,7 @@ function NavLink({
       className={cn(
         "group flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
         "transition-colors duration-150",
-        collapsed ? "mx-auto size-12 justify-center" : "h-[46px] px-3.5",
+        collapsed ? "mx-auto size-12 justify-center" : "h-[48px] px-3.5",
         active
           ? "bg-[var(--ct-shell-active-bg)] text-[var(--ct-lime)]"
           : "text-[var(--ct-shell-text)] hover:bg-[var(--ct-shell-hover)] hover:text-white",
@@ -70,31 +81,27 @@ function NavLink({
   );
 }
 
+/** Collapsed hides this entirely, same as the customer app's workspace
+ *  block — the reference shell doesn't shrink it to an icon. */
 function EnvironmentCard({ collapsed }: { collapsed: boolean }) {
-  if (collapsed) {
-    return (
-      <div className="flex justify-center pb-3">
-        <div className="relative flex size-10 items-center justify-center rounded-[10px] border border-[var(--ct-shell-card-border)] bg-[var(--ct-shell-card-bg)]">
-          <Database className="size-4.5 text-[var(--ct-lime)]" aria-hidden />
-          <span
-            aria-hidden
-            className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-[var(--ct-shell-sidebar-via)] bg-success-500"
-          />
-        </div>
-      </div>
-    );
-  }
+  if (collapsed) return null;
 
   return (
-    <div className="mx-3 mb-3 rounded-xl border border-[var(--ct-shell-card-border)] bg-[var(--ct-shell-card-bg)] px-3.5 py-3">
+    <div className="mx-3 mt-3 mb-3 rounded-xl border border-[var(--ct-shell-card-border)] bg-[var(--ct-shell-card-bg)] px-3.5 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-[9px] border border-[var(--ct-shell-card-border)] bg-[var(--ct-lime)]/10">
-          <Database className="size-4 text-[var(--ct-lime)]" aria-hidden />
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-[11px] bg-[var(--ct-shell-icon-bg)]">
+          <Database className="size-4.5 text-white" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[13px] font-semibold text-white">Live Platform</p>
-            <span className="inline-flex shrink-0 items-center rounded-full bg-success-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-500">
+          <div className="flex items-center gap-2">
+            {/* Neither the environment name nor its health may ellipsise —
+                together they are the answer to "which platform am I on, and
+                is it up". Sentence case keeps the pill narrow enough that
+                both fit the rail at its default width. */}
+            <p className="shrink-0 text-[13px] font-semibold text-white">
+              Live Platform
+            </p>
+            <span className="inline-flex shrink-0 items-center rounded-full bg-success-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-success-500">
               Healthy
             </span>
           </div>
@@ -107,15 +114,105 @@ function EnvironmentCard({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+/**
+ * The footer rail. Every item here does something real: Help opens the
+ * operator briefing, Profile is the account menu, Collapse narrows the rail.
+ */
+function FooterButton({
+  icon: Icon,
+  label,
+  collapsed,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        "flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
+        "text-[var(--ct-shell-text)] transition-colors duration-150",
+        "hover:bg-[var(--ct-shell-hover)] hover:text-white",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
+        collapsed ? "mx-auto size-12 justify-center" : "h-[46px] w-full px-3.5",
+      )}
+    >
+      <Icon className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </button>
+  );
+
+  return collapsed ? (
+    <Tooltip content={label} placement="right">
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
+}
+
+function OperatorHelpModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Platform Admin briefing"
+      description="What this area does, and the boundaries it operates within."
+      size="md"
+    >
+      <div className="space-y-3 text-[13px] text-content-secondary">
+        <p>
+          <strong className="text-content">Overview</strong> is the operational
+          and commercial snapshot. <strong className="text-content">Customers</strong>{" "}
+          lists every workspace with usage and connection health, and opens the
+          support drawer. <strong className="text-content">System</strong> holds
+          Health, Events and Errors.
+        </p>
+        <p>
+          Mutating actions &mdash; resending onboarding, running a health check,
+          suspending a workspace, retrying an event, resolving an error &mdash;
+          require a password step-up that lasts 30 minutes, and every one is
+          written to the audit log against your operator account.
+        </p>
+        <p>
+          Signing in as a customer is not available. Access tokens, API keys and
+          webhook signing secrets are never read by any admin screen, and
+          credential-shaped fields are redacted from event payloads before they
+          leave the server.
+        </p>
+        <p>
+          Stripe remains the source of truth for billing; the MRR figure on
+          Overview is a local mirror.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 export function AdminSidebarContent({
   collapsed,
   onToggleCollapse,
   onNavigate,
+  operator,
 }: {
   collapsed: boolean;
   onToggleCollapse?: () => void;
   onNavigate?: () => void;
+  operator?: { name: string; email: string };
 }) {
+  const router = useRouter();
+  const [helpOpen, setHelpOpen] = React.useState(false);
   return (
     <div
       className="flex h-full flex-col"
@@ -125,14 +222,14 @@ export function AdminSidebarContent({
       }}
     >
       <div
-        className={cn("flex shrink-0 items-center", collapsed ? "justify-center px-2" : "px-5")}
-        style={{ height: 76 }}
+        className="flex shrink-0 items-center justify-center px-2"
+        style={{ height: 128, borderBottom: "1px solid var(--ct-shell-divider)" }}
       >
         {collapsed ? (
           <Link
             href="/admin"
             aria-label="ClientTurn Platform Admin home"
-            className="flex size-12 items-center justify-center rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+            className="flex size-14 items-center justify-center rounded-[12px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
           >
             {/* Favicon.png already bakes in its own rounded-square corners and
                 transparent margin — clipping it again with a CSS radius fights
@@ -140,15 +237,15 @@ export function AdminSidebarContent({
             <Image
               src="/Favicon.png"
               alt=""
-              width={44}
-              height={44}
-              className="size-11 shrink-0"
+              width={48}
+              height={48}
+              className="size-12 shrink-0"
               priority
             />
           </Link>
         ) : (
-          <Link href="/admin" className="flex flex-col gap-0.5">
-            <Logo href={null} height={30} />
+          <Link href="/admin" className="flex flex-col items-center gap-1">
+            <Logo href={null} height={68} />
             <span className="text-[11px] font-medium tracking-wide text-[var(--ct-shell-text-muted)]">
               Platform Admin
             </span>
@@ -158,8 +255,11 @@ export function AdminSidebarContent({
 
       <EnvironmentCard collapsed={collapsed} />
 
-      <nav aria-label="Admin" className="flex-1 overflow-y-auto px-2.5">
-        <ul className="space-y-1">
+      <nav
+        aria-label="Admin"
+        className={cn("flex-1 overflow-y-auto px-2.5", collapsed && "pt-3")}
+      >
+        <ul className="space-y-1.5">
           {ADMIN_NAV.map((item) => (
             <li key={item.href}>
               <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -167,6 +267,64 @@ export function AdminSidebarContent({
           ))}
         </ul>
       </nav>
+
+      <div
+        className="shrink-0 space-y-1 px-2.5 py-3"
+        style={{ borderTop: "1px solid var(--ct-shell-divider)" }}
+      >
+        <FooterButton
+          icon={HelpCircle}
+          label="Help"
+          collapsed={collapsed}
+          onClick={() => setHelpOpen(true)}
+        />
+        {operator ? (
+          <DropdownMenu
+            align="start"
+            trigger={
+              <button
+                type="button"
+                aria-label="Profile"
+                className={cn(
+                  "flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
+                  "text-[var(--ct-shell-text)] transition-colors duration-150",
+                  "hover:bg-[var(--ct-shell-hover)] hover:text-white",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
+                  collapsed ? "mx-auto size-12 justify-center" : "h-[46px] w-full px-3.5",
+                )}
+              >
+                <CircleUserRound className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
+                {!collapsed && <span className="truncate">Profile</span>}
+              </button>
+            }
+          >
+            <div className="px-3 pt-1.5 pb-2">
+              <p className="truncate text-[13px] font-semibold text-content">
+                {operator.name}
+              </p>
+              <p className="truncate text-[12px] text-content-muted">
+                {operator.email}
+              </p>
+            </div>
+            <DropdownSeparator />
+            <DropdownItem
+              icon={LogOut}
+              destructive
+              onSelect={async () => {
+                const result = await adminSignOut();
+                router.push(
+                  result.ok && result.redirectTo
+                    ? result.redirectTo
+                    : "/admin/login",
+                );
+                router.refresh();
+              }}
+            >
+              Sign out
+            </DropdownItem>
+          </DropdownMenu>
+        ) : null}
+      </div>
 
       {onToggleCollapse && (
         <div
@@ -192,7 +350,7 @@ export function AdminSidebarContent({
                 onClick={onToggleCollapse}
                 aria-label="Collapse sidebar"
                 aria-expanded={!collapsed}
-                className="flex h-[46px] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+                className="flex h-[48px] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
               >
                 <PanelLeftClose className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
                 <span>Collapse</span>
@@ -201,6 +359,7 @@ export function AdminSidebarContent({
           </div>
         </div>
       )}
+      <OperatorHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

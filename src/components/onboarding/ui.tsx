@@ -277,10 +277,10 @@ export function ORadioCard({
         aria-hidden
         className={cn(
           "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2",
-          selected ? "border-[var(--auth-lime)]" : "border-[#6b7688]",
+          selected ? "border-[var(--auth-lime)] bg-[var(--auth-lime)]" : "border-[#6b7688]",
         )}
       >
-        {selected && <span className="size-2 rounded-full bg-[var(--auth-lime)]" />}
+        {selected && <span className="size-1.5 rounded-full bg-[#071009]" />}
       </span>
       <span className="min-w-0 flex-1">{children}</span>
     </button>

@@ -5,7 +5,7 @@
  * with the server queries and actions.
  */
 
-import type { CampaignStatus } from "./types";
+import type { CampaignStatus } from "./types.ts";
 
 /* ------------------------------------------------------------- rows --- */
 
@@ -284,6 +284,13 @@ export function qualificationRate(replies: number, qualified: number) {
   return replies === 0 ? 0 : (qualified / replies) * 100;
 }
 
-export function bookingRate(sent: number, booked: number) {
-  return sent === 0 ? 0 : (booked / sent) * 100;
+/**
+ * Bookings as a share of replies, not of messages sent.
+ *
+ * Reactivation is a conversation funnel — sent → replied → qualified →
+ * booked — and each rate is measured against the step before it, so the three
+ * rates in the drawer read as one chain rather than two different baselines.
+ */
+export function bookingRate(replies: number, booked: number) {
+  return replies === 0 ? 0 : (booked / replies) * 100;
 }

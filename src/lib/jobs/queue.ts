@@ -2,9 +2,11 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type JobType =
+  | "app.ingest"
   | "lead.process"
   | "message.send"
   | "message.process_inbound"
+  | "email.poll"
   | "automation.advance"
   | "booking.sync"
   | "campaign.expand"
@@ -18,7 +20,11 @@ export type JobType =
   | "cost.rollup_monthly"
   | "lead_source.poll"
   | "crm.push"
-  | "notification.slack";
+  | "notification.slack"
+  | "agent.run"
+  | "sourcing.run"
+  | "business.analyse"
+  | "recurring_search.tick";
 
 export type EnqueueOptions = {
   businessId?: string | null;

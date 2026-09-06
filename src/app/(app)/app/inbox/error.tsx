@@ -1,0 +1,2 @@
+"use client";
+export default function InboxError({reset}:{reset:()=>void}){return <div role="alert" className="rounded-xl border border-line bg-surface p-8"><h2 className="font-semibold">Inbox could not be loaded</h2><p className="my-3 text-sm text-content-muted">Check your workspace access and try again.</p><button onClick={reset} className="rounded-lg bg-primary px-4 py-2 text-on-primary">Try again</button></div>;}

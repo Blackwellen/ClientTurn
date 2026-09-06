@@ -108,13 +108,13 @@ export function QuestionRow({
   return (
     <li
       className={cn(
-        "border-line bg-surface rounded-lg border",
-        "focus-within:border-accent-500 transition-colors duration-[var(--lr-duration-fast)]",
+        "border-line bg-surface rounded-lg border p-3",
+        "transition-colors duration-[var(--lr-duration-fast)]",
         invalid && "border-danger-500/60",
         !question.active && "opacity-70",
       )}
     >
-      <div className="flex items-start gap-2.5 p-3">
+      <div className="flex items-start gap-2.5">
         <span
           aria-hidden
           className="text-content-subtle hidden shrink-0 pt-2 sm:block"
@@ -128,7 +128,7 @@ export function QuestionRow({
           {index + 1}
         </span>
 
-        <div className="grid min-w-0 flex-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_9rem_5.5rem_10rem]">
+        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_4.5rem_8rem]">
           <div className="min-w-0">
             <label
               htmlFor={`${rowId}-text`}
@@ -179,6 +179,8 @@ export function QuestionRow({
               <Switch
                 checked={question.required}
                 disabled={!canEdit}
+                tone="success"
+                size="lg"
                 onCheckedChange={(next) => onPatch({ required: next })}
                 label={`Question ${index + 1} is required`}
               />
@@ -266,9 +268,8 @@ export function QuestionRow({
           disabled={!canEdit}
           onClick={onConfigureRouting}
           className={cn(
-            "bg-surface-sunken/70 border-line-subtle flex w-full items-center gap-2.5 border-t px-3 py-2.5 text-left",
+            "bg-surface-sunken/70 border-line-subtle mt-3 flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left",
             "transition-colors duration-[var(--lr-duration-fast)]",
-            "rounded-b-lg",
             canEdit && "hover:bg-surface-sunken cursor-pointer",
             "focus-visible:outline-content-accent focus-visible:outline-2 focus-visible:-outline-offset-2",
             "disabled:cursor-default",
@@ -281,20 +282,25 @@ export function QuestionRow({
             <Icon className="size-3.5" />
           </span>
           <span className="min-w-0">
-            <span className="text-content-subtle block text-[11px] font-medium">
+            <span className="text-content-subtle block text-[11px]">
               {RULE_LABEL[summary.kind]}
             </span>
-            <span className="text-content mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               {summary.parts.map((part, i) => (
-                <span key={`${part}-${i}`} className="whitespace-nowrap">
+                <React.Fragment key={`${part}-${i}`}>
+                  {i > 0 && summary.kind === "routing" && (
+                    <span aria-hidden className="bg-line h-3.5 w-px shrink-0" />
+                  )}
                   {summary.kind === "options" ? (
-                    <span className="bg-surface border-line rounded-md border px-2 py-0.5">
+                    <span className="bg-surface border-line text-content rounded-md border px-2 py-0.5 text-[12px] whitespace-nowrap">
                       {part}
                     </span>
                   ) : (
-                    part
+                    <span className="text-content text-[12px] whitespace-nowrap">
+                      {part}
+                    </span>
                   )}
-                </span>
+                </React.Fragment>
               ))}
             </span>
           </span>

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 /** Mirrors the dashboard's real geometry so nothing shifts when data lands. */
 export default function DashboardLoading() {
   return (
-    <div className="space-y-4" aria-busy>
+    <div className="space-y-3.5" aria-busy>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Skeleton className="h-3 w-28" />
@@ -28,13 +28,13 @@ export default function DashboardLoading() {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
         {Array.from({ length: 7 }, (_, i) => (
           <KpiCard key={i} compact label="" value="" loading />
         ))}
       </div>
 
-      <div className="dashboard-middle-grid grid gap-4">
+      <div className="dashboard-middle-grid grid gap-3.5">
         <Card>
           <CardHeader>
             <Skeleton className="h-4 w-32" />
@@ -70,7 +70,7 @@ export default function DashboardLoading() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3.5 lg:grid-cols-2">
         {Array.from({ length: 2 }, (_, i) => (
           <Card key={i}>
             <CardHeader>
@@ -83,7 +83,7 @@ export default function DashboardLoading() {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-3.5 xl:grid-cols-3">
         {Array.from({ length: 3 }, (_, i) => (
           <Card key={i}>
             <CardHeader>

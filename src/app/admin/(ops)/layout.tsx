@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { requirePlatformAdmin } from "@/lib/admin/guard";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { getAdminTopBarData } from "@/lib/admin/overview";
 import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const operator = await requirePlatformAdmin();
+  const topBar = await getAdminTopBarData();
 
   const cookieStore = await cookies();
   const initialCollapsed =
@@ -28,6 +30,8 @@ export default async function AdminLayout({
       <AdminShell
         initialCollapsed={initialCollapsed}
         operator={{ name: operator.name, email: operator.email, role: "platform_admin" }}
+        recentCustomers={topBar.recentCustomers}
+        alertCount={topBar.alertCount}
       >
         {children}
       </AdminShell>

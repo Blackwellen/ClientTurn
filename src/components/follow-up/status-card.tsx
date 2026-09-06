@@ -1,10 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { CircleCheck, CircleDashed, PauseCircle } from "lucide-react";
+import {
+  CircleCheck,
+  CircleDashed,
+  MoreVertical,
+  PauseCircle,
+  Play,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/button";
+import { DropdownItem, DropdownMenu } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { setAutomationEnabled } from "@/lib/automations/actions";
@@ -68,8 +75,8 @@ export function FollowUpStatusCard({
 
   return (
     <>
-      <Card className="px-5 py-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+      <Card className="px-5 py-3.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span
             aria-hidden
             className={cn(
@@ -86,18 +93,18 @@ export function FollowUpStatusCard({
 
           <div className="min-w-[14rem] flex-1">
             <h2 className="text-content text-[15px] font-semibold">{meta.title}</h2>
-            <p className="text-content-muted mt-0.5 text-[13px]">
+            <p className="text-content-muted mt-0.5 text-[12.5px]">
               {meta.description}
             </p>
           </div>
 
-          <Badge tone={meta.tone} className="px-2.5 py-1 text-[12px]">
+          <Badge tone={meta.tone} className="rounded-md px-2.5 py-1 text-[12px] font-semibold">
             {meta.badge}
           </Badge>
 
           <div className="border-line-subtle shrink-0 sm:border-l sm:pl-4">
-            <p className="text-content-subtle text-[12px]">Last updated</p>
-            <p className="text-content lr-tabular mt-0.5 text-[13px] font-medium">
+            <p className="text-content-subtle text-[11.5px] leading-tight">Last updated</p>
+            <p className="text-content lr-tabular mt-0.5 text-[12.5px] leading-tight font-medium">
               {updated
                 ? new Intl.DateTimeFormat("en-GB", {
                     day: "numeric",
@@ -109,7 +116,7 @@ export function FollowUpStatusCard({
                 : "Not published yet"}
             </p>
             {status.updatedByInitials && (
-              <p className="text-content-subtle mt-0.5 text-[12px]">
+              <p className="text-content-subtle mt-0.5 text-[11.5px] leading-tight">
                 by{" "}
                 <span title={status.updatedByName ?? undefined}>
                   {status.updatedByInitials}
@@ -119,14 +126,22 @@ export function FollowUpStatusCard({
           </div>
 
           {canEdit && automation && status.state !== "draft" && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="shrink-0"
-              onClick={() => setConfirming(true)}
-            >
-              {automation.enabled ? "Pause follow-up" : "Resume follow-up"}
-            </Button>
+            <div className="shrink-0">
+              <DropdownMenu
+                trigger={
+                  <IconButton variant="ghost" size="sm" label="Follow-up options">
+                    <MoreVertical className="size-4" />
+                  </IconButton>
+                }
+              >
+                <DropdownItem
+                  icon={automation.enabled ? PauseCircle : Play}
+                  onSelect={() => setConfirming(true)}
+                >
+                  {automation.enabled ? "Pause follow-up" : "Resume follow-up"}
+                </DropdownItem>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </Card>

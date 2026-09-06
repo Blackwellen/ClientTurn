@@ -212,7 +212,7 @@ export function IntegrationCard({
               description={block.reason}
               action={
                 <Link
-                  href="/app/settings/billing"
+                  href="/app/settings?section=billing"
                   className="text-content-accent focus-visible:outline-content-accent inline-block rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
                 >
                   Compare plans

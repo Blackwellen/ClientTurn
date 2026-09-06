@@ -83,7 +83,7 @@ export async function createTestLead(
       last_name: rest.length > 0 ? rest.join(" ") : "Lead",
       phone,
       phone_normalized: phone,
-      email: "test-lead@clientturn.co.uk",
+      email: "test-lead@clientturn.com",
       postcode: "BH14 9XY",
       service_id: service?.id ?? null,
       status: "NEW",

@@ -11,6 +11,19 @@ import {
   TextField,
 } from "../_components/auth-form-parts";
 
+function BackToSignIn() {
+  return (
+    <p className="text-center text-[13.5px]">
+      <Link
+        href="/login"
+        className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
+      >
+        Back to sign in
+      </Link>
+    </p>
+  );
+}
+
 export function ForgotPasswordForm() {
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
     requestPasswordReset,
@@ -22,18 +35,18 @@ export function ForgotPasswordForm() {
   const formError =
     state && !state.ok && !state.field ? state.error : undefined;
 
+  // The response is deliberately identical whether or not the address is
+  // registered, so this never confirms that an account exists.
   if (state?.ok) {
     return (
       <div>
         <AuthSuccessState
           title="Check your inbox"
-          description="If an account exists for that email address, we'll send password reset instructions. The link will expire in 60 minutes."
+          description="If an account exists for that email address, we've sent password reset instructions. The link can only be used once, and expires after a short time."
         />
-        <p className="mt-6 text-center text-[13.5px]">
-          <Link href="/login" className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline">
-            Back to sign in
-          </Link>
-        </p>
+        <div className="mt-7">
+          <BackToSignIn />
+        </div>
       </div>
     );
   }
@@ -57,11 +70,15 @@ export function ForgotPasswordForm() {
 
       <SubmitButton pendingLabel="Sending link…">Send reset link</SubmitButton>
 
-      <p className="text-center text-[13.5px]">
-        <Link href="/login" className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline">
-          Back to sign in
-        </Link>
-      </p>
+      <div className="border-t border-white/8 pt-6">
+        <AuthSuccessState
+          title="Check your inbox"
+          description="We'll send a secure reset link to your work email. It can only be used once, and expires after a short time."
+          tone="info"
+        />
+      </div>
+
+      <BackToSignIn />
     </form>
   );
 }

@@ -1,135 +1,107 @@
 import * as React from "react";
 import {
+  Briefcase,
+  Building2,
+  CalendarDays,
+  DoorOpen,
+  FlaskConical,
   Globe,
+  Mail,
+  Music2,
+  PenLine,
+  PhoneCall,
+  RotateCcw,
+  Search,
   Upload,
   UserPlus,
-  PenLine,
-  RotateCcw,
-  HelpCircle,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { sourceLabel, type LeadSourceRef } from "@/lib/leads/types";
 
-/* --------------------------------------------------------------------------
-   Brand marks. Inline SVG rather than a hosted icon set so the badge renders
-   with no network request and no third-party asset in the bundle. Only the
-   providers Client Turn actually ingests from are represented — an unknown
-   provider gets the neutral globe, never an invented network.
-   -------------------------------------------------------------------------- */
-
-function MetaMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden fill="none">
-      <path
-        d="M6.2 5.5C3.9 5.5 2.4 7.9 2.4 11.2c0 3.2 1.4 5.3 3.5 5.3 1.6 0 2.6-1 4.1-3.5l1-1.7c.3-.5.6-1 .9-1.5.3.5.6 1 .9 1.5l1 1.7c1.5 2.5 2.5 3.5 4.1 3.5 2.1 0 3.6-2.1 3.6-5.4 0-3.3-1.6-5.6-3.9-5.6-1.5 0-2.7.9-4 2.9l-.7 1.1-.7-1.1c-1.3-2-2.5-2.9-4-2.9Zm0 1.9c1 0 1.9.9 3 2.6l.5.8-.6 1c-1.2 2-1.9 2.7-2.8 2.7-1 0-1.8-1.2-1.8-3.4 0-2.3.8-3.7 1.7-3.7Zm11.6 0c.9 0 1.7 1.4 1.7 3.7 0 2.2-.8 3.4-1.8 3.4-.9 0-1.6-.7-2.8-2.7l-.6-1 .5-.8c1.1-1.7 2-2.6 3-2.6Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function FacebookMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <path
-        d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0 0 22 12Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function InstagramMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden fill="none">
-      <rect
-        x="3"
-        y="3"
-        width="18"
-        height="18"
-        rx="5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <circle cx="12" cy="12" r="3.8" stroke="currentColor" strokeWidth="1.8" />
-      <circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function GoogleMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.4Z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2L6.4 14Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4.1 5.6-4.1Z"
-      />
-    </svg>
-  );
-}
-
-type ProviderStyle = {
+/**
+ * Neutral glyphs in tinted tiles, never a reproduced brand mark — the same
+ * rule (and, where the vocabularies overlap, the same glyph and tint) as
+ * `components/settings/connections/provider-icon.tsx`, so a source reads
+ * identically in Leads and in Connections.
+ *
+ * Lead sources carry a wider vocabulary than the integration catalog: a lead
+ * can arrive from a website form, a referral, a manual entry or a
+ * reactivation campaign, none of which are connectable providers.
+ */
+type SourceStyle = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Applied to the icon only — the pill itself stays neutral. */
-  iconClass?: string;
+  tint: string;
 };
 
-/**
- * The real source taxonomy. Anything Client Turn does not ingest from is
- * deliberately absent: a badge is a claim about where a lead came from, and
- * an invented network would be a false one.
- */
-const PROVIDERS: Record<string, ProviderStyle> = {
-  meta: { label: "Meta", icon: MetaMark, iconClass: "text-[#0866FF]" },
-  meta_lead_ads: { label: "Meta", icon: MetaMark, iconClass: "text-[#0866FF]" },
-  facebook: { label: "Facebook", icon: FacebookMark, iconClass: "text-[#1877F2]" },
-  instagram: {
-    label: "Instagram",
-    icon: InstagramMark,
-    iconClass: "text-[#E1306C]",
+const NEUTRAL = "bg-surface-sunken text-content-muted border-line";
+const INFO = "bg-info-50 text-info-600 border-info-100";
+
+const SOURCES: Record<string, SourceStyle> = {
+  // Meta family — one glyph, distinct labels. The label carries the
+  // distinction; the mark stays generic.
+  meta: { label: "Meta", icon: Users, tint: INFO },
+  meta_lead_ads: { label: "Meta", icon: Users, tint: INFO },
+  facebook: { label: "Facebook", icon: Users, tint: INFO },
+  instagram: { label: "Instagram", icon: Users, tint: INFO },
+
+  google: {
+    label: "Google Ads",
+    icon: Search,
+    tint: "bg-warning-50 text-warning-700 border-warning-100",
   },
-  google: { label: "Google Ads", icon: GoogleMark },
-  google_ads: { label: "Google Ads", icon: GoogleMark },
-  website: { label: "Website", icon: Globe, iconClass: "text-content-muted" },
-  webhook: { label: "Website", icon: Globe, iconClass: "text-content-muted" },
-  referral: { label: "Referral", icon: UserPlus, iconClass: "text-content-muted" },
-  manual: { label: "Manual", icon: PenLine, iconClass: "text-content-muted" },
-  import: { label: "Imported", icon: Upload, iconClass: "text-content-muted" },
-  csv: { label: "Imported", icon: Upload, iconClass: "text-content-muted" },
+  google_ads: {
+    label: "Google Ads",
+    icon: Search,
+    tint: "bg-warning-50 text-warning-700 border-warning-100",
+  },
+  microsoft_ads: { label: "Microsoft Ads", icon: Search, tint: INFO },
+  tiktok_ads: { label: "TikTok Ads", icon: Music2, tint: NEUTRAL },
+  linkedin_ads: { label: "LinkedIn Ads", icon: Briefcase, tint: INFO },
+
+  website: { label: "Website", icon: Globe, tint: NEUTRAL },
+  webhook: { label: "Website", icon: Globe, tint: NEUTRAL },
+  email: { label: "Email", icon: Mail, tint: NEUTRAL },
+  referral: {
+    label: "Referral",
+    icon: UserPlus,
+    tint: "bg-purple-50 text-purple-700 border-purple-100",
+  },
+  manual: { label: "Manual", icon: PenLine, tint: NEUTRAL },
+  // The manual intake vocabulary the Add Lead wizard writes. Each reads as its
+  // own origin rather than collapsing into a generic "Manual".
+  phone_call: { label: "Phone call", icon: PhoneCall, tint: NEUTRAL },
+  walk_in: { label: "Walk-in", icon: DoorOpen, tint: NEUTRAL },
+  event: { label: "Event", icon: CalendarDays, tint: NEUTRAL },
+  pipedrive: { label: "Pipedrive", icon: Briefcase, tint: NEUTRAL },
+  other: { label: "Other", icon: Building2, tint: NEUTRAL },
+  import: { label: "Imported", icon: Upload, tint: NEUTRAL },
+  csv: { label: "Imported", icon: Upload, tint: NEUTRAL },
   reactivation: {
     label: "Reactivation",
     icon: RotateCcw,
-    iconClass: "text-content-muted",
+    tint: "bg-accent-50 text-content-accent border-accent-200/60",
   },
+  test: { label: "Test", icon: FlaskConical, tint: NEUTRAL },
 };
 
-export function providerStyle(provider: string | null | undefined): ProviderStyle {
+export function sourceStyle(provider: string | null | undefined): SourceStyle {
   const key = (provider ?? "").toLowerCase().replace(/[\s-]+/g, "_");
   return (
-    PROVIDERS[key] ?? {
+    SOURCES[key] ?? {
+      // Same fallback shape as ProviderIcon: name it plainly rather than
+      // guessing at a network we do not actually ingest from.
       label: provider ? provider.replace(/_/g, " ") : "Unknown",
-      icon: HelpCircle,
-      iconClass: "text-content-subtle",
+      icon: Building2,
+      tint: NEUTRAL,
     }
   );
 }
 
 /**
- * Compact source pill used in both list views. Shows the provider, not the
- * campaign — the campaign belongs in the drawer where there is room for it.
+ * Compact source pill for both list views. Shows the provider, not the
+ * campaign — the campaign belongs in the drawer, where there is room for it.
  */
 export function LeadSourceBadge({
   source,
@@ -140,7 +112,7 @@ export function LeadSourceBadge({
   size?: "sm" | "md";
   className?: string;
 }) {
-  const style = providerStyle(source?.provider);
+  const style = sourceStyle(source?.provider);
   const Icon = style.icon;
   const detail = sourceLabel(source);
 
@@ -149,30 +121,53 @@ export function LeadSourceBadge({
       title={detail !== style.label ? `${style.label} · ${detail}` : style.label}
       className={cn(
         "inline-flex max-w-full items-center gap-1.5 rounded-md border border-line-subtle",
-        "bg-surface-sunken/70 font-medium text-content-secondary",
-        size === "sm"
-          ? "h-[22px] px-1.5 text-[11px]"
-          : "h-[26px] px-2 text-[12px]",
+        "bg-surface font-medium text-content-secondary",
+        size === "sm" ? "h-[22px] pl-1 pr-2 text-[11px]" : "h-[26px] pl-1 pr-2 text-[12px]",
         className,
       )}
     >
-      <Icon
-        className={cn(size === "sm" ? "size-3" : "size-3.5", "shrink-0", style.iconClass)}
-      />
+      <span
+        aria-hidden
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-[4px] border",
+          size === "sm" ? "size-[15px]" : "size-[18px]",
+          style.tint,
+        )}
+      >
+        <Icon className={size === "sm" ? "size-2.5" : "size-3"} />
+      </span>
       <span className="truncate">{style.label}</span>
     </span>
   );
 }
 
-/** Larger provider glyph for the drawer's source summary. */
+/**
+ * Tile-sized glyph for the drawer, matching `ProviderIcon`'s dimensions so the
+ * two surfaces line up.
+ */
 export function LeadSourceGlyph({
   provider,
+  size = "md",
   className,
 }: {
   provider: string | null | undefined;
+  size?: "sm" | "md";
   className?: string;
 }) {
-  const style = providerStyle(provider);
+  const style = sourceStyle(provider);
   const Icon = style.icon;
-  return <Icon className={cn("size-5", style.iconClass, className)} />;
+
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-[10px] border",
+        size === "sm" ? "size-8" : "size-9",
+        style.tint,
+        className,
+      )}
+    >
+      <Icon className={size === "sm" ? "size-4" : "size-[18px]"} />
+    </span>
+  );
 }

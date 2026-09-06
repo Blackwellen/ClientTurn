@@ -113,7 +113,7 @@ export function BookingForm({
           </fieldset>
 
           <Link
-            href="/app/settings/connections"
+            href="/app/settings?section=connections"
             className="text-content-accent focus-visible:outline-content-accent mt-3 inline-block rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             Manage calendar connections

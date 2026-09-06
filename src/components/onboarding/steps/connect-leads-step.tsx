@@ -102,9 +102,9 @@ export function ConnectLeadsStep({
                 Securely connect your Facebook account to access your pages and lead forms.
               </p>
 
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2.5 rounded-[8px] border border-[rgba(150,170,190,0.25)] bg-[#0b141d] px-3 py-2.5">
-                  <svg viewBox="0 0 36 36" className="size-6 shrink-0" aria-hidden>
+              <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[rgba(150,170,190,0.25)] bg-[#0b141d] px-3 py-2.5">
+                  <svg viewBox="0 0 36 36" className="size-7 shrink-0" aria-hidden>
                     <circle cx="18" cy="18" r="18" fill="#0866FF" />
                     <path
                       d="M20.7 23.5v-7.1h2.4l.35-2.8h-2.75v-1.8c0-.8.23-1.35 1.37-1.35h1.47v-2.5A19.6 19.6 0 0 0 21.7 7c-2.42 0-4.08 1.48-4.08 4.2v2.34H14.9v2.8h2.72v7.15h3.08Z"
@@ -115,28 +115,29 @@ export function ConnectLeadsStep({
                     <p className="text-[13.5px] font-medium text-[#f0f3f8]">Meta</p>
                     <p className="text-[12px] text-[#8c98ab]">Connect your Facebook account</p>
                   </div>
+                  <OButton
+                    disabled
+                    className="ml-1"
+                    title={reason ?? "Meta connection is not available on this environment yet."}
+                  >
+                    Connect Meta
+                    <ExternalLink className="size-3.5" aria-hidden />
+                  </OButton>
                 </div>
-                <OButton
-                  disabled
-                  title={reason ?? "Meta connection is not available on this environment yet."}
-                >
-                  Connect Meta
-                  <ExternalLink className="size-3.5" aria-hidden />
-                </OButton>
-              </div>
 
-              <ul className="mt-3 space-y-1.5">
-                {[
-                  "We only access your pages and lead forms",
-                  "Your data is secure and encrypted",
-                  "You can disconnect at any time",
-                ].map((line) => (
-                  <li key={line} className="flex items-center gap-2 text-[12.5px] text-[#96a1b3]">
-                    <CheckCircle2 className="size-3.5 shrink-0 text-[var(--auth-lime)]" aria-hidden />
-                    {line}
-                  </li>
-                ))}
-              </ul>
+                <ul className="space-y-1.5 lg:shrink-0">
+                  {[
+                    "We only access your pages and lead forms",
+                    "Your data is secure and encrypted",
+                    "You can disconnect at any time",
+                  ].map((line) => (
+                    <li key={line} className="flex items-center gap-2 text-[12.5px] text-[#96a1b3]">
+                      <CheckCircle2 className="size-3.5 shrink-0 text-[var(--auth-lime)]" aria-hidden />
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         </OPanel>
@@ -286,7 +287,7 @@ export function ConnectLeadsStep({
             You do not need Meta connected to finish setup — continue now and connect it any
             time from{" "}
             <Link
-              href="/app/settings/connections"
+              href="/app/settings?section=connections"
               className="font-medium text-[var(--auth-lime)] underline-offset-2 hover:underline"
             >
               Settings → Connections

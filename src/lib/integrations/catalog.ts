@@ -16,7 +16,8 @@ export type ProviderType =
   | "linkedin_ads"
   | "slack"
   | "hubspot"
-  | "zoho_crm";
+  | "zoho_crm"
+  | "salesforce";
 
 export type IntegrationCategory = "leads" | "messaging" | "booking" | "email" | "crm";
 
@@ -30,7 +31,11 @@ export type ProviderDefinition = {
   summary: string;
   /** Named so support can tell a customer what to look for. */
   accountLabel: string;
-  /** Environment variables the platform needs before a connection is possible. */
+  /**
+   * Environment variables the platform needs before a connection is possible.
+   * A `|`-separated entry means any one of those names satisfies it, which is
+   * how a provider renamed upstream keeps working on an older deployment.
+   */
   requiredEnv: string[];
   /** Feature gate that must be in the plan before this can be connected. */
   requiresFeature?: PlanFeature;
@@ -79,7 +84,11 @@ export const PROVIDERS: ProviderDefinition[] = [
     summary:
       "Sends your follow-up text messages and receives the replies that drive qualification.",
     accountLabel: "Sending number",
-    requiredEnv: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+    // serverEnv.twilio also accepts TWILIO_SID / TWILIO_CLIENT_SECRET.
+    requiredEnv: [
+      "TWILIO_ACCOUNT_SID|TWILIO_SID",
+      "TWILIO_AUTH_TOKEN|TWILIO_CLIENT_SECRET",
+    ],
     disconnectConsequence:
       "All SMS follow-up stops immediately, including sequences already in progress, and inbound replies are no longer received.",
     configurable: true,
@@ -94,7 +103,11 @@ export const PROVIDERS: ProviderDefinition[] = [
     summary:
       "Sends follow-up over WhatsApp where a lead prefers it, using approved message templates.",
     accountLabel: "WhatsApp sender",
-    requiredEnv: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM"],
+    requiredEnv: [
+      "TWILIO_ACCOUNT_SID|TWILIO_SID",
+      "TWILIO_AUTH_TOKEN|TWILIO_CLIENT_SECRET",
+      "TWILIO_WHATSAPP_FROM",
+    ],
     requiresFeature: "whatsapp",
     disconnectConsequence:
       "WhatsApp follow-up stops. Conversations already on WhatsApp fall back to SMS only if a mobile number is on file.",
@@ -154,7 +167,12 @@ export const PROVIDERS: ProviderDefinition[] = [
     summary:
       "Delivers leads from your Google Ads Lead Form extensions into Client Turn.",
     accountLabel: "Google Ads account",
-    requiredEnv: ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN"],
+    // serverEnv.googleAds falls back to the plain Google OAuth client.
+    requiredEnv: [
+      "GOOGLE_ADS_CLIENT_ID|GOOGLE_CLIENT_ID",
+      "GOOGLE_ADS_CLIENT_SECRET|GOOGLE_CLIENT_SECRET",
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    ],
     disconnectConsequence:
       "New leads from your Google Ads lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
     configurable: true,
@@ -184,7 +202,12 @@ export const PROVIDERS: ProviderDefinition[] = [
     summary:
       "Delivers leads from your TikTok Lead Generation ads into Client Turn.",
     accountLabel: "TikTok for Business account",
-    requiredEnv: ["TIKTOK_APP_ID", "TIKTOK_APP_SECRET"],
+    // TikTok calls these `client_key`/`client_secret`. The older
+    // `TIKTOK_APP_ID`/`TIKTOK_APP_SECRET` spelling still satisfies the check.
+    requiredEnv: [
+      "TIKTOK_CLIENT_KEY|TIKTOK_APP_ID",
+      "TIKTOK_CLIENT_SECRET|TIKTOK_APP_SECRET",
+    ],
     disconnectConsequence:
       "New leads from your TikTok lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
     configurable: true,
@@ -249,10 +272,25 @@ export const PROVIDERS: ProviderDefinition[] = [
       "Leads stop being pushed to Zoho CRM. Nothing in Client Turn itself changes.",
     configurable: true,
   },
+  {
+    id: "salesforce",
+    connection: "workspace",
+    connectPath: null,
+    connectionMethod: "oauth",
+    name: "Salesforce",
+    category: "crm",
+    summary:
+      "Pushes qualified leads and bookings into Salesforce as leads, contacts or opportunities.",
+    accountLabel: "Salesforce org",
+    requiredEnv: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
+    disconnectConsequence:
+      "Leads stop being pushed to Salesforce. Nothing in Client Turn itself changes.",
+    configurable: true,
+  },
 ];
 
 export const CATEGORY_LABELS: Record<IntegrationCategory, string> = {
-  leads: "Lead sources",
+  leads: "Ads / lead sources",
   messaging: "Messaging",
   booking: "Booking",
   email: "Email",
@@ -340,4 +378,128 @@ export function formMappingState(object: IntegrationObjectRecord) {
     return { label: "Fields not mapped", tone: "warning" as const };
   }
   return { label: `${object.mappedFieldCount} fields mapped`, tone: "success" as const };
+}
+
+/* --------------------------------------------------------------------------
+   Connection availability — one place that decides what a provider card says
+   and which controls it may offer. Every Connections surface reads this, so a
+   provider can never render "Connect" in one place and "Not yet available" in
+   another.
+   -------------------------------------------------------------------------- */
+
+export type ConnectionAvailability =
+  | "CONNECTED"
+  | "NEEDS_ATTENTION"
+  | "RECONNECT_REQUIRED"
+  | "TESTING"
+  | "NOT_CONNECTED"
+  | "NOT_AVAILABLE"
+  | "PLAN_LOCKED"
+  | "SYSTEM_MANAGED";
+
+export type AvailabilityMeta = {
+  label: string;
+  tone: "success" | "warning" | "danger" | "info" | "neutral" | "accent";
+  /** True only where the customer has a working connection. */
+  healthy: boolean;
+};
+
+export const AVAILABILITY_META: Record<ConnectionAvailability, AvailabilityMeta> = {
+  CONNECTED: { label: "Connected", tone: "success", healthy: true },
+  SYSTEM_MANAGED: { label: "Healthy", tone: "success", healthy: true },
+  NEEDS_ATTENTION: { label: "Needs attention", tone: "warning", healthy: false },
+  RECONNECT_REQUIRED: { label: "Reconnect required", tone: "danger", healthy: false },
+  TESTING: { label: "Testing", tone: "info", healthy: false },
+  NOT_CONNECTED: { label: "Not connected", tone: "neutral", healthy: false },
+  NOT_AVAILABLE: { label: "Not connected", tone: "neutral", healthy: false },
+  PLAN_LOCKED: { label: "Not on your plan", tone: "neutral", healthy: false },
+};
+
+export function providerAvailability(
+  model: ProviderCardModel,
+): ConnectionAvailability {
+  if (model.definition.connection === "platform") {
+    return model.block ? "NOT_AVAILABLE" : "SYSTEM_MANAGED";
+  }
+  if (model.block?.kind === "plan") return "PLAN_LOCKED";
+  if (model.block?.kind === "unavailable") return "NOT_AVAILABLE";
+
+  if (model.connected) {
+    switch (model.status) {
+      case "ACTION_REQUIRED":
+        return "RECONNECT_REQUIRED";
+      case "DEGRADED":
+        return "NEEDS_ATTENTION";
+      case "TESTING":
+        return "TESTING";
+      default:
+        return "CONNECTED";
+    }
+  }
+  return "NOT_CONNECTED";
+}
+
+/** What the card's buttons may do. Never offers "Connect" for a provider the
+ *  platform cannot actually connect. */
+export function connectionActions(model: ProviderCardModel) {
+  const availability = providerAvailability(model);
+
+  const canConnect =
+    availability === "NOT_CONNECTED" &&
+    (model.definition.connectionMethod === "token" ||
+      Boolean(model.definition.connectPath));
+
+  const canReconnect =
+    (availability === "RECONNECT_REQUIRED" || availability === "NEEDS_ATTENTION") &&
+    (model.definition.connectionMethod === "token" ||
+      Boolean(model.definition.connectPath));
+
+  return {
+    availability,
+    canConnect,
+    canReconnect,
+    canTest: model.connected && model.definition.connection === "workspace",
+    canDisconnect: model.connected && model.definition.connection === "workspace",
+    canConfigure: model.connected && model.definition.configurable,
+    /** The single label the primary button carries, or null for none. */
+    primaryLabel: canConnect
+      ? "Connect"
+      : canReconnect
+        ? "Reconnect"
+        : availability === "NOT_AVAILABLE"
+          ? "Not yet available"
+          : null,
+  };
+}
+
+/** The exact wording the Connections design uses for an unconnectable provider. */
+export const NOT_AVAILABLE_REASON =
+  "Client Turn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.";
+
+export type ConnectionHealthSummary = {
+  total: number;
+  connected: number;
+  notAvailable: number;
+  needsAttention: number;
+  lastCheckedAt: string | null;
+};
+
+export function summariseConnections(
+  cards: ProviderCardModel[],
+  lastCheckedAt: string | null,
+): ConnectionHealthSummary {
+  let connected = 0;
+  let notAvailable = 0;
+  let needsAttention = 0;
+
+  for (const card of cards) {
+    const availability = providerAvailability(card);
+    if (availability === "CONNECTED" || availability === "SYSTEM_MANAGED") connected += 1;
+    if (availability === "NOT_AVAILABLE" || availability === "PLAN_LOCKED") notAvailable += 1;
+    if (availability === "NEEDS_ATTENTION" || availability === "RECONNECT_REQUIRED") {
+      needsAttention += 1;
+    }
+  }
+
+  return { total: cards.length, connected, notAvailable, needsAttention, lastCheckedAt };
 }

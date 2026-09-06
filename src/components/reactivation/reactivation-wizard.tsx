@@ -1,862 +1,512 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Rocket, ShieldCheck } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { SectionHeader } from "@/components/app/page-header";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ArrowRight, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Stepper } from "@/components/ui/progress";
 import { ConfirmDialog } from "@/components/ui/modal";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import {
-  Checkbox,
-  FormField,
-  Input,
-  Select,
-  Textarea,
-} from "@/components/ui/form";
-import { formatRelative } from "@/lib/dates";
-import { LEAD_STATUSES } from "@/lib/leads/filters";
 import { createCampaign, previewAudience } from "@/lib/campaigns/actions";
 import {
-  MAX_MESSAGE_LENGTH,
-  MERGE_FIELDS,
-  previewTemplate,
-  segmentInfo,
+  DEFAULT_AUDIENCE_FILTER,
   type AudienceFilter,
   type AudiencePreview,
-  type CampaignDraft,
 } from "@/lib/campaigns/types";
 import {
-  AudienceSourceSelector,
-  type AudienceSource,
-} from "./audience-source-selector";
+  WizardProgress,
+  WIZARD_STEPS,
+} from "./wizard/wizard-progress";
+import { AudienceStep, type FilterOptions } from "./wizard/audience-step";
+import {
+  MessageTimingStep,
+  type ChannelOption,
+  type QuietHours,
+} from "./wizard/message-timing-step";
+import { ReviewLaunchStep } from "./wizard/review-launch-step";
+import {
+  clearDraft,
+  initialWizardState,
+  launchChecklist,
+  readDraft,
+  resolvedAudienceLabel,
+  scheduledInstant,
+  splitTags,
+  validateAudienceStep,
+  validateMessageStep,
+  type WizardChannel,
+  type WizardState,
+  writeDraft,
+} from "./wizard/state";
 
 /**
- * `ReactivationWizard` (spec §17): exactly three steps — Audience,
- * Message & Timing, Review & Launch — replacing the old four-step
- * `CampaignWizard` (Audience, Message, Timing, Review). Step 2 here is the
- * old steps 1+2 merged; step 3 is unchanged. All validation, preview and
- * launch logic is the same `lib/campaigns` actions the old wizard used.
+ * `ReactivationWizard` — exactly three steps: Audience, Message & Timing,
+ * Review & Launch. One state object spans all three, so Back never loses a
+ * value and Step 3 reviews precisely what Steps 1 and 2 configured.
+ *
+ * The step lives in `?step=`, which makes each screen linkable and gives the
+ * browser Back button the behaviour a user expects. The audience estimate is
+ * always resolved on the server through `previewAudience`; the number the
+ * client holds is never trusted at launch — `createCampaign` re-resolves it.
  */
-
-const STEPS = [
-  { label: "Audience", description: "Who gets contacted" },
-  { label: "Message & timing", description: "What they receive, and when" },
-  { label: "Review & launch", description: "Confirm and go" },
-];
-
-type Options = {
-  services: { id: string; name: string }[];
-  sources: { id: string; label: string }[];
-};
-
 export function ReactivationWizard({
   businessName,
   options,
   defaultChannel,
   whatsappEnabled,
-  aiAssistAllowed,
+  emailEnabled,
+  providerConnected,
   quietHours,
 }: {
   businessName: string;
-  options: Options;
-  defaultChannel: "sms" | "whatsapp";
+  options: FilterOptions;
+  defaultChannel: WizardChannel;
   whatsappEnabled: boolean;
-  aiAssistAllowed: boolean;
-  quietHours: { enabled: boolean; start: string; end: string; timezone: string };
+  /** True when this workspace has its own mailbox connected and healthy. */
+  emailEnabled: boolean;
+  providerConnected: boolean;
+  quietHours: QuietHours;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const [step, setStep] = React.useState(0);
-  const [name, setName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [audienceLabel, setAudienceLabel] = React.useState("");
-  const [tags, setTags] = React.useState("");
-  const [channel, setChannel] = React.useState<"sms" | "whatsapp">(defaultChannel);
-  const [audience, setAudience] = React.useState<AudienceFilter>({
-    statuses: [],
-    lastContactedBeforeDays: 30,
-  });
-  const [audienceSource, setAudienceSource] = React.useState<AudienceSource>("existing");
-  const [extraSources, setExtraSources] = React.useState<{ id: string; label: string }[]>([]);
-  const [importedNotice, setImportedNotice] = React.useState<string | null>(null);
+  const requestedStep = Number(searchParams.get("step") ?? "1");
+  const [furthestStep, setFurthestStep] = React.useState(0);
 
-  const [message, setMessage] = React.useState("");
-  const [followupEnabled, setFollowupEnabled] = React.useState(false);
-  const [followup, setFollowup] = React.useState("");
-  const [followupDelayHours, setFollowupDelayHours] = React.useState(48);
-  const [sendMode, setSendMode] = React.useState<"now" | "schedule">("now");
-  const [scheduledAt, setScheduledAt] = React.useState("");
-  const [sendRatePerMinute, setSendRatePerMinute] = React.useState(20);
-  const [aiPersonalize, setAiPersonalize] = React.useState(false);
+  // A step can only be entered if the ones before it have been cleared, so a
+  // hand-edited `?step=3` cannot skip validation.
+  const step = Math.min(
+    Math.max(Number.isFinite(requestedStep) ? requestedStep - 1 : 0, 0),
+    Math.min(furthestStep, WIZARD_STEPS.length - 1),
+  );
 
-  const [preview, setPreview] = React.useState<AudiencePreview | null>(null);
-  const [previewError, setPreviewError] = React.useState<string | null>(null);
-  const [previewing, startPreview] = React.useTransition();
-  const [error, setError] = React.useState<string | null>(null);
-  const [confirming, setConfirming] = React.useState(false);
+  // `boot` is null until the mount effect has looked for a saved draft, which
+  // keeps hydration, "has a draft been restored" and the answers themselves
+  // in one atomic piece of state rather than three that can disagree.
+  const [boot, setBoot] = React.useState<{
+    value: WizardState;
+    fromDraft: boolean;
+  } | null>(null);
+  const [touched, setTouched] = React.useState(false);
+
+  const blank = React.useMemo(
+    () => initialWizardState(defaultChannel),
+    [defaultChannel],
+  );
+  const state = boot?.value ?? blank;
+  const hydrated = boot !== null;
+  const dirty = touched || (boot?.fromDraft ?? false);
+
+  const setState = React.useCallback(
+    (update: (current: WizardState) => WizardState) => {
+      setTouched(true);
+      setBoot((current) =>
+        current ? { ...current, value: update(current.value) } : current,
+      );
+    },
+    [],
+  );
+
+  // The resolved estimate is stored with the filter key it answers, so
+  // "loading" is derived by comparing keys rather than being a second piece
+  // of state that can fall out of step with the request in flight.
+  const [resolved, setResolved] = React.useState<{
+    key: string;
+    preview: AudiencePreview | null;
+    error: string | null;
+  } | null>(null);
+  const [csvBusy, setCsvBusy] = React.useState(false);
+
+  const [showErrors, setShowErrors] = React.useState(false);
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [launchError, setLaunchError] = React.useState<string | null>(null);
+  const [estimateAtReview, setEstimateAtReview] = React.useState<number | null>(
+    null,
+  );
 
-  const messageRef = React.useRef<HTMLTextAreaElement>(null);
+  const headingRef = React.useRef<HTMLDivElement>(null);
+  const requestId = React.useRef(0);
+
+  /* --------------------------------------------------- draft restore --- */
 
   React.useEffect(() => {
-    const handle = window.setTimeout(() => {
-      startPreview(async () => {
-        const result = await previewAudience(audience);
-        if (result.ok) {
-          setPreview(result.data);
-          setPreviewError(null);
-        } else {
-          setPreview(null);
-          setPreviewError(result.error);
-        }
+    const draft = readDraft(defaultChannel);
+    // Session storage is an external system read exactly once on mount — it
+    // cannot be read during render because the server has no storage. This is
+    // a single atomic update, not a cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBoot({ value: draft ?? initialWizardState(defaultChannel), fromDraft: draft !== null });
+  }, [defaultChannel]);
+
+  React.useEffect(() => {
+    if (hydrated && dirty) writeDraft(state);
+  }, [state, hydrated, dirty]);
+
+  /* ------------------------------------------------ audience estimate --- */
+
+  const filters = state.audienceFilters;
+  const filterKey = JSON.stringify(filters);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+
+    const id = ++requestId.current;
+
+    const handle = window.setTimeout(async () => {
+      const result = await previewAudience(JSON.parse(filterKey));
+      // A later keystroke has already fired: discard this stale answer.
+      if (id !== requestId.current) return;
+
+      setResolved({
+        key: filterKey,
+        preview: result.ok ? result.data : null,
+        error: result.ok ? null : result.error,
       });
     }, 350);
+
     return () => window.clearTimeout(handle);
-  }, [audience]);
+  }, [filterKey, hydrated]);
 
-  const segments = segmentInfo(message);
-  const followupSegments = segmentInfo(followup);
+  // A minute hand for the "is this schedule still in the future" check, so
+  // validation cannot call Date.now() during render.
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const handle = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(handle);
+  }, []);
+
+  /* -------------------------------------------------------- mutation --- */
+
+  const patch = React.useCallback(
+    (next: Partial<WizardState>) => {
+      setState((current) => ({ ...current, ...next }));
+    },
+    [setState],
+  );
+
+  const patchFilters = React.useCallback(
+    (next: Partial<AudienceFilter>) => {
+      setState((current) => ({
+        ...current,
+        audienceFilters: {
+          ...DEFAULT_AUDIENCE_FILTER,
+          ...current.audienceFilters,
+          ...next,
+        },
+      }));
+    },
+    [setState],
+  );
+
+  /* ------------------------------------------------------ validation --- */
+
+  const previewLoading = !resolved || resolved.key !== filterKey;
+  const preview = resolved?.key === filterKey ? resolved.preview : null;
+  const previewError = resolved?.key === filterKey ? resolved.error : null;
+
   const eligible = preview?.eligible ?? 0;
-  const estimatedMessages =
-    eligible * segments.segments + (followupEnabled ? eligible * followupSegments.segments : 0);
+  const audienceReady = !previewLoading && preview !== null;
 
-  function patchAudience(patch: Partial<AudienceFilter>) {
-    setAudience((current) => ({ ...current, ...patch }));
-  }
+  const audienceIssues = validateAudienceStep(state, {
+    eligible,
+    audienceReady,
+    csvBusy,
+  });
+  const messageIssues = validateMessageStep(state, {
+    providerConnected,
+    now,
+  });
 
-  function toggleStatus(status: (typeof LEAD_STATUSES)[number]) {
-    setAudience((current) => ({
-      ...current,
-      statuses: current.statuses.includes(status)
-        ? current.statuses.filter((entry) => entry !== status)
-        : [...current.statuses, status],
-    }));
-  }
+  const stepIssues = [audienceIssues, messageIssues, { fields: {}, valid: true }][
+    step
+  ];
+  const fieldErrors = showErrors ? stepIssues.fields : {};
 
-  function onImported(result: { sourceId: string; label: string; imported: number }) {
-    setExtraSources((current) => [
-      { id: result.sourceId, label: result.label },
-      ...current.filter((source) => source.id !== result.sourceId),
-    ]);
-    patchAudience({ sourceId: result.sourceId });
-    setAudienceSource("existing");
-    setImportedNotice(
-      `Using "${result.label}" (${result.imported.toLocaleString("en-GB")} contacts) as the audience source.`,
-    );
-  }
+  const timingValid =
+    state.sendMode === "now" || scheduledInstant(state) !== null;
+  const messageValid = Object.keys(messageIssues.fields).length === 0;
 
-  function insertMergeField(token: string) {
-    const field = messageRef.current;
-    if (!field) {
-      setMessage((current) => `${current}${token}`);
+  const canLaunch =
+    eligible > 0 &&
+    audienceIssues.valid &&
+    messageIssues.valid &&
+    providerConnected &&
+    !submitting &&
+    !previewLoading;
+
+  /* ------------------------------------------------------ navigation --- */
+
+  const goToStep = React.useCallback(
+    (next: number) => {
+      setShowErrors(false);
+      setFurthestStep((current) => Math.max(current, next));
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("step", String(next + 1));
+      router.replace(`/app/reactivation/new?${params.toString()}`, {
+        scroll: false,
+      });
+      requestAnimationFrame(() => headingRef.current?.focus());
+    },
+    [router, searchParams],
+  );
+
+  function next() {
+    if (!stepIssues.valid) {
+      setShowErrors(true);
       return;
     }
-    const start = field.selectionStart ?? message.length;
-    const end = field.selectionEnd ?? message.length;
-    const next = `${message.slice(0, start)}${token}${message.slice(end)}`;
-    setMessage(next.slice(0, MAX_MESSAGE_LENGTH));
-    requestAnimationFrame(() => {
-      field.focus();
-      field.setSelectionRange(start + token.length, start + token.length);
-    });
+    if (step === 1) setEstimateAtReview(eligible);
+    goToStep(step + 1);
   }
 
-  const stepValid = [
-    name.trim().length >= 2,
-    message.trim().length >= 10 && (!followupEnabled || followup.trim().length >= 10) &&
-      (sendMode === "now" || scheduledAt.length > 0),
-    eligible > 0,
-  ];
-
-  function draft(): CampaignDraft {
-    return {
-      name: name.trim(),
-      description: description.trim() || undefined,
-      audienceLabel: audienceLabel.trim() || undefined,
-      tags: tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-        .slice(0, 8),
-      channel,
-      audience,
-      message: message.trim(),
-      followup: followupEnabled ? followup.trim() : undefined,
-      followupDelayHours,
-      sendMode,
-      scheduledAt: sendMode === "schedule" ? scheduledAt : undefined,
-      sendRatePerMinute,
-      aiPersonalize: aiAssistAllowed && aiPersonalize,
-    };
+  function back() {
+    if (step > 0) goToStep(step - 1);
   }
 
-  async function submit(launch: boolean) {
+  function cancel() {
+    if (dirty) {
+      setConfirmCancel(true);
+      return;
+    }
+    router.push("/app/reactivation");
+  }
+
+  function discard() {
+    clearDraft();
+    setConfirmCancel(false);
+    router.push("/app/reactivation");
+  }
+
+  /* ---------------------------------------------------------- launch --- */
+
+  async function launch() {
+    if (!canLaunch || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setLaunchError(null);
+
     try {
-      const result = await createCampaign(draft(), launch);
+      const scheduled = scheduledInstant(state);
+      const result = await createCampaign(
+        {
+          name: state.campaignName.trim(),
+          description: state.description.trim() || undefined,
+          audienceLabel: resolvedAudienceLabel(state),
+          tags: splitTags(state.tags).slice(0, 8),
+          channel: state.channel,
+          audience: state.audienceFilters,
+          // Subjects are only meaningful on email; the schema rejects them
+          // elsewhere, so they are omitted rather than sent empty.
+          subject:
+            state.channel === "email" ? state.subject.trim() : undefined,
+          followupSubject:
+            state.channel === "email" && state.followUpEnabled
+              ? (state.followUpSubject.trim() || state.subject.trim())
+              : undefined,
+          message: state.initialMessage.trim(),
+          followup: state.followUpEnabled
+            ? state.followUpMessage.trim()
+            : undefined,
+          followupDelayHours: state.followUpDelayDays * 24,
+          sendMode: state.sendMode,
+          scheduledAt: scheduled ? scheduled.toISOString() : undefined,
+          sendRatePerMinute: 20,
+          aiPersonalize: false,
+        },
+        true,
+      );
+
       if (!result.ok) {
-        setError(result.error);
+        setLaunchError(result.error);
+        toast({
+          variant: "error",
+          title: "Campaign not launched",
+          description: result.error,
+        });
         return;
       }
+
+      clearDraft();
+      setTouched(false);
       toast({
         variant: "success",
-        title: launch ? "Campaign launched" : "Draft saved",
-        description: launch
-          ? "Sending starts within the next send window."
-          : "You can launch it from the reactivation list.",
+        title:
+          state.sendMode === "schedule"
+            ? "Campaign scheduled"
+            : "Campaign launched",
+        description:
+          state.sendMode === "schedule"
+            ? "Sending begins at the scheduled time, inside your send window."
+            : "Sending starts within the next send window.",
       });
       router.push(`/app/reactivation?campaign=${result.data.id}`);
       router.refresh();
+    } catch {
+      setLaunchError("Something went wrong. Nothing was sent — try again.");
     } finally {
       setSubmitting(false);
-      setConfirming(false);
     }
   }
 
-  const allSources = [...extraSources, ...options.sources];
+  /* ------------------------------------------------------ revalidation --- */
+
+  // If the estimate moved between leaving Step 2 and arriving at Step 3, say
+  // so rather than letting a stale number sit under the launch button.
+  const revalidationNotice =
+    step === 2 &&
+    estimateAtReview !== null &&
+    !previewLoading &&
+    estimateAtReview !== eligible
+      ? `The audience changed while you were setting this up: ${eligible.toLocaleString(
+          "en-GB",
+        )} contacts are eligible now, not ${estimateAtReview.toLocaleString("en-GB")}.`
+      : null;
+
+  const channels: ChannelOption[] = [
+    { value: "sms", label: "SMS", available: true },
+    {
+      value: "whatsapp",
+      label: "WhatsApp",
+      available: whatsappEnabled,
+      reason: whatsappEnabled ? undefined : "not included on your current plan",
+    },
+    {
+      value: "email",
+      label: "Email",
+      available: emailEnabled,
+      reason: emailEnabled
+        ? undefined
+        : "connect your mailbox in Settings → Connections first",
+    },
+  ];
+
+  const checklistDone = launchChecklist(state, {
+    eligible,
+    providerConnected,
+    messageValid,
+    timingValid,
+  }).every((item) => item.done);
 
   return (
-    <div className="space-y-4">
-      <Stepper steps={STEPS} current={step} />
+    <div className="space-y-5 pb-24">
+      <div className="border-line-subtle border-b pb-4">
+        <WizardProgress current={step} />
+      </div>
 
-      {error && (
-        <div className="border-danger-100 bg-danger-50 text-danger-700 rounded-lg border px-4 py-3 text-[13px]">
-          {error}
+      <div
+        ref={headingRef}
+        tabIndex={-1}
+        aria-live="polite"
+        className="sr-only focus:outline-none"
+      >
+        Step {step + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[step].label}
+      </div>
+
+      {launchError && (
+        <div
+          role="alert"
+          className="border-danger-100 bg-danger-50 text-danger-700 rounded-lg border px-4 py-3 text-[13px]"
+        >
+          {launchError}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          {step === 0 && (
-            <Card>
-              <CardHeader>
-                <SectionHeader
-                  title="Audience"
-                  description="Pick the old leads worth another try, from your existing leads or a fresh CSV import. Suppression is applied on top and cannot be turned off."
-                />
-              </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-                <FormField
-                  label="Campaign name"
-                  htmlFor="campaign-name"
-                  required
-                  hint="Only you see this."
-                >
-                  <Input
-                    id="campaign-name"
-                    value={name}
-                    maxLength={80}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Spring boiler service recall"
-                  />
-                </FormField>
+      {step === 0 && (
+        <AudienceStep
+          state={state}
+          patch={patch}
+          patchFilters={patchFilters}
+          options={options}
+          preview={preview}
+          loading={previewLoading}
+          error={previewError}
+          fieldErrors={fieldErrors}
+          onCsvBusyChange={setCsvBusy}
+        />
+      )}
 
-                <FormField
-                  label="Description"
-                  htmlFor="campaign-description"
-                  hint="One line on what this campaign is for. Shown on the campaign card."
-                >
-                  <Textarea
-                    id="campaign-description"
-                    rows={2}
-                    value={description}
-                    maxLength={280}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Re-engage past quote requests with a seasonal check offer."
-                  />
-                </FormField>
+      {step === 1 && (
+        <MessageTimingStep
+          state={state}
+          patch={patch}
+          preview={preview}
+          loading={previewLoading}
+          businessName={businessName}
+          quietHours={quietHours}
+          channels={channels}
+          fieldErrors={fieldErrors}
+        />
+      )}
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    label="Audience name"
-                    htmlFor="campaign-audience-label"
-                    hint="The label only — who is contacted comes from the rules below."
-                  >
-                    <Input
-                      id="campaign-audience-label"
-                      value={audienceLabel}
-                      maxLength={160}
-                      onChange={(event) => setAudienceLabel(event.target.value)}
-                      placeholder="Past quote requests"
-                    />
-                  </FormField>
+      {step === 2 && (
+        <ReviewLaunchStep
+          state={state}
+          preview={preview}
+          loading={previewLoading}
+          businessName={businessName}
+          quietHours={quietHours}
+          options={options}
+          providerConnected={providerConnected}
+          messageValid={messageValid}
+          timingValid={timingValid}
+          revalidationNotice={revalidationNotice}
+        />
+      )}
 
-                  <FormField
-                    label="Tags"
-                    htmlFor="campaign-tags"
-                    hint="Comma separated, up to eight."
-                  >
-                    <Input
-                      id="campaign-tags"
-                      value={tags}
-                      onChange={(event) => setTags(event.target.value)}
-                      placeholder="Seasonal, Roofing"
-                    />
-                  </FormField>
-                </div>
+      {/* ----------------------------------------------------- footer --- */}
+      <div className="bg-surface/95 border-line-subtle fixed inset-x-0 bottom-0 z-20 border-t backdrop-blur lg:left-[var(--lr-sidebar-width,0px)]">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
+          <Button variant="secondary" onClick={cancel} disabled={submitting}>
+            Cancel
+          </Button>
 
-                <AudienceSourceSelector
-                  source={audienceSource}
-                  onSourceChange={setAudienceSource}
-                  onImported={onImported}
-                />
-
-                {importedNotice && (
-                  <p className="text-success-700 text-[12px]">{importedNotice}</p>
-                )}
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField label="Service" htmlFor="campaign-service">
-                    <Select
-                      id="campaign-service"
-                      value={audience.serviceId ?? ""}
-                      onChange={(event) =>
-                        patchAudience({ serviceId: event.target.value || undefined })
-                      }
-                    >
-                      <option value="">Any service</option>
-                      {options.services.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </FormField>
-
-                  <FormField label="Source" htmlFor="campaign-source">
-                    <Select
-                      id="campaign-source"
-                      value={audience.sourceId ?? ""}
-                      onChange={(event) =>
-                        patchAudience({ sourceId: event.target.value || undefined })
-                      }
-                    >
-                      <option value="">Any source</option>
-                      {allSources.map((source) => (
-                        <option key={source.id} value={source.id}>
-                          {source.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </FormField>
-
-                  <FormField label="Received after" htmlFor="campaign-after">
-                    <Input
-                      id="campaign-after"
-                      type="date"
-                      value={audience.createdAfter ?? ""}
-                      max={audience.createdBefore}
-                      onChange={(event) =>
-                        patchAudience({ createdAfter: event.target.value || undefined })
-                      }
-                    />
-                  </FormField>
-
-                  <FormField label="Received before" htmlFor="campaign-before">
-                    <Input
-                      id="campaign-before"
-                      type="date"
-                      value={audience.createdBefore ?? ""}
-                      min={audience.createdAfter}
-                      onChange={(event) =>
-                        patchAudience({ createdBefore: event.target.value || undefined })
-                      }
-                    />
-                  </FormField>
-                </div>
-
-                <FormField
-                  label="Not contacted in the last"
-                  htmlFor="campaign-cooldown"
-                  hint="Anyone messaged more recently than this is excluded."
-                >
-                  <Select
-                    id="campaign-cooldown"
-                    value={String(audience.lastContactedBeforeDays)}
-                    onChange={(event) =>
-                      patchAudience({ lastContactedBeforeDays: Number(event.target.value) })
-                    }
-                  >
-                    {[7, 14, 30, 60, 90, 180, 365].map((days) => (
-                      <option key={days} value={days}>
-                        {days} days
-                      </option>
-                    ))}
-                  </Select>
-                </FormField>
-
-                <fieldset>
-                  <legend className="text-content text-[13px] font-medium">Lead status</legend>
-                  <p className="text-content-muted mt-0.5 text-[12px]">
-                    Leave all unticked to include every status.
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                    {LEAD_STATUSES.map((status) => (
-                      <label
-                        key={status}
-                        className="text-content-secondary flex items-center gap-2 text-[13px]"
-                      >
-                        <Checkbox
-                          checked={audience.statuses.includes(status)}
-                          onChange={() => toggleStatus(status)}
-                        />
-                        {status.charAt(0) + status.slice(1).toLowerCase()}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-
-                {/* EligibilitySummary + SuppressionSummary */}
-                <div className="border-line bg-surface-sunken rounded-lg border px-3 py-2.5">
-                  <p className="text-content-secondary text-[13px]">
-                    <strong className="text-content lr-tabular">
-                      {eligible.toLocaleString("en-GB")}
-                    </strong>{" "}
-                    eligible of{" "}
-                    <strong className="text-content lr-tabular">
-                      {(preview?.matched ?? 0).toLocaleString("en-GB")}
-                    </strong>{" "}
-                    matching leads.
-                  </p>
-                  {preview && preview.suppressed.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {preview.suppressed.map((group) => (
-                        <li key={group.reason} className="flex items-center justify-between gap-2">
-                          <span className="text-content-muted text-[12px]">{group.label}</span>
-                          <Badge tone="neutral">{group.count}</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 1 && (
-            <Card>
-              <CardHeader>
-                <SectionHeader
-                  title="Message & timing"
-                  description="One opening message, at most one follow-up, and when it sends. Reactivation is not a drip sequence."
-                />
-              </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-                <FormField label="Channel" htmlFor="campaign-channel">
-                  <Select
-                    id="campaign-channel"
-                    value={channel}
-                    onChange={(event) => setChannel(event.target.value as "sms" | "whatsapp")}
-                  >
-                    <option value="sms">SMS</option>
-                    <option value="whatsapp" disabled={!whatsappEnabled}>
-                      WhatsApp{whatsappEnabled ? "" : " (Growth plan and above)"}
-                    </option>
-                  </Select>
-                </FormField>
-
-                <FormField
-                  label="Opening message"
-                  htmlFor="campaign-message"
-                  required
-                  hint={`${segments.characters} characters · ${segments.segments} ${segments.segments === 1 ? "segment" : "segments"} · ${segments.encoding}`}
-                >
-                  <Textarea
-                    id="campaign-message"
-                    ref={messageRef}
-                    rows={4}
-                    maxLength={MAX_MESSAGE_LENGTH}
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    placeholder="Hi {{first_name}}, it's {{business_name}}. You enquired about {{service_name}} a while ago — would you still like a quote?"
-                  />
-                </FormField>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {MERGE_FIELDS.map((field) => (
-                    <button
-                      key={field.token}
-                      type="button"
-                      onClick={() => insertMergeField(field.token)}
-                      className="border-line bg-surface-sunken text-content-secondary hover:text-content focus-visible:outline-content-accent rounded-full border px-2.5 py-1 text-[12px] font-medium focus-visible:outline-2 focus-visible:outline-offset-1"
-                    >
-                      {field.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="border-line space-y-3 rounded-lg border p-3">
-                  <label className="text-content flex items-center gap-2 text-[13px] font-medium">
-                    <Checkbox
-                      checked={followupEnabled}
-                      onChange={(event) => setFollowupEnabled(event.target.checked)}
-                    />
-                    Send one follow-up if there is no reply
-                  </label>
-
-                  {followupEnabled && (
-                    <>
-                      <FormField
-                        label="Follow-up message"
-                        htmlFor="campaign-followup"
-                        hint={`${followupSegments.characters} characters · ${followupSegments.segments} ${followupSegments.segments === 1 ? "segment" : "segments"}`}
-                      >
-                        <Textarea
-                          id="campaign-followup"
-                          rows={3}
-                          maxLength={MAX_MESSAGE_LENGTH}
-                          value={followup}
-                          onChange={(event) => setFollowup(event.target.value)}
-                          placeholder="Just checking you saw this, {{first_name}} — happy to help whenever suits."
-                        />
-                      </FormField>
-
-                      <FormField label="Send the follow-up after" htmlFor="campaign-followup-delay">
-                        <Select
-                          id="campaign-followup-delay"
-                          value={String(followupDelayHours)}
-                          onChange={(event) => setFollowupDelayHours(Number(event.target.value))}
-                        >
-                          {[24, 48, 72, 120, 168].map((hours) => (
-                            <option key={hours} value={hours}>
-                              {hours / 24} days
-                            </option>
-                          ))}
-                        </Select>
-                      </FormField>
-                    </>
-                  )}
-                </div>
-
-                {aiAssistAllowed && (
-                  <label className="text-content-secondary flex items-center gap-2 text-[13px]">
-                    <input
-                      type="checkbox"
-                      className="accent-[var(--lr-accent-600)]"
-                      checked={aiPersonalize}
-                      onChange={(event) => setAiPersonalize(event.target.checked)}
-                    />
-                    Let AI restyle this message per lead, using only the merge
-                    fields above — it never adds new claims
-                  </label>
-                )}
-
-                <fieldset className="space-y-2">
-                  <legend className="text-content text-[13px] font-medium">When to start</legend>
-                  <label className="text-content-secondary flex items-center gap-2 text-[13px]">
-                    <input
-                      type="radio"
-                      name="send-mode"
-                      className="accent-[var(--lr-accent-600)]"
-                      checked={sendMode === "now"}
-                      onChange={() => setSendMode("now")}
-                    />
-                    Send as soon as the next send window opens
-                  </label>
-                  <label className="text-content-secondary flex items-center gap-2 text-[13px]">
-                    <input
-                      type="radio"
-                      name="send-mode"
-                      className="accent-[var(--lr-accent-600)]"
-                      checked={sendMode === "schedule"}
-                      onChange={() => setSendMode("schedule")}
-                    />
-                    Schedule a date and time
-                  </label>
-                </fieldset>
-
-                {sendMode === "schedule" && (
-                  <FormField
-                    label="Start sending"
-                    htmlFor="campaign-scheduled"
-                    hint={`Times are in ${quietHours.timezone}.`}
-                  >
-                    <Input
-                      id="campaign-scheduled"
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(event) => setScheduledAt(event.target.value)}
-                      className="w-auto"
-                    />
-                  </FormField>
-                )}
-
-                <FormField
-                  label="Send rate"
-                  htmlFor="campaign-rate"
-                  hint="Messages per minute. A slower rate keeps replies manageable and protects your number's reputation."
-                >
-                  <Select
-                    id="campaign-rate"
-                    value={String(sendRatePerMinute)}
-                    onChange={(event) => setSendRatePerMinute(Number(event.target.value))}
-                    className="w-auto"
-                  >
-                    {[5, 10, 20, 30, 60].map((rate) => (
-                      <option key={rate} value={rate}>
-                        {rate} per minute
-                      </option>
-                    ))}
-                  </Select>
-                </FormField>
-
-                <div className="border-line bg-surface-sunken rounded-lg border px-3 py-2.5">
-                  <p className="text-content flex items-center gap-2 text-[13px] font-medium">
-                    <ShieldCheck className="text-success-600 size-4" aria-hidden />
-                    Quiet hours
-                  </p>
-                  <p className="text-content-muted mt-1 text-[12px]">
-                    {quietHours.enabled
-                      ? `No message is sent between ${quietHours.start} and ${quietHours.end} (${quietHours.timezone}).`
-                      : "Quiet hours are switched off for this workspace. Turn them on in Settings if you want overnight sends blocked."}
-                  </p>
-                </div>
-
-                {/* MessagePreviewCard */}
-                <div>
-                  <p className="text-content text-[13px] font-medium">Message preview</p>
-                  <div className="border-line bg-surface-sunken mt-1.5 rounded-lg border px-3 py-2.5">
-                    <p className="text-content text-[13px] whitespace-pre-wrap">
-                      {previewTemplate(message, businessName) || "—"}
-                    </p>
-                  </div>
-                  {followupEnabled && followup.trim() && (
-                    <div className="border-line bg-surface-sunken mt-2 rounded-lg border px-3 py-2.5">
-                      <p className="text-content-subtle text-[12px]">
-                        Follow-up after {followupDelayHours / 24} days
-                      </p>
-                      <p className="text-content mt-1 text-[13px] whitespace-pre-wrap">
-                        {previewTemplate(followup, businessName)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 2 && (
-            <Card>
-              <CardHeader>
-                <SectionHeader
-                  title="Review & launch"
-                  description="Exactly who will be contacted, and who will not."
-                />
-              </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div>
-                    <dt className="text-content-muted text-[12px]">Will be contacted</dt>
-                    <dd className="text-content lr-tabular text-[20px] font-semibold">
-                      {eligible.toLocaleString("en-GB")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-content-muted text-[12px]">Excluded</dt>
-                    <dd className="text-content lr-tabular text-[20px] font-semibold">
-                      {(preview?.suppressed ?? [])
-                        .reduce((total, group) => total + group.count, 0)
-                        .toLocaleString("en-GB")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-content-muted text-[12px]">Estimated messages</dt>
-                    <dd className="text-content lr-tabular text-[20px] font-semibold">
-                      {estimatedMessages.toLocaleString("en-GB")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-content-muted text-[12px]">Channel</dt>
-                    <dd className="text-content text-[20px] font-semibold uppercase">{channel}</dd>
-                  </div>
-                </dl>
-
-                <div>
-                  <p className="text-content text-[13px] font-medium">Final message preview</p>
-                  <div className="border-line bg-surface-sunken mt-1.5 rounded-lg border px-3 py-2.5">
-                    <p className="text-content text-[13px] whitespace-pre-wrap">
-                      {previewTemplate(message, businessName)}
-                    </p>
-                  </div>
-                  {followupEnabled && followup.trim() && (
-                    <div className="border-line bg-surface-sunken mt-2 rounded-lg border px-3 py-2.5">
-                      <p className="text-content-subtle text-[12px]">
-                        Follow-up after {followupDelayHours / 24} days
-                      </p>
-                      <p className="text-content mt-1 text-[13px] whitespace-pre-wrap">
-                        {previewTemplate(followup, businessName)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {preview && preview.sample.length > 0 && (
-                  <div>
-                    <p className="text-content text-[13px] font-medium">Who will be contacted</p>
-                    <ul className="divide-line mt-1.5 divide-y">
-                      {preview.sample.map((row) => (
-                        <li key={row.id} className="flex items-center justify-between gap-3 py-1.5">
-                          <span className="text-content min-w-0 truncate text-[13px]">
-                            {row.name}
-                            {row.service && (
-                              <span className="text-content-subtle ml-1.5 text-[12px]">
-                                {row.service}
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-content-subtle shrink-0 text-[12px]">
-                            {row.lastContactAt
-                              ? `Last contacted ${formatRelative(row.lastContactAt)}`
-                              : "Never contacted"}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {eligible > preview.sample.length && (
-                      <p className="text-content-subtle mt-1.5 text-[12px]">
-                        and {(eligible - preview.sample.length).toLocaleString("en-GB")} more.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {preview && preview.suppressed.length > 0 && (
-                  <div>
-                    <p className="text-content text-[13px] font-medium">Who is excluded, and why</p>
-                    <ul className="divide-line mt-1.5 divide-y">
-                      {preview.suppressed.map((group) => (
-                        <li key={group.reason} className="flex items-center justify-between gap-3 py-1.5">
-                          <span className="text-content text-[13px]">{group.label}</span>
-                          <span className="text-content lr-tabular text-[13px] font-semibold">
-                            {group.count.toLocaleString("en-GB")}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {eligible === 0 && (
-                  <div className="border-warning-100 bg-warning-50 text-warning-700 rounded-lg border px-3 py-2.5 text-[13px]">
-                    Nobody is eligible with these filters, so this campaign cannot be
-                    launched. Widen the audience in step 1.
-                  </div>
-                )}
-
-                {preview?.cappedAt && (
-                  <p className="text-warning-700 text-[12px]">
-                    This audience is larger than the {preview.cappedAt.toLocaleString("en-GB")}{" "}
-                    contact cap for a single campaign. Only the most recent{" "}
-                    {preview.cappedAt.toLocaleString("en-GB")} will be contacted.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              size="sm"
+              onClick={back}
               disabled={step === 0 || submitting}
-              onClick={() => setStep((current) => Math.max(0, current - 1))}
             >
               <ArrowLeft className="size-3.5" aria-hidden />
               Back
             </Button>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                loading={submitting}
-                disabled={!stepValid[0] || !message.trim()}
-                onClick={() => submit(false)}
-              >
-                Save as draft
+            {step < 2 ? (
+              <Button onClick={next} disabled={submitting}>
+                {step === 0
+                  ? "Continue to Message & Timing"
+                  : "Continue to Review & Launch"}
+                <ArrowRight className="size-3.5" aria-hidden />
               </Button>
-
-              {step < STEPS.length - 1 ? (
-                <Button
-                  size="sm"
-                  disabled={!stepValid[step]}
-                  onClick={() => setStep((current) => Math.min(STEPS.length - 1, current + 1))}
-                >
-                  Continue
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  disabled={eligible === 0 || submitting}
-                  onClick={() => setConfirming(true)}
-                >
-                  <Rocket className="size-3.5" aria-hidden />
-                  Launch campaign
-                </Button>
-              )}
-            </div>
+            ) : (
+              <Button
+                variant="success"
+                onClick={launch}
+                loading={submitting}
+                disabled={!canLaunch || !checklistDone}
+                title={
+                  canLaunch
+                    ? undefined
+                    : "Fix the outstanding items before launching."
+                }
+              >
+                <Rocket className="size-3.5" aria-hidden />
+                Launch campaign
+              </Button>
+            )}
           </div>
         </div>
-
-        <Card className="lg:sticky lg:top-4 lg:self-start">
-          <CardHeader>
-            <SectionHeader title="Estimated audience" />
-          </CardHeader>
-          <CardContent className="pt-0">
-            {previewError ? (
-              <p className="text-danger-600 text-[13px]">{previewError}</p>
-            ) : (
-              <>
-                <p
-                  aria-live="polite"
-                  className={`text-content lr-tabular text-[32px] leading-none font-semibold ${previewing ? "opacity-60" : ""}`}
-                >
-                  {eligible.toLocaleString("en-GB")}
-                </p>
-                <p className="text-content-muted mt-2 text-[13px]">
-                  contactable {eligible === 1 ? "lead" : "leads"} out of{" "}
-                  {(preview?.matched ?? 0).toLocaleString("en-GB")} matching your filters.
-                </p>
-
-                {preview && preview.suppressed.length > 0 && (
-                  <ul className="mt-3 space-y-1.5">
-                    {preview.suppressed.map((group) => (
-                      <li key={group.reason} className="flex items-center justify-between gap-2">
-                        <span className="text-content-muted min-w-0 truncate text-[12px]">
-                          {group.label}
-                        </span>
-                        <Badge tone="neutral">{group.count}</Badge>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <p className="text-content-subtle border-line mt-3 border-t pt-3 text-[12px]">
-                  Recounted immediately before sending, so anyone who opts out or
-                  books in the meantime is dropped automatically.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       <ConfirmDialog
-        open={confirming}
-        onClose={() => setConfirming(false)}
-        onConfirm={() => submit(true)}
-        title="Launch this campaign?"
-        scope={`${eligible.toLocaleString("en-GB")} ${eligible === 1 ? "lead" : "leads"} will be contacted by ${channel.toUpperCase()}, about ${estimatedMessages.toLocaleString("en-GB")} messages in total.`}
-        consequence="Sending starts in the next permitted window and cannot be undone once a message has gone out. You can pause or cancel the rest at any time."
-        confirmLabel="Launch campaign"
-        loading={submitting}
+        open={confirmCancel}
+        title="Discard this campaign setup?"
+        scope="This campaign draft only. No campaign has been created and nothing has been sent."
+        consequence="Your audience, message and timing choices are lost and cannot be recovered."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="danger"
+        onConfirm={discard}
+        onClose={() => setConfirmCancel(false)}
       />
     </div>
   );

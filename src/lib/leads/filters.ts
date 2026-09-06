@@ -208,6 +208,11 @@ export function leadsHrefForStatus(status: LeadStatus) {
   return `/app/leads${leadFiltersToQuery({ status })}`;
 }
 
+/** Used by the dashboard's source performance rows. */
+export function leadsHrefForSource(sourceId: string) {
+  return `/app/leads${leadFiltersToQuery({ source: sourceId })}`;
+}
+
 /** True when any *advanced* filter (not the quick filter) narrows the list. */
 export function hasActiveFilters(filters: LeadFilters) {
   return Boolean(

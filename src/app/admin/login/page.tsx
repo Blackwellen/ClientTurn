@@ -19,7 +19,7 @@ export default async function AdminLoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-[#0B1020] px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between gap-3">
-          <Logo href={null} height={32} />
+          <Logo href={null} height={64} />
           <p className="text-[11px] tracking-wide text-white/50 uppercase">
             Platform operations
           </p>

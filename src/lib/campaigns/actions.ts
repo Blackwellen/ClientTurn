@@ -204,6 +204,11 @@ export async function createCampaign(
       status: "DRAFT",
       message_template: draft.message,
       followup_template: draft.followup || null,
+      // Null on SMS/WhatsApp; the schema has already guaranteed a subject is
+      // present when the channel is email.
+      subject_template: draft.channel === "email" ? draft.subject : null,
+      followup_subject_template:
+        draft.channel === "email" ? (draft.followupSubject ?? null) : null,
       followup_delay_seconds: draft.followup
         ? draft.followupDelayHours * 3600
         : null,

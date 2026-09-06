@@ -74,7 +74,7 @@ export async function FollowUpView({
           description="Follow-up sequences are paused while the subscription is inactive. No automated message is sent until billing is up to date."
           action={
             <Link
-              href="/app/settings/billing"
+              href="/app/settings?section=billing"
               className="text-content-accent text-[13px] font-medium"
             >
               Review billing
@@ -93,22 +93,22 @@ export async function FollowUpView({
         </div>
       )}
 
-      <FollowUpStatusCard
-        status={status}
-        canEdit={canEdit}
-        automation={
-          selectedItem
-            ? {
-                id: selectedItem.id,
-                enabled: selectedItem.enabled,
-                leadsInSequence: selectedItem.leadsInSequence,
-              }
-            : null
-        }
-      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.95fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <FollowUpStatusCard
+            status={status}
+            canEdit={canEdit}
+            automation={
+              selectedItem
+                ? {
+                    id: selectedItem.id,
+                    enabled: selectedItem.enabled,
+                    leadsInSequence: selectedItem.leadsInSequence,
+                  }
+                : null
+            }
+          />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
           {sequences.length > 1 && (
             <TabLinkBar aria-label="Sequence">
               {sequences.map((item) => (

@@ -34,6 +34,22 @@ function statusLabel(status: string) {
   return (LEAD_STATUS as Record<string, { label: string }>)[status]?.label ?? status;
 }
 
+/** Dot beside the header status select, coloured from the canonical map. */
+const STATUS_DOT: Record<string, string> = {
+  info: "bg-info-500",
+  accent: "bg-accent-500",
+  warning: "bg-warning-500",
+  purple: "bg-purple-500",
+  success: "bg-success-500",
+  danger: "bg-danger-500",
+  neutral: "bg-content-subtle",
+};
+
+function statusDot(status: string) {
+  const tone = (LEAD_STATUS as Record<string, { tone: string }>)[status]?.tone;
+  return STATUS_DOT[tone ?? "neutral"] ?? STATUS_DOT.neutral;
+}
+
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden fill="currentColor">
@@ -99,7 +115,7 @@ export function LeadDrawer({
   initialTab?: string;
   focus?: string;
 }) {
-  const { lead, messages } = detail;
+  const { lead } = detail;
   const { toast } = useToast();
   const name = leadDisplayName(lead);
 
@@ -112,7 +128,6 @@ export function LeadDrawer({
   const [channel, setChannel] = React.useState<"sms" | "whatsapp">("sms");
 
   const panelRef = React.useRef<HTMLDivElement>(null);
-  const headingRef = React.useRef<HTMLHeadingElement>(null);
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
 
   useEscape(true, onClose);
@@ -121,7 +136,7 @@ export function LeadDrawer({
   // `useEscape` handles the key, this handles where the caret lands.
   React.useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    headingRef.current?.focus();
+    panelRef.current?.focus();
     return () => opener?.focus?.();
   }, []);
 
@@ -163,9 +178,15 @@ export function LeadDrawer({
       <div
         ref={panelRef}
         role="dialog"
+        tabIndex={-1}
         aria-label={`Lead ${name}`}
+        // The panel is focused so the dialog is announced on open, but it is
+        // not a control the user aimed at, so it must not paint the global
+        // :focus-visible ring. Inline, because that global rule uses the
+        // `outline` shorthand and wins against utility classes.
+        style={{ outline: "none" }}
         className={cn(
-          "fixed inset-0 z-50 flex flex-col bg-surface",
+          "fixed inset-0 z-50 flex flex-col bg-surface outline-none focus:outline-none focus-visible:outline-none",
           "lg:inset-y-0 lg:left-auto lg:right-0 lg:top-[var(--lr-topbar-height)]",
           "lg:w-[clamp(600px,44vw,720px)] lg:border-l lg:border-line",
           "shadow-[-20px_0_50px_rgb(15_23_42/0.10)]",
@@ -179,11 +200,7 @@ export function LeadDrawer({
             <Avatar name={name} src={lead.avatarUrl} size="lg" />
 
             <div className="min-w-0 flex-1">
-              <h2
-                ref={headingRef}
-                tabIndex={-1}
-                className="truncate text-[18px] font-semibold leading-tight text-content outline-none"
-              >
+              <h2 className="truncate text-[18px] font-semibold leading-tight text-content">
                 {name}
               </h2>
               <p className="mt-0.5 truncate text-[12px] text-content-muted">
@@ -219,7 +236,10 @@ export function LeadDrawer({
                 </Select>
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute left-3 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-accent-500"
+                  className={cn(
+                    "pointer-events-none absolute left-3 top-1/2 size-1.5 -translate-y-1/2 rounded-full",
+                    statusDot(lead.status),
+                  )}
                 />
               </div>
 
@@ -342,11 +362,6 @@ export function LeadDrawer({
                   )}
                 >
                   {item.label}
-                  {item.value === "conversation" && messages.length > 0 && (
-                    <span className="lr-tabular ml-1.5 rounded-full bg-surface-sunken px-1.5 text-[11px] text-content-secondary">
-                      {messages.length}
-                    </span>
-                  )}
                 </button>
               );
             })}

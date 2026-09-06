@@ -19,7 +19,7 @@ export function LeadCardGrid({
   onOpen: (row: LeadListRow) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 min-[1440px]:grid-cols-4">
+    <div className="grid grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 min-[1280px]:grid-cols-3 min-[1440px]:grid-cols-4">
       {rows.map((row) => (
         <LeadCard
           key={row.id}

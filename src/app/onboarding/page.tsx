@@ -63,7 +63,7 @@ function NoWorkspace({ email }: { email: string }) {
   return (
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-[16px] border border-[rgba(150,170,190,0.28)] bg-[#0a131b] p-6 text-center">
-        <Logo href={null} height={28} className="justify-center" />
+        <Logo href={null} height={56} className="justify-center" />
         <h1 className="mt-3 text-[17px] font-semibold text-[#f8fafc]">
           You are not in a workspace yet
         </h1>
@@ -165,6 +165,7 @@ async function Wizard({
   const settings = settingsResult.data;
   const services = servicesResult.data ?? [];
 
+  const twilioSms = integrationsView.cards.find((c) => c.definition.id === "twilio_sms");
   const twilioWhatsapp = integrationsView.cards.find((c) => c.definition.id === "twilio_whatsapp");
   const calendly = integrationsView.cards.find((c) => c.definition.id === "calendly");
   const googleCalendar = integrationsView.cards.find((c) => c.definition.id === "google_calendar");
@@ -215,6 +216,7 @@ async function Wizard({
       defaultChannel: (settings?.default_channel as "sms" | "whatsapp") ?? "sms",
       signature: settings?.message_signature ?? "",
       businessPhone: business?.phone ?? "",
+      smsConnected: Boolean(twilioSms?.connected),
       whatsappAvailable: integrationsView.whatsappAvailableOnPlan && Boolean(twilioWhatsapp?.connected),
       quietHoursEnabled: settings?.quiet_hours_enabled ?? true,
       quietHoursStart: (settings?.quiet_hours_start ?? "20:00:00").slice(0, 5),

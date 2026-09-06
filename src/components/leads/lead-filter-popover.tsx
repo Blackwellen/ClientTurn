@@ -72,7 +72,7 @@ function CheckList({
     return <p className="text-[12px] text-content-subtle">{emptyLabel}</p>;
   }
   return (
-    <div className="max-h-[132px] space-y-1 overflow-y-auto pr-1">
+    <div className="max-h-[216px] space-y-0.5 overflow-y-auto pr-1">
       {items.map((item) => (
         <label
           key={item.id}

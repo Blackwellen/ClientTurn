@@ -195,7 +195,7 @@ export function MessagingForm({
               <span>
                 WhatsApp is available on the Growth plan and above.{" "}
                 <Link
-                  href="/app/settings/billing"
+                  href="/app/settings?section=billing"
                   className="text-content-accent font-medium"
                 >
                   Compare plans

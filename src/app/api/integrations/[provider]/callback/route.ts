@@ -13,7 +13,7 @@ import { enqueue } from "@/lib/jobs/queue";
 
 export const dynamic = "force-dynamic";
 
-const FAILURE_REDIRECT = "/app/settings/connections?connect=failed";
+const FAILURE_REDIRECT = "/app/settings?section=connections&connect=failed";
 
 /**
  * Shared OAuth callback for every provider on the generic flow. No provider
@@ -83,7 +83,7 @@ export async function GET(
       { businessId: verified.businessId, idempotencyKey: `poll-init:${integrationId}` },
     );
 
-    return NextResponse.redirect(`${origin}/app/settings/connections?connected=${provider}`);
+    return NextResponse.redirect(`${origin}/app/settings?section=connections&connected=${provider}`);
   } catch (error) {
     await recordAudit({
       businessId: verified.businessId,

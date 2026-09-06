@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, MessageCircle, Phone, Plus, Send, Trash2 } from "lucide-react";
+import { Check, MessageCircle, MoreVertical, Plus, Send, Trash2 } from "lucide-react";
 import {
   MergeChip,
+  OBadge,
   OButton,
   OField,
   OInput,
@@ -44,6 +45,7 @@ export type FollowUpInitial = {
   defaultChannel: "sms" | "whatsapp";
   signature: string;
   businessPhone: string;
+  smsConnected: boolean;
   whatsappAvailable: boolean;
   quietHoursEnabled: boolean;
   quietHoursStart: string;
@@ -76,6 +78,7 @@ export function FollowUpStep({
   const [optOut, setOptOut] = React.useState(initial.optOutWording);
   const [openingRef, setOpeningRef] = React.useState<HTMLTextAreaElement | null>(null);
   const [expanded, setExpanded] = React.useState<number | null>(null);
+  const [rowMenu, setRowMenu] = React.useState<number | null>(null);
   const [sending, setSending] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ ok: boolean; message: string } | null>(null);
 
@@ -150,7 +153,7 @@ export function FollowUpStep({
           <OSectionTitle hint="Choose which channel to use for follow-ups.">
             Messaging channel
           </OSectionTitle>
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             <ORadioCard selected={channel === "sms"} onSelect={() => setChannel("sms")}>
               <span className="flex items-center gap-2 text-[14px] font-medium text-[#f0f3f8]">
                 <MessageCircle className="size-4 text-[#9ad84a]" aria-hidden />
@@ -172,7 +175,7 @@ export function FollowUpStep({
               <p className="mt-0.5 text-[12.5px] text-[#8c98ab]">
                 {initial.whatsappAvailable
                   ? "Send messages via WhatsApp"
-                  : "Setup required — connect WhatsApp in Settings → Connections"}
+                  : "Requires setup in Settings"}
               </p>
             </ORadioCard>
           </div>
@@ -182,13 +185,15 @@ export function FollowUpStep({
           <OSectionTitle hint="Connect your number and set how your messages appear to leads.">
             Sender setup
           </OSectionTitle>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-3">
             <OField label="Phone number">
-              <div className="flex h-10 items-center gap-2 rounded-[7px] border border-[rgba(150,170,190,0.32)] bg-[#0b141d] px-3">
-                <Phone className="size-3.5 shrink-0 text-[#7a8698]" aria-hidden />
-                <span className="truncate text-[14px] text-[#eef2f7]">
+              <div className="flex h-10 items-center gap-1.5 rounded-[7px] border border-[rgba(150,170,190,0.32)] bg-[#0b141d] pr-1.5 pl-3">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-[#eef2f7]">
                   {initial.businessPhone || "Not set"}
                 </span>
+                <OBadge tone={initial.smsConnected ? "success" : "neutral"} className="shrink-0 px-1.5 whitespace-nowrap">
+                  {initial.smsConnected ? "Connected" : "Setup required"}
+                </OBadge>
               </div>
             </OField>
             <OField label="Sender identity" hint="This is how your messages will appear to leads.">
@@ -214,18 +219,16 @@ export function FollowUpStep({
               setSteps((prev) => prev.map((s, i) => (i === 0 ? { ...s, template: e.target.value } : s)))
             }
           />
-          <div className="mt-1.5 flex items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1.5">
-              {MERGE_FIELDS.map((field) => (
-                <button key={field.token} type="button" onClick={() => insertMergeField(field.token)}>
-                  <MergeChip>{field.label}</MergeChip>
-                </button>
-              ))}
-            </div>
-            <p className="shrink-0 text-[11.5px] text-[#697488]">
-              {openingLength}/500{segments ? ` · ${segments} SMS segment${segments === 1 ? "" : "s"}` : ""}
-            </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {MERGE_FIELDS.map((field) => (
+              <button key={field.token} type="button" onClick={() => insertMergeField(field.token)}>
+                <MergeChip>{field.label}</MergeChip>
+              </button>
+            ))}
           </div>
+          <p className="mt-1 text-right text-[11.5px] text-[#697488]">
+            {openingLength}/500{segments ? ` · ${segments} SMS segment${segments === 1 ? "" : "s"}` : ""}
+          </p>
         </div>
       </div>
 
@@ -247,23 +250,47 @@ export function FollowUpStep({
                   <p className="min-w-0 flex-1 truncate text-[13px] text-[#96a1b3]">
                     {step.template || "No message yet"}
                   </p>
-                  {steps.length > 1 && (
+                  <div className="relative shrink-0">
                     <button
                       type="button"
-                      aria-label={`Remove step ${i + 1}`}
-                      onClick={() => setSteps((prev) => prev.filter((_, j) => j !== i))}
-                      className="text-[#7a8698] hover:text-[#ff6b70]"
+                      aria-label={`Options for message ${i + 1}`}
+                      aria-expanded={rowMenu === i}
+                      onClick={() => setRowMenu(rowMenu === i ? null : i)}
+                      className="text-[#7a8698] hover:text-[#eef2f7]"
                     >
-                      <Trash2 className="size-3.5" aria-hidden />
+                      <MoreVertical className="size-3.5" aria-hidden />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setExpanded(expanded === i ? null : i)}
-                    className="text-[12px] font-medium text-[var(--auth-lime)]"
-                  >
-                    {expanded === i ? "Done" : "Edit"}
-                  </button>
+                    {rowMenu === i && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setRowMenu(null)} />
+                        <div className="absolute top-6 right-0 z-20 min-w-[130px] overflow-hidden rounded-[8px] border border-[rgba(150,170,190,0.3)] bg-[#0d1720] shadow-lg">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRowMenu(null);
+                              setExpanded(expanded === i ? null : i);
+                            }}
+                            className="flex w-full items-center px-3 py-2 text-left text-[12.5px] text-[#dbe1ea] hover:bg-[rgba(255,255,255,0.04)]"
+                          >
+                            {expanded === i ? "Done editing" : "Edit message"}
+                          </button>
+                          {steps.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRowMenu(null);
+                                setSteps((prev) => prev.filter((_, j) => j !== i));
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-[#ff6b70] hover:bg-[rgba(255,107,112,0.08)]"
+                            >
+                              <Trash2 className="size-3.5" aria-hidden />
+                              Remove message
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {expanded === i && (
                   <div className="mt-2.5 space-y-2 border-t border-[rgba(150,170,190,0.15)] pt-2.5">
@@ -370,18 +397,23 @@ export function FollowUpStep({
           <p className="mt-1.5 text-right text-[11.5px] text-[#697488]">{optOut.length}/160</p>
         </div>
 
-        <div>
-          <OButton variant="secondary" className="w-full" onClick={sendTest} loading={sending}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <OButton variant="secondary" onClick={sendTest} loading={sending}>
             <Send className="size-3.5" aria-hidden />
             Send test message
           </OButton>
-          {testResult && (
-            <p
-              className={`mt-1.5 text-[12.5px] ${testResult.ok ? "text-[var(--auth-lime)]" : "text-[#ff6b70]"}`}
-            >
-              {testResult.message}
+          <div className="text-right">
+            <p className="text-[12px] text-[#8c98ab]">
+              Send a test message to your phone to see how it looks.
             </p>
-          )}
+            {testResult && (
+              <p
+                className={`mt-1 text-[12.5px] ${testResult.ok ? "text-[var(--auth-lime)]" : "text-[#ff6b70]"}`}
+              >
+                {testResult.message}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

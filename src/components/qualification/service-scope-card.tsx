@@ -26,8 +26,9 @@ export function ServiceScopeCard({
 
   return (
     <Card>
-      <CardHeader className="flex-col items-stretch gap-0">
+      <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
         <SectionHeader
+          dense
           icon={PieChart}
           tone="purple"
           title="Service scope summary"
@@ -35,7 +36,7 @@ export function ServiceScopeCard({
         />
       </CardHeader>
 
-      <CardContent className="pt-4">
+      <CardContent className="px-5 pt-4 pb-5">
         {services.length === 0 ? (
           <div>
             <p className="text-content-muted text-[13px]">
@@ -44,7 +45,7 @@ export function ServiceScopeCard({
               do.
             </p>
             <Link
-              href="/app/settings/workspace"
+              href="/app/settings?section=workspace"
               className="text-content-accent mt-2 inline-block text-[13px] font-medium"
             >
               Add your services
@@ -55,7 +56,7 @@ export function ServiceScopeCard({
             {rows.map((row) => (
               <li
                 key={row.id ?? "all"}
-                className="grid grid-cols-[minmax(5rem,1fr)_auto_minmax(4rem,1fr)_2.5rem] items-center gap-3"
+                className="grid grid-cols-[minmax(4.5rem,1fr)_auto_minmax(4rem,1.2fr)_2.5rem] items-center gap-3"
               >
                 <span className="text-content truncate text-[13px]">
                   {row.name}
@@ -64,6 +65,7 @@ export function ServiceScopeCard({
                   {row.count} {row.count === 1 ? "question" : "questions"}
                 </span>
                 <Progress
+                  className="h-2"
                   value={row.percent}
                   tone="success"
                   label={`${row.name} question coverage`}

@@ -57,25 +57,45 @@ export function Avatar({
   // Adjusted during render rather than in an effect, per React's guidance
   // for state that depends on a changed prop.
   const [failed, setFailed] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
   const [trackedSrc, setTrackedSrc] = React.useState(src);
   if (src !== trackedSrc) {
     setTrackedSrc(src);
     setFailed(false);
+    setLoaded(false);
   }
 
   if (src && !failed) {
     return (
-      // Avatars may come from short-lived R2 signed URLs or a Gravatar
-      // lookup (which 404s when nothing is registered for the address), so
-      // next/image optimisation cannot cache them and a load failure is
-      // expected, not exceptional — it falls back to initials below.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={name}
-        onError={() => setFailed(true)}
-        className={cn(base, "object-cover bg-surface-sunken")}
-      />
+      // Initials render immediately and the image fades in only once it has
+      // actually loaded. Most lead avatars are Gravatar lookups that 404 (no
+      // account for that address), so painting the <img> first would flash a
+      // broken-image glyph on every row before the fallback took over.
+      <span
+        role="img"
+        aria-label={name}
+        title={name}
+        className={cn(
+          base,
+          "relative overflow-hidden",
+          !loaded && paletteFor(name),
+        )}
+      >
+        {!loaded && initials(name)}
+        {/* Signed R2 URLs and Gravatar hashes are not optimisable by
+            next/image, and a 404 here is expected rather than exceptional. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={cn(
+            "absolute inset-0 size-full rounded-full object-cover",
+            !loaded && "opacity-0",
+          )}
+        />
+      </span>
     );
   }
 

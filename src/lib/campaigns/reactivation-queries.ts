@@ -14,8 +14,9 @@ import {
   type ReactivationTrend,
 } from "./reactivation-types";
 
-const SCAN_LIMIT = 10_000;
 const CAMPAIGN_LIMIT = 200;
+/** Only the audience *preview* reads individual contacts. */
+const AUDIENCE_SAMPLE = 25;
 
 /**
  * How old a lead must be to count as reactivation-eligible. There is no
@@ -24,9 +25,6 @@ const CAMPAIGN_LIMIT = 200;
  * replaces, not a literal scattered through the UI.
  */
 export const DEFAULT_ELIGIBILITY_DAYS = 90;
-
-/** The trend windows for the KPI strip. */
-const TREND_DAYS = 30;
 
 type CampaignRecord = {
   id: string;
@@ -63,113 +61,81 @@ const CAMPAIGN_COLUMNS =
   "filter_config, scheduled_at, launched_at, started_at, paused_at, " +
   "completed_at, cancelled_at, created_by, updated_by, created_at, updated_at";
 
-type ContactRecord = {
-  id: string;
+type ResultRow = {
   campaign_id: string;
-  lead_id: string;
-  state: string;
-  stopped_reason: string | null;
-  sent_at: string | null;
-  delivered_at: string | null;
-  replied_at: string | null;
-  created_at: string;
-  leads: {
-    first_name: string | null;
-    last_name: string | null;
-    phone: string | null;
-    email: string | null;
-    status: string;
-    opted_out: boolean;
-    qualified_at: string | null;
-    booked_at: string | null;
-    last_contact_at: string | null;
-    services: { name: string; average_value: number | null } | null;
-  } | null;
+  audience_count: number;
+  sent_count: number;
+  delivered_count: number;
+  reply_count: number;
+  qualified_count: number;
+  booked_count: number;
+  failed_count: number;
+  stopped_count: number;
+  pending_count: number;
+  processed_count: number;
+  revenue_amount: number;
+  recent_reply_count: number;
+  previous_reply_count: number;
+  recent_qualified_count: number;
+  previous_qualified_count: number;
+  recent_booked_count: number;
+  previous_booked_count: number;
 };
 
-const CONTACT_COLUMNS =
-  "id, campaign_id, lead_id, state, stopped_reason, sent_at, delivered_at, " +
-  "replied_at, created_at, leads ( first_name, last_name, phone, email, status, " +
-  "opted_out, qualified_at, booked_at, last_contact_at, " +
-  "services ( name, average_value ) )";
-
-type Totals = {
-  audience: number;
-  sent: number;
-  delivered: number;
-  replies: number;
-  qualified: number;
-  booked: number;
-  failed: number;
-  stopped: number;
-  pending: number;
-  processed: number;
-  revenue: number;
-};
-
-function emptyTotals(): Totals {
+function emptyResult(campaignId: string): ResultRow {
   return {
-    audience: 0,
-    sent: 0,
-    delivered: 0,
-    replies: 0,
-    qualified: 0,
-    booked: 0,
-    failed: 0,
-    stopped: 0,
-    pending: 0,
-    processed: 0,
-    revenue: 0,
+    campaign_id: campaignId,
+    audience_count: 0,
+    sent_count: 0,
+    delivered_count: 0,
+    reply_count: 0,
+    qualified_count: 0,
+    booked_count: 0,
+    failed_count: 0,
+    stopped_count: 0,
+    pending_count: 0,
+    processed_count: 0,
+    revenue_amount: 0,
+    recent_reply_count: 0,
+    previous_reply_count: 0,
+    recent_qualified_count: 0,
+    previous_qualified_count: 0,
+    recent_booked_count: 0,
+    previous_booked_count: 0,
   };
 }
 
 /**
- * A campaign only takes credit for a qualification or booking that happened
- * *after* it started contacting the lead — otherwise every reactivation
- * campaign would inherit the lead's entire history.
+ * Campaign results are aggregated in Postgres. A single campaign can hold
+ * thousands of contacts, so counting them in Node would mean either a very
+ * large transfer or a silently truncated total.
  */
-function attributionFloor(campaign: {
-  started_at: string | null;
-  launched_at: string | null;
-  created_at: string;
-}) {
-  const value = campaign.started_at ?? campaign.launched_at ?? campaign.created_at;
-  return new Date(value).getTime();
-}
+async function fetchResults(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  businessId: string,
+  campaignId?: string,
+): Promise<Map<string, ResultRow>> {
+  // The generated RPC signature takes an optional argument rather than a
+  // nullable one, so "all campaigns" omits it instead of passing null.
+  const { data } = await supabase.rpc("reactivation_campaign_results", {
+    p_business_id: businessId,
+    ...(campaignId ? { p_campaign_id: campaignId } : {}),
+  });
 
-function accumulate(totals: Totals, contact: ContactRecord, floor: number) {
-  totals.audience += 1;
-  if (contact.sent_at) totals.sent += 1;
-  if (contact.delivered_at) totals.delivered += 1;
-  if (contact.replied_at) totals.replies += 1;
-  if (contact.state === "failed") totals.failed += 1;
-  if (contact.state === "stopped" || contact.state === "suppressed") {
-    totals.stopped += 1;
-  }
-  if (contact.state === "pending" || contact.state === "scheduled") {
-    totals.pending += 1;
-  } else {
-    totals.processed += 1;
-  }
-
-  const lead = contact.leads;
-  if (!lead) return;
-
-  if (lead.qualified_at && new Date(lead.qualified_at).getTime() >= floor) {
-    totals.qualified += 1;
-  }
-  if (lead.booked_at && new Date(lead.booked_at).getTime() >= floor) {
-    totals.booked += 1;
-    totals.revenue += Number(lead.services?.average_value ?? 0);
-  }
+  return new Map(
+    ((data ?? []) as ResultRow[]).map((row) => [row.campaign_id, row]),
+  );
 }
 
 /** Falls back to a readable label when a campaign predates `audience_label`. */
-function audienceLabelFor(campaign: CampaignRecord): string {
+function audienceLabelFor(campaign: {
+  audience_label: string | null;
+  filter_config: unknown;
+}): string {
   if (campaign.audience_label) return campaign.audience_label;
 
   const config = campaign.filter_config as
-    | { statuses?: string[]; lastContactedBeforeDays?: number }
+    | { lastContactedBeforeDays?: number }
     | null;
   const days = config?.lastContactedBeforeDays;
   if (typeof days === "number" && days > 0) {
@@ -179,7 +145,9 @@ function audienceLabelFor(campaign: CampaignRecord): string {
 }
 
 function displayNameFrom(
-  profile: { first_name: string | null; last_name: string | null; email: string | null } | undefined,
+  profile:
+    | { first_name: string | null; last_name: string | null; email: string | null }
+    | undefined,
 ): string | null {
   if (!profile) return null;
   const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
@@ -206,53 +174,57 @@ async function profileNames(
   );
 }
 
+/**
+ * A finished campaign always reads 100% and an unstarted one always 0%,
+ * regardless of how far contact expansion got — the bar reports the campaign,
+ * not the queue.
+ */
+function progressFor(
+  status: CampaignStatus,
+  processed: number,
+  denominator: number,
+): number {
+  if (status === "DRAFT" || status === "SCHEDULED") return 0;
+  if (status === "COMPLETED" || status === "CANCELLED") return 100;
+  if (denominator <= 0) return 0;
+  return Math.min(100, Math.round((processed / denominator) * 100));
+}
+
 /* ------------------------------------------------------------- rows --- */
 
 /**
  * Every reactivation campaign in the workspace with its live results.
- * RLS scopes `campaigns`/`campaign_contacts` to the caller's business; the
- * explicit `business_id` filter is belt-and-braces, never the only guard.
+ * RLS scopes `campaigns` and the rollup function to the caller's business;
+ * the explicit `business_id` filter is belt-and-braces, never the only guard.
  */
 export async function listReactivationCampaigns(
   businessId: string,
 ): Promise<ReactivationCampaignRow[]> {
   const supabase = await createClient();
 
-  const [{ data: campaigns }, { data: contacts }] = await Promise.all([
+  const [{ data: campaigns }, results] = await Promise.all([
     supabase
       .from("campaigns")
       .select(CAMPAIGN_COLUMNS)
       .eq("business_id", businessId)
       .order("updated_at", { ascending: false })
       .limit(CAMPAIGN_LIMIT),
-    supabase
-      .from("campaign_contacts")
-      .select(CONTACT_COLUMNS)
-      .eq("business_id", businessId)
-      .limit(SCAN_LIMIT),
+    fetchResults(supabase, businessId),
   ]);
 
   const records = (campaigns ?? []) as unknown as CampaignRecord[];
-  const floors = new Map(records.map((c) => [c.id, attributionFloor(c)]));
-
-  const totals = new Map<string, Totals>();
-  for (const contact of (contacts ?? []) as unknown as ContactRecord[]) {
-    const floor = floors.get(contact.campaign_id);
-    if (floor === undefined) continue;
-    const entry = totals.get(contact.campaign_id) ?? emptyTotals();
-    accumulate(entry, contact, floor);
-    totals.set(contact.campaign_id, entry);
-  }
-
   const names = await profileNames(
     supabase,
     records.map((record) => record.created_by),
   );
 
   return records.map((record) => {
-    const entry = totals.get(record.id) ?? emptyTotals();
+    const result = results.get(record.id) ?? emptyResult(record.id);
     const audienceLabel = audienceLabelFor(record);
-    const denominator = Math.max(entry.audience, record.estimated_audience_size);
+    const denominator = Math.max(
+      result.audience_count,
+      record.estimated_audience_size,
+    );
 
     return {
       id: record.id,
@@ -267,12 +239,16 @@ export async function listReactivationCampaigns(
         audienceLabel,
         name: record.name,
       }),
-      audience: entry.audience,
-      sent: entry.sent,
-      replies: entry.replies,
-      qualified: entry.qualified,
-      booked: entry.booked,
-      progress: progressFor(record.status as CampaignStatus, entry.processed, denominator),
+      audience: result.audience_count,
+      sent: result.sent_count,
+      replies: result.reply_count,
+      qualified: result.qualified_count,
+      booked: result.booked_count,
+      progress: progressFor(
+        record.status as CampaignStatus,
+        result.processed_count,
+        denominator,
+      ),
       tags: record.tags ?? [],
       createdAt: record.created_at,
       updatedAt: record.updated_at,
@@ -282,22 +258,6 @@ export async function listReactivationCampaigns(
         : null,
     };
   });
-}
-
-/**
- * A finished campaign always reads 100% and a draft always 0%, regardless of
- * how far the contact expansion got — the bar reports the campaign, not the
- * queue.
- */
-function progressFor(
-  status: CampaignStatus,
-  processed: number,
-  denominator: number,
-): number {
-  if (status === "DRAFT" || status === "SCHEDULED") return 0;
-  if (status === "COMPLETED" || status === "CANCELLED") return 100;
-  if (denominator <= 0) return 0;
-  return Math.min(100, Math.round((processed / denominator) * 100));
 }
 
 /* ---------------------------------------------------------- summary --- */
@@ -324,80 +284,53 @@ export async function getReactivationSummary(
   const supabase = await createClient();
   const cutoff = new Date(Date.now() - eligibilityDays * 864e5).toISOString();
 
-  const [
-    { data: campaigns },
-    { data: contacts },
-    { count: eligibleCount },
-  ] = await Promise.all([
-    supabase
-      .from("campaigns")
-      .select("id, status, started_at, launched_at, created_at")
-      .eq("business_id", businessId)
-      .limit(CAMPAIGN_LIMIT),
-    supabase
-      .from("campaign_contacts")
-      .select(CONTACT_COLUMNS)
-      .eq("business_id", businessId)
-      .limit(SCAN_LIMIT),
-    // Reactivation-eligible: contactable, never booked, not opted out, and
-    // dormant for longer than the eligibility threshold.
-    supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .eq("opted_out", false)
-      .is("booked_at", null)
-      .not("phone_normalized", "is", null)
-      .or("last_contact_at.is.null,last_contact_at.lt." + cutoff)
-      .lt("created_at", cutoff),
-  ]);
+  const [{ data: campaigns }, results, { count: eligibleCount }] =
+    await Promise.all([
+      supabase
+        .from("campaigns")
+        .select("id, status")
+        .eq("business_id", businessId)
+        .limit(CAMPAIGN_LIMIT),
+      fetchResults(supabase, businessId),
+      // Reactivation-eligible: contactable, never booked, not opted out, not
+      // a test record, and dormant for longer than the eligibility threshold.
+      supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .eq("is_test", false)
+        .eq("opted_out", false)
+        .is("booked_at", null)
+        .not("phone_normalized", "is", null)
+        .or("last_contact_at.is.null,last_contact_at.lt." + cutoff)
+        .lt("created_at", cutoff),
+    ]);
 
-  const records = (campaigns ?? []) as {
-    id: string;
-    status: string;
-    started_at: string | null;
-    launched_at: string | null;
-    created_at: string;
-  }[];
-  const floors = new Map(records.map((c) => [c.id, attributionFloor(c)]));
+  const records = (campaigns ?? []) as { id: string; status: string }[];
 
-  const totals = emptyTotals();
-  const windowStart = Date.now() - TREND_DAYS * 864e5;
-  const previousStart = Date.now() - 2 * TREND_DAYS * 864e5;
+  const totals = {
+    sent: 0,
+    replies: 0,
+    qualified: 0,
+    booked: 0,
+    revenue: 0,
+  };
   const current = { replies: 0, qualified: 0, booked: 0 };
   const previous = { replies: 0, qualified: 0, booked: 0 };
 
-  const inWindow = (value: string | null, from: number, to: number) => {
-    if (!value) return false;
-    const at = new Date(value).getTime();
-    return at >= from && at < to;
-  };
+  for (const result of results.values()) {
+    totals.sent += result.sent_count;
+    totals.replies += result.reply_count;
+    totals.qualified += result.qualified_count;
+    totals.booked += result.booked_count;
+    totals.revenue += Number(result.revenue_amount ?? 0);
 
-  for (const contact of (contacts ?? []) as unknown as ContactRecord[]) {
-    const floor = floors.get(contact.campaign_id);
-    if (floor === undefined) continue;
-    accumulate(totals, contact, floor);
-
-    if (inWindow(contact.replied_at, windowStart, Date.now())) current.replies += 1;
-    if (inWindow(contact.replied_at, previousStart, windowStart)) {
-      previous.replies += 1;
-    }
-
-    const lead = contact.leads;
-    if (!lead) continue;
-    if (lead.qualified_at && new Date(lead.qualified_at).getTime() >= floor) {
-      if (inWindow(lead.qualified_at, windowStart, Date.now())) current.qualified += 1;
-      if (inWindow(lead.qualified_at, previousStart, windowStart)) {
-        previous.qualified += 1;
-      }
-    }
-    if (lead.booked_at && new Date(lead.booked_at).getTime() >= floor) {
-      if (inWindow(lead.booked_at, windowStart, Date.now())) current.booked += 1;
-      if (inWindow(lead.booked_at, previousStart, windowStart)) {
-        previous.booked += 1;
-      }
-    }
+    current.replies += result.recent_reply_count;
+    current.qualified += result.recent_qualified_count;
+    current.booked += result.recent_booked_count;
+    previous.replies += result.previous_reply_count;
+    previous.qualified += result.previous_qualified_count;
+    previous.booked += result.previous_booked_count;
   }
 
   return {
@@ -413,7 +346,8 @@ export async function getReactivationSummary(
       totals.replies === 0 ? 0 : (totals.qualified / totals.replies) * 100,
     qualifiedTrend: trend(current.qualified, previous.qualified),
     booked: totals.booked,
-    bookingRate: totals.sent === 0 ? 0 : (totals.booked / totals.sent) * 100,
+    bookingRate:
+      totals.replies === 0 ? 0 : (totals.booked / totals.replies) * 100,
     bookedTrend: trend(current.booked, previous.booked),
     revenue: totals.revenue,
   };
@@ -426,12 +360,12 @@ export async function getAudienceOptions(
   const supabase = await createClient();
   const { data } = await supabase
     .from("campaigns")
-    .select("name, audience_label, filter_config")
+    .select("audience_label, filter_config")
     .eq("business_id", businessId)
     .limit(CAMPAIGN_LIMIT);
 
   const labels = new Set<string>();
-  for (const row of (data ?? []) as unknown as CampaignRecord[]) {
+  for (const row of data ?? []) {
     labels.add(audienceLabelFor(row));
   }
   return [...labels].sort((a, b) => a.localeCompare(b, "en-GB"));
@@ -486,11 +420,13 @@ function eligibilityRules(
     },
     {
       label: "Has not opted out",
-      detail: "Opt-outs and the suppression list are re-checked before every send.",
+      detail:
+        "Opt-outs and the suppression list are re-checked before every send.",
     },
     {
       label: "Has a reachable " + campaign.channel.toUpperCase() + " contact",
-      detail: "Leads without a usable number are excluded when the audience is built.",
+      detail:
+        "Leads without a usable number are excluded when the audience is built.",
     },
     {
       label: "Not in a live conversation",
@@ -502,7 +438,7 @@ function eligibilityRules(
 
 function messagesFor(
   campaign: CampaignRecord,
-  totals: Totals,
+  sent: number,
   followupSent: number,
 ): ReactivationMessage[] {
   const messages: ReactivationMessage[] = [
@@ -513,7 +449,7 @@ function messagesFor(
       timing: "When the campaign reaches the lead",
       enabled: true,
       body: campaign.message_template,
-      sent: totals.sent,
+      sent,
     },
   ];
 
@@ -536,6 +472,23 @@ function messagesFor(
   return messages;
 }
 
+type ContactRecord = {
+  id: string;
+  lead_id: string;
+  state: string;
+  sent_at: string | null;
+  replied_at: string | null;
+  leads: {
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    booked_at: string | null;
+    last_contact_at: string | null;
+    services: { name: string } | null;
+  } | null;
+};
+
 export async function getReactivationCampaignDetail(
   businessId: string,
   campaignId: string,
@@ -552,21 +505,32 @@ export async function getReactivationCampaignDetail(
 
   if (!row) return null;
   const campaign = row as unknown as CampaignRecord;
-  const floor = attributionFloor(campaign);
+  const floor = new Date(
+    campaign.started_at ?? campaign.launched_at ?? campaign.created_at,
+  ).getTime();
 
   const [
+    results,
     { data: contacts, count: contactCount },
     { count: followupCount },
     { data: auditRows },
     { data: integrations },
   ] = await Promise.all([
+    fetchResults(supabase, businessId, campaignId),
+    // Only a preview page of contacts is read — the totals above come from
+    // the SQL rollup, so this never has to be the whole audience.
     supabase
       .from("campaign_contacts")
-      .select(CONTACT_COLUMNS, { count: "exact" })
+      .select(
+        "id, lead_id, state, sent_at, replied_at, " +
+          "leads ( first_name, last_name, phone, email, booked_at, " +
+          "last_contact_at, services ( name ) )",
+        { count: "exact" },
+      )
       .eq("business_id", businessId)
       .eq("campaign_id", campaignId)
       .order("created_at", { ascending: true })
-      .limit(SCAN_LIMIT),
+      .limit(AUDIENCE_SAMPLE),
     supabase
       .from("campaign_contacts")
       .select("id", { count: "exact", head: true })
@@ -587,9 +551,7 @@ export async function getReactivationCampaignDetail(
       .eq("business_id", businessId),
   ]);
 
-  const rows = (contacts ?? []) as unknown as ContactRecord[];
-  const totals = emptyTotals();
-  for (const contact of rows) accumulate(totals, contact, floor);
+  const result = results.get(campaignId) ?? emptyResult(campaignId);
 
   const names = await profileNames(supabase, [
     campaign.created_by,
@@ -597,42 +559,44 @@ export async function getReactivationCampaignDetail(
     ...(auditRows ?? []).map((entry) => entry.actor_user_id),
   ]);
 
-  const audienceSample: ReactivationAudienceRow[] = rows
-    .slice(0, 25)
-    .map((contact) => {
-      const mapped = ELIGIBILITY_STATE[contact.state] ?? {
-        state: "eligible" as const,
-        label: "Eligible",
-      };
-      const lead = contact.leads;
-      const converted = Boolean(
-        lead?.booked_at && new Date(lead.booked_at).getTime() >= floor,
-      );
-      return {
-        id: contact.id,
-        leadId: contact.lead_id,
-        name: lead ? leadDisplayName(lead) : "Unnamed lead",
-        service: lead?.services?.name ?? null,
-        lastActivityAt:
-          contact.replied_at ?? contact.sent_at ?? lead?.last_contact_at ?? null,
-        channel: campaign.channel,
-        contact: lead?.phone ?? lead?.email ?? null,
-        eligibility: converted ? "converted" : mapped.state,
-        eligibilityLabel: converted ? "Booked" : mapped.label,
-      };
-    });
+  const audienceSample: ReactivationAudienceRow[] = (
+    (contacts ?? []) as unknown as ContactRecord[]
+  ).map((contact) => {
+    const mapped = ELIGIBILITY_STATE[contact.state] ?? {
+      state: "eligible" as const,
+      label: "Eligible",
+    };
+    const lead = contact.leads;
+    const converted = Boolean(
+      lead?.booked_at && new Date(lead.booked_at).getTime() >= floor,
+    );
+    return {
+      id: contact.id,
+      leadId: contact.lead_id,
+      name: lead ? leadDisplayName(lead) : "Unnamed lead",
+      service: lead?.services?.name ?? null,
+      lastActivityAt:
+        contact.replied_at ?? contact.sent_at ?? lead?.last_contact_at ?? null,
+      channel: campaign.channel,
+      contact: lead?.phone ?? lead?.email ?? null,
+      eligibility: converted ? "converted" : mapped.state,
+      eligibilityLabel: converted ? "Booked" : mapped.label,
+    };
+  });
 
-  const activity: ReactivationActivityEntry[] = (auditRows ?? []).map((entry) => ({
-    id: entry.id,
-    action: entry.action,
-    label: ACTIVITY_LABELS[entry.action] ?? entry.action,
-    actor:
-      entry.actor_type === "system"
-        ? "Client Turn"
-        : (entry.actor_user_id ? names.get(entry.actor_user_id) : null) ??
-          "Unknown user",
-    at: entry.created_at,
-  }));
+  const activity: ReactivationActivityEntry[] = (auditRows ?? []).map(
+    (entry) => ({
+      id: entry.id,
+      action: entry.action,
+      label: ACTIVITY_LABELS[entry.action] ?? entry.action,
+      actor:
+        entry.actor_type === "system"
+          ? "Client Turn"
+          : ((entry.actor_user_id ? names.get(entry.actor_user_id) : null) ??
+            "Unknown user"),
+      at: entry.created_at,
+    }),
+  );
 
   const messagingProviders =
     campaign.channel === "whatsapp"
@@ -646,8 +610,11 @@ export async function getReactivationCampaignDetail(
   );
 
   const audienceLabel = audienceLabelFor(campaign);
-  const denominator = Math.max(totals.audience, campaign.estimated_audience_size);
-  const timezone = campaign.timezone ?? "your workspace timezone";
+  const denominator = Math.max(
+    result.audience_count,
+    campaign.estimated_audience_size,
+  );
+  const timezone = campaign.timezone ?? "workspace time";
 
   return {
     id: campaign.id,
@@ -685,26 +652,26 @@ export async function getReactivationCampaignDetail(
     completedAt: campaign.completed_at,
     cancelledAt: campaign.cancelled_at,
     totals: {
-      audience: totals.audience,
-      sent: totals.sent,
-      delivered: totals.delivered,
-      replies: totals.replies,
-      qualified: totals.qualified,
-      booked: totals.booked,
-      failed: totals.failed,
-      stopped: totals.stopped,
-      pending: totals.pending,
-      revenue: totals.revenue,
+      audience: result.audience_count,
+      sent: result.sent_count,
+      delivered: result.delivered_count,
+      replies: result.reply_count,
+      qualified: result.qualified_count,
+      booked: result.booked_count,
+      failed: result.failed_count,
+      stopped: result.stopped_count,
+      pending: result.pending_count,
+      revenue: Number(result.revenue_amount ?? 0),
     },
     progress: progressFor(
       campaign.status as CampaignStatus,
-      totals.processed,
+      result.processed_count,
       denominator,
     ),
     eligibilityRules: eligibilityRules(campaign, eligibilityDays),
     audienceSample,
-    audienceSampleTotal: contactCount ?? rows.length,
-    messages: messagesFor(campaign, totals, followupCount ?? 0),
+    audienceSampleTotal: contactCount ?? audienceSample.length,
+    messages: messagesFor(campaign, result.sent_count, followupCount ?? 0),
     activity,
     providerConnected,
   };

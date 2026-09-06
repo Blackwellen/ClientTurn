@@ -16,7 +16,7 @@ export function LeadsEmptyState() {
       description="Connected lead sources will appear here within seconds of an enquiry arriving."
       action={
         <Link
-          href="/app/settings/connections"
+          href="/app/settings?section=connections"
           className="inline-flex h-8 items-center rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium text-content shadow-xs transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
         >
           Check connections
@@ -80,7 +80,7 @@ export function LeadCardSkeleton() {
 /** Matches the real grid so switching from loading to loaded never jumps. */
 export function LeadCardGridSkeleton({ count = 12 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 min-[1440px]:grid-cols-4">
+    <div className="grid grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 min-[1280px]:grid-cols-3 min-[1440px]:grid-cols-4">
       {Array.from({ length: count }).map((_, index) => (
         <LeadCardSkeleton key={index} />
       ))}

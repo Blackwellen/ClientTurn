@@ -15,6 +15,7 @@ const LEGAL_LINKS = [
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Cookies", href: "/cookies" },
+  { label: "Sub-processors", href: "/sub-processors" },
 ] as const;
 
 const ACCOUNT_LINKS = [
@@ -62,12 +63,18 @@ export function MarketingFooter() {
               Follow-up, qualification and booking for UK home-service
               businesses running Meta lead ads.
             </p>
-            <p className="mt-4 text-[13px] text-content-secondary">
+            <p className="mt-4 space-x-3 text-[13px] text-content-secondary">
               <a
                 href={`mailto:${COMPANY.supportEmail}`}
                 className="rounded-sm underline underline-offset-4 hover:text-content"
               >
                 {COMPANY.supportEmail}
+              </a>
+              <a
+                href={`mailto:${COMPANY.legalEmail}`}
+                className="rounded-sm underline underline-offset-4 hover:text-content"
+              >
+                {COMPANY.legalEmail}
               </a>
             </p>
           </div>
@@ -83,10 +90,10 @@ export function MarketingFooter() {
             reserved.
           </p>
           {hasRegisteredDetails() ? (
-            <p className="text-[12px] text-content-muted">
-              {COMPANY.registeredName}
-              {COMPANY.companyNumber && ` · Company no. ${COMPANY.companyNumber}`}
-              {` · ${COMPANY.registeredAddress}`}
+            <p className="max-w-xl text-[12px] leading-relaxed text-content-muted sm:text-right">
+              {COMPANY.product} is a trading name of {COMPANY.registeredName},
+              registered in {COMPANY.jurisdiction} no. {COMPANY.companyNumber}.
+              Registered office: {COMPANY.registeredAddress}.
             </p>
           ) : (
             <p className="text-[12px] text-content-muted">

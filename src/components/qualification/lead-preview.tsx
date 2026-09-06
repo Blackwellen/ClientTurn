@@ -14,6 +14,7 @@ import {
   applicableQuestions,
   evaluateDraft,
   matchConfiguredValue,
+  seedPreviewAnswers,
 } from "@/lib/qualification/preview";
 import { answerValues } from "@/lib/qualification/routing";
 
@@ -66,7 +67,9 @@ export function LeadPreview({
   serviceId: string | null;
   onServiceChange: (next: string | null) => void;
 }) {
-  const [answers, setAnswers] = React.useState<Record<string, string>>({});
+  const [answers, setAnswers] = React.useState<Record<string, string>>(() =>
+    seedPreviewAnswers(questions, serviceArea),
+  );
 
   const applicable = applicableQuestions(questions, serviceId);
   const outcome = evaluateDraft({
@@ -82,8 +85,9 @@ export function LeadPreview({
 
   return (
     <Card>
-      <CardHeader className="flex-col items-stretch gap-0">
+      <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
         <SectionHeader
+          dense
           icon={Eye}
           tone="info"
           title="Preview for leads"
@@ -91,39 +95,38 @@ export function LeadPreview({
         />
       </CardHeader>
 
-      <CardContent className="pt-4">
-        <div className="border-line bg-surface-sunken/50 rounded-xl border p-4">
+      <CardContent className="px-5 pt-4 pb-5">
+        {services.length > 0 && (
+          <div className="mb-3 flex items-center justify-end gap-2">
+            <label
+              htmlFor="preview-service"
+              className="text-content-subtle text-[11.5px]"
+            >
+              Previewing as
+            </label>
+            <Select
+              id="preview-service"
+              className="h-8 w-36 text-[12px]"
+              value={serviceId ?? ""}
+              onChange={(event) => onServiceChange(event.target.value || null)}
+            >
+              <option value="">No service</option>
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                  {service.active ? "" : " (inactive)"}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+        <div className="border-line bg-surface rounded-xl border p-4">
           <h3 className="text-content text-[15px] font-semibold">
             Tell us a bit about your enquiry
           </h3>
-          <p className="text-content-muted mt-0.5 text-[13px]">
+          <p className="text-content-muted mt-0.5 text-[12.5px]">
             This helps us get you to the right information.
           </p>
-
-          {services.length > 0 && (
-            <div className="mt-3">
-              <label
-                htmlFor="preview-service"
-                className="text-content text-[13px] font-medium"
-              >
-                Answering as
-              </label>
-              <Select
-                id="preview-service"
-                className="mt-1 h-9 bg-[var(--lr-surface)] text-[13px]"
-                value={serviceId ?? ""}
-                onChange={(event) => onServiceChange(event.target.value || null)}
-              >
-                <option value="">No service identified</option>
-                {services.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                    {service.active ? "" : " (inactive)"}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
 
           {applicable.length === 0 ? (
             <p className="text-content-muted mt-4 text-[13px]">
@@ -161,9 +164,7 @@ export function LeadPreview({
               <style.Icon className="size-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-content text-[13px] font-semibold">
-                {copy.label}
-              </p>
+              <p className="text-content text-[13px] font-semibold">{copy.label}</p>
               <p className="text-content-secondary mt-0.5 text-[12px] leading-[1.5]">
                 {copy.detail}
               </p>
@@ -237,7 +238,7 @@ function PreviewField({
                   value={entry.value}
                   checked={value === entry.value}
                   onChange={() => onChange(entry.value)}
-                  className="accent-[var(--lr-accent-600)] size-4 cursor-pointer"
+                  className="accent-[var(--lr-success-600)] size-4 cursor-pointer"
                 />
                 {entry.label}
               </label>
@@ -247,7 +248,7 @@ function PreviewField({
       ) : values.length > 0 ? (
         <Select
           id={id}
-          className="mt-1.5 h-9 bg-[var(--lr-surface)] text-[13px]"
+          className="mt-1.5 h-9 text-[13px]"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         >
@@ -265,7 +266,7 @@ function PreviewField({
         <div className="relative mt-1.5">
           <Input
             id={id}
-            className="h-9 bg-[var(--lr-surface)] pr-8 text-[13px]"
+            className="h-9 pr-8 text-[13px]"
             inputMode={question.responseType === "number" ? "numeric" : "text"}
             value={value}
             maxLength={200}

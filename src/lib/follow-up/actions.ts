@@ -61,7 +61,7 @@ export async function saveFollowUpTimezone(input: {
   });
 
   revalidatePath("/app/follow-up");
-  revalidatePath("/app/settings/workspace");
+  revalidatePath("/app/settings?section=workspace");
   return { ok: true };
 }
 

@@ -313,9 +313,11 @@ export function SecurityPreview({ className }: { className?: string }) {
         </div>
       </div>
 
+      {/* Kept in the left half of the visual so it stays clear of the auth
+          card that the panel tucks behind. */}
       <div
-        className="ct-auth-float relative -mt-4 ml-auto flex w-fit items-center gap-2 overflow-hidden rounded-[13px] px-3.5 py-2.5"
-        style={{ ...FRAME_STYLE, marginRight: -12 }}
+        className="ct-auth-float relative -mt-4 ml-16 flex w-fit items-center gap-2 overflow-hidden rounded-[13px] px-3.5 py-2.5"
+        style={FRAME_STYLE}
       >
         <FrameGloss />
         <span className="relative flex size-7 items-center justify-center rounded-[8px] bg-[rgba(168,255,31,0.12)] text-[var(--auth-lime)]">

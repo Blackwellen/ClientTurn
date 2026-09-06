@@ -3,6 +3,7 @@ import { registerHandler } from "./registry";
 import { handleLeadProcess } from "./handlers/lead-process";
 import { handleMessageSend } from "./handlers/message-send";
 import { handleMessageProcessInbound } from "./handlers/message-inbound";
+import { handleEmailPoll } from "./handlers/email-poll";
 import { handleAutomationAdvance } from "./handlers/automation-advance";
 import { handleCampaignExpand } from "./handlers/campaign-expand";
 import { handleCampaignSend } from "./handlers/campaign-send";
@@ -16,6 +17,11 @@ import { handleCostRollupDaily, handleCostRollupMonthly } from "./handlers/cost-
 import { handleLeadSourcePoll } from "./handlers/lead-source-poll";
 import { handleCrmPush } from "./handlers/crm-push";
 import { handleNotificationSlack } from "./handlers/notification-slack";
+import { handleAgentRun } from "./handlers/agent-run";
+import { handleSourcingRun } from "./handlers/sourcing-run";
+import { handleBusinessAnalyse } from "./handlers/business-analyse";
+import { handleRecurringSearchTick } from "./handlers/recurring-search";
+import { handleAppIngest } from "./handlers/app-ingest";
 import "@/lib/integrations/providers/google-ads";
 import "@/lib/integrations/providers/microsoft-ads";
 import "@/lib/integrations/providers/tiktok-ads";
@@ -38,6 +44,7 @@ export function registerJobHandlers() {
   registerHandler("lead.process", handleLeadProcess);
   registerHandler("message.send", handleMessageSend);
   registerHandler("message.process_inbound", handleMessageProcessInbound);
+  registerHandler("email.poll", handleEmailPoll);
   registerHandler("automation.advance", handleAutomationAdvance);
   registerHandler("campaign.expand", handleCampaignExpand);
   registerHandler("campaign.send", handleCampaignSend);
@@ -52,6 +59,11 @@ export function registerJobHandlers() {
   registerHandler("lead_source.poll", handleLeadSourcePoll);
   registerHandler("crm.push", handleCrmPush);
   registerHandler("notification.slack", handleNotificationSlack);
+  registerHandler("agent.run", handleAgentRun);
+  registerHandler("sourcing.run", handleSourcingRun);
+  registerHandler("business.analyse", handleBusinessAnalyse);
+  registerHandler("recurring_search.tick", handleRecurringSearchTick);
+  registerHandler("app.ingest", handleAppIngest);
 }
 
 registerJobHandlers();

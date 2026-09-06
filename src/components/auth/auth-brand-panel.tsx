@@ -80,13 +80,18 @@ const RECENT_ACTIVITY = [
   { initials: "EW", name: "Emma Wilson", detail: "Follow-up sent", time: "1h ago" },
 ];
 
-/** Where the handwritten note sits relative to each variant's visual, so it
- * lands in open space rather than across the headline. */
+/** Placement of the handwritten note, measured from the brand column's right
+ * edge at its vertical centre — the same anchor the product visual uses — so
+ * the two stay related while living in separate stacking contexts. */
 const ANNOTATION_POSITION: Record<AuthVariant, string> = {
-  signup: "-top-32 left-8",
-  login: "-top-32 left-8",
-  forgot: "-bottom-28 -left-16",
-  reset: "-top-32 left-4",
+  signup:
+    "bottom-[225px] -right-[20px] min-[1536px]:bottom-[245px] min-[1536px]:right-[20px] min-[1700px]:bottom-[300px] min-[1700px]:right-[125px]",
+  login:
+    "bottom-[225px] -right-[20px] min-[1536px]:bottom-[245px] min-[1536px]:right-[20px] min-[1700px]:bottom-[300px] min-[1700px]:right-[95px]",
+  forgot:
+    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
+  reset:
+    "bottom-[175px] -right-[60px] min-[1536px]:right-[0px] min-[1700px]:bottom-[200px] min-[1700px]:right-[70px]",
 };
 
 function ProductVisual({ variant }: { variant: AuthVariant }) {
@@ -171,7 +176,7 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
         </span>
       </h1>
 
-      <p className="mt-6 max-w-[480px] text-[17px] leading-relaxed text-[var(--auth-text-muted)] lg:text-[19px]">
+      <p className="mt-6 max-w-[440px] text-[17px] leading-relaxed text-[var(--auth-text-muted)] lg:text-[19px] min-[1440px]:max-w-[400px]">
         {copy.support}
       </p>
 
@@ -180,17 +185,26 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
       </div>
 
       {/* The product visual sits beside the feature list and runs past the
-          column edge to tuck behind the auth card, as in the mockups. */}
-      <div className="absolute top-1/2 right-0 hidden w-fit -translate-y-1/2 translate-x-[52%] scale-[0.84] xl:block 2xl:translate-x-[46%] 2xl:scale-100">
-        {/* Kept outside the perspective/animated wrappers so it keeps its own
-            stacking order and stays above the card it overlaps. */}
-        <div className={`absolute z-30 ${ANNOTATION_POSITION[variant]}`}>
-          <Annotation lines={copy.annotation} align="right" />
-        </div>
+          column edge to tuck behind the auth card, as in the mockups. Its
+          wrapper is transformed, so it forms its own stacking context and
+          stays below the card — which is exactly what we want here. */}
+      <div className="absolute top-1/2 right-0 hidden w-fit -translate-y-1/2 translate-x-[52%] scale-[0.8] min-[1440px]:block min-[1536px]:translate-x-[48%] min-[1536px]:scale-[0.88] min-[1700px]:translate-x-[47%] min-[1700px]:scale-[1.1]">
         <div className="ct-auth-float" style={{ perspective: 1600 }}>
           <TiltWrapper baseTransform="perspective(1500px) rotateY(-7deg) rotateZ(3deg)">
             <ProductVisual variant={variant} />
           </TiltWrapper>
+        </div>
+      </div>
+
+      {/* The handwritten note needs the opposite: its own wrapper carries the
+          z-index, so the stacking context the transform creates sits ABOVE the
+          auth card rather than being trapped underneath it. */}
+      <div className="pointer-events-none absolute top-1/2 right-0 z-40 hidden -translate-y-1/2 min-[1440px]:block">
+        <div className={`absolute w-max ${ANNOTATION_POSITION[variant]}`}>
+          <Annotation
+            lines={copy.annotation}
+            arrow={variant === "forgot" ? "up-right" : "down-left"}
+          />
         </div>
       </div>
 

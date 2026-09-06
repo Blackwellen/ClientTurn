@@ -132,6 +132,8 @@ export function computeNextRunAt(
 
 const MERGE_FIELDS = [
   "first_name",
+  "last_name",
+  "full_name",
   "business_name",
   "service_name",
   "booking_link",

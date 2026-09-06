@@ -3,6 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { leadDisplayName } from "@/lib/leads/types";
+import { normaliseEmail } from "@/lib/email/account";
+import {
+  buildAudienceBreakdowns,
+  evaluateReactivationEligibility,
+  type EligibilityContext,
+  type SuppressionReason,
+} from "./reactivation-audience";
 import {
   MAX_CAMPAIGN_AUDIENCE,
   suppressionLabel,
@@ -24,12 +31,22 @@ type AudienceLeadRow = {
   last_name: string | null;
   phone: string | null;
   phone_normalized: string | null;
+  email: string | null;
   opted_out: boolean;
   human_takeover: boolean;
   status: string;
   last_contact_at: string | null;
+  first_replied_at: string | null;
+  booked_at: string | null;
+  won_at: string | null;
   created_at: string;
   services: { name: string } | null;
+  lead_sources: {
+    provider: string | null;
+    source_name: string | null;
+    form_name: string | null;
+    campaign_name: string | null;
+  } | null;
 };
 
 export type AudienceResolution = {
@@ -47,32 +64,53 @@ function sampleRow(lead: AudienceLeadRow): AudienceSampleRow {
   };
 }
 
+function sourceLabel(lead: AudienceLeadRow): string | null {
+  const source = lead.lead_sources;
+  if (!source) return null;
+  return (
+    source.form_name ??
+    source.source_name ??
+    source.campaign_name ??
+    source.provider ??
+    null
+  );
+}
+
 /**
- * Resolves who a reactivation campaign would actually reach. Suppression is
- * mandatory and is recomputed here every time — a stored audience is never
- * trusted at send time.
+ * Resolves who a reactivation campaign would actually reach: the workspace
+ * total, the filter match set, the mutually-exclusive suppression breakdown,
+ * the eligible ids and the breakdowns the wizard charts.
+ *
+ * Suppression is mandatory and is recomputed here every time, so the Step 1
+ * estimate and the count used at launch come from the same code path — a
+ * stored audience is never trusted.
  */
 export async function resolveAudience(
   businessId: string,
   filter: AudienceFilter,
-  channel: "sms" | "whatsapp" = "sms",
+  channel: "sms" | "whatsapp" | "email" = "sms",
   /** The worker has no user session, so it passes the service-role client. */
   client?: SupabaseClient<Database>,
 ): Promise<AudienceResolution> {
   const supabase = client ?? (await createClient());
+  const now = Date.now();
 
   let query = supabase
     .from("leads")
     .select(
-      `id, first_name, last_name, phone, phone_normalized, opted_out,
-       human_takeover, status, last_contact_at, created_at,
-       services ( name )`,
+      `id, first_name, last_name, phone, phone_normalized, email, opted_out,
+       human_takeover, status, last_contact_at, first_replied_at, booked_at,
+       won_at, created_at,
+       services ( name ),
+       lead_sources ( provider, source_name, form_name, campaign_name )`,
     )
     .eq("business_id", businessId)
     .eq("is_test", false)
     .order("created_at", { ascending: false })
     .limit(SCAN_LIMIT);
 
+  // Every filter below is applied by the database, not in JavaScript, so a
+  // large workspace never ships its whole lead table to the app server.
   if (filter.serviceId) query = query.eq("service_id", filter.serviceId);
   if (filter.sourceId) query = query.eq("source_id", filter.sourceId);
   if (filter.statuses.length > 0) query = query.in("status", filter.statuses);
@@ -82,8 +120,17 @@ export async function resolveAudience(
   if (filter.createdBefore) {
     query = query.lt("created_at", `${filter.createdBefore}T23:59:59.999Z`);
   }
+  if (filter.olderThanDays > 0) {
+    query = query.lt(
+      "created_at",
+      new Date(now - filter.olderThanDays * 864e5).toISOString(),
+    );
+  }
+  if (filter.noReply) query = query.is("first_replied_at", null);
+  if (filter.markedLost) query = query.eq("status", "LOST");
+  if (filter.notBooked) query = query.is("booked_at", null);
 
-  const [{ data }, suppressionResult] = await Promise.all([
+  const [{ data }, suppressionResult, totalResult] = await Promise.all([
     query,
     supabase
       .from("contact_suppressions")
@@ -91,38 +138,50 @@ export async function resolveAudience(
       .eq("business_id", businessId)
       .in("channel", [channel, "all"])
       .limit(SCAN_LIMIT),
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("is_test", false),
   ]);
 
   const leads = (data ?? []) as unknown as AudienceLeadRow[];
-  const suppressed = new Set(
+  const suppressedContacts = new Set(
     (suppressionResult.data ?? []).map((row) => row.normalized_contact),
   );
 
-  const cooldownBefore =
-    Date.now() - filter.lastContactedBeforeDays * 864e5;
+  const context: EligibilityContext = {
+    now,
+    cooldownDays: filter.lastContactedBeforeDays,
+    suppressedContacts,
+  };
 
   const eligible: AudienceLeadRow[] = [];
-  const excluded: { lead: AudienceLeadRow; reason: string }[] = [];
+  const excluded: { lead: AudienceLeadRow; reason: SuppressionReason }[] = [];
 
   for (const lead of leads) {
-    const number = lead.phone_normalized ?? lead.phone;
-    let reason: string | null = null;
+    const verdict = evaluateReactivationEligibility(
+      {
+        id: lead.id,
+        status: lead.status,
+        optedOut: lead.opted_out,
+        humanTakeover: lead.human_takeover,
+        // The contact that matters is the one this campaign would actually
+        // use: a lead with a phone but no email is not reachable by email and
+        // is excluded as `invalid_number` rather than silently counted.
+        contact:
+          channel === "email"
+            ? normaliseEmail(lead.email)
+            : (lead.phone_normalized ?? lead.phone),
+        lastContactAt: lead.last_contact_at,
+        bookedAt: lead.booked_at,
+        wonAt: lead.won_at,
+      },
+      context,
+    );
 
-    if (lead.opted_out) reason = "opted_out";
-    else if (!number) reason = "invalid_number";
-    else if (suppressed.has(number)) reason = "suppressed";
-    else if (lead.status === "BOOKED" || lead.status === "WON") {
-      reason = "already_booked";
-    } else if (lead.human_takeover) reason = "active_conversation";
-    else if (
-      lead.last_contact_at &&
-      new Date(lead.last_contact_at).getTime() > cooldownBefore
-    ) {
-      reason = "contacted_recently";
-    }
-
-    if (reason) excluded.push({ lead, reason });
-    else eligible.push(lead);
+    if (verdict.eligible) eligible.push(lead);
+    else excluded.push({ lead, reason: verdict.reason });
   }
 
   const counts = new Map<string, number>();
@@ -130,11 +189,13 @@ export async function resolveAudience(
     counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + 1);
   }
 
+  // Reason assignment is exclusive (first matching rule wins), so these
+  // counts sum exactly to the unique suppressed total.
   const suppression: SuppressionGroup[] = [...counts]
     .sort((a, b) => b[1] - a[1])
     .map(([reason, count]) => ({
       reason,
-      label: suppressionLabel(reason),
+      label: suppressionLabel(reason, filter.lastContactedBeforeDays),
       count,
     }));
 
@@ -144,9 +205,21 @@ export async function resolveAudience(
   return {
     eligibleLeadIds: kept.map((lead) => lead.id),
     preview: {
+      totalLeads: totalResult.count ?? leads.length,
       matched: leads.length,
       eligible: kept.length,
+      suppressedTotal: excluded.length,
       suppressed: suppression,
+      breakdowns: buildAudienceBreakdowns(
+        kept.map((lead) => ({
+          service: lead.services?.name ?? null,
+          source: sourceLabel(lead),
+          status: lead.status,
+          createdAt: lead.created_at,
+        })),
+        now,
+      ),
+      cooldownDays: filter.lastContactedBeforeDays,
       sample: kept.slice(0, 8).map(sampleRow),
       excludedSample: excluded.slice(0, 8).map((entry) => ({
         ...sampleRow(entry.lead),

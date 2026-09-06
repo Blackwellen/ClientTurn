@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  EllipsisVertical,
   Filter,
   GripVertical,
   Hash,
@@ -19,9 +20,9 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { OBadge, OButton, OField, OInput, OPanel, ORadioCard, OSectionTitle, OSelect } from "../ui";
+import { OBadge, OButton, OField, OInput, OPanel, ORadioCard, OSectionTitle } from "../ui";
 import type { StepActions } from "../step-types";
-import { OPERATOR_META, RESPONSE_TYPE_META, operatorsFor } from "@/lib/qualification/types";
+import { RESPONSE_TYPE_META } from "@/lib/qualification/types";
 import type { Operator, ResponseType } from "@/lib/qualification/types";
 import type { QualifyBookStepInput } from "@/lib/onboarding/actions";
 
@@ -34,11 +35,67 @@ const TYPE_ICON: Record<ResponseType, React.ComponentType<{ className?: string }
   text: Type,
 };
 
-const RESULT_OPTIONS: { value: "pass" | "hard_fail" | "review"; label: string }[] = [
-  { value: "hard_fail", label: "Must match, or not qualified" },
-  { value: "review", label: "Flag for review if it doesn't match" },
-  { value: "pass", label: "Informational only" },
-];
+type RulePreset = {
+  key: string;
+  label: string;
+  operator: Operator;
+  result: "pass" | "hard_fail" | "review";
+  fixedValue?: string[];
+  needsValue?: boolean;
+};
+
+/**
+ * One plain-English rule per question, matching the density of the reference
+ * design rather than exposing the full operator/value/result matrix inline.
+ * Each preset still writes real `qualification_rules` fields — "no rule" is
+ * simply `pass`, which the engine never treats as blocking.
+ */
+const RULE_PRESETS: Record<ResponseType, RulePreset[]> = {
+  single_choice: [
+    { key: "required", label: "Must be a relevant service", operator: "is_present", result: "hard_fail" },
+    { key: "none", label: "Optional (no rule)", operator: "is_present", result: "pass" },
+  ],
+  postcode: [
+    { key: "area", label: "Must be in our service area", operator: "is_present", result: "pass" },
+  ],
+  number: [
+    { key: "minimum", label: "Minimum", operator: "gte", result: "hard_fail", needsValue: true },
+    { key: "none", label: "Optional (no rule)", operator: "gte", result: "pass" },
+  ],
+  timing: [
+    {
+      key: "soon",
+      label: "Must want the work soon",
+      operator: "in",
+      result: "review",
+      fixedValue: ["asap", "30_days"],
+    },
+    { key: "none", label: "Optional (no rule)", operator: "in", result: "pass" },
+  ],
+  yes_no: [
+    {
+      key: "must_yes",
+      label: "Must own or have permission",
+      operator: "equals",
+      result: "hard_fail",
+      fixedValue: ["yes"],
+    },
+    { key: "none", label: "Optional (no rule)", operator: "equals", result: "pass" },
+  ],
+  text: [{ key: "none", label: "Optional (for context)", operator: "is_present", result: "pass" }],
+};
+
+function presetKeyFor(row: QuestionRow): string {
+  const presets = RULE_PRESETS[row.responseType];
+  if (!row.rule) return presets[presets.length - 1].key;
+  const match = presets.find(
+    (preset) =>
+      preset.operator === row.rule!.operator &&
+      preset.result === row.rule!.result &&
+      (!preset.needsValue ? true : true),
+  );
+  return match?.key ?? presets[0].key;
+}
 
 export type QuestionRow = {
   id?: string;
@@ -71,130 +128,161 @@ function QuestionRowEditor({
   onChange: (next: QuestionRow) => void;
   onRemove: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [showOptions, setShowOptions] = React.useState(false);
   const Icon = TYPE_ICON[row.responseType];
   const usesOptions = row.responseType === "single_choice" || row.responseType === "timing";
-  const operators = operatorsFor(row.responseType);
+  const presets = RULE_PRESETS[row.responseType];
+  const activePresetKey = presetKeyFor(row);
+  const activePreset = presets.find((p) => p.key === activePresetKey) ?? presets[0];
+  const minimumValue = row.rule?.comparisonValue[0] ?? "";
+
+  function applyPreset(key: string) {
+    const preset = presets.find((p) => p.key === key);
+    if (!preset) return;
+    onChange({
+      ...row,
+      rule: {
+        id: row.rule?.id,
+        operator: preset.operator,
+        result: preset.result,
+        comparisonValue: preset.fixedValue ?? (preset.needsValue ? [minimumValue || "0"] : []),
+      },
+    });
+  }
 
   return (
-    <OPanel className="bg-[#0c151d] p-3">
-      <div className="flex items-start gap-2.5">
-        <GripVertical className="mt-2.5 size-3.5 shrink-0 text-[#4a5568]" aria-hidden />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex items-center gap-2">
-            <Icon className="size-3.5 shrink-0 text-[#9ad84a]" aria-hidden />
-            <OInput
-              value={row.questionText}
-              placeholder="Question"
-              onChange={(e) => onChange({ ...row, questionText: e.target.value })}
-              className="h-8 border-none bg-transparent px-0 font-medium focus:ring-0"
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <OSelect
-              aria-label="Answer type"
-              value={row.responseType}
-              onChange={(e) => {
-                const responseType = e.target.value as ResponseType;
-                const nextOperators = operatorsFor(responseType);
-                onChange({
-                  ...row,
-                  responseType,
-                  rule: row.rule
-                    ? { ...row.rule, operator: nextOperators[0] ?? row.rule.operator }
-                    : null,
-                });
-              }}
-            >
-              {Object.entries(RESPONSE_TYPE_META).map(([value, meta]) => (
-                <option key={value} value={value}>
-                  {meta.label}
-                </option>
-              ))}
-            </OSelect>
-            {row.rule ? (
-              <>
-                <OSelect
-                  aria-label="Rule condition"
-                  value={row.rule.operator}
-                  onChange={(e) =>
-                    onChange({ ...row, rule: { ...row.rule!, operator: e.target.value as Operator } })
-                  }
-                >
-                  {operators.map((op) => (
-                    <option key={op} value={op}>
-                      {OPERATOR_META[op].label}
-                    </option>
-                  ))}
-                </OSelect>
-                <OSelect
-                  aria-label="Rule outcome"
-                  value={row.rule.result}
-                  onChange={(e) =>
-                    onChange({
-                      ...row,
-                      rule: { ...row.rule!, result: e.target.value as "pass" | "hard_fail" | "review" },
-                    })
-                  }
-                >
-                  {RESULT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </OSelect>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...row,
-                    rule: { operator: operators[0] ?? "is_present", comparisonValue: [], result: "review" },
-                  })
-                }
-                className="col-span-2 rounded-[7px] border border-dashed border-[rgba(150,170,190,0.35)] px-3 text-left text-[12.5px] text-[#697488] hover:border-[rgba(168,255,31,0.4)] hover:text-[var(--auth-lime)]"
+    <OPanel className="bg-[#0c151d] p-2.5">
+      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
+        <GripVertical className="size-3.5 shrink-0 text-[#4a5568]" aria-hidden />
+        <OInput
+          value={row.questionText}
+          placeholder="Question"
+          onChange={(e) => onChange({ ...row, questionText: e.target.value })}
+          className="h-8 min-w-[180px] flex-1 border-none bg-transparent px-0 font-medium focus:ring-0"
+        />
+
+        <div className="relative flex shrink-0 items-center gap-1.5">
+          <Icon className="size-3.5 shrink-0 text-[#9ad84a]" aria-hidden />
+          <select
+            aria-label="Answer type"
+            value={row.responseType}
+            onChange={(e) => {
+              const responseType = e.target.value as ResponseType;
+              onChange({ ...row, responseType, rule: null });
+            }}
+            className="h-7 w-[118px] shrink-0 appearance-none rounded-[6px] border-none bg-transparent text-[12.5px] text-[#c1cad6] outline-none"
+          >
+            {Object.entries(RESPONSE_TYPE_META).map(([value, meta]) => (
+              <option key={value} value={value} className="bg-[#0c151d] text-[#dbe1ea]">
+                {meta.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {row.responseType === "postcode" ? (
+            <span className="text-[12.5px] text-[#8c98ab]">
+              Automatically checked against your service area
+            </span>
+          ) : (
+            <>
+              <select
+                aria-label="Qualifying rule"
+                value={activePresetKey}
+                onChange={(e) => applyPreset(e.target.value)}
+                className="h-7 w-[212px] rounded-[6px] border border-[rgba(150,170,190,0.28)] bg-[#0b141d] px-2 text-[12.5px] text-[#dbe1ea] outline-none"
               >
-                + Add a qualifying rule
-              </button>
-            )}
-          </div>
-          {row.rule && OPERATOR_META[row.rule.operator].values !== "none" && (
-            <OInput
-              value={row.rule.comparisonValue.join(", ")}
-              placeholder="Accepted values, comma separated"
-              onChange={(e) =>
-                onChange({
-                  ...row,
-                  rule: {
-                    ...row.rule!,
-                    comparisonValue: e.target.value
-                      .split(",")
-                      .map((v) => v.trim())
-                      .filter(Boolean),
-                  },
-                })
-              }
-            />
-          )}
-          {usesOptions && (
-            <OField hint="Comma separated options a lead can choose from.">
-              <OInput
-                value={row.optionsText}
-                placeholder="Option one, option two, option three"
-                onChange={(e) => onChange({ ...row, optionsText: e.target.value })}
-              />
-            </OField>
+                {presets.map((preset) => (
+                  <option key={preset.key} value={preset.key}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              {activePreset.needsValue && (
+                <div className="relative w-16 shrink-0">
+                  <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-[11.5px] text-[#8c98ab]">
+                    £
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={minimumValue}
+                    onChange={(e) =>
+                      onChange({
+                        ...row,
+                        rule: {
+                          id: row.rule?.id,
+                          operator: "gte",
+                          result: "hard_fail",
+                          comparisonValue: [e.target.value || "0"],
+                        },
+                      })
+                    }
+                    aria-label="Minimum value"
+                    className="h-7 w-full rounded-[6px] border border-[rgba(150,170,190,0.28)] bg-[#0b141d] py-1 pr-1.5 pl-4 text-[12.5px] text-[#dbe1ea] outline-none"
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
-        <button
-          type="button"
-          aria-label="Remove question"
-          onClick={onRemove}
-          className="mt-2.5 shrink-0 text-[#7a8698] hover:text-[#ff6b70]"
-        >
-          <Trash2 className="size-3.5" aria-hidden />
-        </button>
+
+        <div className="relative ml-auto shrink-0">
+          <button
+            type="button"
+            aria-label="Question options"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="text-[#7a8698] hover:text-[#eef2f7]"
+          >
+            <EllipsisVertical className="size-3.5" aria-hidden />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute top-6 right-0 z-20 min-w-[160px] overflow-hidden rounded-[8px] border border-[rgba(150,170,190,0.3)] bg-[#0d1720] shadow-lg">
+                {usesOptions && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setShowOptions((v) => !v);
+                    }}
+                    className="flex w-full items-center px-3 py-2 text-left text-[12.5px] text-[#dbe1ea] hover:bg-[rgba(255,255,255,0.04)]"
+                  >
+                    Edit answer options
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRemove();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-[#ff6b70] hover:bg-[rgba(255,107,112,0.08)]"
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                  Remove question
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+      {showOptions && usesOptions && (
+        <OField
+          className="mt-2 pl-6"
+          hint="Comma separated options a lead can choose from."
+        >
+          <OInput
+            value={row.optionsText}
+            placeholder="Option one, option two, option three"
+            onChange={(e) => onChange({ ...row, optionsText: e.target.value })}
+          />
+        </OField>
+      )}
     </OPanel>
   );
 }
@@ -323,7 +411,10 @@ export function QualifyBookStep({
               disabled={!initial.calendlyConnected}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-medium text-[#f0f3f8]">Calendly</span>
+                <span className="flex items-center gap-2 text-[14px] font-medium text-[#f0f3f8]">
+                  <CalendarClock className="size-4 text-[#9ad84a]" aria-hidden />
+                  Calendly
+                </span>
                 <OBadge tone={initial.calendlyConnected ? "success" : "neutral"}>
                   {initial.calendlyConnected ? "Connected" : "Not connected"}
                 </OBadge>
@@ -338,7 +429,10 @@ export function QualifyBookStep({
               disabled={!initial.googleCalendarConnected}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-medium text-[#f0f3f8]">Google Calendar</span>
+                <span className="flex items-center gap-2 text-[14px] font-medium text-[#f0f3f8]">
+                  <Calendar className="size-4 text-[#9ad84a]" aria-hidden />
+                  Google Calendar
+                </span>
                 <OBadge tone={initial.googleCalendarConnected ? "success" : "neutral"}>
                   {initial.googleCalendarConnected ? "Connected" : "Not connected"}
                 </OBadge>
@@ -371,7 +465,7 @@ export function QualifyBookStep({
           (bookingMode === "google_calendar" && !initial.googleCalendarConnected) ? (
             <p className="mt-2 text-[12.5px] text-[#ffb020]">
               Connect this in{" "}
-              <Link href="/app/settings/connections" className="underline underline-offset-2">
+              <Link href="/app/settings?section=connections" className="underline underline-offset-2">
                 Settings → Connections
               </Link>{" "}
               before choosing it as your booking destination.

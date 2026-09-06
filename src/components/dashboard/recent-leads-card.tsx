@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SectionHeader } from "@/components/app/page-header";
-import { SourceIcon } from "./source-icon";
+import { CardActionLink } from "./card-action-link";
 
 /**
  * The ten newest leads regardless of the selected date range — this card
@@ -29,14 +29,7 @@ export function RecentLeadsCard({ leads }: { leads: LeadListRow[] }) {
       <CardHeader>
         <SectionHeader
           title="Recent leads"
-          action={
-            <Link
-              href="/app/leads"
-              className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              View all
-            </Link>
-          }
+          action={<CardActionLink href="/app/leads" />}
         />
       </CardHeader>
       <CardContent className="@container flex-1 pt-0">
@@ -46,7 +39,7 @@ export function RecentLeadsCard({ leads }: { leads: LeadListRow[] }) {
             description="When a lead arrives from a connected source it appears here within seconds."
             action={
               <Link
-                href="/app/settings/connections"
+                href="/app/settings?section=connections"
                 className="text-content-accent text-[13px] font-medium"
               >
                 Check lead connections
@@ -56,7 +49,7 @@ export function RecentLeadsCard({ leads }: { leads: LeadListRow[] }) {
         ) : (
           // Fixed layout: the name column absorbs the slack and truncates, so
           // a long service or campaign name can never push Time out of the card.
-          <Table className="table-fixed">
+          <Table className="table-fixed [&_td]:py-1 [&_th]:h-8">
             <TableHeader>
               <TableRow>
                 <TableHead className="px-2">Name</TableHead>
@@ -77,13 +70,13 @@ export function RecentLeadsCard({ leads }: { leads: LeadListRow[] }) {
             </TableHeader>
             <TableBody>
               {leads.map((lead) => (
-                <TableRow key={lead.id} className="group relative h-10">
+                <TableRow key={lead.id} className="group relative h-8 has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-content-accent">
                   <TableCell className="px-2">
                     {/* One stretched link per row: the whole row is clickable
                         while screen readers and keyboards get a single target. */}
                     <Link
                       href={`/app/leads?lead=${lead.id}`}
-                      className="text-content group-hover:text-content-accent block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none"
+                      className="text-content group-hover:text-content-accent block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none!"
                     >
                       {leadDisplayName(lead)}
                     </Link>
@@ -91,19 +84,11 @@ export function RecentLeadsCard({ leads }: { leads: LeadListRow[] }) {
                   <TableCell className="text-content-secondary hidden truncate px-2 @md:table-cell">
                     {lead.services?.name ?? "—"}
                   </TableCell>
-                  <TableCell className="hidden px-2 @lg:table-cell">
-                    <span className="flex items-center gap-1.5">
-                      <SourceIcon
-                        provider={lead.lead_sources?.provider}
-                        className="size-3.5 shrink-0"
-                      />
-                      <span className="text-content-secondary min-w-0 truncate">
-                        {sourceLabel(lead.lead_sources)}
-                      </span>
-                    </span>
+                  <TableCell className="text-content-secondary hidden truncate px-2 @lg:table-cell">
+                    {sourceLabel(lead.lead_sources)}
                   </TableCell>
                   <TableCell className="px-2">
-                    <StatusBadge kind="lead" value={lead.status} dot={false} />
+                    <StatusBadge kind="lead" value={lead.status} dot={false} dense />
                   </TableCell>
                   <TableCell
                     align="right"

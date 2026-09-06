@@ -60,6 +60,8 @@ export const automationAdvancePayload = z.object({
     .default("new_lead"),
 });
 
+export const emailPollPayload = z.object({ businessId: uuid });
+
 export const campaignExpandPayload = z.object({ campaignId: uuid });
 
 export const campaignSendPayload = z.object({

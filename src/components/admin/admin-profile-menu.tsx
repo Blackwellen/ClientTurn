@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import {
   DropdownItem,
@@ -26,9 +26,10 @@ export function AdminProfileMenu({
         <button
           type="button"
           aria-label="Account menu"
-          className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
+          className="flex items-center gap-1 rounded-full pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
         >
           <Avatar name={name} size="md" />
+          <ChevronDown className="size-4 text-content-muted" aria-hidden />
         </button>
       }
     >

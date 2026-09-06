@@ -30,6 +30,8 @@ function createMaterials() {
     muted: new MeshStandardMaterial({ color: "#66748a", roughness: 0.5, metalness: 0.25, envMapIntensity: 0.9 }),
     glass: new MeshPhysicalMaterial({ color: "#9fb2ad", transparent: true, opacity: 0.24, transmission: 0.2, thickness: 0.22, ior: 1.32, roughness: 0.1, metalness: 0.04, clearcoat: 1, side: DoubleSide, depthWrite: false, envMapIntensity: 1.4 }),
     conduit: fresnel(new MeshPhysicalMaterial({ color: "#080D14", roughness: 0.34, metalness: 0.42, clearcoat: 0.4, clearcoatRoughness: 0.28, envMapIntensity: 1.25 }), 0.42, "#6f8bb0"),
+    /* Recessed tile behind card glyphs. Dark and matte so the glyph reads against it. */
+    lip: new MeshStandardMaterial({ color: "#05080F", roughness: 0.72, metalness: 0.05, envMapIntensity: 0.25 }),
     amber: new MeshStandardMaterial({ color: "#E9B44C", roughness: 0.36, metalness: 0.16, emissive: "#C98F2E", emissiveIntensity: 0.3, envMapIntensity: 0.8 }),
     danger: new MeshStandardMaterial({ color: "#D9636A", roughness: 0.36, metalness: 0.16, emissive: "#B34049", emissiveIntensity: 0.28, envMapIntensity: 0.8 }),
     glow: new MeshBasicMaterial({ color: PALETTE.lime, transparent: true, opacity: 0.07, depthWrite: false, blending: AdditiveBlending, toneMapped: false }),

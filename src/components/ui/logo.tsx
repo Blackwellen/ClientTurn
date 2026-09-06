@@ -21,8 +21,7 @@ function LogoImage({
       width={Math.round(height * LOGO_RATIO)}
       height={height}
       priority
-      className={cn("w-auto", className)}
-      style={{ height }}
+      className={className}
     />
   );
 }

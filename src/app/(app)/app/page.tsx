@@ -23,7 +23,7 @@ import { KpiCard, type Delta } from "@/components/ui/stat-card";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { HealthStrip } from "@/components/dashboard/health-strip";
-import { Sparkline } from "@/components/dashboard/sparkline";
+import { Sparkbars, Sparkline } from "@/components/dashboard/sparkline";
 import { LeadFunnelCard } from "@/components/dashboard/lead-funnel-card";
 import { NeedsAttentionPanel } from "@/components/dashboard/needs-attention-panel";
 import { RecentLeadsCard } from "@/components/dashboard/recent-leads-card";
@@ -69,48 +69,28 @@ function sparkTone(value: Delta): "positive" | "negative" | "neutral" {
   return good ? "positive" : "negative";
 }
 
+/**
+ * Only the two derived figures carry a tooltip — a count called "Replies" does
+ * not need explaining, and seven help icons in a row is noise. Every metric's
+ * full definition lives beside its type in `lib/dashboard/types.ts`.
+ */
 const KPIS: {
   key: keyof PeriodCounts;
   series: SeriesKey;
   label: string;
-  hint: string;
+  hint?: string;
   percent?: boolean;
 }[] = [
-  {
-    key: "leads",
-    series: "leads",
-    label: "New leads",
-    hint: "Leads received in this period.",
-  },
-  {
-    key: "contacted",
-    series: "contacted",
-    label: "Contacted",
-    hint: "Leads that received a first outbound message.",
-  },
-  {
-    key: "replied",
-    series: "replied",
-    label: "Replies",
-    hint: "Leads that replied at least once.",
-  },
-  {
-    key: "qualified",
-    series: "qualified",
-    label: "Qualified",
-    hint: "Leads that met every qualifying rule.",
-  },
-  {
-    key: "booked",
-    series: "booked",
-    label: "Bookings",
-    hint: "Leads with a confirmed booking.",
-  },
+  { key: "leads", series: "leads", label: "New Leads" },
+  { key: "contacted", series: "contacted", label: "Contacted" },
+  { key: "replied", series: "replied", label: "Replies" },
+  { key: "qualified", series: "qualified", label: "Qualified" },
+  { key: "booked", series: "booked", label: "Bookings" },
   {
     key: "bookingRate",
     series: "bookingRate",
-    label: "Booking rate",
-    hint: "Bookings divided by leads received in this period.",
+    label: "Booking Rate",
+    hint: "Bookings divided by the leads received in this period.",
     percent: true,
   },
 ];
@@ -160,7 +140,7 @@ export default async function DashboardPage({
   ]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       <DashboardHeader
         greeting={greetingFor(workspace.timezone)}
         businessName={workspace.businessName}
@@ -168,7 +148,9 @@ export default async function DashboardPage({
         action={
           <DateRangePicker
             value={range.key}
-            label={range.label}
+            // A custom range says so on the button; the exact dates are the
+            // subline underneath, rather than a raw ISO string in both places.
+            label={range.key === "custom" ? "Custom range" : range.label}
             dateLabel={formatRangeLabel(range)}
           />
         }
@@ -176,7 +158,7 @@ export default async function DashboardPage({
 
       <HealthStrip items={health} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
         {KPIS.map((kpi) => {
           const current = data.current[kpi.key];
           const previous = data.previous[kpi.key];
@@ -205,8 +187,9 @@ export default async function DashboardPage({
 
         <KpiCard
           compact
-          label="Estimated pipeline"
-          hint="Estimate based on configured average service values. It is not booked or recognised revenue."
+          // Spec §20: this label is fixed wording — never "Revenue".
+          label="Estimated Pipeline"
+          hint="Estimate based on configured average service values. It is not booked or recognised revenue. The bars show the value qualified in each part of this period."
           value={formatGbp(data.estimatedPipeline)}
           delta={{
             value: `${data.qualifyingLeads.toLocaleString("en-GB")} ${
@@ -215,16 +198,17 @@ export default async function DashboardPage({
             direction: "flat",
             comparison: "qualifying right now",
           }}
+          sparkline={<Sparkbars values={data.pipelineSeries} />}
           className="border-accent-200 bg-accent-50/50"
         />
       </div>
 
-      <div className="dashboard-middle-grid grid gap-4">
+      <div className="dashboard-middle-grid grid gap-3.5">
         <LeadFunnelCard current={data.current} previous={data.previous} />
         <NeedsAttentionPanel items={attention} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3.5 lg:grid-cols-2">
         <RecentLeadsCard leads={data.recentLeads} />
         <UpcomingBookingsCard
           rows={bookings.rows}
@@ -233,7 +217,7 @@ export default async function DashboardPage({
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-3.5 xl:grid-cols-3">
         <SourcePerformanceCard rows={data.sources} />
         <FollowUpPerformanceCard metrics={data.followUp} />
         <ReactivationPerformanceCard

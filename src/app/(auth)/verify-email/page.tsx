@@ -25,7 +25,7 @@ export default async function VerifyEmailPage({
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col items-center justify-center px-5 py-12 sm:px-8">
-      <Logo height={32} className="mb-10" />
+      <Logo height={64} className="mb-10" />
       <AuthCard width="sm" className="w-full">
         <div className="mb-5 flex size-12 items-center justify-center rounded-[13px] border border-white/8 bg-white/[0.04] text-[var(--auth-lime)]">
           <MailCheck className="size-5.5" aria-hidden />

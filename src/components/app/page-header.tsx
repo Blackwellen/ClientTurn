@@ -7,22 +7,39 @@ export function PageHeader({
   description,
   action,
   meta,
+  size = "md",
   className,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
   meta?: React.ReactNode;
+  /** "lg" is the display scale used by the configuration surfaces. */
+  size?: "md" | "lg";
   className?: string;
 }) {
   return (
     <div className={cn("flex flex-wrap items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        <h2 className="text-[19px] font-semibold leading-tight text-content">
+        <h2
+          className={cn(
+            "font-semibold leading-tight text-content",
+            size === "lg"
+              ? "text-[25px] tracking-[-0.02em] sm:text-[28px]"
+              : "text-[19px]",
+          )}
+        >
           {title}
         </h2>
         {description && (
-          <p className="mt-1 text-[13px] text-content-muted">{description}</p>
+          <p
+            className={cn(
+              "text-content-muted",
+              size === "lg" ? "mt-1 text-[13.5px]" : "mt-1 text-[13px]",
+            )}
+          >
+            {description}
+          </p>
         )}
         {meta && <div className="mt-3">{meta}</div>}
       </div>
@@ -47,6 +64,7 @@ export function SectionHeader({
   action,
   icon: Icon,
   tone = "accent",
+  dense = false,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -54,6 +72,8 @@ export function SectionHeader({
   /** Optional icon chip rendered before the title, for stronger section identity. */
   icon?: React.ComponentType<{ className?: string }>;
   tone?: keyof typeof SECTION_ICON_TONES;
+  /** Tighter supporting text, for cards in a narrow column. */
+  dense?: boolean;
 }) {
   return (
     <div className="flex items-start justify-between gap-3">
@@ -72,7 +92,14 @@ export function SectionHeader({
         <div className="min-w-0">
           <h3 className="text-[15px] font-semibold text-content">{title}</h3>
           {description && (
-            <p className="mt-0.5 text-[13px] text-content-muted">{description}</p>
+            <p
+              className={cn(
+                "mt-0.5 text-content-muted",
+                dense ? "text-[12px] leading-[1.5]" : "text-[13px]",
+              )}
+            >
+              {description}
+            </p>
           )}
         </div>
       </div>

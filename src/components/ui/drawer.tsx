@@ -100,7 +100,7 @@ const SIZES = {
    * wide desktop, floored so it stays usable on a laptop and capped so it
    * never becomes a second page on an ultrawide.
    */
-  panel: "sm:w-[min(620px,42vw)] sm:min-w-[420px] sm:max-w-[680px]",
+  panel: "sm:w-[min(560px,46vw)] sm:min-w-[400px] sm:max-w-[560px]",
 } as const;
 
 export type DrawerProps = {
@@ -152,7 +152,16 @@ export function Drawer({
           "lg:left-[var(--lr-shell-pad,0px)] lg:top-[var(--lr-topbar-height)]",
       )}
     >
-      <Overlay onClick={onClose} className="absolute inset-0" />
+      <Overlay
+        onClick={onClose}
+        className={cn(
+          "absolute inset-0",
+          // A content-anchored drawer leaves the sidebar and top bar fully
+          // lit, so the page behind it only needs a light scrim to fall back
+          // — the heavy modal overlay would read as a blocked page.
+          anchor === "content" && "bg-[rgb(16_24_40_/_0.12)]",
+        )}
+      />
       <div
         ref={panelRef}
         role="dialog"

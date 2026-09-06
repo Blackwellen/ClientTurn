@@ -28,10 +28,14 @@ function persistCollapsed(next: boolean) {
 export function AdminShell({
   initialCollapsed = false,
   operator,
+  recentCustomers,
+  alertCount,
   children,
 }: {
   initialCollapsed?: boolean;
   operator: { name: string; email: string; role: string };
+  recentCustomers: { id: string; name: string }[];
+  alertCount: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -68,7 +72,11 @@ export function AdminShell({
         )}
         style={{ width }}
       >
-        <AdminSidebarContent collapsed={collapsed} onToggleCollapse={toggleCollapse} />
+        <AdminSidebarContent
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapse}
+          operator={operator}
+        />
       </aside>
 
       {mobileOpen && (
@@ -94,7 +102,11 @@ export function AdminShell({
                 <X className="size-4" />
               </IconButton>
             </div>
-            <AdminSidebarContent collapsed={false} onNavigate={() => setMobileOpen(false)} />
+            <AdminSidebarContent
+              collapsed={false}
+              onNavigate={() => setMobileOpen(false)}
+              operator={operator}
+            />
           </div>
         </div>
       )}
@@ -106,7 +118,12 @@ export function AdminShell({
         )}
         style={{ "--lr-shell-pad": width } as React.CSSProperties}
       >
-        <AdminTopBar onOpenNav={() => setMobileOpen(true)} operator={operator} />
+        <AdminTopBar
+          onOpenNav={() => setMobileOpen(true)}
+          operator={operator}
+          recentCustomers={recentCustomers}
+          alertCount={alertCount}
+        />
         <main className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
           {children}
         </main>

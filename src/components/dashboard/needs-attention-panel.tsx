@@ -2,24 +2,48 @@ import * as React from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  AlertTriangle,
-  ChevronRight,
-  Info,
+  CalendarX,
+  Clock,
+  FileWarning,
+  MapPinOff,
+  MessageSquareX,
+  PlugZap,
+  Rocket,
+  SearchCheck,
   ShieldCheck,
+  ChevronRight,
+  UserRound,
 } from "lucide-react";
-import type { AttentionItem, AttentionTone } from "@/lib/dashboard/types";
+import type {
+  AttentionItem,
+  AttentionKind,
+  AttentionTone,
+} from "@/lib/dashboard/types";
 import { formatRelativeShort } from "@/lib/dates";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SectionHeader } from "@/components/app/page-header";
+import { CardActionLink } from "./card-action-link";
 import { cn } from "@/lib/cn";
 
 /** Dense rows, not a card per alert — six at most, then "View all". */
 const MAX_ROWS = 6;
 
-const TONE_ICON: Record<AttentionTone, React.ComponentType<{ className?: string }>> = {
-  danger: AlertCircle,
-  warning: AlertTriangle,
-  info: Info,
+/** Severity picks the colour; the kind picks the glyph. */
+const KIND_ICON: Record<
+  AttentionKind,
+  React.ComponentType<{ className?: string }>
+> = {
+  human_request: UserRound,
+  message_failed: MessageSquareX,
+  form_mapping: FileWarning,
+  out_of_area: MapPinOff,
+  review: SearchCheck,
+  no_response: Clock,
+  meta: PlugZap,
+  messaging: MessageSquareX,
+  booking: CalendarX,
+  followup: Rocket,
+  other: AlertCircle,
 };
 
 const TONE_TILE: Record<AttentionTone, string> = {
@@ -46,12 +70,7 @@ export function NeedsAttentionPanel({ items }: { items: AttentionItem[] }) {
           tone={rows.length === 0 ? "success" : "danger"}
           action={
             items.length > 0 ? (
-              <Link
-                href="/app/leads?tab=attention"
-                className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-              >
-                View all
-              </Link>
+              <CardActionLink href="/app/leads?tab=attention" />
             ) : undefined
           }
         />
@@ -75,13 +94,13 @@ export function NeedsAttentionPanel({ items }: { items: AttentionItem[] }) {
         ) : (
           <ul className="divide-line-subtle divide-y">
             {rows.map((item) => {
-              const Icon = TONE_ICON[item.tone];
+              const Icon = KIND_ICON[item.kind] ?? AlertCircle;
               return (
                 <li key={item.id}>
                   <Link
                     href={item.href}
                     className={cn(
-                      "group -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5",
+                      "group -mx-2 flex items-center gap-3 rounded-md px-2 py-2",
                       "transition-colors duration-[var(--lr-duration-fast)] hover:bg-surface-hover",
                       "focus-visible:outline-content-accent focus-visible:outline-2",
                     )}

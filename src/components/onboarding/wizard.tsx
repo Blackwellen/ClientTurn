@@ -189,7 +189,8 @@ export function OnboardingWizard({
       </OnboardingShell>
 
       <WizardFooterActions
-        onBack={index > 0 ? back : undefined}
+        onBack={back}
+        backDisabled={index === 0}
         onSaveExit={() => actions.saveExit()}
         onContinue={() => actions.continue()}
         continuePending={pending}

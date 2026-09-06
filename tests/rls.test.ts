@@ -178,6 +178,10 @@ describe("row level security", () => {
       "business_margin_monthly",
       "plan_entitlements",
       "automation_events",
+      // Platform Administration support tables (migration 0024). RLS on, no
+      // policies, no browser grants — only the service role can reach them.
+      "platform_provider_checks",
+      "platform_error_triage",
     ] as const) {
       const { data, error } = await a.client.from(table).select("*").limit(1);
       assert.ok(

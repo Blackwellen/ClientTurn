@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
+  NOT_AVAILABLE_REASON,
   PROVIDERS,
   type IntegrationObjectRecord,
   type IntegrationRecord,
@@ -15,6 +16,9 @@ export type IntegrationsView = {
   meta: { forms: IntegrationObjectRecord[]; pages: IntegrationObjectRecord[] };
   whatsappAvailableOnPlan: boolean;
   planName: string;
+  /** Newest success/error timestamp across every connection, for the
+   *  Connections health summary's "last check". */
+  lastCheckedAt: string | null;
 };
 
 /**
@@ -25,7 +29,12 @@ export type IntegrationsView = {
 function platformConfigured(provider: ProviderType) {
   const definition = PROVIDERS.find((row) => row.id === provider);
   if (!definition) return false;
-  return definition.requiredEnv.every((key) => Boolean(process.env[key]));
+  // A `|`-separated entry means "any of these names will do", which is how a
+  // provider that has been renamed upstream keeps working on a deployment
+  // still using the older variable (see TikTok in the catalogue).
+  return definition.requiredEnv.every((key) =>
+    key.split("|").some((name) => Boolean(process.env[name.trim()])),
+  );
 }
 
 export async function getIntegrationsView(
@@ -119,11 +128,7 @@ export async function getIntegrationsView(
         reason: "WhatsApp is included on the Growth plan and above.",
       };
     } else if (!connected && (!configured || !definition.connectPath)) {
-      block = {
-        kind: "unavailable",
-        reason:
-          "Client Turn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.",
-      };
+      block = { kind: "unavailable", reason: NOT_AVAILABLE_REASON };
     }
 
     return {
@@ -140,8 +145,14 @@ export async function getIntegrationsView(
     (row) => row.integration_id === metaIntegrationId,
   );
 
+  const timestamps = rows
+    .flatMap((row) => [row.last_success_at, row.last_error_at])
+    .filter((value): value is string => Boolean(value))
+    .sort();
+
   return {
     cards,
+    lastCheckedAt: timestamps.at(-1) ?? null,
     meta: {
       pages: metaObjects.filter((row) => row.object_type === "meta_page").map(toObject),
       forms: metaObjects.filter((row) => row.object_type === "meta_form").map(toObject),

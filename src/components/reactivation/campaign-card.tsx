@@ -89,7 +89,7 @@ export function CampaignCard({
             <CampaignStatusBadge status={campaign.status} />
           </div>
           {campaign.description && (
-            <p className="mt-2.5 line-clamp-2 text-[12.5px] leading-[18px] text-content-muted">
+            <p className="mt-2.5 line-clamp-3 text-[12px] leading-[17px] text-content-muted">
               {campaign.description}
             </p>
           )}
@@ -128,14 +128,17 @@ export function CampaignCard({
           </span>
         </div>
 
-        <div className="mt-3 flex items-center gap-2 border-t border-line-subtle pt-2.5 text-[11px] text-content-subtle">
-          <CalendarDays className="size-3.5 shrink-0" aria-hidden />
+        <div className="mt-3 flex items-center gap-1.5 border-t border-line-subtle pt-2.5 text-[9.5px] text-content-subtle">
+          <CalendarDays className="size-3 shrink-0" aria-hidden />
           <span className="shrink-0">Created {formatDate(campaign.createdAt)}</span>
-          <span className="ml-auto flex min-w-0 items-center gap-1.5">
+          <span className="ml-auto flex min-w-0 items-center gap-1">
             {campaign.createdByName && (
-              <Avatar name={campaign.createdByName} size="sm" />
+              <Avatar name={campaign.createdByName} size="xs" />
             )}
-            <span className="truncate">
+            <span
+              className="truncate"
+              title={"Last updated " + formatRelative(campaign.updatedAt)}
+            >
               Last updated {formatRelative(campaign.updatedAt)}
             </span>
           </span>

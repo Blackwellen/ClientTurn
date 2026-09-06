@@ -7,7 +7,10 @@ import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
 import { Overlay, useBodyScrollLock, useEscape } from "@/components/ui/drawer";
 import { SidebarContent } from "./sidebar";
+import { PRIMARY_NAV } from "@/lib/app/nav";
 import { TopBar } from "./top-bar";
+import { SupportBubble } from "@/components/support/support-bubble";
+import { AccountPreferencesDialog } from "./account-preferences-dialog";
 import type { NotificationRow } from "./notification-tray";
 
 const COLLAPSE_KEY = "lr-sidebar-collapsed";
@@ -30,6 +33,7 @@ export function AppShell({
   initialCollapsed = false,
   businessName,
   planLabel,
+  primaryNav: primaryNavPaths,
   integrationStatus,
   notifications,
   user,
@@ -38,14 +42,18 @@ export function AppShell({
   initialCollapsed?: boolean;
   businessName: string;
   planLabel: string;
+  primaryNav: string[];
   integrationStatus: string;
   notifications: NotificationRow[];
   user: { name: string; email: string; avatarUrl?: string | null };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const primaryNav = PRIMARY_NAV.filter(item => primaryNavPaths.includes(item.href));
   const [collapsed, setCollapsed] = React.useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [accountOpen, setAccountOpen] = React.useState(false);
+  const openAccount = React.useCallback(() => setAccountOpen(true), []);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- closing the mobile nav on navigation is a deliberate response to the route changing.
@@ -96,6 +104,8 @@ export function AppShell({
           onToggleCollapse={toggleCollapse}
           businessName={businessName}
           planLabel={planLabel}
+          primaryNav={primaryNav}
+          onOpenAccount={openAccount}
         />
       </aside>
 
@@ -127,6 +137,8 @@ export function AppShell({
               onNavigate={() => setMobileOpen(false)}
               businessName={businessName}
               planLabel={planLabel}
+              primaryNav={primaryNav}
+              onOpenAccount={openAccount}
             />
           </div>
         </div>
@@ -144,11 +156,20 @@ export function AppShell({
           integrationStatus={integrationStatus}
           notifications={notifications}
           user={user}
+          businessName={businessName}
+          planLabel={planLabel}
+          onOpenAccount={openAccount}
         />
         <main className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
           {children}
         </main>
       </div>
+
+      {/* Mounted only while open so it always loads current values. */}
+      <SupportBubble />
+      {accountOpen && (
+        <AccountPreferencesDialog open onClose={() => setAccountOpen(false)} />
+      )}
     </div>
   );
 }

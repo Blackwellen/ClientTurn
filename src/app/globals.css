@@ -136,7 +136,7 @@
   /* --- layout --- */
   --lr-sidebar-width: 256px;
   --lr-sidebar-collapsed: 72px;
-  --lr-topbar-height: 72px;
+  --lr-topbar-height: 76px;
 
   /* --- shell chrome ---
      The sidebar rail is fixed near-black brand chrome in both the app and
@@ -154,6 +154,9 @@
   --ct-shell-card-bg: rgba(255, 255, 255, 0.025);
   --ct-shell-card-border: rgba(255, 255, 255, 0.05);
   --ct-shell-card-hover: rgba(255, 255, 255, 0.045);
+  /* Solid dark-green fill for the workspace/environment icon glyph boxes,
+     matched against the approved reference mockups. */
+  --ct-shell-icon-bg: #0c3d0e;
 }
 
 /* ClientTurn renders light, always. There is no dark theme and no system
@@ -423,6 +426,40 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Email body markup, in the composer and in every preview of it. Tailwind's
+   reset removes list markers and heading sizes, so the few tags an email body
+   is allowed to contain need their appearance restored here. */
+.lr-rich-text p {
+  margin: 0 0 0.65em;
+}
+.lr-rich-text p:last-child {
+  margin-bottom: 0;
+}
+.lr-rich-text ul,
+.lr-rich-text ol {
+  margin: 0 0 0.65em;
+  padding-left: 1.35em;
+}
+.lr-rich-text ul {
+  list-style: disc;
+}
+.lr-rich-text ol {
+  list-style: decimal;
+}
+.lr-rich-text li {
+  margin: 0.15em 0;
+}
+.lr-rich-text a {
+  color: var(--lr-content-accent);
+  text-decoration: underline;
+}
+.lr-rich-text strong {
+  font-weight: 600;
+}
+.lr-rich-text u {
+  text-decoration: underline;
+}
+
 /* Dashboard: lead funnel gets most of the row, needs-attention the rest. */
 .dashboard-middle-grid {
   grid-template-columns: minmax(0, 1fr);
@@ -463,3 +500,5 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* touch: force Tailwind CSS rebuild */

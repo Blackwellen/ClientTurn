@@ -14,6 +14,8 @@ import { LeadQuickFilters } from "@/components/leads/lead-quick-filters";
 import { LeadsToolbar } from "@/components/leads/leads-toolbar";
 import { LeadsContent } from "@/components/leads/leads-content";
 import { LeadDrawerHost } from "@/components/leads/lead-drawer-host";
+import { AddLeadButton } from "@/components/leads/add-lead/add-lead-button";
+import { getAddLeadContext } from "@/lib/leads/add-lead/queries";
 
 export const metadata: Metadata = { title: "Leads · Client Turn" };
 export const dynamic = "force-dynamic";
@@ -42,7 +44,8 @@ export default async function LeadsPage({
   const defaultView: LeadView = stored === "table" ? "table" : "cards";
   const filters = parseLeadFilters(params, defaultView);
 
-  const [{ rows, total }, counts, options, capabilities, detail] = await Promise.all([
+  const [{ rows, total }, counts, options, capabilities, detail, addLeadContext] =
+    await Promise.all([
     listLeads(workspace.businessId, filters),
     getLeadQuickCounts(workspace.businessId, filters),
     getFilterOptions(workspace.businessId),
@@ -50,19 +53,26 @@ export default async function LeadsPage({
     filters.lead
       ? getLeadDetail(workspace.businessId, filters.lead)
       : Promise.resolve(null),
-  ]);
+      getAddLeadContext(workspace.businessId, workspace.role),
+    ]);
 
   const canWrite = hasRole(workspace.role, "member");
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.03em] text-content sm:text-[36px]">
-          Leads
-        </h1>
-        <p className="mt-1 text-[15px] text-content-muted sm:text-[16px]">
-          Manage and follow up with your incoming leads.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[30px] font-bold leading-tight tracking-[-0.03em] text-content sm:text-[36px]">
+            Leads
+          </h1>
+          <p className="mt-1 text-[15px] text-content-muted sm:text-[16px]">
+            Manage your leads, track progress and turn more enquiries into
+            bookings.
+          </p>
+        </div>
+        {/* The wizard is state on this page, not a route: closing it leaves the
+            list, filters and pagination exactly as they were. */}
+        <AddLeadButton context={addLeadContext} canCreate={canWrite} />
       </header>
 
       <LeadQuickFilters

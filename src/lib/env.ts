@@ -63,6 +63,13 @@ export const serverEnv = {
     /** Public URL Twilio posts inbound messages to; used for signature checks. */
     webhookUrl: optional("TWILIO_WEBHOOK_URL"),
   },
+  /**
+   * Key used to encrypt credentials this product holds on a customer's
+   * behalf (mailbox SMTP/IMAP passwords). Absent in development, in which
+   * case email account setup reports itself as unavailable rather than
+   * storing a password in the clear.
+   */
+  credentialEncryptionKey: optional("CREDENTIAL_ENCRYPTION_KEY"),
   resend: {
     apiKey: optional("RESEND_API_KEY"),
     from: process.env.RESEND_FROM || "Client Turn <notifications@clientturn.com>",
@@ -83,9 +90,15 @@ export const serverEnv = {
     clientSecret: optional("MICROSOFT_ADS_CLIENT_SECRET"),
     developerToken: optional("MICROSOFT_ADS_DEVELOPER_TOKEN"),
   },
+  /**
+   * TikTok calls these `client_key` / `client_secret`, and that is how they
+   * are provisioned in this environment. The older `TIKTOK_APP_ID` /
+   * `TIKTOK_APP_SECRET` spelling is still accepted so an existing deployment
+   * keeps working; TikTok's own naming wins when both are set.
+   */
   tiktokAds: {
-    appId: optional("TIKTOK_APP_ID"),
-    appSecret: optional("TIKTOK_APP_SECRET"),
+    appId: optional("TIKTOK_CLIENT_KEY") ?? optional("TIKTOK_APP_ID"),
+    appSecret: optional("TIKTOK_CLIENT_SECRET") ?? optional("TIKTOK_APP_SECRET"),
   },
   linkedinAds: {
     clientId: optional("LINKEDIN_CLIENT_ID"),
@@ -104,6 +117,20 @@ export const serverEnv = {
   zohoCrm: {
     clientId: optional("ZOHO_CLIENT_ID"),
     clientSecret: optional("ZOHO_CLIENT_SECRET"),
+  },
+  /**
+   * Sourcing data providers (Find Leads). All optional: an absent key makes
+   * that adapter report itself unconfigured, and the waterfall skips it. A run
+   * with no configured provider for a cost-bearing stage fails with a visible
+   * issue rather than inventing records.
+   */
+  sourcing: {
+    apolloApiKey: optional("APOLLO_API_KEY"),
+    hunterApiKey: optional("HUNTER_API_KEY"),
+    clearbitApiKey: optional("CLEARBIT_API_KEY"),
+    googlePlacesApiKey: optional("GOOGLE_PLACES_API_KEY") ?? optional("GOOGLE_MAPS_API_KEY"),
+    /** Timeout applied to every outbound provider call, in milliseconds. */
+    timeoutMs: Number(process.env.SOURCING_PROVIDER_TIMEOUT_MS || 15000),
   },
   cronSecret: optional("CRON_SECRET"),
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",

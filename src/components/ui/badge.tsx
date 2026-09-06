@@ -33,15 +33,23 @@ const DOTS: Record<Tone, string> = {
 export function Badge({
   tone = "neutral",
   dot,
+  dense,
   className,
   children,
   ...props
-}: React.HTMLAttributes<HTMLSpanElement> & { tone?: Tone; dot?: boolean }) {
+}: React.HTMLAttributes<HTMLSpanElement> & {
+  tone?: Tone;
+  dot?: boolean;
+  /** For dense table rows, where a 26px chip sets the whole row's height. */
+  dense?: boolean;
+}) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5",
-        "text-[11px] font-medium leading-5 whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-full border whitespace-nowrap font-medium",
+        dense
+          ? "px-1.5 py-0 text-[10.5px] leading-[17px]"
+          : "px-2 py-0.5 text-[11px] leading-5",
         TONES[tone],
         className,
       )}
@@ -62,12 +70,12 @@ export function Badge({
 
 export const LEAD_STATUS = {
   NEW: { label: "New", tone: "info" },
-  CONTACTED: { label: "Contacted", tone: "accent" },
+  CONTACTED: { label: "Contacted", tone: "warning" },
   RESPONDED: { label: "Responded", tone: "purple" },
   QUALIFIED: { label: "Qualified", tone: "success" },
   BOOKED: { label: "Booked", tone: "success" },
   WON: { label: "Won", tone: "success" },
-  LOST: { label: "Lost", tone: "neutral" },
+  LOST: { label: "Lost", tone: "danger" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 
 export const QUALIFICATION_STATE = {
@@ -141,23 +149,25 @@ export function StatusBadge({
   kind,
   value,
   dot = true,
+  dense,
   className,
 }: {
   kind: StatusKind;
   value: string;
   dot?: boolean;
+  dense?: boolean;
   className?: string;
 }) {
   const entry = (MAPS[kind] as StatusMap)[value];
   if (!entry) {
     return (
-      <Badge tone="neutral" className={className}>
+      <Badge tone="neutral" dense={dense} className={className}>
         {value}
       </Badge>
     );
   }
   return (
-    <Badge tone={entry.tone} dot={dot} className={className}>
+    <Badge tone={entry.tone} dot={dot} dense={dense} className={className}>
       {entry.label}
     </Badge>
   );

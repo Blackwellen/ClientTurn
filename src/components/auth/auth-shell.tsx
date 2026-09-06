@@ -22,7 +22,7 @@ export function AuthShell({
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[1720px] flex-col px-5 pt-6 pb-8 sm:px-8 sm:pt-8 sm:pb-10 lg:px-16 lg:pt-10 lg:pb-12 xl:px-20">
       <header className="flex items-center justify-between gap-4">
-        <Logo height={40} />
+        <Logo height={80} />
         <div className="hidden items-center gap-3 sm:flex">
           <span className="text-[13.5px] text-[var(--auth-text-muted)]">{sw.prompt}</span>
           <Link
@@ -34,7 +34,7 @@ export function AuthShell({
         </div>
       </header>
 
-      <div className="mt-8 grid flex-1 items-center gap-x-12 gap-y-10 lg:mt-4 lg:grid-cols-[1.15fr_minmax(500px,0.85fr)] lg:gap-x-16 xl:gap-x-20">
+      <div className="mt-8 grid flex-1 items-center gap-x-12 gap-y-10 lg:mt-4 lg:grid-cols-[1.05fr_minmax(500px,0.95fr)] lg:gap-x-14 xl:gap-x-16">
         {/* No z-index here on purpose: a stacking context would trap the
             handwritten annotation behind the card it overlaps. */}
         <div className="relative min-w-0">

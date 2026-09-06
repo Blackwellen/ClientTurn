@@ -25,7 +25,7 @@ import {
   type LeadCapabilities,
   type LeadDetail,
 } from "@/lib/leads/types";
-import { LeadSourceGlyph, providerStyle } from "./lead-source-badge";
+import { LeadSourceGlyph, sourceStyle } from "./lead-source-badge";
 import { LeadManualActions } from "./lead-manual-actions";
 import type { LeadDrawerActions, RunAction } from "./lead-drawer-actions";
 
@@ -229,7 +229,7 @@ export function LeadSummarySection({
 }) {
   const { lead, members, bookings } = detail;
   const source = lead.lead_sources;
-  const provider = providerStyle(source?.provider);
+  const provider = sourceStyle(source?.provider);
   const booking = bookings.find((row) => row.status === "scheduled") ?? bookings[0] ?? null;
   const qualification =
     QUALIFICATION_COPY[lead.qualification_state] ?? QUALIFICATION_COPY.PENDING;
@@ -312,7 +312,7 @@ export function LeadSummarySection({
             <ColumnHeading>Source</ColumnHeading>
             <div className="space-y-2.5">
               <div className="flex min-w-0 items-center gap-2.5">
-                <LeadSourceGlyph provider={source?.provider} className="shrink-0" />
+                <LeadSourceGlyph provider={source?.provider} size="sm" />
                 <span className="truncate text-[13px] font-medium text-content">
                   {provider.label}
                 </span>
@@ -469,7 +469,7 @@ export function LeadSummarySection({
       {/* ------------------------------------------------- three mini cards */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <SummaryCard
-          icon={<LeadSourceGlyph provider={source?.provider} className="size-4" />}
+          icon={<LeadSourceGlyph provider={source?.provider} size="sm" />}
           title="Lead source summary"
           headline={provider.label}
           detail={

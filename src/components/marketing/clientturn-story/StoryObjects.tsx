@@ -5,7 +5,8 @@ import { AdditiveBlending, BufferAttribute, BufferGeometry, CatmullRomCurve3, Gr
 import type { MotionValue } from "motion/react";
 import { CalendarGrid } from "../hero/scene/CalendarGrid";
 import { PrecisionBox } from "../hero/scene/PrecisionBox";
-import { Lettering, CheckMark, Profile, Shell } from "../hero/scene/primitives";
+import { Lettering, CheckMark, Shell } from "../hero/scene/primitives";
+import { Glyph, type GlyphName } from "../hero/scene/Glyph";
 import { useMaterials } from "../hero/scene/materials";
 import { PALETTE, type Point3 } from "../hero/constants/stages";
 import { localProgress, clamp } from "./stages";
@@ -13,7 +14,7 @@ import { seeded } from "../world/noise";
 
 export type ChapterProps = { progress: MotionValue<number>; index: number; staticMode?: boolean };
 
-export function Card({ title, position = [0, 0, 0], width = 2.1, height = 0.9, active = false, icon = "message", children, subtitle, color = PALETTE.lime, edge }: { title: string; position?: Point3; width?: number; height?: number; active?: boolean; icon?: "message" | "profile" | "clock" | "none"; children?: ReactNode; subtitle?: string; color?: string; edge?: string }) {
+export function Card({ title, position = [0, 0, 0], width = 2.1, height = 0.9, active = false, icon = "message", children, subtitle, color = PALETTE.lime, edge, iconTone, titleColor }: { title: string; position?: Point3; width?: number; height?: number; active?: boolean; icon?: GlyphName | "none"; children?: ReactNode; subtitle?: string; color?: string; edge?: string; iconTone?: "white" | "lime" | "muted" | "amber" | "danger"; titleColor?: string }) {
   const materials = useMaterials();
   return <group position={position}>
     <PrecisionBox args={[width, height, 0.46]} radius={0.14} material={materials.shell} castShadow receiveShadow />
@@ -22,10 +23,12 @@ export function Card({ title, position = [0, 0, 0], width = 2.1, height = 0.9, a
       <meshStandardMaterial color={active ? color : edge ?? "#3d4857"} emissive={active ? color : edge ?? "#000000"} emissiveIntensity={active ? 0.55 : edge ? 0.22 : 0} roughness={0.33} metalness={0.35} />
     </PrecisionBox>
     <PrecisionBox args={[width - 0.08, height - 0.08, 0.06]} radius={0.11} position-z={0.25} material={materials.inset} receiveShadow />
-    {icon === "profile" && <Profile position={[-width / 2 + 0.3, 0, 0.35]} scale={0.42} />}
-    {icon === "clock" && <group position={[-width / 2 + 0.3, 0, 0.35]}><mesh material={materials.white}><torusGeometry args={[0.13, 0.017, 12, 40]} /></mesh><mesh position-y={0.03} material={materials.white}><boxGeometry args={[0.015, 0.09, 0.025]} /></mesh><mesh position-x={0.03} material={materials.white}><boxGeometry args={[0.065, 0.015, 0.025]} /></mesh></group>}
-    {icon === "message" && <group position={[-width / 2 + 0.3, 0, 0.34]}><PrecisionBox args={[0.3, 0.23, 0.07]} radius={0.07} material={materials.white} /><mesh position={[0.065, -0.105, 0]} rotation-z={0.4} material={materials.white}><boxGeometry args={[0.045, 0.085, 0.05]} /></mesh>{[-0.075,0,0.075].map(x => <mesh key={x} position={[x,0,0.04]} material={materials.shell}><sphereGeometry args={[0.018,12,8]} /></mesh>)}</group>}
-    <Lettering text={title} position={[icon === "none" ? 0 : 0.2, (children || subtitle) ? height / 2 - 0.28 : 0.035, 0.31]} width={width - (icon === "none" ? 0.32 : 0.78)} height={0.24} color={active ? PALETTE.soft : PALETTE.white} />
+    {/* Glyph tile, vertically centred on the card's left edge as on the reference boards. */}
+    {icon !== "none" && <group position={[-width / 2 + 0.3, 0, 0.3]}>
+      <PrecisionBox args={[0.4, 0.4, 0.05]} radius={0.115} material={materials.lip} />
+      <Glyph name={icon} position={[0, 0, 0.08]} scale={0.245} tone={iconTone ?? (active ? "lime" : edge ? "white" : "muted")} />
+    </group>}
+    <Lettering text={title} position={[icon === "none" ? 0 : 0.2, (children || subtitle) ? height / 2 - 0.28 : 0.035, 0.31]} width={width - (icon === "none" ? 0.32 : 0.78)} height={0.24} color={titleColor ?? (active ? PALETTE.soft : PALETTE.white)} />
     {subtitle && <Lettering text={subtitle} position={[icon === "none" ? 0 : 0.2, -height / 2 + 0.23, 0.31]} width={width - (icon === "none" ? 0.32 : 0.78)} height={0.15} color="#8f9aa9" />}
     {height > 0.7 && [-1, 1].map(side => <mesh key={side} position={[side * (width / 2 + 0.012), 0, -0.09]} rotation-y={Math.PI / 2} material={materials.edge}><torusGeometry args={[0.066, 0.018, 10, 24]} /></mesh>)}
     {height > 0.7 && <mesh position={[0, -height / 2 + 0.1, 0.29]} material={materials.edge}><boxGeometry args={[width * 0.72, 0.008, 0.012]} /></mesh>}
@@ -90,9 +93,15 @@ export function Calendar({ position = [0, 0, 0], ...props }: ChapterProps & { po
   </Reveal>;
 }
 
+/** A stored enquiry: avatar, name line, status dot. Matches the archive rows on the reference board. */
 export function MiniRows({ count = 3 }: { count?: number }) {
   const materials = useMaterials();
-  return <group>{Array.from({ length: count }, (_, i) => <group key={i} position={[0, 0.23 - i * 0.28, 0.15]}><mesh position-x={-0.58} material={materials.muted}><circleGeometry args={[0.05, 16]} /></mesh><mesh position-x={-0.06} material={materials.edge}><boxGeometry args={[0.65, 0.035, 0.01]} /></mesh><mesh position-x={0.55} material={materials.lime}><circleGeometry args={[0.025, 16]} /></mesh></group>)}</group>;
+  return <group>{Array.from({ length: count }, (_, i) => <group key={i} position={[0, 0.23 - i * 0.28, 0.15]}>
+    <PrecisionBox args={[0.15, 0.15, 0.03]} radius={0.05} position-x={-0.58} material={materials.lip} />
+    <Glyph name="person" position={[-0.58, 0, 0.03]} scale={0.115} tone="muted" />
+    <mesh position-x={-0.06} material={materials.edge}><boxGeometry args={[0.62, 0.035, 0.01]} /></mesh>
+    <mesh position-x={0.55} material={materials.lime}><circleGeometry args={[0.025, 16]} /></mesh>
+  </group>)}</group>;
 }
 
 /**

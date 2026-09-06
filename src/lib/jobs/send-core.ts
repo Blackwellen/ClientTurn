@@ -22,7 +22,15 @@ import type {
   SendResult,
 } from "../messaging/types.ts";
 
-export type SendOrigin = "automation" | "manual" | "campaign" | "system";
+// "agent" behaves like "system" in the guard: a lead having replied does
+// not block the reply owed back to them, while opt-out, suppression and a
+// human takeover still bind absolutely.
+export type SendOrigin =
+  | "automation"
+  | "manual"
+  | "campaign"
+  | "system"
+  | "agent";
 
 export type SendGuardSnapshot = {
   lead: LeadState;
@@ -86,6 +94,9 @@ export type OutboundMessageRecord = {
   sendKey: string;
   to: string;
   origin: SendOrigin;
+  /** Email only; null on every other channel. */
+  subject?: string | null;
+  unsubscribeUrl?: string | null;
 };
 
 export type SendFailure = Extract<SendResult, { ok: false }>;
@@ -163,6 +174,8 @@ export async function performSend(input: {
     body: message.body,
     sendKey: message.sendKey,
     channel: message.channel,
+    subject: message.subject ?? null,
+    unsubscribeUrl: message.unsubscribeUrl ?? null,
   });
 
   if (result.ok) {

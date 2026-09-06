@@ -121,6 +121,21 @@ export function formatDateTime(value: string | Date | null | undefined) {
   }).format(date);
 }
 
+/**
+ * Time of day on its own, for dense rows that already show the date above it.
+ * 24-hour en-GB, matching `formatDateTime` — the product is UK, so a 12-hour
+ * "AM/PM" clock would read as an import from somewhere else.
+ */
+export function formatTime(value: string | Date | null | undefined) {
+  if (!value) return "—";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 31536e6],
   ["month", 2592e6],
@@ -213,4 +228,30 @@ export function formatGbp(value: number) {
 export function formatPercent(value: number, digits = 1) {
   if (!Number.isFinite(value)) return "—";
   return `${value.toFixed(digits)}%`;
+}
+
+/**
+ * Display label for an IANA timezone, derived rather than stored: the offset
+ * comes from `Intl` so it follows DST on its own, and the region comes from
+ * the identifier. A hardcoded table would quietly go wrong twice a year.
+ *
+ * Both server and client resolve the same instant to the same offset, so this
+ * is hydration-safe outside the exact millisecond of a DST transition.
+ */
+export function formatTimezoneLabel(zone: string): string {
+  try {
+    const offset =
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: zone,
+        timeZoneName: "longOffset",
+      })
+        .formatToParts(new Date())
+        .find((part) => part.type === "timeZoneName")?.value ?? "";
+
+    const region = zone === "UTC" ? "UTC" : (zone.split("/").pop() ?? zone).replace(/_/g, " ");
+    return offset ? `(${offset}) ${region}` : region;
+  } catch {
+    // Unknown identifier: show it as given rather than inventing a label.
+    return zone;
+  }
 }

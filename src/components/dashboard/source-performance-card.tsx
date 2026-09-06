@@ -1,6 +1,8 @@
 import * as React from "react";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import type { SourceSnapshotRow } from "@/lib/dashboard/types";
+import { leadsHrefForSource } from "@/lib/leads/filters";
 import { formatPercent } from "@/lib/dates";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/feedback";
@@ -13,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SectionHeader } from "@/components/app/page-header";
+import { CardActionLink } from "./card-action-link";
 import { SourceIcon } from "./source-icon";
 
 /**
@@ -25,14 +28,7 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
       <CardHeader>
         <SectionHeader
           title="Source performance"
-          action={
-            <Link
-              href="/app/leads"
-              className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              View all
-            </Link>
-          }
+          action={<CardActionLink href="/app/leads" />}
         />
       </CardHeader>
       {/* Container query, not a viewport breakpoint: this card is one of three
@@ -45,7 +41,7 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
             description="Source performance appears once leads arrive from a connected source."
             action={
               <Link
-                href="/app/settings/connections"
+                href="/app/settings?section=connections"
                 className="text-content-accent text-[13px] font-medium"
               >
                 Check lead connections
@@ -53,7 +49,7 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
             }
           />
         ) : (
-          <Table className="table-fixed">
+          <Table className="table-fixed [&_td]:py-1 [&_th]:h-8">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-auto px-2">Source</TableHead>
@@ -76,17 +72,25 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
                 >
                   Conv.
                 </TableHead>
+                <TableHead className="w-6 px-0">
+                  <span className="sr-only">Open</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.key} className="h-10">
+                <TableRow key={row.key} className="group relative h-8 has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-content-accent">
                   <TableCell className="px-2">
                     <span className="flex items-center gap-2">
                       <SourceIcon provider={row.provider} className="shrink-0" />
-                      <span className="min-w-0 truncate font-medium">
+                      {/* The row opens Leads filtered to this source, which is
+                          what the chevron in the design promises. */}
+                      <Link
+                        href={leadsHrefForSource(row.key)}
+                        className="text-content group-hover:text-content-accent min-w-0 truncate font-medium after:absolute after:inset-0 focus-visible:outline-none!"
+                      >
                         {row.label}
-                      </span>
+                      </Link>
                     </span>
                   </TableCell>
                   <TableCell align="right" numeric className="px-2">
@@ -107,6 +111,12 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
                     className="text-content-secondary hidden px-2 @md:table-cell"
                   >
                     {formatPercent(row.conversionRate, 1)}
+                  </TableCell>
+                  <TableCell align="right" className="px-0">
+                    <ChevronRight
+                      aria-hidden
+                      className="text-content-subtle group-hover:text-content-muted size-4 transition-colors"
+                    />
                   </TableCell>
                 </TableRow>
               ))}

@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getEntitlements, getPeriodUsage } from "@/lib/billing/entitlements";
+import { PLANS, TRIAL_ENTITLEMENTS, type PlanId } from "@/lib/billing/plans";
 import { createDownloadUrl } from "@/lib/storage/r2";
 import {
   parseBusinessHours,
@@ -134,7 +135,9 @@ export async function listTeamMembers(
   const admin = createAdminClient();
   const { data } = await admin
     .from("business_members")
-    .select("id, user_id, role, status, invited_email, invited_at, created_at")
+    .select(
+      "id, user_id, role, status, invited_email, invited_at, accepted_at, created_at",
+    )
     .eq("business_id", businessId)
     .neq("status", "removed")
     .order("created_at", { ascending: true });
@@ -176,8 +179,28 @@ export async function listTeamMembers(
       status: row.status,
       invitedAt: row.invited_at,
       createdAt: row.created_at,
+      joinedAt: row.accepted_at ?? row.created_at,
     };
   });
+}
+
+/**
+ * Removals in the last 30 days, for the Team overview rail. Counted from the
+ * membership row rather than the audit log so it stays correct even where an
+ * audit entry was pruned.
+ */
+export async function countRecentlyRemoved(businessId: string): Promise<number> {
+  const admin = createAdminClient();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count } = await admin
+    .from("business_members")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .eq("status", "removed")
+    .gte("updated_at", since);
+
+  return count ?? 0;
 }
 
 export async function listServices(businessId: string): Promise<ServiceRow[]> {
@@ -221,6 +244,9 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
   const usage = await getPeriodUsage(businessId, entitlements.periodStart);
   const subscription = subscriptionResult.data;
 
+  const planId = entitlements.plan as PlanId;
+  const definition = planId === "trial" ? null : (PLANS[planId] ?? null);
+
   return {
     plan: entitlements.plan,
     status: entitlements.status,
@@ -235,6 +261,14 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     seatsUsed: seatResult.count ?? 0,
     leadsUsed: usage.leads,
     messagesUsed: usage.messages,
+    messageAllowance:
+      definition?.smsSegmentAllowance ?? TRIAL_ENTITLEMENTS.smsSegmentAllowance,
+    monthlyPrice: definition?.monthlyPrice ?? null,
+    planFeatures: definition?.features ?? [
+      "14-day trial",
+      `${TRIAL_ENTITLEMENTS.leadLimit} leads`,
+      "New-lead follow-up and qualification",
+    ],
   };
 }
 
@@ -329,21 +363,21 @@ export async function getGettingStarted(
       label: "Add your services",
       description:
         "Client Turn needs at least one service before it can qualify a lead.",
-      href: "/app/settings/workspace",
+      href: "/app/settings?section=workspace",
       done: (services.count ?? 0) > 0,
     },
     {
       id: "lead-source",
       label: "Connect a lead source",
       description: "Meta Lead Ads delivers new enquiries within seconds.",
-      href: "/app/settings/connections",
+      href: "/app/settings?section=connections",
       done: live.some((row) => row.provider_type === "meta"),
     },
     {
       id: "messaging",
       label: "Connect a messaging channel",
       description: "Follow-up cannot be sent until SMS or WhatsApp is connected.",
-      href: "/app/settings/connections",
+      href: "/app/settings?section=connections",
       done: live.some((row) => row.provider_type.startsWith("twilio")),
     },
     {
@@ -357,7 +391,7 @@ export async function getGettingStarted(
       id: "booking",
       label: "Choose how leads book",
       description: "A calendar connection, or a booking link you provide.",
-      href: "/app/settings/workspace",
+      href: "/app/settings?section=workspace",
       done: Boolean(
         automations.data?.booking_url ||
           (automations.data?.booking_mode &&

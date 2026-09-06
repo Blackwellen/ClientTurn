@@ -14,6 +14,7 @@ import {
   type InboundMessage,
   type MessagingProvider,
 } from "@/lib/messaging/types";
+import { normaliseEmail } from "@/lib/email/account";
 import {
   conversationFor,
   flagForAttention,
@@ -38,12 +39,16 @@ import {
 import { parsePayload } from "./parse";
 import { messageInboundPayload } from "./payloads";
 import { emitAutomationEvent } from "@/lib/automation/events";
+import { enqueueAgentTurn, inboundMessageEvent } from "@/lib/agent/events";
+import { isOptOutPhrase } from "@/lib/agent/classification";
 
 const HANDOVER_REPLY = "Thanks. A member of the team will pick this up.";
 
 type StoredInbound = {
   kind?: string;
   form?: Record<string, string>;
+  /** Set for provider "smtp": the already-parsed inbound email. */
+  message?: InboundMessage;
 };
 
 function providerFor(name: string): MessagingProvider {
@@ -90,17 +95,23 @@ async function resolveLead(
   message: InboundMessage,
 ): Promise<LeadRecord | null> {
   const admin = createAdminClient();
-  const from = normalisePhone(message.from) ?? message.from;
 
-  const { data } = await admin
+  const query = admin
     .from("leads")
     .select("id")
     .eq("business_id", businessId)
-    .eq("phone_normalized", from)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
+  if (message.channel === "email") {
+    const from = normaliseEmail(message.from);
+    if (!from) return null;
+    const { data } = await query.ilike("email", from).maybeSingle();
+    return data ? loadLead(data.id) : null;
+  }
+
+  const from = normalisePhone(message.from) ?? message.from;
+  const { data } = await query.eq("phone_normalized", from).maybeSingle();
   return data ? loadLead(data.id) : null;
 }
 
@@ -287,28 +298,39 @@ export async function applyInboundMessage(
   if (!lead) return "unmatched";
 
   const admin = createAdminClient();
-  const channel: Channel = message.channel === "whatsapp" ? "whatsapp" : "sms";
+  const channel: Channel =
+    message.channel === "whatsapp"
+      ? "whatsapp"
+      : message.channel === "email"
+        ? "email"
+        : "sms";
   const conversationId = await conversationFor(businessId, lead.id, channel);
   if (!conversationId) return "unmatched";
 
   const now = new Date().toISOString();
 
-  const { error: insertError } = await admin.from("messages").insert({
-    business_id: businessId,
-    conversation_id: conversationId,
-    lead_id: lead.id,
-    direction: "inbound",
-    channel,
-    body: message.body,
-    status: "RECEIVED",
-    origin: "system",
-    provider: message.provider,
-    provider_message_id: message.providerMessageId,
-    received_at: message.receivedAt || now,
-  });
+  // The stored row's id is the agent turn's idempotency key, so it is read
+  // back here rather than discarded.
+  const { data: storedMessage, error: insertError } = await admin
+    .from("messages")
+    .insert({
+      business_id: businessId,
+      conversation_id: conversationId,
+      lead_id: lead.id,
+      direction: "inbound",
+      channel,
+      body: message.body,
+      status: "RECEIVED",
+      origin: "system",
+      provider: message.provider,
+      provider_message_id: message.providerMessageId,
+      received_at: message.receivedAt || now,
+    })
+    .select("id")
+    .single();
 
   if (insertError?.code === "23505") return "duplicate";
-  if (insertError) throw insertError;
+  if (insertError || !storedMessage) throw insertError ?? new Error("Inbound message not stored.");
 
   await admin
     .from("conversations")
@@ -346,7 +368,11 @@ export async function applyInboundMessage(
 
   const contact = normalisePhone(message.from) ?? message.from;
 
-  if (isOptOutKeyword(message.body)) {
+  // Two deterministic layers: the carrier keywords ("STOP", "UNSUBSCRIBE") and
+  // the plain-English instructions that carry the same legal weight ("do not
+  // message me", "take me off your list"). Neither consults a model, and both
+  // apply whether or not the agent is enabled.
+  if (isOptOutKeyword(message.body) || isOptOutPhrase(message.body)) {
     await recordOptOut(business, lead, contact);
     return "applied";
   }
@@ -373,6 +399,43 @@ export async function applyInboundMessage(
       eventType: "lead.human_takeover",
       payload: { reason: "reply_during_takeover" },
     });
+    return "applied";
+  }
+
+  // ---- agent handover ---------------------------------------------------
+  // When the workspace has the agent on for this channel, the turn is queued
+  // and this handler stops here: the agent owns the reply decision, the
+  // qualification write and the handover from this point on. The queue keeps
+  // the model call off the webhook path entirely.
+  //
+  // With the agent OFF -- the default for every workspace -- the original
+  // deterministic flow below runs unchanged.
+  if (
+    business.agent.mode !== "OFF" &&
+    business.agent.channels.includes(channel)
+  ) {
+    const { data: campaignContact } = await admin
+      .from("campaign_contacts")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("lead_id", lead.id)
+      .eq("state", "replied")
+      .limit(1)
+      .maybeSingle();
+
+    await enqueueAgentTurn(
+      inboundMessageEvent({
+        businessId,
+        leadId: lead.id,
+        conversationId,
+        channel,
+        provider: message.provider,
+        messageId: storedMessage.id,
+        body: message.body,
+        receivedAt: message.receivedAt || now,
+        fromReactivation: Boolean(campaignContact),
+      }),
+    );
     return "applied";
   }
 
@@ -538,11 +601,18 @@ export async function processInboundWebhookEvent(
     .eq("id", event.id);
 
   const stored = (event.payload ?? {}) as StoredInbound;
-  const form = stored.form ?? {};
-  const rawBody = new URLSearchParams(form).toString();
 
-  const provider = providerFor(event.provider);
-  const messages = await provider.parseInbound(rawBody);
+  // Email arrives from the `email.poll` job, which has already parsed the
+  // MIME message. There is no signed webhook body to re-parse, so the stored
+  // payload is the message.
+  const messages: InboundMessage[] =
+    event.provider === "smtp"
+      ? stored.message
+        ? [stored.message]
+        : []
+      : await providerFor(event.provider).parseInbound(
+          new URLSearchParams(stored.form ?? {}).toString(),
+        );
 
   if (messages.length === 0) {
     await admin

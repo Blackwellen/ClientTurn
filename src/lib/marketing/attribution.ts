@@ -1,3 +1,5 @@
+import { hasAnalyticsConsent } from "./consent";
+
 export type Attribution = {
   anonymousId: string;
   utmSource?: string;
@@ -59,6 +61,13 @@ export function captureAttribution(): Attribution {
     return { anonymousId: "" };
   }
 
+  // PECR reg. 6: attribution is not strictly necessary, so nothing is read from
+  // or written to the visitor's device until they have accepted. See
+  // `./consent` and the published Cookie Policy.
+  if (!hasAnalyticsConsent()) {
+    return { anonymousId: "" };
+  }
+
   const existing = read();
   const params = new URLSearchParams(window.location.search);
 
@@ -93,6 +102,7 @@ export function captureAttribution(): Attribution {
 
 export function getAttribution(): Attribution | null {
   if (typeof window === "undefined") return null;
+  if (!hasAnalyticsConsent()) return null;
   return read();
 }
 

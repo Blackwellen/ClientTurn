@@ -3,38 +3,39 @@
 import * as React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { clearAttribution } from "@/lib/marketing/attribution";
+import {
+  CONSENT_CHANGED_EVENT,
+  readConsent,
+  writeConsent,
+  type ConsentChoice,
+} from "@/lib/marketing/consent";
 
-const STORAGE_KEY = "lr.cookie-consent";
-
-type Choice = "accepted" | "rejected";
-
-function readChoice(): Choice | null {
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEY);
-    return value === "accepted" || value === "rejected" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeChoice(choice: Choice) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, choice);
-  } catch {
-    /* storage blocked — the banner simply reappears next visit */
-  }
-}
-
+/**
+ * PECR regulation 6 consent banner. Accept and reject carry equal weight and
+ * sit next to each other, and nothing non-essential is stored until Accept is
+ * pressed — the gate itself lives in `@/lib/marketing/consent`.
+ */
 export function CookieConsent() {
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the stored consent choice is browser-only, so it can only be read after mount.
-    if (!readChoice()) setVisible(true);
+    if (!readConsent()) setVisible(true);
+
+    // The Cookie Policy page can clear the choice; the banner must come back.
+    function onChanged() {
+      setVisible(!readConsent());
+    }
+    window.addEventListener(CONSENT_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(CONSENT_CHANGED_EVENT, onChanged);
   }, []);
 
-  function decide(choice: Choice) {
-    writeChoice(choice);
+  function decide(choice: ConsentChoice) {
+    // Withdrawal must be effective, not just recorded: drop anything the
+    // visitor may have accumulated under a previous acceptance.
+    if (choice === "rejected") clearAttribution();
+    writeConsent(choice);
     setVisible(false);
   }
 
@@ -56,9 +57,11 @@ export function CookieConsent() {
             Cookies on this site
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-content-secondary">
-            We use essential cookies to run the site and, with your permission,
-            analytics cookies to understand which pages and adverts bring people
-            here. You can change your mind at any time.{" "}
+            We use strictly necessary cookies to run the site and keep you signed
+            in. With your permission we also store campaign attribution and
+            product analytics, so we can tell which adverts and pages bring
+            people here. Nothing optional is stored until you accept, and you can
+            change your mind at any time.{" "}
             <Link
               href="/cookies"
               className="underline underline-offset-4 hover:text-content"

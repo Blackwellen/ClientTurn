@@ -131,7 +131,7 @@ export async function updateBusinessProfile(input: {
     metadata: { section: "business" },
   });
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -196,7 +196,7 @@ export async function saveBusinessLogo(key: string): Promise<ActionResult> {
     await deleteObject(existing.logo_key).catch(() => undefined);
   }
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -219,7 +219,7 @@ export async function removeBusinessLogo(): Promise<ActionResult> {
   if (error) return fail("Could not remove your logo.");
   if (existing?.logo_key) await deleteObject(existing.logo_key).catch(() => undefined);
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -321,7 +321,7 @@ export async function inviteMember(input: {
     metadata: { email: parsed.data.email, role: parsed.data.role },
   });
 
-  refresh("/app/settings/team");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -374,7 +374,7 @@ export async function changeMemberRole(input: {
     metadata: { from: member.role, to: parsed.data.role },
   });
 
-  refresh("/app/settings/team");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -423,7 +423,7 @@ export async function removeMember(membershipId: string): Promise<ActionResult> 
     metadata: { role: member.role },
   });
 
-  refresh("/app/settings/team");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -518,7 +518,7 @@ export async function saveService(input: {
     });
   }
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -559,7 +559,7 @@ export async function deleteService(serviceId: string): Promise<ActionResult> {
     entityId: parsed.data,
   });
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -652,7 +652,7 @@ export async function updateMessagingSettings(input: {
     metadata: { section: "messaging" },
   });
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -708,7 +708,7 @@ export async function updateSlackChannel(input: {
     metadata: { channel_id: parsed.data },
   });
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -785,7 +785,7 @@ export async function updateBookingSettings(input: {
     metadata: { section: "booking", mode: parsed.data.bookingMode },
   });
 
-  refresh("/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -814,7 +814,7 @@ export async function openBillingPortal(): Promise<UrlResult> {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
-      return_url: `${serverEnv.siteUrl}/app/settings/billing`,
+      return_url: `${serverEnv.siteUrl}/app/settings?section=billing`,
     });
 
     await recordAudit({
@@ -879,8 +879,8 @@ export async function startPlanCheckout(input: {
       client_reference_id: workspace.businessId,
       subscription_data: { metadata: { business_id: workspace.businessId } },
       metadata: { business_id: workspace.businessId },
-      success_url: `${serverEnv.siteUrl}/app/settings/billing?checkout=success`,
-      cancel_url: `${serverEnv.siteUrl}/app/settings/billing?checkout=cancelled`,
+      success_url: `${serverEnv.siteUrl}/app/settings?section=billing?checkout=success`,
+      cancel_url: `${serverEnv.siteUrl}/app/settings?section=billing?checkout=cancelled`,
     });
 
     if (!session.url) {
@@ -1058,7 +1058,7 @@ export async function updateProfile(input: {
     entityType: "profile",
   });
 
-  refresh("/app/profile");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -1162,7 +1162,7 @@ export async function updateNotificationPreferences(input: {
     metadata: { section: "notifications" },
   });
 
-  refresh("/app/profile");
+  refresh("/app/settings");
   return { ok: true };
 }
 
@@ -1183,6 +1183,7 @@ const PROVIDER_TYPES = [
   "slack",
   "hubspot",
   "zoho_crm",
+  "salesforce",
 ] as const;
 
 const TOKEN_PROVIDER_TYPES = ["hubspot"] as const;
@@ -1272,6 +1273,284 @@ export async function disconnectIntegration(
     metadata: { provider_type: parsed.data },
   });
 
-  refresh("/app/settings/connections", "/app/settings/workspace");
+  refresh("/app/settings");
   return { ok: true };
+}
+
+/* ------------------------------------------------- workspace (settings v2) */
+
+const workspaceSettingsSchema = z.object({
+  name: z.string().trim().min(2, "Enter your business name").max(120),
+  industry: z
+    .string()
+    .trim()
+    .max(80)
+    .transform((value) => (value === "" ? null : value)),
+  website: optionalUrl,
+  phone: z
+    .string()
+    .trim()
+    .max(30)
+    .transform((value) => (value === "" ? null : value))
+    .refine(
+      (value) => value === null || /^[+0-9 ()-]{7,30}$/.test(value),
+      "Enter a valid contact number",
+    ),
+  timezone: z.enum(TIMEZONES),
+  serviceAreaDescription: z
+    .string()
+    .trim()
+    .max(500, "Keep the service area under 500 characters")
+    .transform((value) => (value === "" ? null : value)),
+  businessHours: z.object(
+    Object.fromEntries(DAYS.map((day) => [day.key, dayHoursSchema])) as Record<
+      (typeof DAYS)[number]["key"],
+      typeof dayHoursSchema
+    >,
+  ),
+});
+
+/**
+ * The single save behind Settings → Workspace. Identity, hours and service
+ * area move together because the page presents them as one draft with one
+ * save bar, so a partial write would leave the form showing values that were
+ * never stored.
+ */
+export async function saveWorkspaceSettings(input: {
+  name: string;
+  industry: string;
+  website: string;
+  phone: string;
+  timezone: string;
+  serviceAreaDescription: string;
+  businessHours: Record<string, { open: boolean; start: string; end: string }>;
+}): Promise<ActionResult> {
+  const parsed = workspaceSettingsSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(parsed.error.issues[0]?.message ?? "Check the details you entered.");
+  }
+  if (
+    parsed.data.industry &&
+    !(INDUSTRIES as readonly string[]).includes(parsed.data.industry)
+  ) {
+    return fail("Choose an industry from the list.");
+  }
+
+  for (const day of DAYS) {
+    const hours = parsed.data.businessHours[day.key];
+    if (hours.open && hours.end <= hours.start) {
+      return fail(`${day.label} must close after it opens.`);
+    }
+  }
+
+  const guard = await requireSettingsAdmin();
+  if (!guard.ok) return fail(guard.error);
+  const { workspace } = guard;
+
+  const admin = createAdminClient();
+
+  const { error: businessError } = await admin
+    .from("businesses")
+    .update({
+      name: parsed.data.name,
+      industry: parsed.data.industry,
+      website: parsed.data.website,
+      phone: parsed.data.phone,
+      timezone: parsed.data.timezone,
+    })
+    .eq("id", workspace.businessId);
+
+  if (businessError) return fail("Could not save your business details.");
+
+  // Only the two columns this form owns are written, so the messaging and
+  // booking values on the same row are never clobbered.
+  const { error: settingsError } = await admin.from("business_settings").upsert(
+    {
+      business_id: workspace.businessId,
+      service_area_description: parsed.data.serviceAreaDescription,
+      business_hours: parsed.data.businessHours,
+    },
+    { onConflict: "business_id" },
+  );
+
+  if (settingsError) {
+    return fail("Business details were saved, but hours and service area were not.");
+  }
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "workspace.settings_updated",
+    entityType: "business",
+    metadata: { section: "workspace" },
+  });
+
+  refresh("/app/settings");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------ connection health */
+
+export type ConnectionTestResult =
+  | { ok: true; status: string; message: string }
+  | { ok: false; error: string };
+
+/** Runs the provider's real credential/token probe. Never sends a message. */
+export async function testConnection(
+  providerType: string,
+): Promise<ConnectionTestResult> {
+  const parsedProvider = z.enum(PROVIDER_TYPES).safeParse(providerType);
+  if (!parsedProvider.success) return { ok: false, error: "Unknown connection." };
+
+  const guard = await requireSettingsAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+  const { workspace } = guard;
+
+  const admin = createAdminClient();
+  const { data: integration } = await admin
+    .from("integrations")
+    .select("id")
+    .eq("business_id", workspace.businessId)
+    .eq("provider_type", parsedProvider.data)
+    .neq("status", "DISCONNECTED")
+    .maybeSingle();
+
+  if (!integration) {
+    return { ok: false, error: "That connection is not connected." };
+  }
+
+  const { runIntegrationHealthChecks } = await import(
+    "@/lib/jobs/handlers/integration-health"
+  );
+
+  let outcomes;
+  try {
+    outcomes = await runIntegrationHealthChecks({
+      businessId: workspace.businessId,
+      integrationId: integration.id,
+    });
+  } catch {
+    return { ok: false, error: "The connection could not be tested. Try again." };
+  }
+
+  const outcome = outcomes[0];
+  if (!outcome) return { ok: false, error: "The connection could not be tested." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "integration.tested",
+    entityType: "integration",
+    entityId: integration.id,
+    metadata: { provider: parsedProvider.data, status: outcome.status },
+  });
+
+  refresh("/app/settings");
+
+  if (outcome.status === "HEALTHY") {
+    return { ok: true, status: outcome.status, message: "Connection tested successfully" };
+  }
+  return {
+    ok: false,
+    error: outcome.errorMessage ?? "This connection needs attention.",
+  };
+}
+
+/** The Refresh control on Settings → Connections. */
+export async function refreshConnectionHealth(): Promise<ActionResult> {
+  const guard = await requireSettingsAdmin();
+  if (!guard.ok) return fail(guard.error);
+
+  const { runIntegrationHealthChecks } = await import(
+    "@/lib/jobs/handlers/integration-health"
+  );
+
+  try {
+    await runIntegrationHealthChecks({ businessId: guard.workspace.businessId });
+  } catch {
+    return fail("Connection health could not be refreshed. Try again.");
+  }
+
+  refresh("/app/settings");
+  return { ok: true };
+}
+
+/* ------------------------------------------- account preferences (dialog) */
+
+/**
+ * Sends the signed-in user a password reset email. Deliberately reports
+ * success regardless of the provider's answer so this cannot be used to probe
+ * which addresses exist.
+ */
+export async function requestOwnPasswordReset(): Promise<ActionResult> {
+  const workspace = await requireWorkspace();
+  const supabase = await createClient();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", workspace.userId)
+    .maybeSingle();
+
+  if (!profile?.email) return fail(GENERIC);
+
+  await supabase.auth.resetPasswordForEmail(profile.email, {
+    redirectTo: `${serverEnv.siteUrl}/auth/callback?next=/reset-password`,
+  });
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "profile.password_reset_requested",
+    entityType: "profile",
+  });
+
+  return { ok: true };
+}
+
+export type AccountPreferences = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  notifications: {
+    handover: boolean;
+    booking: boolean;
+    integrationFailure: boolean;
+    campaignComplete: boolean;
+    dailySummary: boolean;
+  };
+  canEditNotifications: boolean;
+};
+
+/**
+ * Loaded when the Account preferences dialog opens rather than on every app
+ * render, so the shell stays cheap. Always scoped to the signed-in user.
+ */
+export async function loadAccountPreferences(): Promise<
+  { ok: true; data: AccountPreferences } | { ok: false; error: string }
+> {
+  const workspace = await requireWorkspace();
+  const { getProfileView } = await import("./queries");
+
+  try {
+    const view = await getProfileView(
+      workspace.userId,
+      workspace.businessId,
+      workspace.role,
+    );
+    return {
+      ok: true,
+      data: {
+        firstName: view.firstName ?? "",
+        lastName: view.lastName ?? "",
+        email: view.email,
+        phone: view.phone ?? "",
+        notifications: view.notifications,
+        canEditNotifications: view.canEditNotifications,
+      },
+    };
+  } catch {
+    return { ok: false, error: "Your account details could not be loaded." };
+  }
 }

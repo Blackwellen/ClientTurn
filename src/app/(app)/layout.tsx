@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
+import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
+import { primaryNavFor } from "@/lib/app/nav";
 import { getWorkspaceHealth, onboardingIncomplete } from "@/lib/app/health";
 import { AppShell } from "@/components/app/app-shell";
 import { ToastProvider } from "@/components/ui/toast";
@@ -33,7 +35,7 @@ export default async function AppLayout({
 
   const supabase = await createClient();
 
-  const [profileResult, notificationsResult, entitlements, health] =
+  const [profileResult, notificationsResult, entitlements, v4Entitlements, health] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -50,6 +52,7 @@ export default async function AppLayout({
         .order("created_at", { ascending: false })
         .limit(50),
       getEntitlements(workspace.businessId),
+      getV4Entitlements(workspace.businessId),
       getWorkspaceHealth(workspace),
     ]);
 
@@ -65,6 +68,13 @@ export default async function AppLayout({
         initialCollapsed={initialCollapsed}
         businessName={workspace.businessName}
         planLabel={PLAN_LABELS[entitlements.plan] ?? entitlements.plan}
+        primaryNav={primaryNavFor({
+          sourcing: v4Entitlements.sourcingEnabled,
+          // Analytics is a depth tier rather than an on/off capability: every
+          // paying plan gets at least the Overview, so the destination is
+          // hidden only for a workspace with no analytics tier at all.
+          analytics: v4Entitlements.plan !== "trial",
+        }).map(item => item.href)}
         integrationStatus={health.integrationStatus}
         notifications={(notificationsResult.data ?? []) as NotificationRow[]}
         user={{

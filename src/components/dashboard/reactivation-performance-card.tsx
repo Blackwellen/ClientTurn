@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SectionHeader } from "@/components/app/page-header";
+import { CardActionLink } from "./card-action-link";
 
 /**
  * Recent campaigns only — a mini-table, not a rebuild of the Reactivation
@@ -28,14 +29,7 @@ export function ReactivationPerformanceCard({
       <CardHeader>
         <SectionHeader
           title="Reactivation performance"
-          action={
-            <Link
-              href="/app/reactivation"
-              className="text-content-accent hover:text-accent-700 focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              View all
-            </Link>
-          }
+          action={<CardActionLink href="/app/reactivation" />}
         />
       </CardHeader>
       <CardContent className="flex-1 pt-0">
@@ -53,7 +47,7 @@ export function ReactivationPerformanceCard({
             }
           />
         ) : (
-          <Table>
+          <Table className="[&_td]:py-1 [&_th]:h-8">
             <TableHeader>
               <TableRow>
                 <TableHead>Campaign</TableHead>
@@ -71,11 +65,11 @@ export function ReactivationPerformanceCard({
             </TableHeader>
             <TableBody>
               {campaigns.map((campaign) => (
-                <TableRow key={campaign.id} className="group relative h-10">
+                <TableRow key={campaign.id} className="group relative h-8 has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-content-accent">
                   <TableCell className="max-w-[10rem]">
                     <Link
                       href={`/app/reactivation?campaign=${campaign.id}`}
-                      className="text-content group-hover:text-content-accent block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none"
+                      className="text-content group-hover:text-content-accent block truncate font-medium after:absolute after:inset-0 focus-visible:outline-none!"
                     >
                       {campaign.name}
                     </Link>
@@ -94,6 +88,7 @@ export function ReactivationPerformanceCard({
                       kind="campaign"
                       value={campaign.status}
                       dot={false}
+                      dense
                     />
                   </TableCell>
                 </TableRow>

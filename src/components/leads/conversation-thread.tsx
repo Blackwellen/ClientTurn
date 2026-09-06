@@ -66,8 +66,8 @@ export function ConversationThread({
                     className={cn(
                       "max-w-[85%] min-w-0 rounded-xl px-3 py-2 text-[13px]",
                       outbound
-                        ? "bg-accent-500 text-white"
-                        : "bg-surface-sunken text-content border-line border",
+                        ? "border border-accent-200 bg-accent-50 text-content"
+                        : "border border-line bg-surface-sunken text-content",
                     )}
                   >
                     <p className="break-words whitespace-pre-wrap">{message.body}</p>
@@ -75,7 +75,7 @@ export function ConversationThread({
                     <div
                       className={cn(
                         "mt-1 flex flex-wrap items-center gap-1.5 text-[11px]",
-                        outbound ? "text-white/70" : "text-content-subtle",
+                        "text-content-subtle",
                       )}
                     >
                       <span>{formatDateTime(message.created_at)}</span>
@@ -107,9 +107,7 @@ export function ConversationThread({
                       <p
                         className={cn(
                           "mt-1.5 flex items-start gap-1 rounded-md px-1.5 py-1 text-[11px]",
-                          outbound
-                            ? "bg-white/15 text-white"
-                            : "bg-danger-50 text-danger-700",
+                          "bg-danger-50 text-danger-700",
                         )}
                       >
                         <AlertCircle className="mt-px size-3 shrink-0" aria-hidden />

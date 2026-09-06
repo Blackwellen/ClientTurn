@@ -33,6 +33,13 @@ export const RATE_LIMITS = {
   // Test sends hit a real carrier and cost real money, so they are bounded
   // per workspace rather than per IP.
   "followup:test": { limit: 5, windowSeconds: 600 },
+  // Platform-admin support actions. Bounded per operator so a stuck button
+  // cannot spam a customer's inbox or a provider's API.
+  "admin:onboarding_resend": { limit: 3, windowSeconds: 900 },
+  "admin:health_check": { limit: 10, windowSeconds: 300 },
+  "admin:event_retry": { limit: 30, windowSeconds: 300 },
+  "admin:provider_refresh": { limit: 6, windowSeconds: 300 },
+  "admin:search": { limit: 120, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

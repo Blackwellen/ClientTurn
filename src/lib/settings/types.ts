@@ -8,19 +8,35 @@
  *  never reaches into a server-only import. */
 export type BusinessRole = "owner" | "admin" | "member" | "viewer";
 
-export type SettingsTab = {
-  segment: string;
-  label: string;
-  /** Owner-only tabs are still rendered, but the page enforces the rule. */
-  ownerOnly?: boolean;
-};
+/**
+ * The four — and only four — Settings sections. Settings is one route with a
+ * `?section=` query, so every configuration surface stays in one place.
+ */
+export const SETTINGS_SECTIONS = [
+  {
+    id: "workspace",
+    label: "Workspace",
+    description: "Business info, services, hours",
+  },
+  {
+    id: "connections",
+    label: "Connections",
+    description: "Integrations and syncing",
+  },
+  { id: "team", label: "Team", description: "Manage your team" },
+  { id: "billing", label: "Billing", description: "Plan, usage and invoices" },
+] as const;
 
-export const SETTINGS_TABS: SettingsTab[] = [
-  { segment: "workspace", label: "Workspace" },
-  { segment: "connections", label: "Connections" },
-  { segment: "team", label: "Team" },
-  { segment: "billing", label: "Billing" },
-];
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];
+
+const SECTION_IDS = SETTINGS_SECTIONS.map((section) => section.id) as string[];
+
+/** Never trust the query string: anything unrecognised lands on Workspace. */
+export function parseSettingsSection(value: unknown): SettingsSection {
+  return typeof value === "string" && SECTION_IDS.includes(value)
+    ? (value as SettingsSection)
+    : "workspace";
+}
 
 export const ROLE_LABELS: Record<BusinessRole, string> = {
   owner: "Owner",
@@ -67,6 +83,26 @@ export const TIMEZONES = [
   "Europe/Madrid",
   "UTC",
 ] as const;
+
+/**
+ * IANA identifiers are what gets stored; this is only how they read in a
+ * select. The offset is computed rather than hard-coded so it stays correct
+ * across daylight saving.
+ */
+export function timezoneLabel(zone: string, now = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      timeZoneName: "longOffset",
+    }).formatToParts(now);
+    const offset =
+      parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT+00:00";
+    const city = zone === "UTC" ? "Coordinated Universal Time" : zone.split("/")[1]?.replace(/_/g, " ") ?? zone;
+    return `(${offset.replace("GMT", "GMT")}) ${city}`;
+  } catch {
+    return zone;
+  }
+}
 
 export const BOOKING_MODES = [
   {
@@ -137,6 +173,8 @@ export type TeamMemberRow = {
   status: string;
   invitedAt: string | null;
   createdAt: string;
+  /** When they actually joined: acceptance date, falling back to the invite. */
+  joinedAt: string;
 };
 
 export type ServiceRow = {
@@ -162,6 +200,11 @@ export type BillingView = {
   seatsUsed: number;
   leadsUsed: number;
   messagesUsed: number;
+  /** Outbound SMS segments included in the plan. */
+  messageAllowance: number;
+  /** Display price for the current plan, in GBP. Null for trial/enterprise. */
+  monthlyPrice: number | null;
+  planFeatures: string[];
 };
 
 export type NotificationPreferences = {
@@ -247,7 +290,83 @@ export function memberDisplayName(member: {
   return member.name.trim() || member.email || "Pending invite";
 }
 
+export function usagePercent(used: number, limit: number) {
+  if (limit <= 0) return 0;
+  return Math.min(100, Math.round((used / limit) * 100));
+}
+
+export function usageTone(used: number, limit: number) {
+  const pct = usagePercent(used, limit);
+  if (pct >= 100) return "danger" as const;
+  if (pct >= 80) return "warning" as const;
+  return "success" as const;
+}
+
+/**
+ * Whether a member row can be edited by the current actor. Mirrored on the
+ * server by `changeMemberRole` / `removeMember` — the UI hides what the server
+ * would refuse, it does not decide it.
+ */
+export function canEditMember(params: {
+  actorRole: BusinessRole;
+  memberRole: BusinessRole;
+  isSelf: boolean;
+  ownerCount: number;
+}) {
+  if (!["owner", "admin"].includes(params.actorRole)) return false;
+  if (params.isSelf) return false;
+  if (params.memberRole === "owner") return false;
+  return true;
+}
+
+/** The last owner can never be removed or demoted, whoever asks. */
+export function isLastOwner(members: { role: BusinessRole; status: string }[], role: BusinessRole) {
+  if (role !== "owner") return false;
+  return (
+    members.filter(
+      (member) => member.role === "owner" && member.status !== "removed",
+    ).length <= 1
+  );
+}
+
 export function planLabel(plan: string) {
   if (plan === "trial") return "Free trial";
   return `${plan.charAt(0).toUpperCase()}${plan.slice(1)}`;
+}
+
+/* ------------------------------------------------- business-hours display */
+
+export function to12Hour(value: string) {
+  const [hourText, minute] = value.split(":");
+  const hour = Number(hourText);
+  const suffix = hour < 12 ? "AM" : "PM";
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${minute} ${suffix}`;
+}
+
+/**
+ * Collapses the week into the shortest true sentence: consecutive days sharing
+ * the same window are grouped, and closed days are named as closed.
+ */
+export function summariseHours(hours: BusinessHours): string[] {
+  const groups: { days: string[]; label: string }[] = [];
+
+  for (const day of DAYS) {
+    const value = hours[day.key];
+    const label = value.open
+      ? `${to12Hour(value.start)} – ${to12Hour(value.end)}`
+      : "Closed";
+    const last = groups.at(-1);
+    if (last && last.label === label) {
+      last.days.push(day.label);
+    } else {
+      groups.push({ days: [day.label], label });
+    }
+  }
+
+  return groups.map((group) => {
+    const first = group.days[0].slice(0, 3);
+    const last = group.days.at(-1)!.slice(0, 3);
+    const range = group.days.length === 1 ? first : `${first} – ${last}`;
+    return `${range}: ${group.label}`;
+  });
 }

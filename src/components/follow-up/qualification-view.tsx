@@ -40,7 +40,7 @@ export async function QualificationView({
           description="Qualification still runs on incoming leads, but changes to questions and rules are paused while the subscription is inactive."
           action={
             <Link
-              href="/app/settings/billing"
+              href="/app/settings?section=billing"
               className="text-content-accent text-[13px] font-medium"
             >
               Review billing

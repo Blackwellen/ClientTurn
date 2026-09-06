@@ -35,7 +35,7 @@ export function PermissionDenied({
       description={description}
       action={
         <Link
-          href="/app/settings/workspace"
+          href="/app/settings?section=workspace"
           className="text-content-accent focus-visible:outline-content-accent rounded-xs text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           Back to settings

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarClock, Plus } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label, Select, Switch, Textarea } from "@/components/ui/form";
@@ -49,7 +49,9 @@ export function BookingReminderCard({
   const step = detail?.steps[0] ?? null;
 
   const [minutes, setMinutes] = React.useState(() =>
-    step ? nearestReminderOffset(Math.round(step.delaySeconds / 60)) : DEFAULT_REMINDER_MINUTES,
+    step
+      ? nearestReminderOffset(Math.round(step.delaySeconds / 60))
+      : DEFAULT_REMINDER_MINUTES,
   );
   const [body, setBody] = React.useState(step?.template ?? DEFAULT_REMINDER_BODY);
   const [saving, setSaving] = React.useState(false);
@@ -73,8 +75,7 @@ export function BookingReminderCard({
 
   const unknown = findUnknownMergeFields(body);
   const dirty =
-    step !== null &&
-    (minutes * 60 !== step.delaySeconds || body !== step.template);
+    step !== null && (minutes * 60 !== step.delaySeconds || body !== step.template);
   const invalid = body.trim() === "" || unknown.length > 0;
 
   async function create() {
@@ -144,15 +145,16 @@ export function BookingReminderCard({
   if (!item) {
     return (
       <Card>
-        <CardHeader className="flex-col items-stretch gap-0">
+        <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
           <SectionHeader
-            icon={CalendarClock}
+          dense
+            icon={CalendarDays}
             tone="success"
             title="Booking reminders"
             description="Send a reminder to leads who have booked an appointment."
           />
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="px-5 pt-4 pb-5">
           {creatable && canEdit ? (
             <Button size="sm" onClick={create} loading={creating}>
               <Plus className="size-3.5" />
@@ -173,9 +175,10 @@ export function BookingReminderCard({
   return (
     <>
       <Card>
-        <CardHeader className="flex-col items-stretch gap-0">
+        <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
           <SectionHeader
-            icon={CalendarClock}
+          dense
+            icon={CalendarDays}
             tone="success"
             title="Booking reminders"
             description="Send a reminder to leads who have booked an appointment."
@@ -184,6 +187,8 @@ export function BookingReminderCard({
                 <Switch
                   checked={item.enabled}
                   disabled={toggling}
+                  tone="success"
+                  size="lg"
                   onCheckedChange={() => setConfirming(true)}
                   label="Send booking reminders"
                 />
@@ -192,11 +197,14 @@ export function BookingReminderCard({
           />
         </CardHeader>
 
-        <CardContent className="space-y-3 pt-4">
+        <CardContent className="space-y-3 px-5 pt-4 pb-5">
           <div className="space-y-1.5">
-            <Label htmlFor="reminder-offset">Send reminder</Label>
+            <Label className="text-[12px] font-normal" htmlFor="reminder-offset">
+              Send reminder
+            </Label>
             <Select
               id="reminder-offset"
+              className="text-[13px]"
               value={String(minutes)}
               disabled={!canEdit || saving}
               onChange={(event) => setMinutes(Number(event.target.value))}
@@ -210,7 +218,9 @@ export function BookingReminderCard({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="reminder-body">Message</Label>
+            <Label className="text-[12px] font-normal" htmlFor="reminder-body">
+              Message
+            </Label>
             <div className="flex items-start gap-2">
               <Textarea
                 id="reminder-body"
@@ -220,7 +230,7 @@ export function BookingReminderCard({
                 value={body}
                 disabled={!canEdit || saving}
                 aria-invalid={invalid || undefined}
-                className="min-h-[4.75rem] flex-1 text-[13px] leading-[1.45]"
+                className="min-h-[4.75rem] flex-1 px-2.5 py-1.5 text-[12px] leading-[1.4]"
                 onChange={(event) => setBody(event.target.value)}
               />
               <MergeFieldMenu
@@ -239,13 +249,8 @@ export function BookingReminderCard({
             )}
           </div>
 
-          {canEdit && (
-            <Button
-              size="sm"
-              onClick={save}
-              loading={saving}
-              disabled={!dirty || invalid}
-            >
+          {canEdit && (dirty || saving) && (
+            <Button size="sm" onClick={save} loading={saving} disabled={invalid}>
               Save reminder
             </Button>
           )}

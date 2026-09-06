@@ -10,7 +10,7 @@ export function FeatureItem({ icon: Icon, title, description }: AuthFeature) {
   return (
     <li className="group flex items-start gap-4.5">
       <span
-        className="relative flex size-13 shrink-0 items-center justify-center rounded-[13px] text-[var(--auth-lime)] shadow-[0_8px_24px_rgba(0,0,0,0.28)] transition-transform duration-300 group-hover:-translate-y-0.5"
+        className="relative flex size-14 shrink-0 items-center justify-center rounded-[14px] text-[var(--auth-lime)] shadow-[0_8px_24px_rgba(0,0,0,0.28)] transition-transform duration-300 group-hover:-translate-y-0.5"
         style={{
           background:
             "linear-gradient(155deg, rgba(168,255,31,0.14), rgba(168,255,31,0.03) 60%, rgba(255,255,255,0.02))",
@@ -19,7 +19,7 @@ export function FeatureItem({ icon: Icon, title, description }: AuthFeature) {
       >
         <span
           aria-hidden
-          className="absolute inset-0 rounded-[13px] opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-60"
+          className="absolute inset-0 rounded-[14px] opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-60"
           style={{ background: "rgba(168,255,31,0.35)" }}
         />
         <Icon className="relative size-5.5" strokeWidth={2.2} aria-hidden />

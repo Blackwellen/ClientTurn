@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { CircleCheck, HelpCircle, ListChecks, Plus, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  FileText,
+  Info,
+  ListChecks,
+  Plus,
+  TriangleAlert,
+} from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
@@ -197,12 +204,12 @@ export function QualificationEditor({
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.95fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
           <Card>
-            <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-start">
+            <CardHeader className="flex-col items-stretch gap-3 border-b-0 px-5 pt-5 pb-0 sm:flex-row sm:items-start">
               <SectionHeader
-                icon={ListChecks}
+                icon={FileText}
                 tone="info"
                 title="Qualification questions"
                 description="Create the questions you want to ask new enquiries. Keep it simple — we'll handle the logic."
@@ -213,12 +220,12 @@ export function QualificationEditor({
                 className="shrink-0"
                 onClick={() => setTypesOpen(true)}
               >
-                <HelpCircle className="size-3.5" />
+                <Info className="text-content-muted size-3.5" />
                 View question types
               </Button>
             </CardHeader>
 
-            <CardContent className="space-y-2.5 pt-4">
+            <CardContent className="space-y-3 px-5 pt-4 pb-5">
               {questions.length === 0 ? (
                 <EmptyState
                   icon={ListChecks}
@@ -234,7 +241,7 @@ export function QualificationEditor({
                   }
                 />
               ) : (
-                <ol className="space-y-2.5">
+                <ol className="space-y-3">
                   {questions.map((question, index) => (
                     <QuestionRow
                       key={question.key}
@@ -262,13 +269,18 @@ export function QualificationEditor({
                   type="button"
                   onClick={add}
                   className={cn(
-                    "border-line-strong text-content-secondary hover:bg-surface-hover hover:text-content",
-                    "flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed text-[13px] font-medium",
+                    "border-line text-content hover:bg-surface-hover hover:border-line-strong",
+                    "flex h-12 w-full items-center justify-center gap-2 rounded-lg border text-[13px] font-medium",
                     "transition-colors duration-[var(--lr-duration-fast)]",
                     "focus-visible:outline-content-accent focus-visible:outline-2 focus-visible:outline-offset-2",
                   )}
                 >
-                  <Plus className="size-4" aria-hidden />
+                  <span
+                    aria-hidden
+                    className="bg-surface-sunken text-content flex size-6 items-center justify-center rounded-full"
+                  >
+                    <Plus className="size-3.5" />
+                  </span>
                   Add another question
                 </button>
               )}
@@ -300,9 +312,9 @@ export function QualificationEditor({
           )}
         >
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            <div className="mr-auto min-w-0">
-              <p className="text-content-subtle text-[12px]">Last saved</p>
-              <p className="text-content-muted lr-tabular text-[12px]">
+            <div className="min-w-0 text-right">
+              <p className="text-content-subtle text-[11.5px]">Last saved</p>
+              <p className="text-content-muted lr-tabular text-[11.5px]">
                 {savedLabel}
                 {meta.savedByInitials ? ` by ${meta.savedByInitials}` : ""}
               </p>
@@ -393,7 +405,7 @@ function EditorFooter({
         )}
       >
         {valid ? (
-          <CircleCheck className="size-4" />
+          <Check className="size-4" strokeWidth={3} />
         ) : (
           <TriangleAlert className="size-4" />
         )}
@@ -404,7 +416,7 @@ function EditorFooter({
             <p className="text-content text-[13px] font-semibold">
               Your qualification looks good!
             </p>
-            <p className="text-content-secondary mt-0.5 text-[13px]">
+            <p className="text-content-secondary mt-0.5 text-[12.5px]">
               {count} {count === 1 ? "question" : "questions"} configured. Don&apos;t
               forget to publish your changes when you&apos;re ready.
             </p>

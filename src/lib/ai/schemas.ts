@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agentDecisionSchema } from "@/lib/agent/types";
 
 /**
  * Structured-output contracts for every AI task. The model router parses
@@ -13,6 +14,8 @@ export const TASK_TYPES = [
   "conversation_summary",
   "handover_reasoning",
   "reactivation_copy",
+  "agent_decision",
+  "search_planning",
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -66,6 +69,29 @@ export const conversationSummarySchema = z.object({
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 
+/**
+ * The Search Agent's turn (V4 10.6). It proposes a *patch* to the structured
+ * search plan and the sentence that explains it; it never returns a command,
+ * a provider call or an authorisation to spend. The patch is merged into the
+ * current plan and re-validated against `searchPlanSchema` before it is shown,
+ * so a malformed suggestion becomes a clarifying question rather than a run.
+ */
+export const searchPlanningSchema = z.object({
+  reply: z.string().min(1).max(2000),
+  /** Partial plan fields. Validated again by searchPlanSchema after merging. */
+  plan_patch: z.record(z.string(), z.unknown()).default({}),
+  /** Set when the agent needs an answer before the plan can be completed. */
+  clarifying_question: z.string().max(400).nullable().default(null),
+  /** The inline plan summary rendered in the chat bubble. */
+  summary_lines: z
+    .array(z.object({ label: z.string().max(60), value: z.string().max(300) }))
+    .max(12)
+    .default([]),
+  /** The agent's read on whether the target is realistic. */
+  breadth: z.enum(["TOO_BROAD", "GOOD", "TOO_NARROW", "UNKNOWN"]).default("UNKNOWN"),
+});
+export type SearchPlanningResult = z.infer<typeof searchPlanningSchema>;
+
 export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   intent_classification: leadIntentSchema,
   answer_extraction: qualificationExtractionSchema,
@@ -73,6 +99,13 @@ export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   conversation_summary: conversationSummarySchema,
   handover_reasoning: replyPlanSchema,
   reactivation_copy: z.object({ message: z.string() }),
+  // The conversation agent returns one proposal object per turn. It is a
+  // Mini-tier task: the decision and the wording are produced together so the
+  // model cannot pick an action it then cannot phrase.
+  agent_decision: agentDecisionSchema,
+  // Mini tier: interpreting a plain-English targeting request is exactly the
+  // ambiguity-handling work nano is not for.
+  search_planning: searchPlanningSchema,
 };
 
 /**

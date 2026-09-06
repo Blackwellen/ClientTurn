@@ -21,19 +21,19 @@ export function QualificationOverview({
 }) {
   return (
     <Card>
-      <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,0.75fr)]">
+      <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.5fr)_auto_minmax(0,0.8fr)]">
         <div className="flex items-start gap-3">
           <span
             aria-hidden
-            className="bg-success-50 text-success-600 flex size-9 shrink-0 items-center justify-center rounded-lg"
+            className="bg-success-50 text-success-600 flex size-10 shrink-0 items-center justify-center rounded-xl"
           >
             <Target className="size-5" />
           </span>
           <div className="min-w-0">
-            <h2 className="text-content text-[15px] font-semibold">
+            <h2 className="text-content text-[16px] font-semibold">
               Qualification helps you focus on the right enquiries
             </h2>
-            <p className="text-content-muted mt-1 text-[13px] leading-[1.5]">
+            <p className="text-content-muted mt-1 text-[12.5px] leading-[1.55]">
               Ask a few simple questions to understand if an enquiry is a good
               fit. Leads are automatically routed based on their answers, so you
               can spend time on the right opportunities.
@@ -52,7 +52,7 @@ export function QualificationOverview({
                 <div
                   key={key}
                   className={cn(
-                    "border-line rounded-lg border px-3 py-2",
+                    "border-line min-w-[4.5rem] rounded-lg border px-3 py-2",
                     key === "QUALIFIED" && "border-success-100 bg-success-50",
                     key === "NOT_QUALIFIED" && "border-danger-100 bg-danger-50",
                     key === "REVIEW" && "border-warning-100 bg-warning-50",
@@ -68,7 +68,7 @@ export function QualificationOverview({
                       {stats[key].toLocaleString("en-GB")}
                     </span>
                   </dd>
-                  <dt className="text-content-subtle mt-0.5 text-[11px] font-medium tracking-wide uppercase">
+                  <dt className="text-content-subtle mt-1 text-[10px] font-medium tracking-[0.06em] uppercase">
                     {meta.label}
                   </dt>
                 </div>

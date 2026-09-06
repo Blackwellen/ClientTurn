@@ -61,7 +61,7 @@ export function OnboardingShell({
   return (
     <div className="mx-auto w-[calc(100%-32px)] max-w-[1580px] px-0 py-6 sm:py-8 lg:py-10">
       <header className="flex items-start justify-between gap-4">
-        <Logo href={null} height={30} />
+        <Logo href={null} height={60} />
         <p className="hidden max-w-[280px] pt-2 text-right text-[13px] leading-snug text-[#8c98ab] sm:block">
           More leads. More bookings. A more profitable business.
         </p>
@@ -109,6 +109,7 @@ export function OnboardingShell({
 
 export function WizardFooterActions({
   onBack,
+  backDisabled,
   onSaveExit,
   onContinue,
   continueLabel = "Continue",
@@ -118,6 +119,7 @@ export function WizardFooterActions({
   isLastStep,
 }: {
   onBack?: () => void;
+  backDisabled?: boolean;
   onSaveExit: () => void;
   onContinue: () => void;
   continueLabel?: string;
@@ -128,14 +130,14 @@ export function WizardFooterActions({
 }) {
   return (
     <div className="mx-auto mt-5 flex w-[calc(100%-32px)] max-w-[1580px] items-center justify-between gap-3">
-      {onBack ? (
-        <OButton variant="secondary" onClick={onBack} disabled={continuePending || saveExitPending}>
-          <ArrowLeft className="size-3.5" aria-hidden />
-          Back
-        </OButton>
-      ) : (
-        <span />
-      )}
+      <OButton
+        variant="secondary"
+        onClick={onBack}
+        disabled={backDisabled || !onBack || continuePending || saveExitPending}
+      >
+        <ArrowLeft className="size-3.5" aria-hidden />
+        Back
+      </OButton>
       <div className="flex flex-col items-end gap-1.5">
         {continueDisabledReason && (
           <p className="text-right text-[12.5px] text-[#ffb020]">{continueDisabledReason}</p>

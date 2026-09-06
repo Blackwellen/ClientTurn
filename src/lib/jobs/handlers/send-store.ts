@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { unsubscribeUrl } from "@/lib/email/smtp";
 import { enqueue } from "@/lib/jobs/queue";
 import { recordUsage } from "@/lib/audit";
 import type { StopReason } from "@/lib/automation/scheduler";
@@ -22,7 +23,7 @@ import {
 } from "./shared";
 
 const MESSAGE_COLUMNS =
-  "id, business_id, conversation_id, lead_id, channel, body, status, send_key, origin, campaign_id, automation_run_id";
+  "id, business_id, conversation_id, lead_id, channel, body, subject, status, send_key, origin, campaign_id, automation_run_id";
 
 type MessageRow = {
   id: string;
@@ -31,6 +32,7 @@ type MessageRow = {
   lead_id: string;
   channel: string;
   body: string;
+  subject: string | null;
   status: string;
   send_key: string | null;
   origin: string;
@@ -83,8 +85,9 @@ export function createSendStore(): SendStore & {
       const row = data as MessageRow | null;
       if (!row) return null;
 
+      const channel = row.channel as Channel;
       const lead = await loadLead(row.lead_id);
-      const to = lead ? leadContact(lead) : null;
+      const to = lead ? leadContact(lead, channel) : null;
       if (!to) return null;
 
       conversations.set(row.id, row.conversation_id);
@@ -93,12 +96,20 @@ export function createSendStore(): SendStore & {
         id: row.id,
         businessId: row.business_id,
         leadId: row.lead_id,
-        channel: row.channel as Channel,
+        channel,
         body: row.body,
         status: row.status,
         sendKey: row.send_key ?? row.id,
         to,
         origin: row.origin as SendOrigin,
+        subject: row.subject,
+        // Only marketing mail carries an unsubscribe link. A one-to-one reply
+        // from the inbox is not a mailing list and must not offer to
+        // unsubscribe the recipient from one.
+        unsubscribeUrl:
+          channel === "email" && row.origin === "campaign" && lead
+            ? unsubscribeUrl(lead.unsubscribe_token)
+            : null,
       };
     },
 

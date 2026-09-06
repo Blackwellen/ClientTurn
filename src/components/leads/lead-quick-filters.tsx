@@ -149,7 +149,7 @@ export function QuickFilterSummaryCard({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "flex items-center gap-3 rounded-xl border bg-surface px-3.5 py-3 text-left",
+        "flex items-center gap-3 rounded-xl border bg-surface px-3.5 py-2.5 text-left",
         "transition-[background-color,border-color,box-shadow] duration-[var(--lr-duration-fast)]",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
         selected
@@ -167,18 +167,18 @@ export function QuickFilterSummaryCard({
         <Icon className="size-5" />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[12px] font-medium text-content-secondary">
+        <span className="block truncate text-[12px] font-medium leading-[1.3] text-content-secondary">
           {item.label}
         </span>
         <span
           className={cn(
-            "lr-tabular block text-[22px] font-semibold leading-tight",
+            "lr-tabular block text-[22px] font-semibold leading-[1.15]",
             warn ? "text-danger-600" : "text-content",
           )}
         >
           {count}
         </span>
-        <span className="block truncate text-[11px] text-content-subtle">
+        <span className="block truncate text-[11px] leading-[1.3] text-content-subtle">
           {item.caption}
         </span>
       </span>

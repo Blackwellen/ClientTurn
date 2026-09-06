@@ -69,8 +69,9 @@ export function TestFollowUpPanel({
 
   return (
     <Card>
-      <CardHeader className="flex-col items-stretch gap-0">
+      <CardHeader className="flex-col items-stretch gap-0 border-b-0 px-5 pt-5 pb-0">
         <SectionHeader
+          dense
           icon={Send}
           tone="info"
           title="Test your follow-up"
@@ -78,10 +79,12 @@ export function TestFollowUpPanel({
         />
       </CardHeader>
 
-      <CardContent className="space-y-3 pt-4">
+      <CardContent className="space-y-3 px-5 pt-4 pb-5">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="test-to">Send test to</Label>
+            <Label className="text-[12px] font-normal" htmlFor="test-to">
+              Send test to
+            </Label>
             <Input
               id="test-to"
               type="tel"
@@ -96,7 +99,9 @@ export function TestFollowUpPanel({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="test-channel">Channel</Label>
+            <Label className="text-[12px] font-normal" htmlFor="test-channel">
+              Channel
+            </Label>
             <Select
               id="test-channel"
               value={channel}
@@ -118,7 +123,9 @@ export function TestFollowUpPanel({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="test-body">Test message</Label>
+          <Label className="text-[12px] font-normal" htmlFor="test-body">
+            Test message
+          </Label>
           <div className="flex items-start gap-2">
             <Textarea
               id="test-body"
@@ -128,7 +135,7 @@ export function TestFollowUpPanel({
               value={body}
               disabled={sending}
               aria-invalid={unknown.length > 0 || undefined}
-              className="min-h-[4.75rem] flex-1 text-[13px] leading-[1.45]"
+              className="min-h-[4rem] flex-1 px-2.5 py-1.5 text-[12px] leading-[1.4]"
               onChange={(event) => setBody(event.target.value)}
             />
             <MergeFieldMenu
@@ -157,7 +164,7 @@ export function TestFollowUpPanel({
             </p>
             <p className="text-content-secondary mt-0.5 text-[13px]">{error}</p>
             <Link
-              href="/app/settings/connections"
+              href="/app/settings?section=connections"
               className="text-content-accent mt-1.5 inline-block text-[12px] font-medium"
             >
               Check your messaging connection

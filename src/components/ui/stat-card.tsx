@@ -1,5 +1,12 @@
 import * as React from "react";
-import { HelpCircle, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  HelpCircle,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "./feedback";
 import { Tooltip } from "./tooltip";
@@ -22,6 +29,13 @@ function deltaTone(d: Delta) {
 const DELTA_ICON = {
   up: TrendingUp,
   down: TrendingDown,
+  flat: Minus,
+} as const;
+
+/** Dense cards use a plain arrow: at 12px a trend glyph reads as noise. */
+const COMPACT_DELTA_ICON = {
+  up: ArrowUp,
+  down: ArrowDown,
   flat: Minus,
 } as const;
 
@@ -48,13 +62,15 @@ export function KpiCard({
   compact?: boolean;
   className?: string;
 }) {
-  const DeltaIcon = delta ? DELTA_ICON[delta.direction] : null;
+  const DeltaIcon = delta
+    ? (compact ? COMPACT_DELTA_ICON : DELTA_ICON)[delta.direction]
+    : null;
 
   return (
     <div
       className={cn(
         "bg-surface border border-line rounded-xl shadow-xs",
-        compact ? "@container px-3.5 py-3" : "px-4 py-3.5",
+        compact ? "@container px-3.5 py-2.5" : "px-4 py-3.5",
         className,
       )}
     >
@@ -87,7 +103,9 @@ export function KpiCard({
         </>
       ) : compact ? (
         <>
-          <p className="lr-tabular mt-1.5 truncate text-[24px] font-semibold leading-none tracking-[-0.02em] text-content 2xl:text-[26px]">
+          {/* 24px holds "£34,500" inside a 101px content box at 1280; the
+              wider step only unlocks once seven cards have room for it. */}
+          <p className="lr-tabular mt-1.5 truncate text-[24px] font-semibold leading-none tracking-[-0.025em] text-content 2xl:text-[28px]">
             {value}
           </p>
           <div className="mt-2 flex h-[22px] items-center justify-between gap-2">

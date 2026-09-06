@@ -351,11 +351,12 @@ export const getLeadCapabilities = cache(
     );
 
     return {
-      sms: connected.has("twilio_sms") || connected.has("twilio"),
+      // Exactly the two send paths that exist (see lib/integrations/catalog).
+      sms: connected.has("twilio_sms"),
       whatsapp: connected.has("twilio_whatsapp"),
       booking,
-      bookingSetupHref: "/app/settings/connections",
-      messagingSetupHref: "/app/settings/connections",
+      bookingSetupHref: "/app/settings?section=connections",
+      messagingSetupHref: "/app/settings?section=connections",
     };
   },
 );
