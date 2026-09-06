@@ -39,6 +39,7 @@ import {
 } from "@/lib/jobs/handlers/shared";
 import { matchAnswer, type QuestionRecord } from "@/lib/jobs/handlers/qualify";
 import { normalisePhone } from "@/lib/messaging/types";
+import { getAvailability, type AvailabilityContext } from "./availability";
 import type { AgentRunHandle } from "./audit";
 import { recordAction } from "./audit";
 import { evaluateToolGate } from "./policy";
@@ -272,6 +273,9 @@ export const serviceAreaInput = z.object({ postcode: z.string().min(2).max(12) }
 
 export type ServiceAreaVerdict = { verdict: "IN_AREA" | "OUT_OF_AREA" | "UNKNOWN" };
 
+/** One slot as returned by a calendar provider. */
+export type AvailabilitySlot = { startsAt: string; endsAt: string; label: string };
+
 /**
  * Deterministic service-area test. Returns UNKNOWN -- not "yes" -- when the
  * workspace has configured no prefixes, so the composer is never handed a
@@ -312,30 +316,64 @@ export async function checkServiceArea(
 }
 
 /**
- * Real bookable slots.
+ * Real bookable slots, from a real calendar.
  *
- * No integration in this codebase currently exposes calendar free/busy --
- * Calendly and Google Calendar arrive as inbound booking webhooks, not as an
- * availability query. Rather than approximate it, this returns
- * PROVIDER_UNAVAILABLE, which routes the turn to the configured booking link
- * or to a person. That is the correct fail-safe: a wrong slot is worse than no
- * slot. When an availability provider lands, this is the only function that
- * changes.
+ * Google is asked for busy intervals and the pure slot engine subtracts them
+ * from configured business hours; Calendly owns its own availability rules and
+ * is asked for free times directly. Either way the labels returned here are
+ * the ONLY times the composer is allowed to say out loud -- `validateResponse`
+ * rejects any other clock time in the draft.
+ *
+ * A provider that is missing, unhealthy or erroring returns a typed failure,
+ * never an empty list. Empty means "genuinely nothing free", which is a
+ * different answer and earns a different reply.
  */
 export async function getCalendarAvailability(
   context: ToolContext,
-  input: { dayPart?: string | null; date?: string | null },
-): Promise<ToolResult<{ slots: string[] }>> {
-  return invoke(
+  input: {
+    dayPart?: string | null;
+    date?: string | null;
+    availability: AvailabilityContext;
+    timezone: string;
+    limit?: number;
+  },
+): Promise<ToolResult<{ slots: AvailabilitySlot[]; labels: string[]; provider: string }>> {
+  return invoke<{ slots: AvailabilitySlot[]; labels: string[]; provider: string }>(
     "get_calendar_availability",
     context,
     { date: input.date ?? null, dayPart: input.dayPart ?? null },
-    async () => ({
-      ok: false as const,
-      code: "PROVIDER_UNAVAILABLE",
-      detail: "No calendar availability provider is connected for this workspace.",
-      recoverable: false,
-    }),
+    async () => {
+      const result = await getAvailability(
+        {
+          businessId: context.business.businessId,
+          timezone: input.timezone,
+          date: input.date,
+          dayPart: input.dayPart,
+          limit: input.limit ?? 3,
+        },
+        input.availability,
+      );
+
+      if (!result.ok) {
+        return {
+          ok: false as const,
+          code: result.code,
+          detail: result.detail,
+          // A transient provider error is worth one retry on a later turn; a
+          // missing configuration is not.
+          recoverable: result.code === "PROVIDER_ERROR",
+        };
+      }
+
+      return {
+        ok: true as const,
+        data: {
+          slots: result.slots,
+          labels: result.slots.map((slot) => slot.label),
+          provider: result.provider,
+        },
+      };
+    },
   );
 }
 
@@ -596,7 +634,7 @@ export async function sendBookingLink(
 export async function createBooking(
   context: ToolContext,
   input: { startsAt: string; endsAt?: string | null; slotLabel: string },
-): Promise<ToolResult<{ bookingId: string }>> {
+): Promise<ToolResult<{ bookingId: string; startsAt: string }>> {
   return invoke("create_booking", context, { slot: input.slotLabel }, async () => {
     const admin = createAdminClient();
 
@@ -639,13 +677,19 @@ export async function createBooking(
 
     await admin
       .from("leads")
-      .update({ status: "BOOKED" })
+      .update({ status: "BOOKED", booked_at: new Date().toISOString() })
       .eq("id", context.lead.id)
       .eq("business_id", context.business.businessId);
 
     await stopAutomationRuns(context.business.businessId, context.lead.id, "booked");
 
-    return { ok: true as const, data: { bookingId: data.id } };
+    await emitAutomationEvent({
+      businessId: context.business.businessId,
+      leadId: context.lead.id,
+      eventType: "booking.created",
+    });
+
+    return { ok: true as const, data: { bookingId: data.id, startsAt: input.startsAt } };
   });
 }
 

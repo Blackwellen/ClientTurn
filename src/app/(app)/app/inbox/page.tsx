@@ -9,6 +9,8 @@ import {
   type ThreadMessage,
 } from "@/lib/inbox/types";
 import { InboxView } from "@/components/inbox/inbox-view";
+import { getConversationAgentState } from "@/lib/agent/queries";
+import type { ConversationAgentState } from "@/lib/agent/views";
 
 export const metadata: Metadata = { title: "Inbox · ClientTurn" };
 export const dynamic = "force-dynamic";
@@ -75,6 +77,7 @@ export default async function InboxPage({
     (params.thread ? null : (filtered[0] ?? null));
 
   let messages: ThreadMessage[] = [];
+  let agentState: ConversationAgentState | null = null;
   if (selected && z.uuid().safeParse(selected.id).success) {
     const { data: rows, error: messageError } = await supabase
       .from("messages")
@@ -93,6 +96,10 @@ export default async function InboxPage({
       status: row.status,
       createdAt: row.created_at,
     }));
+
+    // Ownership, any open handover and any suggested reply, in one read so the
+    // strip above the thread never renders half-loaded.
+    agentState = await getConversationAgentState(workspace.businessId, selected.id);
   }
 
   const hrefFor = (conversationId: string) => {
@@ -113,6 +120,7 @@ export default async function InboxPage({
       conversations={filtered}
       selected={selected}
       messages={messages}
+      agentState={agentState}
       canManage={hasRole(workspace.role, "member")}
       hrefFor={hrefFor}
     />

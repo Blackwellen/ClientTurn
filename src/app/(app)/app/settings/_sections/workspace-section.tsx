@@ -2,6 +2,7 @@ import * as React from "react";
 import { Building2 } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getEntitlements } from "@/lib/billing/entitlements";
+import { getAiBehaviour, isEmailChannelConnected } from "@/lib/ai-settings/queries";
 import {
   getBookingSettings,
   getBusinessProfile,
@@ -12,18 +13,22 @@ import { EmptyState } from "@/components/ui/feedback";
 import { WorkspaceSettings } from "@/components/settings/workspace/workspace-settings";
 import { MessagingForm } from "@/components/settings/messaging-form";
 import { BookingForm } from "@/components/settings/booking-form";
+import { AiAgentForm } from "@/components/settings/ai-agent-form";
 import { DangerZone } from "@/components/settings/danger-zone";
 import { ReadOnlyNotice } from "@/components/settings/notices";
 
 export async function WorkspaceSection() {
   const workspace = await requireWorkspace();
-  const [profile, messaging, services, booking, entitlements] = await Promise.all([
-    getBusinessProfile(workspace.businessId),
-    getMessagingSettings(workspace.businessId),
-    listServices(workspace.businessId),
-    getBookingSettings(workspace.businessId),
-    getEntitlements(workspace.businessId),
-  ]);
+  const [profile, messaging, services, booking, entitlements, aiBehaviour, emailConnected] =
+    await Promise.all([
+      getBusinessProfile(workspace.businessId),
+      getMessagingSettings(workspace.businessId),
+      listServices(workspace.businessId),
+      getBookingSettings(workspace.businessId),
+      getEntitlements(workspace.businessId),
+      getAiBehaviour(workspace.businessId),
+      isEmailChannelConnected(workspace.businessId),
+    ]);
 
   if (!profile) {
     return (
@@ -56,6 +61,16 @@ export async function WorkspaceSection() {
         timezone={workspace.timezone}
       />
       <BookingForm settings={booking} readOnly={readOnly} />
+      {/* The AI assistant sits with the other "how this workspace behaves"
+          controls rather than getting a nav entry of its own — the V3 IA caps
+          the customer app at five destinations. */}
+      <AiAgentForm
+        settings={aiBehaviour}
+        readOnly={readOnly}
+        aiAssistAllowed={entitlements.aiAssistAllowed}
+        whatsappEnabled={entitlements.whatsappEnabled}
+        emailConnected={emailConnected}
+      />
       {workspace.role === "owner" ? (
         <DangerZone workspaceName={workspace.businessName} />
       ) : (

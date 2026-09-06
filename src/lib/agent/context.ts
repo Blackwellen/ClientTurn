@@ -25,6 +25,9 @@ import {
   type LeadRecord,
 } from "@/lib/jobs/handlers/shared";
 import { loadQuestions, nextQuestion, type QuestionRecord } from "@/lib/jobs/handlers/qualify";
+import { availabilityIsQueryable } from "./availability";
+import type { WeekHours } from "./availability/slots";
+import { parseBusinessHours } from "@/lib/settings/types";
 import { resolveLifecycle } from "./lifecycle";
 import {
   VERBATIM_MESSAGE_WINDOW,
@@ -112,12 +115,15 @@ export type BookingContext = {
   /** A live (scheduled) booking, if the lead already has one. */
   liveBooking: { id: string; startsAt: string | null; status: string } | null;
   /**
-   * Whether the runtime can query real availability. No provider integration
-   * exposes free/busy yet, so this is false everywhere today and the booking
-   * flow correctly falls back to the configured link or to a person, rather
-   * than to an invented time.
+   * Whether a connected, healthy calendar can be asked for real availability.
+   * False routes booking to the configured link or to a person -- never to an
+   * invented time.
    */
   availabilityQueryable: boolean;
+  /** Inputs the slot engine needs when availability IS queryable. */
+  businessHours: WeekHours;
+  appointmentDurationMinutes: number;
+  bookingBufferMinutes: number;
 };
 
 export type AgentContext = {
@@ -278,24 +284,35 @@ async function loadBooking(
   leadId: string,
 ): Promise<BookingContext> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("bookings")
-    .select("id, starts_at, status")
-    .eq("business_id", business.businessId)
-    .eq("lead_id", leadId)
-    .eq("status", "scheduled")
-    .order("starts_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+
+  const [booking, settings, queryable] = await Promise.all([
+    admin
+      .from("bookings")
+      .select("id, starts_at, status")
+      .eq("business_id", business.businessId)
+      .eq("lead_id", leadId)
+      .eq("status", "scheduled")
+      .order("starts_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from("business_settings")
+      .select("business_hours, appointment_duration_minutes, booking_buffer_minutes")
+      .eq("business_id", business.businessId)
+      .maybeSingle(),
+    availabilityIsQueryable(business.businessId, business.bookingMode),
+  ]);
 
   return {
     mode: business.bookingMode,
     bookingUrl: business.bookingUrl,
-    liveBooking: data ? { id: data.id, startsAt: data.starts_at, status: data.status } : null,
-    // No provider currently exposes free/busy to this codebase. Stated as a
-    // fact rather than assumed, so the composer can never be handed a slot
-    // list that did not come from a real calendar.
-    availabilityQueryable: false,
+    liveBooking: booking.data
+      ? { id: booking.data.id, startsAt: booking.data.starts_at, status: booking.data.status }
+      : null,
+    availabilityQueryable: queryable,
+    businessHours: parseBusinessHours(settings.data?.business_hours) as WeekHours,
+    appointmentDurationMinutes: settings.data?.appointment_duration_minutes ?? 60,
+    bookingBufferMinutes: settings.data?.booking_buffer_minutes ?? 0,
   };
 }
 

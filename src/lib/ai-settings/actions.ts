@@ -56,6 +56,13 @@ export async function saveAiBehaviour(
       handover_instruction: parsed.data.handoverInstruction || null,
       allow_ai_reply: parsed.data.allowAiReply,
       allow_ai_interpretation: parsed.data.allowAiInterpretation,
+      // Turning AI assist off turns the agent off with it, in the same write.
+      // Leaving a stale AUTO_REPLY behind would be a live actor with its
+      // master switch off.
+      agent_mode: parsed.data.enabled ? parsed.data.agentMode : "OFF",
+      agent_channels: parsed.data.agentChannels,
+      agent_handover_on_review: parsed.data.agentHandoverOnReview,
+      agent_answer_service_questions: parsed.data.agentAnswerServiceQuestions,
     },
     { onConflict: "business_id" },
   );
@@ -67,9 +74,15 @@ export async function saveAiBehaviour(
     action: "ai_settings.updated",
     entityType: "business_ai_settings",
     entityId: workspace.businessId,
-    metadata: { enabled: parsed.data.enabled, tone: parsed.data.tone },
+    metadata: {
+      enabled: parsed.data.enabled,
+      tone: parsed.data.tone,
+      agentMode: parsed.data.enabled ? parsed.data.agentMode : "OFF",
+      agentChannels: parsed.data.agentChannels,
+    },
   });
 
   revalidatePath("/app/follow-up");
+  revalidatePath("/app/settings");
   return { ok: true };
 }

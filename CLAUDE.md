@@ -14,6 +14,8 @@ surface.** Do not invent features that are not in them.
 | [ClientTurn_Master_Product_Bible_No_ML.md](ClientTurn_Master_Product_Bible_No_ML.md) | Data model, RLS, algorithms, component contract, build order, acceptance matrix. |
 | [ClientTurn_Full_Product_Build_Specification.md](ClientTurn_Full_Product_Build_Specification.md) | Commercial framing, landing page copy, integration behaviour, admin scope. |
 | [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | The implementation plan derived from all three. Tracks phase status. |
+| [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) | The conversation agent: architecture, guardrails, tool permissions, what the model may and may not decide. Read before changing anything under `src/lib/agent/`. |
+| [docs/CRON.md](docs/CRON.md) | How background processing runs 24/7 (Supabase pg_cron -> `/api/cron/worker`). |
 
 Where the Bible/Spec conflict with the V3 doc on **navigation/page structure**, the **V3 doc
 wins**. Where the Bible/Spec conflict with each other or with V3 on anything else (data model,

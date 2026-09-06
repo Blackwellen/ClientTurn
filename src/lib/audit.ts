@@ -41,6 +41,16 @@ export type AuditAction =
   | "lead.created_manually"
   | "lead.follow_up_started"
   | "lead.prospect_redirect"
+  // Conversation-agent operations. Every one of these is performed by a
+  // person, never by the agent -- the agent has no path to these actions.
+  | "agent.handover_acknowledged"
+  | "agent.handover_assigned"
+  | "agent.handover_resolved"
+  | "agent.handover_cancelled"
+  | "agent.draft_sent"
+  | "agent.draft_discarded"
+  | "agent.conversation_taken_over"
+  | "agent.conversation_returned_to_ai"
   | "billing.plan_changed"
   | "admin.impersonation"
   | "admin.workspace_suspended"

@@ -11,6 +11,8 @@ import {
   Smartphone,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { AgentPanel } from "./agent-panel";
+import type { ConversationAgentState } from "@/lib/agent/views";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import {
@@ -40,6 +42,7 @@ export function InboxView({
   conversations,
   selected,
   messages,
+  agentState,
   canManage,
   hrefFor,
 }: {
@@ -49,6 +52,7 @@ export function InboxView({
   conversations: ConversationRow[];
   selected: ConversationRow | null;
   messages: ThreadMessage[];
+  agentState: ConversationAgentState | null;
   canManage: boolean;
   hrefFor: (conversationId: string) => string;
 }) {
@@ -82,6 +86,7 @@ export function InboxView({
           channel={channel}
           selected={selected}
           messages={messages}
+          agentState={agentState}
           archived={archived}
           canManage={canManage}
         />
@@ -248,12 +253,14 @@ function ThreadPane({
   channel,
   selected,
   messages,
+  agentState,
   archived,
   canManage,
 }: {
   channel: InboxChannel;
   selected: ConversationRow | null;
   messages: ThreadMessage[];
+  agentState: ConversationAgentState | null;
   archived: boolean;
   canManage: boolean;
 }) {
@@ -306,6 +313,8 @@ function ThreadPane({
           </Link>
         )}
       </header>
+
+      {agentState && <AgentPanel state={agentState} canManage={canManage} />}
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4 lg:max-h-[440px]">
         {messages.length === 0 ? (
