@@ -343,6 +343,101 @@ describe("V4 row level security", () => {
     assert.ok(error, "spent_cost_minor must be revoked from the browser role");
   });
 
+  test("a run's twelve stages are readable by its owner and nobody else", async () => {
+    const [a, b] = tenants;
+    const { data: run } = await admin
+      .from("sourcing_runs")
+      .insert({ business_id: a.businessId, status: "RUNNING", target_verified: 10 })
+      .select("id")
+      .single();
+
+    await admin.from("sourcing_run_stages").insert({
+      business_id: a.businessId,
+      run_id: run!.id,
+      stage_number: 3,
+      stage_key: "FINDING_COMPANIES",
+      status: "RUNNING",
+      safe_summary: "Searching across multiple data sources",
+    });
+
+    const { data: mine } = await a.client
+      .from("sourcing_run_stages")
+      .select("stage_key, status, safe_summary")
+      .eq("run_id", run!.id);
+    assert.equal(mine?.length, 1, "a workspace must see its own run stages");
+
+    const { data: theirs } = await b.client
+      .from("sourcing_run_stages")
+      .select("id")
+      .eq("run_id", run!.id);
+    assert.equal(theirs?.length ?? 0, 0, "another workspace must see no stages");
+  });
+
+  test("website analysis jobs and their proposed facts are workspace-scoped", async () => {
+    const [a, b] = tenants;
+    const { data: job } = await admin
+      .from("business_analysis_jobs")
+      .insert({
+        business_id: a.businessId,
+        website_url: "https://example.test",
+        status: "REVIEW",
+      })
+      .select("id")
+      .single();
+
+    await admin.from("business_analysis_facts").insert({
+      business_id: a.businessId,
+      analysis_id: job!.id,
+      category: "SERVICES",
+      value_json: { items: ["Roof repair"] },
+      confidence: 0.7,
+    });
+
+    const { data: mineJobs } = await a.client
+      .from("business_analysis_jobs")
+      .select("id")
+      .eq("id", job!.id);
+    assert.equal(mineJobs?.length, 1);
+
+    const { data: theirJobs } = await b.client
+      .from("business_analysis_jobs")
+      .select("id")
+      .eq("id", job!.id);
+    assert.equal(theirJobs?.length ?? 0, 0, "analysis of another business must be invisible");
+
+    const { data: theirFacts } = await b.client
+      .from("business_analysis_facts")
+      .select("id")
+      .eq("analysis_id", job!.id);
+    assert.equal(theirFacts?.length ?? 0, 0, "proposed facts must not leak across tenants");
+  });
+
+  test("nobody can write a prospect from the browser, own workspace included", async () => {
+    // Every V4 mutation goes through a server action that writes with the
+    // service role. A browser session holding a valid JWT for its *own*
+    // workspace still must not be able to insert.
+    const [a] = tenants;
+    const { error } = await a.client.from("prospects").insert({
+      business_id: a.businessId,
+      first_name: "Injected",
+      status: "READY",
+      outreach_eligibility: "ELIGIBLE",
+    });
+    assert.ok(error, "prospect insert must be refused for the browser role");
+  });
+
+  test("a prospect's unsubscribe token is never readable from the browser", async () => {
+    // The token is the capability that unsubscribes someone. Reading another
+    // person's token would let one workspace opt out another's prospects, and
+    // reading your own adds nothing a customer needs.
+    const [a] = tenants;
+    const { error } = await a.client
+      .from("prospects")
+      .select("unsubscribe_token")
+      .eq("id", a.prospectId);
+    assert.ok(error, "unsubscribe_token must be revoked from the browser role");
+  });
+
   test("prospect provenance is readable but its cost column is not", async () => {
     const [a] = tenants;
     await admin.from("prospect_data_sources").insert({
