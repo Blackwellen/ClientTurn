@@ -37,12 +37,21 @@ export const AUTOMATION_TYPE_META: Record<
   },
 };
 
-export const CHANNELS = ["sms", "whatsapp"] as const;
+/**
+ * Warm follow-up channels.
+ *
+ * Email joined in V4 §19.1 as a first-class warm channel, beside SMS and
+ * WhatsApp. Availability is still decided per step at send time by
+ * ChannelPolicyService — appearing in this list means "the editor may offer
+ * it", never "this lead can be emailed".
+ */
+export const CHANNELS = ["sms", "whatsapp", "email"] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   sms: "SMS",
   whatsapp: "WhatsApp",
+  email: "Email",
 };
 
 export type AutomationStatus = "active" | "paused" | "draft";

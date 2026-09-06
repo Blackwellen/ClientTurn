@@ -72,7 +72,21 @@ export function FindLeadsView({
         value={filters.view}
         onChange={(value) => params.setView(value)}
       />
-      {canManage && <Link href="/app/agents/new?type=SOURCING" className="inline-flex text-sm font-medium text-content-accent">Run an approved search in the background with an agent →</Link>}
+      {/* The bridge into Agents. A search plan that has been approved once can
+          run unattended, and this is the only place that connection is
+          discoverable — it sits under the switch rather than in the header so
+          it never competes with the view the customer is actually using. */}
+      {canManage && filters.view === "discover" && (
+        <p className="text-[12.5px] text-content-muted">
+          <Link
+            href="/app/agents/new?type=SOURCING"
+            className="font-medium text-content-accent underline-offset-4 hover:underline"
+          >
+            Run an approved search in the background with an agent
+          </Link>{" "}
+          — it repeats on a schedule, within the same limits.
+        </p>
+      )}
 
       <div
         role="tabpanel"

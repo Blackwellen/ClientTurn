@@ -1,3 +1,28 @@
 "use client";
-import { Button } from "@/components/ui/button";
-export default function ErrorState({ reset }: { reset: () => void }) { return <div className="rounded-xl border border-line bg-surface p-8"><h2 className="font-semibold">Agents could not be loaded</h2><p className="my-3 text-sm text-content-muted">Check your workspace access and try again.</p><Button onClick={reset}>Try again</Button></div>; }
+
+import * as React from "react";
+import { ErrorState } from "@/components/ui/feedback";
+
+export default function AgentsError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  React.useEffect(() => {
+    console.error("Agents failed to load", error.digest ?? error.message);
+  }, [error]);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <ErrorState
+        title="Agents could not be loaded"
+        // Agents run on the queue, not in this page: a render failure says
+        // nothing about whether the work is happening.
+        description="Any running agents are unaffected and continue in the background."
+        onRetry={reset}
+      />
+    </div>
+  );
+}

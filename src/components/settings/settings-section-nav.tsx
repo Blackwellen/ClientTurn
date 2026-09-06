@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { Building2, CreditCard, Link2, Users } from "lucide-react";
+import { Brain, Building2, CreditCard, Link2, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { SETTINGS_SECTIONS, type SettingsSection } from "@/lib/settings/types";
 
@@ -10,6 +10,7 @@ const ICONS: Record<
 > = {
   workspace: Building2,
   connections: Link2,
+  "business-profile": Brain,
   team: Users,
   billing: CreditCard,
 };

@@ -276,3 +276,89 @@ that included it. Typecheck passed, the build passed, and seven files queried
 three tables that did not exist — which would have 500'd the first time a
 customer opened Find Leads. Types describe intent; only the database is
 authoritative. Run this after any migration.
+
+---
+
+## Completion pass — 2026-09-06
+
+### Wired the three orphaned SQL functions
+
+Each turned out to be a real defect, not tidying:
+
+- **`inbox_channel_counts`** → the channel rail now shows unread badges, counted
+  across the whole inbox rather than only the 100 conversations the page fetched.
+- **`sourcing_run_counters`** → the run funnel was being counted by pulling every
+  `sourcing_run_results` row into the app. A run with more results than
+  PostgREST's row cap would have **silently under-reported every number the
+  customer sees**. Now aggregated in Postgres.
+- **`outreach_campaign_results`** → backs the new Campaigns tab.
+
+### Intent and Campaigns are real surfaces
+
+Both tabs previously said "being built".
+
+- **Intent** (`lib/intent`, `components/find-leads/intent`) — categories with a
+  bounded score impact and a freshness window, monitors over an ICP or a named
+  company list, and a signal feed where expired signals are shown greyed rather
+  than hidden. The score-impact slider is capped at §15.4's ceiling in the UI as
+  well as on the server, so the bound is visible.
+- **Campaigns** (`lib/outreach`, `components/find-leads/campaigns`) — per-campaign
+  funnel from the SQL function, and for anything not running, exactly what is
+  blocking it. States plainly that cold outreach is email-only.
+
+### Booking and re-engagement agents now run
+
+`lib/agents/ticks.ts`. The governing decision: **these orchestrate the engines
+that already exist rather than reimplementing them.** A booking agent finds
+qualified leads that stalled without a booking and, only when set to AUTO,
+re-arms the existing follow-up automation — the message still goes out through
+`message.send` and every one of its guards. A re-engagement agent builds its
+audience with the same `resolveAudience` the Reactivation wizard uses and drafts
+a campaign; it does not launch one. Every candidate passes ChannelPolicyService
+first, and a blocked lead is queued as BLOCKED with the reason rather than
+silently skipped.
+
+The entitlement gate was also wrong: it demanded the *sourcing* entitlement for
+every agent type. Booking and re-engagement work existing leads, which every
+paying plan includes.
+
+### Settings → Business Profile
+
+`lib/business-profile`, `components/settings/business-profile`. This was a
+functional blocker: there was no way to create an ICP profile or a conversion
+goal, and the agent wizard, intent monitors and campaigns all target them.
+
+Holds the memory-safety rule from §54.2: every fact shows its source, a fact the
+customer types is verified and locked by definition, and locking stops any later
+inference overwriting it.
+
+### Two silent cost-ledger bugs
+
+- The daily rollup bucketed by **provider name** and only knew azure/twilio/
+  resend/stripe, so every V4 acquisition cost fell into `other_cost` and
+  `discovery_cost` / `enrichment_cost` / `verification_cost` / `intent_cost`
+  would have stayed zero forever. Cost per verified prospect (§102) was
+  uncomputable. Now reads `cost_events.category`, with the provider heuristic
+  kept as a fallback so historical rows do not shift.
+- The monthly rollup **selected `email_cost` and never summed it**, so it fell
+  out of COGS entirely and margin was overstated for any workspace sending email.
+
+### Expiry sweeps
+
+`maintenance.expiry` job, enqueued daily. `expire_intent_matches` and
+`expire_usage_reservations` existed but nothing called them — expired signals
+kept inflating prospect scores, and a worker that died between reserve and
+settle permanently consumed a customer's allowance.
+
+### Background processing is live
+
+Verified against the database, not the doc: `clientturn-worker` on a 30-second
+schedule, `-daily` and `-reap` active, **39 consecutive HTTP 200s** in the
+preceding 20 minutes, queue draining (15 completed / 2 pending). The rollups and
+sweeps above therefore actually run.
+
+### Still not built
+
+Imports wizard · MCP gateway · affiliate portal · admin Support / Affiliates /
+Economics · warm email in Follow-Up. The admin economics gap is the notable one:
+the cost breakdown fixed above is now recorded correctly but has no surface.

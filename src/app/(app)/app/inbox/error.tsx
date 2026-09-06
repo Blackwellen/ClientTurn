@@ -1,2 +1,26 @@
 "use client";
-export default function InboxError({reset}:{reset:()=>void}){return <div role="alert" className="rounded-xl border border-line bg-surface p-8"><h2 className="font-semibold">Inbox could not be loaded</h2><p className="my-3 text-sm text-content-muted">Check your workspace access and try again.</p><button onClick={reset} className="rounded-lg bg-primary px-4 py-2 text-on-primary">Try again</button></div>;}
+
+import * as React from "react";
+import { ErrorState } from "@/components/ui/feedback";
+
+export default function InboxError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  React.useEffect(() => {
+    console.error("Inbox failed to load", error.digest ?? error.message);
+  }, [error]);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface">
+      <ErrorState
+        title="Your inbox could not be loaded"
+        description="No messages have been lost. This is usually a temporary problem with one connected channel."
+        onRetry={reset}
+      />
+    </div>
+  );
+}

@@ -33,10 +33,14 @@ import { fileURLToPath } from "node:url";
 /* ------------------------------------------------------------- settings IA */
 
 describe("settings sections", () => {
-  test("there are exactly four, in the documented order", () => {
+  // V4 section 24.1 adds Business Profile, which holds the ICPs and conversion
+  // goals that Find Leads, agents and intent monitors all target. The order is
+  // still asserted exactly: Settings is one route, and the rail order is part
+  // of the IA rather than an implementation detail.
+  test("the sections are the documented set, in order", () => {
     assert.deepEqual(
       SETTINGS_SECTIONS.map((section) => section.id),
-      ["workspace", "connections", "team", "billing"],
+      ["workspace", "connections", "business-profile", "team", "billing"],
     );
   });
 

@@ -36,6 +36,17 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: Size;
   loading?: boolean;
   fullWidth?: boolean;
+  /**
+   * Render the single child element instead of a `<button>`, keeping the
+   * button's styling.
+   *
+   * This exists because a link that looks like a button must still *be* a link:
+   * it has to open in a new tab on middle-click, show its target on hover, and
+   * be announced as a link. Wrapping a `<Link>` in a real `<button>` produces
+   * nested interactive elements, which is invalid markup and confuses screen
+   * readers. `loading` is ignored here — a link cannot be pending.
+   */
+  asChild?: boolean;
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -47,25 +58,35 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       loading = false,
       fullWidth,
       disabled,
+      asChild = false,
       children,
       ...props
     },
     ref,
   ) {
+    const classes = cn(
+      "inline-flex items-center justify-center font-medium whitespace-nowrap",
+      "transition-colors duration-[var(--lr-duration-fast)]",
+      "disabled:cursor-not-allowed disabled:opacity-60",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
+      VARIANTS[variant],
+      variant !== "link" && SIZES[size],
+      fullWidth && "w-full",
+      className,
+    );
+
+    if (asChild && React.isValidElement(children)) {
+      const child = children as React.ReactElement<{ className?: string }>;
+      return React.cloneElement(child, {
+        className: cn(classes, child.props.className),
+      });
+    }
+
     return (
       <button
         ref={ref}
         disabled={disabled || loading}
-        className={cn(
-          "inline-flex items-center justify-center font-medium whitespace-nowrap",
-          "transition-colors duration-[var(--lr-duration-fast)]",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
-          VARIANTS[variant],
-          variant !== "link" && SIZES[size],
-          fullWidth && "w-full",
-          className,
-        )}
+        className={classes}
         {...props}
       >
         {loading && <Loader2 className="size-3.5 animate-spin" aria-hidden />}

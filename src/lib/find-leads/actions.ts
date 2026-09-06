@@ -790,6 +790,74 @@ export async function deleteRecurringSearchAction(
 /* -------------------------------------------------------- prospect moves */
 
 /**
+ * Approves a prospect for outreach.
+ *
+ * Approval is a person taking responsibility for contacting a stranger, which
+ * is why it is a deliberate act with a name attached rather than a state the
+ * pipeline drifts into. It cannot override contactability: a suppressed or
+ * review-required prospect stays where it is, because approval is permission
+ * from the *business*, not from the recipient.
+ */
+export async function approveProspectAction(
+  prospectId: unknown,
+): Promise<ActionResult<{ status: string }>> {
+  const id = z.uuid().safeParse(prospectId);
+  if (!id.success) return fail("That prospect could not be found.");
+
+  const access = await requireFindLeadsAdmin();
+  if (!access.ok) return access;
+
+  const admin = createAdminClient();
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("id, status, outreach_eligibility")
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", id.data)
+    .maybeSingle();
+
+  if (!prospect) return fail("That prospect could not be found.");
+
+  if (prospect.outreach_eligibility === "SUPPRESSED") {
+    return fail("This prospect has opted out and cannot be contacted.");
+  }
+  if (prospect.outreach_eligibility !== "ELIGIBLE") {
+    return fail(
+      "This prospect's contactability has not been confirmed, so it cannot be approved yet.",
+    );
+  }
+  if (prospect.status === "SUPPRESSED" || prospect.status === "UNSUBSCRIBED") {
+    return fail("This prospect has opted out and cannot be contacted.");
+  }
+
+  const { data: updated } = await admin
+    .from("prospects")
+    .update({
+      status: "APPROVED",
+      approved_by: access.workspace.userId,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", id.data)
+    .in("status", ["READY", "REVIEW", "VERIFIED"])
+    .select("status");
+
+  if (!updated?.length) {
+    return fail("This prospect is not at a stage where it can be approved.");
+  }
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "prospect.approved",
+    entityType: "prospect",
+    entityId: id.data,
+  });
+
+  refresh();
+  return ok({ status: "APPROVED" });
+}
+
+/**
  * Prospect → Lead promotion (V4 §11.19).
  *
  * A cold sourced record becomes a Lead only when a person says the

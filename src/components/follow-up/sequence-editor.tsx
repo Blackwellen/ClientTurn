@@ -7,6 +7,7 @@ import {
   Check,
   Copy,
   FileText,
+  Mail,
   MessageCircle,
   MessageSquare,
   MoreVertical,
@@ -63,6 +64,7 @@ type DraftStep = {
 const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: string }>> = {
   sms: MessageSquare,
   whatsapp: MessageCircle,
+  email: Mail,
 };
 
 function newKey() {

@@ -1,5 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Bot, Plus, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { cn } from "@/lib/cn";
@@ -40,13 +41,12 @@ export function AgentsView({
           size="lg"
         />
         {canManage && (
-          <Link
-            href="/app/agents/new"
-            className="bg-primary text-on-primary hover:bg-primary-hover focus-visible:outline-content-accent inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-[14px] font-semibold shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            <Plus className="size-4" aria-hidden />
-            New agent
-          </Link>
+          <Button asChild size="lg" className="shrink-0">
+            <Link href="/app/agents/new">
+              <Plus className="size-4" aria-hidden />
+              New agent
+            </Link>
+          </Button>
         )}
       </div>
 
@@ -167,12 +167,11 @@ function EmptyRole({ type, canManage }: { type: AgentType; canManage: boolean })
       </div>
 
       {canManage && (
-        <Link
-          href={`/app/agents/new?type=${type}`}
-          className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          Create {definition.label.toLowerCase()}
-        </Link>
+        <Button asChild variant="secondary" size="sm" className="shrink-0">
+          <Link href={`/app/agents/new?type=${type}`}>
+            Create {definition.label.toLowerCase()}
+          </Link>
+        </Button>
       )}
     </div>
   );

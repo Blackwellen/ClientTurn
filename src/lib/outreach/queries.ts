@@ -1,10 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { loadEmailAccount } from "@/lib/email/store";
 import {
   EMPTY_FUNNEL,
   type CampaignFunnel,
+  type CampaignListData,
   type CampaignRow,
   type CampaignStatus,
+  type SenderIdentityRow,
 } from "./types";
 
 export * from "./types";
@@ -21,18 +24,17 @@ export * from "./types";
  * role (0041), and the customer-facing meters read percentages instead.
  */
 
-export type CampaignListData = {
-  campaigns: CampaignRow[];
-  /** Prospects ready and approved but not yet in any campaign. */
-  unassignedReady: number;
-  hasSender: boolean;
-};
-
 export async function listCampaigns(businessId: string): Promise<CampaignListData> {
   const supabase = await createClient();
 
-  const [{ data: rows }, { data: results }, { data: steps }, readyCount, senderCount] =
-    await Promise.all([
+  const [
+    { data: rows },
+    { data: results },
+    { data: steps },
+    readyCount,
+    senderRows,
+    mailbox,
+  ] = await Promise.all([
       supabase
         .from("outreach_campaigns")
         .select(
@@ -59,10 +61,11 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
         .is("promoted_to_lead_id", null),
       supabase
         .from("sender_identities")
-        .select("id", { count: "exact", head: true })
+        .select("id, email, display_name, status, cold_enabled, daily_send_cap, postal_footer")
         .eq("business_id", businessId)
-        .eq("status", "VERIFIED")
-        .eq("active", true),
+        .eq("active", true)
+        .order("created_at", { ascending: true }),
+      loadEmailAccount(businessId),
     ]);
 
   const funnelByCampaign = new Map<string, CampaignFunnel>();
@@ -114,9 +117,26 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
     };
   });
 
+  // The builder needs the identities themselves, not just whether any exist:
+  // it has to name the address a campaign will send from before launch.
+  const senders: SenderIdentityRow[] = (senderRows.data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    status: row.status,
+    coldEnabled: row.cold_enabled,
+    dailySendCap: row.daily_send_cap,
+    hasPostalFooter: Boolean(row.postal_footer),
+  }));
+
   return {
     campaigns,
     unassignedReady: readyCount.count ?? 0,
-    hasSender: (senderCount.count ?? 0) > 0,
+    // "Has a sender" means one that could actually run a cold campaign.
+    hasSender: senders.some(
+      (sender) => sender.status === "VERIFIED" && sender.coldEnabled,
+    ),
+    senders,
+    mailboxConnected: Boolean(mailbox),
   };
 }

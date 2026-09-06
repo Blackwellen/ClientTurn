@@ -2,6 +2,12 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type AuditAction =
+  // Business Profile (V4 section 26): the customer-visible memory layer.
+  | "lead.imported"
+  | "business_fact.deleted"
+  | "business_fact.locked"
+  | "icp_profile.saved"
+  | "conversion_goal.saved"
   | "member.invited"
   | "member.invite_accepted"
   | "member.removed"
@@ -91,6 +97,7 @@ export type AuditAction =
   | "campaign.scheduled"
   | "campaign.completed"
   | "import.performed"
+  | "lead.imported"
   | "integration.slack_channel_set"
   // Find Leads (V4 §11.20). Every step that spends money, changes what will be
   // contacted, or moves a record across the Prospect/Lead boundary is logged.
@@ -110,6 +117,7 @@ export type AuditAction =
   | "sourcing_run.target_increased"
   | "sourcing_run.budget_limit_reached"
   | "prospect.suppressed"
+  | "prospect.approved"
   | "prospect.promoted_to_lead"
   | "prospect.added_to_campaign"
   | "recurring_search.created"
@@ -117,6 +125,11 @@ export type AuditAction =
   | "recurring_search.resumed"
   | "recurring_search.stopped"
   | "outreach.dispatched"
+  | "sender_identity.created"
+  | "outreach_campaign.created"
+  | "outreach_campaign.launched"
+  | "outreach_campaign.paused"
+  | "outreach_campaign.stopped"
   | "intent_category.created"
   | "intent_category.updated"
   | "intent_category.deleted"

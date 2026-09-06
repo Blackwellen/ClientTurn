@@ -103,11 +103,18 @@ export function createSendStore(): SendStore & {
         to,
         origin: row.origin as SendOrigin,
         subject: row.subject,
-        // Only marketing mail carries an unsubscribe link. A one-to-one reply
-        // from the inbox is not a mailing list and must not offer to
-        // unsubscribe the recipient from one.
+        // Automated mail carries an unsubscribe link; a one-to-one reply typed
+        // by a person does not, because it is not a mailing list.
+        //
+        // `automation` is included deliberately: V4 section 19.1 makes email a
+        // warm follow-up channel, and an automated sequence is marketing even
+        // though a human did not press send. Both the UK and US policy packs
+        // set requireUnsubscribe for warm email, so omitting the link here
+        // would put every follow-up email in breach.
         unsubscribeUrl:
-          channel === "email" && row.origin === "campaign" && lead
+          channel === "email" &&
+          (row.origin === "campaign" || row.origin === "automation") &&
+          lead
             ? unsubscribeUrl(lead.unsubscribe_token)
             : null,
       };

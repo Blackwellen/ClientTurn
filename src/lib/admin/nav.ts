@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { Building2, LayoutDashboard, ServerCog } from "lucide-react";
+import { Building2, Coins, LayoutDashboard, ServerCog } from "lucide-react";
 
 export type NavItem = {
   href: string;
@@ -9,12 +9,13 @@ export type NavItem = {
 
 /**
  * Only routes that actually exist under /admin/(ops) belong here. Billing,
- * Usage & Margins and a dedicated admin Settings page are not built yet —
+ * Support, Affiliates and a dedicated admin Settings page are not built yet —
  * add them once their routes ship rather than linking to a 404.
  */
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/customers", label: "Customers", icon: Building2 },
+  { href: "/admin/economics", label: "Usage & Margins", icon: Coins },
   { href: "/admin/system", label: "System", icon: ServerCog },
 ];
 
@@ -25,6 +26,7 @@ export function isActiveAdminRoute(pathname: string, href: string) {
 
 const TITLES: [string, string][] = [
   ["/admin/customers", "Customers"],
+  ["/admin/economics", "Usage & Margins"],
   ["/admin/system", "System"],
 ];
 

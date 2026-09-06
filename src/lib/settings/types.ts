@@ -9,8 +9,12 @@
 export type BusinessRole = "owner" | "admin" | "member" | "viewer";
 
 /**
- * The four — and only four — Settings sections. Settings is one route with a
- * `?section=` query, so every configuration surface stays in one place.
+ * The Settings sections. Settings is one route with a `?section=` query, so
+ * every configuration surface stays in one place.
+ *
+ * Business Profile joined in V4: it holds what ClientTurn believes about the
+ * business, plus the ICPs and conversion goals that Find Leads, agents and
+ * intent monitors all target.
  */
 export const SETTINGS_SECTIONS = [
   {
@@ -22,6 +26,11 @@ export const SETTINGS_SECTIONS = [
     id: "connections",
     label: "Connections",
     description: "Integrations and syncing",
+  },
+  {
+    id: "business-profile",
+    label: "Business Profile",
+    description: "What we know, ICPs and goals",
   },
   { id: "team", label: "Team", description: "Manage your team" },
   { id: "billing", label: "Billing", description: "Plan, usage and invoices" },

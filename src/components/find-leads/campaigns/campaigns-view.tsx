@@ -3,6 +3,8 @@ import Link from "next/link";
 import { CircleAlert, Mail, Megaphone, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, PlanLimitState } from "@/components/ui/feedback";
+import { CampaignBuilder } from "./campaign-builder";
+import { CampaignControls } from "./campaign-controls";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import {
@@ -30,10 +32,22 @@ export function CampaignsView({
   data: CampaignListData;
   canManage: boolean;
 }) {
-  const { campaigns, unassignedReady, hasSender } = data;
+  const { campaigns, unassignedReady, hasSender, senders, mailboxConnected } = data;
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[12.5px] text-content-muted">
+          Acquisition campaigns work approved prospects through a permitted email
+          sequence.
+        </p>
+        <CampaignBuilder
+          senders={senders}
+          mailboxConnected={mailboxConnected}
+          canManage={canManage}
+        />
+      </div>
+
       {!hasSender && (
         <PlanLimitState
           title="No verified sending identity"
@@ -162,6 +176,14 @@ function CampaignCard({
           tone={funnel.bounced > 0 ? "danger" : undefined}
         />
       </dl>
+
+      {/* Controls sit below the funnel, after the reader has seen what the
+          campaign is doing — launching is a decision, not a reflex. */}
+      {blockers.length === 0 && (
+        <div className="mb-3">
+          <CampaignControls campaign={campaign} canManage={canManage} />
+        </div>
+      )}
 
       {blockers.length > 0 && !running ? (
         <div className="rounded-lg border border-warning-100 bg-warning-50 px-3.5 py-2.5">

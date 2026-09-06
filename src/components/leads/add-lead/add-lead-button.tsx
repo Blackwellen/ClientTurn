@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { AddLeadContext } from "@/lib/leads/add-lead/queries";
@@ -41,6 +42,19 @@ export function AddLeadButton({
 
   return (
     <>
+      {/* Import sits beside Add lead rather than inside a split menu: they are
+          two different jobs (one record vs a file), and hiding the file path
+          behind a caret is how people never find it. */}
+      {canCreate && (
+        <Link
+          href="/app/leads/import"
+          className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <Upload className="size-3.5" aria-hidden />
+          Import
+        </Link>
+      )}
+
       <Button
         ref={triggerRef}
         onClick={() => {

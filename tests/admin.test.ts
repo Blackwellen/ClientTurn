@@ -70,14 +70,18 @@ import {
 /* ------------------------------------------------------------------ shell */
 
 describe("admin shell navigation", () => {
-  test("exposes exactly the three V1 destinations", () => {
+  // V4 section 46 adds Usage & Margins. The list is still asserted exactly:
+  // the rule this test protects is that the rail only ever links to routes that
+  // exist, so a destination appears here the moment its page ships and not
+  // before.
+  test("exposes exactly the destinations that have routes", () => {
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.href),
-      ["/admin", "/admin/customers", "/admin/system"],
+      ["/admin", "/admin/customers", "/admin/economics", "/admin/system"],
     );
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.label),
-      ["Overview", "Customers", "System"],
+      ["Overview", "Customers", "Usage & Margins", "System"],
     );
   });
 

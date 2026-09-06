@@ -144,3 +144,30 @@ export function launchBlockers(campaign: {
 
   return problems;
 }
+
+/** A sending identity, as the campaign builder needs to see it. */
+export type SenderIdentityRow = {
+  id: string;
+  email: string;
+  displayName: string;
+  status: string;
+  coldEnabled: boolean;
+  dailySendCap: number;
+  hasPostalFooter: boolean;
+};
+
+/**
+ * Everything the Campaigns tab renders.
+ *
+ * Lives here rather than beside its loader so a client component can import it
+ * without pulling `server-only` into the browser graph.
+ */
+export type CampaignListData = {
+  campaigns: CampaignRow[];
+  /** Prospects ready and approved but not yet in any campaign. */
+  unassignedReady: number;
+  hasSender: boolean;
+  senders: SenderIdentityRow[];
+  /** True when a mailbox is connected, so a sender identity can be created. */
+  mailboxConnected: boolean;
+};

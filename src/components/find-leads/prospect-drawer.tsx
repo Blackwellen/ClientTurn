@@ -10,11 +10,17 @@ import {
   Phone,
   ShieldCheck,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { SegmentedControl } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import {
+  approveProspectAction,
+  promoteProspectToLeadAction,
+} from "@/lib/find-leads/actions";
 import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/policy/types";
 import {
   gradeTone,
@@ -495,29 +501,70 @@ function ActivityView({ detail }: { detail: ProspectDetail }) {
 /* ------------------------------------------------------------------ actions */
 
 function ProspectActions({ detail }: { detail: ProspectDetail }) {
-  const eligible = detail.prospect.outreach_eligibility === "ELIGIBLE";
-  const promoted = Boolean(detail.prospect.promoted_to_lead_id);
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, startTransition] = React.useTransition();
+
+  const prospect = detail.prospect;
+  const eligible = prospect.outreach_eligibility === "ELIGIBLE";
+  const promoted = Boolean(prospect.promoted_to_lead_id);
+  const approved = prospect.status === "APPROVED" || prospect.status === "OUTREACH_ACTIVE";
+
+  const run = (
+    action: () => Promise<{ ok: boolean; error?: string }>,
+    success: string,
+  ) => {
+    startTransition(async () => {
+      const result = await action();
+      if (!result.ok) {
+        toast({ variant: "error", title: result.error ?? "That did not work." });
+        return;
+      }
+      toast({ variant: "success", title: success });
+      router.refresh();
+    });
+  };
+
+  // Why a control is unavailable is always visible. "Not eligible" and
+  // "already a lead" are different answers, and a customer deciding what to do
+  // next needs to know which one applies.
+  const approveReason = approved
+    ? "This prospect has already been approved"
+    : !eligible
+      ? "Contactability has not been confirmed for this prospect"
+      : undefined;
+
+  const promoteReason = promoted
+    ? "This prospect is already a lead"
+    : !eligible
+      ? "This prospect is not eligible for contact"
+      : undefined;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Approval and promotion are server actions that do not exist yet, so the
-          controls are disabled with the reason visible rather than hidden —
-          "every route implements permission-denied" applies to actions too. */}
-      <Button variant="secondary" size="sm" disabled title="Coming with acquisition campaigns">
-        Approve for outreach
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={pending}
+        disabled={approved || !eligible || pending}
+        title={approveReason}
+        onClick={() => run(() => approveProspectAction(prospect.id), "Approved for outreach.")}
+      >
+        {approved ? "Approved" : "Approve for outreach"}
       </Button>
       <Button
         size="sm"
-        disabled
-        title={
-          promoted
-            ? "This prospect is already a lead"
-            : eligible
-              ? "Coming with acquisition campaigns"
-              : "This prospect is not eligible for contact"
+        loading={pending}
+        disabled={promoted || !eligible || pending}
+        title={promoteReason}
+        onClick={() =>
+          run(
+            () => promoteProspectToLeadAction(prospect.id),
+            "Promoted to a lead. Its sourcing history travels with it.",
+          )
         }
       >
-        Promote to lead
+        {promoted ? "Already a lead" : "Promote to lead"}
       </Button>
     </div>
   );

@@ -247,16 +247,26 @@ export function nearestReminderOffset(minutes: number): number {
 
 /* -------------------------------------------------------------- test sends */
 
-export const testSendSchema = z.object({
-  channel: z.enum(["sms", "whatsapp"]),
-  to: z
-    .string()
-    .trim()
-    .min(7, "Enter the number to send the test to.")
-    .max(30)
-    .regex(/^[+0-9 ()-]{7,30}$/, "Enter a valid phone number."),
-  body: z.string().trim().min(1, "Write the message you want to test.").max(1200),
-});
+/**
+ * A test send. Email tests take an address rather than a number, so the
+ * destination is validated against the channel rather than assuming a phone.
+ */
+export const testSendSchema = z
+  .object({
+    channel: z.enum(["sms", "whatsapp", "email"]),
+    to: z.string().trim().min(3).max(120),
+    body: z.string().trim().min(1, "Write the message you want to test.").max(1200),
+  })
+  .refine(
+    (value) =>
+      value.channel === "email"
+        ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.to)
+        : /^[+0-9 ()-]{7,30}$/.test(value.to),
+    {
+      path: ["to"],
+      message: "Enter a valid destination for this channel.",
+    },
+  );
 
 export type TestSendInput = z.infer<typeof testSendSchema>;
 
