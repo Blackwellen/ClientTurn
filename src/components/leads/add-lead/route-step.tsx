@@ -134,8 +134,16 @@ export function RouteStartStep({
             <p className="mt-0.5 text-[12px] text-content-muted">
               Set the lead&apos;s initial status.
             </p>
-            <div className="mt-3">
+            <div className="relative mt-3">
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full",
+                  routing.initialStatus === "NEW" ? "bg-info-500" : "bg-success-500",
+                )}
+              />
               <Select
+                className="pl-7"
                 aria-label="Initial status"
                 value={routing.initialStatus}
                 aria-invalid={Boolean(errors.initialStatus)}

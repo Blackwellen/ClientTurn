@@ -10,7 +10,6 @@ import {
   Phone,
   Search,
   ShieldCheck,
-  Smartphone,
   User,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -24,7 +23,6 @@ import {
   type FieldErrors,
 } from "@/lib/leads/add-lead/types";
 import {
-  CharCount,
   GuidanceList,
   RailCard,
   RailNote,
@@ -356,12 +354,11 @@ export function ContactStep({
             </FormField>
             <FormField
               label="Mobile"
-              hint="Used for SMS and WhatsApp."
               htmlFor={field("mobile")}
               error={errors.mobile}
             >
               <div className="relative">
-                <Smartphone
+                <Phone
                   className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-content-subtle"
                   aria-hidden
                 />
@@ -430,7 +427,6 @@ export function ContactStep({
                 autoComplete="street-address"
                 onChange={(event) => onChange({ address: event.target.value })}
               />
-              <CharCount value={value.address} max={300} />
             </FormField>
           </div>
         </SectionCard>

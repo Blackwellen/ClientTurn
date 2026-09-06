@@ -1,22 +1,120 @@
-import Link from "next/link";
+import * as React from "react";
+import type { Metadata } from "next";
 import { z } from "zod";
-import { Mail,MessageSquare,Inbox,Search } from "lucide-react";
-import { requireWorkspace,hasRole } from "@/lib/auth/session";
+import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/app/page-header";
-import { InboxControls } from "@/components/inbox/inbox-controls";
-export const metadata={title:"Inbox · ClientTurn"};
-const channels=[{id:"all",label:"All messages"},{id:"email",label:"Email"},{id:"whatsapp",label:"WhatsApp"},{id:"sms",label:"SMS"},{id:"messenger",label:"Messenger"},{id:"instagram",label:"Instagram"},{id:"linkedin",label:"LinkedIn"}];
-export default async function InboxPage({searchParams}:{searchParams:Promise<Record<string,string|undefined>>}){
- const w=await requireWorkspace(); const p=await searchParams;const db=await createClient();const channel=channels.find(c=>c.id===p.channel)?.id??"all";const archive=p.archive==="1";const search=(p.q??"").slice(0,100);
- let query=db.from("conversations").select("id, channel, counterparty_name, counterparty_handle, lead_id, unread_count, last_message_at, is_archived, leads(first_name,last_name,email)").eq("business_id",w.businessId).eq("is_archived",archive).order("last_message_at",{ascending:false,nullsFirst:false}).limit(100);
- if(channel!=="all")query=query.eq("channel",channel);
- const {data,error}=await query;if(error)throw new Error("Could not load inbox.");
- const label=(c:NonNullable<typeof data>[number])=>c.counterparty_name||[c.leads?.first_name,c.leads?.last_name].filter(Boolean).join(" ")||c.counterparty_handle||c.leads?.email||"Conversation";
- const rows=(data??[]).filter(c=>`${label(c)} ${c.counterparty_handle??""}`.toLowerCase().includes(search.toLowerCase()));
- const selected=rows.find(c=>c.id===p.thread)??(!p.thread?rows[0]:undefined);
- const messages=selected && z.uuid().safeParse(selected.id).success?await db.from("messages").select("id, direction, body, created_at, status").eq("business_id",w.businessId).eq("conversation_id",selected.id).order("created_at",{ascending:false}).limit(100):null;
- if(messages?.error)throw new Error("Could not load messages.");
- const href=(id:string)=>`/app/inbox?channel=${channel}&archive=${archive?1:0}&q=${encodeURIComponent(search)}&thread=${id}`;
- return <div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-4"><PageHeader title="Inbox" description="One place for the conversations reaching your workspace."/><Link href="/app/settings?section=connections" className="rounded-lg border border-line-strong bg-surface px-4 py-2 text-sm font-medium">Manage channels</Link></div><div className="grid min-h-[650px] overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-[180px_300px_1fr]"><aside className="space-y-2 border-b border-line bg-bg p-3 lg:border-b-0 lg:border-r"><p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-content-muted">Channels</p><nav aria-label="Inbox channels" className="flex flex-wrap gap-1 lg:block">{channels.map(c=><Link key={c.id} href={`?channel=${c.id}`} aria-current={channel===c.id?"page":undefined} className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm ${channel===c.id?"bg-surface font-semibold shadow-xs":"text-content-muted hover:bg-surface"}`}>{c.id==="email"?<Mail className="size-4"/>:<MessageSquare className="size-4"/>}{c.label}</Link>)}<Link className="mt-4 block px-3 py-2 text-sm text-content-muted" href={`?channel=${channel}&archive=1`}>Archived</Link></nav></aside><section className="border-b border-line lg:border-b-0 lg:border-r"><form className="relative border-b border-line p-3"><input type="hidden" name="channel" value={channel}/><input type="hidden" name="archive" value={archive?1:0}/><Search className="absolute left-6 top-6 size-4 text-content-muted"/><input name="q" defaultValue={search} aria-label="Search conversations" placeholder="Search conversations" className="w-full rounded-lg border border-line py-2 pl-9 pr-3 text-sm"/></form><div className="max-h-72 overflow-y-auto lg:max-h-[650px]">{rows.map(c=><Link key={c.id} href={href(c.id)} className={`block border-b border-line p-4 ${selected?.id===c.id?"bg-bg":"hover:bg-bg"}`}><div className="flex justify-between gap-2"><h2 className="truncate text-sm font-semibold">{label(c)}</h2>{c.unread_count>0&&<span className="rounded-full bg-primary px-2 text-xs text-on-primary">{c.unread_count}</span>}</div><p className="mt-2 text-xs text-content-muted">{c.channel} · {c.last_message_at?new Date(c.last_message_at).toLocaleDateString("en-GB"):"No messages"}</p></Link>)}{!rows.length&&<div className="p-6 text-sm text-content-muted">No {archive?"archived ":""}conversations{search?" match this search":" yet"}.</div>}</div></section><section className="flex min-w-0 flex-col">{selected?<><header className="flex justify-between gap-3 border-b border-line p-5"><div><h2 className="font-semibold">{label(selected)}</h2><p className="mt-1 text-xs text-content-muted">{selected.channel}</p></div>{selected.lead_id&&<Link className="text-sm text-content-accent" href={`/app/leads?lead=${selected.lead_id}`}>View lead →</Link>}</header><div className="flex-1 space-y-4 overflow-y-auto p-5 lg:max-h-[480px]">{messages?.data?.slice().reverse().map(m=><div key={m.id} className={`max-w-[90%] rounded-xl p-4 text-sm ${m.direction==="outbound"?"ml-auto bg-bg":"border border-line"}`}><p className="whitespace-pre-wrap break-words">{m.body}</p><p className="mt-2 text-xs text-content-muted">{new Date(m.created_at).toLocaleString("en-GB")} · {m.status}</p></div>)}{!messages?.data?.length&&<p className="text-sm text-content-muted">No messages in this conversation.</p>}</div>{hasRole(w.role,"member")&&<InboxControls id={selected.id} canReply={!!selected.lead_id&&["sms","whatsapp"].includes(selected.channel)} archived={archive}/>}</>:<div className="flex flex-1 flex-col items-center justify-center p-10 text-center"><Inbox className="mb-4 size-10 text-content-muted"/><h2 className="font-semibold">{channel==="linkedin"?"LinkedIn requires partner access":"Your conversations, together"}</h2><p className="mt-3 max-w-sm text-sm leading-6 text-content-muted">{channel==="linkedin"?"A LinkedIn Ads connection does not provide personal inbox access. An approved messaging partner integration is required.":["instagram","messenger"].includes(channel)?"Connect a supported professional account or Facebook Page with approved messaging permissions before messages can sync.":"Connect your channels to receive messages here. Choose a conversation to read its history and manage the next step."}</p><Link href="/app/settings?section=connections" className="mt-5 text-sm font-medium text-content-accent">View connections →</Link></div>}</section></div></div>;
+import {
+  parseChannel,
+  type ConversationRow,
+  type ThreadMessage,
+} from "@/lib/inbox/types";
+import { InboxView } from "@/components/inbox/inbox-view";
+
+export const metadata: Metadata = { title: "Inbox · ClientTurn" };
+export const dynamic = "force-dynamic";
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const [workspace, params] = await Promise.all([requireWorkspace(), searchParams]);
+
+  const channel = parseChannel(params.channel);
+  const archived = params.archive === "1";
+  const search = (params.q ?? "").slice(0, 100).trim();
+
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("conversations")
+    .select(
+      `id, channel, counterparty_name, counterparty_handle, lead_id, unread_count,
+       last_message_at, is_archived,
+       leads ( first_name, last_name, email )`,
+    )
+    .eq("business_id", workspace.businessId)
+    .eq("is_archived", archived)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  if (channel !== "all") query = query.eq("channel", channel);
+
+  const { data, error } = await query;
+  if (error) throw new Error("Could not load the inbox.");
+
+  const conversations: ConversationRow[] = (data ?? []).map((row) => ({
+    id: row.id,
+    channel: row.channel,
+    displayName:
+      row.counterparty_name ||
+      [row.leads?.first_name, row.leads?.last_name].filter(Boolean).join(" ") ||
+      row.counterparty_handle ||
+      row.leads?.email ||
+      "Conversation",
+    handle: row.counterparty_handle,
+    leadId: row.lead_id,
+    unreadCount: row.unread_count,
+    lastMessageAt: row.last_message_at,
+  }));
+
+  // Filtering here rather than in SQL: the searchable label is composed from
+  // three nullable columns and a joined lead, which PostgREST cannot express as
+  // one predicate. Bounded by the 100-row page above.
+  const needle = search.toLowerCase();
+  const filtered = needle
+    ? conversations.filter((row) =>
+        `${row.displayName} ${row.handle ?? ""}`.toLowerCase().includes(needle),
+      )
+    : conversations;
+
+  // An explicit ?thread= wins; otherwise the first conversation opens, so the
+  // pane is never empty when there is something to read.
+  const selected =
+    filtered.find((row) => row.id === params.thread) ??
+    (params.thread ? null : (filtered[0] ?? null));
+
+  let messages: ThreadMessage[] = [];
+  if (selected && z.uuid().safeParse(selected.id).success) {
+    const { data: rows, error: messageError } = await supabase
+      .from("messages")
+      .select("id, direction, body, status, created_at")
+      .eq("business_id", workspace.businessId)
+      .eq("conversation_id", selected.id)
+      .order("created_at", { ascending: true })
+      .limit(100);
+
+    if (messageError) throw new Error("Could not load the conversation.");
+
+    messages = (rows ?? []).map((row) => ({
+      id: row.id,
+      direction: row.direction,
+      body: row.body,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
+  }
+
+  const hrefFor = (conversationId: string) => {
+    const next = new URLSearchParams({
+      channel,
+      archive: archived ? "1" : "0",
+      thread: conversationId,
+    });
+    if (search) next.set("q", search);
+    return `/app/inbox?${next.toString()}`;
+  };
+
+  return (
+    <InboxView
+      channel={channel}
+      archived={archived}
+      search={search}
+      conversations={filtered}
+      selected={selected}
+      messages={messages}
+      canManage={hasRole(workspace.role, "member")}
+      hrefFor={hrefFor}
+    />
+  );
 }

@@ -18,7 +18,7 @@ import {
 import { Mail, MessageSquare, Phone } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import { FormField, Textarea } from "@/components/ui/form";
+import { Textarea } from "@/components/ui/form";
 import {
   CHANNEL_LABELS,
   CHANNEL_PERMISSION_LABELS,
@@ -236,21 +236,31 @@ export function PermissionStep({
           )}
         </section>
 
-        <FormField
-          label="Consent evidence"
-          hint="Add evidence, timestamp, source and scope (e.g. who referred them, what was said, and what contact methods are allowed)."
-          htmlFor={`${id}-evidence`}
-          error={errors.evidence}
-        >
-          <Textarea
-            id={`${id}-evidence`}
-            rows={3}
-            value={value.evidence}
-            aria-invalid={Boolean(errors.evidence)}
-            onChange={(event) => onChange({ evidence: event.target.value })}
-          />
-          <CharCount value={value.evidence} max={MAX_EVIDENCE} />
-        </FormField>
+        <section>
+          <label
+            htmlFor={`${id}-evidence`}
+            className="block text-[13px] font-medium text-content"
+          >
+            Consent evidence
+          </label>
+          <p className="mt-0.5 text-[12px] text-content-muted">
+            Add evidence, timestamp, source and scope (e.g. who referred them,
+            what was said, and what contact methods are allowed).
+          </p>
+          <div className="mt-2">
+            <Textarea
+              id={`${id}-evidence`}
+              rows={3}
+              value={value.evidence}
+              aria-invalid={Boolean(errors.evidence)}
+              onChange={(event) => onChange({ evidence: event.target.value })}
+            />
+            <CharCount value={value.evidence} max={MAX_EVIDENCE} />
+            {errors.evidence && (
+              <p className="text-[12px] text-danger-600">{errors.evidence}</p>
+            )}
+          </div>
+        </section>
 
         <section>
           <h3 className="text-[13px] font-medium text-content">Channel permission</h3>

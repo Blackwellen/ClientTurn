@@ -123,7 +123,7 @@ export function AddLeadHarness({ step }: { step: number }) {
   ) => setState((prev) => ({ ...prev, [key]: { ...prev[key], ...value } }));
 
   return (
-    <div className="rounded-2xl border border-line bg-surface shadow-xl">
+    <div className="mx-auto max-w-[980px] rounded-2xl border border-line bg-surface shadow-xl">
       <header className="px-6 pb-3 pt-5">
         <h2 className="text-[22px] font-bold leading-tight tracking-[-0.02em] text-content">
           Add Lead
@@ -193,7 +193,7 @@ export function AddLeadHarness({ step }: { step: number }) {
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] text-content-muted">Cancel</span>
           <span className="text-[13px] text-content-muted">
-            Back · {["Continue to Enquiry", "Continue to Permission", "Continue to Route &amp; Start", "Create lead"][current]}
+            Back · {["Continue to Enquiry", "Continue to Permission", "Continue to Route & Start", "Create lead"][current]}
           </span>
         </div>
       </footer>

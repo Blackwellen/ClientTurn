@@ -196,3 +196,83 @@ Phases 2–19 of the register above: manual Add Lead wizard, imports, business
 profile, search sessions, sourcing orchestrator and providers, intent, mailbox
 integrations, cold campaigns, warm email, usage/margin surfaces, analytics,
 optimization, status/support, Pipedrive, MCP, affiliates — and all of the V4 UI.
+
+---
+
+## Agents and Inbox
+
+Two destinations added to the rail beyond the V4 spec, at the customer's request.
+
+### Agents — `/app/agents`
+
+A customer-facing background worker: a name, a role, sources, a schedule and a
+queue. **Not to be confused with `lib/agent`** (singular), which is the
+conversational runtime that answers one lead's messages, or with `agent_runs`,
+which is the internal ledger of bounded LLM executions. One agent causes many
+agent_runs.
+
+| Piece | Where |
+|---|---|
+| Schema | `0043_v4_agents` — `agents`, `agent_sources`, `agent_queue_items`, `agent_activity_events`, `agent_summaries()` |
+| Domain | `lib/agents/{types,queries,actions,scheduler}.ts` |
+| List | `/app/agents` — cards grouped by role, empty roles teach the capability |
+| Wizard | `/app/agents/new` — Role → Sources → Limits → Review |
+| Detail | `/app/agents/[id]` — Overview, Leads, Queue, Sources, Campaign, Activity, Settings |
+
+Four roles: Sourcing, Booking, Re-engagement, Combined. Tabs are per-role — a
+booking agent has no Sources tab because it discovers nothing.
+
+An agent is always created as a **draft** and never started by its own creation.
+Only Sourcing runs independently today; the others refuse to start with an
+explanation rather than sitting idle and looking broken.
+
+### Inbox — `/app/inbox`
+
+| Piece | Where |
+|---|---|
+| Schema | `0044_v4_unified_inbox` — `inbox_channels`, conversation/message extensions, `inbox_channel_counts()` |
+| Domain | `lib/inbox/{types,actions}.ts` |
+| UI | `/app/inbox` — channel rail, conversation list, thread pane |
+
+Social channels join the existing `conversations` model rather than getting a
+parallel one, so someone who emails and then messages on Instagram is one
+conversation.
+
+### What the source and channel catalogues will NOT claim
+
+This is the part most likely to be quietly "fixed" into a lie later, so it is
+written down:
+
+- **There is no LinkedIn people-search source.** LinkedIn has no API permitting
+  member search for prospecting. `LINKEDIN_ADS` brings in lead-form submissions
+  from the workspace's *own* ad account, nothing more.
+- **There is no LinkedIn inbox sync.** No API gives an application access to a
+  member's LinkedIn messages; the messaging APIs are approved-partner only. The
+  channel is modelled `can_read: false` and the UI says why.
+- **Meta is inbound-only for sourcing.** Messenger and Instagram *messaging*
+  work against a Page the customer administers, with permissions granted.
+- **No scraping.** V4 §113/§114 forbid it and so do most platform terms. A
+  capability that cannot be built lawfully does not get a catalogue entry just
+  because it would look good in the wizard.
+- **Finding a contact detail is not permission to use it.** Phone enrichment is
+  a separate switch from email precisely because the obligations differ, and
+  ChannelPolicyService still gates every send regardless of either.
+
+### Verification
+
+```
+npm run typecheck    # raised to --max-old-space-size=6144: the generated
+                     # Database type is ~10k lines and exhausts the default heap
+npm test             # 520 unit tests
+npm run test:rls     # 15 V3 cross-tenant  (live database)
+npm run test:rls:v4  # 21 V4 cross-tenant  (live database)
+npm run audit:db     # every .from()/.rpc() in src/ exists in the database
+npm run build
+```
+
+`audit:db` exists because of a real incident: `0041_find_leads_workspace` was
+never applied, yet `database.types.ts` had been regenerated against a schema
+that included it. Typecheck passed, the build passed, and seven files queried
+three tables that did not exist — which would have 500'd the first time a
+customer opened Find Leads. Types describe intent; only the database is
+authoritative. Run this after any migration.

@@ -1,9 +1,9 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  Briefcase,
+  Camera,
   Inbox as InboxIcon,
-  Instagram,
-  Linkedin,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -98,8 +98,11 @@ const CHANNEL_ICONS: Record<InboxChannel, React.ComponentType<{ className?: stri
   whatsapp: MessageCircle,
   sms: Smartphone,
   messenger: MessageSquare,
-  instagram: Instagram,
-  linkedin: Linkedin,
+  // This lucide build no longer ships brand marks. The Connections page uses
+  // the official assets in `public/brands/`; a 16px nav rail uses neutral
+  // glyphs instead, which also sidesteps any brand-usage question here.
+  instagram: Camera,
+  linkedin: Briefcase,
 };
 
 function ChannelRail({ channel, archived }: { channel: InboxChannel; archived: boolean }) {
