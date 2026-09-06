@@ -10,7 +10,11 @@ import { STAGE_KEYS, STAGES, progressPercent, type StageKey } from "@/lib/find-l
 import { EMPTY_COUNTERS, type RunCounters } from "@/lib/find-leads/types";
 import { runProviderBatch } from "@/lib/find-leads/server/providers/router";
 import { capabilityAvailable, unhealthyProviders } from "@/lib/find-leads/server/providers/registry";
-import type { CompanyCandidate, ContactCandidate } from "@/lib/find-leads/server/providers/types";
+import type {
+  CompanyCandidate,
+  ContactCandidate,
+  IntentResult,
+} from "@/lib/find-leads/server/providers/types";
 import { withinPlanLocations } from "@/lib/find-leads/server/locations";
 import type { UnitCosts } from "@/lib/find-leads/cost-model";
 import {
@@ -30,6 +34,7 @@ import {
   type ScoreFeature,
 } from "@/lib/prospects/scoring";
 import { checkSuppressionBatch } from "@/lib/policy/suppression";
+import { evaluateAllChannels } from "@/lib/policy/service";
 import type { Grade } from "@/lib/prospects/types";
 
 /**
@@ -60,6 +65,7 @@ const COMPANY_BATCH = 20;
 const CONTACT_BATCH = 20;
 const ENRICH_BATCH = 15;
 const VERIFY_BATCH = 25;
+const INTENT_BATCH = 25;
 
 type Checkpoint = {
   stage: StageKey;
@@ -1177,14 +1183,58 @@ async function classify(context: RunContext): Promise<StageSummary> {
       continue;
     }
 
+    // Surviving the screens above is necessary but not sufficient. The
+    // versioned policy pack is the authority on whether a cold email may be
+    // sent to this person in this country, and evaluating it here is also what
+    // writes `contactability_results` — the policy_version + evidence snapshot
+    // that lets an audit reconstruct the decision later (V4 §91.3).
+    const company = prospect.company;
+    const country =
+      (company?.location_json as { country?: string } | null)?.country ?? null;
+
+    const { eligibility, byChannel } = await evaluateAllChannels(
+      context.businessId,
+      {
+        type: "PROSPECT",
+        id: prospect.id,
+        email,
+        country,
+        // A generic or role address is not a confirmed corporate subscriber, so
+        // it stays UNKNOWN and the pack decides. Only a real company domain
+        // asserts CORPORATE.
+        subscriberType:
+          domain && !isGenericEmailDomain(domain) && !isRoleMailbox(email)
+            ? "CORPORATE"
+            : "UNKNOWN",
+        relationshipType: "FOUND_BY_US",
+      },
+      "COLD",
+      { record: true },
+    );
+
+    const emailDecision = byChannel.EMAIL;
+
     await admin
       .from("prospects")
       .update({
-        outreach_eligibility: "ELIGIBLE",
-        eligibility_reason: null,
+        status: eligibility === "ELIGIBLE" ? "VERIFIED" : "REVIEW",
+        outreach_eligibility: eligibility,
+        eligibility_reason:
+          eligibility === "ELIGIBLE" ? null : (emailDecision?.message ?? null),
       })
       .eq("id", prospect.id)
       .eq("business_id", context.businessId);
+
+    if (eligibility !== "ELIGIBLE") {
+      reviewCount += 1;
+      await admin.from("sourcing_run_results").insert({
+        business_id: context.businessId,
+        run_id: context.runId,
+        prospect_id: prospect.id,
+        outcome: "REVIEW_REQUIRED",
+        reason: emailDecision?.reasonCode ?? "Policy review",
+      });
+    }
   }
 
   if (suppressedCount + reviewCount > 0) {
@@ -1359,9 +1409,151 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
     return { text: "No intent source is connected.", count: 0, skipped: true };
   }
 
-  // With a provider connected, intent enrichment runs on the surviving set
-  // only — the same cost discipline as enrichment.
-  return { text: "Analysed signals for buying intent.", count: 0 };
+  const admin = createAdminClient();
+  const prospects = await loadRunProspects(context, ["DISCOVERED", "VERIFIED", "REVIEW"]);
+
+  // Categories are per-workspace rows, so a plan naming a category the
+  // workspace has never defined matches nothing rather than inventing one.
+  const { data: categoryRows } = await admin
+    .from("intent_categories")
+    .select("id, name, score_impact, freshness_days")
+    .eq("business_id", context.businessId)
+    .eq("active", true);
+
+  const categories = new Map(
+    (categoryRows ?? []).map((row) => [row.name.trim().toLowerCase(), row]),
+  );
+
+  const byDomain = new Map<string, RunProspect[]>();
+  for (const prospect of prospects) {
+    const domain = prospect.company?.domain;
+    if (!domain) continue;
+    byDomain.set(domain, [...(byDomain.get(domain) ?? []), prospect]);
+  }
+
+  const domains = [...byDomain.keys()];
+  if (domains.length === 0) {
+    return { text: "No company domains to check for signals.", count: 0, skipped: true };
+  }
+
+  let matched = 0;
+
+  for (let index = 0; index < domains.length; index += INTENT_BATCH) {
+    await assertContinuable(context);
+    const slice = domains.slice(index, index + INTENT_BATCH);
+
+    const outcome = await runProviderBatch<IntentResult>({
+      runId: context.runId,
+      businessId: context.businessId,
+      stage: "INTENT_MATCHING",
+      capability: "INTENT",
+      recordCount: slice.length,
+      unitCosts: context.unitCosts,
+      unhealthy: context.unhealthy,
+      idempotencyKey: `intent:${index}`,
+      invoke: (provider) =>
+        provider.fetchIntent?.({
+          domains: slice,
+          categories: context.plan.intent.categories,
+          freshnessDays: context.plan.intent.freshnessDays,
+        }) ??
+        Promise.resolve({
+          ok: false,
+          records: [],
+          costMinor: 0,
+          cursor: null,
+          latencyMs: 0,
+          errorCode: "PROVIDER_NOT_CONFIGURED" as const,
+        }),
+    });
+
+    if (outcome.budgetExhausted) throw new RunHalt("BUDGET");
+    if (!outcome.ok) continue;
+
+    for (const signal of outcome.records) {
+      const category = categories.get(signal.category.trim().toLowerCase());
+      if (!category) continue;
+
+      const targets = byDomain.get(signal.domain) ?? [];
+      if (targets.length === 0) continue;
+
+      const expiresAt = new Date(
+        new Date(signal.observedAt).getTime() + category.freshness_days * 864e5,
+      ).toISOString();
+
+      for (const prospect of targets) {
+        // dedupe_key collapses the same underlying signal arriving twice, from
+        // a retry or from two providers.
+        const dedupeKey = `${signal.domain}:${category.id}:${signal.observedAt}`;
+
+        const { data: event } = await admin
+          .from("intent_events")
+          .upsert(
+            {
+              business_id: context.businessId,
+              intent_category_id: category.id,
+              company_id: prospect.company?.id ?? null,
+              prospect_id: prospect.id,
+              signal_type: "SOURCING_RUN",
+              source: outcome.provider ?? "unknown",
+              source_url: signal.sourceUrl,
+              observed_at: signal.observedAt,
+              expires_at: expiresAt,
+              confidence: Math.max(0, Math.min(1, signal.strength)),
+              score_impact: category.score_impact,
+              dedupe_key: dedupeKey,
+            },
+            { onConflict: "business_id,dedupe_key", ignoreDuplicates: false },
+          )
+          .select("id")
+          .maybeSingle();
+
+        if (!event) continue;
+
+        const { error } = await admin.from("prospect_intent_matches").insert({
+          business_id: context.businessId,
+          prospect_id: prospect.id,
+          intent_category_id: category.id,
+          intent_event_id: event.id,
+          expires_at: expiresAt,
+          score_impact: category.score_impact,
+        });
+
+        // 23505 is the (prospect_id, intent_event_id) unique index: the same
+        // match already recorded, which is success, not failure.
+        if (!error) matched += 1;
+      }
+    }
+
+    await saveCheckpoint(context, { stage: "INTENT_MATCHING", offset: index + INTENT_BATCH });
+  }
+
+  return {
+    text: "Analysed signals for buying intent.",
+    count: matched,
+    milestone:
+      matched > 0
+        ? `Found buying signals for ${matched.toLocaleString("en-GB")} prospects.`
+        : undefined,
+  };
+}
+
+/**
+ * Prospects with a live (unexpired) intent match from this run.
+ *
+ * Read once and cached in a Set rather than queried per prospect, because
+ * stage 12 walks every surviving record.
+ */
+async function prospectsWithLiveIntent(context: RunContext): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("prospect_intent_matches")
+    .select("prospect_id, prospects!inner(source_run_id)")
+    .eq("business_id", context.businessId)
+    .eq("prospects.source_run_id", context.runId)
+    .gt("expires_at", new Date().toISOString());
+
+  return new Set((data ?? []).map((row) => row.prospect_id));
 }
 
 /* ------------------------------------------------- 12. preparing outreach */
@@ -1369,6 +1561,14 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
 async function prepareOutreach(context: RunContext): Promise<StageSummary> {
   const admin = createAdminClient();
   const prospects = await loadRunProspects(context, ["DISCOVERED", "VERIFIED", "REVIEW"]);
+
+  // "Intent required" means an actual buying signal, not a deliverable mailbox.
+  // Conflating the two would mark every verified prospect ready on a run the
+  // customer deliberately restricted to businesses showing intent.
+  const withIntent = context.plan.intent.required
+    ? await prospectsWithLiveIntent(context)
+    : new Set<string>();
+
   let ready = 0;
 
   for (const prospect of prospects) {
@@ -1378,7 +1578,7 @@ async function prepareOutreach(context: RunContext): Promise<StageSummary> {
     // one that can hold back an otherwise perfect record, deliberately.
     const gradeOk = meetsMinimumGrade(grade, context.minimumGrade);
     const eligible = prospect.outreach_eligibility === "ELIGIBLE";
-    const intentOk = !context.plan.intent.required || prospect.status === "VERIFIED";
+    const intentOk = !context.plan.intent.required || withIntent.has(prospect.id);
 
     if (gradeOk && eligible && intentOk && prospect.status !== "SUPPRESSED") {
       ready += 1;
@@ -1403,7 +1603,11 @@ async function prepareOutreach(context: RunContext): Promise<StageSummary> {
           status: "REVIEW",
           eligibility_reason:
             prospect.eligibility_reason ??
-            (gradeOk ? "Needs a decision before outreach" : "Below your minimum grade"),
+            (!gradeOk
+              ? "Below your minimum grade"
+              : !intentOk
+                ? "No buying signal found, and this search required one"
+                : "Needs a decision before outreach"),
         })
         .eq("id", prospect.id)
         .eq("business_id", context.businessId);

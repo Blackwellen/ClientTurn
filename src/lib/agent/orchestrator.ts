@@ -60,6 +60,7 @@ import {
   type ToolContext,
 } from "./tools";
 import { maybeRefreshSummary } from "./summary";
+import { matchOfferedSlot, type Slot } from "./availability/slots";
 import {
   AGENT_TURN_LOCK_SECONDS,
   agentDecisionSchema,
@@ -308,8 +309,20 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
     }
   }
 
+  // ---- is the lead confirming a time we already offered? ---------------
+  // Checked before anything else booking-related, and decided by string
+  // matching against slots this runtime offered on an earlier turn -- never by
+  // asking the model which one it thinks they meant. That is what makes
+  // arming create_booking safe at all.
+  const offered = await loadOfferedSlots(context.conversation.conversationId);
+  if (offered.length > 0 && input.latestMessage) {
+    const chosen = matchOfferedSlot(input.latestMessage, offered);
+    if (chosen) return confirmBooking(input, decision, chosen);
+  }
+
   // ---- availability, if the model asked for it -------------------------
   let confirmedSlots: string[] = [];
+  let offeredSlots: Slot[] = [];
   if (
     decision.proposed_action === "CHECK_AVAILABILITY" ||
     decision.proposed_action === "SEND_BOOKING_OPTIONS"
@@ -317,9 +330,24 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
     const availability = await getCalendarAvailability(tools, {
       date: null,
       dayPart: null,
+      timezone: context.business.timezone,
+      availability: {
+        bookingMode: context.business.bookingMode,
+        businessHours: context.booking.businessHours,
+        appointmentDurationMinutes: context.booking.appointmentDurationMinutes,
+        bookingBufferMinutes: context.booking.bookingBufferMinutes,
+      },
     });
-    if (availability.ok) {
-      confirmedSlots = availability.data.slots;
+    if (availability.ok && availability.data.slots.length > 0) {
+      // `labels` are the human strings the reply may quote. The raw slots are
+      // objects, and letting them reach the validator would compare a message
+      // against "[object Object]" and pass anything.
+      confirmedSlots = availability.data.labels;
+      offeredSlots = availability.data.slots;
+    } else if (availability.ok) {
+      // The calendar answered, and the answer was "nothing free". That is a
+      // real fact and earns a real reply, not a fallback link.
+      return offerNothingAvailable(input, decision);
     } else if (context.booking.bookingUrl) {
       // No live calendar, but a link exists: that is the configured booking
       // method for this workspace, so use it rather than stalling.
@@ -371,9 +399,14 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
       runAt: sendGate.decision === "QUEUE" ? sendGate.runAt : undefined,
     });
     outcome = sent.ok
-      ? sendGate.decision === "QUEUE"
-        ? "MESSAGE_QUEUED"
-        : "MESSAGE_SENT"
+      ? offeredSlots.length > 0
+        ? // The lead has been shown real times, so the next inbound message
+          // may be a confirmation. loadOfferedSlots() finds this run by
+          // exactly this outcome.
+          "BOOKING_OPTIONS_SENT"
+        : sendGate.decision === "QUEUE"
+          ? "MESSAGE_QUEUED"
+          : "MESSAGE_SENT"
       : "FAILED";
   }
 
@@ -407,7 +440,9 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
       action: decision.proposed_action,
       reasoningCode: decision.reasoning_code,
       injectionAttempt: input.injection,
-      confirmedSlots: confirmedSlots.length,
+      // Recorded so the next turn matches a confirmation against exactly what
+      // was offered, rather than re-querying and possibly drifting.
+      offeredSlots,
     },
   });
 
@@ -783,6 +818,126 @@ async function applyExtractions(
   if (Object.keys(update).length > 0) {
     await updateLeadFields(toolContext(input, decision.confidence), update);
   }
+}
+
+// -------------------------------------------------------------- booking
+
+/**
+ * The slots this conversation was last offered. Read back from the run's own
+ * decision record rather than re-querying the calendar, so a lead confirming
+ * "3pm" is matched against the exact list they were shown.
+ *
+ * Offers go stale: after 24 hours the times are re-checked rather than booked
+ * from memory, because the calendar has had a day to change underneath them.
+ */
+async function loadOfferedSlots(conversationId: string | null): Promise<Slot[]> {
+  if (!conversationId) return [];
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("conversation_agent_runs")
+    .select("decision_json, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("outcome", "BOOKING_OPTIONS_SENT")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return [];
+  if (Date.now() - Date.parse(data.created_at) > 24 * 60 * 60 * 1000) return [];
+
+  const decision = (data.decision_json ?? {}) as { offeredSlots?: unknown };
+  if (!Array.isArray(decision.offeredSlots)) return [];
+
+  return decision.offeredSlots.filter(
+    (slot): slot is Slot =>
+      typeof slot === "object" &&
+      slot !== null &&
+      typeof (slot as Slot).startsAt === "string" &&
+      typeof (slot as Slot).label === "string",
+  );
+}
+
+/**
+ * Creates the booking the lead just confirmed, then tells them -- in that
+ * order, never the reverse. The confirmation sentence is composed
+ * deterministically from the tool result, so the one line that must never be
+ * wrong ("that is booked for X") is never a model output.
+ */
+async function confirmBooking(
+  input: ExecuteInput,
+  decision: AgentDecision,
+  slot: Slot,
+): Promise<TurnResult> {
+  const { context, run } = input;
+
+  // The slot came from a real calendar and was offered by this runtime, which
+  // is precisely what `requiresConfirmedAvailability` asserts.
+  const base = toolContext(input, decision.confidence);
+  const tools = { ...base, facts: { ...base.facts, availabilityConfirmed: true } };
+
+  const booked = await createBooking(tools, {
+    startsAt: slot.startsAt,
+    endsAt: slot.endsAt,
+    slotLabel: slot.label,
+  });
+
+  if (!booked.ok) {
+    // Someone took the slot, or the insert failed. Either way the lead must
+    // not be told they are booked.
+    return handover(
+      input,
+      booked.code === "BOOKING_ALREADY_EXISTS" ? "POLICY" : "TOOL_FAILURE",
+      "The lead chose a time but the booking could not be completed.",
+    );
+  }
+
+  const name = context.leadContext.firstName;
+  const body = name
+    ? `Thanks ${name} — that is booked for ${slot.label}. We will send confirmation shortly.`
+    : `That is booked for ${slot.label}. We will send confirmation shortly.`;
+
+  const sent = await sendMessage(tools, { body, sendKey: `agent-booked:${run.id}` });
+
+  await maybeRefreshSummary(context);
+
+  await closeRun(run, {
+    status: "COMPLETED",
+    outcome: "BOOKING_CREATED",
+    intent: "BOOKING_REQUEST",
+    intentConfidence: decision.confidence,
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: "BOOKED",
+    decision: {
+      action: "CREATE_BOOKING",
+      slot: slot.label,
+      bookingId: booked.data.bookingId,
+      confirmationSent: sent.ok,
+    },
+  });
+
+  return { outcome: "BOOKING_CREATED", runId: run.id, detail: `Booked for ${slot.label}.` };
+}
+
+/**
+ * The calendar answered honestly and had nothing free. Saying so beats
+ * offering a link the lead has already worked past, and beats inventing a
+ * time to fill the silence.
+ */
+async function offerNothingAvailable(
+  input: ExecuteInput,
+  decision: AgentDecision,
+): Promise<TurnResult> {
+  const tools = toolContext(input, decision.confidence);
+
+  await sendMessage(tools, {
+    body:
+      "I could not find anything free in the next couple of weeks. " +
+      "I will get someone from the team to sort a time with you.",
+    sendKey: `agent-no-slots:${input.run.id}`,
+  });
+
+  return handover(input, "POLICY", "No calendar availability inside the booking window.");
 }
 
 // -------------------------------------------------------------- plumbing

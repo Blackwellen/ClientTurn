@@ -24,7 +24,8 @@ export type JobType =
   | "agent.run"
   | "sourcing.run"
   | "business.analyse"
-  | "recurring_search.tick";
+  | "recurring_search.tick"
+  | "maintenance.expiry";
 
 export type EnqueueOptions = {
   businessId?: string | null;

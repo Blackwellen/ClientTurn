@@ -76,6 +76,9 @@ export type ProspectFilters = {
   intentWithinDays: number | null;
   icpProfileId: string | null;
   campaignId: string | null;
+  /** Scopes the list to one sourcing run, so "Open prospects" on a run means
+   *  that run's prospects rather than every prospect in the workspace. */
+  sourceRunId: string | null;
   sourceProvider: string | null;
   minScore: number | null;
   range: "7d" | "30d" | "90d" | "all";
@@ -106,6 +109,14 @@ function list(params: Params, key: string): string[] {
 
 function oneOf<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ids arrive from the URL, so anything that is not a UUID is dropped rather
+ *  than passed to the query builder. */
+function uuidOrNull(value: string | undefined): string | null {
+  return value && UUID_RE.test(value) ? value : null;
 }
 
 function intOrNull(value: string | undefined, min: number, max: number): number | null {
@@ -139,6 +150,7 @@ export function parseProspectFilters(params: Params): ProspectFilters {
     intentWithinDays: intOrNull(first(params, "intentDays"), 1, 365),
     icpProfileId: first(params, "icp") ?? null,
     campaignId: first(params, "campaign") ?? null,
+    sourceRunId: uuidOrNull(first(params, "runId")),
     sourceProvider: first(params, "provider") ?? null,
     minScore: intOrNull(first(params, "minScore"), 0, 100),
     range: oneOf(first(params, "range"), ["7d", "30d", "90d", "all"] as const, "all"),
@@ -172,6 +184,7 @@ export function prospectFiltersToParams(filters: ProspectFilters): URLSearchPara
   if (filters.intentWithinDays) set("intentDays", String(filters.intentWithinDays));
   set("icp", filters.icpProfileId);
   set("campaign", filters.campaignId);
+  set("runId", filters.sourceRunId);
   set("provider", filters.sourceProvider);
   if (filters.minScore !== null) set("minScore", String(filters.minScore));
   if (filters.range !== "all") set("range", filters.range);

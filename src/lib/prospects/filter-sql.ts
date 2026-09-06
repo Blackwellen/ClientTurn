@@ -71,6 +71,8 @@ export function applyProspectFilters<T>(query: T, filters: ProspectFilters): T {
   }
   if (filters.icpProfileId) q = q.eq("icp_profile_id", filters.icpProfileId);
   if (filters.campaignId) q = q.eq("campaign_id", filters.campaignId);
+  // Backed by the partial index prospects(business_id, source_run_id, status).
+  if (filters.sourceRunId) q = q.eq("source_run_id", filters.sourceRunId);
   if (filters.sourceProvider) q = q.eq("source_provider", filters.sourceProvider);
   if (filters.minScore !== null) q = q.gte("score", filters.minScore);
 
