@@ -21,7 +21,31 @@ export const serverEnv = {
   },
   stripe: {
     secretKey: required("STRIPE_SECRET_KEY_TEST"),
-    webhookSecret: optional("STRIPE_WEBHOOK_SECRET_CLIENTTURN"),
+    /**
+     * Stripe now splits deliveries into two destination kinds, and each signs
+     * with its own secret:
+     *
+     *   snapshot -- the classic v1 events this product actually acts on
+     *               (customer.subscription.*, invoice.*, checkout.session.*,
+     *               charge.refunded)
+     *   thin     -- the v2 `v2.core.*` family. Nothing here consumes them, but
+     *               a destination that exists must still be verified and
+     *               acknowledged or Stripe retries it indefinitely.
+     *
+     * Both point at the same route; the route verifies against whichever
+     * secret matches. `legacy` is the pre-split secret, kept so an environment
+     * that has not been migrated yet keeps working.
+     */
+    webhookSecrets: {
+      snapshot: optional("STRIPE_WEBHOOK_SECRET_SNAPSHOT"),
+      thin: optional("STRIPE_WEBHOOK_SECRET_THIN"),
+      legacy: optional("STRIPE_WEBHOOK_SECRET_CLIENTTURN"),
+    },
+    /** Destination ids, for identifying a delivery in the Stripe dashboard. */
+    webhookDestinations: {
+      snapshot: optional("STRIPE_WEBHOOK_DESTINATION_ID_SNAPSHOT"),
+      thin: optional("STRIPE_WEBHOOK_DESTINATION_ID_THIN"),
+    },
     prices: {
       starter: {
         month: optional("STRIPE_PRICE_STARTER_MONTHLY"),

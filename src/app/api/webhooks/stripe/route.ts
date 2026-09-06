@@ -27,20 +27,50 @@ const HANDLED = new Set([
   "charge.refunded",
 ]);
 
+/**
+ * The signing secrets this route will accept, most likely first.
+ *
+ * Both Stripe destinations post here, and each signs with its own secret, so
+ * verification tries each in turn rather than assuming which one sent this
+ * delivery. Order is by expected volume: snapshot events are the ones the
+ * product acts on.
+ */
+function candidateSecrets(): { kind: "snapshot" | "thin" | "legacy"; secret: string }[] {
+  const { snapshot, thin, legacy } = serverEnv.stripe.webhookSecrets;
+  return [
+    { kind: "snapshot" as const, secret: snapshot },
+    { kind: "thin" as const, secret: thin },
+    { kind: "legacy" as const, secret: legacy },
+  ].filter((entry): entry is { kind: "snapshot" | "thin" | "legacy"; secret: string } =>
+    Boolean(entry.secret),
+  );
+}
+
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
-  const secret = serverEnv.stripe.webhookSecret;
+  const secrets = candidateSecrets();
 
-  if (!signature || !secret) {
+  if (!signature || secrets.length === 0) {
     return NextResponse.json({ error: "not configured" }, { status: 400 });
   }
 
   const rawBody = await request.text();
 
-  let event: Stripe.Event;
-  try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, secret);
-  } catch {
+  let event: Stripe.Event | null = null;
+  let destination: "snapshot" | "thin" | "legacy" | null = null;
+
+  for (const candidate of secrets) {
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, signature, candidate.secret);
+      destination = candidate.kind;
+      break;
+    } catch {
+      // Signed by a different destination, or not by Stripe at all. Keep
+      // trying; a delivery that matches none is rejected below.
+    }
+  }
+
+  if (!event || !destination) {
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
 
@@ -59,13 +89,20 @@ export async function POST(request: Request) {
   }
 
   try {
+    // v2 "thin" events (`v2.core.*`) are Accounts v2 / Connect territory.
+    // Nothing here consumes them, but they are verified and acknowledged so
+    // Stripe stops retrying, and recorded so an unexpected one is visible
+    // rather than silently dropped.
     if (HANDLED.has(event.type)) {
       await applyEvent(event);
     }
 
     await supabase
       .from("webhook_events")
-      .update({ status: "processed", processed_at: new Date().toISOString() })
+      .update({
+        status: HANDLED.has(event.type) ? "processed" : "ignored",
+        processed_at: new Date().toISOString(),
+      })
       .eq("provider", "stripe")
       .eq("external_event_id", event.id);
   } catch (error) {
@@ -81,7 +118,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "processing failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ received: true });
+  return NextResponse.json({ received: true, destination });
 }
 
 async function applyEvent(event: Stripe.Event) {
