@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./button";
@@ -142,9 +143,31 @@ export function Drawer({
   useFocusTrap(panelRef, open);
   useEscape(open, onClose);
 
-  if (!open) return null;
+  // Portalled to the body rather than rendered where it is written.
+  //
+  // Callers mount drawers wherever the trigger lives, and that is frequently
+  // inside chrome that traps them twice over. The top bar, for instance, is
+  // `sticky z-30 backdrop-blur-md`: the z-index makes a stacking context, so
+  // an inner `z-50` only ever competes inside `z-30` and sinks under the
+  // support bubble; and a `backdrop-filter` ancestor becomes the containing
+  // block for `position: fixed` descendants, so `inset-0` stops meaning the
+  // viewport. Escaping to the body is what makes the classes below mean what
+  // they say, wherever the drawer is written.
+  //
+  // `mounted` keeps the first server render and the first client render
+  // identical -- there is no document to portal into during SSR. Read through
+  // useSyncExternalStore rather than an effect: the server snapshot is false
+  // and the client snapshot is true, which is exactly the distinction needed,
+  // without a state write during render or an effect that lints badly.
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
-  return (
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-50",
@@ -212,7 +235,8 @@ export function Drawer({
         <DrawerBody className={bodyClassName}>{children}</DrawerBody>
         {footer && <DrawerFooter>{footer}</DrawerFooter>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

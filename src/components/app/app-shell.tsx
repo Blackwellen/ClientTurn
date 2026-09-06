@@ -95,6 +95,12 @@ export function AppShell({
     ? "var(--lr-sidebar-collapsed)"
     : "var(--lr-sidebar-width)";
 
+  // Mirrored onto the root element so content-anchored drawers, which portal
+  // to the body and therefore sit outside this subtree, still resolve it.
+  React.useEffect(() => {
+    document.documentElement.style.setProperty("--lr-shell-pad", width);
+  }, [width]);
+
   return (
     <div className="min-h-screen bg-bg">
       <aside

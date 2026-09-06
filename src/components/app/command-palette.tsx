@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, Loader2, Repeat, Search, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -137,7 +138,17 @@ export function CommandPalette({
     }
   }
 
-  if (!open) return null;
+  // Portalled for the same reason the Drawer is: the palette is mounted inside
+  // the top bar, which is `sticky z-30 backdrop-blur-md` and therefore both a
+  // stacking context and the containing block for fixed descendants. Rendered
+  // in place, `fixed inset-0 z-50` means neither of those things.
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  if (!open || !mounted) return null;
 
   const hasResults = flat.length > 0;
   const categories = data
@@ -146,7 +157,7 @@ export function CommandPalette({
 
   let runningIndex = -1;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh] sm:pt-[16vh]">
       <Overlay onClick={onClose} />
       <div
@@ -270,6 +281,7 @@ export function CommandPalette({
             })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

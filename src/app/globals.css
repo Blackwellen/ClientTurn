@@ -137,6 +137,10 @@
   --lr-sidebar-width: 256px;
   --lr-sidebar-collapsed: 72px;
   --lr-topbar-height: 76px;
+  /* Width the app shell indents its content by. Mirrored onto the root
+     element by AppShell so drawers portalled to the body can line up
+     with the content column; the expanded rail is the SSR default. */
+  --lr-shell-pad: var(--lr-sidebar-width);
 
   /* --- shell chrome ---
      The sidebar rail is fixed near-black brand chrome in both the app and
