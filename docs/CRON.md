@@ -25,6 +25,18 @@ That means:
 
 Migration: `supabase/migrations/0024b_pg_cron_worker.sql`.
 
+## Environment status
+
+| Environment | Supabase project | Schedule | Enabled |
+|---|---|---|---|
+| Production (`https://clientturn.com`) | `losieaikadkadtmezini` | `clientturn-worker` / `-daily` / `-reap` | **Yes — 2026-09-06** |
+
+Production is done: `0024b` is applied, both Vault secrets are populated, and
+`clientturn-worker` is active on the 30-second schedule (pg_cron is 1.5+, so the
+interval form works). Verified by a scheduled tick returning HTTP 200 and
+draining the queue. Do not re-run the `create_secret` statements below against
+production — use `update_secret` to rotate.
+
 ## One-time setup per environment
 
 The migration deliberately contains no secrets. Before the schedule does
