@@ -5,9 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Logo } from "@/components/ui/logo";
 import { signOut } from "@/lib/auth/actions";
 import { cn } from "@/lib/cn";
+import { MarketingHeader } from "@/components/marketing/marketing-header";
+import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { isActiveAffiliateRoute, navFor } from "@/lib/affiliates/nav";
 import {
   AFFILIATE_STATUS_LABEL,
@@ -16,11 +17,18 @@ import {
 } from "@/lib/affiliates/types";
 
 /**
- * The partner portal chrome (V4 §33).
+ * The partner portal chrome.
  *
- * Deliberately not the customer app shell. A partner is a platform-level actor
- * with no workspace, and giving them furniture that looks like the product
- * would invite them to expect access they do not have.
+ * It wears the public site's chrome — the same header, the same footer, the
+ * same dark `.ct-marketing` palette — because a partner arrives here from
+ * clientturn.com and a portal that suddenly turns light with a different top
+ * bar reads as a different product rather than a signed-in area of this one.
+ *
+ * What it deliberately does NOT wear is the customer app shell. A partner is
+ * a platform-level actor with no workspace, so the product's own navigation
+ * would offer them destinations they have no access to. The partner's own nav
+ * sits under the header instead, which keeps the two roles distinct without
+ * making the portal look like somewhere else entirely.
  */
 export function AffiliateShell({
   status,
@@ -37,21 +45,31 @@ export function AffiliateShell({
   const items = navFor(status);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface-sunken">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            {/* Logo renders its own anchor, so it must not be wrapped in one. */}
-            <Logo href="/affiliates/app" height={24} className="shrink-0" />
-            <span className="hidden h-5 w-px bg-line sm:block" />
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-content">
-                {displayName}
-              </p>
-              <p className="truncate text-[11.5px] text-content-subtle">
-                Referral code {code}
-              </p>
-            </div>
+    // `ct-marketing` carries the dark token set the rest of the public site
+    // uses. Without it these surfaces resolve to the light app palette.
+    <div className="ct-marketing flex min-h-dvh w-full flex-col">
+      <a
+        href="#partner-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
+      >
+        Skip to content
+      </a>
+
+      <MarketingHeader />
+
+      {/* Who you are, and what your account is allowed to do. Sits between the
+          site header and the portal nav because it is context for the nav
+          rather than part of the site's own chrome. */}
+      <div className="border-b border-line bg-surface/40">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <p className="truncate text-[13px] font-medium text-content">
+              {displayName}
+            </p>
+            <span className="hidden h-4 w-px bg-line sm:block" />
+            <p className="truncate text-[11.5px] text-content-subtle">
+              Referral code {code}
+            </p>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -73,11 +91,13 @@ export function AffiliateShell({
             </button>
           </div>
         </div>
+      </div>
 
-        <nav
-          aria-label="Partner portal"
-          className="mx-auto flex w-full max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6"
-        >
+      <nav
+        aria-label="Partner portal"
+        className="border-b border-line"
+      >
+        <div className="mx-auto flex w-full max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6">
           {items.map((item) => {
             const active = isActiveAffiliateRoute(pathname, item.href);
             return (
@@ -96,24 +116,35 @@ export function AffiliateShell({
               </Link>
             );
           })}
-        </nav>
-      </header>
+        </div>
+      </nav>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+      <main
+        id="partner-main"
+        className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6"
+      >
         {children}
       </main>
 
-      <footer className="border-t border-line bg-surface">
+      {/* The payout note lives above the site footer rather than replacing it,
+          so a partner still gets the legal and contact links everyone else
+          has. */}
+      <div className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11.5px] text-content-subtle sm:px-6">
           <p>
             Commission is confirmed after the refund hold period and paid in the
             next payout run.
           </p>
-          <Link href="/affiliates/app/profile" className="underline-offset-4 hover:underline">
+          <Link
+            href="/affiliates/app/profile"
+            className="underline-offset-4 hover:underline"
+          >
             Programme terms
           </Link>
         </div>
-      </footer>
+      </div>
+
+      <MarketingFooter />
     </div>
   );
 }

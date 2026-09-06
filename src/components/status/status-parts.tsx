@@ -20,7 +20,7 @@ import {
   type ServiceStatus,
   type StatusGroup as StatusGroupData,
   type StatusService,
-} from "@/lib/status/service";
+} from "@/lib/status/types";
 
 /**
  * The public status page's building blocks (V4 §22.5-§22.9).
@@ -53,10 +53,10 @@ const DOT: Record<ServiceStatus, string> = {
 };
 
 const CHIP: Record<ServiceStatus, string> = {
-  OPERATIONAL: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  DEGRADED: "border-amber-200 bg-amber-50 text-amber-700",
-  OUTAGE: "border-red-200 bg-red-50 text-red-700",
-  MAINTENANCE: "border-slate-200 bg-slate-50 text-slate-600",
+  OPERATIONAL: "border-success-100 bg-success-50 text-success-700",
+  DEGRADED: "border-warning-100 bg-warning-50 text-warning-700",
+  OUTAGE: "border-danger-100 bg-danger-50 text-danger-700",
+  MAINTENANCE: "border-line bg-bg text-content-muted",
 };
 
 /** Status is never colour-only: the chip always carries its word. */
@@ -79,7 +79,7 @@ export function StatusLegend() {
   return (
     <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
       {(Object.keys(STATUS_META) as ServiceStatus[]).map((status) => (
-        <li key={status} className="flex items-center gap-2 text-[12.5px] text-slate-600">
+        <li key={status} className="flex items-center gap-2 text-[12.5px] text-content-muted">
           <span aria-hidden className={cn("size-2 rounded-full", DOT[status])} />
           {STATUS_META[status].label}
         </li>
@@ -111,28 +111,28 @@ export function StatusRow({ service }: { service: StatusService }) {
   const Icon = SERVICE_ICON[service.key] ?? Radar;
 
   return (
-    <article className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="h-full rounded-xl border border-line bg-surface p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2.5">
           <span
             aria-hidden
-            className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[9px] border border-emerald-100 bg-emerald-50 text-emerald-600"
+            className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[9px] border border-emerald-100 bg-success-50 text-success-600"
           >
             <Icon className="size-4" />
           </span>
-          <h4 className="min-w-0 text-[13.5px] font-semibold leading-tight text-slate-900">
+          <h4 className="min-w-0 text-[13.5px] font-semibold leading-tight text-content">
             {service.name}
           </h4>
         </div>
         <StatusChip status={service.status} />
       </div>
 
-      <p className="mt-2 text-[12px] leading-[1.45] text-slate-500">
+      <p className="mt-2 text-[12px] leading-[1.45] text-content-subtle">
         {service.description}
       </p>
 
       <div className="mt-3 flex items-end justify-between gap-3">
-        <p className="text-[12.5px] font-medium text-slate-700">
+        <p className="text-[12.5px] font-medium text-content-secondary">
           {service.uptime === null
             ? "Uptime not measured"
             : `${(service.uptime * 100).toFixed(1)}% uptime`}
@@ -170,7 +170,7 @@ function UptimeSparkline({
           key={index}
           className={cn(
             "w-[3px] rounded-[1px]",
-            status === null ? "h-2 bg-slate-200" : DOT[status],
+            status === null ? "h-2 bg-line" : DOT[status],
             status === "OPERATIONAL" && "h-4",
             status === "DEGRADED" && "h-5",
             status === "OUTAGE" && "h-6",
@@ -188,7 +188,7 @@ export function RecentFailures({ failures }: { failures: RecentFailure[] }) {
   return (
     <StatusPanel title="Recent failures" tone="danger">
       {failures.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-slate-500">
+        <p className="py-6 text-center text-[13px] text-content-subtle">
           No failures recorded recently.
         </p>
       ) : (
@@ -197,28 +197,28 @@ export function RecentFailures({ failures }: { failures: RecentFailure[] }) {
             Recent provider failures and whether they are resolved.
           </caption>
           <thead>
-            <tr className="border-b border-slate-200 text-[11.5px] text-slate-500">
+            <tr className="border-b border-line text-[11.5px] text-content-subtle">
               <th scope="col" className="pb-2 font-medium">Time</th>
               <th scope="col" className="pb-2 font-medium">Service</th>
               <th scope="col" className="pb-2 font-medium">Error</th>
               <th scope="col" className="pb-2 text-right font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {failures.map((failure) => (
               <tr key={failure.id}>
-                <td className="py-2 whitespace-nowrap text-slate-500">
+                <td className="py-2 whitespace-nowrap text-content-subtle">
                   {formatShort(failure.at)}
                 </td>
-                <td className="py-2 text-slate-700">{failure.service}</td>
-                <td className="py-2 text-slate-700">{failure.label}</td>
+                <td className="py-2 text-content-secondary">{failure.service}</td>
+                <td className="py-2 text-content-secondary">{failure.label}</td>
                 <td className="py-2 text-right">
                   <span
                     className={cn(
                       "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium",
                       failure.resolved
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-amber-200 bg-amber-50 text-amber-700",
+                        ? "border-success-100 bg-success-50 text-success-700"
+                        : "border-warning-100 bg-warning-50 text-warning-700",
                     )}
                   >
                     {failure.resolved ? "Resolved" : "Investigating"}
@@ -258,21 +258,21 @@ export function BackgroundJobs({ jobs }: { jobs: JobSummary }) {
       <ul className="space-y-2.5">
         {rows.map((row) => (
           <li key={row.label} className="flex items-center gap-3">
-            <span className="w-[8.5rem] shrink-0 text-[12.5px] text-slate-600">
+            <span className="w-[8.5rem] shrink-0 text-[12.5px] text-content-muted">
               {row.label}
             </span>
-            <span className="w-16 shrink-0 text-right text-[13px] font-semibold tabular-nums text-slate-900">
+            <span className="w-16 shrink-0 text-right text-[13px] font-semibold tabular-nums text-content">
               {row.value.toLocaleString("en-GB")}
             </span>
             {row.share !== null && (
               <>
-                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-sunken">
                   <span
                     className={cn("block h-full rounded-full", row.tone)}
                     style={{ width: `${Math.max(1, row.share * 100)}%` }}
                   />
                 </span>
-                <span className="w-12 shrink-0 text-right text-[12px] tabular-nums text-slate-500">
+                <span className="w-12 shrink-0 text-right text-[12px] tabular-nums text-content-subtle">
                   {(row.share * 100).toFixed(1)}%
                 </span>
               </>
@@ -280,9 +280,9 @@ export function BackgroundJobs({ jobs }: { jobs: JobSummary }) {
           </li>
         ))}
 
-        <li className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
-          <span className="text-[12.5px] text-slate-600">Average processing time</span>
-          <span className="text-[13px] font-semibold tabular-nums text-slate-900">
+        <li className="flex items-center justify-between gap-3 border-t border-line-subtle pt-2.5">
+          <span className="text-[12.5px] text-content-muted">Average processing time</span>
+          <span className="text-[13px] font-semibold tabular-nums text-content">
             {jobs.averageProcessingSeconds === null
               ? "—"
               : `${jobs.averageProcessingSeconds}s`}
@@ -310,12 +310,12 @@ export function LastSync({
                 aria-hidden
                 className={cn(
                   "size-2 shrink-0 rounded-full",
-                  row.at ? "bg-emerald-500" : "bg-slate-300",
+                  row.at ? "bg-emerald-500" : "bg-line-strong",
                 )}
               />
-              <span className="truncate text-[12.5px] text-slate-700">{row.name}</span>
+              <span className="truncate text-[12.5px] text-content-secondary">{row.name}</span>
             </span>
-            <span className="shrink-0 text-[12.5px] tabular-nums text-slate-500">
+            <span className="shrink-0 text-[12.5px] tabular-nums text-content-subtle">
               {row.at ? formatShort(row.at) : "No recent sync"}
             </span>
           </li>
@@ -337,11 +337,11 @@ export function StatusPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-xl border border-line bg-surface p-4 shadow-sm">
       <h3
         className={cn(
           "mb-3 text-[14px] font-semibold",
-          tone === "danger" ? "text-slate-900" : "text-slate-900",
+          tone === "danger" ? "text-content" : "text-content",
         )}
       >
         {title}

@@ -1,8 +1,6 @@
 import * as React from "react";
-import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
-import { ArrowLeft, CircleAlert, CircleCheck, Mail } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { getStatusSnapshot, STATUS_META } from "@/lib/status/service";
 import {
   BackgroundJobs,
@@ -58,75 +56,42 @@ export default async function StatusPage() {
         : "We are aware of the issue and are working on it. This page updates automatically.";
 
   return (
-    <>
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-          <Link href="/" className="flex shrink-0 items-center gap-2">
-            <Image
-              src="/white_background_logo.png"
-              alt="ClientTurn"
-              width={150}
-              height={40}
-              priority
-              className="h-8 w-auto"
-            />
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 hover:text-slate-900"
-            >
-              <ArrowLeft className="size-3.5" aria-hidden />
-              Back to ClientTurn
-            </Link>
-            <Link
-              href="/contact-sales?topic=status-updates"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            >
-              <Mail className="size-3.5" aria-hidden />
-              Subscribe to updates
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main id="status-main" className="flex-1">
+    <main id="status-main" className="flex-1">
         {/* ------------------------------------------------------------ hero */}
         <section
           className={cn(
-            "border-b border-slate-200",
+            "border-b border-line",
             snapshot.overall === "OPERATIONAL"
-              ? "bg-gradient-to-b from-emerald-50/70 to-slate-50"
+              ? "bg-gradient-to-b from-success-50/70 to-bg"
               : snapshot.overall === "OUTAGE"
-                ? "bg-gradient-to-b from-red-50/70 to-slate-50"
-                : "bg-gradient-to-b from-amber-50/70 to-slate-50",
+                ? "bg-gradient-to-b from-danger-50/70 to-bg"
+                : "bg-gradient-to-b from-warning-50/70 to-bg",
           )}
         >
           <div className="mx-auto flex max-w-[1180px] flex-wrap items-start justify-between gap-6 px-5 py-9">
             <div className="min-w-[18rem] flex-1">
-              <p className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <p className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-content-subtle">
                 System status
               </p>
-              <h1 className="mt-2 text-[34px] font-bold leading-[1.15] text-slate-900">
+              <h1 className="mt-2 text-[34px] font-bold leading-[1.15] text-content">
                 ClientTurn is{" "}
                 <span
                   className={cn(
                     snapshot.overall === "OPERATIONAL"
-                      ? "text-emerald-600"
+                      ? "text-success-600"
                       : snapshot.overall === "OUTAGE"
-                        ? "text-red-600"
-                        : "text-amber-600",
+                        ? "text-danger-600"
+                        : "text-warning-600",
                   )}
                 >
                   {headline}
                 </span>
               </h1>
-              <p className="mt-2 max-w-[46rem] text-[15px] text-slate-600">
+              <p className="mt-2 max-w-[46rem] text-[15px] text-content-muted">
                 {subline}
               </p>
 
-              <p className="mt-4 inline-flex items-center gap-2 text-[13px] text-slate-600">
+              <p className="mt-4 inline-flex items-center gap-2 text-[13px] text-content-muted">
                 <span
                   aria-hidden
                   className={cn(
@@ -145,7 +110,7 @@ export default async function StatusPage() {
 
               {/* Said plainly rather than dressed as health. */}
               {snapshot.stale && (
-                <p className="mt-2 max-w-[46rem] rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+                <p className="mt-2 max-w-[46rem] rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-[12.5px] text-amber-800">
                   These readings are older than expected, so they may not reflect
                   the current state of the platform.
                 </p>
@@ -156,10 +121,10 @@ export default async function StatusPage() {
               className={cn(
                 "w-full max-w-[22rem] rounded-xl border p-4 shadow-sm",
                 snapshot.overall === "OPERATIONAL"
-                  ? "border-emerald-200 bg-emerald-50"
+                  ? "border-success-100 bg-success-50"
                   : snapshot.overall === "OUTAGE"
-                    ? "border-red-200 bg-red-50"
-                    : "border-amber-200 bg-amber-50",
+                    ? "border-danger-100 bg-danger-50"
+                    : "border-warning-100 bg-warning-50",
               )}
             >
               <div className="flex items-start gap-3">
@@ -181,12 +146,12 @@ export default async function StatusPage() {
                   )}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-slate-900">
+                  <p className="text-[15px] font-semibold text-content">
                     {snapshot.overall === "OPERATIONAL"
                       ? "All systems operational"
                       : `${meta.label} — some services affected`}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-slate-600">
+                  <p className="mt-0.5 text-[12.5px] text-content-muted">
                     {snapshot.overall === "OPERATIONAL"
                       ? "ClientTurn is running normally. No ongoing incidents."
                       : "One or more services are not fully healthy."}
@@ -201,8 +166,8 @@ export default async function StatusPage() {
         <div className="mx-auto max-w-[1180px] px-5 py-8">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h2 className="text-[20px] font-bold text-slate-900">Services</h2>
-              <p className="mt-0.5 text-[13.5px] text-slate-600">
+              <h2 className="text-[20px] font-bold text-content">Services</h2>
+              <p className="mt-0.5 text-[13.5px] text-content-muted">
                 Status of all ClientTurn services and integrations.
               </p>
             </div>
@@ -223,37 +188,5 @@ export default async function StatusPage() {
         </div>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-4 px-5 py-6">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/white_background_logo.png"
-              alt=""
-              width={130}
-              height={34}
-              className="h-7 w-auto"
-            />
-            <div>
-              <p className="text-[13px] font-semibold text-slate-900">
-                System Status
-              </p>
-              <p className="text-[12px] text-slate-500">
-                Status and performance information for ClientTurn.
-              </p>
-            </div>
-          </div>
-
-          <p className="text-[13px] text-slate-600">
-            Need help?{" "}
-            <Link
-              href="/contact-sales"
-              className="font-medium text-blue-600 hover:underline"
-            >
-              Contact support
-            </Link>
-          </p>
-        </div>
-      </footer>
-    </>
   );
 }
