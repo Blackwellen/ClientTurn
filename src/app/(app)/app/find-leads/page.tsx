@@ -1,7 +1,6 @@
 import * as React from "react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Megaphone, Sparkles } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { parseProspectFilters } from "@/lib/prospects/filters";
@@ -11,9 +10,12 @@ import {
   listProspects,
 } from "@/lib/prospects/queries";
 import { loadDiscoverData } from "@/lib/find-leads/server/discover";
+import { loadIntentData } from "@/lib/intent/queries";
+import { listCampaigns } from "@/lib/outreach/queries";
 import { FindLeadsView } from "@/components/find-leads/find-leads-view";
-import { ComingSoonView } from "@/components/find-leads/coming-soon-view";
 import { DiscoverView } from "@/components/find-leads/discover/discover-view";
+import { IntentView } from "@/components/find-leads/intent/intent-view";
+import { CampaignsView } from "@/components/find-leads/campaigns/campaigns-view";
 import { ProspectDrawerHost } from "@/components/find-leads/prospect-drawer-host";
 import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
@@ -80,13 +82,16 @@ export default async function FindLeadsPage({
   // Nothing below depends on anything else, so the page never waterfalls. The
   // prospect list is only fetched for the view that shows it — Discover must
   // not pay to page a table nobody is looking at.
-  const [prospects, counts, options, discoverData] = await Promise.all([
+  const [prospects, counts, options, discoverData, intentData, campaignData] =
+    await Promise.all([
     filters.view === "prospects"
       ? listProspects(workspace.businessId, filters)
       : Promise.resolve({ rows: [], total: 0, page: 1, pageSize: filters.pageSize }),
     getProspectQuickCounts(workspace.businessId),
     getProspectFilterOptions(workspace.businessId),
     loadDiscoverData(workspace.businessId),
+    filters.view === "intent" ? loadIntentData(workspace.businessId) : Promise.resolve(null),
+    filters.view === "campaigns" ? listCampaigns(workspace.businessId) : Promise.resolve(null),
   ]);
 
   const canManage = hasRole(workspace.role, "admin");
@@ -112,18 +117,10 @@ export default async function FindLeadsPage({
           ) : null
         }
         intent={
-          <ComingSoonView
-            icon={Sparkles}
-            title="Intent monitoring is being built"
-            description="Intent will let you name the buying signals that matter to your business and watch for them across permitted sources. Signals you add to a search plan already influence sourcing today."
-          />
+          intentData ? <IntentView data={intentData} canManage={canManage} /> : null
         }
         campaigns={
-          <ComingSoonView
-            icon={Megaphone}
-            title="Acquisition campaigns are being built"
-            description="Campaigns will coordinate permitted outreach to approved prospects, with budgets and caps enforced server-side. Ready prospects from a sourcing run are waiting in the Prospects tab."
-          />
+          campaignData ? <CampaignsView data={campaignData} canManage={canManage} /> : null
         }
       />
       <ProspectDrawerHost

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { requireWorkspace } from "@/lib/auth/session";
+import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
@@ -68,6 +68,10 @@ export default async function AppLayout({
         initialCollapsed={initialCollapsed}
         businessName={workspace.businessName}
         planLabel={PLAN_LABELS[entitlements.plan] ?? entitlements.plan}
+        plan={entitlements.plan}
+        // Only an owner can open Billing, so only an owner is offered the
+        // upgrade prompt in the rail.
+        canManageBilling={hasRole(workspace.role, "owner")}
         primaryNav={primaryNavFor({
           sourcing: v4Entitlements.sourcingEnabled,
           // Analytics is a depth tier rather than an on/off capability: every

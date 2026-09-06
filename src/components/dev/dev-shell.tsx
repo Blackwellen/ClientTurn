@@ -12,12 +12,21 @@ import { primaryNavFor } from "@/lib/app/nav";
  * its icon itself, because an icon is a React component and a function cannot
  * cross the server/client boundary.
  */
-export function DevShell({ children }: { children: React.ReactNode }) {
+export function DevShell({
+  children,
+  plan = "growth",
+}: {
+  children: React.ReactNode;
+  /** Overridden by a harness that wants to see another tier's sidebar. */
+  plan?: string;
+}) {
   return (
     <ToastProvider>
       <AppShell
         businessName="Blackwellen Roofing & Exteriors"
-        planLabel="Enterprise"
+        planLabel={plan === "enterprise" ? "Enterprise" : "Growth"}
+        plan={plan}
+        canManageBilling
         primaryNav={primaryNavFor({ sourcing: true, analytics: true }).map(
           (item) => item.href,
         )}

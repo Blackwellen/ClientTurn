@@ -42,8 +42,18 @@ export default async function InboxPage({
 
   if (channel !== "all") query = query.eq("channel", channel);
 
-  const { data, error } = await query;
+  // Counts come from the SQL function so the rail reflects the whole inbox,
+  // not just the 100 rows this page happens to have fetched.
+  const [{ data, error }, countsResult] = await Promise.all([
+    query,
+    supabase.rpc("inbox_channel_counts", { p_business_id: workspace.businessId }),
+  ]);
   if (error) throw new Error("Could not load the inbox.");
+
+  const channelCounts: Record<string, { total: number; unread: number }> = {};
+  for (const row of countsResult.data ?? []) {
+    channelCounts[row.channel] = { total: row.total, unread: row.unread };
+  }
 
   const conversations: ConversationRow[] = (data ?? []).map((row) => ({
     id: row.id,
@@ -118,6 +128,7 @@ export default async function InboxPage({
       archived={archived}
       search={search}
       conversations={filtered}
+      channelCounts={channelCounts}
       selected={selected}
       messages={messages}
       agentState={agentState}

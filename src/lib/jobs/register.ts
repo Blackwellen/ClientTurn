@@ -17,10 +17,12 @@ import { handleCostRollupDaily, handleCostRollupMonthly } from "./handlers/cost-
 import { handleLeadSourcePoll } from "./handlers/lead-source-poll";
 import { handleCrmPush } from "./handlers/crm-push";
 import { handleNotificationSlack } from "./handlers/notification-slack";
+import { handleMaintenanceExpiry } from "./handlers/maintenance";
 import { handleAgentRun } from "./handlers/agent-run";
 import { handleSourcingRun } from "./handlers/sourcing-run";
 import { handleBusinessAnalyse } from "./handlers/business-analyse";
 import { handleRecurringSearchTick } from "./handlers/recurring-search";
+import { handleOutreachDispatch } from "./handlers/outreach-dispatch";
 import { handleAppIngest } from "./handlers/app-ingest";
 import "@/lib/integrations/providers/google-ads";
 import "@/lib/integrations/providers/microsoft-ads";
@@ -59,10 +61,12 @@ export function registerJobHandlers() {
   registerHandler("lead_source.poll", handleLeadSourcePoll);
   registerHandler("crm.push", handleCrmPush);
   registerHandler("notification.slack", handleNotificationSlack);
+  registerHandler("maintenance.expiry", handleMaintenanceExpiry);
   registerHandler("agent.run", handleAgentRun);
   registerHandler("sourcing.run", handleSourcingRun);
   registerHandler("business.analyse", handleBusinessAnalyse);
   registerHandler("recurring_search.tick", handleRecurringSearchTick);
+  registerHandler("outreach.dispatch", handleOutreachDispatch);
   registerHandler("app.ingest", handleAppIngest);
 }
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -20,6 +21,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { nextPlanFor, PLANS } from "@/lib/billing/plans";
 import { Badge, StatusBadge, SUBSCRIPTION_STATUS } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -138,7 +140,9 @@ export function BillingSettings({
 }) {
   const { toast } = useToast();
   const [portalPending, setPortalPending] = React.useState(false);
+  const router = useRouter();
   const [checkoutPending, setCheckoutPending] = React.useState(false);
+  const upgradeTarget = nextPlanFor(billing.plan);
 
   async function onPortal() {
     setPortalPending(true);
@@ -157,9 +161,25 @@ export function BillingSettings({
     }
   }
 
+  /**
+   * Checks out the tier directly above the current one, rather than a fixed
+   * plan: hard-coding one meant a Growth workspace was sent to buy Growth
+   * again and Pro could not be bought in-app at all.
+   */
   async function onUpgrade() {
+    if (!upgradeTarget) return;
+
+    // Enterprise has no public price, so it is a conversation, not a checkout.
+    if (upgradeTarget === "enterprise") {
+      router.push("/contact-sales");
+      return;
+    }
+
     setCheckoutPending(true);
-    const result = await startPlanCheckout({ plan: "growth", interval: "month" });
+    const result = await startPlanCheckout({
+      plan: upgradeTarget,
+      interval: "month",
+    });
     setCheckoutPending(false);
 
     if (result.ok) {
@@ -238,15 +258,19 @@ export function BillingSettings({
                 </div>
 
                 <div className="space-y-2 pt-1">
-                  <Button
-                    fullWidth
-                    size="md"
-                    loading={checkoutPending}
-                    onClick={onUpgrade}
-                  >
-                    <Rocket className="size-3.5" aria-hidden />
-                    Upgrade plan
-                  </Button>
+                  {upgradeTarget && (
+                    <Button
+                      fullWidth
+                      size="md"
+                      loading={checkoutPending}
+                      onClick={onUpgrade}
+                    >
+                      <Rocket className="size-3.5" aria-hidden />
+                      {upgradeTarget === "enterprise"
+                        ? "Talk to sales about Enterprise"
+                        : `Upgrade to ${PLANS[upgradeTarget].name}`}
+                    </Button>
+                  )}
                   <Button
                     fullWidth
                     size="md"

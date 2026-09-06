@@ -38,6 +38,23 @@ export async function GET(request: Request) {
   await enqueue("retention.cleanup", {}, { idempotencyKey: `retention-cleanup:${dateKey}` });
   enqueued.push("retention.cleanup");
 
+  // Expires stale intent matches and releases reservations left behind by a
+  // worker that died mid-flight. Without this, expired signals keep inflating
+  // prospect scores and abandoned reservations permanently consume allowance.
+  await enqueue("maintenance.expiry", {}, { idempotencyKey: `maintenance-expiry:${dateKey}` });
+  enqueued.push("maintenance.expiry");
+
+  // Recurring sourcing. The sweep re-runs plans the customer already approved
+  // and whose bounds have not changed since; each run still passes the full
+  // budget and entitlement check, so a workspace out of allowance simply
+  // produces no run this cycle.
+  await enqueue(
+    "recurring_search.tick",
+    {},
+    { idempotencyKey: `recurring-search:${dateKey}` },
+  );
+  enqueued.push("recurring_search.tick");
+
   if (isFirstOfMonth) {
     await enqueue(
       "cost.rollup_monthly",

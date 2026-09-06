@@ -141,13 +141,16 @@ export async function runProviderBatch<T>(
     const response = await request.invoke(provider);
     const latencyMs = response.latencyMs || Date.now() - started;
 
-    // Providers rarely report a price on the response; where they do not, the
-    // price book estimate stands as the recorded actual.
-    const actual = response.ok
-      ? response.costMinor > 0
-        ? response.costMinor
-        : estimateFor(request.capability, response.records.length, request.unitCosts)
-      : 0;
+    // A provider that reports its own price is believed. One that does not is
+    // billed at the price book — except a free source, which is billed at zero
+    // rather than at the rate of the metered vendor it replaced.
+    const actual = !response.ok
+      ? 0
+      : provider.freeOfCharge
+        ? 0
+        : response.costMinor > 0
+          ? response.costMinor
+          : estimateFor(request.capability, response.records.length, request.unitCosts);
 
     if (query) {
       await admin

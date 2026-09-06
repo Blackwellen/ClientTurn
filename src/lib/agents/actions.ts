@@ -157,34 +157,39 @@ export async function controlAgent(id: unknown, command: unknown) {
 
   if (starting) {
     const entitlements = await getV4Entitlements(workspace.businessId);
-    if (!entitlements.active || !entitlements.sourcingEnabled) {
-      return { error: "An active plan that includes sourcing is required." };
+    if (!entitlements.active) {
+      return { error: "This workspace does not have an active subscription." };
     }
 
-    // Only sourcing is orchestrated independently today. Saying so is better
-    // than starting an agent that would sit idle and look broken.
-    if (agent.agent_type !== "SOURCING") {
-      return {
-        error:
-          "Booking is configured in Follow-Up and re-engagement in Reactivation. Independent background running for this agent type is not connected yet.",
-      };
+    // Only the roles that actually source prospects need the sourcing
+    // entitlement. Booking and re-engagement work existing leads, which every
+    // paying plan includes.
+    const sources = agent.agent_type === "SOURCING" || agent.agent_type === "COMBINED";
+    if (sources && !entitlements.sourcingEnabled) {
+      return { error: "Your plan does not include sourcing agents. Review Billing & Usage." };
     }
 
-    if (!agent.search_strategy_id) {
-      return {
-        error: "This agent needs an approved Find Leads search plan before it can run.",
-      };
-    }
+    // Sourcing needs an approved plan before it can spend anything. Booking
+    // and re-engagement orchestrate engines configured elsewhere, and their
+    // ticks re-check contactability per lead, so there is nothing equivalent
+    // to approve up front.
+    if (agent.agent_type === "SOURCING" || agent.agent_type === "COMBINED") {
+      if (!agent.search_strategy_id) {
+        return {
+          error: "This agent needs an approved Find Leads search plan before it can run.",
+        };
+      }
 
-    const { data: plan } = await db
-      .from("search_strategies")
-      .select("status")
-      .eq("id", agent.search_strategy_id)
-      .eq("business_id", workspace.businessId)
-      .maybeSingle();
+      const { data: plan } = await db
+        .from("search_strategies")
+        .select("status")
+        .eq("id", agent.search_strategy_id)
+        .eq("business_id", workspace.businessId)
+        .maybeSingle();
 
-    if (plan?.status !== "APPROVED") {
-      return { error: "Approve the search plan in Find Leads before running this agent." };
+      if (plan?.status !== "APPROVED") {
+        return { error: "Approve the search plan in Find Leads before running this agent." };
+      }
     }
   }
 

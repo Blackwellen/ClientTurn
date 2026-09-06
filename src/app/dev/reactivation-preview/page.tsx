@@ -53,6 +53,8 @@ export default async function ReactivationPreviewPage({
       <AppShell
         businessName="Blackwellen Roofing & Exteriors"
         planLabel="Enterprise"
+        plan="enterprise"
+        canManageBilling={false}
         primaryNav={primaryNavFor({ sourcing: true, analytics: true }).map(item => item.href)}
         integrationStatus="DISCONNECTED"
         notifications={[]}

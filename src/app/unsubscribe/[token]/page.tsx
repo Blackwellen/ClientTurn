@@ -38,7 +38,9 @@ async function unsubscribe(token: string): Promise<
     .eq("unsubscribe_token" as "id", token)
     .maybeSingle();
 
-  if (!lead) return { ok: false };
+  // A token that is not a lead may be a prospect: cold outreach carries the
+  // same one-click unsubscribe, and it has to actually work.
+  if (!lead) return unsubscribeProspect(token);
 
   await admin
     .from("leads")
@@ -68,6 +70,78 @@ async function unsubscribe(token: string): Promise<
     .in("state", ["pending", "scheduled"]);
 
   const business = lead.businesses as { name?: string } | null;
+  return { ok: true, business: business?.name ?? "this business" };
+}
+
+/**
+ * The prospect half of unsubscribe.
+ *
+ * Suppression is written first and at workspace scope, not just on the one
+ * prospect row: the point of an opt-out is that the *address* stops being
+ * contactable, including by a future sourcing run that rediscovers the same
+ * person at the same company.
+ */
+async function unsubscribeProspect(token: string): Promise<
+  { ok: true; business: string } | { ok: false }
+> {
+  const admin = createAdminClient();
+
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("id, business_id, email, businesses ( name )")
+    .eq("unsubscribe_token" as "id", token)
+    .maybeSingle();
+
+  if (!prospect) return { ok: false };
+
+  const email = normaliseEmail(prospect.email);
+
+  if (email) {
+    // The V4 suppression table, which the sourcing run's compliance stage and
+    // the outreach dispatcher both consult.
+    await admin.from("suppression_entries").insert({
+      business_id: prospect.business_id,
+      email,
+      channel: "EMAIL",
+      reason: "OPT_OUT",
+      source: "unsubscribe_link",
+    });
+
+    // And the V3 table, so the follow-up and reactivation engines honour it
+    // too if this person later arrives as a lead.
+    await admin.from("contact_suppressions").upsert(
+      {
+        business_id: prospect.business_id,
+        normalized_contact: email,
+        channel: "email",
+        reason: "opt_out",
+        source: "unsubscribe_link",
+      },
+      { onConflict: "business_id,normalized_contact,channel" },
+    );
+  }
+
+  await admin
+    .from("prospects")
+    .update({
+      status: "UNSUBSCRIBED",
+      outreach_eligibility: "SUPPRESSED",
+      eligibility_reason: "Unsubscribed",
+      campaign_id: null,
+    })
+    .eq("id", prospect.id);
+
+  await admin
+    .from("outreach_recipient_runs")
+    .update({
+      status: "STOPPED",
+      stop_reason: "OPTED_OUT",
+      stopped_at: new Date().toISOString(),
+    })
+    .eq("prospect_id", prospect.id)
+    .in("status", ["PENDING", "SCHEDULED", "ACTIVE"]);
+
+  const business = prospect.businesses as { name?: string } | null;
   return { ok: true, business: business?.name ?? "this business" };
 }
 

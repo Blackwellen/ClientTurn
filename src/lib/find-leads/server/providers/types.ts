@@ -55,6 +55,11 @@ export type VerificationResult = {
   score: number | null;
 };
 
+export type IntentCategoryQuery = {
+  name: string;
+  keywords: string[];
+};
+
 export type IntentResult = {
   /** Matches a category name from the plan's intent list. */
   category: string;
@@ -116,6 +121,13 @@ export type SourcingProvider = {
   costRank: number;
   /** False when the credential is absent. Unconfigured providers are skipped. */
   configured: () => boolean;
+  /**
+   * True when this source costs nothing external — reading public pages we
+   * fetch ourselves, rather than a metered vendor. The router bills the price
+   * book when a provider reports no price, which would otherwise charge a
+   * customer's budget for work nobody invoiced us for.
+   */
+  freeOfCharge?: boolean;
 
   searchCompanies?: (window: SearchWindow) => Promise<ProviderResponse<CompanyCandidate>>;
   findContacts?: (input: {
@@ -131,7 +143,9 @@ export type SourcingProvider = {
   }) => Promise<ProviderResponse<VerificationResult>>;
   fetchIntent?: (input: {
     domains: string[];
-    categories: string[];
+    /** The workspace's own categories, with the keywords it configured for
+     *  each. Matching on a bare category name would be guesswork. */
+    categories: IntentCategoryQuery[];
     freshnessDays: number;
   }) => Promise<ProviderResponse<IntentResult>>;
 };

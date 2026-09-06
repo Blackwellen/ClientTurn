@@ -1,16 +1,11 @@
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Clock, Gauge, Repeat } from "lucide-react";
+import { ArrowRight, Clock, Gauge } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/cn";
 import type { RecentRun } from "@/lib/find-leads/server/runs";
-import {
-  CADENCE_LABELS,
-  RUN_STATUS_LABELS,
-  runStatusTone,
-  type RecurringSearchView,
-} from "@/lib/find-leads/types";
+import { RUN_STATUS_LABELS, runStatusTone } from "@/lib/find-leads/types";
 
 /**
  * The Discover right rail's smaller cards.
@@ -75,66 +70,6 @@ export function RecentSourcingRunsCard({ runs }: { runs: RecentRun[] }) {
                   {relativeTime(run.createdAt)}
                 </span>
               </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/* -------------------------------------------------------- recurring */
-
-export function RecurringSourcingCard({
-  schedules,
-}: {
-  schedules: RecurringSearchView[];
-}) {
-  return (
-    <section className="rounded-xl border border-line bg-surface shadow-xs">
-      <header className="flex items-center gap-2.5 px-4 py-3.5">
-        <span
-          aria-hidden
-          className="flex size-7 items-center justify-center rounded-md bg-accent-50 text-content-accent"
-        >
-          <Repeat className="size-3.5" />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-[14.5px] font-semibold text-content">Recurring sourcing</h2>
-        </div>
-      </header>
-
-      {schedules.length === 0 ? (
-        <p className="px-4 pb-4 text-[12.5px] leading-relaxed text-content-muted">
-          Create a recurring search to keep your pipeline fresh. Recurring searches
-          re-run a plan you have already approved.
-        </p>
-      ) : (
-        <ul className="px-2 pb-2">
-          {schedules.map((schedule) => (
-            <li
-              key={schedule.id}
-              className="flex items-center gap-3 rounded-lg px-2 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-medium text-content">
-                  {schedule.name}
-                </p>
-                <p className="text-[11.5px] text-content-muted">
-                  {CADENCE_LABELS[schedule.cadence]} ·{" "}
-                  <span className="tabular-nums">
-                    {schedule.targetPerRun.toLocaleString("en-GB")}
-                  </span>{" "}
-                  prospects
-                </p>
-              </div>
-              <Badge
-                tone={schedule.status === "ACTIVE" ? "success" : "neutral"}
-                dot
-                dense
-              >
-                {schedule.status === "ACTIVE" ? "On" : "Paused"}
-              </Badge>
             </li>
           ))}
         </ul>

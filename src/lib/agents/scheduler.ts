@@ -2,14 +2,15 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parsePlan } from "@/lib/find-leads/plan";
 import { createRun } from "@/lib/find-leads/server/runs";
+import { runBookingTick, runReengagementTick } from "./ticks";
 
 /** Compare-and-swap the due timestamp before work: concurrent cron ticks cannot
  * spend twice for the same schedule. Every run rechecks subscription and budget. */
 export async function scheduleAgents() {
   const db = createAdminClient();
   const now = new Date().toISOString();
-  const { data: due, error } = await db.from("agents").select("id, business_id, created_by, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
-    .eq("status", "ACTIVE").eq("agent_type", "SOURCING").lte("next_run_at", now).limit(3);
+  const { data: due, error } = await db.from("agents").select("id, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
+    .eq("status", "ACTIVE").in("agent_type", ["SOURCING", "BOOKING", "REENGAGEMENT", "COMBINED"]).lte("next_run_at", now).limit(3);
   if (error) throw error;
   for (const agent of due ?? []) {
     const hours = ({ HOURLY: 1, DAILY: 24, WEEKLY: 168 } as Record<string, number>)[agent.cadence];
@@ -20,6 +21,33 @@ export async function scheduleAgents() {
     try {
       const { data: current } = await db.from("agents").select("status").eq("id", agent.id).eq("business_id", agent.business_id).single();
       if (current?.status !== "ACTIVE") continue;
+
+      // Booking and re-engagement orchestrate the existing engines rather than
+      // starting a sourcing run, so they branch before any of the plan and
+      // prospect-cap logic below, none of which applies to them.
+      if (agent.agent_type === "BOOKING" || agent.agent_type === "REENGAGEMENT") {
+        const result =
+          agent.agent_type === "BOOKING"
+            ? await runBookingTick(agent)
+            : await runReengagementTick(agent);
+
+        await db.from("agent_activity_events").insert({
+          business_id: agent.business_id,
+          agent_id: agent.id,
+          event_type: "TICK_COMPLETED",
+          severity: result.blocked > 0 ? "WARNING" : "SUCCESS",
+          title: agent.agent_type === "BOOKING" ? "Checked for stalled bookings" : "Checked for quiet leads",
+          detail: result.detail,
+          metadata: {
+            examined: result.examined,
+            actioned: result.actioned,
+            blocked: result.blocked,
+          } as never,
+        });
+
+        await db.from("agents").update({ last_run_status: "COMPLETED" }).eq("id", agent.id);
+        continue;
+      }
       const { data: strategy } = await db.from("search_strategies").select("strategy_json, status").eq("id", agent.search_strategy_id ?? "").eq("business_id", agent.business_id).maybeSingle();
       const plan = strategy?.status === "APPROVED" ? parsePlan(strategy.strategy_json) : null;
       if (!plan) throw new Error("The search plan needs approval in Find Leads.");

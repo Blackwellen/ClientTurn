@@ -40,6 +40,7 @@ export function InboxView({
   archived,
   search,
   conversations,
+  channelCounts,
   selected,
   messages,
   agentState,
@@ -50,6 +51,9 @@ export function InboxView({
   archived: boolean;
   search: string;
   conversations: ConversationRow[];
+  /** Unread totals per channel, so the rail is a summary of the whole inbox
+   *  rather than only of the channel currently open. */
+  channelCounts: Record<string, { total: number; unread: number }>;
   selected: ConversationRow | null;
   messages: ThreadMessage[];
   agentState: ConversationAgentState | null;
@@ -73,7 +77,7 @@ export function InboxView({
       </div>
 
       <div className="grid min-h-[600px] overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-[190px_320px_1fr]">
-        <ChannelRail channel={channel} archived={archived} />
+        <ChannelRail channel={channel} archived={archived} counts={channelCounts} />
         <ConversationList
           conversations={conversations}
           selectedId={selected?.id ?? null}
@@ -110,7 +114,22 @@ const CHANNEL_ICONS: Record<InboxChannel, React.ComponentType<{ className?: stri
   linkedin: Briefcase,
 };
 
-function ChannelRail({ channel, archived }: { channel: InboxChannel; archived: boolean }) {
+function ChannelRail({
+  channel,
+  archived,
+  counts,
+}: {
+  channel: InboxChannel;
+  archived: boolean;
+  counts: Record<string, { total: number; unread: number }>;
+}) {
+  // "All" is the sum, so the rail's own arithmetic cannot disagree with the
+  // per-channel rows beneath it.
+  const unreadFor = (key: InboxChannel) =>
+    key === "all"
+      ? Object.values(counts).reduce((sum, row) => sum + row.unread, 0)
+      : (counts[key]?.unread ?? 0);
+
   return (
     <aside className="border-b border-line bg-surface-sunken/50 p-3 lg:border-b-0 lg:border-r">
       <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-muted">
@@ -140,8 +159,17 @@ function ChannelRail({ channel, archived }: { channel: InboxChannel; archived: b
               <span className="truncate">{definition.label}</span>
               {/* A channel we cannot read is marked here rather than only
                   discovered after clicking into an empty list. */}
-              {!definition.canRead && (
+              {!definition.canRead ? (
                 <span className="ml-auto text-[10px] text-content-subtle">n/a</span>
+              ) : (
+                unreadFor(key) > 0 && (
+                  <span
+                    className="ml-auto rounded-full bg-accent-500 px-1.5 text-[10px] font-semibold tabular-nums text-white"
+                    aria-label={`${unreadFor(key)} unread`}
+                  >
+                    {unreadFor(key)}
+                  </span>
+                )
               )}
             </Link>
           );

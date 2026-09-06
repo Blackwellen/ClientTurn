@@ -124,6 +124,15 @@ describe("add lead — normalisation", () => {
     assert.equal(normalisePostcode(""), null);
   });
 
+  test("normalising a postcode twice changes nothing", () => {
+    // Step 1 normalises on blur, and the create action normalises again. The
+    // second pass must be a no-op or the stored value drifts from the shown one.
+    for (const raw of ["bh26aa", "BH2 6AA", " bh2  6aa ", "SW1A1AA", "M11AE"]) {
+      const once = normalisePostcode(raw);
+      assert.equal(normalisePostcode(once), once, raw);
+    }
+  });
+
   test("company key ignores suffixes and punctuation", () => {
     assert.equal(companyKey("Riverside Roofing Ltd"), companyKey("riverside roofing"));
     assert.equal(companyKey("Riverside-Roofing, Limited"), "riversideroofing");

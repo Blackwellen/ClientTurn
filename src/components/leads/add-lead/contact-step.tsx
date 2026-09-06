@@ -18,6 +18,7 @@ import { FormField, Input } from "@/components/ui/form";
 import {
   duplicateConfidenceLabel,
   isBlockingDuplicate,
+  normalisePostcode,
   type ContactState,
   type DuplicateMatch,
   type FieldErrors,
@@ -327,6 +328,7 @@ export function ContactStep({
           icon={Phone}
           tone="neutral"
           title="Contact details"
+          required
           description="Add at least one way to contact them."
         >
           <div className="grid gap-3 sm:grid-cols-3">
@@ -417,6 +419,12 @@ export function ContactStep({
                 autoComplete="postal-code"
                 aria-invalid={Boolean(errors.postcode)}
                 onChange={(event) => onChange({ postcode: event.target.value })}
+                // Normalised on blur rather than on every keystroke, so the
+                // caret is never pushed around mid-entry and what is shown is
+                // what the server will store.
+                onBlur={(event) =>
+                  onChange({ postcode: normalisePostcode(event.target.value) ?? "" })
+                }
               />
             </FormField>
             <FormField label="Address (optional)" htmlFor={field("address")}>

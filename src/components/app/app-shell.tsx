@@ -33,6 +33,8 @@ export function AppShell({
   initialCollapsed = false,
   businessName,
   planLabel,
+  plan,
+  canManageBilling,
   primaryNav: primaryNavPaths,
   integrationStatus,
   notifications,
@@ -42,6 +44,10 @@ export function AppShell({
   initialCollapsed?: boolean;
   businessName: string;
   planLabel: string;
+  /** The workspace's plan key, for the sidebar upgrade prompt. */
+  plan: string;
+  /** Billing is owner-only; the prompt is hidden for everyone else. */
+  canManageBilling: boolean;
   primaryNav: string[];
   integrationStatus: string;
   notifications: NotificationRow[];
@@ -105,6 +111,8 @@ export function AppShell({
           businessName={businessName}
           planLabel={planLabel}
           primaryNav={primaryNav}
+          plan={plan}
+          canManageBilling={canManageBilling}
           onOpenAccount={openAccount}
         />
       </aside>
@@ -138,6 +146,8 @@ export function AppShell({
               businessName={businessName}
               planLabel={planLabel}
               primaryNav={primaryNav}
+              plan={plan}
+              canManageBilling={canManageBilling}
               onOpenAccount={openAccount}
             />
           </div>

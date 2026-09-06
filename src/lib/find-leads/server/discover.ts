@@ -1,7 +1,11 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getV4Entitlements, getV4Usage } from "@/lib/billing/v4-entitlements";
-import type { FindLeadsKpi, RecurringSearchView } from "../types";
+import type {
+  FindLeadsKpi,
+  RecurringSearchView,
+  SearchSessionSummary,
+} from "../types";
 import { listSessions, type SessionGroup, groupSessions } from "./sessions";
 import { listRecentRuns, type RecentRun } from "./runs";
 import { readAcquisitionProfile, defaultWebsiteUrl } from "./profile";
@@ -21,6 +25,8 @@ export type DiscoverData = {
   kpis: FindLeadsKpi[];
   sessionGroups: SessionGroup[];
   sessionCount: number;
+  /** Sessions that have a saved plan, and so can be put on a schedule. */
+  schedulableSessions: SearchSessionSummary[];
   recentRuns: RecentRun[];
   recurring: RecurringSearchView[];
   profile: Awaited<ReturnType<typeof readAcquisitionProfile>>;
@@ -50,6 +56,7 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
     verifiedContacts,
     inOutreach,
     converted,
+    strategyRows,
     recurringRows,
   ] = await Promise.all([
     listSessions(businessId, { limit: 30 }),
@@ -63,6 +70,12 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
     countProspects(businessId, { statuses: ["OUTREACH_ACTIVE", "APPROVED"] }),
     countProspects(businessId, { statuses: ["CONVERTED"] }),
     admin
+      .from("search_strategies")
+      .select("session_id")
+      .eq("business_id", businessId)
+      .in("status", ["DRAFT", "APPROVED"])
+      .limit(200),
+    admin
       .from("recurring_searches")
       .select("id, cadence, target_per_run, status, next_run_at, last_run_at, session_id")
       .eq("business_id", businessId)
@@ -72,6 +85,12 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
   ]);
 
   const searchesLimit = entitlements.allowances.search_run.hardLimit;
+
+  const schedulableIds = new Set(
+    (strategyRows.data ?? [])
+      .map((row) => row.session_id)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   // Recurring rows carry a session id rather than a name, so the label comes
   // from the session the schedule re-runs.
@@ -122,6 +141,12 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
     ],
     sessionGroups: groupSessions(sessions),
     sessionCount: sessions.length,
+    // A schedule re-runs an approved plan, so a session that never produced
+    // one cannot be scheduled. Ordering by recency puts the search the
+    // customer just ran at the top of the picker.
+    schedulableSessions: sessions.filter(
+      (session) => schedulableIds.has(session.id) && session.status === "ACTIVE",
+    ),
     recentRuns,
     recurring: (recurringRows.data ?? []).map(
       (row): RecurringSearchView => ({

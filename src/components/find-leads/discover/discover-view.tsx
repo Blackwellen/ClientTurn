@@ -3,11 +3,8 @@ import type { DiscoverData } from "@/lib/find-leads/server/discover";
 import { SearchSessionsRail } from "./search-sessions-rail";
 import { DiscoverChat } from "./discover-chat";
 import { AcquisitionProfileCard } from "./acquisition-profile-card";
-import {
-  RecentSourcingRunsCard,
-  RecurringSourcingCard,
-  UsageThisMonthCard,
-} from "./side-cards";
+import { RecentSourcingRunsCard, UsageThisMonthCard } from "./side-cards";
+import { RecurringSourcingCard } from "./recurring-sourcing-card";
 
 /**
  * The Discover view (V4 §9).
@@ -50,7 +47,11 @@ export function DiscoverView({
           canManage={canManage}
         />
         <RecentSourcingRunsCard runs={data.recentRuns} />
-        <RecurringSourcingCard schedules={data.recurring} />
+        <RecurringSourcingCard
+          schedules={data.recurring}
+          sessions={data.schedulableSessions}
+          canManage={canManage}
+        />
         <UsageThisMonthCard
           used={data.usage.searchesUsed}
           limit={data.usage.searchesLimit}

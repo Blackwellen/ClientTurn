@@ -13,6 +13,7 @@ import { capabilityAvailable, unhealthyProviders } from "@/lib/find-leads/server
 import type {
   CompanyCandidate,
   ContactCandidate,
+  IntentCategoryQuery,
   IntentResult,
 } from "@/lib/find-leads/server/providers/types";
 import { withinPlanLocations } from "@/lib/find-leads/server/locations";
@@ -1416,13 +1417,40 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
   // workspace has never defined matches nothing rather than inventing one.
   const { data: categoryRows } = await admin
     .from("intent_categories")
-    .select("id, name, score_impact, freshness_days")
+    .select("id, name, score_impact, freshness_days, keywords_entities")
     .eq("business_id", context.businessId)
     .eq("active", true);
 
   const categories = new Map(
     (categoryRows ?? []).map((row) => [row.name.trim().toLowerCase(), row]),
   );
+
+  // The plan names categories; the workspace defines what they mean. A plan
+  // naming a category the workspace has never configured matches nothing,
+  // rather than being invented here.
+  const categoryQueries: IntentCategoryQuery[] = context.plan.intent.categories
+    .map((name) => {
+      const row = categories.get(name.trim().toLowerCase());
+      if (!row) return null;
+      const configured = row.keywords_entities as { keywords?: unknown } | null;
+      const keywords = Array.isArray(configured?.keywords)
+        ? configured.keywords.filter((k): k is string => typeof k === "string")
+        : [];
+      return { name: row.name, keywords };
+    })
+    .filter((entry): entry is IntentCategoryQuery => entry !== null);
+
+  if (categoryQueries.length === 0) {
+    await raiseIssue(context, {
+      severity: "WARNING",
+      code: "INTENT_CATEGORIES_NOT_CONFIGURED",
+      message: "None of the requested buying signals are set up.",
+      detail:
+        "Define these intent categories in your workspace so we know what to look for.",
+      requiresUserAction: true,
+    });
+    return { text: "No matching intent categories are configured.", count: 0, skipped: true };
+  }
 
   const byDomain = new Map<string, RunProspect[]>();
   for (const prospect of prospects) {
@@ -1454,7 +1482,9 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
       invoke: (provider) =>
         provider.fetchIntent?.({
           domains: slice,
-          categories: context.plan.intent.categories,
+          // Only the categories this plan asked for, carrying the keywords the
+          // workspace configured for each.
+          categories: categoryQueries,
           freshnessDays: context.plan.intent.freshnessDays,
         }) ??
         Promise.resolve({
@@ -1854,6 +1884,14 @@ async function completeRun(context: RunContext): Promise<void> {
     });
   }
 
+  // Auto-contact: hand the READY prospects to the campaign that will send to
+  // them. Enrolment is not permission — the dispatcher re-checks contactability
+  // per recipient immediately before each send — but without this the mode did
+  // nothing at all, which is worse than refusing it.
+  if (context.plan.reviewMode === "AUTO_CONTACT" && counters.ready > 0) {
+    await enrolAndDispatch(context, counters.ready);
+  }
+
   await recordAudit({
     businessId: context.businessId,
     actorType: "system",
@@ -1864,32 +1902,91 @@ async function completeRun(context: RunContext): Promise<void> {
   });
 }
 
-async function collectCounters(context: RunContext): Promise<RunCounters> {
+/**
+ * Attaches this run's READY prospects to an active campaign and queues the
+ * first send.
+ *
+ * The campaign has to exist and be active already — `createRun` refuses an
+ * AUTO_CONTACT plan without one, so reaching here with none means it was
+ * paused mid-run, and the prospects wait for review rather than being sent by
+ * some other campaign chosen on their behalf.
+ */
+async function enrolAndDispatch(
+  context: RunContext,
+  readyCount: number,
+): Promise<void> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("sourcing_run_results")
-    .select("outcome")
+
+  const { data: campaign } = await admin
+    .from("outreach_campaigns")
+    .select("id, status, review_before_outreach")
     .eq("business_id", context.businessId)
-    .eq("run_id", context.runId);
+    .eq("status", "ACTIVE")
+    .eq("review_before_outreach", false)
+    .order("priority", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const counters: RunCounters = { ...EMPTY_COUNTERS };
-  const map: Record<string, keyof RunCounters> = {
-    COMPANY_FOUND: "companiesFound",
-    CONTACT_FOUND: "contactsFound",
-    EMAIL_FOUND: "emailsDiscovered",
-    VERIFIED: "verified",
-    DUPLICATE: "duplicates",
-    SUPPRESSED: "suppressed",
-    REVIEW_REQUIRED: "reviewRequired",
-    READY: "ready",
-  };
-
-  for (const row of data ?? []) {
-    const key = map[row.outcome];
-    if (key) counters[key] += 1;
+  if (!campaign) {
+    await raiseIssue(context, {
+      severity: "WARNING",
+      code: "NO_ACTIVE_CAMPAIGN",
+      message: `${readyCount.toLocaleString("en-GB")} prospects are ready, but no campaign is active.`,
+      detail: "They are waiting for review. Activate a campaign to contact them.",
+      requiresUserAction: true,
+    });
+    return;
   }
 
-  return counters;
+  // Only records that are still READY and ELIGIBLE right now.
+  await admin
+    .from("prospects")
+    .update({ campaign_id: campaign.id })
+    .eq("business_id", context.businessId)
+    .eq("source_run_id", context.runId)
+    .eq("status", "READY")
+    .eq("outreach_eligibility", "ELIGIBLE")
+    .is("campaign_id", null);
+
+  await enqueue(
+    "outreach.dispatch",
+    { campaignId: campaign.id, businessId: context.businessId },
+    {
+      businessId: context.businessId,
+      idempotencyKey: `outreach.dispatch:${context.runId}`,
+    },
+  );
+}
+
+/**
+ * The run's funnel counters.
+ *
+ * Aggregated by Postgres via `sourcing_run_counters()`, not by reading the rows.
+ * A run that produced more results than PostgREST's row cap would otherwise
+ * count only the first page and silently under-report every number the customer
+ * sees — the exact truncation trap section 21.7 warns about.
+ */
+async function collectCounters(context: RunContext): Promise<RunCounters> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("sourcing_run_counters", {
+    p_business_id: context.businessId,
+    p_run_id: context.runId,
+  });
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (error || !row) return { ...EMPTY_COUNTERS };
+
+  return {
+    ...EMPTY_COUNTERS,
+    companiesFound: row.companies_found,
+    contactsFound: row.contacts_found,
+    emailsDiscovered: row.emails_discovered,
+    verified: row.verified,
+    duplicates: row.duplicates,
+    suppressed: row.suppressed,
+    reviewRequired: row.review_required,
+    ready: row.ready,
+  };
 }
 
 export { STAGES };

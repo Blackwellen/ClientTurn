@@ -49,6 +49,7 @@ export function SectionCard({
   title,
   description,
   action,
+  required,
   children,
   className,
 }: {
@@ -56,6 +57,9 @@ export function SectionCard({
   tone?: TileTone;
   title: string;
   description?: string;
+  /** Marks the section, not each field — used where the rule is "at least
+   *  one of these", which a per-field asterisk would misstate. */
+  required?: boolean;
   action?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
@@ -71,7 +75,14 @@ export function SectionCard({
         <div className="flex min-w-0 items-start gap-3">
           {icon && <IconTile icon={icon} tone={tone} />}
           <div className="min-w-0">
-            <h3 className="text-[14px] font-semibold text-content">{title}</h3>
+            <h3 className="text-[14px] font-semibold text-content">
+              {title}
+              {required && (
+                <span className="ml-0.5 text-danger-600" aria-hidden>
+                  *
+                </span>
+              )}
+            </h3>
             {description && (
               <p className="mt-0.5 text-[12.5px] text-content-muted">
                 {description}

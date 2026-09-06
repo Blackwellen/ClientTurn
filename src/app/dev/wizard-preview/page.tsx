@@ -33,7 +33,7 @@ export default async function WizardPreviewPage({
   };
 
   return (
-    <DevShell>
+    <DevShell plan={flag("enterprise") ? "enterprise" : "growth"}>
         <div className="space-y-5">
           <ReactivationWizard
             businessName="Blackwellen Roofing & Exteriors"

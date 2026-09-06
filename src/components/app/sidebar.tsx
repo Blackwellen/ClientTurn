@@ -13,6 +13,7 @@ import {
   type NavItem,
 } from "@/lib/app/nav";
 import { Tooltip } from "@/components/ui/tooltip";
+import { UpgradeCard } from "./upgrade-card";
 import { Logo } from "@/components/ui/logo";
 
 function NavLink({
@@ -152,6 +153,8 @@ export function SidebarContent({
   onNavigate,
   businessName,
   planLabel,
+  plan,
+  canManageBilling,
   primaryNav,
   onOpenAccount,
 }: {
@@ -160,6 +163,9 @@ export function SidebarContent({
   onNavigate?: () => void;
   businessName: string;
   planLabel: string;
+  /** The workspace's plan key, for the upgrade prompt. */
+  plan: string;
+  canManageBilling: boolean;
   /** Resolved by the layout from the workspace's plan, so a destination the
    *  plan does not include never appears in the rail. */
   primaryNav: NavItem[];
@@ -216,6 +222,13 @@ export function SidebarContent({
         className="shrink-0 px-2.5 py-3"
         style={{ borderTop: "1px solid var(--ct-shell-divider)" }}
       >
+        <UpgradeCard
+          plan={plan}
+          canManageBilling={canManageBilling}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+
         <ul className="space-y-1.5">
           {SECONDARY_NAV.map((item) => (
             <li key={item.href}>

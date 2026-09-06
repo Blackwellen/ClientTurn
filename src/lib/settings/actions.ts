@@ -879,8 +879,8 @@ export async function startPlanCheckout(input: {
       client_reference_id: workspace.businessId,
       subscription_data: { metadata: { business_id: workspace.businessId } },
       metadata: { business_id: workspace.businessId },
-      success_url: `${serverEnv.siteUrl}/app/settings?section=billing?checkout=success`,
-      cancel_url: `${serverEnv.siteUrl}/app/settings?section=billing?checkout=cancelled`,
+      success_url: `${serverEnv.siteUrl}/app/settings?section=billing&checkout=success`,
+      cancel_url: `${serverEnv.siteUrl}/app/settings?section=billing&checkout=cancelled`,
     });
 
     if (!session.url) {

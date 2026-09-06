@@ -5,6 +5,7 @@ import { apolloProvider } from "./apollo";
 import { clearbitProvider } from "./clearbit";
 import { googlePlacesProvider } from "./google-places";
 import { hunterProvider } from "./hunter";
+import { websiteIntentProvider } from "./website-intent";
 import type { SourcingProvider } from "./types";
 
 /**
@@ -21,6 +22,7 @@ const PROVIDERS: SourcingProvider[] = [
   hunterProvider,
   apolloProvider,
   clearbitProvider,
+  websiteIntentProvider,
 ];
 
 export function allProviders(): SourcingProvider[] {

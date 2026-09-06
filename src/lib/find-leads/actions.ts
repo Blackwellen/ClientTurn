@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { assertCapability } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
-import { searchPlanSchema, type SearchPlan } from "./plan";
+import { checkPlanReadiness, searchPlanSchema, type SearchPlan } from "./plan";
 import {
   appendMessage,
   archiveSession,
@@ -613,6 +613,174 @@ export async function updateAcquisitionProfileAction(
     actorUserId: access.workspace.userId,
     action: "acquisition_profile.updated",
     entityType: "business_profile",
+  });
+
+  refresh();
+  return ok(undefined);
+}
+
+/* ------------------------------------------------------ recurring sourcing */
+
+const CADENCES = ["DAILY", "WEEKLY", "FORTNIGHTLY", "MONTHLY"] as const;
+
+const recurringSchema = z.object({
+  sessionId: z.uuid(),
+  cadence: z.enum(CADENCES),
+  targetPerRun: z.number().int().min(1).max(2000),
+});
+
+/**
+ * Turns a session's approved plan into a schedule.
+ *
+ * The plan must be runnable *now* — the same budget verdict a manual run would
+ * get. A schedule created against a plan the workspace cannot afford would
+ * simply fail silently every cycle, which is worse than refusing it here.
+ *
+ * The strategy is snapshotted by id, not by value: editing the session
+ * afterwards supersedes that strategy and the sweep stops running it, because
+ * only an APPROVED strategy is eligible. That is the "no re-deriving targeting
+ * without approval" rule, enforced by data rather than by intent.
+ */
+export async function createRecurringSearchAction(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = recurringSchema.safeParse(input);
+  if (!parsed.success) return fail("Those schedule settings are not valid.");
+
+  const access = await requireFindLeadsAdmin();
+  if (!access.ok) return access;
+
+  const session = await loadOwnedSession(access.workspace.businessId, parsed.data.sessionId);
+  if (!session) return fail("That search session could not be found.");
+  if (!session.strategyId) return fail("Save a search plan before scheduling it.");
+
+  const readiness = checkPlanReadiness(session.plan);
+  if (!readiness.ready) {
+    return fail("The search plan is not complete enough to schedule yet.");
+  }
+
+  const budget = await resolveBudget({
+    businessId: access.workspace.businessId,
+    requestedTarget: parsed.data.targetPerRun,
+    requestedCostCapMinor: session.plan.maxProviderCostMinor,
+    intentEnabled: session.plan.intent.categories.length > 0,
+  });
+
+  if (!budget.allowed) {
+    return fail("There is not enough remaining allowance to schedule this search.");
+  }
+
+  const admin = createAdminClient();
+
+  // Approving the strategy is what makes it eligible for the unattended sweep.
+  await admin
+    .from("search_strategies")
+    .update({
+      status: "APPROVED",
+      approved_by: access.workspace.userId,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", session.strategyId);
+
+  const { data, error } = await admin
+    .from("recurring_searches")
+    .insert({
+      business_id: access.workspace.businessId,
+      session_id: parsed.data.sessionId,
+      search_strategy_id: session.strategyId,
+      cadence: parsed.data.cadence,
+      target_per_run: Math.min(parsed.data.targetPerRun, budget.maxTarget),
+      max_cost_per_run_minor: budget.maxProviderCostMinor,
+      status: "ACTIVE",
+      // Due immediately, so the customer sees it work rather than wondering
+      // whether it took.
+      next_run_at: new Date().toISOString(),
+      approved_by: access.workspace.userId,
+      approved_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (error) return fail("That schedule could not be created.");
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "recurring_search.created",
+    entityType: "recurring_search",
+    entityId: data.id,
+    metadata: { cadence: parsed.data.cadence, targetPerRun: parsed.data.targetPerRun },
+  });
+
+  refresh(parsed.data.sessionId);
+  return ok({ id: data.id });
+}
+
+export async function setRecurringSearchStatusAction(
+  scheduleId: unknown,
+  enabled: unknown,
+): Promise<ActionResult> {
+  const id = z.uuid().safeParse(scheduleId);
+  const on = z.boolean().safeParse(enabled);
+  if (!id.success || !on.success) return fail("That schedule could not be updated.");
+
+  const access = await requireFindLeadsAdmin();
+  if (!access.ok) return access;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("recurring_searches")
+    .update({
+      status: on.data ? "ACTIVE" : "PAUSED",
+      // Re-arm from now rather than firing every missed cycle at once.
+      next_run_at: on.data ? new Date().toISOString() : null,
+    })
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", id.data)
+    .neq("status", "STOPPED")
+    .select("id");
+
+  if (!data?.length) return fail("That schedule could not be found.");
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: on.data ? "recurring_search.resumed" : "recurring_search.paused",
+    entityType: "recurring_search",
+    entityId: id.data,
+  });
+
+  refresh();
+  return ok(undefined);
+}
+
+/** Stops a schedule for good. Runs it already produced are untouched. */
+export async function deleteRecurringSearchAction(
+  scheduleId: unknown,
+): Promise<ActionResult> {
+  const id = z.uuid().safeParse(scheduleId);
+  if (!id.success) return fail("That schedule could not be found.");
+
+  const access = await requireFindLeadsAdmin();
+  if (!access.ok) return access;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("recurring_searches")
+    .update({ status: "STOPPED", next_run_at: null })
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", id.data)
+    .select("id");
+
+  if (!data?.length) return fail("That schedule could not be found.");
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "recurring_search.stopped",
+    entityType: "recurring_search",
+    entityId: id.data,
   });
 
   refresh();
