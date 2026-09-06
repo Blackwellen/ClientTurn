@@ -23,6 +23,13 @@ export type PlanDefinition = {
   whatsappEnabled: boolean;
   campaignsEnabled: boolean;
   aiAssistAllowed: boolean;
+  /**
+   * Included AI tokens per month. `plan_entitlements.ai_tokens` is the
+   * runtime authority so an allowance can be changed without a deploy;
+   * this is the seeded default and what the pricing page advertises, so
+   * the two must agree.
+   */
+  aiTokenAllowance: number;
   recommended: boolean;
   selfServe: boolean;
   features: string[];
@@ -46,6 +53,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
     whatsappEnabled: false,
     campaignsEnabled: true,
     aiAssistAllowed: true,
+    aiTokenAllowance: 1_000_000,
     recommended: false,
     selfServe: true,
     features: [
@@ -54,6 +62,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
       "1 user",
       "Meta Lead Ads",
       "AI conversation handling",
+      "1M AI tokens a month (about 590 assistant replies)",
       "New-lead follow-up + qualification",
       "Booking / handover",
       "Basic dashboard",
@@ -73,6 +82,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
     whatsappEnabled: true,
     campaignsEnabled: true,
     aiAssistAllowed: true,
+    aiTokenAllowance: 4_000_000,
     recommended: true,
     selfServe: true,
     features: [
@@ -81,6 +91,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
       "3 users",
       "SMS + WhatsApp",
       "AI conversation handling",
+      "4M AI tokens a month (about 2,350 assistant replies)",
       "Reactivation up to 500 selected contacts",
       "Multiple services",
       "Full source reporting",
@@ -100,6 +111,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
     whatsappEnabled: true,
     campaignsEnabled: true,
     aiAssistAllowed: true,
+    aiTokenAllowance: 12_000_000,
     recommended: false,
     selfServe: true,
     features: [
@@ -111,6 +123,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
       "Advanced handover / routing",
       "Full reporting",
       "Priority support",
+      "12M AI tokens a month (about 7,050 assistant replies)",
     ],
   },
   enterprise: {
@@ -126,6 +139,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
     whatsappEnabled: true,
     campaignsEnabled: true,
     aiAssistAllowed: true,
+    aiTokenAllowance: 40_000_000,
     recommended: false,
     selfServe: false,
     features: [
@@ -134,6 +148,7 @@ export const PLANS: Record<Exclude<PlanId, "trial">, PlanDefinition> = {
       "Data processing agreement",
       "Onboarding assistance",
       "Everything in Pro",
+      "40M AI tokens a month",
     ],
   },
 };
@@ -159,4 +174,32 @@ export const SMS_OVERAGE_BUNDLES = [
 
 export function planOrder(): PlanDefinition[] {
   return [PLANS.starter, PLANS.growth, PLANS.pro, PLANS.enterprise];
+}
+
+/* --------------------------------------------------------------- upgrades --- */
+
+/**
+ * A plan a workspace can be sold. Never "trial": nobody upgrades *to* a trial,
+ * and saying so in the type is what lets callers index `PLANS` directly.
+ */
+export type UpgradeTarget = Exclude<PlanId, "trial">;
+
+/**
+ * The tier a workspace moves to next, or null when there is nothing left to
+ * sell. Used by the sidebar prompt, so an upgrade is never offered to a
+ * workspace already on the top tier or on a plan we do not recognise.
+ */
+export function nextPlanFor(plan: string): UpgradeTarget | null {
+  switch (plan) {
+    case "trial":
+      return "starter";
+    case "starter":
+      return "growth";
+    case "growth":
+      return "pro";
+    case "pro":
+      return "enterprise";
+    default:
+      return null;
+  }
 }

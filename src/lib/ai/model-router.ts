@@ -10,6 +10,8 @@ import {
   type ConfidenceBand,
 } from "./schemas";
 import { z } from "zod";
+import { hasTokenCapacity, recordTokenConsumption } from "@/lib/billing/token-service";
+import { estimateTokensForCall } from "@/lib/billing/tokens";
 
 export { AiUnavailableError, isAzureConfigured };
 
@@ -34,6 +36,13 @@ export type RunTaskInput<T> = {
   maxOutputTokens?: number;
   /** Called if Azure is unavailable or every call fails; must not throw. */
   onUnavailable?: () => T;
+  /**
+   * Stable key for the token debit. A retried worker presents the same key and
+   * is charged once. Defaults to a per-call random key, which is correct for
+   * one-off calls and wrong for anything the queue may retry -- those pass
+   * their own.
+   */
+  idempotencyKey?: string;
 };
 
 export type TaskResult<T> = {
@@ -43,6 +52,12 @@ export type TaskResult<T> = {
   requiresReview: boolean;
   /** True if a fallback was used instead of a real model response. */
   fallbackUsed: boolean;
+  /**
+   * Set when the call never happened. `NO_TOKENS` is a billing state, not an
+   * error: the caller degrades to its deterministic path exactly as it would
+   * for a workspace without AI.
+   */
+  skippedReason?: "AI_UNAVAILABLE" | "NO_TOKENS";
 };
 
 /**
@@ -60,7 +75,19 @@ export async function runTask<T = unknown>(
   const schema = SCHEMAS[input.taskType] as z.ZodType<T>;
 
   if (!isAzureConfigured()) {
-    return fallbackResult(input);
+    return fallbackResult(input, "AI_UNAVAILABLE");
+  }
+
+  // Token gate. Checked before the call rather than after, so a workspace at
+  // its limit never spends on a call it cannot pay for. Running out degrades
+  // to the deterministic path -- it does not fail the caller.
+  const estimated = estimateTokensForCall(
+    input.maxOutputTokens ?? 200,
+    prompt.systemPrompt.length + input.context.length,
+  );
+  const capacity = await hasTokenCapacity(input.businessId, estimated);
+  if (!capacity.ok) {
+    return fallbackResult(input, "NO_TOKENS");
   }
 
   const messages: ChatMessage[] = [
@@ -102,6 +129,20 @@ export async function runTask<T = unknown>(
       errorCode: parsed.success ? null : "SCHEMA_VALIDATION_FAILED",
     });
 
+    // Debit the true cost, not the estimate. Charged even when the response
+    // failed validation: the provider billed us for it either way, and hiding
+    // that from the customer's meter would misrepresent their usage.
+    await recordTokenConsumption({
+      businessId: input.businessId,
+      totalTokens:
+        result.inputTokens + result.cachedInputTokens + result.outputTokens,
+      idempotencyKey: input.idempotencyKey ?? `ai:${crypto.randomUUID()}`,
+      taskType: input.taskType,
+      deployment,
+    }).catch(() => {
+      // Metering must never mask a successful call.
+    });
+
     return {
       data: band === "review" ? null : data,
       confidence,
@@ -132,11 +173,14 @@ export async function runTask<T = unknown>(
       // Metering must never mask the original failure.
     });
 
-    return fallbackResult(input);
+    return fallbackResult(input, "AI_UNAVAILABLE");
   }
 }
 
-function fallbackResult<T>(input: RunTaskInput<T>): TaskResult<T> {
+function fallbackResult<T>(
+  input: RunTaskInput<T>,
+  skippedReason?: TaskResult<T>["skippedReason"],
+): TaskResult<T> {
   const fallback = input.onUnavailable?.() ?? null;
   return {
     data: fallback,
@@ -144,6 +188,7 @@ function fallbackResult<T>(input: RunTaskInput<T>): TaskResult<T> {
     band: "review",
     requiresReview: fallback === null,
     fallbackUsed: fallback !== null,
+    skippedReason,
   };
 }
 

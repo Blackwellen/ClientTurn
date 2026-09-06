@@ -1622,6 +1622,201 @@ export type Database = {
           },
         ]
       }
+      ai_token_balances: {
+        Row: {
+          blocked_at: string | null
+          blocked_count: number
+          business_id: string
+          created_at: string
+          id: string
+          included_tokens: number
+          period_end: string
+          period_start: string
+          plan_key: string | null
+          purchased_tokens: number
+          reserved_tokens: number
+          updated_at: string
+          used_tokens: number
+          warned_at_percent: number
+        }
+        Insert: {
+          blocked_at?: string | null
+          blocked_count?: number
+          business_id: string
+          created_at?: string
+          id?: string
+          included_tokens?: number
+          period_end: string
+          period_start: string
+          plan_key?: string | null
+          purchased_tokens?: number
+          reserved_tokens?: number
+          updated_at?: string
+          used_tokens?: number
+          warned_at_percent?: number
+        }
+        Update: {
+          blocked_at?: string | null
+          blocked_count?: number
+          business_id?: string
+          created_at?: string
+          id?: string
+          included_tokens?: number
+          period_end?: string
+          period_start?: string
+          plan_key?: string | null
+          purchased_tokens?: number
+          reserved_tokens?: number
+          updated_at?: string
+          used_tokens?: number
+          warned_at_percent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_token_balances_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_token_ledger: {
+        Row: {
+          agent_run_id: string | null
+          ai_run_id: string | null
+          balance_after: number | null
+          business_id: string
+          created_at: string
+          delta_tokens: number
+          deployment: string | null
+          id: string
+          idempotency_key: string | null
+          metadata: Json
+          period_start: string
+          purchase_id: string | null
+          reason: string
+          task_type: string | null
+        }
+        Insert: {
+          agent_run_id?: string | null
+          ai_run_id?: string | null
+          balance_after?: number | null
+          business_id: string
+          created_at?: string
+          delta_tokens: number
+          deployment?: string | null
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          period_start: string
+          purchase_id?: string | null
+          reason: string
+          task_type?: string | null
+        }
+        Update: {
+          agent_run_id?: string | null
+          ai_run_id?: string | null
+          balance_after?: number | null
+          business_id?: string
+          created_at?: string
+          delta_tokens?: number
+          deployment?: string | null
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          period_start?: string
+          purchase_id?: string | null
+          reason?: string
+          task_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_token_ledger_agent_run_id_fkey"
+            columns: ["agent_run_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_token_ledger_ai_run_id_fkey"
+            columns: ["ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "ai_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_token_ledger_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_token_ledger_purchase_fk"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "ai_token_purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_token_purchases: {
+        Row: {
+          amount_minor: number
+          business_id: string
+          created_at: string
+          credited_at: string | null
+          currency: string
+          id: string
+          pack_key: string
+          purchased_by: string | null
+          status: string
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          tokens: number
+          updated_at: string
+        }
+        Insert: {
+          amount_minor: number
+          business_id: string
+          created_at?: string
+          credited_at?: string | null
+          currency?: string
+          id?: string
+          pack_key: string
+          purchased_by?: string | null
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          tokens: number
+          updated_at?: string
+        }
+        Update: {
+          amount_minor?: number
+          business_id?: string
+          created_at?: string
+          credited_at?: string | null
+          currency?: string
+          id?: string
+          pack_key?: string
+          purchased_by?: string | null
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          tokens?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_token_purchases_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -8069,6 +8264,7 @@ export type Database = {
           source_run_id: string | null
           status: string
           subscriber_type: string
+          unsubscribe_token: string
           updated_at: string
           verification_status: string
         }
@@ -8105,6 +8301,7 @@ export type Database = {
           source_run_id?: string | null
           status?: string
           subscriber_type?: string
+          unsubscribe_token?: string
           updated_at?: string
           verification_status?: string
         }
@@ -8141,6 +8338,7 @@ export type Database = {
           source_run_id?: string | null
           status?: string
           subscriber_type?: string
+          unsubscribe_token?: string
           updated_at?: string
           verification_status?: string
         }
@@ -10394,7 +10592,19 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      cron_job_health: {
+        Row: {
+          active: boolean | null
+          duration_seconds: number | null
+          end_time: string | null
+          jobname: string | null
+          return_message: string | null
+          schedule: string | null
+          start_time: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       admin_event_series: {
@@ -10434,6 +10644,10 @@ export type Database = {
         Args: { lock_seconds?: number; target_conversation_id: string }
         Returns: number
       }
+      claim_sender_send_slot: {
+        Args: { p_business_id: string; p_sender_id: string }
+        Returns: boolean
+      }
       claim_jobs: {
         Args: { batch_size: number; worker: string }
         Returns: {
@@ -10444,6 +10658,25 @@ export type Database = {
           payload: Json
           type: string
         }[]
+      }
+      clientturn_dispatch_cron: {
+        Args: { endpoint_path: string }
+        Returns: number
+      }
+      consume_ai_tokens: {
+        Args: {
+          allow_overdraw?: boolean
+          consume_reason?: string
+          idem_key?: string
+          source_agent_run_id?: string
+          source_ai_run_id?: string
+          source_deployment?: string
+          source_task_type?: string
+          target_business_id: string
+          target_period_start: string
+          tokens: number
+        }
+        Returns: number
       }
       consume_rate_limit: {
         Args: {
@@ -10457,6 +10690,18 @@ export type Database = {
           remaining: number
           retry_after: number
         }[]
+      }
+      credit_ai_tokens: {
+        Args: {
+          credit_purchased?: boolean
+          credit_reason: string
+          idem_key?: string
+          source_purchase_id?: string
+          target_business_id: string
+          target_period_start: string
+          tokens: number
+        }
+        Returns: number
       }
       current_affiliate_id: { Args: never; Returns: string }
       expire_intent_matches: { Args: never; Returns: number }

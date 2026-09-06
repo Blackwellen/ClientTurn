@@ -9,6 +9,7 @@ import {
   entitlementsForPlan,
 } from "@/lib/billing/stripe";
 import { recordAudit } from "@/lib/audit";
+import { creditTokenPurchase } from "@/lib/billing/token-service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,12 @@ const HANDLED = new Set([
   "customer.subscription.deleted",
   "invoice.paid",
   "invoice.payment_failed",
+  // One-off AI token top-ups. `checkout.session.completed` is the only place
+  // tokens are ever granted -- nothing in the app credits an allowance,
+  // because nothing in the app has seen the money.
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "charge.refunded",
 ]);
 
 export async function POST(request: Request) {
@@ -78,6 +85,19 @@ export async function POST(request: Request) {
 }
 
 async function applyEvent(event: Stripe.Event) {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.expired"
+  ) {
+    await applyTokenCheckout(event);
+    return;
+  }
+
+  if (event.type === "charge.refunded") {
+    await applyTokenRefund(event);
+    return;
+  }
+
   const supabase = createAdminClient();
 
   if (event.type.startsWith("customer.subscription.")) {
@@ -142,4 +162,100 @@ async function applyEvent(event: Stripe.Event) {
       .update({ status: "PAST_DUE" })
       .eq("stripe_customer_id", customerId);
   }
+}
+
+/* ------------------------------------------------------------ ai tokens */
+
+/**
+ * Marks a token purchase paid and credits the allowance.
+ *
+ * Idempotent three times over, because a double credit gives real money away:
+ * the webhook inbox rejects a replayed Stripe event id, the purchase row's
+ * `credited_at` guards the credit, and `credit_ai_tokens` keys its ledger row.
+ */
+async function applyTokenCheckout(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (session.metadata?.kind !== "ai_tokens") return;
+
+  const purchaseId = session.metadata?.purchase_id;
+  if (!purchaseId) return;
+
+  const supabase = createAdminClient();
+
+  if (event.type === "checkout.session.expired") {
+    await supabase
+      .from("ai_token_purchases")
+      .update({ status: "EXPIRED" })
+      .eq("id", purchaseId)
+      .eq("status", "PENDING");
+    return;
+  }
+
+  // Only a genuinely paid session grants anything. An unpaid completed session
+  // (an async payment method still clearing) stays PENDING until it settles.
+  if (session.payment_status !== "paid") return;
+
+  const { data: purchase } = await supabase
+    .from("ai_token_purchases")
+    .update({
+      status: "PAID",
+      stripe_payment_intent_id:
+        typeof session.payment_intent === "string" ? session.payment_intent : null,
+    })
+    .eq("id", purchaseId)
+    .in("status", ["PENDING", "PAID"])
+    .select("id, business_id, tokens, pack_key")
+    .maybeSingle();
+
+  if (!purchase) return;
+
+  const credited = await creditTokenPurchase(purchase.id);
+
+  await recordAudit({
+    businessId: purchase.business_id,
+    actorUserId: null,
+    action: "billing.tokens_purchased",
+    entityType: "ai_token_purchase",
+    entityId: purchase.id,
+    metadata: {
+      packKey: purchase.pack_key,
+      tokens: Number(purchase.tokens),
+      credited,
+      stripe_event: event.type,
+    },
+  });
+}
+
+/**
+ * A refunded top-up is marked REFUNDED but the tokens are NOT clawed back.
+ * Reversing an allowance a workspace may already have spent would put them
+ * into a negative balance they cannot clear, and support can adjust the
+ * balance deliberately if that is genuinely wanted.
+ */
+async function applyTokenRefund(event: Stripe.Event) {
+  const charge = event.data.object as Stripe.Charge;
+  if (charge.metadata?.kind !== "ai_tokens") return;
+
+  const purchaseId = charge.metadata?.purchase_id;
+  if (!purchaseId) return;
+
+  const supabase = createAdminClient();
+  const { data: purchase } = await supabase
+    .from("ai_token_purchases")
+    .update({ status: "REFUNDED" })
+    .eq("id", purchaseId)
+    .eq("status", "PAID")
+    .select("id, business_id")
+    .maybeSingle();
+
+  if (!purchase) return;
+
+  await recordAudit({
+    businessId: purchase.business_id,
+    actorUserId: null,
+    action: "billing.tokens_refunded",
+    entityType: "ai_token_purchase",
+    entityId: purchase.id,
+    metadata: { stripe_event: event.type, tokensClawedBack: false },
+  });
 }

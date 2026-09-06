@@ -377,6 +377,95 @@ deterministically from the tool result, not by the model. If the insert fails
 or someone else took the slot, the turn hands over; the lead is never told they
 are booked when they are not.
 
+## Paying for it: AI tokens
+
+The assistant runs on a **token allowance**. It is the customer-facing unit —
+countable, visible, and toppable-up. What a token costs the platform is not
+customer-facing and never appears on any workspace surface; that stays in
+`provider_price_book` and `cost_events`, which remain admin-only. The allowance
+is the product, the unit cost is the business.
+
+`src/lib/billing/tokens.ts` (pure) · `token-service.ts` (enforcement) ·
+`token-actions.ts` (buying) · migration `0024c_ai_token_allowance.sql`
+
+### Included per month
+
+| Plan | Tokens | ≈ assistant replies |
+|---|---|---|
+| Trial | 100k | ~58 |
+| Starter | 1M | ~590 |
+| Growth | 4M | ~2,350 |
+| Pro | 12M | ~7,050 |
+| Enterprise | 40M | ~23,500 |
+
+`plan_entitlements.ai_tokens` is the runtime authority, so changing an
+allowance is a row edit rather than a deploy. `AI_TOKEN_ALLOWANCE` in
+`tokens.ts` is the seeded default and what the pricing page advertises — a test
+fails if the two drift apart.
+
+### Three tables, three questions
+
+| Table | Answers |
+|---|---|
+| `ai_token_balances` | How much is left right now? (one row per business per period) |
+| `ai_token_ledger` | Why? (append-only, every grant, debit and purchase) |
+| `ai_token_purchases` | What did they buy? (Stripe top-ups) |
+
+The balance is a materialised convenience; the ledger is the truth, and a
+balance can always be rebuilt from it.
+
+### How enforcement behaves
+
+- **Gated before the call, debited after it.** `runTask` estimates the cost and
+  checks capacity *before* contacting the provider, so a workspace at its limit
+  never spends on a call it cannot pay for. The debit that follows is the true
+  token count, not the estimate.
+- **Atomic.** The debit happens inside `consume_ai_tokens`, so two workers
+  finishing at the same instant cannot both read the same remaining balance and
+  both conclude there was room.
+- **Idempotent.** Every debit carries a key. The agent keys on its run id, so a
+  retried job is charged once; the retry after a validation failure is a
+  genuinely second call and carries its own key.
+- **Running out degrades, it does not fail.** `runTask` returns
+  `skippedReason: "NO_TOKENS"` and the caller falls back to its deterministic
+  path. Follow-up sequences, qualification rules and message sending carry on
+  exactly as they do for a workspace that never had AI. **Nobody's leads go
+  unanswered because of a billing state.**
+- **Nothing is billed silently.** There is no overage. A workspace tops up
+  deliberately or waits for the period to roll over.
+
+Warnings fire once per threshold (80%, then 95%), watermarked on the balance
+row so a workspace is not notified on every call once it is past 80%.
+
+### Buying more
+
+Three packs (£15 / £49 / £129), priced so a bigger pack is always better value
+per pound — asserted by a test rather than left to trust. Checkout uses Stripe
+`price_data`, so repricing a pack is a change to `tokens.ts` alone.
+
+The split that matters: `token-actions.ts` *starts* a checkout and writes a
+PENDING purchase. Only the Stripe webhook ever marks one PAID and credits
+tokens — nothing in the app grants an allowance, because nothing in the app has
+seen any money. Crediting is idempotent three times over (the webhook inbox
+rejects a replayed event id, the purchase row's `credited_at` guards the
+credit, and the ledger row is keyed), because a double credit gives real money
+away.
+
+Two deliberate asymmetries:
+
+- **Included tokens expire at period end; purchased tokens carry forward.** A
+  customer who paid for tokens has not agreed to lose them at a month boundary.
+- **A refunded top-up is marked REFUNDED but the tokens are not clawed back.**
+  Reversing an allowance someone may already have spent would leave them in a
+  negative balance they cannot clear. Support adjusts deliberately if needed.
+
+### What consumes tokens
+
+Assistant replies, reply interpretation, and conversation summaries — every
+call that reaches `runTask`. Deterministic follow-up, the qualification engine,
+message sending and the send guard consume none, which is why they keep working
+when the allowance is gone.
+
 ## Schema
 
 `supabase/migrations/0024a_agent_runtime.sql`
@@ -393,7 +482,11 @@ Named `conversation_agent_*` deliberately: `0032_v4_agents_usage` defines its
 own `agent_runs` for the V4 sourcing profiles, which is a different thing with
 a different shape. Both can coexist.
 
-Both migrations are applied to the **Client Turn** project
+`supabase/migrations/0024c_ai_token_allowance.sql` adds `ai_token_balances`,
+`ai_token_ledger`, `ai_token_purchases`, the `consume_ai_tokens` /
+`credit_ai_tokens` RPCs and the per-tier allowance rows.
+
+All three migrations are applied to the **Client Turn** project
 (`losieaikadkadtmezini`).
 
 Background execution: see [CRON.md](CRON.md).

@@ -51,6 +51,9 @@ export type AuditAction =
   | "agent.draft_discarded"
   | "agent.conversation_taken_over"
   | "agent.conversation_returned_to_ai"
+  | "billing.tokens_purchase_started"
+  | "billing.tokens_purchased"
+  | "billing.tokens_refunded"
   | "billing.plan_changed"
   | "admin.impersonation"
   | "admin.workspace_suspended"
@@ -108,7 +111,17 @@ export type AuditAction =
   | "sourcing_run.budget_limit_reached"
   | "prospect.suppressed"
   | "prospect.promoted_to_lead"
-  | "prospect.added_to_campaign";
+  | "prospect.added_to_campaign"
+  | "recurring_search.created"
+  | "recurring_search.paused"
+  | "recurring_search.resumed"
+  | "recurring_search.stopped"
+  | "outreach.dispatched"
+  | "intent_category.created"
+  | "intent_category.updated"
+  | "intent_category.deleted"
+  | "intent_monitor.created"
+  | "intent_monitor.updated";
 
 export async function recordAudit(entry: {
   businessId: string | null;

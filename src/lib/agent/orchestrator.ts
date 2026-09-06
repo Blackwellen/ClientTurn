@@ -695,6 +695,9 @@ async function proposeDecision(
     conversationId: input.context.conversation.conversationId,
     context,
     maxOutputTokens: 400,
+    // Keyed on the run so a retried job is charged once. The retry after a
+    // validation failure is a genuinely second call and carries its own key.
+    idempotencyKey: `agent:${input.run.id}:${correction ? "retry" : "first"}`,
   }).catch(() => null);
 
   if (!result?.data) return null;
