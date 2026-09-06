@@ -114,16 +114,20 @@ export function checkUrlShape(raw: string): UrlCheck {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, code: "BLOCKED_SCHEME" };
   }
-  if (!ALLOWED_PORTS.has(url.port)) {
-    return { ok: false, code: "BLOCKED_PORT" };
-  }
 
+  // Host before port, deliberately. Both refuse, but "that address cannot be
+  // reached" is the true reason for http://127.0.0.1:3000 — reporting the port
+  // instead would send someone off changing a port that was never the problem.
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (BLOCKED_HOSTNAMES.has(hostname) || hostname.endsWith(".internal")) {
     return { ok: false, code: "BLOCKED_HOST" };
   }
   if (isIP(hostname) && isPrivateAddress(hostname)) {
     return { ok: false, code: "BLOCKED_HOST" };
+  }
+
+  if (!ALLOWED_PORTS.has(url.port)) {
+    return { ok: false, code: "BLOCKED_PORT" };
   }
 
   return { ok: true, url };

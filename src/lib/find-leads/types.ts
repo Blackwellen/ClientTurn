@@ -1,5 +1,5 @@
 import type { StageKey, StageStatus } from "./stages";
-import type { SearchPlan } from "./plan";
+import type { PlanSummaryLine, SearchPlan } from "./plan";
 
 /**
  * View models for the Find Leads workspace.
@@ -246,8 +246,6 @@ export type SearchMessageView = {
   createdAt: string;
 };
 
-export type PlanSummaryLine = { label: string; value: string };
-
 export type SearchSessionView = {
   id: string;
   title: string;
@@ -354,4 +352,4 @@ export const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
   PAUSED: "Paused",
 };
 
-export type { StageKey, StageStatus };
+export type { StageKey, StageStatus, PlanSummaryLine };

@@ -4,9 +4,9 @@ import type { SearchPlanningResult } from "@/lib/ai/schemas";
 import { estimateRunCost } from "../cost-model";
 import {
   checkPlanReadiness,
-  parsePlan,
+  mergePlanPatch,
+  planSummaryLines,
   repairPlan,
-  searchPlanSchema,
   type SearchPlan,
 } from "../plan";
 import type { PlanSummaryLine } from "../types";
@@ -45,115 +45,6 @@ export type AgentTurn = {
   /** True when AI is unavailable or its output could not be salvaged. */
   degraded: boolean;
 };
-
-/**
- * Fields the agent may never set, whatever it returns.
- *
- * These are not "hard to get right" — they are decisions that are not the
- * model's to make. Suppression and opt-out exclusion are absolute; the spend
- * ceiling belongs to the budget engine; review mode is a policy choice a
- * person makes with their own accountability.
- */
-const AGENT_FORBIDDEN_FIELDS = new Set([
-  "maxProviderCostMinor",
-  "reviewMode",
-  "version",
-]);
-
-const FORBIDDEN_EXCLUSION_KEYS = new Set(["optedOut", "suppressed"]);
-
-/**
- * Merges a model patch onto the current plan under the field rules above.
- *
- * Unknown keys are dropped rather than passed through: a model that invents a
- * field name must not have it silently persisted into `strategy_json`, where a
- * later schema change might start honouring it.
- */
-export function mergePlanPatch(
-  current: SearchPlan,
-  patch: Record<string, unknown>,
-): { plan: SearchPlan; changed: boolean } {
-  const shape = searchPlanSchema.shape as Record<string, { safeParse: (v: unknown) => { success: boolean; data?: unknown } }>;
-  const next: Record<string, unknown> = { ...current };
-  let changed = false;
-
-  for (const [key, value] of Object.entries(patch)) {
-    if (AGENT_FORBIDDEN_FIELDS.has(key)) continue;
-    if (!(key in shape)) continue;
-
-    let candidate = value;
-
-    // Exclusions merge rather than replace, so a patch that mentions
-    // competitors cannot drop the opt-out and suppression guarantees.
-    if (key === "exclusions" && value && typeof value === "object") {
-      const supplied = { ...(value as Record<string, unknown>) };
-      for (const forbidden of FORBIDDEN_EXCLUSION_KEYS) delete supplied[forbidden];
-      candidate = { ...current.exclusions, ...supplied, optedOut: true, suppressed: true };
-    }
-
-    if (key === "company" && value && typeof value === "object") {
-      candidate = { ...current.company, ...(value as Record<string, unknown>) };
-    }
-
-    if (key === "intent" && value && typeof value === "object") {
-      candidate = { ...current.intent, ...(value as Record<string, unknown>) };
-    }
-
-    const parsed = shape[key].safeParse(candidate);
-    if (!parsed.success) continue;
-
-    if (JSON.stringify(next[key]) !== JSON.stringify(parsed.data)) {
-      next[key] = parsed.data;
-      changed = true;
-    }
-  }
-
-  const plan = parsePlan(next) ?? current;
-  return { plan, changed };
-}
-
-/** The label/value list the plan panel and the chat bubble both render. */
-export function planSummaryLines(plan: SearchPlan): PlanSummaryLine[] {
-  const lines: PlanSummaryLine[] = [];
-
-  if (plan.industries.length) {
-    lines.push({ label: "Industry", value: plan.industries.join(", ") });
-  }
-  if (plan.locations.length) {
-    lines.push({
-      label: "Location",
-      value: plan.locations
-        .map((location) =>
-          location.radiusKm
-            ? `${location.city ?? location.region ?? location.country} + ${Math.round(location.radiusKm / 1.609344)} miles`
-            : (location.city ?? location.region ?? location.country),
-        )
-        .join(", "),
-    });
-  }
-  const { minEmployees, maxEmployees } = plan.company;
-  if (minEmployees !== null || maxEmployees !== null) {
-    lines.push({
-      label: "Company size",
-      value:
-        minEmployees !== null && maxEmployees !== null
-          ? `${minEmployees}–${maxEmployees} employees`
-          : minEmployees !== null
-            ? `${minEmployees}+ employees`
-            : `Up to ${maxEmployees} employees`,
-    });
-  }
-  if (plan.decisionMakerRoles.length) {
-    lines.push({ label: "Roles", value: plan.decisionMakerRoles.join(", ") });
-  }
-  if (plan.intent.categories.length) {
-    lines.push({ label: "Intent", value: plan.intent.categories.join(", ") });
-  }
-  lines.push({ label: "Exclusions", value: "Existing customers, competitors, opt-outs" });
-  lines.push({ label: "Target", value: `${plan.targetVerifiedProspects} verified prospects` });
-
-  return lines;
-}
 
 /**
  * The context block sent to the model.
@@ -308,3 +199,6 @@ export async function estimateForPlan(
     readiness: checkPlanReadiness(plan),
   };
 }
+
+// Re-exported so existing callers keep one import site.
+export { mergePlanPatch, planSummaryLines };

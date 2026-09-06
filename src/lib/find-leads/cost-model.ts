@@ -116,6 +116,13 @@ export function estimateRunCost(
  * Used to clamp a customer's requested target down to what their remaining
  * budget can actually fund, rather than starting a run that will pause on
  * stage 6 having spent the money and produced nothing usable.
+ *
+ * Solved by binary search over `estimateRunCost` rather than by dividing the
+ * budget by the cost of one prospect. Each capability rounds its call count up,
+ * so a single prospect looks disproportionately expensive — dividing by that
+ * figure under-quoted the affordable target by roughly a tenth, clamping
+ * customers below what they had actually paid for. `estimateRunCost` is
+ * monotonic in the target, so the search is exact.
  */
 export function targetAffordableWithin(
   budgetMinor: number,
@@ -123,9 +130,29 @@ export function targetAffordableWithin(
   options: { intentEnabled?: boolean } = {},
 ): number {
   if (budgetMinor <= 0) return 0;
+  if (estimateRunCost(1, unitCosts, options).totalMinor > budgetMinor) return 0;
+
+  // An upper bound to search within: the naive per-prospect division is always
+  // pessimistic, so twice it comfortably brackets the true answer.
   const perProspect = estimateRunCost(1, unitCosts, options).totalMinor;
-  if (perProspect <= 0) return 0;
-  return Math.floor(budgetMinor / perProspect);
+  let low = 1;
+  let high = Math.max(2, Math.floor((budgetMinor / perProspect) * 2) + 2);
+
+  // Push the bound out if the estimate is unexpectedly cheap at scale.
+  while (estimateRunCost(high, unitCosts, options).totalMinor <= budgetMinor) {
+    low = high;
+    high *= 2;
+    // Matches the schema's ceiling; nothing above this is runnable anyway.
+    if (high > 10_000) return 10_000;
+  }
+
+  while (low < high - 1) {
+    const mid = Math.floor((low + high) / 2);
+    if (estimateRunCost(mid, unitCosts, options).totalMinor <= budgetMinor) low = mid;
+    else high = mid;
+  }
+
+  return low;
 }
 
 /**
