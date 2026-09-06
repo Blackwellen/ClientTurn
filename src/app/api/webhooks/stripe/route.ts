@@ -35,15 +35,16 @@ const HANDLED = new Set([
  * delivery. Order is by expected volume: snapshot events are the ones the
  * product acts on.
  */
-function candidateSecrets(): { kind: "snapshot" | "thin" | "legacy"; secret: string }[] {
-  const { snapshot, thin, legacy } = serverEnv.stripe.webhookSecrets;
+type SecretKind = "snapshot" | "thin" | "legacy" | "local";
+
+function candidateSecrets(): { kind: SecretKind; secret: string }[] {
+  const { snapshot, thin, legacy, local } = serverEnv.stripe.webhookSecrets;
   return [
     { kind: "snapshot" as const, secret: snapshot },
     { kind: "thin" as const, secret: thin },
     { kind: "legacy" as const, secret: legacy },
-  ].filter((entry): entry is { kind: "snapshot" | "thin" | "legacy"; secret: string } =>
-    Boolean(entry.secret),
-  );
+    { kind: "local" as const, secret: local },
+  ].filter((entry): entry is { kind: SecretKind; secret: string } => Boolean(entry.secret));
 }
 
 export async function POST(request: Request) {
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
 
   let event: Stripe.Event | null = null;
-  let destination: "snapshot" | "thin" | "legacy" | null = null;
+  let destination: SecretKind | null = null;
 
   for (const candidate of secrets) {
     try {

@@ -40,6 +40,15 @@ export const serverEnv = {
       snapshot: optional("STRIPE_WEBHOOK_SECRET_SNAPSHOT"),
       thin: optional("STRIPE_WEBHOOK_SECRET_THIN"),
       legacy: optional("STRIPE_WEBHOOK_SECRET_CLIENTTURN"),
+      /**
+       * Local development only: either the secret `stripe listen` prints, or
+       * the one `scripts/stripe-local-event.mjs` signs with. Kept as its own
+       * variable so a developer never has to overwrite the deployed test
+       * secret to exercise the handler, and so forgetting to remove it cannot
+       * silently authorise anything in production -- it simply will not be set
+       * there.
+       */
+      local: optional("STRIPE_WEBHOOK_SECRET_LOCAL"),
     },
     /** Destination ids, for identifying a delivery in the Stripe dashboard. */
     webhookDestinations: {

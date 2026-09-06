@@ -459,6 +459,30 @@ Two deliberate asymmetries:
   Reversing an allowance someone may already have spent would leave them in a
   negative balance they cannot clear. Support adjusts deliberately if needed.
 
+### Testing top-ups locally
+
+The Stripe CLI needs installing, authenticating and a tunnel. `scripts/stripe-local-event.mjs`
+does the same job with nothing but Node: it builds the event, signs it exactly
+as Stripe does (`t=<ts>,v1=<hmac-sha256 of "<ts>.<payload>">`) using
+`STRIPE_WEBHOOK_SECRET_LOCAL`, and posts it to the route.
+
+```bash
+node scripts/stripe-local-event.mjs list                    # find a purchase id
+node scripts/stripe-local-event.mjs tokens <purchase_id>    # completed + paid
+node scripts/stripe-local-event.mjs tokens-expired <id>     # abandoned checkout
+node scripts/stripe-local-event.mjs subscription-created <business_id>
+```
+
+`STRIPE_WEBHOOK_SECRET_LOCAL` is a fourth accepted secret alongside snapshot,
+thin and legacy, so local testing never means overwriting the deployed test
+secret. It is simply unset in production. The script refuses to run against
+anything but localhost — it forges valid signatures, so it must never be able
+to target a deployed site.
+
+If you do install the Stripe CLI, `stripe listen --forward-to
+localhost:3000/api/webhooks/stripe` prints a secret that goes in the same
+variable.
+
 ### What consumes tokens
 
 Assistant replies, reply interpretation, and conversation summaries — every
