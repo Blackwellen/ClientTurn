@@ -43,8 +43,8 @@ export function MarketingHeader() {
           : "border-b border-transparent bg-bg",
       )}
     >
-      <div className="mx-auto flex h-16 w-full max-w-[1520px] items-center gap-4 px-[max(5vw,28px)]">
-        <Logo />
+      <div className="mx-auto flex h-16 w-full max-w-[1520px] items-center gap-2 px-4 sm:gap-4 sm:px-[max(5vw,28px)]">
+        <Logo className="[&_img]:h-auto [&_img]:w-36 sm:[&_img]:w-[216px]" />
 
         <nav
           aria-label="Primary"
