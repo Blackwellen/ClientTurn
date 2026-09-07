@@ -12,6 +12,12 @@ import {
   readStoredResearchSummary,
   type ResearchSummary,
 } from "@/lib/find-leads/server/research-summary";
+import {
+  listSocialAccounts,
+  socialStatesForProspect,
+  type SocialAccount,
+  type SocialProspectState,
+} from "@/lib/outreach/social-outreach";
 import type { ProspectActivity, ProspectActivityKind } from "./activity";
 import type { ProspectFilters } from "./filters";
 import type {
@@ -383,6 +389,10 @@ export type ProspectDetail = {
   researchRefresh: ResearchRefreshState;
   /** The most recent stored AI synthesis, if one has been generated. */
   researchSummary: ResearchSummary | null;
+  /** Connected social sending accounts, with what each has left today. */
+  socialAccounts: SocialAccount[];
+  /** Where this prospect has reached on each social channel. */
+  socialStates: SocialProspectState[];
   messages: {
     id: string;
     direction: string;
@@ -507,10 +517,13 @@ export async function getProspectDetail(
   // Both are cheap reads against indexed columns, and both are needed by the
   // Research tab on open. Fetched alongside rather than on tab switch, so the
   // tab does not spin the first time someone clicks it.
-  const [researchRefresh, researchSummary] = await Promise.all([
-    researchRefreshState(businessId, prospectId),
-    readStoredResearchSummary(businessId, prospectId),
-  ]);
+  const [researchRefresh, researchSummary, socialAccounts, socialStates] =
+    await Promise.all([
+      researchRefreshState(businessId, prospectId),
+      readStoredResearchSummary(businessId, prospectId),
+      listSocialAccounts(businessId),
+      socialStatesForProspect(businessId, prospectId),
+    ]);
 
   const scoreRow = scoreResult.data;
   let score: ProspectScore | null = null;
@@ -598,6 +611,8 @@ export async function getProspectDetail(
     conversationId: prospectRaw.conversation_id,
     researchRefresh,
     researchSummary,
+    socialAccounts,
+    socialStates,
     messages: (messagesResult.data ?? []).map((row) => ({
       id: row.id,
       direction: row.direction,

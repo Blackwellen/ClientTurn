@@ -174,11 +174,15 @@ export async function getChannelPerformance(
           .in("status", ["SENT", "DELIVERED", "FAILED"]),
         base().eq("direction", "outbound").eq("status", "DELIVERED"),
         base().eq("direction", "inbound"),
+        // `suppression_entries` since 0069 — the one list. Matched on the
+        // destination column the channel actually uses, and including ALL,
+        // because an opt-out that covers every channel is an opt-out from this
+        // one too.
         supabase
-          .from("contact_suppressions")
+          .from("suppression_entries")
           .select("id", { count: "exact", head: true })
           .eq("business_id", businessId)
-          .eq("channel", channel)
+          .in("channel", [channel === "whatsapp" ? "WHATSAPP" : channel === "email" ? "EMAIL" : "SMS", "ALL"])
           .gte("created_at", from)
           .lt("created_at", to),
       ]);

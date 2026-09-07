@@ -27,6 +27,7 @@ import "server-only";
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { suppress } from "@/lib/policy/suppression";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import {
   flagForAttention,
@@ -816,16 +817,25 @@ export async function applySuppression(
       }
 
       const admin = createAdminClient();
-      await admin.from("contact_suppressions").upsert(
-        {
-          business_id: context.business.businessId,
-          normalized_contact: contact,
-          channel: input.scope,
-          reason: input.reason,
-          source: "agent_reply",
-        },
-        { onConflict: "business_id,normalized_contact,channel" },
-      );
+
+      // The one suppression list, shared with the cold path (0069). The agent's
+      // scope and reason vocabularies are the V3 lower-case ones, mapped here
+      // rather than at the tool boundary so the tool contract is unchanged.
+      await suppress({
+        businessId: context.business.businessId,
+        channel:
+          input.scope === "all"
+            ? "ALL"
+            : input.scope === "email"
+              ? "EMAIL"
+              : input.scope === "whatsapp"
+                ? "WHATSAPP"
+                : "SMS",
+        reason: input.reason === "opt_out" ? "OPT_OUT" : "INVALID",
+        source: "AGENT_REPLY",
+        email: contact.includes("@") ? contact : null,
+        phone: contact.includes("@") ? null : contact,
+      });
 
       // A wrong number suppresses that endpoint. It does not mark the whole
       // lead unreachable, because another channel may still be valid and the

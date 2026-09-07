@@ -48,6 +48,17 @@ export const RATE_LIMITS = {
   // Each attempt creates or mutates a Stripe Connect account and mints a
   // single-use onboarding link, so this is bounded tightly.
   "affiliate:connect": { limit: 10, windowSeconds: 600 },
+  // A test send makes our servers connect to an address the customer just
+  // typed. Bounded per workspace so the button cannot be used to point us at
+  // someone else's server repeatedly.
+  "webhook:test": { limit: 10, windowSeconds: 600 },
+  // The public API. Bounded per key rather than per IP: a customer running one
+  // integration from a datacentre would otherwise share a bucket with everyone
+  // else behind the same egress address.
+  "api:key": { limit: 300, windowSeconds: 60 },
+  // Presented credentials that did not resolve. Tight, and keyed by address:
+  // this is the bucket that makes guessing a key impractical.
+  "api:unauthenticated": { limit: 20, windowSeconds: 60 },
   // Promo codes carry a real discount. Generous enough for ordinary use,
   // tight enough that the endpoint cannot be used to enumerate offers.
   "affiliate:promo": { limit: 10, windowSeconds: 3600 },

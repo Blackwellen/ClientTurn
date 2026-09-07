@@ -62,6 +62,7 @@ export type PolicyReasonCode =
   | "BLOCKED_INVALID_CONTACT"
   | "BLOCKED_DOMAIN_HEALTH"
   | "BLOCKED_BUSINESS_STATE"
+  | "BLOCKED_SOURCE_NOT_PERMITTED"
   | "REVIEW_REQUIRED";
 
 /** V4 §91.2. */
@@ -146,6 +147,17 @@ export type PolicyInput = {
   suppression: { reason: string; scope: "PLATFORM" | "WORKSPACE" } | null;
   /** The V3 per-lead opt-out flag, which binds every origin. */
   optedOut: boolean;
+  /**
+   * Whether every source this record came from is one the workspace permits
+   * (Programme §16, §17).
+   *
+   * `UNKNOWN` means no provenance was recorded, and is deliberately not the
+   * same as permitted: a prospect that arrived from nowhere identifiable is
+   * exactly the one worth stopping on. Only consulted for cold outreach —
+   * where someone came to the business, the relationship is the basis and the
+   * source of the record adds nothing to it.
+   */
+  sourcePermitted: "PERMITTED" | "NOT_PERMITTED" | "UNKNOWN";
   /** Workspace-level state: an inactive subscription stops all outbound. */
   businessActive: boolean;
   /** Sender/provider readiness for this channel. */
@@ -177,6 +189,8 @@ const REASON_SENTENCES: Record<PolicyReasonCode, string> = {
   BLOCKED_INVALID_CONTACT: "There is no usable address for this channel.",
   BLOCKED_DOMAIN_HEALTH: "Sending is paused while sender health recovers.",
   BLOCKED_BUSINESS_STATE: "This workspace does not have an active subscription.",
+  BLOCKED_SOURCE_NOT_PERMITTED:
+    "This record came from a source your workspace has not permitted for outreach.",
   REVIEW_REQUIRED: "This contact needs a human decision before any message is sent.",
 };
 

@@ -13,6 +13,7 @@ export type JobType =
   | "campaign.send"
   | "integration.health_check"
   | "webhook.replay"
+  | "webhook.dispatch"
   | "notification.send"
   | "usage.aggregate"
   | "retention.cleanup"

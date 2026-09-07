@@ -20,8 +20,10 @@ import { SystemEventsView } from "@/components/admin/system/system-events-view";
 import { SystemErrorsView } from "@/components/admin/system/system-errors-view";
 import { SystemJobsView } from "@/components/admin/system/system-jobs-view";
 import { SystemComplianceView } from "@/components/admin/system/system-compliance-view";
+import { SystemReadinessView } from "@/components/admin/system/system-readiness-view";
 import { getJobsView } from "@/lib/admin/jobs";
 import { getComplianceView } from "@/lib/admin/compliance";
+import { getReadinessReport } from "@/lib/admin/readiness";
 import { JOB_STATUS_FILTERS } from "@/lib/admin/jobs-types";
 
 export const dynamic = "force-dynamic";
@@ -151,6 +153,7 @@ export default async function AdminSystemPage({
           jobId={params.job}
         />
       )}
+      {params.view === "readiness" && <ReadinessView />}
       {params.view === "compliance" && (
         <ComplianceView
           suppressionQuery={params.sq}
@@ -160,6 +163,11 @@ export default async function AdminSystemPage({
       )}
     </div>
   );
+}
+
+async function ReadinessView() {
+  const report = await getReadinessReport();
+  return <SystemReadinessView report={report} />;
 }
 
 async function HealthView() {

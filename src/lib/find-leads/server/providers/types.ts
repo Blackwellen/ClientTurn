@@ -49,6 +49,37 @@ export type ContactCandidate = {
   companyDomain: string | null;
 };
 
+/**
+ * Someone who engaged with the workspace's *own* social presence.
+ *
+ * This is first-party data — a person who commented on your post, messaged your
+ * page or mentioned you — read through the account you connected. It is not a
+ * stranger scraped from a platform, and the distinction runs all the way through
+ * the pipeline: contactability treats an inbound engager quite differently from
+ * a cold record, and the provenance row says which it was.
+ *
+ * These platforms return a display name and a platform-scoped id. They return
+ * no email and no phone; the licensed waterfall resolves those later, or the
+ * person is worked through the channel they already used.
+ */
+export type SocialEngagementCandidate = {
+  /** Platform-scoped id (PSID, IGSID, member URN). Never a stable global id. */
+  externalId: string;
+  platform: "FACEBOOK" | "INSTAGRAM" | "LINKEDIN";
+  /** How they engaged. Drives contactability: a DM is a stronger basis than a
+   *  public comment for replying on that channel. */
+  engagement: "MESSAGE" | "COMMENT" | "MENTION" | "REACTION";
+  displayName: string | null;
+  /** The company they engaged as, where the platform exposes one. */
+  companyName: string | null;
+  profileUrl: string | null;
+  /** What they actually said, kept short. Evidence for the intent classifier. */
+  excerpt: string | null;
+  occurredAt: string | null;
+  /** The post, thread or conversation, so provenance can point back at it. */
+  sourceReference: string | null;
+};
+
 export type VerificationResult = {
   email: string;
   status: "VALID" | "RISKY" | "INVALID" | "CATCH_ALL" | "UNVERIFIABLE" | "UNKNOWN";
@@ -134,6 +165,9 @@ export type SourcingProvider = {
     companies: CompanyCandidate[];
     roles: string[];
     limit: number;
+    /** Set for providers that read something the workspace itself supplied,
+     *  such as an uploaded LinkedIn export. Ignored by pure API providers. */
+    businessId?: string;
   }) => Promise<ProviderResponse<ContactCandidate>>;
   enrichCompanies?: (input: {
     companies: CompanyCandidate[];
@@ -141,6 +175,19 @@ export type SourcingProvider = {
   verifyEmails?: (input: {
     emails: string[];
   }) => Promise<ProviderResponse<VerificationResult>>;
+  /**
+   * People who engaged with the workspace's own social presence.
+   *
+   * Scoped to `businessId` because it reads that workspace's connected account
+   * — unlike the other capabilities, there is no plan-wide search here, only
+   * "who talked to us".
+   */
+  fetchEngagement?: (input: {
+    businessId: string;
+    /** Only engagement newer than this. The poller passes its last cursor. */
+    since: string | null;
+    limit: number;
+  }) => Promise<ProviderResponse<SocialEngagementCandidate>>;
   fetchIntent?: (input: {
     domains: string[];
     /** The workspace's own categories, with the keywords it configured for
@@ -158,6 +205,7 @@ export const CAPABILITY_ACTIVITY: Record<Capability, string> = {
   CONTACT_ENRICHMENT: "Enriching contact details",
   EMAIL_VERIFICATION: "Finding and verifying emails",
   INTENT: "Checking buying signals",
+  SOCIAL_ENGAGEMENT: "Reading your own audience engagement",
   WEBSITE_INTELLIGENCE: "Reading public web pages",
 };
 
@@ -168,6 +216,7 @@ export const CAPABILITY_UNIT: Record<Capability, string> = {
   CONTACT_ENRICHMENT: "records",
   EMAIL_VERIFICATION: "emails",
   INTENT: "signals",
+  SOCIAL_ENGAGEMENT: "people",
   WEBSITE_INTELLIGENCE: "pages",
 };
 

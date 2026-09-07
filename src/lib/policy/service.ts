@@ -4,6 +4,8 @@ import { getEntitlements } from "@/lib/billing/entitlements";
 import { canSend, summariseEligibility } from "./channel-policy";
 import { packForCountry } from "./packs";
 import { checkSuppression } from "./suppression";
+import { loadDataControls } from "@/lib/compliance/queries";
+import { verdictForSources } from "@/lib/compliance/types";
 import {
   POLICY_CHANNELS,
   type CampaignType,
@@ -88,6 +90,59 @@ function localTimeIn(timezone: string | null | undefined, at: Date) {
 }
 
 /**
+ * The provenance types recorded against a subject.
+ *
+ * Prospects carry per-field provenance in `prospect_data_sources`. Leads carry
+ * one source on `lead_sources`, which is mapped onto the same vocabulary so a
+ * single rule can judge both — the question "where did this record come from"
+ * does not change depending on which table it happens to live in.
+ */
+async function loadProvenance(
+  businessId: string,
+  subject: PolicySubject,
+): Promise<string[]> {
+  const admin = createAdminClient();
+
+  if (subject.type === "PROSPECT") {
+    const { data } = await admin
+      .from("prospect_data_sources")
+      .select("source_type")
+      .eq("business_id", businessId)
+      .eq("prospect_id", subject.id)
+      .limit(100);
+    return [...new Set((data ?? []).map((row) => row.source_type))];
+  }
+
+  const { data: lead } = await admin
+    .from("leads")
+    .select("source_id")
+    .eq("business_id", businessId)
+    .eq("id", subject.id)
+    .maybeSingle();
+
+  if (!lead?.source_id) return [];
+
+  const { data: source } = await admin
+    .from("lead_sources")
+    .select("provider")
+    .eq("id", lead.source_id)
+    .maybeSingle();
+
+  // A lead arrives through one of a small, closed set of routes. Anything not
+  // named here yields no provenance, which the rules read as UNKNOWN.
+  const byProvider: Record<string, string> = {
+    meta: "FIRST_PARTY",
+    webform: "FIRST_PARTY",
+    test: "FIRST_PARTY",
+    csv: "IMPORT",
+    manual: "MANUAL",
+  };
+
+  const mapped = source?.provider ? byProvider[source.provider] : undefined;
+  return mapped ? [mapped] : [];
+}
+
+/**
  * Loads the stored permission record for a subject, if the workspace has one.
  * Absent permission is not the same as denied permission — it means UNKNOWN,
  * which the rules turn into a review or consent request as appropriate.
@@ -110,9 +165,13 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
   const { businessId, subject, channel, campaignType } = options;
   const at = options.at ?? new Date();
 
-  const [permission, entitlements] = await Promise.all([
+  const [permission, entitlements, controls, provenance] = await Promise.all([
     loadPermission(businessId, subject),
     getEntitlements(businessId),
+    loadDataControls(businessId),
+    // Only cold outreach consults this, so the lookup is skipped for the warm
+    // paths that make up most traffic.
+    campaignType === "COLD" ? loadProvenance(businessId, subject) : Promise.resolve([]),
   ]);
 
   const country = subject.country ?? permission?.country ?? null;
@@ -155,6 +214,12 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
       ? { reason: suppression.reason, scope: suppression.scope }
       : null,
     optedOut: subject.optedOut ?? false,
+    sourcePermitted:
+      campaignType === "COLD"
+        ? verdictForSources(provenance, controls.allowedSources)
+        : // Not consulted for warm contact: the relationship is the basis, and
+          // how the record was filed adds nothing to it.
+          "PERMITTED",
     businessActive: entitlements.active,
     senderAvailable: sender.available,
     senderHealth: sender.health,
@@ -221,6 +286,7 @@ async function recordDecision(
           },
           requirements: decision.requirements ?? [],
           pack: input.pack.name,
+          source_permitted: input.sourcePermitted,
         },
         evaluated_at: new Date().toISOString(),
       },

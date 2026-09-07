@@ -21,7 +21,22 @@ export const PROSPECT_QUICK_FILTERS = [
 
 export type ProspectQuickFilter = (typeof PROSPECT_QUICK_FILTERS)[number];
 
-export const PROSPECT_VIEWS = ["discover", "prospects", "intent", "campaigns"] as const;
+/**
+ * Five internal views behind the one Find Leads destination.
+ *
+ * "social" is the connect-then-message queue. It earns a view of its own rather
+ * than living inside Campaigns because its unit of work is different: a
+ * campaign schedules sends, whereas this is a queue gated on other people
+ * accepting. The sidebar is unaffected — the navigation rule caps customer
+ * destinations, not views within one.
+ */
+export const PROSPECT_VIEWS = [
+  "discover",
+  "prospects",
+  "intent",
+  "campaigns",
+  "social",
+] as const;
 export type FindLeadsView = (typeof PROSPECT_VIEWS)[number];
 
 export const PROSPECT_SORTS = [

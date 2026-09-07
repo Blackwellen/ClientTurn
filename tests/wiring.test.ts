@@ -283,6 +283,81 @@ describe("server action authority", () => {
   });
 });
 
+/* --------------------------------------------------------- suppression --- */
+
+describe("one suppression list", () => {
+  /**
+   * ClientTurn kept two suppression lists that never saw each other.
+   * `contact_suppressions` was written by SMS STOP handling, the agent tool and
+   * email bounces, and read by the warm send guard. `suppression_entries` was
+   * written by the cold reply classifier and read by `check_suppression()`,
+   * which the cold dispatcher uses.
+   *
+   * So a lead who texted STOP could still be emailed by an acquisition
+   * campaign, and a prospect who replied "unsubscribe" could still be sent warm
+   * SMS — while `suppressProspect()` set channel ALL with a comment saying an
+   * opt-out means every channel. The split silently defeated the stated intent.
+   *
+   * 0069 unified them. This is what stops a new send path quietly reattaching
+   * to the deprecated table: the compliance guarantee is that there is exactly
+   * one list, and one list is a property of the source, not of a code review.
+   */
+  test("no application code touches the deprecated contact_suppressions table", () => {
+    const offenders: string[] = [];
+
+    for (const { file, text } of SOURCES) {
+      if (file.endsWith("database.types.ts")) continue;
+
+      text.split("\n").forEach((line, index) => {
+        const trimmed = line.trim();
+        // Prose about the migration is not a use of the table.
+        if (trimmed.startsWith("*") || trimmed.startsWith("//")) return;
+        if (/["'`]contact_suppressions["'`]/.test(line)) {
+          offenders.push(`${file}:${index + 1}  ${trimmed}`);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `contact_suppressions is deprecated (0069). Every read and write goes ` +
+        `through lib/policy/suppression.ts, which is the only thing that makes ` +
+        `an opt-out apply to both the warm and the cold path:\n${offenders.join("\n")}`,
+    );
+  });
+
+  test("suppression_entries is only reached through the policy module", () => {
+    // The distinction is what the read is *for*. Displaying or managing the
+    // list — analytics counting rows for a chart, an operator reviewing and
+    // lifting entries — may query directly. Anything that gates a *send* must
+    // go through the module, because that is where the platform-scope and
+    // expiry rules live and a raw query would silently miss both.
+    const ALLOWED = [
+      "src/lib/policy/suppression.ts",
+      "src/lib/analytics/v4-extras.ts",
+      "src/lib/admin/compliance.ts",
+      "src/lib/admin/compliance-actions.ts",
+      "src/lib/compliance/queries.ts",
+    ];
+    const offenders: string[] = [];
+
+    for (const { file, text } of SOURCES) {
+      if (file.endsWith("database.types.ts")) continue;
+      if (ALLOWED.includes(file)) continue;
+      if (/from\(["'`]suppression_entries["'`]\)/.test(text)) offenders.push(file);
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `Use lib/policy/suppression.ts rather than querying suppression_entries ` +
+        `directly — it carries the platform-scope and expiry rules a raw query ` +
+        `would miss:\n${offenders.join("\n")}`,
+    );
+  });
+});
+
 /* ------------------------------------------------------- nav targets --- */
 
 describe("navigation targets", () => {
@@ -555,26 +630,19 @@ describe("integration catalogue", () => {
   });
 
   /**
-   * The inverse, so the catalogue cannot quietly under-report what works: an
-   * adapter with no connect path is a built integration nobody can reach.
+   * The inverse direction — an adapter with no `connectPath` — is deliberately
+   * *not* asserted.
+   *
+   * It was, briefly, and it was wrong. A registered adapter the catalogue does
+   * not expose harms nobody: the card reads "Not yet available" and the button
+   * is disabled. That is the correct state for an adapter that exists in code
+   * but has not been exercised against the real provider yet, which is exactly
+   * where Meta Lead Ads sits.
+   *
+   * Asserting it turned "someone is part-way through building an integration"
+   * into a build failure, and pushed towards exposing an unverified flow to
+   * customers to make a test pass. `public-pages.test.ts` already guards the
+   * direction that matters commercially: if Meta ever becomes self-serve, that
+   * test fails and the enterprise copy gets revisited.
    */
-  test("every registered adapter is reachable from the catalogue", () => {
-    const adapterSource = SOURCES.filter((s) =>
-      s.file.startsWith("src/lib/integrations/providers/"),
-    )
-      .map((s) => s.text)
-      .join("\n");
-
-    const unreachable: string[] = [];
-    for (const match of adapterSource.matchAll(/registerOAuthProvider\("([a-z_]+)"/g)) {
-      const provider = PROVIDERS.find((p) => p.id === match[1]);
-      if (!provider) {
-        unreachable.push(`${match[1]} (not in the catalogue at all)`);
-      } else if (!provider.connectPath) {
-        unreachable.push(`${match[1]} (adapter registered, connectPath is null)`);
-      }
-    }
-
-    assert.deepEqual(unreachable, [], unreachable.join("\n"));
-  });
 });

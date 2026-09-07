@@ -10,6 +10,7 @@ export const SYSTEM_VIEWS = [
   "errors",
   "jobs",
   "compliance",
+  "readiness",
 ] as const;
 export type SystemView = (typeof SYSTEM_VIEWS)[number];
 
@@ -19,6 +20,7 @@ export const SYSTEM_VIEW_LABEL: Record<SystemView, string> = {
   errors: "Errors",
   jobs: "Jobs",
   compliance: "Compliance",
+  readiness: "Readiness",
 };
 
 export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
@@ -28,6 +30,8 @@ export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
   jobs: "Monitor and manage background jobs across the ClientTurn platform.",
   compliance:
     "Manage communication policies, regional requirements and compliance controls.",
+  readiness:
+    "Release readiness, measured from the running system rather than ticked by hand.",
 };
 
 /**

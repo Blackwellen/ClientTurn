@@ -21,21 +21,24 @@ import {
   requiresConfirmation,
   type RiskClass,
 } from "../services/types.ts";
+import {
+  PLATFORM_SCOPES,
+  SCOPE_DESCRIPTIONS,
+  roleMeets,
+  type PlatformScope,
+} from "../platform/scopes.ts";
 
 export type ToolKind = "READ" | "WRITE" | "APPROVAL_GATED";
 
-export const MCP_SCOPES = [
-  "leads:read",
-  "leads:write",
-  "prospects:read",
-  "prospects:write",
-  "campaigns:read",
-  "campaigns:write",
-  "analytics:read",
-  "business:read",
-] as const;
+/**
+ * Re-exported, not redeclared. MCP, workspace API keys and webhooks are three
+ * doors into the same building, so they read one list of permissions — see
+ * `lib/platform/scopes`. Keeping a second copy here is how `leads:write` ends
+ * up meaning something slightly different over MCP than over HTTP.
+ */
+export const MCP_SCOPES = PLATFORM_SCOPES;
 
-export type McpScope = (typeof MCP_SCOPES)[number];
+export type McpScope = PlatformScope;
 
 export type ToolDefinition = {
   name: string;
@@ -329,8 +332,6 @@ export function toolsForScopes(scopes: string[]): ToolDefinition[] {
   return MCP_TOOLS.filter((tool) => granted.has(tool.scope));
 }
 
-const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
-
 /**
  * Whether the authorising user's *current* role still permits this tool.
  *
@@ -338,16 +339,7 @@ const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, admin: 2, owne
  * someone was an admin must stop working the moment they are demoted.
  */
 export function roleAllows(userRole: string, tool: ToolDefinition): boolean {
-  return (ROLE_RANK[userRole] ?? -1) >= (ROLE_RANK[tool.minimumRole] ?? 99);
+  return roleMeets(userRole, tool.minimumRole);
 }
 
-export const SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
-  "leads:read": "Read your leads and their conversations",
-  "leads:write": "Create and update leads",
-  "prospects:read": "Read sourced prospects and their scores",
-  "prospects:write": "Approve prospects and start sourcing",
-  "campaigns:read": "Read campaign performance",
-  "campaigns:write": "Change and launch campaigns",
-  "analytics:read": "Read your metrics",
-  "business:read": "Read your business profile and status",
-};
+export { SCOPE_DESCRIPTIONS };

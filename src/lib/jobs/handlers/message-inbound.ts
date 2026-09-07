@@ -3,6 +3,10 @@ import { PermanentJobError } from "@/lib/jobs/registry";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordUsage } from "@/lib/audit";
+import {
+  liftSuppressionForDestination,
+  suppress,
+} from "@/lib/policy/suppression";
 import { getMessagingProvider } from "@/lib/messaging/registry";
 import { createStubProvider } from "@/lib/messaging/stub";
 import { createTwilioProvider } from "@/lib/messaging/twilio";
@@ -123,18 +127,17 @@ async function recordOptOut(
 ) {
   const admin = createAdminClient();
 
-  await admin
-    .from("contact_suppressions")
-    .upsert(
-      {
-        business_id: business.businessId,
-        normalized_contact: contact,
-        channel: "all",
-        reason: "opt_out",
-        source: "inbound_reply",
-      },
-      { onConflict: "business_id,normalized_contact,channel" },
-    );
+  // Channel ALL, and now on the one list every send path reads. Someone who
+  // texts STOP has said "do not contact me" — not "not by SMS" — and before
+  // 0069 that intent stopped at the warm boundary while cold email carried on.
+  await suppress({
+    businessId: business.businessId,
+    channel: "ALL",
+    reason: "OPT_OUT",
+    source: "INBOUND_REPLY",
+    phone: contact.includes("@") ? null : contact,
+    email: contact.includes("@") ? contact : null,
+  });
 
   await admin
     .from("leads")
@@ -181,12 +184,13 @@ async function recordOptIn(
   contact: string,
 ) {
   const admin = createAdminClient();
-  await admin
-    .from("contact_suppressions")
-    .delete()
-    .eq("business_id", business.businessId)
-    .eq("normalized_contact", contact)
-    .eq("reason", "opt_out");
+  // The recipient reversing their own decision, which is the one case where
+  // lifting an OPT_OUT is right — `unsuppress()` refuses it precisely because
+  // a *workspace* may not do this.
+  await liftSuppressionForDestination(business.businessId, "SMS", {
+    phone: contact.includes("@") ? null : contact,
+    email: contact.includes("@") ? contact : null,
+  });
 
   await admin
     .from("leads")

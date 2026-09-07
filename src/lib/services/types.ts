@@ -90,7 +90,16 @@ export function riskRank(risk: RiskClass): number {
  * Who is asking. Recorded on every audit row, because "a lead was archived" and
  * "a lead was archived by an MCP client acting for Priya" are different facts.
  */
-export type CallerKind = "UI" | "COPILOT" | "AGENT" | "MCP" | "SYSTEM";
+/**
+ * Who is asking.
+ *
+ * `API` is a customer's own software, holding a workspace API key. It is
+ * distinct from `MCP` because the two have different confirmation stories: an
+ * MCP client parks a risky action for a human, whereas an API caller is a
+ * program the customer wrote and can be told plainly that an operation needs a
+ * person and refused. Neither may ever set `confirmed`.
+ */
+export type CallerKind = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM";
 
 export type ServiceContext = {
   businessId: string;

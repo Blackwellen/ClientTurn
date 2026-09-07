@@ -21,7 +21,7 @@
 -- ======================================================================
 -- 1. Balances
 -- ======================================================================
-create table public.ai_token_balances (
+create table if not exists public.ai_token_balances (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   -- The billing period this allowance belongs to. Included tokens do not roll
@@ -58,9 +58,10 @@ create table public.ai_token_balances (
            and used_tokens >= 0 and reserved_tokens >= 0)
 );
 
-create index ai_token_balances_business_idx
+create index if not exists ai_token_balances_business_idx
   on public.ai_token_balances (business_id, period_start desc);
 
+drop trigger if exists ai_token_balances_set_updated_at on public.ai_token_balances;
 create trigger ai_token_balances_set_updated_at
   before update on public.ai_token_balances
   for each row execute function public.set_updated_at();
@@ -68,7 +69,7 @@ create trigger ai_token_balances_set_updated_at
 -- ======================================================================
 -- 2. Ledger
 -- ======================================================================
-create table public.ai_token_ledger (
+create table if not exists public.ai_token_ledger (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   period_start date not null,
@@ -90,19 +91,19 @@ create table public.ai_token_ledger (
   created_at timestamptz not null default now()
 );
 
-create unique index ai_token_ledger_idem_idx
+create unique index if not exists ai_token_ledger_idem_idx
   on public.ai_token_ledger (business_id, idempotency_key)
   where idempotency_key is not null;
 
-create index ai_token_ledger_business_idx
+create index if not exists ai_token_ledger_business_idx
   on public.ai_token_ledger (business_id, created_at desc);
-create index ai_token_ledger_period_idx
+create index if not exists ai_token_ledger_period_idx
   on public.ai_token_ledger (business_id, period_start, reason);
 
 -- ======================================================================
 -- 3. Purchases
 -- ======================================================================
-create table public.ai_token_purchases (
+create table if not exists public.ai_token_purchases (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   pack_key text not null,
@@ -121,17 +122,20 @@ create table public.ai_token_purchases (
   updated_at timestamptz not null default now()
 );
 
-create unique index ai_token_purchases_session_idx
+create unique index if not exists ai_token_purchases_session_idx
   on public.ai_token_purchases (stripe_checkout_session_id)
   where stripe_checkout_session_id is not null;
 
-create index ai_token_purchases_business_idx
+create index if not exists ai_token_purchases_business_idx
   on public.ai_token_purchases (business_id, created_at desc);
 
+drop trigger if exists ai_token_purchases_set_updated_at on public.ai_token_purchases;
 create trigger ai_token_purchases_set_updated_at
   before update on public.ai_token_purchases
   for each row execute function public.set_updated_at();
 
+alter table public.ai_token_ledger
+  drop constraint if exists ai_token_ledger_purchase_fk;
 alter table public.ai_token_ledger
   add constraint ai_token_ledger_purchase_fk
   foreign key (purchase_id) references public.ai_token_purchases(id) on delete set null;
@@ -305,6 +309,7 @@ revoke all on function public.credit_ai_tokens(uuid, date, bigint, text, text, u
 
 alter table public.ai_token_balances enable row level security;
 alter table public.ai_token_balances force row level security;
+drop policy if exists ai_token_balances_select on public.ai_token_balances;
 create policy ai_token_balances_select on public.ai_token_balances
   for select to authenticated
   using (public.is_business_member(business_id));
@@ -313,6 +318,7 @@ revoke all on public.ai_token_balances from anon;
 
 alter table public.ai_token_purchases enable row level security;
 alter table public.ai_token_purchases force row level security;
+drop policy if exists ai_token_purchases_select on public.ai_token_purchases;
 create policy ai_token_purchases_select on public.ai_token_purchases
   for select to authenticated
   using (public.is_business_member(business_id));

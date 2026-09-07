@@ -41,6 +41,7 @@ export function FindLeadsView({
   discover,
   intent,
   campaigns,
+  social,
 }: {
   filters: ProspectFilters;
   kpis: FindLeadsKpi[];
@@ -57,6 +58,7 @@ export function FindLeadsView({
   discover: React.ReactNode;
   intent: React.ReactNode;
   campaigns: React.ReactNode;
+  social: React.ReactNode;
 }) {
   const params = useFindLeadsParams();
 
@@ -65,6 +67,7 @@ export function FindLeadsView({
     { value: "prospects", label: "Prospects", count: counts.all },
     { value: "intent", label: "Intent" },
     { value: "campaigns", label: "Campaigns" },
+    { value: "social", label: "Social" },
   ];
 
   return (
@@ -124,6 +127,8 @@ export function FindLeadsView({
           intent
         ) : filters.view === "campaigns" ? (
           campaigns
+        ) : filters.view === "social" ? (
+          social
         ) : (
           discover
         )}

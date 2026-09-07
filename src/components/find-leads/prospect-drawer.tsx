@@ -55,6 +55,7 @@ import {
 } from "@/lib/prospects/types";
 import { confidenceBand, confidenceLabel, confidenceTone } from "@/lib/prospects/scoring-explain";
 import type { ProspectDetail } from "@/lib/prospects/queries";
+import { SocialOutreachPanel } from "./social/social-outreach-panel";
 import { useFindLeadsParams } from "./use-find-leads-params";
 
 /**
@@ -285,6 +286,33 @@ function SummaryView({ detail }: { detail: ProspectDetail }) {
       <ContactabilityCard detail={detail} />
       <VerificationCard detail={detail} />
       <CampaignAssignmentCard detail={detail} />
+
+      <SocialOutreachPanel
+        prospectId={detail.prospect.id}
+        prospectName={prospectDisplayName(detail.prospect)}
+        eligible={detail.prospect.outreach_eligibility === "ELIGIBLE"}
+        accounts={detail.socialAccounts.map((account) => ({
+          id: account.id,
+          platform: account.platform,
+          displayName: account.displayName,
+          sendMode: account.sendMode,
+          connectsLeftToday: account.capacity.connectsLeftToday,
+          messagesLeftToday: account.capacity.messagesLeftToday,
+          notesLeftThisMonth: account.capacity.notesLeftThisMonth,
+          blockedReason: account.capacity.blockedReason,
+        }))}
+        states={detail.socialStates.map((state) => ({
+          platform: state.platform,
+          state: state.state,
+          profileUrl: state.profileUrl,
+          noteAttached: state.noteAttached,
+          inviteSentAt: state.inviteSentAt,
+          acceptedAt: state.acceptedAt,
+          messagedAt: state.messagedAt,
+          pendingDays: state.pendingDays,
+        }))}
+      />
+
       <RetentionNote />
     </div>
   );

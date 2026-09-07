@@ -129,6 +129,17 @@ export type AuditAction =
   | "import.performed"
   | "lead.imported"
   | "integration.slack_channel_set"
+  // The developer platform (Settings -> Developer). Issuing a credential or
+  // pointing a webhook at a new URL is an administrative act with consequences
+  // outside the product, so each one is a dated fact rather than a silent
+  // settings change.
+  | "api_key.created"
+  | "api_key.revoked"
+  | "webhook_endpoint.created"
+  | "webhook_endpoint.updated"
+  | "webhook_endpoint.deleted"
+  | "webhook_endpoint.secret_rotated"
+  | "webhook_endpoint.tested"
   // Find Leads (V4 §11.20). Every step that spends money, changes what will be
   // contacted, or moves a record across the Prospect/Lead boundary is logged.
   | "acquisition_profile.analysed"
@@ -154,6 +165,13 @@ export type AuditAction =
   | "prospect.marked_for_review"
   | "prospect.research_refreshed"
   | "prospect.contact_enriched"
+  | "social_account.saved"
+  | "social_account.status_changed"
+  | "social_outreach.invited"
+  | "social_outreach.messaged"
+  | "social_outreach.accepted"
+  | "social_outreach.withdrawn"
+  | "social_outreach.declined"
   | "prospect.research_summarised"
   | "prospect.exported"
   | "recurring_search.created"

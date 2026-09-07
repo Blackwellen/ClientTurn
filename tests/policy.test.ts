@@ -48,6 +48,10 @@ function input(overrides: Partial<PolicyInput> = {}): PolicyInput {
     relationshipType: "FOUND_BY_US",
     consentStatus: "UNKNOWN",
     hasConsentEvidence: false,
+    // The default fixture is a cold prospect from a permitted source, so the
+    // existing cases keep testing the rule they were written for rather than
+    // all failing on provenance.
+    sourcePermitted: "PERMITTED",
     destination: "buyer@acme.co.uk",
     suppression: null,
     optedOut: false,
@@ -287,4 +291,63 @@ test("review outranks consent-required when neither allows", () => {
     input({ campaignType: "WARM", channel: "SMS", destination: "+447700900000", relationshipType: "UNKNOWN" }),
   );
   assert.equal(summariseEligibility([consent, review]), "REVIEW");
+});
+
+/* ------------------------------------------------------- source provenance */
+
+test("source provenance: a permitted source passes the gate", () => {
+  const decision = canSend(input({ sourcePermitted: "PERMITTED" }));
+  assert.notEqual(decision.reasonCode, "BLOCKED_SOURCE_NOT_PERMITTED");
+});
+
+test("source provenance: a source the workspace has not permitted blocks cold outreach", () => {
+  const decision = canSend(input({ sourcePermitted: "NOT_PERMITTED" }));
+  assert.equal(decision.outcome, "BLOCKED");
+  assert.equal(decision.reasonCode, "BLOCKED_SOURCE_NOT_PERMITTED");
+});
+
+test("source provenance: unknown provenance is a review, never a pass", () => {
+  // The case §16 is most concerned with: a record whose origin cannot be
+  // established. Treating "we don't know" as "fine" would make the whole
+  // setting decorative.
+  const decision = canSend(input({ sourcePermitted: "UNKNOWN" }));
+  assert.equal(decision.outcome, "REVIEW_REQUIRED");
+  assert.deepEqual(decision.requirements, ["HUMAN_REVIEW"]);
+});
+
+test("source provenance: the source gate outranks the channel rules", () => {
+  // Ordering matters: a prohibited source must not be reported as a channel
+  // problem, or someone will "fix" it by changing channel.
+  const decision = canSend(
+    input({ sourcePermitted: "NOT_PERMITTED", channel: "SMS" }),
+  );
+  assert.equal(decision.reasonCode, "BLOCKED_SOURCE_NOT_PERMITTED");
+});
+
+test("source provenance: an opt-out still outranks the source gate", () => {
+  // Absolute blocks stay absolute and stay cheapest-first.
+  const decision = canSend(
+    input({ sourcePermitted: "NOT_PERMITTED", optedOut: true }),
+  );
+  assert.equal(decision.reasonCode, "BLOCKED_OPT_OUT");
+});
+
+test("source provenance: warm contact is never gated on provenance", () => {
+  // Someone who came to the business is contactable because of that, not
+  // because of how their details were filed. Gating warm follow-up on the
+  // source would stop replies to people who asked for them.
+  for (const campaignType of ["WARM", "REACTIVATION", "TRANSACTIONAL"] as const) {
+    const decision = canSend(
+      input({
+        campaignType,
+        sourcePermitted: "NOT_PERMITTED",
+        relationshipType: "THEY_CONTACTED_US",
+      }),
+    );
+    assert.notEqual(
+      decision.reasonCode,
+      "BLOCKED_SOURCE_NOT_PERMITTED",
+      `${campaignType} was gated on provenance`,
+    );
+  }
 });

@@ -1,5 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkSuppression } from "@/lib/policy/suppression";
+import type { PolicyChannel } from "@/lib/policy/types";
 import { enqueue } from "@/lib/jobs/queue";
 import type { SendOrigin } from "@/lib/jobs/send-core";
 import {
@@ -270,21 +272,35 @@ export async function channelState(
   };
 }
 
+/**
+ * The warm send guard's suppression check.
+ *
+ * Reads `suppression_entries` through the shared policy module, which is the
+ * whole point of 0069: this used to query `contact_suppressions`, a separate
+ * list the cold path could not see. A lead who texted STOP was therefore still
+ * emailable by an acquisition campaign, and a prospect who replied
+ * "unsubscribe" to a cold email was still sendable warm SMS.
+ *
+ * A destination is one person however we reach them, so the check is
+ * destination-scoped rather than record-scoped.
+ */
 export async function isSuppressed(
   businessId: string,
   contact: string,
   channel: Channel,
 ): Promise<boolean> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("contact_suppressions")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("normalized_contact", contact)
-    .in("channel", [channel, "all"])
-    .limit(1)
-    .maybeSingle();
-  return Boolean(data);
+  const hit = await checkSuppression(businessId, policyChannelFor(channel), {
+    email: contact.includes("@") ? contact : null,
+    phone: contact.includes("@") ? null : contact,
+  });
+  return hit !== null;
+}
+
+/** The messaging channel vocabulary, in the policy engine's terms. */
+function policyChannelFor(channel: Channel): PolicyChannel {
+  if (channel === "email") return "EMAIL";
+  if (channel === "whatsapp") return "WHATSAPP";
+  return "SMS";
 }
 
 /**

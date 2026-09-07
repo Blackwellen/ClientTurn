@@ -1,4 +1,5 @@
 import "server-only";
+import { suppressedDestinations } from "@/lib/policy/suppression";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
@@ -130,14 +131,13 @@ export async function resolveAudience(
   if (filter.markedLost) query = query.eq("status", "LOST");
   if (filter.notBooked) query = query.is("booked_at", null);
 
-  const [{ data }, suppressionResult, totalResult] = await Promise.all([
+  const [{ data }, suppressedContacts, totalResult] = await Promise.all([
     query,
-    supabase
-      .from("contact_suppressions")
-      .select("normalized_contact")
-      .eq("business_id", businessId)
-      .in("channel", [channel, "all"])
-      .limit(SCAN_LIMIT),
+    // The one list (0069). Read in bulk rather than per contact, because an
+    // audience is resolved for thousands of leads in a single pass.
+    suppressedDestinations(businessId, [
+      channel === "whatsapp" ? "WHATSAPP" : channel === "email" ? "EMAIL" : "SMS",
+    ]),
     supabase
       .from("leads")
       .select("id", { count: "exact", head: true })
@@ -146,10 +146,6 @@ export async function resolveAudience(
   ]);
 
   const leads = (data ?? []) as unknown as AudienceLeadRow[];
-  const suppressedContacts = new Set(
-    (suppressionResult.data ?? []).map((row) => row.normalized_contact),
-  );
-
   const context: EligibilityContext = {
     now,
     cooldownDays: filter.lastContactedBeforeDays,

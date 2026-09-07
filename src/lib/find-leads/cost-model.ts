@@ -34,6 +34,7 @@ export type Capability =
   | "CONTACT_ENRICHMENT"
   | "EMAIL_VERIFICATION"
   | "INTENT"
+  | "SOCIAL_ENGAGEMENT"
   | "WEBSITE_INTELLIGENCE";
 
 export const CAPABILITIES: Capability[] = [
@@ -43,6 +44,7 @@ export const CAPABILITIES: Capability[] = [
   "CONTACT_ENRICHMENT",
   "EMAIL_VERIFICATION",
   "INTENT",
+  "SOCIAL_ENGAGEMENT",
   "WEBSITE_INTELLIGENCE",
 ];
 
@@ -59,6 +61,9 @@ export const FALLBACK_UNIT_COST_MINOR: Record<Capability, number> = {
   CONTACT_ENRICHMENT: 6,
   EMAIL_VERIFICATION: 1,
   INTENT: 3,
+  // Your own audience, read through your own connected account. There is no
+  // vendor invoice behind it, so the fallback is zero rather than a guess.
+  SOCIAL_ENGAGEMENT: 0,
   WEBSITE_INTELLIGENCE: 2,
 };
 
@@ -80,6 +85,9 @@ export const FUNNEL_MULTIPLIER: Record<Capability, number> = {
   CONTACT_ENRICHMENT: 1.8,
   EMAIL_VERIFICATION: 1.6,
   INTENT: 1.2,
+  // Your own audience is finite and already yours — it is not a funnel stage a
+  // run multiplies up to hit a target, so it contributes nothing to the estimate.
+  SOCIAL_ENGAGEMENT: 0,
   WEBSITE_INTELLIGENCE: 0,
 };
 

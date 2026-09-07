@@ -113,7 +113,7 @@ alter table public.services
 -- ==========================================================================
 -- 5. conversation_agent_runs
 -- ==========================================================================
-create table public.conversation_agent_runs (
+create table if not exists public.conversation_agent_runs (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   lead_id uuid references public.leads(id) on delete set null,
@@ -157,16 +157,16 @@ create table public.conversation_agent_runs (
   created_at timestamptz not null default now()
 );
 
-create unique index conversation_agent_runs_idem_idx
+create unique index if not exists conversation_agent_runs_idem_idx
   on public.conversation_agent_runs (business_id, idempotency_key);
-create index conversation_agent_runs_business_idx
+create index if not exists conversation_agent_runs_business_idx
   on public.conversation_agent_runs (business_id, created_at desc);
-create index conversation_agent_runs_conversation_idx
+create index if not exists conversation_agent_runs_conversation_idx
   on public.conversation_agent_runs (conversation_id, created_at desc);
-create index conversation_agent_runs_lead_idx
+create index if not exists conversation_agent_runs_lead_idx
   on public.conversation_agent_runs (lead_id, created_at desc);
 -- Admin observability reads failures far more often than successes.
-create index conversation_agent_runs_failure_idx
+create index if not exists conversation_agent_runs_failure_idx
   on public.conversation_agent_runs (status, created_at desc)
   where status in ('FAILED', 'HANDED_OVER');
 
@@ -175,7 +175,7 @@ create index conversation_agent_runs_failure_idx
 -- ==========================================================================
 -- One row per tool the runtime was asked to run, including the ones the
 -- policy engine refused. A denial is the interesting row, not an error.
-create table public.conversation_agent_actions (
+create table if not exists public.conversation_agent_actions (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   agent_run_id uuid not null references public.conversation_agent_runs(id) on delete cascade,
@@ -195,9 +195,9 @@ create table public.conversation_agent_actions (
   created_at timestamptz not null default now()
 );
 
-create index conversation_agent_actions_run_idx
+create index if not exists conversation_agent_actions_run_idx
   on public.conversation_agent_actions (agent_run_id, step_index);
-create index conversation_agent_actions_denied_idx
+create index if not exists conversation_agent_actions_denied_idx
   on public.conversation_agent_actions (business_id, created_at desc)
   where status <> 'OK';
 
@@ -207,7 +207,7 @@ create index conversation_agent_actions_denied_idx
 -- Every candidate field the model proposed, whether or not it was accepted.
 -- `accepted = false` rows are how a "why did it not fill the postcode in"
 -- question gets answered without re-running anything.
-create table public.conversation_agent_extractions (
+create table if not exists public.conversation_agent_extractions (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   agent_run_id uuid not null references public.conversation_agent_runs(id) on delete cascade,
@@ -221,9 +221,9 @@ create table public.conversation_agent_extractions (
   created_at timestamptz not null default now()
 );
 
-create index conversation_agent_extractions_run_idx
+create index if not exists conversation_agent_extractions_run_idx
   on public.conversation_agent_extractions (agent_run_id);
-create index conversation_agent_extractions_lead_idx
+create index if not exists conversation_agent_extractions_lead_idx
   on public.conversation_agent_extractions (lead_id, created_at desc);
 
 -- ==========================================================================
@@ -232,7 +232,7 @@ create index conversation_agent_extractions_lead_idx
 -- Rolling compressed memory for long conversations. `last_message_id` is the
 -- watermark: everything up to it is in the summary, everything after it is
 -- still passed verbatim.
-create table public.conversation_summaries (
+create table if not exists public.conversation_summaries (
   conversation_id uuid primary key references public.conversations(id) on delete cascade,
   business_id uuid not null references public.businesses(id) on delete cascade,
   summary_json jsonb not null default '{}'::jsonb,
@@ -241,17 +241,18 @@ create table public.conversation_summaries (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists conversation_summaries_set_updated_at on public.conversation_summaries;
 create trigger conversation_summaries_set_updated_at
   before update on public.conversation_summaries
   for each row execute function public.set_updated_at();
 
-create index conversation_summaries_business_idx
+create index if not exists conversation_summaries_business_idx
   on public.conversation_summaries (business_id, updated_at desc);
 
 -- ==========================================================================
 -- 9. agent_handoffs
 -- ==========================================================================
-create table public.agent_handoffs (
+create table if not exists public.agent_handoffs (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   lead_id uuid not null references public.leads(id) on delete cascade,
@@ -279,13 +280,13 @@ create table public.agent_handoffs (
 
 -- One open handoff per conversation. A second reason updates the existing row
 -- rather than flooding the team with duplicates.
-create unique index agent_handoffs_open_idx
+create unique index if not exists agent_handoffs_open_idx
   on public.agent_handoffs (conversation_id)
   where status in ('OPEN', 'ACKNOWLEDGED') and conversation_id is not null;
 
-create index agent_handoffs_queue_idx
+create index if not exists agent_handoffs_queue_idx
   on public.agent_handoffs (business_id, status, priority, created_at desc);
-create index agent_handoffs_lead_idx
+create index if not exists agent_handoffs_lead_idx
   on public.agent_handoffs (lead_id, created_at desc);
 
 -- ==========================================================================
@@ -297,6 +298,7 @@ create index agent_handoffs_lead_idx
 
 alter table public.conversation_agent_runs enable row level security;
 alter table public.conversation_agent_runs force row level security;
+drop policy if exists conversation_agent_runs_select on public.conversation_agent_runs;
 create policy conversation_agent_runs_select on public.conversation_agent_runs
   for select to authenticated
   using (public.is_business_member(business_id));
@@ -305,11 +307,13 @@ revoke all on public.conversation_agent_runs from anon;
 
 alter table public.agent_handoffs enable row level security;
 alter table public.agent_handoffs force row level security;
+drop policy if exists agent_handoffs_select on public.agent_handoffs;
 create policy agent_handoffs_select on public.agent_handoffs
   for select to authenticated
   using (public.is_business_member(business_id));
 -- Acknowledge/resolve is a member action; creation stays server-side so a
 -- handoff always carries a runtime-generated summary.
+drop policy if exists agent_handoffs_update on public.agent_handoffs;
 create policy agent_handoffs_update on public.agent_handoffs
   for update to authenticated
   using (public.is_business_member(business_id))

@@ -8,6 +8,10 @@ Ordered by value per day, not by programme section number.
 **Verification bar.** Nothing is ticked off until `npm test`, `npx tsc --noEmit`
 and `eslint` are all clean, and the change has tests that would fail without it.
 
+**End-to-end verification (2026-09-07).** Everything below was additionally
+verified against a real Postgres with all migrations applied and real RLS
+enforced — not against mocks. See "Verification" at the end.
+
 ---
 
 ## Status
@@ -328,3 +332,116 @@ identified that were never on it:
 | §16 Sources | Companies House, TED, EDGAR, Corporations Canada, NZBN, ACRA |
 | §17 Policy | Wire `allowedSources` into `PolicyInput` — the settings half now exists |
 | §20 Admin | Platform Readiness tracker |
+
+
+---
+
+## ✅ Blocker found by end-to-end testing — now fixed
+
+**Three migrations are silently skipped by the Supabase CLI.**
+
+```
+Skipping migration 0024a_agent_runtime.sql...      (file name must match pattern "<timestamp>_name.sql")
+Skipping migration 0024b_pg_cron_worker.sql...     (file name must match pattern "<timestamp>_name.sql")
+Skipping migration 0024c_ai_token_allowance.sql... (file name must match pattern "<timestamp>_name.sql")
+```
+
+The letter suffix breaks the CLI's required filename pattern. It does not warn
+loudly and it does not fail — it prints one line and carries on, so a database
+built with `supabase start` or `supabase db push` comes up **missing 8 tables**:
+
+`agent_handoffs`, `ai_token_balances`, `ai_token_ledger`, `ai_token_purchases`,
+`conversation_agent_actions`, `conversation_agent_extractions`,
+`conversation_agent_runs`, `conversation_summaries`
+
+…plus the `consume_ai_tokens`, `credit_ai_tokens`, `claim_agent_turn` and
+`release_agent_turn` functions, and the pg_cron worker schedule that runs the
+job queue.
+
+**What breaks on such a database:** the conversation agent
+([agent/orchestrator.ts](../src/lib/agent/orchestrator.ts),
+[agent/queries.ts](../src/lib/agent/queries.ts)), the entire AI token allowance
+([billing/token-service.ts](../src/lib/billing/token-service.ts)) — and
+therefore the Copilot loop's spend gate — and background processing.
+
+**The SQL itself is fine.** All three apply cleanly; I verified them by applying
+the full set to a plain Postgres by hand. This is purely a filename problem.
+
+**The fix** is to renumber them with digits only, so they still sort between
+`0024` and `0025`:
+
+```
+0024a_agent_runtime.sql       →  00241_agent_runtime.sql
+0024b_pg_cron_worker.sql      →  00242_pg_cron_worker.sql
+0024c_ai_token_allowance.sql  →  00243_ai_token_allowance.sql
+```
+
+**Fixed.** The risk that stopped me first time was that a rename makes the CLI
+treat these as new and re-apply them, failing on objects a production database
+already has. So they were made **idempotent first, and renamed second**:
+
+- every `create table` / `create index` guarded with `if not exists`
+- every `create policy` / `create trigger` preceded by a `drop ... if exists`
+- every `add constraint` preceded by a `drop constraint if exists`
+- `add column` guarded; the `plan_entitlements` seed already upserted
+
+**Proven, not assumed.** All three were re-applied to a database that already
+contained them, and succeeded. Then `supabase db reset` was run from scratch:
+the CLI now applies **71 migrations in the order `0024 → 00241 → 00242 → 00243
+→ 0025`**, and the resulting database has all 8 previously-missing tables, all
+four token/turn functions, and the five `ai_tokens` plan entitlements.
+
+Safe to deploy against a database that already has these objects, and against
+one that does not.
+
+---
+
+## Verification
+
+Run against a full local Supabase stack (`npx supabase start`) with every
+migration applied, including the three the CLI skips.
+
+| Check | Result |
+|---|---|
+| `npm run build` | ✅ passes |
+| `npx tsc --noEmit` | ✅ 0 errors |
+| `eslint src tests` | ✅ 0 errors |
+| Unit suite | ✅ 1,320 pass |
+| Migrations applied in order, 0001→0067 | ✅ all apply cleanly |
+| Ledger behaviour (idempotency, append-only, refunds, erasure) | ✅ 7/7 |
+| Lead, connector and compliance schema behaviour | ✅ 9/9 |
+| **Four-route acceptance test** | ✅ 17 pass |
+| RLS — new tables, cross-tenant | ✅ 12 pass |
+| RLS — core + V4 | ✅ 40 pass |
+
+**Total: 1,389 tests passing.**
+
+### What the four-route test actually proves
+
+The programme's definition of done. For `lead.set_status` invoked as the UI, as
+Copilot, as an autonomous agent and as an MCP client:
+
+- identical database state afterwards
+- identical `before`/`after` diffs in the envelope
+- an audit row from each that names which route did it
+- an `auditEventId` that resolves to a real row — so a claim is checkable
+- identical warnings
+- a viewer refused by all four, with the same `FORBIDDEN_ROLE` code, each
+  refusal audited as an attempt
+- `lead.archive` unreachable by an agent even holding owner role **and** a
+  forged confirmation, while the UI can perform it with a real one
+- another tenant's lead returning `NOT_FOUND` — not `FORBIDDEN`, because
+  confirming an id exists is itself a disclosure
+
+### Things this pass fixed
+
+- `ServiceError` used constructor parameter properties, which the test runner
+  cannot strip. Now plain fields, so end-to-end tests exercise the shipping file
+  rather than a compiled variant.
+- `database.types.ts` is now **generated from the migrations** rather than
+  hand-patched. It had been regenerated three times mid-session, silently
+  dropping type entries each time. The generated file is a strict superset of
+  what was committed — nothing lost — and it also unblocked a build failure in
+  concurrent work.
+- [scripts/e2e-resolver.mjs](../scripts/e2e-resolver.mjs) lets `node --test` run
+  the real server code (alias and extension resolution only, no transform).

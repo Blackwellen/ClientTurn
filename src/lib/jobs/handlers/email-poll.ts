@@ -2,6 +2,7 @@ import "server-only";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { enqueue } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { suppress } from "@/lib/policy/suppression";
 import { fetchInboundEmail } from "@/lib/email/inbound";
 import {
   loadEmailCredentials,
@@ -115,16 +116,16 @@ export async function handleEmailPoll(job: ClaimedJob) {
     if (message.autoSubmitted || looksLikeBounce(message.subject, message.text)) {
       const failed = bouncedAddress(message.text) ?? from;
       if (looksLikeBounce(message.subject, message.text)) {
-        await admin.from("contact_suppressions").upsert(
-          {
-            business_id: businessId,
-            normalized_contact: failed,
-            channel: "email",
-            reason: "bounce",
-            source: `email_poll:${message.uid}`,
-          },
-          { onConflict: "business_id,normalized_contact,channel" },
-        );
+        // On the one list (0069), so a hard bounce recorded here also stops the
+        // cold dispatcher sending to the same address.
+        await suppress({
+          businessId,
+          channel: "EMAIL",
+          reason: "BOUNCE",
+          source: "EMAIL_POLL",
+          sourceReference: String(message.uid),
+          email: failed,
+        });
       }
       continue;
     }

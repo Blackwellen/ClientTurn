@@ -2,6 +2,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   ALLOWED_SOURCE_KINDS,
+  PROVENANCE_TO_SOURCE,
+  sourceKindFor,
+  verdictForSources,
   BASIS_DESCRIPTIONS,
   BASIS_LABELS,
   EMPTY_DATA_CONTROLS,
@@ -193,5 +196,69 @@ describe("the vocabulary", () => {
         `${gap.code} has an unknown severity`,
       );
     }
+  });
+});
+
+
+/* ------------------------------------------------------ source provenance */
+
+describe("mapping recorded provenance onto permitted sources", () => {
+  test("every provenance type the database allows has a mapping", () => {
+    // These are the values `prospect_data_sources.source_type` permits. One
+    // without a mapping would be judged NOT_PERMITTED forever, silently making
+    // a whole class of prospect uncontactable.
+    for (const type of [
+      "WEBSITE",
+      "REGISTRY",
+      "LICENSED_PROVIDER",
+      "CRM",
+      "IMPORT",
+      "FIRST_PARTY",
+      "PUBLIC_FEED",
+      "MANUAL",
+    ]) {
+      assert.ok(sourceKindFor(type), `${type} has no mapping`);
+    }
+  });
+
+  test("every mapping targets a real source kind", () => {
+    for (const [type, kind] of Object.entries(PROVENANCE_TO_SOURCE)) {
+      assert.ok(
+        (ALLOWED_SOURCE_KINDS as readonly string[]).includes(kind),
+        `${type} maps to unknown kind ${kind}`,
+      );
+    }
+  });
+
+  test("an unrecognised provenance type is not a pass", () => {
+    // Adding a source_type to the database must not silently widen what may be
+    // contacted.
+    assert.equal(sourceKindFor("SOMETHING_NEW"), null);
+    assert.equal(
+      verdictForSources(["SOMETHING_NEW"], [...ALLOWED_SOURCE_KINDS]),
+      "NOT_PERMITTED",
+    );
+  });
+
+  test("no recorded provenance is UNKNOWN, not permitted", () => {
+    assert.equal(verdictForSources([], [...ALLOWED_SOURCE_KINDS]), "UNKNOWN");
+  });
+
+  test("a record is permitted only when every one of its sources is", () => {
+    // One prohibited source taints the record. A prospect assembled partly
+    // from a permitted register and partly from somewhere the workspace has
+    // not allowed is not two-thirds contactable.
+    assert.equal(
+      verdictForSources(["REGISTRY", "WEBSITE"], ["PUBLIC_CORPORATE_REGISTER", "BUSINESS_WEBSITE"]),
+      "PERMITTED",
+    );
+    assert.equal(
+      verdictForSources(["REGISTRY", "WEBSITE"], ["PUBLIC_CORPORATE_REGISTER"]),
+      "NOT_PERMITTED",
+    );
+  });
+
+  test("a workspace permitting nothing permits nothing", () => {
+    assert.equal(verdictForSources(["REGISTRY"], []), "NOT_PERMITTED");
   });
 });

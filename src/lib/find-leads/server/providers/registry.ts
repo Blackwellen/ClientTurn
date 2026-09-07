@@ -5,6 +5,11 @@ import { apolloProvider } from "./apollo";
 import { clearbitProvider } from "./clearbit";
 import { googlePlacesProvider } from "./google-places";
 import { hunterProvider } from "./hunter";
+import { linkedinEngagementProvider } from "./linkedin-engagement";
+import { linkedinSalesNavigatorProvider } from "./linkedin-sales-navigator";
+import { metaAdLibraryProvider } from "./meta-ad-library";
+import { metaEngagementProvider } from "./meta-engagement";
+import { tiktokCommercialContentProvider } from "./tiktok-commercial-content";
 import { websiteIntentProvider } from "./website-intent";
 import type { SourcingProvider } from "./types";
 
@@ -18,9 +23,20 @@ import type { SourcingProvider } from "./types";
  */
 
 const PROVIDERS: SourcingProvider[] = [
+  // Your own audience first. These cost nothing, and someone who already
+  // messaged or commented is a better prospect than any stranger a paid
+  // database will sell you.
+  metaEngagementProvider,
+  linkedinEngagementProvider,
+  // Then the free public advertiser registries: businesses currently paying
+  // for reach, which is a real signal of budget and intent.
   googlePlacesProvider,
+  metaAdLibraryProvider,
+  tiktokCommercialContentProvider,
+  // Then the metered contact sources.
   hunterProvider,
   apolloProvider,
+  linkedinSalesNavigatorProvider,
   clearbitProvider,
   websiteIntentProvider,
 ];

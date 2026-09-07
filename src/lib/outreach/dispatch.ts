@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recordAudit } from "@/lib/audit";
+import { recordAudit, recordUsage } from "@/lib/audit";
+import { checkCapacity } from "@/lib/billing/v4-entitlements";
 import { evaluate } from "@/lib/policy/service";
 import { sendEmail, unsubscribeUrl } from "@/lib/email/smtp";
 import { normaliseEmail } from "@/lib/prospects/dedupe";
@@ -99,6 +100,22 @@ export async function dispatchCampaign(input: {
     : null;
 
   if (!sender) return { ...EMPTY, haltReason: "SENDER_NOT_AVAILABLE" };
+
+  // The plan allowance, checked before the loop rather than per recipient.
+  //
+  // Cold email is the metered unit of the acquisition product and this was the
+  // one send path that neither recorded nor enforced it: the allowance was
+  // displayed on Billing & Usage, read by the campaign budget card, and never
+  // consumed. A workspace could run ten campaigns, each inside its own
+  // `daily_contact_cap`, and pass the plan limit without anything noticing.
+  //
+  // A campaign-level halt rather than a per-message refusal, because the
+  // allowance is a property of the workspace: stopping the run and saying so is
+  // more useful than sending a partial batch and failing silently on the rest.
+  const allowance = await checkCapacity(input.businessId, "email_sent");
+  if (!allowance.allowed) {
+    return { ...EMPTY, haltReason: "EMAIL_ALLOWANCE_EXHAUSTED" };
+  }
 
   // Before anything is sent, decide whether this campaign should still be
   // running at all. Priority is deliberately not consulted: a campaign marked
@@ -501,6 +518,28 @@ export async function dispatchCampaign(input: {
       })
       .eq("business_id", input.businessId)
       .eq("id", prospect.id);
+
+    // The customer-facing meter, distinct from the provider cost below.
+    //
+    // `operationId` is the send key, which is deterministic across a retry, and
+    // 0062 put a unique partial index on (business_id, operation_id) — so a
+    // provider retry or a replayed job is charged exactly once. That is the
+    // whole reason the column exists.
+    // `email_sent`, not `cold_email_sent`: that is the metric carrying the plan
+    // entitlement, and it is what `checkCapacity` above and Billing & Usage
+    // both read. Recording a different name would leave the allowance
+    // displayed-but-never-consumed, which is the defect this is fixing.
+    // Cold and warm are distinguished by `feature`, which is what 0062 added
+    // the column for.
+    await recordUsage({
+      businessId: input.businessId,
+      metric: "email_sent",
+      feature: "outreach",
+      entity: { type: "prospect", id: prospect.id },
+      operationId: sendKey,
+      source: `campaign:${input.campaignId}`,
+      metadata: { campaignId: input.campaignId, stepPosition: step.position },
+    });
 
     // Attributed so the budget card reports where the money went rather than
     // presenting an invented split. A send that genuinely costs nothing —

@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -4036,6 +4056,60 @@ export type Database = {
         }
         Relationships: []
       }
+      connector_event_failures: {
+        Row: {
+          business_id: string
+          created_at: string
+          external_event_id: string | null
+          id: string
+          install_id: string
+          payload: Json | null
+          reason: string
+          replayed_at: string | null
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          install_id: string
+          payload?: Json | null
+          reason: string
+          replayed_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          install_id?: string
+          payload?: Json | null
+          reason?: string
+          replayed_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_event_failures_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connector_event_failures_install_id_fkey"
+            columns: ["install_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_app_installs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_permissions: {
         Row: {
           business_id: string
@@ -4507,53 +4581,6 @@ export type Database = {
             columns: ["last_message_id"]
             isOneToOne: false
             referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      connector_event_failures: {
-        Row: {
-          business_id: string
-          created_at: string
-          external_event_id: string | null
-          id: string
-          install_id: string
-          payload: Json | null
-          reason: string
-          replayed_at: string | null
-          resolved_by: string | null
-          status: string
-        }
-        Insert: {
-          business_id: string
-          created_at?: string
-          external_event_id?: string | null
-          id?: string
-          install_id: string
-          payload?: Json | null
-          reason: string
-          replayed_at?: string | null
-          resolved_by?: string | null
-          status?: string
-        }
-        Update: {
-          business_id?: string
-          created_at?: string
-          external_event_id?: string | null
-          id?: string
-          install_id?: string
-          payload?: Json | null
-          reason?: string
-          replayed_at?: string | null
-          resolved_by?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "connector_event_failures_install_id_fkey"
-            columns: ["install_id"]
-            isOneToOne: false
-            referencedRelation: "workspace_app_installs"
             referencedColumns: ["id"]
           },
         ]
@@ -6533,6 +6560,51 @@ export type Database = {
           },
         ]
       }
+      lead_notes: {
+        Row: {
+          author_kind: string
+          author_user_id: string | null
+          body: string
+          business_id: string
+          created_at: string
+          id: string
+          lead_id: string
+        }
+        Insert: {
+          author_kind?: string
+          author_user_id?: string | null
+          body: string
+          business_id: string
+          created_at?: string
+          id?: string
+          lead_id: string
+        }
+        Update: {
+          author_kind?: string
+          author_user_id?: string | null
+          body?: string
+          business_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_source_cursors: {
         Row: {
           business_id: string
@@ -6655,44 +6727,6 @@ export type Database = {
           },
         ]
       }
-      lead_notes: {
-        Row: {
-          author_kind: string
-          author_user_id: string | null
-          body: string
-          business_id: string
-          created_at: string
-          id: string
-          lead_id: string
-        }
-        Insert: {
-          author_kind?: string
-          author_user_id?: string | null
-          body: string
-          business_id: string
-          created_at?: string
-          id?: string
-          lead_id: string
-        }
-        Update: {
-          author_kind?: string
-          author_user_id?: string | null
-          body?: string
-          business_id?: string
-          created_at?: string
-          id?: string
-          lead_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lead_notes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       lead_sources: {
         Row: {
           ad_id: string | null
@@ -6761,9 +6795,9 @@ export type Database = {
       leads: {
         Row: {
           agent_id: string | null
-          assigned_user_id: string | null
           archived_at: string | null
           archived_by: string | null
+          assigned_user_id: string | null
           attention_reason: string | null
           automation_active: boolean
           booked_at: string | null
@@ -6813,9 +6847,9 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
-          assigned_user_id?: string | null
           archived_at?: string | null
           archived_by?: string | null
+          assigned_user_id?: string | null
           attention_reason?: string | null
           automation_active?: boolean
           booked_at?: string | null
@@ -6865,9 +6899,9 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
-          assigned_user_id?: string | null
           archived_at?: string | null
           archived_by?: string | null
+          assigned_user_id?: string | null
           attention_reason?: string | null
           automation_active?: boolean
           booked_at?: string | null
@@ -10504,6 +10538,217 @@ export type Database = {
           },
         ]
       }
+      social_action_log: {
+        Row: {
+          account_id: string | null
+          action: string
+          actor_user_id: string | null
+          business_id: string
+          id: number
+          occurred_at: string
+          performed_by: string
+          platform: string
+          prospect_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          action: string
+          actor_user_id?: string | null
+          business_id: string
+          id?: number
+          occurred_at?: string
+          performed_by?: string
+          platform: string
+          prospect_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          action?: string
+          actor_user_id?: string | null
+          business_id?: string
+          id?: number
+          occurred_at?: string
+          performed_by?: string
+          platform?: string
+          prospect_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_action_log_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_sending_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_action_log_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_action_log_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_connection_states: {
+        Row: {
+          accepted_at: string | null
+          account_id: string | null
+          business_id: string
+          created_at: string
+          declined_at: string | null
+          external_ref: string | null
+          id: string
+          invite_sent_at: string | null
+          last_error: string | null
+          messaged_at: string | null
+          note_attached: boolean
+          note_body: string | null
+          platform: string
+          profile_url: string | null
+          prospect_id: string
+          replied_at: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          account_id?: string | null
+          business_id: string
+          created_at?: string
+          declined_at?: string | null
+          external_ref?: string | null
+          id?: string
+          invite_sent_at?: string | null
+          last_error?: string | null
+          messaged_at?: string | null
+          note_attached?: boolean
+          note_body?: string | null
+          platform: string
+          profile_url?: string | null
+          prospect_id: string
+          replied_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          account_id?: string | null
+          business_id?: string
+          created_at?: string
+          declined_at?: string | null
+          external_ref?: string | null
+          id?: string
+          invite_sent_at?: string | null
+          last_error?: string | null
+          messaged_at?: string | null
+          note_attached?: boolean
+          note_body?: string | null
+          platform?: string
+          profile_url?: string | null
+          prospect_id?: string
+          replied_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_connection_states_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_sending_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_states_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_states_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_sending_accounts: {
+        Row: {
+          account_tier: string
+          business_id: string
+          created_at: string
+          created_by: string | null
+          daily_connect_cap: number | null
+          daily_message_cap: number | null
+          display_name: string
+          external_handle: string | null
+          id: string
+          monthly_note_cap: number | null
+          platform: string
+          restricted_reason: string | null
+          restricted_until: string | null
+          send_mode: string
+          status: string
+          updated_at: string
+          weekly_connect_cap: number | null
+        }
+        Insert: {
+          account_tier?: string
+          business_id: string
+          created_at?: string
+          created_by?: string | null
+          daily_connect_cap?: number | null
+          daily_message_cap?: number | null
+          display_name: string
+          external_handle?: string | null
+          id?: string
+          monthly_note_cap?: number | null
+          platform: string
+          restricted_reason?: string | null
+          restricted_until?: string | null
+          send_mode?: string
+          status?: string
+          updated_at?: string
+          weekly_connect_cap?: number | null
+        }
+        Update: {
+          account_tier?: string
+          business_id?: string
+          created_at?: string
+          created_by?: string | null
+          daily_connect_cap?: number | null
+          daily_message_cap?: number | null
+          display_name?: string
+          external_handle?: string | null
+          id?: string
+          monthly_note_cap?: number | null
+          platform?: string
+          restricted_reason?: string | null
+          restricted_until?: string | null
+          send_mode?: string
+          status?: string
+          updated_at?: string
+          weekly_connect_cap?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_sending_accounts_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sourcing_run_issues: {
         Row: {
           business_id: string
@@ -12186,6 +12431,15 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      lift_suppression_for_destination: {
+        Args: {
+          p_business_id: string
+          p_channel: string
+          p_email?: string
+          p_phone?: string
+        }
+        Returns: number
+      }
       outreach_audience_geo_count: {
         Args: {
           p_business_id: string
@@ -12348,9 +12602,9 @@ export type Database = {
       }
       record_connector_event_failure: {
         Args: {
-          p_external_event_id?: string | null
+          p_external_event_id?: string
           p_install_id: string
-          p_payload?: Json | null
+          p_payload?: Json
           p_reason: string
         }
         Returns: undefined
@@ -12380,6 +12634,15 @@ export type Database = {
           p_sender: Database["public"]["Tables"]["sender_identities"]["Row"]
         }
         Returns: number
+      }
+      social_account_usage: {
+        Args: { p_account_id: string; p_business_id: string }
+        Returns: {
+          connects_this_week: number
+          connects_today: number
+          messages_today: number
+          notes_this_month: number
+        }[]
       }
       sourcing_run_counters: {
         Args: { p_business_id: string; p_run_id: string }
@@ -12524,7 +12787,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+

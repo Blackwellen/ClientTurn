@@ -75,6 +75,60 @@ export const PROHIBITED_SOURCES = [
   "Any record whose origin cannot be established",
 ] as const;
 
+/**
+ * How a recorded provenance row maps onto the source kinds a workspace permits.
+ *
+ * `prospect_data_sources.source_type` already had its own vocabulary, written
+ * for describing where a field came from. This is the translation into the
+ * vocabulary a customer chooses from — kept as one exhaustive map so a new
+ * provenance type cannot quietly become "permitted by default" simply because
+ * nothing here mentions it.
+ */
+export const PROVENANCE_TO_SOURCE: Record<string, AllowedSourceKind> = {
+  WEBSITE: "BUSINESS_WEBSITE",
+  REGISTRY: "PUBLIC_CORPORATE_REGISTER",
+  LICENSED_PROVIDER: "LICENSED_PROVIDER",
+  CRM: "CONNECTED_CRM",
+  IMPORT: "CUSTOMER_UPLOAD",
+  FIRST_PARTY: "INBOUND_ENQUIRY",
+  PUBLIC_FEED: "OPEN_GOVERNMENT_RECORD",
+  MANUAL: "CUSTOMER_UPLOAD",
+};
+
+export function sourceKindFor(provenanceType: string): AllowedSourceKind | null {
+  return PROVENANCE_TO_SOURCE[provenanceType] ?? null;
+}
+
+/**
+ * Whether every source a record came from is one the workspace permits.
+ *
+ * Three answers, not two. `UNKNOWN` is the case where a record has no recorded
+ * provenance at all, and it must not be treated as permitted: a prospect that
+ * arrived from nowhere identifiable is exactly the one worth stopping on.
+ */
+export type SourceVerdict = "PERMITTED" | "NOT_PERMITTED" | "UNKNOWN";
+
+export function verdictForSources(
+  provenanceTypes: string[],
+  allowed: AllowedSourceKind[],
+): SourceVerdict {
+  if (provenanceTypes.length === 0) return "UNKNOWN";
+
+  const permitted = new Set(allowed);
+  let sawKnown = false;
+
+  for (const type of provenanceTypes) {
+    const kind = sourceKindFor(type);
+    // An unrecognised provenance type is not a pass. Adding one to the database
+    // must not silently widen what may be contacted.
+    if (!kind) return "NOT_PERMITTED";
+    if (!permitted.has(kind)) return "NOT_PERMITTED";
+    sawKnown = true;
+  }
+
+  return sawKnown ? "PERMITTED" : "UNKNOWN";
+}
+
 /* ---------------------------------------------------------- lawful basis */
 
 export const LAWFUL_BASES = [

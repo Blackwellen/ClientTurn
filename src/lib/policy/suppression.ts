@@ -220,3 +220,69 @@ export async function unsuppress(
   await admin.from("suppression_entries").delete().eq("id", entryId).eq("business_id", businessId);
   return { ok: true };
 }
+
+/**
+ * Lifts a suppression by destination, for a recipient who asked to resume.
+ *
+ * Distinct from `unsuppress()` above, and deliberately so. That one is a
+ * workspace lifting an entry it owns, and refuses OPT_OUT and COMPLAINT because
+ * those are not the workspace's to reverse. This one is the *recipient*
+ * reversing their own decision — texting START after STOP — which is the one
+ * case where lifting an opt-out is right, and refusing it would leave someone
+ * unable to resume a conversation they asked to resume.
+ *
+ * Platform-wide entries are never touched: `business_id is not null` in the SQL
+ * routine, because one workspace may not lift a suppression that applies across
+ * ClientTurn.
+ */
+export async function liftSuppressionForDestination(
+  businessId: string,
+  channel: PolicyChannel,
+  destination: SuppressionDestination,
+): Promise<number> {
+  const email = normaliseEmail(destination.email);
+  const phone = destination.phone ? normalisePhone(destination.phone) : null;
+  if (!email && !phone) return 0;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("lift_suppression_for_destination", {
+    p_business_id: businessId,
+    p_channel: channel,
+    // The generated signature takes `string | undefined`; a null would be sent
+    // as an explicit JSON null rather than an omitted argument.
+    p_email: email ?? undefined,
+    p_phone: phone ?? undefined,
+  });
+
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/**
+ * Every suppressed destination in a workspace, for a bulk audience filter.
+ *
+ * The reactivation audience resolver needs to exclude thousands of leads in one
+ * pass, so it reads the list rather than asking per contact. Returned as a Set
+ * of normalised destinations — the same shape the old `contact_suppressions`
+ * query produced, so the caller is unchanged apart from where it reads from.
+ */
+export async function suppressedDestinations(
+  businessId: string,
+  channels: PolicyChannel[],
+): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("suppression_entries")
+    .select("email, phone_e164, expires_at")
+    .in("channel", [...channels, "ALL"])
+    .or(`business_id.eq.${businessId},business_id.is.null`);
+
+  const now = Date.now();
+  const out = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.expires_at && new Date(row.expires_at).getTime() <= now) continue;
+    if (row.email) out.add(String(row.email).toLowerCase());
+    if (row.phone_e164) out.add(row.phone_e164);
+  }
+  return out;
+}

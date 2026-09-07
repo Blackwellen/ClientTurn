@@ -64,13 +64,22 @@ export type HandlerOutcome<T> = {
 
 /** A refusal a handler raises deliberately, as opposed to an unexpected throw. */
 export class ServiceError extends Error {
+  // Declared as fields rather than constructor parameter properties: the test
+  // runner strips types without transforming them, and a parameter property is
+  // a transform. Keeping this plain means the end-to-end tests exercise the
+  // same file that ships rather than a compiled variant of it.
+  readonly code: ServiceErrorCode;
+  readonly warnings: ServiceWarning[];
+
   constructor(
-    readonly code: ServiceErrorCode,
+    code: ServiceErrorCode,
     message: string,
-    readonly warnings: ServiceWarning[] = [],
+    warnings: ServiceWarning[] = [],
   ) {
     super(message);
     this.name = "ServiceError";
+    this.code = code;
+    this.warnings = warnings;
   }
 }
 

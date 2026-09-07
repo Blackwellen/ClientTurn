@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkSuppression } from "@/lib/policy/suppression";
 import type { Database } from "@/lib/supabase/database.types";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
@@ -396,13 +397,12 @@ export async function sendManualMessage(input: {
 
   const admin = createAdminClient();
 
-  const { data: suppression } = await admin
-    .from("contact_suppressions")
-    .select("id")
-    .eq("business_id", workspace.businessId)
-    .eq("normalized_contact", to)
-    .in("channel", [parsed.data.channel, "all"])
-    .maybeSingle();
+  // The one list, shared with the cold path. See 0069.
+  const suppression = await checkSuppression(
+    workspace.businessId,
+    parsed.data.channel === "whatsapp" ? "WHATSAPP" : "SMS",
+    { phone: to },
+  );
   if (suppression) return fail("This number is suppressed and cannot be messaged.");
 
   let conversationId: string | null = null;

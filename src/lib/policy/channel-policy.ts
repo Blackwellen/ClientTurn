@@ -150,7 +150,31 @@ export function canSend(input: PolicyInput): PolicyDecision {
     return decide(input, "BLOCKED", "BLOCKED_BUSINESS_STATE");
   }
 
-  /* 2. Channel permission for this kind of contact. This is where cold SMS,
+  /* 2. Where the record came from (§16, §17).
+   *
+   *    Cold outreach only. Someone who contacted the business is contactable
+   *    because of that, not because of how their details were filed — applying
+   *    this to warm follow-up would stop replies to people who asked for them.
+   *
+   *    Absence of provenance is a review, not a pass. A record whose origin
+   *    cannot be established is the one case §16 is most concerned with, and
+   *    treating "we don't know" as "fine" would make the whole setting
+   *    decorative. */
+
+  if (input.campaignType === "COLD") {
+    if (input.sourcePermitted === "NOT_PERMITTED") {
+      return decide(input, "BLOCKED", "BLOCKED_SOURCE_NOT_PERMITTED");
+    }
+    if (input.sourcePermitted === "UNKNOWN") {
+      return decide(input, "REVIEW_REQUIRED", "REVIEW_REQUIRED", {
+        message:
+          "We cannot establish where this record came from, so it needs a human decision before any cold contact.",
+        requirements: ["HUMAN_REVIEW"],
+      });
+    }
+  }
+
+  /* 3. Channel permission for this kind of contact. This is where cold SMS,
    *    cold WhatsApp and cold social are refused: the seeded packs list EMAIL
    *    as the only cold channel, and there is no customer-facing setting that
    *    can widen it. */
@@ -169,7 +193,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     );
   }
 
-  /* 3. Who the recipient is. An individual subscriber is treated far more
+  /* 4. Who the recipient is. An individual subscriber is treated far more
    *    protectively than a corporate one, and an unknown classification is a
    *    review rather than a guess. */
 
@@ -187,7 +211,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     });
   }
 
-  /* 4. Consent and relationship. Withdrawn consent is as absolute as an
+  /* 5. Consent and relationship. Withdrawn consent is as absolute as an
    *    opt-out; a missing relationship on a channel that requires one is a
    *    consent request, not a block, because the customer can fix it. */
 
@@ -211,7 +235,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     }
   }
 
-  /* 5. Whether we can physically and safely send. Sender health is a platform
+  /* 6. Whether we can physically and safely send. Sender health is a platform
    *    safety limit: §66.2 is explicit that a user cannot override it. */
 
   if (!input.senderAvailable) {
@@ -224,7 +248,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     return decide(input, "BLOCKED", "BLOCKED_DOMAIN_HEALTH");
   }
 
-  /* 6. Allowance and caps. Ordered cheapest first so a workspace that is out of
+  /* 7. Allowance and caps. Ordered cheapest first so a workspace that is out of
    *    allowance is told that, rather than being told about a daily cap it
    *    would also have hit. */
 
@@ -238,7 +262,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     return decide(input, "BLOCKED", "BLOCKED_DAILY_LIMIT");
   }
 
-  /* 7. Timing. Unlike everything above, this is "not now" rather than "not
+  /* 8. Timing. Unlike everything above, this is "not now" rather than "not
    *    ever", so the caller reschedules instead of aborting. */
 
   const quiet = input.pack.quietHours;
@@ -252,7 +276,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     });
   }
 
-  /* 8. Allowed — but possibly with obligations attached. */
+  /* 9. Allowed — but possibly with obligations attached. */
 
   const requirements = requirementsFor(rules);
   if (templateRequired(input.channel)) {

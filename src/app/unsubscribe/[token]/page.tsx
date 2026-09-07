@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normaliseEmail } from "@/lib/email/account";
+import { suppress } from "@/lib/policy/suppression";
 
 export const metadata: Metadata = {
   title: "Unsubscribe · ClientTurn",
@@ -49,18 +50,19 @@ async function unsubscribe(token: string): Promise<
 
   // Suppress the address itself as well as the lead, so a second lead record
   // with the same address cannot be mailed either.
+  //
+  // Channel ALL: someone using an unsubscribe link is asking not to be
+  // contacted, and honouring that only on the channel the link arrived by is a
+  // reading nobody intends.
   const email = normaliseEmail(lead.email);
   if (email) {
-    await admin.from("contact_suppressions").upsert(
-      {
-        business_id: lead.business_id,
-        normalized_contact: email,
-        channel: "email",
-        reason: "opt_out",
-        source: "unsubscribe_link",
-      },
-      { onConflict: "business_id,normalized_contact,channel" },
-    );
+    await suppress({
+      businessId: lead.business_id,
+      channel: "ALL",
+      reason: "OPT_OUT",
+      source: "UNSUBSCRIBE_LINK",
+      email,
+    });
   }
 
   await admin
@@ -97,28 +99,16 @@ async function unsubscribeProspect(token: string): Promise<
   const email = normaliseEmail(prospect.email);
 
   if (email) {
-    // The V4 suppression table, which the sourcing run's compliance stage and
-    // the outreach dispatcher both consult.
-    await admin.from("suppression_entries").insert({
-      business_id: prospect.business_id,
-      email,
-      channel: "EMAIL",
+    // One write, one list. This used to write both tables deliberately —
+    // it was the only path that did — because the follow-up and reactivation
+    // engines read a different one from the dispatcher. 0069 removed the need.
+    await suppress({
+      businessId: prospect.business_id,
+      channel: "ALL",
       reason: "OPT_OUT",
-      source: "unsubscribe_link",
+      source: "UNSUBSCRIBE_LINK",
+      email,
     });
-
-    // And the V3 table, so the follow-up and reactivation engines honour it
-    // too if this person later arrives as a lead.
-    await admin.from("contact_suppressions").upsert(
-      {
-        business_id: prospect.business_id,
-        normalized_contact: email,
-        channel: "email",
-        reason: "opt_out",
-        source: "unsubscribe_link",
-      },
-      { onConflict: "business_id,normalized_contact,channel" },
-    );
   }
 
   await admin

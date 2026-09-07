@@ -92,7 +92,7 @@ export async function POST(
           p_install_id: id,
           p_reason: reason,
           p_payload: keep.payload as never,
-          p_external_event_id: keep.externalEventId ?? null,
+          p_external_event_id: keep.externalEventId,
         })
         .then(
           () => undefined,

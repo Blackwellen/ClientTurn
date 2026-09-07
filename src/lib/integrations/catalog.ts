@@ -62,6 +62,11 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "meta",
     connection: "workspace",
+    // The OAuth adapter and lead-source poller now exist, but the flow has not
+    // been exercised against a real Meta app, and `public-pages.test.ts` ties
+    // this null to enterprise copy that says Meta is set up with help. Turning
+    // it on is the call of whoever verifies the round trip — not a side effect
+    // of the adapter landing.
     connectPath: null,
     connectionMethod: "oauth",
     name: "Meta Lead Ads",

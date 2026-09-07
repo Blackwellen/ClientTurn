@@ -137,6 +137,15 @@ export const serverEnv = {
     clientId: optional("LINKEDIN_CLIENT_ID"),
     clientSecret: optional("LINKEDIN_CLIENT_SECRET"),
   },
+  /**
+   * Meta Lead Ads. One app covers both placements — a lead submitted from an
+   * Instagram ad arrives through the same Page form edge as a Facebook one, so
+   * there is no separate Instagram credential to hold.
+   */
+  meta: {
+    appId: optional("META_APP_ID"),
+    appSecret: optional("META_APP_SECRET"),
+  },
   slack: {
     clientId: optional("SLACK_CLIENT_ID"),
     clientSecret: optional("SLACK_CLIENT_SECRET"),
@@ -162,6 +171,17 @@ export const serverEnv = {
     hunterApiKey: optional("HUNTER_API_KEY"),
     clearbitApiKey: optional("CLEARBIT_API_KEY"),
     googlePlacesApiKey: optional("GOOGLE_PLACES_API_KEY") ?? optional("GOOGLE_MAPS_API_KEY"),
+    /** Meta Ad Library. A public-data token, not the Lead Ads app secret. */
+    metaAdLibraryToken: optional("META_AD_LIBRARY_TOKEN"),
+    /** TikTok Commercial Content Library (DSA transparency data). */
+    tiktokCommercialToken: optional("TIKTOK_COMMERCIAL_CONTENT_TOKEN"),
+    /**
+     * LinkedIn partner (SNAP / Sales Insights) token.
+     *
+     * Optional by design: without it the LinkedIn provider still works through
+     * the customer's own exported list, which needs no credential from us.
+     */
+    linkedinSnapToken: optional("LINKEDIN_SNAP_ACCESS_TOKEN"),
     /** Timeout applied to every outbound provider call, in milliseconds. */
     timeoutMs: Number(process.env.SOURCING_PROVIDER_TIMEOUT_MS || 15000),
   },
