@@ -7,9 +7,9 @@ failure it causes, and where the fix belongs.
 
 ## P0 — production blockers
 
-Three of six are fixed, and **four of six migrations are deployed and verified**: `0054`, `0062`,
-`0063` and `0064`. `0065` and `0066` are written, reviewed and blocked on a permission the harness
-refused — commands in [24 · Deployment state](24-remediation-log.md).
+Three of six P0s are fixed, and **every migration in the branch is deployed and verified** —
+`0054`, `0062`, `0063`, `0064`, `0065`, `0066`. See
+[24 · Deployment state](24-remediation-log.md).
 
 | # | Missing | Failure | Fix |
 |---|---|---|---|
