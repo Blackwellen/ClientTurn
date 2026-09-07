@@ -51,3 +51,7 @@ next-env.d.ts
 /supabase/.temp/
 .vercel
 .qa-shots/
+
+# Third-party skill packs cloned for local tooling. They carry their own git
+# history and are not project source.
+/.claude/skills/

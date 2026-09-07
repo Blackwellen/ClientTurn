@@ -35,9 +35,10 @@ const CANVAS_H = 430;
  *
  * The scatter is drawn on an absolute canvas that spans the whole card, so
  * nothing stops a panel or a connector from landing on top of the heading.
- * These bounds are what does: every panel sits either right of `TEXT_RIGHT`
- * or below `TEXT_BOTTOM`, and every connector is routed to stay out of that
- * rectangle.
+ * These bounds are what does: every panel sits either right of x=385 or below
+ * `TEXT_BOTTOM`, and every connector is routed to stay out of that rectangle.
+ * (The horizontal bound stays prose because the connectors are literal path
+ * strings and cannot reference a constant.)
  *
  * The numbers are the *worst case*, not the typical one. The canvas scales
  * with the card while the copy stays at fixed pixel sizes, so the text eats
@@ -45,8 +46,10 @@ const CANVAS_H = 430;
  * 1440px viewport but 296u at 1280px, the narrowest width that still shows
  * the scatter. Everything below clears 296u.
  */
-const TEXT_RIGHT = 385;
 const TEXT_BOTTOM = 300;
+
+/** Where a panel sitting under the copy starts. Derived, not typed twice. */
+const BELOW_TEXT = TEXT_BOTTOM + 10;
 
 function u(value: number): string {
   return `calc(${value} * var(--u))`;
@@ -392,7 +395,7 @@ export function GrowthPathSection() {
                   <Bubble>Hi James! Thanks for your enquiry. How can we help?</Bubble>
                 </MiniPanel>
 
-                <MiniPanel icon={SquareCheckBig} title="Qualified" meta="Fit for service" x={199} y={310} width={172}>
+                <MiniPanel icon={SquareCheckBig} title="Qualified" meta="Fit for service" x={199} y={BELOW_TEXT} width={172}>
                   <CriteriaRows rows={["Budget", "Authority", "Need", "Timeline"]} />
                 </MiniPanel>
 
@@ -471,7 +474,7 @@ export function GrowthPathSection() {
                   </div>
                 </MiniPanel>
 
-                <MiniPanel icon={ShieldCheck} title="Verified prospects" meta="High-quality, validated" x={249} y={310} width={194}>
+                <MiniPanel icon={ShieldCheck} title="Verified prospects" meta="High-quality, validated" x={249} y={BELOW_TEXT} width={194}>
                   <div className="pub-fragment" style={{ padding: u(7), borderRadius: u(9) }}>
                     {["Smith Construction", "Riverside Homes", "Oakwood Developments"].map((name) => (
                       <div key={name} className="flex items-center" style={{ gap: u(7), paddingBlock: u(4.5) }}>
@@ -494,7 +497,7 @@ export function GrowthPathSection() {
                   </div>
                 </MiniPanel>
 
-                <MiniPanel icon={Send} title="Outreach" meta="AI-assisted messaging" x={469} y={310} width={181}>
+                <MiniPanel icon={Send} title="Outreach" meta="AI-assisted messaging" x={469} y={BELOW_TEXT} width={181}>
                   <Bubble>Hi there, We help contractors win more high-value projects&hellip;</Bubble>
                 </MiniPanel>
               </Canvas>
