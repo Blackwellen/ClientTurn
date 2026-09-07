@@ -38,8 +38,9 @@ production right now:
 (`create trigger copilot_sessions_set_updated_at`) with a `drop trigger if exists`, so the whole
 file is safely re-runnable. Every other statement was already `if not exists` / `drop … if exists`.
 
-**Not done:** applying it. The harness blocked the write to the production database. The command
-is in the handover note; it wraps the file in `begin;/commit;` so it is all-or-nothing.
+**Deployed.** Verified against the live database afterwards: **175 tables, all three `copilot_*`
+present, `automation_steps.subject` present.** Copilot can now open a session and a follow-up
+email step can now be saved.
 
 **Also:** `database.types.ts` was restored from HEAD, because the committed version describes the
 intended schema (175 tables) while the regeneration described a database missing a migration
@@ -77,6 +78,14 @@ migration:
 
 - `prospects_converted_has_lead_check` — CONVERTED implies a lead;
 - `prospects_score_grade_check` — score and grade are written together or not at all.
+
+**Deployed.** Applied inside a transaction and verified against the live function body:
+`'NEW'` present, lowercase `'new'` gone, `promoted_from_prospect_id` and `contact_permissions`
+both written, both constraints created. Execute is granted to `service_role` only — `anon` and
+`authenticated` have none, which `create or replace` does not preserve on its own and the
+migration's explicit revoke/grant restored.
+
+**Prospect → Lead promotion works in production for the first time.**
 
 ### R3 · Promotion failures stopped masquerading as business rules
 
@@ -324,6 +333,30 @@ beside the working one. The correct fix needs one `draft_state jsonb` column, is
 
 Downgraded from P1 to P2 in [19](19-missing-architecture-register.md).
 
+
+---
+
+## Deployment state
+
+| Migration | In the branch | Applied to production |
+|---|---|---|
+| `0054_v4_expansion` | ✅ made re-runnable | ✅ **applied** |
+| `0062_usage_ledger` | ✅ | ❌ **pending** |
+| `0063_fix_prospect_promotion` | ✅ | ✅ **applied and verified** |
+| `0064_lead_archive_and_notes` | ✅ | ❌ **pending** |
+| `0065_connector_event_failures` | ✅ | ❌ **pending** |
+| `0066_data_controls` | ✅ | ❌ **pending** |
+
+### Do not ship this branch until 0062 and 0064–0066 are applied
+
+The code that depends on them is committed. Most consequentially, `audit.ts recordUsage()` now
+writes `usage_events.unit`, `.feature`, `.provider`, `.entity_type`, `.entity_id` and
+`.operation_id` — **six columns that do not exist in production**. Every metered action would fail
+at the insert.
+
+Those four migrations are the other agent's work and were not reviewed line by line here, which is
+why they were not applied on their behalf. They should be read and applied by whoever owns that
+stream, in numerical order, before this branch is deployed.
 
 ---
 

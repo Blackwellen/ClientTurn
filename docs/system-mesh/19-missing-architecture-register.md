@@ -7,14 +7,15 @@ failure it causes, and where the fix belongs.
 
 ## P0 — production blockers
 
-Three of six are fixed in the working tree. **`0063` is written and not deployed**, and production
-is separately a migration behind on `0054` — see [24 · R1](24-remediation-log.md).
+Three of six are fixed, and **both blocking migrations are now deployed and verified**:
+`0054_v4_expansion` and `0063_fix_prospect_promotion`. Four later migrations remain pending — see
+[24 · Deployment state](24-remediation-log.md).
 
 | # | Missing | Failure | Fix |
 |---|---|---|---|
-| **P0-0** | **`0054_v4_expansion.sql` has never been applied to production.** Copilot has no tables, follow-up email steps cannot be saved, outreach guidance and campaign send windows have nowhere to write | Found while restoring the typecheck; verified against the live database (172 tables, zero `copilot_*`) | Made re-runnable; needs a deploy — [24 · R1](24-remediation-log.md) |
-| ~~P0-1~~ | ~~A working `promote_reviewed_prospect()`~~ | **FIXED in `0063_fix_prospect_promotion.sql`** — not yet deployed | [24 · R2](24-remediation-log.md) |
-| ~~P0-2~~ | ~~Provenance columns populated on promotion~~ | **FIXED in the same migration** — all eight columns, the company snapshot and the `contact_permissions` row | [24 · R2](24-remediation-log.md) |
+| ~~P0-0~~ | ~~`0054_v4_expansion.sql` never applied to production~~ | **DEPLOYED.** Verified: 175 tables, all three `copilot_*` present | [24 · R1](24-remediation-log.md) |
+| ~~P0-1~~ | ~~A working `promote_reviewed_prospect()`~~ | **FIXED AND DEPLOYED.** Verified in the live function body | [24 · R2](24-remediation-log.md) |
+| ~~P0-2~~ | ~~Provenance columns populated on promotion~~ | **FIXED AND DEPLOYED** — all eight columns, the company snapshot and the `contact_permissions` row | [24 · R2](24-remediation-log.md) |
 | **P0-3** | One suppression list | An SMS `STOP` does not suppress cold email; a cold-email opt-out does not suppress warm SMS. UK PECR/GDPR exposure | Merge `contact_suppressions` into `suppression_entries` — [11 · 1.3](11-compliance-permission-mesh.md) |
 | **P0-4** | A single implementation per business action | MCP `update_lead_status` leaves `won_at` null, keeps automation running on won leads, and skips the CRM push. Copilot and MCP `assignLead` skip assignment history and audit | Add an `actor` parameter to `lib/*/actions.ts`; make Copilot and MCP call them — [18 · D1/D2](18-duplication-bloat-register.md) |
 | ~~P0-5~~ | ~~One reply-rate definition~~ | **DONE.** One rule (`rate()`), one recipient-level source (`analytics/engagement.ts`), consumed by Analytics, Copilot, Reactivation, Leads and Billing. The message-level per-channel figure is renamed `replies_per_delivered` rather than mis-computed | [24 · R8/R8b](24-remediation-log.md) |
