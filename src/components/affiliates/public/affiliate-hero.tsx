@@ -134,16 +134,13 @@ export function AffiliateHero({
           </div>
 
           {/* ------------------------------------------ partner dashboard */}
-          <motion.div
-            className="afp-panel-wrap"
-            initial={{ opacity: 0, y: 26, scale: 0.985 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={
-              reduced
-                ? { duration: 0 }
-                : { duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }
-            }
-          >
+          {/*
+            Deliberately not animated in. This panel is the first thing a
+            partner looks at, and an entrance animation that fails to settle
+            leaves the dashboard invisible — which is exactly what happened.
+            Content wins over choreography above the fold.
+          */}
+          <div className="afp-panel-wrap">
             {/*
               The same branded workspace frame the rest of the public site
               uses, showing the partner portal rather than a customer
@@ -180,7 +177,7 @@ export function AffiliateHero({
                 />
               </svg>
             </span>
-          </motion.div>
+          </div>
         </div>
 
         {/* ------------------------------------------------- benefit strip */}
