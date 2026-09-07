@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAiBehaviour } from "@/lib/ai-settings/queries";
 import { runTask } from "@/lib/ai/model-router";
 import type { ResearchSummaryResult } from "@/lib/ai/schemas";
+import { keepCitedClaims } from "../research-policy";
 
 /**
  * The AI research summary (V4 §13.3, and the AI boundary in CLAUDE.md).
@@ -177,26 +178,18 @@ export async function generateResearchSummary(
     return { ok: false, error: "The summary could not be generated. Nothing was changed." };
   }
 
-  // The structural guard. A claim citing an id that was not supplied is
-  // discarded rather than repaired — a hallucinated citation is exactly the
-  // case this exists to catch, and a "best effort" fix would launder it.
-  const claims: ResearchClaim[] = [];
-  for (const claim of result.data.claims) {
-    const cited = claim.evidence_ids
-      .map((ref) => byRef.get(ref.trim().toUpperCase()))
-      .filter((item): item is EvidenceItem => Boolean(item));
-
-    if (cited.length === 0) continue;
-
-    claims.push({
-      text: claim.text,
-      evidence: cited.map((item) => ({
-        id: item.id,
-        label: item.label,
-        source: item.source,
-      })),
-    });
-  }
+  // The structural guard — see `research-policy.ts`. A claim citing a
+  // reference that was never supplied is discarded rather than repaired.
+  const claims: ResearchClaim[] = keepCitedClaims(
+    result.data.claims,
+    evidence.map((item) => item.ref),
+  ).map(({ claim, citedRefs }) => ({
+    text: claim.text,
+    evidence: citedRefs
+      .map((ref) => byRef.get(ref))
+      .filter((item): item is EvidenceItem => Boolean(item))
+      .map((item) => ({ id: item.id, label: item.label, source: item.source })),
+  }));
 
   const summary: ResearchSummary = {
     claims,

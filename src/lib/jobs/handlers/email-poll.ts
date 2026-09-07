@@ -137,8 +137,24 @@ export async function handleEmailPoll(job: ClaimedJob) {
       .limit(1)
       .maybeSingle();
 
-    // Mail from someone who is not a lead is somebody else's conversation.
-    if (!lead) continue;
+    // A cold prospect who replies is not a lead yet, and dropping their mail
+    // here is what would let a campaign keep emailing someone who has already
+    // answered — or already asked to be left alone. Their reply is ingested on
+    // exactly the same path; `applyInboundMessage` routes it to the campaign
+    // reply pipeline rather than to lead qualification.
+    const { data: prospect } = lead
+      ? { data: null }
+      : await admin
+          .from("prospects")
+          .select("id")
+          .eq("business_id", businessId)
+          .ilike("email", from)
+          .is("promoted_to_lead_id", null)
+          .limit(1)
+          .maybeSingle();
+
+    // Mail from someone who is neither is somebody else's conversation.
+    if (!lead && !prospect) continue;
 
     // Same shape as every other ingress in this codebase: land the event in
     // `webhook_events` first, then queue the work. The unique index on

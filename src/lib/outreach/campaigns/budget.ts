@@ -5,11 +5,11 @@ import {
   getV4Usage,
   isOverageEnabled,
 } from "@/lib/billing/v4-entitlements";
-import { estimateRunCost } from "@/lib/find-leads/cost-model";
 import {
-  loadUnitCosts,
+  estimateRunCost,
   PLATFORM_RUN_COST_CEILING_MINOR,
-} from "@/lib/find-leads/server/budget";
+} from "@/lib/find-leads/cost-model";
+import { loadUnitCosts } from "@/lib/find-leads/server/budget";
 import {
   BUDGET_CATEGORY_LABELS,
   type BudgetCategory,
@@ -284,6 +284,56 @@ export async function loadCampaignBudgetUsage(
     breakdown,
     empty: attributed === 0,
   };
+}
+
+/**
+ * Which bucket a provider capability's spend belongs in.
+ *
+ * The budget card shows four categories; the cost model speaks in seven
+ * capabilities. This is the one place the two vocabularies meet, so a new
+ * capability lands in a named bucket rather than silently becoming "Other"
+ * in one place and something else in another.
+ */
+const CATEGORY_FOR_CAPABILITY: Record<string, BudgetCategory> = {
+  COMPANY_ENRICHMENT: "DATA_ENRICHMENT",
+  CONTACT_ENRICHMENT: "DATA_ENRICHMENT",
+  EMAIL_VERIFICATION: "DATA_ENRICHMENT",
+  COMPANY_SEARCH: "PROVIDER_DATA",
+  CONTACT_DISCOVERY: "PROVIDER_DATA",
+  INTENT: "PROVIDER_DATA",
+  WEBSITE_INTELLIGENCE: "PROVIDER_DATA",
+  EMAIL_SEND: "EMAIL_SENDING",
+};
+
+export function budgetCategoryForCapability(capability: string): BudgetCategory {
+  return CATEGORY_FOR_CAPABILITY[capability] ?? "OTHER";
+}
+
+/**
+ * The live per-send cost, in pence.
+ *
+ * Read from the price book rather than assumed. A customer sending through
+ * their own mailbox genuinely costs nothing per message, and the seeded rows
+ * say so — returning 0 there is the honest answer, and the caller then writes
+ * no cost row at all rather than a column of £0.00 entries.
+ */
+export async function emailSendCostMinor(): Promise<number> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("provider_price_book")
+    .select("unit_cost, effective_from, effective_to")
+    .eq("capability", "EMAIL_SEND")
+    .lte("effective_from", new Date().toISOString())
+    .order("effective_from", { ascending: false })
+    .limit(10);
+
+  const now = Date.now();
+  for (const row of data ?? []) {
+    if (row.effective_to && new Date(row.effective_to).getTime() <= now) continue;
+    return Math.round(Number(row.unit_cost) * 100);
+  }
+
+  return 0;
 }
 
 /** Attributes a cost to a campaign. Called by the workers that spend it. */

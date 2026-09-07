@@ -41,6 +41,7 @@ import { messageInboundPayload } from "./payloads";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import { enqueueAgentTurn, inboundMessageEvent } from "@/lib/agent/events";
 import { isOptOutPhrase } from "@/lib/agent/classification";
+import { handleCampaignReply } from "@/lib/outreach/campaigns/replies";
 
 const HANDOVER_REPLY = "Thanks. A member of the team will pick this up.";
 
@@ -284,6 +285,114 @@ async function sendHandoverReply(
  * Applies one inbound message. Idempotent: the unique index on
  * (provider, provider_message_id) makes a replay a no-op.
  */
+/**
+ * An inbound message from someone who is a prospect, not yet a lead.
+ *
+ * This is the other half of cold outreach: without it a campaign would keep
+ * sending to people who have already replied, and an "unsubscribe me" from a
+ * stranger would land nowhere. It deliberately does NOT run lead
+ * qualification or an agent turn — a cold prospect has no follow-up
+ * automation to advance, and `handleCampaignReply` decides what their reply
+ * means and what it does.
+ */
+async function applyProspectReply(
+  message: InboundMessage,
+  businessId: string,
+): Promise<"applied" | "duplicate" | "unmatched"> {
+  // Cold outreach is email-first, so a prospect thread only exists on email.
+  if (message.channel !== "email") return "unmatched";
+
+  const from = normaliseEmail(message.from);
+  if (!from) return "unmatched";
+
+  const admin = createAdminClient();
+
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("id, campaign_id, conversation_id")
+    .eq("business_id", businessId)
+    .ilike("email", from)
+    .is("promoted_to_lead_id", null)
+    .order("last_contacted_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!prospect) return "unmatched";
+
+  const now = new Date().toISOString();
+
+  // Reuse the thread the outbound steps were sent on, so promotion carries the
+  // whole exchange across rather than starting a second conversation.
+  let conversationId = prospect.conversation_id;
+  if (!conversationId) {
+    const { data: created } = await admin
+      .from("conversations")
+      .insert({
+        business_id: businessId,
+        prospect_id: prospect.id,
+        channel: "multi",
+        subject: "Reply",
+      })
+      .select("id")
+      .single();
+    conversationId = created?.id ?? null;
+    if (conversationId) {
+      await admin
+        .from("prospects")
+        .update({ conversation_id: conversationId })
+        .eq("business_id", businessId)
+        .eq("id", prospect.id);
+    }
+  }
+
+  if (!conversationId) return "unmatched";
+
+  const { data: storedMessage, error: insertError } = await admin
+    .from("messages")
+    .insert({
+      business_id: businessId,
+      conversation_id: conversationId,
+      prospect_id: prospect.id,
+      campaign_id: prospect.campaign_id,
+      direction: "inbound",
+      channel: "email",
+      body: message.body,
+      status: "RECEIVED",
+      origin: "outreach",
+      provider: message.provider,
+      provider_message_id: message.providerMessageId,
+      received_at: message.receivedAt || now,
+    })
+    .select("id")
+    .single();
+
+  // The unique index on the provider message id is what makes a re-polled
+  // mail a no-op rather than a second reply.
+  if (insertError?.code === "23505") return "duplicate";
+  if (insertError || !storedMessage) {
+    throw insertError ?? new Error("Inbound prospect message not stored.");
+  }
+
+  await admin
+    .from("conversations")
+    .update({ last_inbound_at: now, last_message_at: now })
+    .eq("id", conversationId);
+
+  // A prospect with no campaign still gets their reply recorded, but there is
+  // no sequence to stop and no campaign rule to apply.
+  if (!prospect.campaign_id) return "applied";
+
+  await handleCampaignReply({
+    businessId,
+    campaignId: prospect.campaign_id,
+    prospectId: prospect.id,
+    messageId: storedMessage.id,
+    body: message.body,
+  });
+
+  return "applied";
+}
+
 export async function applyInboundMessage(
   message: InboundMessage,
   businessHint: string | null,
@@ -295,7 +404,13 @@ export async function applyInboundMessage(
   if (!business) return "unmatched";
 
   const lead = await resolveLead(businessId, message);
-  if (!lead) return "unmatched";
+
+  // No lead, but possibly a cold prospect mid-campaign. Their reply has to be
+  // acted on — it stops the sequence, and an opt-out in it has to suppress —
+  // so it is handled here rather than discarded as unmatched.
+  if (!lead) {
+    return applyProspectReply(message, businessId);
+  }
 
   const admin = createAdminClient();
   const channel: Channel =

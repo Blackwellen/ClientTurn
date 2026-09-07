@@ -70,16 +70,28 @@ export function KpiCard({
     <div
       className={cn(
         "bg-surface border border-line rounded-xl shadow-xs",
+        // A column with a bottom-anchored value block. Grid rows already
+        // stretch these cards to a common height; without the anchor a card
+        // whose label wrapped to two lines pushed its own value down while
+        // its neighbours' stayed put, which is what read as the row
+        // "warping". Anchoring means every value and delta in a row sits on
+        // the same line whatever the labels do.
+        "flex min-w-0 flex-col",
         compact ? "@container px-3.5 py-2.5" : "px-4 py-3.5",
         className,
       )}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-start gap-1.5">
         <p
           className={cn(
-            "text-[12px] font-medium text-content-muted",
-            compact && "truncate",
+            "min-w-0 text-[12px] font-medium text-content-muted",
+            // Two lines is the designed maximum. A label long enough to need
+            // a third is a copy problem, not a layout one, and silently
+            // reflowing it would break the row alignment this card exists to
+            // hold. `title` keeps the full string reachable either way.
+            compact ? "truncate" : "line-clamp-2",
           )}
+          title={label}
         >
           {label}
         </p>
@@ -88,7 +100,7 @@ export function KpiCard({
             <button
               type="button"
               aria-label={`What ${label} means`}
-              className="text-content-subtle hover:text-content-muted shrink-0 rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
+              className="text-content-subtle hover:text-content-muted mt-px shrink-0 rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
             >
               <HelpCircle className="size-3.5" />
             </button>
@@ -98,17 +110,17 @@ export function KpiCard({
 
       {loading ? (
         <>
-          <Skeleton className="mt-2 h-7 w-24" />
+          <Skeleton className="mt-auto h-7 w-24" />
           <Skeleton className="mt-2 h-3.5 w-32" />
         </>
       ) : compact ? (
         <>
           {/* 24px holds "£34,500" inside a 101px content box at 1280; the
               wider step only unlocks once seven cards have room for it. */}
-          <p className="lr-tabular mt-1.5 truncate text-[24px] font-semibold leading-none tracking-[-0.025em] text-content 2xl:text-[28px]">
+          <p className="lr-tabular mt-1.5 truncate whitespace-nowrap text-[24px] font-semibold leading-none tracking-[-0.025em] text-content 2xl:text-[28px]">
             {value}
           </p>
-          <div className="mt-2 flex h-[22px] items-center justify-between gap-2">
+          <div className="mt-auto flex h-[22px] items-center justify-between gap-2 pt-2">
             {delta && DeltaIcon ? (
               <span
                 className="flex min-w-0 items-center gap-1 text-[12px]"
@@ -140,22 +152,38 @@ export function KpiCard({
         </>
       ) : (
         <>
-          <div className="mt-1.5 flex items-end justify-between gap-3">
-            <p className="lr-tabular text-[24px] font-semibold leading-none text-content">
+          <div className="mt-auto flex items-end justify-between gap-3 pt-1.5">
+            {/* The number is the point of the card: it never wraps and never
+                shrinks to make room for the spark, which is why the spark is
+                the element carrying `shrink`. */}
+            <p className="lr-tabular min-w-0 truncate whitespace-nowrap text-[24px] font-semibold leading-none text-content">
               {value}
             </p>
-            {sparkline && <div className="min-w-0 shrink-0">{sparkline}</div>}
+            {sparkline && <div className="min-w-0 shrink">{sparkline}</div>}
           </div>
           {delta && DeltaIcon && (
-            <p className="mt-2 flex items-center gap-1 text-[12px]">
+            <p
+              className="mt-2 flex items-center gap-1 text-[12px]"
+              title={`${delta.value} ${delta.comparison}`}
+            >
               <DeltaIcon
                 className={cn("size-3.5 shrink-0", deltaTone(delta))}
                 aria-hidden
               />
-              <span className={cn("lr-tabular font-medium", deltaTone(delta))}>
+              <span
+                className={cn(
+                  "lr-tabular shrink-0 font-medium",
+                  deltaTone(delta),
+                )}
+              >
                 {delta.value}
               </span>
-              <span className="text-content-muted">{delta.comparison}</span>
+              {/* The baseline is what makes the delta mean anything, so it
+                  stays on the row and ellipsises rather than wrapping the
+                  card to a second line at a narrow column. */}
+              <span className="min-w-0 truncate text-content-muted">
+                {delta.comparison}
+              </span>
             </p>
           )}
         </>

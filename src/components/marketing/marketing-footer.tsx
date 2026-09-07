@@ -1,31 +1,20 @@
 import Link from "next/link";
 import { COMPANY, hasRegisteredDetails } from "@/lib/marketing/company";
+import {
+  FOOTER_COMPANY,
+  FOOTER_LEGAL,
+  FOOTER_PARTNERS,
+  FOOTER_PRODUCT,
+  FOOTER_RESOURCES,
+  FOOTER_SOLUTIONS,
+} from "@/components/marketing/public/nav-data";
 import { Container } from "./section";
 import { Logo } from "./logo";
 
-const PRODUCT_LINKS = [
-  { label: "How It Works", href: "/#how-it-works" },
-  { label: "Results", href: "/#results" },
-  { label: "Industries", href: "/#industries" },
-  { label: "Pricing", href: "/#pricing" },
-  { label: "FAQ", href: "/#faq" },
-] as const;
-
-const LEGAL_LINKS = [
-  { label: "Privacy", href: "/privacy" },
-  { label: "Terms", href: "/terms" },
-  { label: "Cookies", href: "/cookies" },
-  { label: "Sub-processors", href: "/sub-processors" },
-] as const;
-
-const ACCOUNT_LINKS = [
-  { label: "Log in", href: "/login" },
-  { label: "Start free", href: "/signup" },
-  { label: "Contact sales", href: "/contact-sales" },
-  { label: "Partner programme", href: "/affiliates" },
-  { label: "Partner sign in", href: "/affiliates/login" },
-] as const;
-
+/*
+ * The footer reads the same nav source as the header, so a destination is
+ * added or moved in exactly one file.
+ */
 function LinkColumn({
   title,
   links,
@@ -58,7 +47,7 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-line bg-surface-sunken/60">
       <Container className="py-14 sm:py-16">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(6,minmax(0,1fr))]">
           <div className="max-w-xs">
             <Logo />
             <p className="mt-4 text-[13px] leading-relaxed text-content-muted">
@@ -81,9 +70,12 @@ export function MarketingFooter() {
             </p>
           </div>
 
-          <LinkColumn title="Product" links={PRODUCT_LINKS} />
-          <LinkColumn title="Account" links={ACCOUNT_LINKS} />
-          <LinkColumn title="Legal" links={LEGAL_LINKS} />
+          <LinkColumn title="Product" links={FOOTER_PRODUCT} />
+          <LinkColumn title="Solutions" links={FOOTER_SOLUTIONS} />
+          <LinkColumn title="Resources" links={FOOTER_RESOURCES} />
+          <LinkColumn title="Company" links={FOOTER_COMPANY} />
+          <LinkColumn title="Partners" links={FOOTER_PARTNERS} />
+          <LinkColumn title="Legal & Trust" links={FOOTER_LEGAL} />
         </div>
 
         <div className="mt-12 flex flex-col gap-3 border-t border-line-subtle pt-6 sm:flex-row sm:items-center sm:justify-between">

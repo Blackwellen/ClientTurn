@@ -8,7 +8,11 @@ import { assignVariant, recordVariantEvent } from "./variant-assignment";
 import { checkSuppression } from "@/lib/policy/suppression";
 import { evaluateEligibility } from "./campaign-eligibility";
 import { autoPauseIfUnsafe } from "./campaigns/lifecycle";
-import { campaignHasBudget, recordCampaignCost } from "./campaigns/budget";
+import {
+  campaignHasBudget,
+  emailSendCostMinor,
+  recordCampaignCost,
+} from "./campaigns/budget";
 import { loadSender } from "./campaigns/sender";
 import { loadDraft } from "./campaigns/draft";
 import { mergeValuesFor, renderTemplate } from "./templates";
@@ -131,6 +135,9 @@ export async function dispatchCampaign(input: {
 
   const service = campaign.services as unknown as { name: string } | null;
   const bookingLink = await resolveBookingLink(input.businessId, input.campaignId);
+  // Looked up once per batch, not per send. Zero for a customer's own mailbox,
+  // which is the honest figure rather than a placeholder.
+  const sendCostMinor = await emailSendCostMinor();
   const batchSize = Math.min(
     MAX_PER_INVOCATION,
     Math.max(1, campaign.prospects_per_run || MAX_PER_INVOCATION),
@@ -496,14 +503,18 @@ export async function dispatchCampaign(input: {
       .eq("id", prospect.id);
 
     // Attributed so the budget card reports where the money went rather than
-    // presenting an invented split.
-    await recordCampaignCost({
-      businessId: input.businessId,
-      campaignId: input.campaignId,
-      category: "EMAIL_SENDING",
-      costMinor: 1,
-      reference: sendKey,
-    });
+    // presenting an invented split. A send that genuinely costs nothing —
+    // the customer's own mailbox — records nothing, because a column of
+    // £0.00 rows is noise dressed up as a breakdown.
+    if (sendCostMinor > 0) {
+      await recordCampaignCost({
+        businessId: input.businessId,
+        campaignId: input.campaignId,
+        category: "EMAIL_SENDING",
+        costMinor: sendCostMinor,
+        reference: sendKey,
+      });
+    }
 
     sent += 1;
   }

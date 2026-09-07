@@ -67,17 +67,65 @@ export default async function HelpPage() {
 
   return (
     <div className="space-y-5">
-      <Card id="app-installs" className="space-y-3 p-5">
-        <h2 className="font-semibold">Install an app with the webhook bridge</h2>
-        <p className="text-sm text-content-muted">In Settings → Connections, install an app using a random signing secret of at least 32 characters. Configure a code step in your provider or automation service to POST JSON to the installation URL. This is a contact-import bridge, not native two-way sync.</p>
-        <pre className="overflow-x-auto rounded-lg bg-bg p-4 text-xs">{`{"eventId":"unique-contact-event-123","firstName":"Alex","email":"alex@example.com"}`}</pre>
-        <p className="text-sm text-content-muted">Send x-clientturn-timestamp as the current Unix time in seconds. Send x-clientturn-signature as the hexadecimal HMAC-SHA256 of timestamp + &quot;.&quot; + the exact JSON request body, using your signing secret. Requests expire after five minutes. Reuse the eventId when retrying the same event.</p>
-        <p className="text-sm text-content-muted">A 202 response means the event is queued. The contact appears in Find Leads after background processing. Optional fields: lastName and phone (E.164 format). Imported data remains subject to review and contactability rules. Uninstalling immediately blocks further receipts.</p>
-      </Card>
       <PageHeader
         title="Help"
         description="Get set up, understand what Client Turn is doing, and reach a human when you need one."
       />
+
+      <Card id="app-installs" className="space-y-3 p-5">
+        <h2 className="font-semibold">Import contacts from another system</h2>
+        <p className="text-sm text-content-muted">
+          Settings &rarr; Connections gives you a URL that accepts one contact
+          per request. Your CRM, outreach tool or automation service posts to
+          it and the contact appears in Find Leads for review. This is a
+          one-way import: ClientTurn never signs in to the other system and
+          cannot read or change anything in it.
+        </p>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-content-muted">
+          <li>Choose the system you are sending from and how it will authenticate.</li>
+          <li>Save the credential, then copy your endpoint URL.</li>
+          <li>Configure the sending tool to POST the payload below.</li>
+        </ol>
+        <pre className="overflow-x-auto rounded-lg bg-bg p-4 text-xs">{`POST https://app.clientturn.com/api/apps/<id>/events
+
+Content-Type: application/json
+x-clientturn-timestamp: 1757116800
+x-clientturn-signature: <hmac_hex>
+
+{
+  "eventId": "unique-contact-event-123",
+  "eventType": "contact.created",
+  "firstName": "Alex",
+  "lastName": "Taylor",
+  "email": "alex@example.com",
+  "phone": "+447700900123",
+  "company": "Example Ltd"
+}`}</pre>
+        <p className="text-sm text-content-muted">
+          <strong className="font-medium text-content">Signing.</strong> Set{" "}
+          <code>x-clientturn-timestamp</code> to the current Unix time in
+          seconds, and <code>x-clientturn-signature</code> to the hexadecimal
+          HMAC-SHA256 of the timestamp, a full stop, and the exact request body
+          you are sending &mdash; signed with your signing secret. Requests more
+          than five minutes old are refused. If your tool cannot compute an
+          HMAC, choose a bearer token or API key header instead when you set the
+          connection up.
+        </p>
+        <p className="text-sm text-content-muted">
+          <strong className="font-medium text-content">Responses.</strong> A 202
+          means the event is queued and the contact will appear after background
+          processing. 401 means the credential or timestamp was rejected &mdash;
+          Connections shows the reason. Reuse the same <code>eventId</code> when
+          retrying so a retry cannot create the contact twice. Only{" "}
+          <code>eventId</code> and one of <code>email</code> or{" "}
+          <code>phone</code> (E.164) are required.
+        </p>
+        <p className="text-sm text-content-muted">
+          Imported contacts stay subject to review, suppression and
+          contactability rules, and importing never starts outreach on its own.
+          Removing a connection blocks further receipts immediately.
+        </p>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

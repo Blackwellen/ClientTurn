@@ -5,6 +5,10 @@ import { FALLBACK_UNIT_COST_MINOR } from "../cost-model";
 import { loadUnitCosts } from "./budget";
 import { providersFor, unhealthyProviders } from "./providers/registry";
 import type { CompanyCandidate } from "./providers/types";
+import {
+  RESEARCH_COOLDOWN_HOURS,
+  RESEARCH_DAILY_WORKSPACE_LIMIT,
+} from "../research-policy";
 
 /**
  * Re-running research for a single prospect (V4 §13.3).
@@ -27,11 +31,9 @@ import type { CompanyCandidate } from "./providers/types";
  * the UI; it is never the thing that authorises the spend.
  */
 
-/** One refresh per prospect per day. */
-export const RESEARCH_COOLDOWN_HOURS = 24;
-
-/** How many prospects a workspace may refresh in a rolling day. */
-export const RESEARCH_DAILY_WORKSPACE_LIMIT = 25;
+// The bounds themselves live in `research-policy.ts`, which is pure and
+// therefore testable on its own. Re-exported so callers have one import.
+export { RESEARCH_COOLDOWN_HOURS, RESEARCH_DAILY_WORKSPACE_LIMIT };
 
 export type ResearchRefreshState = {
   allowed: boolean;

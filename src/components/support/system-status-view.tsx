@@ -4,7 +4,7 @@ import * as React from "react";
 import { ArrowUpRight, CircleAlert, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { readSystemStatus } from "@/lib/support/actions";
-import { STATUS_META, type ServiceStatus } from "@/lib/status/service";
+import { STATUS_META, type ServiceStatus } from "@/lib/status/types";
 
 type Summary = Awaited<ReturnType<typeof readSystemStatus>>;
 

@@ -28,7 +28,9 @@ export type JobType =
   | "maintenance.expiry"
   | "outreach.dispatch"
   | "outreach.audience"
-  | "outreach.tick";
+  | "outreach.tick"
+  | "outreach.optimize"
+  | "affiliate.ledger";
 
 export type EnqueueOptions = {
   businessId?: string | null;

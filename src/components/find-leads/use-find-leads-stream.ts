@@ -43,7 +43,7 @@ export function useFindLeadsStream({
 }: {
   businessId: string;
   /** Which entity types should trigger a refresh on this view. */
-  entities: StreamEntity[];
+  entities: readonly StreamEntity[];
   enabled?: boolean;
   /** Called for each event, before coalescing — for a "new prospects" pill. */
   onEvent?: (event: { entityType: StreamEntity; kind: string }) => void;
@@ -52,7 +52,7 @@ export function useFindLeadsStream({
 
   // Kept in a ref so changing the callback or the entity list does not tear
   // down and re-establish the socket subscription.
-  const entitiesRef = React.useRef(entities);
+  const entitiesRef = React.useRef<readonly StreamEntity[]>(entities);
 
   const onEventRef = React.useRef(onEvent);
   React.useEffect(() => {

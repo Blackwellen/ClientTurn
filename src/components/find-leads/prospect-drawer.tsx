@@ -12,6 +12,7 @@ import {
   MapPin,
   MoreHorizontal,
   Phone,
+  RefreshCw,
   Send,
   ShieldCheck,
   Sparkles,
@@ -23,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
-import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { Label, Select, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -31,7 +32,13 @@ import {
   approveProspectAction,
   promoteProspectToLeadAction,
 } from "@/lib/find-leads/actions";
-import { suppressProspectAction } from "@/lib/find-leads/prospect-actions";
+import {
+  generateResearchSummaryAction,
+  refreshProspectResearchAction,
+  suppressProspectAction,
+} from "@/lib/find-leads/prospect-actions";
+import { formatMinor } from "@/lib/find-leads/plan";
+import type { ResearchSummary } from "@/lib/find-leads/server/research-summary";
 import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/policy/types";
 import { shortAgo } from "@/lib/prospects/activity";
 import {
@@ -652,16 +659,20 @@ function ResearchView({ detail }: { detail: ProspectDetail }) {
     detail.research.length > 0 ||
     detail.verification.length > 0;
 
-  if (!hasAnything) {
-    return (
-      <p className="py-10 text-center text-[13px] text-content-muted">
-        No verified research evidence yet. Evidence appears here as enrichment runs.
-      </p>
-    );
-  }
-
   return (
     <div className="space-y-3">
+      <ResearchControls detail={detail} />
+
+      {detail.researchSummary && (
+        <AiResearchSummaryCard summary={detail.researchSummary} />
+      )}
+
+      {!hasAnything && (
+        <p className="py-10 text-center text-[13px] text-content-muted">
+          No verified research evidence yet. Evidence appears here as enrichment runs.
+        </p>
+      )}
+
       {detail.provenance.length > 0 && (
         <section className="rounded-xl border border-line bg-surface p-4 shadow-xs">
           <h3 className="text-[13px] font-semibold text-content">Evidence and provenance</h3>
@@ -806,6 +817,171 @@ function ResearchView({ detail }: { detail: ProspectDetail }) {
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * The two controls at the top of the Research tab (V4 §13.3).
+ *
+ * They are deliberately different operations and are presented as such.
+ * "Refresh research" calls a paid provider, so it states what it will cost and
+ * refuses with a reason when the cooldown, the daily cap, the plan or provider
+ * health say no. "Summarise evidence" spends AI tokens and calls nothing
+ * external — it only reads what is already stored.
+ */
+function ResearchControls({ detail }: { detail: ProspectDetail }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, startTransition] = React.useTransition();
+  const [confirmRefresh, setConfirmRefresh] = React.useState(false);
+
+  const state = detail.researchRefresh;
+
+  const run = (
+    action: () => Promise<{ ok: boolean; error?: string }>,
+    success: (result: unknown) => string,
+  ) => {
+    startTransition(async () => {
+      const result = await action();
+      if (!result.ok) {
+        toast({ variant: "error", title: result.error ?? "That did not work." });
+        return;
+      }
+      toast({ variant: "success", title: success(result) });
+      router.refresh();
+    });
+  };
+
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4 shadow-xs">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold text-content">Research</h3>
+          <p className="mt-0.5 text-[12px] text-content-muted">
+            {state.allowed
+              ? `Re-checks this company with an enrichment provider. ${formatMinor(
+                  state.estimatedCostMinor,
+                )} of your budget, once per prospect per day.`
+              : state.reason}
+          </p>
+          {state.allowed && (
+            <p className="mt-0.5 text-[11.5px] text-content-subtle">
+              {state.usedToday} of {state.dailyLimit} workspace refreshes used today.
+            </p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!state.allowed || pending}
+            title={state.reason ?? undefined}
+            onClick={() => setConfirmRefresh(true)}
+          >
+            <RefreshCw className="size-3.5" aria-hidden />
+            Refresh research
+          </Button>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={pending}
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => generateResearchSummaryAction(detail.prospect.id),
+                (result) => {
+                  const data = (result as { data?: { claims: number } }).data;
+                  return data && data.claims > 0
+                    ? `Summarised ${data.claims} finding${data.claims === 1 ? "" : "s"}.`
+                    : "The stored evidence was too thin to summarise.";
+                },
+              )
+            }
+          >
+            <Sparkles className="size-3.5" aria-hidden />
+            Summarise evidence
+          </Button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmRefresh}
+        onClose={() => setConfirmRefresh(false)}
+        title="Refresh research for this prospect?"
+        scope={`This calls an enrichment provider and uses about ${formatMinor(
+          state.estimatedCostMinor,
+        )} of your sourcing budget.`}
+        consequence="Only fields the provider actually returns are updated — a blank answer never overwrites something you already know. It can be run again tomorrow."
+        confirmLabel="Refresh research"
+        loading={pending}
+        onConfirm={() => {
+          setConfirmRefresh(false);
+          run(
+            () => refreshProspectResearchAction(detail.prospect.id),
+            (result) => {
+              const data = (result as { data?: { updatedFields: string[] } }).data;
+              const count = data?.updatedFields.length ?? 0;
+              return count > 0
+                ? `Updated ${count} field${count === 1 ? "" : "s"}.`
+                : "Nothing had changed since the last check.";
+            },
+          );
+        }}
+      />
+    </section>
+  );
+}
+
+/**
+ * The AI synthesis.
+ *
+ * Every claim is rendered with the sources behind it, because a claim that
+ * cannot be traced is one the product has no business showing. Claims that
+ * cited evidence the server did not supply were already discarded before this
+ * was stored — see `research-summary.ts`.
+ */
+function AiResearchSummaryCard({ summary }: { summary: ResearchSummary }) {
+  return (
+    <section className="rounded-xl border border-purple-100 bg-purple-50/40 p-4 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-content">
+          <Sparkles className="size-4 text-purple-500" aria-hidden />
+          AI research summary
+        </h3>
+        <span className="text-[11px] text-content-subtle">
+          Generated {shortAgo(summary.generatedAt)}
+        </span>
+      </div>
+
+      {summary.claims.length === 0 ? (
+        <p className="mt-2 text-[12.5px] text-content-muted">
+          There was not enough stored evidence to say anything reliable. Nothing has been
+          inferred to fill the gap.
+        </p>
+      ) : (
+        <ul className="mt-2.5 space-y-2.5">
+          {summary.claims.map((claim, index) => (
+            <li key={`${index}-${claim.text.slice(0, 24)}`}>
+              <p className="text-[12.5px] text-content-secondary">{claim.text}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1">
+                {[...new Set(claim.evidence.map((item) => item.source))].map((source) => (
+                  <Badge key={source} tone="neutral" dense>
+                    {source}
+                  </Badge>
+                ))}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-3 border-t border-purple-100 pt-2 text-[11px] text-content-muted">
+        Written from the evidence below and nothing else. It does not affect the prospect
+        score, which is calculated deterministically.
+      </p>
+    </section>
   );
 }
 

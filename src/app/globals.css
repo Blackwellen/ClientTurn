@@ -521,3 +521,177 @@ body {
 }
 
 /* touch: force Tailwind CSS rebuild */
+
+/* ---------------------------------------------------------------------------
+   Sidebar rail density
+   ---------------------------------------------------------------------------
+   Every rail (app, admin, affiliate) is a fixed full-height column whose
+   header, workspace card, upsell and footer are all `shrink-0`. That means
+   every pixel of viewport height the rail loses comes out of the nav list and
+   nothing else -- and because browser zoom shrinks the CSS-pixel viewport
+   *height*, a perfectly ordinary 1440x900 laptop at 150% has only 600px to
+   work with and the nav was clipped to two visible rows. It was never a width
+   breakpoint, and the rail's own hidden scrollbar meant nothing on screen said
+   the rest of the menu was still there.
+
+   So the rail steps down through density tiers as height gets tight. The
+   optional chrome (upsell, then the workspace card) goes first because it is
+   the least load-bearing and is duplicated in the top bar anyway; then the
+   header and the rows tighten. Destinations are never removed.
+
+   The tier boundaries are not round numbers -- they are set just above the
+   viewport heights the standard zoom steps actually produce on a 900px-tall
+   laptop viewport (818px at 110%, 720px at 125%, 600px at 150%, 514px at 175%,
+   450px at 200%), because a boundary that sits just *below* a common zoom step
+   is the same bug in a new place. Every configured destination is reachable
+   without scrolling at every zoom from 50% to 200%.
+
+   Rows never go below 30px, which keeps them above the 24x24 CSS px minimum in
+   WCAG 2.2 SC 2.5.8. Below the last tier the nav still scrolls, but with a
+   visible thumb and a keyboard-reachable container (see .ct-scroll-rail).
+
+   Tiers are `max-height` only, so they are orientation-agnostic: a phone in
+   landscape and a desktop at 200% zoom get the same treatment for the same
+   reason. */
+.ct-rail {
+  --ct-rail-header-h: 116px;
+  --ct-rail-logo-h: 68px;
+  --ct-rail-row-h: 48px;
+  --ct-rail-gap: 6px;
+  --ct-rail-nav-pt: 12px;
+  --ct-rail-foot-py: 12px;
+  --ct-rail-workspace: flex;
+  --ct-rail-upsell: block;
+  /* Two tokens rather than one, because the elements that come and go with
+     the tier are not all the same display type -- forcing `flex` onto the
+     environment card's subtitle would break its `truncate`. */
+  --ct-rail-roomy-flex: flex;
+  --ct-rail-roomy-block: block;
+}
+
+/* The upsell is an advert; it is the first thing to go when a destination
+   would otherwise be pushed off screen. */
+@media (max-height: 1000px) {
+  .ct-rail { --ct-rail-upsell: none; }
+}
+
+@media (max-height: 900px) {
+  .ct-rail {
+    --ct-rail-header-h: 88px;
+    --ct-rail-logo-h: 52px;
+    --ct-rail-nav-pt: 8px;
+    --ct-rail-foot-py: 10px;
+  }
+}
+
+@media (max-height: 860px) {
+  .ct-rail {
+    --ct-rail-row-h: 44px;
+    --ct-rail-gap: 5px;
+  }
+}
+
+/* The workspace name is in the top bar and the profile dialog, so dropping it
+   here loses no information -- unlike dropping a destination. */
+@media (max-height: 780px) {
+  .ct-rail {
+    --ct-rail-workspace: none;
+    --ct-rail-roomy-flex: none;
+    --ct-rail-roomy-block: none;
+    --ct-rail-header-h: 72px;
+    --ct-rail-logo-h: 44px;
+  }
+}
+
+@media (max-height: 660px) {
+  .ct-rail {
+    --ct-rail-row-h: 40px;
+    --ct-rail-gap: 4px;
+  }
+}
+
+@media (max-height: 610px) {
+  .ct-rail {
+    --ct-rail-header-h: 64px;
+    --ct-rail-logo-h: 40px;
+    --ct-rail-row-h: 36px;
+    --ct-rail-nav-pt: 6px;
+    --ct-rail-foot-py: 8px;
+  }
+}
+
+@media (max-height: 530px) {
+  .ct-rail {
+    --ct-rail-header-h: 56px;
+    --ct-rail-logo-h: 34px;
+    --ct-rail-row-h: 32px;
+    --ct-rail-gap: 3px;
+  }
+}
+
+/* Floor, sized so the longest rail (admin: eight destinations plus the
+   environment card and three footer rows) still fits the 450px viewport that
+   200% zoom leaves on a 900px-tall laptop -- the level WCAG 2.2 SC 1.4.4
+   requires the product to remain usable at. */
+@media (max-height: 460px) {
+  .ct-rail {
+    --ct-rail-header-h: 44px;
+    --ct-rail-logo-h: 30px;
+    --ct-rail-row-h: 30px;
+    --ct-rail-gap: 2px;
+    --ct-rail-nav-pt: 4px;
+    --ct-rail-foot-py: 4px;
+  }
+}
+
+.ct-rail-workspace { display: var(--ct-rail-workspace); }
+.ct-rail-upsell { display: var(--ct-rail-upsell); }
+
+/* ---------------------------------------------------------------------------
+   Scrollable rail region
+   ---------------------------------------------------------------------------
+   Replaces `.scrollbar-none` on the nav. A rail scrollbar was hidden because
+   a full-width Windows scrollbar cuts a seam across the panel -- but hiding it
+   outright removed the only cue that there was more menu below, and removed
+   the drag target a trackpad-less laptop user reaches for. This keeps the
+   chrome quiet (a 6px translucent thumb, no track) while leaving it visible,
+   hoverable and draggable.
+
+   `overscroll-behavior: contain` stops a wheel gesture that bottoms out here
+   from scrolling the page behind the fixed rail. */
+.ct-scroll-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  overscroll-behavior: contain;
+}
+
+.ct-scroll-rail::-webkit-scrollbar { width: 8px; }
+.ct-scroll-rail::-webkit-scrollbar-track { background: transparent; }
+
+.ct-scroll-rail::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.18);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 99px;
+}
+
+.ct-scroll-rail:hover::-webkit-scrollbar-thumb,
+.ct-scroll-rail::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.34);
+}
+
+/* A scroll container is only given a tab stop when it actually overflows
+   (see useScrollableRegion), so this focus ring never appears on a rail that
+   fits -- but when it does appear it has to be visible against the rail. */
+.ct-scroll-rail:focus-visible {
+  outline: 2px solid var(--ct-lime);
+  outline-offset: -2px;
+}
+
+/* Rail chrome that is worth its height only when there is height to spare.
+   Unlike .ct-rail-workspace this is applied to parts of a block whose
+   remainder must survive -- the admin environment card keeps its name and
+   health pill at every size, because "which platform am I on" is a safety
+   signal, and only sheds its icon and subtitle. */
+.ct-rail-roomy-flex { display: var(--ct-rail-roomy-flex); }
+.ct-rail-roomy-block { display: var(--ct-rail-roomy-block); }

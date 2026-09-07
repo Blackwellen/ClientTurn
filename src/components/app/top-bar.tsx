@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Menu, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -32,6 +32,8 @@ export function TopBar({
   businessName,
   planLabel,
   onOpenAccount,
+  onToggleCopilot,
+  copilotOpen,
 }: {
   onOpenNav: () => void;
   integrationStatus: string;
@@ -40,6 +42,8 @@ export function TopBar({
   businessName: string;
   planLabel: string;
   onOpenAccount: () => void;
+  onToggleCopilot: () => void;
+  copilotOpen: boolean;
 }) {
   const pathname = usePathname();
   const [trayOpen, setTrayOpen] = React.useState(false);
@@ -129,6 +133,27 @@ export function TopBar({
             {health.label}
           </Link>
         </Tooltip>
+
+        {/* Copilot sits beside the notification bell rather than in a menu:
+            it is a destination people reach for constantly, and a shortcut
+            buried two clicks deep is one nobody uses. */}
+        <button
+          type="button"
+          onClick={onToggleCopilot}
+          aria-expanded={copilotOpen}
+          aria-controls="clientturn-copilot"
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-full border px-3",
+            "text-[12px] font-semibold transition-colors duration-[var(--lr-duration-fast)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
+            copilotOpen
+              ? "border-accent-500 bg-accent-50 text-content-accent"
+              : "border-line text-content hover:bg-surface-hover",
+          )}
+        >
+          <Sparkles className="size-4 shrink-0" aria-hidden />
+          <span className="hidden sm:inline">Copilot</span>
+        </button>
 
         <div className="relative">
           <IconButton

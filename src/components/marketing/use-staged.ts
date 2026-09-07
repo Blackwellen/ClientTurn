@@ -12,8 +12,11 @@ function prefersReducedMotion() {
  * element is on screen. Returns `count` immediately when the visitor has asked
  * for reduced motion, so the same information is present without movement.
  */
-export function useStagedReveal(count: number, intervalMs = 700) {
-  const ref = React.useRef<HTMLDivElement>(null);
+export function useStagedReveal<T extends Element = HTMLDivElement>(
+  count: number,
+  intervalMs = 700,
+) {
+  const ref = React.useRef<T>(null);
   const [revealed, setRevealed] = React.useState(0);
 
   React.useEffect(() => {

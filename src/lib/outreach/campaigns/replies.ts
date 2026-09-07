@@ -166,7 +166,11 @@ export async function handleCampaignReply(input: {
 
   let promotedLeadId: string | null = null;
   if (shouldPromote(campaign.promotion_rule, ruleKey) && !suppressed) {
-    promotedLeadId = await promote(input.businessId, input.prospectId);
+    promotedLeadId = await promoteCampaignProspect(
+      input.businessId,
+      input.prospectId,
+      "positive_reply",
+    );
   }
 
   await recordCampaignEvent({
@@ -213,7 +217,11 @@ function shouldPromote(rule: string, ruleKey: ReplyRuleKey): boolean {
  * sourcing provenance across. Writing a second promotion path here would break
  * all of that quietly.
  */
-async function promote(businessId: string, prospectId: string): Promise<string | null> {
+export async function promoteCampaignProspect(
+  businessId: string,
+  prospectId: string,
+  trigger: "positive_reply" | "booked_event",
+): Promise<string | null> {
   const admin = createAdminClient();
 
   const { data: existing } = await admin
@@ -245,7 +253,7 @@ async function promote(businessId: string, prospectId: string): Promise<string |
     action: "prospect.promoted_to_lead",
     entityType: "prospect",
     entityId: prospectId,
-    metadata: { leadId, trigger: "positive_reply" },
+    metadata: { leadId, trigger },
   });
 
   return leadId as string;

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canOverwrite, type FactSourceType } from "./precedence";
 import { recordAudit } from "@/lib/audit";
 import { CONVERSION_GOAL_TYPES } from "./types";
 
@@ -23,8 +24,24 @@ export type ActionResult = { ok: true; id?: string } | { ok: false; error: strin
 const factSchema = z.object({
   factKey: z.string().trim().min(1).max(120),
   value: z.string().trim().max(2000),
+  /** Who is asserting this. Defaults to the person typing it. */
+  source: z
+    .enum(["USER", "WEBSITE", "INTEGRATION", "PERFORMANCE", "AI"])
+    .default("USER"),
+  /** Optional temporal validity, for seasonal offers and temporary areas. */
+  validFrom: z.string().datetime().nullable().optional(),
+  validTo: z.string().datetime().nullable().optional(),
 });
 
+/**
+ * Writes a fact, subject to precedence (V4 §26.20).
+ *
+ * A fact a person types is USER-sourced, verified and locked by definition —
+ * they just said it, and nothing inferred may then overwrite it. Anything not
+ * typed by a person (a website read, an integration, a performance insight, or
+ * Copilot) must win on precedence before it is allowed to replace what is
+ * already recorded, and is *never* allowed to replace a locked fact.
+ */
 export async function saveFact(input: unknown): Promise<ActionResult> {
   const parsed = factSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the fact a name and a value." };
@@ -32,23 +49,152 @@ export async function saveFact(input: unknown): Promise<ActionResult> {
   const workspace = await requireRole("admin");
   const db = createAdminClient();
 
-  // A fact a person types is USER-sourced and verified by definition — they
-  // just said it. It is also locked, so nothing inferred can overwrite it.
+  const byPerson = parsed.data.source === "USER";
+
+  const { data: existing } = await db
+    .from("business_memory_facts")
+    .select("id, source_type, verified_by_user, locked, confidence, last_verified_at")
+    .eq("business_id", workspace.businessId)
+    .eq("fact_key", parsed.data.factKey)
+    .maybeSingle();
+
+  if (existing) {
+    const verdict = canOverwrite(
+      {
+        sourceType: existing.source_type as FactSourceType,
+        verifiedByUser: existing.verified_by_user,
+        locked: existing.locked,
+        confidence: Number(existing.confidence),
+        lastVerifiedAt: existing.last_verified_at,
+      },
+      {
+        sourceType: parsed.data.source as FactSourceType,
+        verifiedByUser: byPerson,
+        locked: byPerson,
+        // A person's own statement is certain; anything else arrives with the
+        // confidence its source earned.
+        confidence: byPerson ? 1 : 0.8,
+      },
+    );
+
+    if (!verdict.allowed) return { ok: false, error: verdict.reason };
+  }
+
   const { error } = await db.from("business_memory_facts").upsert(
     {
       business_id: workspace.businessId,
       fact_key: parsed.data.factKey,
       value_json: { value: parsed.data.value } as never,
-      source_type: "USER",
-      confidence: 1,
-      verified_by_user: true,
-      locked: true,
-      last_verified_at: new Date().toISOString(),
+      source_type: parsed.data.source,
+      confidence: byPerson ? 1 : 0.8,
+      verified_by_user: byPerson,
+      locked: byPerson,
+      valid_from: parsed.data.validFrom ?? null,
+      valid_to: parsed.data.validTo ?? null,
+      last_verified_at: byPerson ? new Date().toISOString() : null,
     },
     { onConflict: "business_id,fact_key" },
   );
 
   if (error) return { ok: false, error: "That fact could not be saved." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "business_fact.saved",
+    entityType: "business_memory_fact",
+    metadata: { fact_key: parsed.data.factKey, source: parsed.data.source },
+  });
+
+  revalidatePath("/app/settings");
+  return { ok: true };
+}
+
+/**
+ * Marks a fact as confirmed by a person without changing its value.
+ *
+ * This is the cheap, common action: "yes, that is still right". It refreshes
+ * the freshness clock and promotes the fact above anything inferred.
+ */
+export async function verifyFact(id: unknown): Promise<ActionResult> {
+  const parsed = z.uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+
+  const workspace = await requireRole("admin");
+  const db = createAdminClient();
+
+  const { error } = await db
+    .from("business_memory_facts")
+    .update({
+      verified_by_user: true,
+      last_verified_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data)
+    .eq("business_id", workspace.businessId);
+
+  if (error) return { ok: false, error: "That fact could not be verified." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "business_fact.verified",
+    entityType: "business_memory_fact",
+    entityId: parsed.data,
+  });
+
+  revalidatePath("/app/settings");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------- outreach guidance */
+
+const guidanceSchema = z.object({
+  tone: z.string().trim().max(400).nullable().optional(),
+  keyMessages: z.string().trim().max(1200).nullable().optional(),
+  valueProposition: z.string().trim().max(1200).nullable().optional(),
+  proofPoints: z.string().trim().max(1200).nullable().optional(),
+  avoid: z.string().trim().max(1200).nullable().optional(),
+  callToAction: z.string().trim().max(400).nullable().optional(),
+  claimRestrictions: z.string().trim().max(1200).nullable().optional(),
+});
+
+/**
+ * The structured guidance campaign and message generators read (V4 §26.19).
+ *
+ * Authored by the customer and stored as its own row rather than as an
+ * inferred memory fact: this is an instruction about how to represent the
+ * business, and it must never be something the product decided for itself.
+ */
+export async function saveOutreachGuidance(input: unknown): Promise<ActionResult> {
+  const parsed = guidanceSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That guidance could not be saved." };
+
+  const workspace = await requireRole("admin");
+  const db = createAdminClient();
+
+  const { error } = await db.from("business_profiles").upsert(
+    {
+      business_id: workspace.businessId,
+      outreach_tone: parsed.data.tone ?? null,
+      outreach_key_messages: parsed.data.keyMessages ?? null,
+      outreach_value_proposition: parsed.data.valueProposition ?? null,
+      outreach_proof_points: parsed.data.proofPoints ?? null,
+      outreach_avoid: parsed.data.avoid ?? null,
+      outreach_call_to_action: parsed.data.callToAction ?? null,
+      outreach_claim_restrictions: parsed.data.claimRestrictions ?? null,
+      outreach_guidance_updated_at: new Date().toISOString(),
+    },
+    { onConflict: "business_id" },
+  );
+
+  if (error) return { ok: false, error: "That guidance could not be saved." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "outreach_guidance.updated",
+    entityType: "business_profile",
+  });
 
   revalidatePath("/app/settings");
   return { ok: true };

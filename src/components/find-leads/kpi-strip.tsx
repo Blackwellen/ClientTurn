@@ -58,21 +58,30 @@ export function FindLeadsKpiStrip({
         return (
           <div
             key={kpi.key}
-            className="rounded-xl border border-line bg-surface px-4 py-3 shadow-xs"
+            // Grid rows stretch these to a common height, so the optional
+            // detail line is bottom-anchored: otherwise a card that has one
+            // sat lower than the cards that do not and the strip lost its
+            // baseline.
+            className="flex min-w-0 flex-col rounded-xl border border-line bg-surface px-4 py-3 shadow-xs"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[22px] font-semibold leading-tight tabular-nums text-content">
+                {/* The figure never wraps -- a two-line KPI value is always a
+                    layout failure, never a design. */}
+                <div className="truncate whitespace-nowrap text-[22px] font-semibold leading-tight tabular-nums text-content">
                   {kpi.value}
                 </div>
-                <div className="mt-0.5 truncate text-[12.5px] text-content-muted">
+                <div
+                  className="mt-0.5 truncate text-[12.5px] text-content-muted"
+                  title={kpi.label}
+                >
                   {kpi.label}
                 </div>
               </div>
               <Icon className={cn("size-4 shrink-0", TONE_ICON[kpi.tone])} aria-hidden />
             </div>
             {kpi.detail && (
-              <div className="mt-1.5 text-[12px] font-medium tabular-nums text-content-secondary">
+              <div className="mt-auto truncate pt-1.5 text-[12px] font-medium tabular-nums text-content-secondary">
                 {kpi.detail}
               </div>
             )}

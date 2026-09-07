@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, Building2, Loader2, Radio, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { runAdminSearch } from "@/lib/admin/actions";
+import { searchPlaceholderForAdminPath } from "@/lib/admin/nav";
 import type { AdminSearchResult } from "@/lib/admin/types";
 
 const KIND_ICON = {
@@ -19,6 +20,8 @@ const KIND_ICON = {
  */
 export function AdminSearch() {
   const router = useRouter();
+  const pathname = usePathname();
+  const placeholder = searchPlaceholderForAdminPath(pathname);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState("");
@@ -108,7 +111,7 @@ export function AdminSearch() {
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1 lg:max-w-[690px]">
       <label htmlFor={`${listId}-input`} className="sr-only">
-        Search customers, leads, jobs and settings
+        {placeholder}
       </label>
       <Search
         className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-content-subtle"
@@ -121,9 +124,12 @@ export function AdminSearch() {
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={
+          open && active >= 0 ? `${listId}-option-${active}` : undefined
+        }
         aria-autocomplete="list"
         value={query}
-        placeholder="Search customers, leads, jobs, settings..."
+        placeholder={placeholder}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -168,6 +174,7 @@ export function AdminSearch() {
                   <li key={`${result.kind}-${result.id}`}>
                     <button
                       type="button"
+                      id={`${listId}-option-${index}`}
                       role="option"
                       aria-selected={index === active}
                       onMouseEnter={() => setActive(index)}

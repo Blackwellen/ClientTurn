@@ -6,9 +6,14 @@ import {
   isOverageEnabled,
 } from "@/lib/billing/v4-entitlements";
 import {
+  budgetCategoryForCapability,
+  recordCampaignCost,
+} from "@/lib/outreach/campaigns/budget";
+import {
   CAPABILITIES,
   costBand,
   estimateRunCost,
+  PLATFORM_RUN_COST_CEILING_MINOR,
   targetAffordableWithin,
   type Capability,
   type CostBand,
@@ -28,12 +33,10 @@ import {
  */
 
 /**
- * Platform ceiling per run, regardless of plan or overage. A workspace whose
- * entitlement somehow permits more still cannot commit more than this to a
- * single run without an admin acting deliberately — one misconfigured row
- * should not be able to authorise unbounded spend.
+ * Re-exported for the callers that already read it from here. The value is
+ * defined in `cost-model.ts`; see the note there for why.
  */
-export const PLATFORM_RUN_COST_CEILING_MINOR = 50_000; // £500
+export { PLATFORM_RUN_COST_CEILING_MINOR };
 
 /** Below this, a run cannot produce anything useful, so it is refused. */
 const MINIMUM_VIABLE_RUN_COST_MINOR = 100; // £1
@@ -358,6 +361,28 @@ export async function settleRunSpend(input: {
         .eq("id", input.runId)
         .eq("business_id", input.businessId);
     }
+  }
+
+  // Attributed to the campaign that caused it, when there is one. Without
+  // this the campaign budget card can only ever show "nothing attributed
+  // yet", because sourcing is where a campaign's provider money actually
+  // goes — the sends themselves are nearly free.
+  const { data: run } = await admin
+    .from("sourcing_runs")
+    .select("campaign_id")
+    .eq("id", input.runId)
+    .eq("business_id", input.businessId)
+    .maybeSingle();
+
+  if (run?.campaign_id && input.actualMinor > 0) {
+    await recordCampaignCost({
+      businessId: input.businessId,
+      campaignId: run.campaign_id,
+      category: budgetCategoryForCapability(input.capability),
+      costMinor: input.actualMinor,
+      quantity: input.recordCount,
+      reference: `${input.provider}:${input.capability}:${input.runId}`,
+    });
   }
 
   // The append-only ledger the admin cost views and the monthly rollup read.

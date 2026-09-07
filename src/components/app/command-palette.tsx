@@ -5,7 +5,12 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, Loader2, Repeat, Search, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Overlay, useBodyScrollLock, useEscape } from "@/components/ui/drawer";
+import {
+  Overlay,
+  useBodyScrollLock,
+  useEscape,
+  useFocusTrap,
+} from "@/components/ui/drawer";
 import {
   SEARCH_CATEGORY_KEYS,
   SEARCH_MIN_QUERY_LENGTH,
@@ -48,8 +53,12 @@ export function CommandPalette({
   const [data, setData] = React.useState<GlobalSearchResult | null>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
+  // `aria-modal` is only honest if Tab cannot leave the panel.
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+
   useBodyScrollLock(open);
   useEscape(open, onClose);
+  useFocusTrap(panelRef, open);
 
   // Reset to a clean slate every time the palette opens, and focus the input.
   React.useEffect(() => {
@@ -161,6 +170,7 @@ export function CommandPalette({
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh] sm:pt-[16vh]">
       <Overlay onClick={onClose} />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Search"
@@ -175,8 +185,14 @@ export function CommandPalette({
             ref={inputRef}
             type="text"
             role="combobox"
+            aria-label="Search leads, bookings and campaigns"
             aria-expanded={hasResults}
             aria-controls="command-palette-results"
+            aria-activedescendant={
+              hasResults && activeIndex >= 0
+                ? `command-palette-option-${activeIndex}`
+                : undefined
+            }
             aria-autocomplete="list"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -253,6 +269,7 @@ export function CommandPalette({
                     return (
                       <button
                         key={item.id}
+                        id={`command-palette-option-${index}`}
                         type="button"
                         role="option"
                         aria-selected={active}

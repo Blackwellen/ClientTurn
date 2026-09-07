@@ -25,7 +25,7 @@ export const SETTINGS_SECTIONS = [
   {
     id: "connections",
     label: "Connections",
-    description: "Integrations and syncing",
+    description: "Integrations & syncing",
   },
   {
     id: "business-profile",
@@ -33,7 +33,11 @@ export const SETTINGS_SECTIONS = [
     description: "What we know, ICPs and goals",
   },
   { id: "team", label: "Team", description: "Manage your team" },
-  { id: "billing", label: "Billing", description: "Plan, usage and invoices" },
+  {
+    id: "billing",
+    label: "Billing & Usage",
+    description: "Plan, usage and invoices",
+  },
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];

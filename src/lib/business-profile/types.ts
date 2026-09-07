@@ -104,6 +104,17 @@ export type BusinessProfileData = {
   knowledgeSources: KnowledgeSourceRow[];
   icpProfiles: IcpProfileRow[];
   conversionGoals: ConversionGoalRow[];
+  /** Structured guidance the campaign and message generators read (§26.19). */
+  outreachGuidance: {
+    tone: string | null;
+    keyMessages: string | null;
+    valueProposition: string | null;
+    proofPoints: string | null;
+    avoid: string | null;
+    callToAction: string | null;
+    claimRestrictions: string | null;
+    updatedAt: string | null;
+  } | null;
   learnings: {
     id: string;
     learningType: string;

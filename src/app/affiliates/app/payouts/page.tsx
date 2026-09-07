@@ -1,147 +1,164 @@
 import * as React from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { BadgeCheck, Banknote, Clock, Wallet } from "lucide-react";
+import { getAffiliateAccount, listPortalPayouts } from "@/lib/affiliates/portal";
 import {
-  getAffiliate,
-  listCommissions,
-  listPayouts,
-} from "@/lib/affiliates/queries";
+  assessReadiness,
+  getBalances,
+  nextPayoutDate,
+} from "@/lib/affiliates/payouts";
+import { getDailySeries } from "@/lib/affiliates/analytics";
+import { formatMinor } from "@/lib/affiliates/types";
 import {
-  formatMinor,
-  payoutBlocker,
-  PAYOUT_STATUS_LABEL,
-  PAYOUT_STATUS_TONE,
-} from "@/lib/affiliates/types";
-import { Badge } from "@/components/ui/badge";
+  KpiCard,
+  Panel,
+  PortalHeader,
+} from "@/components/affiliates/portal-ui";
 import {
-  Cell,
-  DataGrid,
-  Section,
-  SectionEmpty,
-  Stat,
-} from "@/components/affiliates/ui";
-import { PaymentDetailsForm } from "@/components/affiliates/payment-details-form";
+  NextPayoutCard,
+  PaymentMethodCard,
+  PayoutHistory,
+  TaxInfoCard,
+} from "@/components/affiliates/payouts/payouts-view";
 
-export const metadata: Metadata = {
-  title: "Payouts | ClientTurn partners",
-  robots: { index: false, follow: false },
-};
-
+export const metadata: Metadata = { title: "Payouts | ClientTurn" };
 export const dynamic = "force-dynamic";
 
+/**
+ * The payouts page (V4 §35).
+ *
+ * Every balance comes from `affiliate_balances()` in Postgres. Nothing on this
+ * page is summed from a table that happens to be rendered, and nothing is
+ * computed in the browser — a payout figure a partner can influence by editing
+ * a request is not a payout figure.
+ */
 export default async function AffiliatePayoutsPage() {
-  const affiliate = await getAffiliate();
-  if (!affiliate) redirect("/affiliates");
+  const affiliate = await getAffiliateAccount();
+  if (!affiliate) return null;
   if (affiliate.status !== "ACTIVE") redirect("/affiliates/app");
 
-  const [payouts, commissions] = await Promise.all([
-    listPayouts(affiliate.id),
-    listCommissions(affiliate.id),
+  const [balances, payouts, series] = await Promise.all([
+    getBalances(affiliate.id),
+    listPortalPayouts(affiliate.id),
+    getDailySeries(affiliate.id, "30d"),
   ]);
 
-  const payableMinor = commissions
-    .filter((row) => row.status === "APPROVED" || row.status === "PAYABLE")
-    .reduce((sum, row) => sum + row.commissionAmountMinor, 0);
-
-  const minimumPayoutMinor = affiliate.plan?.minimumPayoutMinor ?? 5000;
-
-  const blocker = payoutBlocker({
+  const currency = affiliate.policy.currency;
+  const readiness = assessReadiness({
     status: affiliate.status,
+    connectState: affiliate.connectState,
+    payoutsEnabled: affiliate.payoutsEnabled,
+    detailsSubmitted: affiliate.detailsSubmitted,
+    identityStatus: affiliate.identityStatus,
     taxStatus: affiliate.taxStatus,
-    hasPaymentDetails: affiliate.hasPaymentDetails,
-    payableMinor,
-    minimumPayoutMinor,
+    availableMinor: balances.availableMinor,
+    minimumPayoutMinor: affiliate.policy.minimumPayoutMinor,
   });
 
+  const payoutDate = nextPayoutDate().toISOString();
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat
-          label="Ready for the next payout"
-          value={formatMinor(payableMinor)}
-          tone={payableMinor > 0 ? "success" : undefined}
+    <>
+      <PortalHeader
+        title="Payouts"
+        description="Track your balances, payouts, tax details and commission history."
+      />
+
+      <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+        <KpiCard
+          icon={Wallet}
+          label="Available balance"
+          value={formatMinor(balances.availableMinor, currency)}
+          series={series.map((point) => point.approvedMinor)}
         />
-        <Stat
-          label="Minimum payout"
-          value={formatMinor(minimumPayoutMinor)}
-          hint="Balances below this carry over"
+        <KpiCard
+          icon={Clock}
+          label="Pending balance"
+          value={formatMinor(balances.pendingMinor, currency)}
+          series={series.map((point) => point.pendingMinor)}
         />
-        <Stat
+        <KpiCard
+          icon={BadgeCheck}
+          label="Approved commission"
+          value={formatMinor(balances.approvedMinor, currency)}
+          series={series.map((point) => point.approvedMinor)}
+        />
+        <KpiCard
+          icon={Banknote}
           label="Paid to date"
-          value={formatMinor(
-            payouts
-              .filter((row) => row.status === "PAID")
-              .reduce((sum, row) => sum + row.amountMinor, 0),
-          )}
+          value={formatMinor(balances.paidMinor, currency)}
+          series={series.map((point) => point.paidMinor)}
         />
       </div>
 
-      {blocker && (
-        <p className="flex items-start gap-2 rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-[12.5px] text-warning-700">
-          <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden />
-          {blocker}
-        </p>
-      )}
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="min-w-0 space-y-3">
+          <NextPayoutCard
+            availableMinor={balances.availableMinor}
+            minimumMinor={affiliate.policy.minimumPayoutMinor}
+            currency={currency}
+            payoutDate={payoutDate}
+            ready={
+              readiness.readiness === "READY" &&
+              balances.availableMinor >= affiliate.policy.minimumPayoutMinor
+            }
+          />
 
-      {/* Payouts are raised by the platform on a schedule, not requested by the
-          partner. Saying so removes the obvious "where is the button" question. */}
-      <Section
-        title="Payment details"
-        description="Where we send your payouts. Payout runs happen monthly, once approved commission clears the minimum."
-      >
-        <PaymentDetailsForm hasDetails={affiliate.hasPaymentDetails} />
-      </Section>
+          {readiness.blocker && (
+            <Panel icon={Clock} title="Before your first payout">
+              <div className="px-4 pb-4">
+                <p className="text-[13px] leading-relaxed text-content-secondary">
+                  {readiness.blocker}
+                </p>
+                <ul className="mt-3 space-y-1.5">
+                  {readiness.checks.map((check) => (
+                    <li
+                      key={check.key}
+                      className="flex items-center gap-2 text-[12.5px]"
+                    >
+                      <span
+                        className={
+                          check.state === "complete"
+                            ? "size-1.5 rounded-full bg-success-500"
+                            : check.state === "pending"
+                              ? "size-1.5 rounded-full bg-info-500"
+                              : "size-1.5 rounded-full bg-warning-500"
+                        }
+                        aria-hidden
+                      />
+                      <span className="text-content-secondary">{check.label}</span>
+                      <span className="ml-auto text-content-muted">
+                        {check.state === "complete"
+                          ? "Done"
+                          : check.state === "pending"
+                            ? "In progress"
+                            : "Outstanding"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Panel>
+          )}
 
-      <Section title="Payout history">
-        {payouts.length === 0 ? (
-          <SectionEmpty>
-            No payouts yet. The first is raised once your approved commission
-            reaches {formatMinor(minimumPayoutMinor)}.
-          </SectionEmpty>
-        ) : (
-          <DataGrid
-            headers={["Reference", "Period", "Commissions", "Amount", "Status", "Paid"]}
-          >
-            {payouts.map((payout) => (
-              <tr key={payout.id}>
-                <Cell>{payout.batchReference ?? payout.id.slice(0, 8)}</Cell>
-                <Cell>
-                  {payout.periodStart && payout.periodEnd
-                    ? `${short(payout.periodStart)} – ${short(payout.periodEnd)}`
-                    : "—"}
-                </Cell>
-                <Cell numeric>{payout.commissionCount}</Cell>
-                <Cell numeric className="font-medium">
-                  {formatMinor(payout.amountMinor, payout.currency)}
-                </Cell>
-                <Cell>
-                  <Badge tone={PAYOUT_STATUS_TONE[payout.status]} dense>
-                    {PAYOUT_STATUS_LABEL[payout.status]}
-                  </Badge>
-                  {payout.failureReason && (
-                    <span className="mt-0.5 block text-[11.5px] text-danger-600">
-                      {payout.failureReason}
-                    </span>
-                  )}
-                </Cell>
-                <Cell>
-                  {payout.paidAt
-                    ? new Date(payout.paidAt).toLocaleDateString("en-GB")
-                    : "—"}
-                </Cell>
-              </tr>
-            ))}
-          </DataGrid>
-        )}
-      </Section>
-    </div>
+          <PayoutHistory payouts={payouts} />
+        </div>
+
+        <div className="min-w-0 space-y-3">
+          <PaymentMethodCard
+            connectState={affiliate.connectState}
+            hasAccount={affiliate.hasConnectAccount}
+            payoutsEnabled={affiliate.payoutsEnabled}
+          />
+          <TaxInfoCard
+            taxStatus={affiliate.taxStatus}
+            taxCountry={affiliate.taxCountry}
+            taxIdentifierLast4={affiliate.taxIdentifierLast4}
+            submittedAt={affiliate.taxSubmittedAt}
+          />
+        </div>
+      </div>
+    </>
   );
-}
-
-function short(value: string): string {
-  return new Date(value).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
 }

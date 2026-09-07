@@ -12,6 +12,21 @@
  * against their own cap.
  */
 
+/**
+ * Platform ceiling per run, regardless of plan or overage. A workspace whose
+ * entitlement somehow permits more still cannot commit more than this to a
+ * single run without an admin acting deliberately — one misconfigured row
+ * should not be able to authorise unbounded spend.
+ *
+ * It lives in this pure module rather than in `server/budget.ts` because the
+ * campaign budget derives its own ceiling from it at module-load time. Held on
+ * the server module, that made `server/budget.ts` and
+ * `outreach/campaigns/budget.ts` a cycle, and the derived constant read the
+ * export before it was initialised — a build-time TDZ crash rather than a
+ * runtime one, so it took a page-data collection to surface it.
+ */
+export const PLATFORM_RUN_COST_CEILING_MINOR = 50_000; // £500
+
 export type Capability =
   | "COMPANY_SEARCH"
   | "CONTACT_DISCOVERY"

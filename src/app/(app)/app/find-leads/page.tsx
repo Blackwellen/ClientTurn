@@ -139,6 +139,7 @@ export default async function FindLeadsPage({
         options={options}
         viewMode={viewMode}
         canManage={canManage}
+        businessId={workspace.businessId}
         discover={
           onDiscover ? (
             <DiscoverView

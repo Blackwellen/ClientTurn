@@ -15,6 +15,7 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { UpgradeCard } from "./upgrade-card";
 import { Logo } from "@/components/ui/logo";
+import { useScrollableRegion } from "@/components/ui/use-scrollable-region";
 
 function NavLink({
   item,
@@ -37,7 +38,9 @@ function NavLink({
       className={cn(
         "group flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
         "transition-colors duration-150",
-        collapsed ? "mx-auto size-12 justify-center" : "h-[48px] px-3.5",
+        collapsed
+          ? "mx-auto size-[var(--ct-rail-row-h)] justify-center"
+          : "h-[var(--ct-rail-row-h)] px-3.5",
         active
           ? "bg-[var(--ct-shell-active-bg)] text-[var(--ct-lime)]"
           : "text-[var(--ct-shell-text)] hover:bg-[var(--ct-shell-hover)] hover:text-white",
@@ -92,7 +95,7 @@ function WorkspaceCard({
 
   return (
     <div
-      className="flex items-center gap-3 px-5 py-4"
+      className="ct-rail-workspace shrink-0 items-center gap-3 px-5 py-4"
       style={{ borderBottom: "1px solid var(--ct-shell-divider)" }}
     >
       <div className="flex size-12 shrink-0 items-center justify-center rounded-[12px] bg-[var(--ct-shell-icon-bg)]">
@@ -130,7 +133,9 @@ function NavButton({
         "text-[var(--ct-shell-text)] transition-colors duration-150",
         "hover:bg-[var(--ct-shell-hover)] hover:text-white",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
-        collapsed ? "mx-auto size-12 justify-center" : "h-[48px] px-3.5",
+        collapsed
+          ? "mx-auto size-[var(--ct-rail-row-h)] justify-center"
+          : "h-[var(--ct-rail-row-h)] px-3.5",
       )}
     >
       <Icon className="size-5 shrink-0 text-[var(--ct-shell-text-muted)] group-hover:text-white" />
@@ -171,9 +176,13 @@ export function SidebarContent({
   primaryNav: NavItem[];
   onOpenAccount?: () => void;
 }) {
+  // Only becomes a tab stop while the rail genuinely overflows, which at
+  // normal zoom it no longer does.
+  const { attach: attachNav, props: navProps } = useScrollableRegion("Main navigation", { landmark: true });
+
   return (
     <div
-      className="flex h-full flex-col"
+      className="ct-rail flex h-full flex-col"
       style={{
         background:
           "linear-gradient(180deg, var(--ct-shell-sidebar-from) 0%, var(--ct-shell-sidebar-via) 52%, var(--ct-shell-sidebar-to) 100%)",
@@ -181,13 +190,16 @@ export function SidebarContent({
     >
       <div
         className="flex shrink-0 items-center justify-center px-2"
-        style={{ height: 116, borderBottom: "1px solid var(--ct-shell-divider)" }}
+        style={{
+          height: "var(--ct-rail-header-h)",
+          borderBottom: "1px solid var(--ct-shell-divider)",
+        }}
       >
         {collapsed ? (
           <Link
             href="/app"
             aria-label="ClientTurn home"
-            className="flex size-14 items-center justify-center rounded-[12px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+            className="flex size-[var(--ct-rail-logo-h)] items-center justify-center rounded-[12px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
           >
             {/* Favicon.png already bakes in its own rounded-square corners and
                 transparent margin — clipping it again with a CSS radius fights
@@ -197,12 +209,16 @@ export function SidebarContent({
               alt=""
               width={48}
               height={48}
-              className="size-12 shrink-0"
+              className="size-full shrink-0 object-contain"
               priority
             />
           </Link>
         ) : (
-          <Logo href="/app" height={68} />
+          <Logo
+            href="/app"
+            height={68}
+            imgClassName="h-[var(--ct-rail-logo-h)] w-auto"
+          />
         )}
       </div>
 
@@ -210,9 +226,11 @@ export function SidebarContent({
 
       <nav
         aria-label="Main"
-        className="scrollbar-none flex-1 overflow-y-auto px-2.5 pt-3"
+        ref={attachNav}
+        {...navProps}
+        className="ct-scroll-rail min-h-0 flex-1 overflow-y-auto px-2.5 pt-[var(--ct-rail-nav-pt)]"
       >
-        <ul className="space-y-1.5">
+        <ul className="flex flex-col gap-[var(--ct-rail-gap)]">
           {primaryNav.map((item) => (
             <li key={item.href}>
               <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -222,17 +240,19 @@ export function SidebarContent({
       </nav>
 
       <div
-        className="shrink-0 px-2.5 py-3"
+        className="shrink-0 px-2.5 py-[var(--ct-rail-foot-py)]"
         style={{ borderTop: "1px solid var(--ct-shell-divider)" }}
       >
-        <UpgradeCard
-          plan={plan}
-          canManageBilling={canManageBilling}
-          collapsed={collapsed}
-          onNavigate={onNavigate}
-        />
+        <div className="ct-rail-upsell">
+          <UpgradeCard
+            plan={plan}
+            canManageBilling={canManageBilling}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        </div>
 
-        <ul className="space-y-1.5">
+        <ul className="flex flex-col gap-[var(--ct-rail-gap)]">
           {SECONDARY_NAV.map((item) => (
             <li key={item.href}>
               <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -262,7 +282,7 @@ export function SidebarContent({
                   onClick={onToggleCollapse}
                   aria-label="Expand sidebar"
                   aria-expanded={!collapsed}
-                  className="flex size-12 items-center justify-center rounded-[10px] text-[var(--ct-shell-text-muted)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+                  className="flex size-[var(--ct-rail-row-h)] items-center justify-center rounded-[10px] text-[var(--ct-shell-text-muted)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
                 >
                   <PanelLeftOpen className="size-5 shrink-0" />
                 </button>
@@ -273,7 +293,7 @@ export function SidebarContent({
                 onClick={onToggleCollapse}
                 aria-label="Collapse sidebar"
                 aria-expanded={!collapsed}
-                className="flex h-[48px] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+                className="flex h-[var(--ct-rail-row-h)] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
               >
                 <PanelLeftClose className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
                 <span>Collapse</span>

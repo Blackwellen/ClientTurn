@@ -4,24 +4,35 @@ import * as React from "react";
 import { useAdminParams } from "@/components/admin/use-admin-params";
 import { cn } from "@/lib/cn";
 
-export const SYSTEM_VIEWS = ["health", "events", "errors"] as const;
+export const SYSTEM_VIEWS = [
+  "health",
+  "events",
+  "errors",
+  "jobs",
+  "compliance",
+] as const;
 export type SystemView = (typeof SYSTEM_VIEWS)[number];
 
 export const SYSTEM_VIEW_LABEL: Record<SystemView, string> = {
   health: "Health",
   events: "Events",
   errors: "Errors",
+  jobs: "Jobs",
+  compliance: "Compliance",
 };
 
 export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
   health: "Monitor platform health, jobs and degraded workspaces.",
   events: "Inspect operational events, retries and webhook activity across the platform.",
   errors: "Review platform errors, investigate impact, and triage issues quickly.",
+  jobs: "Monitor and manage background jobs across the ClientTurn platform.",
+  compliance:
+    "Manage communication policies, regional requirements and compliance controls.",
 };
 
 /**
- * Three views, and only three. Switching resets the view-specific parameters
- * so a filter from Events cannot silently narrow Errors.
+ * Switching resets every view-specific parameter, so a filter set on Events
+ * cannot silently narrow Errors or Jobs.
  */
 export function SystemViewSwitch({ view }: { view: SystemView }) {
   const { setParams } = useAdminParams();
@@ -39,6 +50,10 @@ export function SystemViewSwitch({ view }: { view: SystemView }) {
       area: null,
       event: null,
       error: null,
+      job: null,
+      policy: null,
+      priority: null,
+      queue: null,
       sort: null,
     });
   }

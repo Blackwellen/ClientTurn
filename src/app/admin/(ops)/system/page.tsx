@@ -18,6 +18,11 @@ import {
 import { SystemHealthView } from "@/components/admin/system/system-health-view";
 import { SystemEventsView } from "@/components/admin/system/system-events-view";
 import { SystemErrorsView } from "@/components/admin/system/system-errors-view";
+import { SystemJobsView } from "@/components/admin/system/system-jobs-view";
+import { SystemComplianceView } from "@/components/admin/system/system-compliance-view";
+import { getJobsView } from "@/lib/admin/jobs";
+import { getComplianceView } from "@/lib/admin/compliance";
+import { JOB_STATUS_FILTERS } from "@/lib/admin/jobs-types";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +44,21 @@ const paramsSchema = z.object({
   size: z.coerce.number().int().min(10).max(50).default(10).catch(10),
   event: z.string().trim().max(64).optional().catch(undefined),
   error: z.string().trim().max(32).optional().catch(undefined),
+  // Jobs
+  jobStatus: z.enum(JOB_STATUS_FILTERS).default("all").catch("all"),
+  priority: z
+    .enum(["all", "critical", "high", "normal"])
+    .default("all")
+    .catch("all"),
+  queue: z.string().trim().max(30).default("all").catch("all"),
+  job: z.string().trim().max(64).optional().catch(undefined),
+  // Compliance
+  policy: z.string().trim().max(64).optional().catch(undefined),
+  sq: z.string().trim().max(120).default("").catch(""),
+  stype: z
+    .enum(["all", "email", "phone", "domain"])
+    .default("all")
+    .catch("all"),
 });
 
 export default async function AdminSystemPage({
@@ -60,6 +80,7 @@ export default async function AdminSystemPage({
     // against its own vocabulary and ignores a value that is not its own.
     eventStatus: status,
     errorStatus: status,
+    jobStatus: status,
     severity: first(raw.severity),
     area: first(raw.area),
     range: first(raw.range),
@@ -68,6 +89,12 @@ export default async function AdminSystemPage({
     size: first(raw.size),
     event: first(raw.event),
     error: first(raw.error),
+    priority: first(raw.priority),
+    queue: first(raw.queue),
+    job: first(raw.job),
+    policy: first(raw.policy),
+    sq: first(raw.sq),
+    stype: first(raw.stype),
   });
 
   return (
@@ -108,6 +135,27 @@ export default async function AdminSystemPage({
           page={params.page}
           pageSize={params.size}
           fingerprint={params.error}
+        />
+      )}
+      {params.view === "jobs" && (
+        <JobsView
+          search={params.q}
+          type={params.type === "all" ? "all" : params.type}
+          status={params.jobStatus}
+          provider={params.provider}
+          priority={params.priority}
+          queue={params.queue}
+          range={params.range}
+          page={params.page}
+          pageSize={params.size}
+          jobId={params.job}
+        />
+      )}
+      {params.view === "compliance" && (
+        <ComplianceView
+          suppressionQuery={params.sq}
+          suppressionType={params.stype}
+          policyId={params.policy}
         />
       )}
     </div>
@@ -196,6 +244,73 @@ async function ErrorsView(props: {
         sort: props.sort,
       }}
       selected={selected}
+    />
+  );
+}
+
+async function JobsView(props: {
+  search: string;
+  type: string;
+  status: (typeof JOB_STATUS_FILTERS)[number];
+  provider: string;
+  priority: string;
+  queue: string;
+  range: (typeof ADMIN_RANGES)[number];
+  page: number;
+  pageSize: number;
+  jobId?: string;
+}) {
+  const data = await getJobsView(
+    {
+      range: props.range,
+      q: props.search,
+      type: props.type,
+      status: props.status,
+      provider: props.provider,
+      priority: props.priority,
+      queue: props.queue,
+      page: props.page,
+      pageSize: props.pageSize,
+    },
+    props.jobId,
+  );
+
+  return (
+    <SystemJobsView
+      data={data}
+      filters={{
+        search: props.search,
+        type: props.type,
+        status: props.status,
+        provider: props.provider,
+        priority: props.priority,
+        queue: props.queue,
+        range: props.range,
+      }}
+    />
+  );
+}
+
+async function ComplianceView(props: {
+  suppressionQuery: string;
+  suppressionType: "all" | "email" | "phone" | "domain";
+  policyId?: string;
+}) {
+  const data = await getComplianceView(
+    {
+      suppressionQuery: props.suppressionQuery,
+      suppressionType: props.suppressionType,
+    },
+    props.policyId,
+  );
+
+  return (
+    <SystemComplianceView
+      data={data}
+      filters={{
+        suppressionQuery: props.suppressionQuery,
+        suppressionType: props.suppressionType,
+      }}
     />
   );
 }

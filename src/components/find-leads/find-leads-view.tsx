@@ -37,6 +37,7 @@ export function FindLeadsView({
   options,
   viewMode,
   canManage,
+  businessId,
   discover,
   intent,
   campaigns,
@@ -49,6 +50,9 @@ export function FindLeadsView({
   options: ProspectFilterOptions;
   viewMode: ViewMode;
   canManage: boolean;
+  /** Scopes the realtime subscription. Never trusted as authorisation — every
+   *  read it triggers is re-scoped from the session on the server. */
+  businessId: string;
   /** Rendered server-side and passed through, so this shell stays presentational. */
   discover: React.ReactNode;
   intent: React.ReactNode;
@@ -114,6 +118,7 @@ export function FindLeadsView({
             options={options}
             viewMode={viewMode}
             canManage={canManage}
+            businessId={businessId}
           />
         ) : filters.view === "intent" ? (
           intent

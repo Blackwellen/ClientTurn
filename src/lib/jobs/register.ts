@@ -25,7 +25,9 @@ import { handleRecurringSearchTick } from "./handlers/recurring-search";
 import { handleOutreachDispatch } from "./handlers/outreach-dispatch";
 import { handleOutreachTick } from "./handlers/outreach-tick";
 import { handleOutreachAudience } from "./handlers/outreach-audience";
+import { handleOutreachOptimize } from "./handlers/outreach-optimize";
 import { handleAppIngest } from "./handlers/app-ingest";
+import { handleAffiliateLedger } from "./handlers/affiliate-ledger";
 import "@/lib/integrations/providers/google-ads";
 import "@/lib/integrations/providers/microsoft-ads";
 import "@/lib/integrations/providers/tiktok-ads";
@@ -45,6 +47,7 @@ export function registerJobHandlers() {
   if (registered) return;
   registered = true;
 
+  registerHandler("affiliate.ledger", handleAffiliateLedger);
   registerHandler("lead.process", handleLeadProcess);
   registerHandler("message.send", handleMessageSend);
   registerHandler("message.process_inbound", handleMessageProcessInbound);
@@ -71,6 +74,7 @@ export function registerJobHandlers() {
   registerHandler("outreach.dispatch", handleOutreachDispatch);
   registerHandler("outreach.tick", handleOutreachTick);
   registerHandler("outreach.audience", handleOutreachAudience);
+  registerHandler("outreach.optimize", handleOutreachOptimize);
   registerHandler("app.ingest", handleAppIngest);
 }
 

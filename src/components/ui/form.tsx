@@ -1,6 +1,40 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
+/**
+ * Wires a field's controls to its own hint and error text.
+ *
+ * `FormField` used to render the error as a bare `<p>` with no `id`, and the
+ * input carried neither `aria-describedby` nor `aria-invalid`. Sighted users
+ * saw red text under the box; a screen-reader user focusing the input heard
+ * the label and nothing else — WCAG 2.2 SC 3.3.1 (Error Identification) and
+ * 4.1.2. Leaving each caller to wire it by hand had predictably not happened
+ * across the ~90 forms in the product, so the association is made here once
+ * and inherited.
+ *
+ * A control that sets its own `aria-describedby` or `aria-invalid` still wins:
+ * the context only fills in what the caller left unset.
+ */
+type FieldDescription = {
+  describedBy?: string;
+  invalid: boolean;
+};
+
+const FieldCtx = React.createContext<FieldDescription | null>(null);
+
+function useFieldProps(props: {
+  "aria-describedby"?: string;
+  "aria-invalid"?: React.AriaAttributes["aria-invalid"];
+}) {
+  const field = React.useContext(FieldCtx);
+  if (!field) return props;
+  return {
+    ...props,
+    "aria-describedby": props["aria-describedby"] ?? field.describedBy,
+    "aria-invalid": props["aria-invalid"] ?? (field.invalid || undefined),
+  };
+}
+
 const FIELD_BASE = cn(
   "w-full bg-surface text-content placeholder:text-content-subtle",
   "border border-line-strong rounded-md shadow-xs",
@@ -14,11 +48,12 @@ export const Input = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
 >(function Input({ className, ...props }, ref) {
+  const a11y = useFieldProps(props);
   return (
     <input
       ref={ref}
       className={cn(FIELD_BASE, "h-9 px-3 text-sm", className)}
-      {...props}
+      {...a11y}
     />
   );
 });
@@ -27,11 +62,12 @@ export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
 >(function Textarea({ className, ...props }, ref) {
+  const a11y = useFieldProps(props);
   return (
     <textarea
       ref={ref}
       className={cn(FIELD_BASE, "min-h-20 px-3 py-2 text-sm resize-y", className)}
-      {...props}
+      {...a11y}
     />
   );
 });
@@ -40,6 +76,7 @@ export const Select = React.forwardRef<
   HTMLSelectElement,
   React.SelectHTMLAttributes<HTMLSelectElement>
 >(function Select({ className, ...props }, ref) {
+  const a11y = useFieldProps(props);
   return (
     <select
       ref={ref}
@@ -50,7 +87,7 @@ export const Select = React.forwardRef<
         backgroundRepeat: "no-repeat",
         backgroundPosition: "right 10px center",
       }}
-      {...props}
+      {...a11y}
     />
   );
 });
@@ -93,20 +130,32 @@ export function FormField({
   className?: string;
   children: React.ReactNode;
 }) {
+  const reactId = React.useId();
+  const messageId = `${htmlFor ?? reactId}-message`;
+  const described = error || hint ? messageId : undefined;
+
   return (
-    <div className={cn("space-y-1.5", className)}>
-      {label && (
-        <Label htmlFor={htmlFor} required={required}>
-          {label}
-        </Label>
-      )}
-      {children}
-      {error ? (
-        <p className="text-[12px] text-danger-600">{error}</p>
-      ) : hint ? (
-        <p className="text-[12px] text-content-muted">{hint}</p>
-      ) : null}
-    </div>
+    <FieldCtx.Provider value={{ describedBy: described, invalid: !!error }}>
+      <div className={cn("space-y-1.5", className)}>
+        {label && (
+          <Label htmlFor={htmlFor} required={required}>
+            {label}
+          </Label>
+        )}
+        {children}
+        {error ? (
+          // `alert` so a validation failure that appears after submit is
+          // announced, not just rendered.
+          <p id={messageId} role="alert" className="text-[12px] text-danger-600">
+            {error}
+          </p>
+        ) : hint ? (
+          <p id={messageId} className="text-[12px] text-content-muted">
+            {hint}
+          </p>
+        ) : null}
+      </div>
+    </FieldCtx.Provider>
   );
 }
 

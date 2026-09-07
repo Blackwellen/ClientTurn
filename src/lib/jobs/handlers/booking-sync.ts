@@ -14,6 +14,7 @@ import {
 } from "./shared";
 import { parsePayload } from "./parse";
 import { bookingSyncPayload } from "./payloads";
+import { promoteOnBookedEvent } from "@/lib/outreach/campaigns/bookings";
 
 type Payload = ReturnType<typeof bookingSyncPayload.parse>;
 
@@ -61,7 +62,21 @@ export async function handleBookingSync(job: ClaimedJob) {
     throw new PermanentJobError(`Business ${payload.businessId} is gone.`);
   }
 
-  const leadId = await resolveLeadId(payload);
+  let leadId = await resolveLeadId(payload);
+
+  // Nobody matched as a lead. Before treating this as unmatched, check whether
+  // a cold prospect booked straight from a campaign email: their campaign may
+  // be configured to promote on a booked event, which creates the lead this
+  // booking belongs to.
+  if (!leadId) {
+    const promoted = await promoteOnBookedEvent({
+      businessId: payload.businessId,
+      email: payload.email,
+      phone: payload.phone,
+    });
+    leadId = promoted?.leadId ?? null;
+  }
+
   if (!leadId) {
     await queueNotification({
       businessId: payload.businessId,

@@ -10,6 +10,11 @@ import {
 } from "@/lib/billing/stripe";
 import { recordAudit } from "@/lib/audit";
 import { creditTokenPurchase } from "@/lib/billing/token-service";
+import {
+  accrueCommission,
+  reverseCommission,
+} from "@/lib/affiliates/commissions";
+import { syncReferralLifecycle } from "@/lib/affiliates/lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,11 @@ const HANDLED = new Set([
   "checkout.session.completed",
   "checkout.session.expired",
   "charge.refunded",
+  // Affiliate commission is accrued and reversed from these, never from a page.
+  // A dispute is treated as a reversal at the point it is opened rather than
+  // when it is lost: money that is being clawed back should stop looking
+  // payable immediately.
+  "charge.dispute.created",
 ]);
 
 /**
@@ -132,7 +142,16 @@ async function applyEvent(event: Stripe.Event) {
   }
 
   if (event.type === "charge.refunded") {
+    // A refund can be either a token top-up or a subscription payment that
+    // earned an affiliate commission. Both are attempted; each is a no-op for
+    // the other's charges.
     await applyTokenRefund(event);
+    await applyAffiliateRefund(event);
+    return;
+  }
+
+  if (event.type === "charge.dispute.created") {
+    await applyAffiliateChargeback(event);
     return;
   }
 
@@ -189,6 +208,21 @@ async function applyEvent(event: Stripe.Event) {
       entityType: "subscription",
       metadata: { plan, status, stripe_event: event.type },
     });
+
+    // Keep the referral's lifecycle in step with the subscription. Trial and
+    // churn are subscription facts, not payment facts, so they are mirrored
+    // here rather than inferred from the commission ledger.
+    await syncReferralLifecycle({
+      businessId,
+      subscriptionStatus: subscription.status,
+      deleted: event.type === "customer.subscription.deleted",
+      planKey: plan,
+    });
+    return;
+  }
+
+  if (event.type === "invoice.paid") {
+    await applyAffiliateAccrual(event);
     return;
   }
 
@@ -200,6 +234,149 @@ async function applyEvent(event: Stripe.Event) {
       .update({ status: "PAST_DUE" })
       .eq("stripe_customer_id", customerId);
   }
+}
+
+/* ---------------------------------------------------------- affiliates */
+
+/**
+ * Accrues affiliate commission for a paid invoice.
+ *
+ * This is the *only* place commission is created. Nothing in `src/app` outside
+ * this webhook calls `accrueCommission`, because commission must originate from
+ * Stripe telling us money actually moved — not from a browser reporting that it
+ * thinks it did.
+ *
+ * Idempotency is layered: the webhook inbox rejects a replayed event id, and
+ * the ledger's unique `idempotency_key` rejects a second accrual for the same
+ * invoice even if the event arrives under a new id.
+ */
+async function applyAffiliateAccrual(event: Stripe.Event) {
+  const invoice = event.data.object as Stripe.Invoice;
+
+  const businessId = await businessForInvoice(invoice);
+  if (!businessId) return;
+
+  // Net of discounts and credit, which is what the customer actually paid.
+  const amountPaidMinor = invoice.amount_paid ?? 0;
+  if (amountPaidMinor <= 0) return;
+
+  const periodStart = invoice.period_start
+    ? new Date(invoice.period_start * 1000)
+    : new Date();
+
+  const result = await accrueCommission({
+    businessId,
+    amountPaidMinor,
+    currency: (invoice.currency ?? "gbp").toUpperCase(),
+    invoiceId: invoice.id ?? `invoice_${event.id}`,
+    paymentIndex: await paymentIndexFor(businessId, invoice),
+    periodMonth: `${periodStart.getUTCFullYear()}-${String(
+      periodStart.getUTCMonth() + 1,
+    ).padStart(2, "0")}-01`,
+  });
+
+  if (result.status === "created") {
+    await recordAudit({
+      businessId,
+      actorType: "provider",
+      action: "affiliate.commission_created",
+      entityType: "affiliate_commission",
+      entityId: result.commissionId,
+      metadata: { stripe_event: event.type, amountMinor: result.amountMinor },
+    });
+  }
+}
+
+/**
+ * How many payments this subscription has already made.
+ *
+ * Decides whether a payment earns the new-customer rate or a renewal rate, and
+ * whether it is still inside a recurring plan's month window. Counted from our
+ * own ledger rather than from Stripe, because the ledger is what the commission
+ * plan is applied against and a mismatch there is a mispayment.
+ */
+async function paymentIndexFor(
+  businessId: string,
+  invoice: Stripe.Invoice,
+): Promise<number> {
+  // A subscription's very first invoice is unambiguous.
+  if (invoice.billing_reason === "subscription_create") return 0;
+
+  const { count } = await createAdminClient()
+    .from("affiliate_commissions")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .in("entry_type", ["NEW_CUSTOMER", "RENEWAL"]);
+
+  return count ?? 0;
+}
+
+/** Resolves the tenant an invoice belongs to, via the mirrored subscription. */
+async function businessForInvoice(
+  invoice: Stripe.Invoice,
+): Promise<string | null> {
+  const { data } = await createAdminClient()
+    .from("subscriptions")
+    .select("business_id")
+    .eq("stripe_customer_id", String(invoice.customer))
+    .maybeSingle();
+
+  return data?.business_id ?? null;
+}
+
+/** Reverses commission when a subscription charge is refunded. */
+async function applyAffiliateRefund(event: Stripe.Event) {
+  const charge = event.data.object as Stripe.Charge;
+  // Token top-ups are handled by `applyTokenRefund` and never earn commission.
+  if (charge.metadata?.kind === "ai_tokens") return;
+
+  const invoiceId = invoiceIdOf(charge);
+  if (!invoiceId) return;
+
+  await reverseCommission({
+    invoiceId,
+    reason: "REFUND",
+    // Proportional, so a partial refund takes back a proportional commission.
+    refundedMinor: charge.amount_refunded ?? undefined,
+  });
+}
+
+/** Reverses commission the moment a chargeback is opened. */
+async function applyAffiliateChargeback(event: Stripe.Event) {
+  const dispute = event.data.object as Stripe.Dispute;
+
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  if (!chargeId) return;
+
+  let invoiceId: string | null = null;
+  try {
+    invoiceId = invoiceIdOf(await stripe.charges.retrieve(chargeId));
+  } catch {
+    return;
+  }
+
+  if (!invoiceId) return;
+
+  await reverseCommission({ invoiceId, reason: "CHARGEBACK" });
+}
+
+/**
+ * The invoice a charge belongs to.
+ *
+ * Read through a cast because the pinned Stripe typings for this API version
+ * no longer declare `invoice` on `Charge`, while the API still returns it. The
+ * shape is narrowed here rather than trusted: anything that is not a string or
+ * an object with a string id yields null, and the caller then does nothing.
+ */
+function invoiceIdOf(charge: unknown): string | null {
+  const value = (charge as { invoice?: unknown }).invoice;
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" ? id : null;
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------ ai tokens */

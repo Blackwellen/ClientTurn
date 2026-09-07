@@ -1,0 +1,1606 @@
+/* ==========================================================================
+   Public evaluation pages — /how-it-works, /results, /pricing, /enterprise,
+   /contact-sales.
+
+   An addendum to the V2 public system in `clientturn.css`, not a second one.
+   Every colour, radius and easing here resolves through the `--pub-*` tokens
+   that file owns, and the surfaces reuse `.pub-card`, `.pub-tile`, `.pub-btn`
+   and the `.pub-h*` ramp directly. What is defined below is only what those
+   five pages compose and the homepage does not: the panel stack, the numbered
+   process rail, the plan grid and comparison table, the light product screen,
+   the sales form, and the two diagrams on /how-it-works.
+
+   Naming stays inside the `pub-` namespace so there is one vocabulary for the
+   whole public site.
+   ========================================================================== */
+
+/* ====================================================== panelled layout === */
+
+/*
+ * These pages read as a stack of bordered panels rather than as full-bleed
+ * bands, which is what makes a long evaluation page scannable: each panel is
+ * one idea with a visible edge. `.pub-panel` only adds padding and rhythm —
+ * the surface itself is `.pub-card`, so panels and cards can never drift.
+ */
+.pub-panel {
+  padding: clamp(26px, 3.4vw, 48px);
+  scroll-margin-top: calc(var(--pub-header-h) + 16px);
+}
+
+.pub-panel-stack {
+  display: grid;
+  gap: clamp(20px, 2.2vw, 30px);
+  padding-block-end: clamp(56px, 6vw, 104px);
+}
+
+/* The page hero above the stack. */
+.pub-page-hero {
+  position: relative;
+  isolation: isolate;
+  padding-block: clamp(44px, 5.4vw, 84px) clamp(26px, 3vw, 44px);
+}
+
+.pub-hero-split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
+  gap: clamp(28px, 4vw, 60px);
+  align-items: center;
+}
+
+.pub-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(26px, 3.6vw, 56px);
+  align-items: center;
+}
+
+.pub-split-wide {
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+}
+
+.pub-split-narrow {
+  grid-template-columns: minmax(0, 1.14fr) minmax(0, 0.86fr);
+}
+
+@media (max-width: 980px) {
+  .pub-hero-split,
+  .pub-split,
+  .pub-split-wide,
+  .pub-split-narrow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Eyebrow and the decorative step strip share a baseline. */
+.pub-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  margin-bottom: 18px;
+}
+
+.pub-head-row .pub-eyebrow {
+  margin: 0;
+}
+
+/* Generic grids. */
+.pub-grid {
+  display: grid;
+  gap: 16px;
+}
+.pub-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pub-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pub-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 1080px) {
+  .pub-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .pub-grid-3 { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .pub-grid-2,
+  .pub-grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ============================================================== content === */
+
+/* Inner card. `.pub-card` supplies the surface; this supplies the padding. */
+.pub-cell {
+  padding: 22px 20px 20px;
+  border-radius: 12px;
+}
+
+.pub-cell h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--pub-text);
+}
+
+.pub-cell p {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--pub-text-muted);
+}
+
+.pub-cell-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+/* Ticked list inside a card, divided from the copy above it. */
+.pub-ticks {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lr-border-subtle);
+  list-style: none;
+  display: grid;
+  gap: 11px;
+}
+
+.pub-ticks li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--pub-text-secondary);
+}
+
+.pub-ticks svg {
+  margin-top: 2px;
+  color: var(--pub-lime);
+}
+
+/* Ticked list in body copy — larger, no rule above it. */
+.pub-checks {
+  margin-top: 24px;
+  list-style: none;
+  display: grid;
+  gap: 13px;
+}
+
+.pub-checks li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--pub-text-secondary);
+}
+
+.pub-checks svg {
+  margin-top: 2px;
+  color: var(--pub-lime);
+}
+
+/* The ringed assurance row under a hero. Facts only, never a metric. */
+.pub-trust {
+  margin-top: 34px;
+  display: grid;
+  gap: 16px 26px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  list-style: none;
+}
+
+.pub-trust li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--pub-text-secondary);
+}
+
+.pub-ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--pub-lime-border);
+  background: var(--pub-lime-softer);
+  color: var(--pub-lime);
+}
+
+/* The decorative "CAPTURE -> ENGAGE -> QUALIFY -> ROUTE" strip. */
+.pub-steps-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+}
+
+.pub-steps-strip li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pub-steps-strip li::after {
+  content: "\2192";
+  color: rgb(117 148 180 / 0.5);
+}
+
+.pub-steps-strip li:last-child::after {
+  content: none;
+}
+
+/* ========================================================= process rail === */
+
+/*
+ * Horizontal on desktop, a vertical spine on narrow screens. An ordered list
+ * either way, so the sequence survives without sight of the connector — the
+ * hairline behind the markers is drawn by the container and is decorative.
+ */
+.pub-rail,
+.pub-timeline {
+  position: relative;
+  margin-top: clamp(28px, 3.4vw, 46px);
+  list-style: none;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(var(--pub-rail-steps, 4), minmax(0, 1fr));
+}
+
+.pub-rail::before,
+.pub-timeline::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 20px;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgb(183 243 74 / 0),
+    rgb(183 243 74 / 0.28) 12%,
+    rgb(183 243 74 / 0.28) 88%,
+    rgb(183 243 74 / 0)
+  );
+}
+
+.pub-step {
+  position: relative;
+  z-index: 1;
+}
+
+.pub-step-num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--pub-lime-border);
+  background: var(--pub-bg);
+  color: var(--pub-lime);
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 0 26px -8px rgb(183 243 74 / 0.55);
+}
+
+.pub-step h3 {
+  margin-top: 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--pub-text);
+}
+
+.pub-step p {
+  margin-top: 7px;
+  max-width: 27ch;
+  font-size: 0.78rem;
+  line-height: 1.62;
+  color: var(--pub-text-muted);
+}
+
+@media (max-width: 980px) {
+  .pub-rail,
+  .pub-timeline {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .pub-rail::before,
+  .pub-timeline::before {
+    top: 8px;
+    bottom: 8px;
+    left: 20px;
+    right: auto;
+    width: 1px;
+    height: auto;
+    background: linear-gradient(
+      180deg,
+      rgb(183 243 74 / 0),
+      rgb(183 243 74 / 0.28) 6%,
+      rgb(183 243 74 / 0.28) 94%,
+      rgb(183 243 74 / 0)
+    );
+  }
+
+  .pub-step {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0 16px;
+  }
+
+  .pub-step-num { grid-row: 1 / span 2; }
+  .pub-step h3 { margin-top: 10px; }
+  .pub-step p { max-width: none; }
+}
+
+/* ============================================================ stat tiles === */
+
+.pub-stats {
+  display: grid;
+  grid-template-columns: repeat(var(--pub-stat-cols, 4), minmax(0, 1fr));
+  border: 1px solid var(--pub-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--pub-bg-raised);
+}
+
+.pub-stat {
+  padding: 16px 18px;
+  border-right: 1px solid var(--pub-border);
+}
+
+.pub-stat:last-child { border-right: 0; }
+
+.pub-stat b {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--pub-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-stat span {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--pub-text-muted);
+}
+
+@media (max-width: 760px) {
+  .pub-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pub-stat { border-bottom: 1px solid var(--pub-border); }
+  .pub-stat:nth-child(2n) { border-right: 0; }
+}
+
+/* =========================================================== state pills === */
+
+.pub-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/*
+ * Lime means "the system is doing what you configured", not "healthy" — the
+ * public site never uses green as a status colour. Amber holds, rose stops.
+ */
+.pub-state[data-tone="go"] {
+  background: var(--pub-lime-soft);
+  color: var(--pub-lime);
+  border: 1px solid var(--pub-lime-border);
+}
+
+.pub-state[data-tone="info"] {
+  background: var(--lr-info-50);
+  color: var(--lr-info-600);
+  border: 1px solid var(--lr-info-100);
+}
+
+.pub-state[data-tone="hold"] {
+  background: var(--lr-warning-50);
+  color: var(--lr-warning-600);
+  border: 1px solid var(--lr-warning-100);
+}
+
+.pub-state[data-tone="stop"] {
+  background: var(--lr-danger-50);
+  color: var(--lr-danger-600);
+  border: 1px solid var(--lr-danger-100);
+}
+
+.pub-state[data-tone="muted"] {
+  background: rgb(255 255 255 / 0.03);
+  color: var(--pub-text-muted);
+  border: 1px solid var(--pub-border);
+}
+
+/*
+ * Marks every number on a public page that came from a demo fixture. A
+ * screenshot proves the product exists; it is not evidence of what customers
+ * achieve, and nothing here is allowed to blur the two.
+ */
+.pub-demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--pub-border);
+  background: rgb(255 255 255 / 0.02);
+  padding: 3px 10px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+  white-space: nowrap;
+}
+
+.pub-demo-tag-light {
+  border-color: #d9dfe8;
+  background: #f1f4f9;
+  color: #5b6577;
+}
+
+/* ======================================================== light product === */
+
+/*
+ * The white product surface inside the dark page. Drawn in markup rather than
+ * shipped as a PNG: a screenshot goes stale silently, cannot reflow, and does
+ * not stay legible at 200% zoom.
+ */
+.pub-screen {
+  border-radius: 14px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: #f7f9fc;
+  overflow: hidden;
+  box-shadow: 0 34px 76px -34px rgb(0 0 0 / 0.85);
+  color: #0b1020;
+}
+
+.pub-screen-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border-bottom: 1px solid #e3e8f0;
+  background: #fff;
+}
+
+.pub-screen-dots {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.pub-screen-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #dfe5ee;
+}
+
+.pub-screen-body {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+}
+
+.pub-screen-nav {
+  border-right: 1px solid #e6eaf1;
+  background: #fbfcfe;
+  padding: 12px 10px;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.pub-screen-nav span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.69rem;
+  font-weight: 500;
+  color: #5b6577;
+  white-space: nowrap;
+}
+
+.pub-screen-nav span[data-active="true"] {
+  background: #eef4e2;
+  color: #38510f;
+}
+
+.pub-screen-main {
+  padding: 16px 18px 18px;
+  min-width: 0;
+}
+
+.pub-screen-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.pub-screen-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #0b1020;
+}
+
+@media (max-width: 560px) {
+  .pub-screen-body { grid-template-columns: 1fr; }
+  .pub-screen-nav {
+    border-right: 0;
+    border-bottom: 1px solid #e6eaf1;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+  }
+}
+
+.pub-screen-block {
+  margin-top: 14px;
+  border: 1px solid #e6eaf1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px 14px 14px;
+}
+
+.pub-screen-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0b1020;
+}
+
+.pub-kpis {
+  display: grid;
+  grid-template-columns: repeat(var(--pub-kpi-cols, 4), minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pub-kpi {
+  border: 1px solid #e6eaf1;
+  border-radius: 9px;
+  background: #fff;
+  padding: 11px 12px;
+}
+
+.pub-kpi b {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: #0b1020;
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-kpi span {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.66rem;
+  color: #6b7686;
+}
+
+.pub-kpi em {
+  display: inline-block;
+  margin-top: 5px;
+  font-style: normal;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #3f7d21;
+}
+
+@media (max-width: 700px) {
+  .pub-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Horizontal funnel bars on the light surface. */
+.pub-bars { display: grid; gap: 9px; }
+
+.pub-bar {
+  display: grid;
+  grid-template-columns: minmax(92px, 116px) minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.69rem;
+  color: #4a5568;
+}
+
+.pub-bar-track {
+  height: 15px;
+  border-radius: 4px;
+  background: #eef1f6;
+  overflow: hidden;
+}
+
+.pub-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.pub-bar b {
+  text-align: right;
+  font-weight: 600;
+  color: #0b1020;
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-screen-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  min-width: 400px;
+}
+
+.pub-screen-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e6eaf1;
+  color: #6b7686;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pub-screen-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #eef1f6;
+  color: #4a5568;
+  white-space: nowrap;
+}
+
+.pub-screen-table th:first-child,
+.pub-screen-table td:first-child {
+  text-align: left;
+}
+
+.pub-screen-table th:not(:first-child),
+.pub-screen-table td:not(:first-child) {
+  text-align: right;
+}
+
+.pub-screen-table td:first-child {
+  color: #0b1020;
+  font-weight: 550;
+}
+
+.pub-screen-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* ================================================================== FAQ === */
+
+.pub-faq {
+  margin-top: clamp(26px, 3vw, 38px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pub-faq { grid-template-columns: 1fr; }
+}
+
+.pub-faq-row {
+  border: 1px solid var(--pub-border);
+  border-radius: 12px;
+  background: var(--pub-bg-raised);
+  overflow: hidden;
+  transition: border-color 200ms var(--lr-ease);
+}
+
+.pub-faq-row:hover { border-color: var(--pub-border-strong); }
+
+.pub-faq-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px 18px;
+  text-align: left;
+  transition: background-color 200ms var(--lr-ease);
+}
+
+.pub-faq-trigger:hover { background: rgb(255 255 255 / 0.02); }
+
+.pub-faq-trigger:focus-visible {
+  outline: 2px solid var(--pub-lime);
+  outline-offset: -2px;
+}
+
+.pub-faq-trigger > span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--pub-text);
+}
+
+/* A plus that becomes a minus. Two rules, one rotated, one faded out. */
+.pub-faq-sign {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--pub-text-muted);
+  transition: color 240ms var(--lr-ease);
+}
+
+.pub-faq-sign::before,
+.pub-faq-sign::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  translate: 0 -50%;
+}
+
+.pub-faq-sign::after {
+  rotate: 90deg;
+  transition: opacity 220ms var(--lr-ease);
+}
+
+.pub-faq-trigger[aria-expanded="true"] .pub-faq-sign { color: var(--pub-lime); }
+.pub-faq-trigger[aria-expanded="true"] .pub-faq-sign::after { opacity: 0; }
+
+.pub-faq-panel { padding: 0 18px 18px; }
+
+.pub-faq-panel p {
+  max-width: 62ch;
+  font-size: 0.82rem;
+  line-height: 1.72;
+  color: var(--pub-text-secondary);
+}
+
+/* ====================================================== comparison table === */
+
+.pub-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.pub-compare th,
+.pub-compare td {
+  padding: 11px 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--lr-border-subtle);
+  color: var(--pub-text-secondary);
+  white-space: nowrap;
+}
+
+.pub-compare thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--pub-bg-raised);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--pub-text);
+  border-bottom: 1px solid var(--pub-border);
+}
+
+.pub-compare thead th small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.69rem;
+  font-weight: 500;
+  color: var(--pub-text-muted);
+}
+
+.pub-compare th[scope="row"] {
+  text-align: left;
+  font-weight: 500;
+  color: var(--pub-text-secondary);
+  white-space: normal;
+  min-width: 220px;
+}
+
+.pub-compare tbody tr:hover td,
+.pub-compare tbody tr:hover th[scope="row"] {
+  background: rgb(255 255 255 / 0.018);
+}
+
+.pub-compare [data-highlight="true"] { background: rgb(183 243 74 / 0.045); }
+.pub-compare thead [data-highlight="true"] { color: var(--pub-lime); }
+
+.pub-compare-group th {
+  text-align: left;
+  background: rgb(255 255 255 / 0.025);
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+}
+
+.pub-yes { color: var(--pub-lime); }
+.pub-no { color: rgb(117 148 180 / 0.45); }
+
+/*
+ * Below 900px the table becomes one disclosure per plan. A frozen-column
+ * spreadsheet on a phone is not an accessible table, it is a puzzle.
+ */
+.pub-compare-mobile { display: none; }
+
+@media (max-width: 900px) {
+  .pub-compare-desktop { display: none; }
+  .pub-compare-mobile {
+    display: grid;
+    gap: 12px;
+    margin-top: 26px;
+  }
+}
+
+.pub-compare-rows {
+  padding: 0 18px 18px;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.pub-compare-rows li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--lr-border-subtle);
+  font-size: 0.78rem;
+  color: var(--pub-text-secondary);
+}
+
+.pub-compare-rows li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.pub-compare-rows b {
+  font-weight: 600;
+  color: var(--pub-text);
+  text-align: right;
+}
+
+/* ============================================================ plan cards === */
+
+.pub-plans {
+  margin-top: clamp(26px, 3vw, 38px);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .pub-plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .pub-plans { grid-template-columns: 1fr; }
+}
+
+.pub-plan {
+  display: flex;
+  flex-direction: column;
+  padding: 26px 22px 24px;
+}
+
+.pub-plan-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border-radius: 999px;
+  background: var(--pub-lime);
+  color: var(--pub-lime-ink);
+  padding: 3px 10px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.pub-plan-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--pub-text);
+}
+
+.pub-plan-for {
+  margin-top: 7px;
+  min-height: 40px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--pub-text-muted);
+}
+
+.pub-plan-price {
+  margin-top: 20px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.pub-plan-price b {
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: var(--pub-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-plan-price span {
+  font-size: 0.78rem;
+  color: var(--pub-text-muted);
+}
+
+.pub-plan-sub {
+  margin-top: 7px;
+  min-height: 34px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--pub-text-muted);
+}
+
+.pub-plan .pub-btn {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.pub-plan-features {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--lr-border-subtle);
+  list-style: none;
+  display: grid;
+  gap: 11px;
+}
+
+.pub-plan-features li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--pub-text-secondary);
+}
+
+.pub-plan-features svg {
+  margin-top: 2px;
+  color: var(--pub-lime);
+}
+
+/* Billing cycle toggle. */
+.pub-cycle-row {
+  display: flex;
+  justify-content: center;
+  margin-top: clamp(26px, 3vw, 38px);
+}
+
+.pub-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--pub-border);
+  background: var(--pub-bg-raised);
+}
+
+.pub-cycle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--pub-text-secondary);
+  transition: background-color 180ms var(--lr-ease), color 180ms var(--lr-ease);
+}
+
+.pub-cycle button:hover { color: var(--pub-text); }
+
+.pub-cycle button[aria-pressed="true"] {
+  background: #fff;
+  color: #0b1020;
+  font-weight: 600;
+}
+
+.pub-cycle button:focus-visible {
+  outline: 2px solid var(--pub-lime);
+  outline-offset: 2px;
+}
+
+.pub-cycle-save {
+  border-radius: 999px;
+  border: 1px solid var(--pub-lime-border);
+  background: var(--pub-lime-soft);
+  color: var(--pub-lime);
+  padding: 2px 8px;
+  font-size: 0.63rem;
+  font-weight: 600;
+}
+
+.pub-cycle button[aria-pressed="true"] .pub-cycle-save {
+  border-color: rgb(91 143 22 / 0.4);
+  background: #eef7dd;
+  color: #3f6b10;
+}
+
+/* ============================================================== the form === */
+
+.pub-form-card {
+  border-radius: 16px;
+  border: 1px solid #dfe5ee;
+  background: #fff;
+  padding: clamp(22px, 2.6vw, 32px);
+  color: #0b1020;
+  box-shadow: 0 38px 84px -42px rgb(0 0 0 / 0.9);
+}
+
+.pub-form-card h2 {
+  font-size: 1.3rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  color: #0b1020;
+}
+
+.pub-form-intro {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #5b6577;
+}
+
+.pub-field { display: block; margin-top: 16px; }
+
+.pub-field > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #35405a;
+}
+
+.pub-req { color: #b4472f; }
+.pub-opt { font-weight: 500; color: #7a8598; }
+
+.pub-input,
+.pub-select,
+.pub-textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #d7dee9;
+  background: #f8fafc;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #0b1020;
+  transition: border-color 180ms, box-shadow 180ms, background-color 180ms;
+}
+
+.pub-input::placeholder,
+.pub-textarea::placeholder { color: #98a2b3; }
+
+.pub-input:focus-visible,
+.pub-select:focus-visible,
+.pub-textarea:focus-visible {
+  outline: none;
+  background: #fff;
+  border-color: #5b8f16;
+  box-shadow: 0 0 0 3px rgb(183 243 74 / 0.35);
+}
+
+.pub-input[aria-invalid="true"],
+.pub-select[aria-invalid="true"],
+.pub-textarea[aria-invalid="true"] {
+  border-color: #b4472f;
+  background: #fdf6f4;
+}
+
+.pub-textarea { min-height: 106px; resize: vertical; }
+
+.pub-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 520px) {
+  .pub-field-pair { grid-template-columns: 1fr; }
+}
+
+.pub-field-error {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #a63c25;
+}
+
+.pub-field-hint {
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: #6b7686;
+}
+
+.pub-counter {
+  display: block;
+  margin-top: 6px;
+  text-align: right;
+  font-size: 0.68rem;
+  color: #7a8598;
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-consent {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+  margin-top: 18px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #4a5568;
+}
+
+.pub-consent input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: #5b8f16;
+}
+
+.pub-submit {
+  width: 100%;
+  margin-top: 20px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--pub-lime);
+  color: var(--pub-lime-ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background-color 180ms, opacity 180ms;
+}
+
+.pub-submit:hover:not(:disabled) { background: #c6f96b; }
+.pub-submit:disabled { opacity: 0.6; cursor: progress; }
+
+.pub-submit:focus-visible {
+  outline: 2px solid #35405a;
+  outline-offset: 2px;
+}
+
+.pub-privacy {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  font-size: 0.7rem;
+  line-height: 1.55;
+  color: #5b6577;
+  text-align: center;
+}
+
+.pub-privacy a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pub-form-alert {
+  margin-top: 16px;
+  border-radius: 8px;
+  border: 1px solid #e6c3ba;
+  background: #fdf3f0;
+  padding: 11px 13px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #8f331d;
+}
+
+.pub-form-done {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  padding: 10px 0;
+}
+
+.pub-form-done p {
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: #4a5568;
+  max-width: 46ch;
+}
+
+.pub-form-done .pub-ring {
+  width: 46px;
+  height: 46px;
+  border-color: rgb(91 143 22 / 0.3);
+  background: #eef7dd;
+  color: #4a7a10;
+}
+
+/* =========================================================== final band === */
+
+.pub-final {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .pub-final { grid-template-columns: 1fr; }
+}
+
+.pub-final-points {
+  list-style: none;
+  display: grid;
+  gap: 18px;
+}
+
+.pub-final-points li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.pub-final-points strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pub-text);
+}
+
+.pub-final-points > li > span > span {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: var(--pub-text-muted);
+}
+
+.pub-final-points .pub-ring { width: 42px; height: 42px; }
+
+/* ============================================ /how-it-works hero diagram === */
+
+.pub-arch {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 0.48fr) minmax(0, 1fr);
+  gap: clamp(12px, 1.6vw, 22px);
+  align-items: center;
+}
+
+.pub-arch-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pub-arch-col {
+  display: grid;
+  gap: clamp(12px, 1.6vw, 20px);
+  min-width: 0;
+}
+
+.pub-arch-group {
+  border: 1px solid var(--pub-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--pub-bg-elevated), var(--pub-card));
+  padding: 14px 14px 13px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 18px 44px -34px rgb(0 0 0 / 0.9);
+}
+
+.pub-arch-title {
+  margin-bottom: 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--pub-text);
+}
+
+.pub-arch-group ul {
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+
+.pub-arch-group li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--pub-text-secondary);
+}
+
+.pub-arch-group li > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--pub-lime-soft);
+  border: 1px solid rgb(183 243 74 / 0.24);
+  color: var(--pub-lime);
+}
+
+.pub-arch-hub {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 24px 10px;
+  border-radius: 16px;
+  border: 1px solid rgb(183 243 74 / 0.24);
+  background: radial-gradient(circle at 50% 34%, #131e0c, var(--pub-bg) 72%);
+  box-shadow: 0 0 70px -22px rgb(183 243 74 / 0.45), inset 0 1px 0 rgb(183 243 74 / 0.1);
+}
+
+.pub-arch-mark {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  background: var(--pub-lime);
+  color: var(--pub-lime-ink);
+  font-size: 1.45rem;
+  font-weight: 800;
+  box-shadow: 0 0 34px -6px rgb(183 243 74 / 0.6);
+}
+
+.pub-arch-hub strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--pub-text);
+}
+
+.pub-arch-lane {
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(183 243 74 / 0.65);
+}
+
+@media (max-width: 860px) {
+  .pub-arch { grid-template-columns: 1fr; }
+  .pub-arch-lines { display: none; }
+  .pub-arch-hub { padding: 16px 10px; }
+}
+
+/* ======================================== /how-it-works decision diagram === */
+
+.pub-flow {
+  display: grid;
+  justify-items: center;
+}
+
+.pub-flow-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 9px;
+  border: 1px solid var(--pub-border-strong);
+  background: var(--pub-bg-raised);
+  padding: 9px 15px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--pub-text-secondary);
+  text-align: center;
+}
+
+.pub-flow-node[data-kind="decision"] {
+  border-color: var(--pub-lime-border);
+  background: rgb(183 243 74 / 0.05);
+  color: var(--pub-text);
+}
+
+.pub-flow-node[data-kind="stop"] {
+  border-color: var(--lr-danger-100);
+  background: var(--lr-danger-50);
+  color: var(--lr-danger-600);
+}
+
+.pub-flow-node[data-kind="go"] {
+  border-color: var(--pub-lime-border);
+  background: var(--pub-lime-soft);
+  color: var(--pub-lime);
+  font-weight: 600;
+}
+
+.pub-flow-arm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+}
+
+.pub-flow-arm > :first-child { justify-self: end; }
+.pub-flow-arm > :last-child { justify-self: start; }
+
+.pub-flow-drop {
+  width: 1px;
+  height: 22px;
+  background: linear-gradient(rgb(183 243 74 / 0), rgb(183 243 74 / 0.32), rgb(183 243 74 / 0));
+}
+
+.pub-flow-legend {
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lr-border-subtle);
+  list-style: none;
+  display: grid;
+  gap: 9px;
+}
+
+.pub-flow-legend li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--pub-text-secondary);
+}
+
+/* ================================================== donut + integrations === */
+
+.pub-donut {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.pub-donut-legend {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.pub-donut-legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--pub-text-secondary);
+}
+
+.pub-donut-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.pub-donut-legend b {
+  font-weight: 600;
+  color: var(--pub-text);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .pub-donut { grid-template-columns: 1fr; justify-items: center; }
+}
+
+.pub-integrations {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+}
+
+.pub-integration {
+  border: 1px solid var(--pub-border);
+  border-radius: 10px;
+  background: var(--pub-bg-raised);
+  padding: 13px 14px;
+}
+
+.pub-integration strong {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--pub-text);
+}
+
+.pub-integration > span { display: block; margin-top: 8px; }
+
+/* ========================================================= security rows === */
+
+.pub-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 18px;
+  align-items: start;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--lr-border-subtle);
+}
+
+.pub-control:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.pub-control h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pub-text);
+}
+
+.pub-control p {
+  margin-top: 6px;
+  max-width: 72ch;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  color: var(--pub-text-muted);
+}
+
+@media (max-width: 560px) {
+  .pub-control { grid-template-columns: 1fr; }
+  .pub-control > :last-child { order: -1; }
+}
+
+/*
+ * The band that stands where testimonials would go until there is verified
+ * evidence to put there. Dashed, so it reads as deliberately empty rather
+ * than as a grid that failed to load.
+ */
+.pub-evidence {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  border: 1px dashed var(--pub-border-strong);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.015);
+  padding: 22px 24px;
+}
+
+.pub-evidence p {
+  margin-top: 8px;
+  max-width: 76ch;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--pub-text-muted);
+}

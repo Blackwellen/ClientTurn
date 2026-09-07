@@ -80,16 +80,25 @@ describe("admin shell navigation", () => {
       [
         "/admin",
         "/admin/customers",
-        "/admin/economics",
         "/admin/support",
         "/admin/affiliates",
         "/admin/system",
+        "/admin/billing",
+        "/admin/economics",
+        "/admin/settings",
       ],
     );
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.label),
-      ["Overview", "Customers", "Usage & Margins", "Support", "Affiliates", "System"],
+      ["Overview", "Customers", "Support", "Affiliates", "System", "Billing", "Usage & Margins", "Settings"],
     );
+    for (const { href } of ADMIN_NAV) {
+      const segment = href.replace(/^\/admin\/?/, "");
+      assert.ok(
+        existsSync(path.join(process.cwd(), "src/app/admin/(ops)", segment, "page.tsx")),
+        `${href} must have a page`,
+      );
+    }
   });
 
   test("no removed admin domain is linked", () => {
@@ -102,8 +111,6 @@ describe("admin shell navigation", () => {
       "/admin/analytics",
       // /admin/support and /admin/affiliates are no longer forbidden: V4
       // sections 39 and 41 reinstate both, and the routes now exist.
-      "/admin/billing",
-      "/admin/settings",
       "/admin/usage",
     ];
     for (const href of ADMIN_NAV.map((item) => item.href)) {

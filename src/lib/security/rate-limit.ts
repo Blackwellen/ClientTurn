@@ -45,6 +45,12 @@ export const RATE_LIMITS = {
   // real work of keeping junk out of the attribution record.
   "affiliate:apply": { limit: 5, windowSeconds: 3600 },
   "affiliate:click": { limit: 240, windowSeconds: 60 },
+  // Each attempt creates or mutates a Stripe Connect account and mints a
+  // single-use onboarding link, so this is bounded tightly.
+  "affiliate:connect": { limit: 10, windowSeconds: 600 },
+  // Promo codes carry a real discount. Generous enough for ordinary use,
+  // tight enough that the endpoint cannot be used to enumerate offers.
+  "affiliate:promo": { limit: 10, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

@@ -12,14 +12,19 @@ import type { ViewMode } from "@/components/ui/view-toggle";
 import {
   PAGE_SIZES,
   activeFilterCount,
+  prospectFiltersToParams,
   type ProspectFilters,
 } from "@/lib/prospects/filters";
 import type { ProspectListRow, ProspectQuickCounts } from "@/lib/prospects/types";
 import type { ProspectFilterOptions } from "@/lib/prospects/queries";
 import { useFindLeadsParams } from "./use-find-leads-params";
+import { useFindLeadsStream } from "./use-find-leads-stream";
 
 /** Read server-side by the Find Leads page — see `VIEW_COOKIE` there. */
 const LIST_MODE_COOKIE = "ct-find-leads-list-mode";
+
+/** Constant, so the stream subscription is not torn down on every render. */
+const PROSPECT_STREAM_ENTITIES = ["PROSPECT", "INTENT_EVENT"] as const;
 import { ProspectFilterPanel } from "./prospect-filter-panel";
 import { ProspectCard } from "./prospect-card";
 import { ProspectQuickFilters } from "./prospects/prospect-quick-filters";
@@ -61,6 +66,7 @@ export function ProspectsView({
   options,
   viewMode,
   canManage,
+  businessId,
 }: {
   rows: ProspectListRow[];
   total: number;
@@ -69,6 +75,7 @@ export function ProspectsView({
   options: ProspectFilterOptions;
   viewMode: ViewMode;
   canManage: boolean;
+  businessId: string;
 }) {
   const router = useRouter();
   const params = useFindLeadsParams();
@@ -86,6 +93,20 @@ export function ProspectsView({
 
   const filterCount = activeFilterCount(filters);
   const filtered = filterCount > 0 || filters.search.length > 0;
+
+  // Live updates. Prospects land from sourcing runs and the dispatcher, both of
+  // which are background work no click on this page triggered.
+  const { pendingCount } = useFindLeadsStream({
+    businessId,
+    entities: PROSPECT_STREAM_ENTITIES,
+  });
+
+  // The export carries the same filters the table is showing, so a download
+  // always matches the view that produced it.
+  const exportHref = React.useMemo(
+    () => `/api/exports/prospects?${prospectFiltersToParams(filters).toString()}`,
+    [filters],
+  );
 
   // The filter signature, not the rows themselves: rows are a new array on
   // every render, and comparing them would clear the selection constantly.
@@ -159,6 +180,14 @@ export function ProspectsView({
 
   return (
     <div className="space-y-4">
+      {/* Sighted users see rows change; a screen reader user would not be told
+          at all. Polite, so it never interrupts someone mid-sentence. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {pendingCount > 0
+          ? `${pendingCount} update${pendingCount === 1 ? "" : "s"} received. Refreshing the prospect list.`
+          : ""}
+      </p>
+
       <ProspectQuickFilters
         value={filters.quick}
         counts={counts}
@@ -185,6 +214,7 @@ export function ProspectsView({
         <ProspectBulkBar
           selected={selected}
           campaigns={options.campaigns}
+          exportHref={exportHref}
           onClear={() => setSelected([])}
         />
       )}

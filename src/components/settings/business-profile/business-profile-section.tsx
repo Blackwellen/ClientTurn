@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/app/page-header";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { OutreachGuidanceEditor } from "./outreach-guidance";
 import {
   analysisStatusLabel,
   factKeyLabel,
@@ -331,6 +332,13 @@ export function BusinessProfileSection({
           </ul>
         )}
       </section>
+
+      {/* Authored guidance, not inference: this is the customer telling us how
+          to represent them, and campaign generation reads it directly. */}
+      <OutreachGuidanceEditor
+        guidance={data.outreachGuidance}
+        canEdit={canManage}
+      />
 
       {/* -------------------------------------------------- conversion goals */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">

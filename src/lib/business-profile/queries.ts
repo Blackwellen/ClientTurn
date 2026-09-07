@@ -41,14 +41,14 @@ export async function loadBusinessProfile(
       supabase
         .from("business_profiles")
         .select(
-          "website_url, business_type, sales_model, summary, analysis_status, pages_analysed, last_analysed_at",
+          "website_url, business_type, sales_model, summary, analysis_status, pages_analysed, last_analysed_at, outreach_tone, outreach_key_messages, outreach_value_proposition, outreach_proof_points, outreach_avoid, outreach_call_to_action, outreach_claim_restrictions, outreach_guidance_updated_at",
         )
         .eq("business_id", businessId)
         .maybeSingle(),
       supabase
         .from("business_memory_facts")
         .select(
-          "id, fact_key, value_json, source_type, confidence, verified_by_user, locked, last_verified_at, created_at",
+          "id, fact_key, value_json, source_type, confidence, verified_by_user, locked, last_verified_at, valid_from, valid_to, created_at",
         )
         .eq("business_id", businessId)
         .order("fact_key"),
@@ -121,6 +121,21 @@ export async function loadBusinessProfile(
           analysisStatus: profile.data.analysis_status,
           pagesAnalysed: profile.data.pages_analysed,
           lastAnalysedAt: profile.data.last_analysed_at,
+        }
+      : null,
+    // Authored by the customer, never inferred: this is an instruction about
+    // how to represent the business, so it is read straight from its own row
+    // rather than from the memory facts.
+    outreachGuidance: profile.data
+      ? {
+          tone: profile.data.outreach_tone,
+          keyMessages: profile.data.outreach_key_messages,
+          valueProposition: profile.data.outreach_value_proposition,
+          proofPoints: profile.data.outreach_proof_points,
+          avoid: profile.data.outreach_avoid,
+          callToAction: profile.data.outreach_call_to_action,
+          claimRestrictions: profile.data.outreach_claim_restrictions,
+          updatedAt: profile.data.outreach_guidance_updated_at,
         }
       : null,
     facts: (facts.data ?? []).map((row) => ({

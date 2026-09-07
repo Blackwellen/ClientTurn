@@ -362,7 +362,7 @@ export async function updateProfile(input: unknown): Promise<AffiliateActionResu
 
   if (error) return { ok: false, error: "Your details could not be saved." };
 
-  revalidatePath("/affiliates/app/profile");
+  revalidatePath("/affiliates/app/settings");
   return { ok: true, message: "Details saved." };
 }
 
@@ -406,7 +406,7 @@ export async function updatePaymentDetails(
   if (error) return { ok: false, error: "Your payment details could not be saved." };
 
   revalidatePath("/affiliates/app/payouts");
-  revalidatePath("/affiliates/app/profile");
+  revalidatePath("/affiliates/app/settings");
   return { ok: true, message: "Payment details saved." };
 }
 

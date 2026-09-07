@@ -5,11 +5,18 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
-import { Overlay, useBodyScrollLock, useEscape } from "@/components/ui/drawer";
+import {
+  Overlay,
+  useBodyScrollLock,
+  useEscape,
+  useFocusTrap,
+} from "@/components/ui/drawer";
+import { SkipLink, MainRegion } from "@/components/ui/skip-link";
 import { SidebarContent } from "./sidebar";
 import { PRIMARY_NAV } from "@/lib/app/nav";
 import { TopBar } from "./top-bar";
-import { SupportBubble } from "@/components/support/support-bubble";
+import { SupportPopout } from "@/components/support/support-popout";
+import { CopilotDrawer } from "@/components/copilot/copilot-drawer";
 import { AccountPreferencesDialog } from "./account-preferences-dialog";
 import type { NotificationRow } from "./notification-tray";
 
@@ -59,6 +66,9 @@ export function AppShell({
   const [collapsed, setCollapsed] = React.useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [accountOpen, setAccountOpen] = React.useState(false);
+  // The Copilot drawer is shell-level so the conversation survives navigation:
+  // the questions people ask it are usually about the page they are on.
+  const [copilotOpen, setCopilotOpen] = React.useState(false);
   const openAccount = React.useCallback(() => setAccountOpen(true), []);
 
   React.useEffect(() => {
@@ -66,8 +76,13 @@ export function AppShell({
     setMobileOpen(false);
   }, [pathname]);
 
+  // The panel declares `aria-modal`, so Tab must not be able to leave it —
+  // without the trap the ARIA promised a modality the drawer did not have.
+  const mobileNavRef = React.useRef<HTMLDivElement | null>(null);
+
   useBodyScrollLock(mobileOpen);
   useEscape(mobileOpen, () => setMobileOpen(false));
+  useFocusTrap(mobileNavRef, mobileOpen);
 
   const toggleCollapse = React.useCallback(() => {
     setCollapsed((current) => {
@@ -103,6 +118,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-bg">
+      <SkipLink />
       <aside
         aria-label="Sidebar"
         className={cn(
@@ -127,6 +143,7 @@ export function AppShell({
         <div className="fixed inset-0 z-50 lg:hidden">
           <Overlay onClick={() => setMobileOpen(false)} />
           <div
+            ref={mobileNavRef}
             role="dialog"
             aria-modal="true"
             aria-label="Navigation"
@@ -175,14 +192,17 @@ export function AppShell({
           businessName={businessName}
           planLabel={planLabel}
           onOpenAccount={openAccount}
+          copilotOpen={copilotOpen}
+          onToggleCopilot={() => setCopilotOpen((current) => !current)}
         />
-        <main className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+        <MainRegion className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
           {children}
-        </main>
+        </MainRegion>
       </div>
 
       {/* Mounted only while open so it always loads current values. */}
-      <SupportBubble />
+      <CopilotDrawer open={copilotOpen} onClose={() => setCopilotOpen(false)} />
+      <SupportPopout />
       {accountOpen && (
         <AccountPreferencesDialog open onClose={() => setAccountOpen(false)} />
       )}

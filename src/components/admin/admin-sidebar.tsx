@@ -20,6 +20,7 @@ import { cn } from "@/lib/cn";
 import { ADMIN_NAV, isActiveAdminRoute, type NavItem } from "@/lib/admin/nav";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Logo } from "@/components/ui/logo";
+import { useScrollableRegion } from "@/components/ui/use-scrollable-region";
 
 function NavLink({
   item,
@@ -42,7 +43,9 @@ function NavLink({
       className={cn(
         "group flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
         "transition-colors duration-150",
-        collapsed ? "mx-auto size-12 justify-center" : "h-[48px] px-3.5",
+        collapsed
+          ? "mx-auto size-[var(--ct-rail-row-h)] justify-center"
+          : "h-[var(--ct-rail-row-h)] px-3.5",
         active
           ? "bg-[var(--ct-shell-active-bg)] text-[var(--ct-lime)]"
           : "text-[var(--ct-shell-text)] hover:bg-[var(--ct-shell-hover)] hover:text-white",
@@ -87,9 +90,9 @@ function EnvironmentCard({ collapsed }: { collapsed: boolean }) {
   if (collapsed) return null;
 
   return (
-    <div className="mx-3 mt-3 mb-3 rounded-xl border border-[var(--ct-shell-card-border)] bg-[var(--ct-shell-card-bg)] px-3.5 py-3">
+    <div className="mx-3 mb-3 mt-3 shrink-0 rounded-xl border border-[var(--ct-shell-card-border)] bg-[var(--ct-shell-card-bg)] px-3.5 py-[var(--ct-rail-foot-py)]">
       <div className="flex items-center gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-[11px] bg-[var(--ct-shell-icon-bg)]">
+        <div className="ct-rail-roomy-flex size-11 shrink-0 items-center justify-center rounded-[11px] bg-[var(--ct-shell-icon-bg)]">
           <Database className="size-4.5 text-white" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
@@ -105,7 +108,7 @@ function EnvironmentCard({ collapsed }: { collapsed: boolean }) {
               Healthy
             </span>
           </div>
-          <p className="truncate text-[11px] text-[var(--ct-shell-text-muted)]">
+          <p className="ct-rail-roomy-block truncate text-[11px] text-[var(--ct-shell-text-muted)]">
             Production environment
           </p>
         </div>
@@ -139,7 +142,9 @@ function FooterButton({
         "text-[var(--ct-shell-text)] transition-colors duration-150",
         "hover:bg-[var(--ct-shell-hover)] hover:text-white",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
-        collapsed ? "mx-auto size-12 justify-center" : "h-[46px] w-full px-3.5",
+        collapsed
+          ? "mx-auto size-[var(--ct-rail-row-h)] justify-center"
+          : "h-[var(--ct-rail-row-h)] w-full px-3.5",
       )}
     >
       <Icon className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
@@ -213,9 +218,12 @@ export function AdminSidebarContent({
 }) {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = React.useState(false);
+  // Only becomes a tab stop while the rail genuinely overflows.
+  const { attach: attachNav, props: navProps } = useScrollableRegion("Admin navigation", { landmark: true });
+
   return (
     <div
-      className="flex h-full flex-col"
+      className="ct-rail flex h-full flex-col"
       style={{
         background:
           "linear-gradient(180deg, var(--ct-shell-sidebar-from) 0%, var(--ct-shell-sidebar-via) 52%, var(--ct-shell-sidebar-to) 100%)",
@@ -223,13 +231,16 @@ export function AdminSidebarContent({
     >
       <div
         className="flex shrink-0 items-center justify-center px-2"
-        style={{ height: 128, borderBottom: "1px solid var(--ct-shell-divider)" }}
+        style={{
+          height: "var(--ct-rail-header-h)",
+          borderBottom: "1px solid var(--ct-shell-divider)",
+        }}
       >
         {collapsed ? (
           <Link
             href="/admin"
             aria-label="ClientTurn Platform Admin home"
-            className="flex size-14 items-center justify-center rounded-[12px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+            className="flex size-[var(--ct-rail-logo-h)] items-center justify-center rounded-[12px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
           >
             {/* Favicon.png already bakes in its own rounded-square corners and
                 transparent margin — clipping it again with a CSS radius fights
@@ -239,13 +250,17 @@ export function AdminSidebarContent({
               alt=""
               width={48}
               height={48}
-              className="size-12 shrink-0"
+              className="size-full shrink-0 object-contain"
               priority
             />
           </Link>
         ) : (
           <Link href="/admin" className="flex flex-col items-center gap-1">
-            <Logo href={null} height={68} />
+            <Logo
+              href={null}
+              height={68}
+              imgClassName="h-[calc(var(--ct-rail-logo-h)-16px)] w-auto"
+            />
             <span className="text-[11px] font-medium tracking-wide text-[var(--ct-shell-text-muted)]">
               Platform Admin
             </span>
@@ -257,9 +272,14 @@ export function AdminSidebarContent({
 
       <nav
         aria-label="Admin"
-        className={cn("flex-1 overflow-y-auto px-2.5", collapsed && "pt-3")}
+        ref={attachNav}
+        {...navProps}
+        className={cn(
+          "ct-scroll-rail min-h-0 flex-1 overflow-y-auto px-2.5",
+          collapsed && "pt-[var(--ct-rail-nav-pt)]",
+        )}
       >
-        <ul className="space-y-1.5">
+        <ul className="flex flex-col gap-[var(--ct-rail-gap)]">
           {ADMIN_NAV.map((item) => (
             <li key={item.href}>
               <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -269,7 +289,7 @@ export function AdminSidebarContent({
       </nav>
 
       <div
-        className="shrink-0 space-y-1 px-2.5 py-3"
+        className="shrink-0 space-y-1 px-2.5 py-[var(--ct-rail-foot-py)]"
         style={{ borderTop: "1px solid var(--ct-shell-divider)" }}
       >
         <FooterButton
@@ -290,7 +310,9 @@ export function AdminSidebarContent({
                   "text-[var(--ct-shell-text)] transition-colors duration-150",
                   "hover:bg-[var(--ct-shell-hover)] hover:text-white",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]",
-                  collapsed ? "mx-auto size-12 justify-center" : "h-[46px] w-full px-3.5",
+                  collapsed
+                    ? "mx-auto size-[var(--ct-rail-row-h)] justify-center"
+                    : "h-[var(--ct-rail-row-h)] w-full px-3.5",
                 )}
               >
                 <CircleUserRound className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
@@ -350,7 +372,7 @@ export function AdminSidebarContent({
                 onClick={onToggleCollapse}
                 aria-label="Collapse sidebar"
                 aria-expanded={!collapsed}
-                className="flex h-[48px] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
+                className="flex h-[var(--ct-rail-row-h)] w-full items-center gap-3 rounded-[10px] px-3.5 text-[14px] font-medium text-[var(--ct-shell-text)] transition-colors duration-150 hover:bg-[var(--ct-shell-hover)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ct-lime)]"
               >
                 <PanelLeftClose className="size-5 shrink-0 text-[var(--ct-shell-text-muted)]" />
                 <span>Collapse</span>

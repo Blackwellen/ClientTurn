@@ -55,6 +55,27 @@ export async function GET(request: Request) {
   );
   enqueued.push("recurring_search.tick");
 
+  // The affiliate ledger. Approves commission that has cleared its refund
+  // hold, expires abandoned trials, flags self-referrals, and raises payouts
+  // for partners who are ready and over the threshold. Idempotent throughout,
+  // so a re-run on the same day approves and pays nothing twice.
+  await enqueue(
+    "affiliate.ledger",
+    {},
+    { idempotencyKey: `affiliate-ledger:${dateKey}` },
+  );
+  enqueued.push("affiliate.ledger");
+
+  // Bounded auto-optimisation. Only campaigns that opted in are touched, and
+  // every proposal is checked against that campaign's stored bounds before it
+  // is written — a refusal is recorded with its reason rather than dropped.
+  await enqueue(
+    "outreach.optimize",
+    {},
+    { idempotencyKey: `outreach-optimize:${dateKey}` },
+  );
+  enqueued.push("outreach.optimize");
+
   if (isFirstOfMonth) {
     await enqueue(
       "cost.rollup_monthly",

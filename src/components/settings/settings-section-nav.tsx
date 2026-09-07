@@ -16,9 +16,10 @@ const ICONS: Record<
 };
 
 /**
- * The four Settings sections. Deliberately substantial cards rather than a tab
- * strip: they are the only navigation inside Settings, and each one is a
- * destination a customer looks for by name.
+ * The five canonical Settings sections (V4 §24): Workspace, Connections,
+ * Business Profile, Team, and Billing & Usage. Deliberately substantial cards
+ * rather than a tab strip: they are the only navigation inside Settings, and
+ * each one is a destination a customer looks for by name.
  *
  * The active section is passed down from the page rather than read from
  * `useSearchParams`, which keeps this a server component and avoids needing a
@@ -27,7 +28,9 @@ const ICONS: Record<
 export function SettingsSectionNav({ active }: { active: SettingsSection }) {
   return (
     <nav aria-label="Settings sections">
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Five across on wide screens; scrolls horizontally on mobile rather
+          than wrapping into an uneven grid. */}
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = ICONS[section.id];
           const isActive = section.id === active;

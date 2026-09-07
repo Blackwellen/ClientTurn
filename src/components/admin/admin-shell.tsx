@@ -5,7 +5,13 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
-import { Overlay, useBodyScrollLock, useEscape } from "@/components/ui/drawer";
+import {
+  Overlay,
+  useBodyScrollLock,
+  useEscape,
+  useFocusTrap,
+} from "@/components/ui/drawer";
+import { SkipLink, MainRegion } from "@/components/ui/skip-link";
 import { AdminSidebarContent } from "./admin-sidebar";
 import { AdminTopBar } from "./admin-top-bar";
 
@@ -47,8 +53,13 @@ export function AdminShell({
     setMobileOpen(false);
   }, [pathname]);
 
+  // The panel declares `aria-modal`, so Tab must not be able to leave it —
+  // without the trap the ARIA promised a modality the drawer did not have.
+  const mobileNavRef = React.useRef<HTMLDivElement | null>(null);
+
   useBodyScrollLock(mobileOpen);
   useEscape(mobileOpen, () => setMobileOpen(false));
+  useFocusTrap(mobileNavRef, mobileOpen);
 
   const toggleCollapse = React.useCallback(() => {
     setCollapsed((current) => {
@@ -64,6 +75,7 @@ export function AdminShell({
 
   return (
     <div className="min-h-screen bg-bg">
+      <SkipLink />
       <aside
         aria-label="Admin sidebar"
         className={cn(
@@ -83,6 +95,7 @@ export function AdminShell({
         <div className="fixed inset-0 z-50 lg:hidden">
           <Overlay onClick={() => setMobileOpen(false)} />
           <div
+            ref={mobileNavRef}
             role="dialog"
             aria-modal="true"
             aria-label="Admin navigation"
@@ -124,9 +137,9 @@ export function AdminShell({
           recentCustomers={recentCustomers}
           alertCount={alertCount}
         />
-        <main className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+        <MainRegion className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
           {children}
-        </main>
+        </MainRegion>
       </div>
     </div>
   );

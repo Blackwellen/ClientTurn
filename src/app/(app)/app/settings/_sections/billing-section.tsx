@@ -6,6 +6,8 @@ import { PermissionDenied } from "@/components/settings/notices";
 import { BillingSettings } from "@/components/settings/billing/billing-settings";
 import { AiTokenMeter } from "@/components/settings/ai-token-meter";
 import { getTokenStatus, listTokenPurchases } from "@/lib/billing/token-service";
+import { getUsageOverview } from "@/lib/billing/usage-service";
+import { UsagePanel } from "@/components/settings/billing/usage-panel";
 
 export async function BillingSection() {
   const workspace = await requireWorkspace();
@@ -20,11 +22,12 @@ export async function BillingSection() {
     );
   }
 
-  const [billing, invoices, tokenStatus, tokenPurchases] = await Promise.all([
+  const [billing, invoices, tokenStatus, tokenPurchases, usage] = await Promise.all([
     getBillingView(workspace.businessId),
     listRecentInvoices(workspace.businessId),
     getTokenStatus(workspace.businessId),
     listTokenPurchases(workspace.businessId),
+    getUsageOverview(workspace.businessId),
   ]);
 
   return (
@@ -34,6 +37,11 @@ export async function BillingSection() {
         invoices={invoices.ok ? invoices.invoices : []}
         invoicesError={invoices.ok ? null : invoices.error}
       />
+      {/* Allocation, caps, overage and history (V4 §27). Every control here is
+          a narrowing of what the plan already grants: the server re-derives
+          each ceiling and clamps to it rather than trusting the form. */}
+      <UsagePanel usage={usage} canManage />
+
       {/* The AI allowance sits with billing because that is where someone
           goes when they want more of something. */}
       <AiTokenMeter
