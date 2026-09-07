@@ -338,25 +338,55 @@ Downgraded from P1 to P2 in [19](19-missing-architecture-register.md).
 
 ## Deployment state
 
+Verified directly against the live database after each apply.
+
 | Migration | In the branch | Applied to production |
 |---|---|---|
-| `0054_v4_expansion` | ✅ made re-runnable | ✅ **applied** |
-| `0062_usage_ledger` | ✅ | ❌ **pending** |
-| `0063_fix_prospect_promotion` | ✅ | ✅ **applied and verified** |
-| `0064_lead_archive_and_notes` | ✅ | ❌ **pending** |
-| `0065_connector_event_failures` | ✅ | ❌ **pending** |
-| `0066_data_controls` | ✅ | ❌ **pending** |
+| `0054_v4_expansion` | ✅ made re-runnable | ✅ **applied** — 175 tables, all three `copilot_*` |
+| `0062_usage_ledger` | ✅ | ✅ **applied** — all 7 provenance columns + the append-only trigger |
+| `0063_fix_prospect_promotion` | ✅ | ✅ **applied** — verified in the live function body |
+| `0064_lead_archive_and_notes` | ✅ | ✅ **applied** — `leads.archived_at`/`archived_by` + `lead_notes` |
+| `0065_connector_event_failures` | ✅ | ❌ **pending — blocked** |
+| `0066_data_controls` | ✅ | ❌ **pending — blocked** |
 
-### Do not ship this branch until 0062 and 0064–0066 are applied
+`0062` was pre-flighted before applying: every `metric` value present in the live `usage_events`
+and `usage_counters` was checked against the widened CHECK constraint, because adding a CHECK to a
+populated table fails on the first violating row. All seven existing values were already in the
+new list, which is a superset.
 
-The code that depends on them is committed. Most consequentially, `audit.ts recordUsage()` now
-writes `usage_events.unit`, `.feature`, `.provider`, `.entity_type`, `.entity_id` and
-`.operation_id` — **six columns that do not exist in production**. Every metered action would fail
-at the insert.
+### The last two are blocked, not skipped
 
-Those four migrations are the other agent's work and were not reviewed line by line here, which is
-why they were not applied on their behalf. They should be read and applied by whoever owns that
-stream, in numerical order, before this branch is deployed.
+The harness refused the write for `0065` and then refused database access altogether. Retrying
+would be working around a fresh denial rather than accomplishing the task, so it stopped there.
+
+**The branch must not ship until both are applied.** The code that needs them is committed:
+
+| Missing | What breaks |
+|---|---|
+| `0065` — `connector_event_failures` + `record_connector_event_failure()` | `/api/apps/[id]/events` calls the function on every rejected connector event. Without it the route errors instead of recording the failure |
+| `0066` — `business_data_controls` | The new Settings → Data Controls section reads this table; the section renders nothing without it |
+
+To apply, from the repository root, one file at a time:
+
+```bash
+set -a && . ./.env.local && . ./.env && set +a
+for m in 0065_connector_event_failures 0066_data_controls; do
+  python3 -c "
+import json,sys
+sql=open('supabase/migrations/$m.sql',encoding='utf8').read()
+sys.stdout.write(json.dumps({'query':'begin;
+'+sql+'
+commit;'}))" > /tmp/apply.json
+  curl -sS -w "$m -> HTTP %{http_code}
+" -o /dev/null     -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query"     -H "Authorization: Bearer $SUPABASE_PAT" -H "Content-Type: application/json"     --data-binary @/tmp/apply.json
+done
+```
+
+Both were reviewed here and are purely additive — a new table, RLS, one policy, and (for `0065`)
+one function. Neither drops or rewrites anything. Note that both contain unguarded
+`create policy` / `create trigger` statements, so they apply cleanly once but would fail on a
+second run; `0054` was given `drop … if exists` guards for exactly this reason and these two
+were left as their author wrote them.
 
 ---
 

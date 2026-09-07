@@ -7,9 +7,9 @@ failure it causes, and where the fix belongs.
 
 ## P0 — production blockers
 
-Three of six are fixed, and **both blocking migrations are now deployed and verified**:
-`0054_v4_expansion` and `0063_fix_prospect_promotion`. Four later migrations remain pending — see
-[24 · Deployment state](24-remediation-log.md).
+Three of six are fixed, and **four of six migrations are deployed and verified**: `0054`, `0062`,
+`0063` and `0064`. `0065` and `0066` are written, reviewed and blocked on a permission the harness
+refused — commands in [24 · Deployment state](24-remediation-log.md).
 
 | # | Missing | Failure | Fix |
 |---|---|---|---|
