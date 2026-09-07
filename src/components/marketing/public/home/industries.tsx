@@ -81,6 +81,13 @@ function IndustryCard({ industry }: { industry: Industry }) {
             alt={industry.imageAlt ?? ""}
             fill
             sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+            // Not lazy. Lazy loading keys off intersection with the viewport,
+            // and a card scrolled sideways out of this carousel never
+            // intersects it — so paging the arrows revealed empty cards that
+            // only began fetching once they arrived. These are ~40KB
+            // optimised variants in the last section of the page, so loading
+            // them up front costs little and removes the pop-in entirely.
+            loading="eager"
             // Toned back so the photograph sits in the dark palette rather
             // than punching a bright hole in it; it lifts slightly on hover.
             className="object-cover brightness-[0.72] saturate-[0.85] transition-[transform,filter] duration-500 group-hover:scale-[1.03] group-hover:brightness-[0.82]"
