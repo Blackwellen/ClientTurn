@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { GrowColumn } from "./reveal";
 
 /**
  * The two chart shapes the evaluation pages need, drawn as inline SVG.
@@ -198,7 +201,7 @@ export function Columns({
         height,
       }}
     >
-      {bars.map((bar) => (
+      {bars.map((bar, index) => (
         <div
           key={bar.label}
           style={{ display: "grid", gap: 6, alignContent: "end" }}
@@ -215,12 +218,11 @@ export function Columns({
           >
             {bar.value.toLocaleString("en-GB")}
           </span>
-          <span
-            style={{
-              height: `${Math.max((bar.value / max) * (height - 46), 4)}px`,
-              borderRadius: "4px 4px 0 0",
-              background: bar.colour,
-            }}
+          <GrowColumn
+            height={`${Math.max((bar.value / max) * (height - 46), 4)}px`}
+            colour={bar.colour}
+            delay={index * 0.06}
+            className="block rounded-t-[4px]"
           />
           <span
             style={{

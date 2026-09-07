@@ -4,6 +4,10 @@ import {
   Bell,
   Bot,
   Building2,
+  Coins,
+  CreditCard,
+  Handshake,
+  LifeBuoy,
   CalendarDays,
   Check,
   ChevronDown,
@@ -19,6 +23,7 @@ import {
   Phone,
   Radar,
   Repeat,
+  ServerCog,
   Search,
   Settings,
   Sparkles,
@@ -92,7 +97,20 @@ const NAV = [
   { icon: Settings, label: "Settings" },
 ] as const;
 
-function Sidebar({ active }: { active: string }) {
+type RailItem = {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  label: string;
+};
+
+function Sidebar({
+  active,
+  items = NAV,
+  workspace,
+}: {
+  active: string;
+  items?: readonly RailItem[];
+  workspace?: { name: string; meta: string };
+}) {
   return (
     <aside
       className="flex w-[188px] shrink-0 flex-col border-r px-3 pb-4 pt-3"
@@ -120,16 +138,16 @@ function Sidebar({ active }: { active: string }) {
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[10.5px] font-semibold leading-tight text-[#cdd4de]">
-            Northgate Roofing
+            {workspace?.name ?? "Northgate Roofing"}
           </span>
           <span className="block truncate text-[9px] leading-tight text-[#8794a5]">
-            &amp; Exteriors &middot; Pro
+            {workspace?.meta ?? "& Exteriors · Pro"}
           </span>
         </span>
       </div>
 
       <nav className="mt-4 space-y-0.5">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const current = item.label === active;
           return (
             <span
@@ -552,6 +570,178 @@ export function DashboardFrame() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+/* ------------------------------------------------------------- admin --- */
+
+/**
+ * The operator console, for the admin door.
+ *
+ * The rail mirrors `lib/admin/nav.ts` exactly — an operator recognises the
+ * product they are about to sign into, and a marketing screenshot of a nav the
+ * tool does not have is the sort of small lie that gets noticed on day one.
+ * The figures are illustrative, like every other frame here.
+ */
+const ADMIN_NAV = [
+  { icon: LayoutDashboard, label: "Overview" },
+  { icon: Building2, label: "Customers" },
+  { icon: LifeBuoy, label: "Support" },
+  { icon: Handshake, label: "Affiliates" },
+  { icon: ServerCog, label: "System" },
+  { icon: CreditCard, label: "Billing" },
+  { icon: Coins, label: "Usage & Margins" },
+  { icon: Settings, label: "Settings" },
+] as const;
+
+const ADMIN_WORKSPACES = [
+  { name: "Northgate Roofing", plan: "Pro", state: "Active", leads: "1,284" },
+  { name: "Harper Kitchens", plan: "Growth", state: "Active", leads: "412" },
+  { name: "Vale Landscapes", plan: "Starter", state: "Trial", leads: "96" },
+  { name: "Bellway Plumbing", plan: "Growth", state: "Active", leads: "338" },
+];
+
+const ADMIN_HEALTH = [
+  { label: "Worker queue", detail: "No backlog", ok: true },
+  { label: "Webhook ingest", detail: "All providers acknowledging", ok: true },
+  { label: "Message delivery", detail: "2 retries in the last hour", ok: false },
+];
+
+export function AdminFrame() {
+  return (
+    <>
+      <Sidebar
+        active="Overview"
+        items={ADMIN_NAV}
+        workspace={{ name: "Platform", meta: "Operations console" }}
+      />
+      <div className="flex min-w-0 flex-1 flex-col" style={{ background: CANVAS }}>
+        <TopBar />
+        <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-[19px] font-semibold tracking-[-0.02em]" style={{ color: INK }}>
+                Platform overview
+              </h3>
+              <p className="mt-1 text-[11px]" style={{ color: INK_MUTED }}>
+                Every workspace, subscription and background job in one place.
+              </p>
+            </div>
+            <span
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-[10px] font-medium"
+              style={{ borderColor: LINE, color: INK_SOFT }}
+            >
+              Last 30 days
+              <ChevronDown className="size-3" />
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-4 gap-2.5">
+            <Kpi label="Workspaces" value="128" delta="+9%" icon={Building2} />
+            <Kpi label="Active Trials" value="24" delta="+14%" icon={Users} />
+            <Kpi label="Paying" value="96" delta="+6%" icon={CreditCard} />
+            <Kpi label="Jobs / hour" value="4,210" delta="+3%" icon={ServerCog} />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[1.4fr_1fr] gap-2.5">
+            <div className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: LINE }}>
+              <div
+                className="flex items-center gap-2 border-b px-3.5 py-2.5"
+                style={{ borderColor: LINE }}
+              >
+                <span className="flex-1 text-[12px] font-semibold" style={{ color: INK }}>
+                  Recent workspaces
+                </span>
+                <span
+                  className="rounded-md border px-2 py-1 text-[9.5px] font-medium"
+                  style={{ borderColor: LINE, color: INK_SOFT }}
+                >
+                  View all
+                </span>
+              </div>
+              {ADMIN_WORKSPACES.map((row, index) => (
+                <div
+                  key={row.name}
+                  className="flex items-center gap-2.5 px-3.5 py-2.5"
+                  style={{
+                    borderBottom:
+                      index === ADMIN_WORKSPACES.length - 1 ? undefined : `1px solid ${LINE}`,
+                  }}
+                >
+                  <span
+                    className="grid size-7 shrink-0 place-items-center rounded-md"
+                    style={{ background: "#f3ffe5" }}
+                  >
+                    <Building2 className="size-3.5" style={{ color: LIME_DARK }} strokeWidth={2.1} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className="block truncate text-[11.5px] font-semibold"
+                      style={{ color: INK }}
+                    >
+                      {row.name}
+                    </span>
+                    <span className="block truncate text-[10px]" style={{ color: INK_MUTED }}>
+                      {row.plan} &middot; {row.leads} leads
+                    </span>
+                  </span>
+                  <span
+                    className="shrink-0 rounded-md px-2 py-0.5 text-[9px] font-semibold"
+                    style={
+                      row.state === "Trial"
+                        ? { background: "#fffaeb", color: "#b54708" }
+                        : { background: "#f3ffe5", color: LIME_DARK }
+                    }
+                  >
+                    {row.state}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border bg-white px-3.5 py-3" style={{ borderColor: LINE }}>
+              <span className="text-[12px] font-semibold" style={{ color: INK }}>
+                System health
+              </span>
+              <div className="mt-2.5 space-y-2.5">
+                {ADMIN_HEALTH.map((row) => (
+                  <div key={row.label} className="flex items-start gap-2">
+                    {row.ok ? (
+                      <CircleCheck
+                        className="mt-0.5 size-3.5 shrink-0"
+                        style={{ color: "#039855" }}
+                        strokeWidth={2}
+                      />
+                    ) : (
+                      <Triangle
+                        className="mt-0.5 size-3.5 shrink-0"
+                        style={{ color: "#dc6803" }}
+                        strokeWidth={2.4}
+                      />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block text-[11px] font-semibold" style={{ color: INK }}>
+                        {row.label}
+                      </span>
+                      <span className="block text-[10px]" style={{ color: INK_MUTED }}>
+                        {row.detail}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p
+                className="mt-3 rounded-lg px-2.5 py-2 text-[9.5px] leading-relaxed"
+                style={{ background: "#f3ffe5", color: LIME_DARK }}
+              >
+                Platform role is checked against the database on every request.
+              </p>
             </div>
           </div>
         </div>

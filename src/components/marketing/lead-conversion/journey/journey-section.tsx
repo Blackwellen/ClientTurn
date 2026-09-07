@@ -15,6 +15,13 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { LcpCta } from "../lcp-cta";
+import {
+  Reveal,
+  RevealGroup,
+  RevealItem,
+  panelEnter,
+  softFade,
+} from "../motion";
 import { BenefitStrip } from "../primitives";
 import { AnalyticsPanel } from "./analytics-panel";
 import { BookingPanel } from "./booking-panel";
@@ -70,45 +77,60 @@ export function JourneySection() {
     >
       <span className="lcp-texture" aria-hidden />
       <div className="lcp-shell">
-        <div className="lcp-band-head">
-          <div>
+        <RevealGroup className="lcp-band-head" step={0.1}>
+          <RevealItem>
             <span className="lcp-eyebrow">Complete the journey</span>
             <h2 id="lcp-journey-title">
               From response to revenue,{" "}
               <span className="lcp-accent">without the manual work.</span>
             </h2>
-          </div>
-          <p>
+          </RevealItem>
+          <RevealItem as="p">
             Book appointments, re-engage past enquiries and track performance
             across the full conversion journey.
-          </p>
+          </RevealItem>
+          <RevealItem>
           <LcpCta
             placement="lead_conversion_journey"
             className="lcp-btn lcp-btn-sm lcp-btn-ghost"
           >
             See the full platform <ArrowRight size={15} aria-hidden />
           </LcpCta>
-        </div>
+          </RevealItem>
+        </RevealGroup>
 
         <div className="lcp-columns">
-          {COLUMNS.map((column) => {
+          {COLUMNS.map((column, i) => {
             const Icon = column.icon;
             return (
-              <div key={column.eyebrow} className="lcp-col lcp-journey-col">
-                <span className="lcp-journey-icon" aria-hidden>
+              <RevealGroup
+                key={column.eyebrow}
+                className="lcp-col lcp-journey-col"
+                step={0.08}
+                delay={i * 0.08}
+              >
+                <RevealItem as="span" className="lcp-journey-icon" aria-hidden>
                   <Icon size={24} strokeWidth={2} />
-                </span>
-                <span className="lcp-eyebrow">{column.eyebrow}</span>
-                <h3>{column.title}</h3>
-                <p>{column.lead}</p>
-                <div className="lcp-col-panel">{column.panel}</div>
-                <BenefitStrip items={column.benefits} />
-              </div>
+                </RevealItem>
+                <RevealItem as="span" className="lcp-eyebrow">
+                  {column.eyebrow}
+                </RevealItem>
+                <RevealItem as="div">
+                  <h3>{column.title}</h3>
+                </RevealItem>
+                <RevealItem as="p">{column.lead}</RevealItem>
+                <RevealItem className="lcp-col-panel" variants={panelEnter}>
+                  {column.panel}
+                </RevealItem>
+                <RevealItem as="div" className="lcp-benefits-slot">
+                  <BenefitStrip items={column.benefits} />
+                </RevealItem>
+              </RevealGroup>
             );
           })}
         </div>
 
-        <div className="lcp-strip">
+        <Reveal className="lcp-strip" variants={softFade}>
           <span className="lcp-strip-mark" aria-hidden>
             <Image src="/Favicon.png" alt="" width={64} height={64} />
           </span>
@@ -122,7 +144,7 @@ export function JourneySection() {
           >
             Start Free <ArrowRight size={17} aria-hidden />
           </LcpCta>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

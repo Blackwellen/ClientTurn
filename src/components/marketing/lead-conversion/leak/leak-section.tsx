@@ -11,7 +11,7 @@ import {
   Mail,
   User,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { Reveal, RevealGroup, RevealItem } from "../motion";
 
 /**
  * Where the journey breaks today. Four cards, each showing the shape of the
@@ -123,7 +123,7 @@ export function LeakSection() {
     <section className="lcp-section lcp-leak" aria-labelledby="lcp-leak-title">
       <span className="lcp-bloom" aria-hidden />
       <div className="lcp-shell">
-        <div className="lcp-leak-head">
+        <Reveal className="lcp-leak-head">
           <h2 id="lcp-leak-title">
             The lead was interested.{" "}
             <span className="lcp-accent">The process broke.</span>
@@ -132,23 +132,16 @@ export function LeakSection() {
             Good opportunities get lost when follow-up is slow, qualification is
             inconsistent or handover is manual.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="lcp-leak-grid">
-          {CARDS.map((card, i) => {
+        <RevealGroup className="lcp-leak-grid" step={0.09} delay={0.05}>
+          {CARDS.map((card) => {
             const Icon = card.icon;
             return (
-              <motion.article
+              <RevealItem
+                as="article"
                 key={card.title}
                 className="lcp-leak-card"
-                initial={{ opacity: 0, y: 18 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.15 }}
-                transition={{
-                  duration: 0.5,
-                  delay: i * 0.09,
-                  ease: [0.22, 0.61, 0.36, 1],
-                }}
               >
                 <span className="lcp-leak-icon" data-tone={card.tone} aria-hidden>
                   <Icon size={19} strokeWidth={2} />
@@ -163,10 +156,10 @@ export function LeakSection() {
                     <small>{card.alert[1]}</small>
                   </span>
                 </div>
-              </motion.article>
+              </RevealItem>
             );
           })}
-        </div>
+        </RevealGroup>
       </div>
     </section>
   );

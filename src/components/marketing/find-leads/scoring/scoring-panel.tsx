@@ -4,6 +4,14 @@ import * as React from "react";
 import { gradeForScore } from "@/lib/prospects/scoring";
 import { trackEngagement } from "@/lib/marketing/track";
 import {
+  Collapse,
+  fadeUp,
+  motion,
+  stagger,
+  useReducedMotion,
+  T,
+} from "../motion";
+import {
   DEMO_FACTORS,
   DEMO_SCORE,
   EVIDENCE_ROWS,
@@ -67,6 +75,7 @@ export function ScoringPanel() {
   const [expanded, setExpanded] = React.useState<string | null>(
     DEMO_FACTORS[0]?.factor ?? null,
   );
+  const reduced = useReducedMotion();
   const grade = gradeForScore(DEMO_SCORE);
 
   return (
@@ -77,13 +86,7 @@ export function ScoringPanel() {
             <External size={11} />
             Open prospect
           </span>
-          <span
-            className="fl-mini-btn"
-            style={{
-              borderColor: "rgb(183 243 74 / 0.45)",
-              color: "var(--fl-lime-soft)",
-            }}
-          >
+          <span className="fl-mini-btn fl-mini-btn-primary">
             Approve for outreach
             <ChevronRight size={11} />
           </span>
@@ -107,14 +110,26 @@ export function ScoringPanel() {
           <div className="fl-ring">
             <svg viewBox="0 0 74 74" aria-hidden>
               <circle className="fl-ring-track" cx="37" cy="37" r={RING_RADIUS} />
-              <circle
+              <motion.circle
                 className="fl-ring-arc"
                 cx="37"
                 cy="37"
                 r={RING_RADIUS}
                 strokeDasharray={RING_CIRCUMFERENCE}
-                strokeDashoffset={
-                  RING_CIRCUMFERENCE * (1 - DEMO_SCORE / 100)
+                initial={
+                  reduced
+                    ? false
+                    : { strokeDashoffset: RING_CIRCUMFERENCE }
+                }
+                whileInView={{
+                  strokeDashoffset:
+                    RING_CIRCUMFERENCE * (1 - DEMO_SCORE / 100),
+                }}
+                viewport={{ once: true, amount: 0.6 }}
+                transition={
+                  reduced
+                    ? { duration: 0 }
+                    : { duration: 1.05, ease: [0.22, 1, 0.36, 1] }
                 }
               />
             </svg>
@@ -145,15 +160,27 @@ export function ScoringPanel() {
       </div>
 
       <div className="pt-4">
-        <ul className="fl-factors">
+        <motion.ul
+          className="fl-factors"
+          initial={reduced ? "shown" : "hidden"}
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.15 }}
+          variants={stagger(reduced ? 0 : 0.06)}
+        >
           {DEMO_FACTORS.map((factor, index) => {
             const FactorIcon = FACTOR_ICONS[index] ?? Target;
             const open = expanded === factor.factor;
             return (
-              <li className="fl-factor" key={factor.factor}>
-                <button
+              <motion.li
+                className="fl-factor"
+                key={factor.factor}
+                variants={fadeUp}
+              >
+                <motion.button
                   type="button"
                   className="fl-factor-btn"
+                  whileTap={reduced ? undefined : { scale: 0.995 }}
+                  transition={T.fast}
                   aria-expanded={open}
                   aria-controls={`fl-ev-${factor.factor}`}
                   onClick={() => {
@@ -177,13 +204,9 @@ export function ScoringPanel() {
                     {factor.earned} <span>/ {factor.max}</span>
                   </span>
                   <ChevronRight size={13} className="fl-factor-chevron" />
-                </button>
+                </motion.button>
 
-                <div
-                  className="fl-collapse"
-                  data-open={open}
-                  id={`fl-ev-${factor.factor}`}
-                >
+                <Collapse open={open} id={`fl-ev-${factor.factor}`}>
                   <div>
                     <dl className="fl-evidence">
                       <div>
@@ -204,11 +227,11 @@ export function ScoringPanel() {
                       </div>
                     </dl>
                   </div>
-                </div>
-              </li>
+                </Collapse>
+              </motion.li>
             );
           })}
-        </ul>
+        </motion.ul>
 
         {/* ------------------------------------------ positives / concerns */}
         <div className="fl-block" style={{ marginTop: 18 }}>

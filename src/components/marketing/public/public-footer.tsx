@@ -27,7 +27,9 @@ import {
 
 function FooterColumn({ title, links }: { title: string; links: readonly NavLink[] }) {
   return (
-    <div>
+    // Centred while the columns are stacked; left-aligned once they are
+    // actually columns, where a ragged left edge would read as a mistake.
+    <div className="text-center sm:text-left">
       <h3 className="pub-footer-heading">{title}</h3>
       <ul className="mt-4 space-y-2.5">
         {links.map((link) => (
@@ -47,8 +49,8 @@ export function PublicFooter() {
     <footer className="pub-footer">
       <PublicContainer className="py-16 sm:py-20">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-12 xl:grid-cols-[1.7fr_repeat(6,minmax(0,1fr))]">
-          <div className="sm:col-span-2 lg:col-span-4 xl:col-span-1">
-            <Logo href="/" height={56} imgClassName="h-11 w-auto" />
+          <div className="flex flex-col items-center text-center sm:col-span-2 sm:items-start sm:text-left lg:col-span-4 xl:col-span-1">
+            <Logo href="/" height={80} imgClassName="h-16 w-auto" />
             <p className="pub-small mt-5 max-w-xs">
               AI-assisted lead acquisition, follow-up, qualification and conversion — in one
               connected system.
@@ -74,7 +76,7 @@ export function PublicFooter() {
           <FooterColumn title="Legal & trust" links={FOOTER_LEGAL} />
         </div>
 
-        <div className="mt-14 flex flex-col gap-4 border-t border-[var(--pub-border)] pt-7 lg:flex-row lg:items-start lg:justify-between">
+        <div className="mt-14 flex flex-col items-center gap-4 border-t border-[var(--pub-border)] pt-7 text-center lg:flex-row lg:items-start lg:justify-between lg:text-left">
           <div className="space-y-2">
             <p className="text-[12px] text-[var(--pub-text-muted)]">
               &copy; {new Date().getFullYear()} {COMPANY.product}. All rights reserved.

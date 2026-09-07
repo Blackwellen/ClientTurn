@@ -1,9 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { COUNTER_DEFINITIONS } from "@/lib/find-leads/types";
 import { trackEngagement } from "@/lib/marketing/track";
-import { useStagedReveal } from "../../use-staged";
+import {
+  AnimatedBar,
+  CountUp,
+  fadeUp,
+  motion,
+  runStageAdvance,
+  stagger,
+  useSequence,
+  T,
+} from "../motion";
 import {
   DEMO_STAGES,
   HERO_REQUEST,
@@ -29,16 +39,16 @@ import {
  * The distinction matters commercially: a customer paying for sourcing wants
  * to see work being done on their behalf, and a terminal-styled log of
  * provider calls reads as somebody else's infrastructure. So the twelve stages
- * live inside the conversation, described in the product's own words — the
- * strings come from `STAGES`, not from this file.
+ * live inside the agent conversation, described in the product's own words —
+ * every string comes from `STAGES`, not from this file.
  *
- * Progress advances a few stages and then stops. There is no loop: an endless
- * animation on a marketing page is noise, and it would also imply a run that
- * never finishes.
+ * The run advances from stage 4 to stage 8 and then stops. Progress is
+ * `completed / 12`, exactly as `progressPercent` computes it, so the bar can
+ * never creep toward 100% while the work is actually stalled.
  */
 
-/** How far the demo walks: stages 5 and 6 complete after the initial frame. */
-const ADVANCE = 3;
+/** Stages the demo completes after the resting frame. */
+const ADVANCE = 5;
 
 function statusWord(stage: DemoStage): string {
   switch (stage.status) {
@@ -56,41 +66,39 @@ function statusWord(stage: DemoStage): string {
 }
 
 export function SourcingAgentChat() {
-  const { ref, revealed } = useStagedReveal(ADVANCE, 1400);
+  const { ref, step, reduced } = useSequence<HTMLDivElement>(ADVANCE, 1300);
 
   /**
    * Applies the demo's advance to the canonical stage list: each tick
    * completes the running stage and starts the next one.
    */
   const stages = React.useMemo<DemoStage[]>(() => {
-    const frontier = 4 + revealed;
+    const frontier = 4 + step;
     return DEMO_STAGES.map((stage) => {
       if (stage.number < frontier) {
         return {
           ...stage,
           status: "COMPLETED",
-          duration: stage.duration ?? `${18 + stage.number * 3}s`,
+          duration: stage.duration ?? `${15 + stage.number * 4}s`,
         };
       }
-      if (stage.number === frontier) {
-        return { ...stage, status: "RUNNING" };
-      }
+      if (stage.number === frontier) return { ...stage, status: "RUNNING" };
       return { ...stage, status: "PENDING", count: null, duration: null };
     });
-  }, [revealed]);
+  }, [step]);
 
   const done = stages.filter((s) => s.status === "COMPLETED").length;
   const percent = Math.round((done / stages.length) * 100);
-  const complete = done === stages.length;
+  const current = Math.min(done + 1, stages.length);
 
   return (
     <AppSurface
       title="Sourcing in progress"
-      subtitle={`Stage ${Math.min(done + 1, stages.length)} of ${stages.length}`}
+      subtitle={`Stage ${current} of ${stages.length}`}
       actions={
         <div className="flex items-center gap-2">
-          <Badge tone={complete ? "green" : "lime"} dot>
-            {complete ? "Complete" : "Running"}
+          <Badge tone="lime" dot>
+            Running
           </Badge>
           <span className="fl-mini-btn">
             <Pause size={11} />
@@ -102,7 +110,7 @@ export function SourcingAgentChat() {
       footer={
         <div className="fl-app-foot">
           <span className="fl-mini-btn">
-            View full run details
+            Run details
             <ChevronRight size={11} />
           </span>
           <span>You will be notified when it is ready.</span>
@@ -123,32 +131,42 @@ export function SourcingAgentChat() {
         </div>
 
         <div className="fl-progress">
-          <div
+          <AnimatedBar
+            percent={percent}
             className="fl-progress-track"
-            role="progressbar"
-            aria-label="Sourcing run progress"
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <span className="fl-progress-fill" style={{ width: `${percent}%` }} />
-          </div>
+            fillClassName="fl-progress-fill"
+            label="Sourcing run progress"
+          />
           <b>{percent}%</b>
         </div>
 
-        <ul className="fl-tiles">
+        <motion.ul
+          className="fl-tiles"
+          initial={reduced ? "shown" : "hidden"}
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.4 }}
+          variants={stagger(reduced ? 0 : 0.07)}
+        >
           {RUN_TILES.map((tile) => (
-            <li className="fl-tile" key={tile.label}>
+            <motion.li className="fl-tile" key={tile.label} variants={fadeUp}>
               <b>{tile.value}</b>
               <span>{tile.label}</span>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
 
         {/* ---------------------------------------------- the twelve stages */}
         <ol className="fl-stages" aria-label="Sourcing stages">
           {stages.map((stage) => (
-            <li key={stage.number} className="fl-stage" data-status={stage.status}>
+            <motion.li
+              key={stage.number}
+              className="fl-stage"
+              data-status={stage.status}
+              initial={reduced ? "shown" : "hidden"}
+              animate="shown"
+              variants={runStageAdvance}
+              transition={T.fast}
+            >
               <span aria-hidden className="fl-stage-mark">
                 {stage.status === "COMPLETED" ? (
                   <Check size={11} />
@@ -163,7 +181,7 @@ export function SourcingAgentChat() {
               </span>
               <span className="fl-stage-status">{statusWord(stage)}</span>
               <span className="fl-stage-time">{stage.duration ?? "—"}</span>
-            </li>
+            </motion.li>
           ))}
         </ol>
 
@@ -172,7 +190,9 @@ export function SourcingAgentChat() {
           {COUNTER_DEFINITIONS.map((counter) => (
             <div key={counter.key}>
               <dt title={counter.definition}>{counter.label}</dt>
-              <dd>{RUN_COUNTERS[counter.key].toLocaleString("en-GB")}</dd>
+              <dd>
+                <CountUp value={RUN_COUNTERS[counter.key]} />
+              </dd>
             </div>
           ))}
         </dl>
@@ -190,9 +210,11 @@ export function SourcingAgentChat() {
             >
               Sourcing allowance used
             </strong>
-            <div className="fl-meter" aria-hidden style={{ marginTop: 9 }}>
-              <span style={{ width: "25%" }} />
-            </div>
+            <AnimatedBar
+              percent={percent}
+              className="fl-meter"
+              fillClassName=""
+            />
             <small
               style={{
                 display: "block",
@@ -214,13 +236,14 @@ export function SourcingAgentChat() {
           )}
         </ul>
 
-        <button
-          type="button"
+        <Link
+          href="#analytics"
           className="fl-btn fl-btn-ghost mt-3 w-full"
           onClick={() => trackEngagement("find_leads_sourcing_demo", "counters")}
         >
-          Illustrative figures — see how sourcing is measured
-        </button>
+          See how sourcing is measured
+          <ChevronRight size={13} />
+        </Link>
       </div>
     </AppSurface>
   );

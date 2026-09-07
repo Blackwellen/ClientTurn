@@ -35,9 +35,20 @@ export type ShowcaseProvider = {
   id: string;
   name: string;
   category: string;
+  description: string;
   logo: string | null;
   availability: MarketingAvailability;
 };
+
+/**
+ * One marketplace tile, whichever half of the catalogue it came from.
+ *
+ * The section presents connectors and providers as a single marketplace under
+ * one category row — a visitor looking for "Booking" does not care that
+ * Calendly is an OAuth connection and Zapier is an inbound endpoint, only
+ * whether the tool is there. The state badge still tells them the difference.
+ */
+export type ShowcaseIntegration = ShowcaseProvider;
 
 /**
  * The category row, in the approved display order.
@@ -75,12 +86,19 @@ export function providerCategoryLabel(category: string): string {
 }
 
 /** Only the chips that actually match something, in the fixed order. */
-export function activeCategories(
-  connectors: ShowcaseConnector[],
-  providers: ShowcaseProvider[],
-): string[] {
+export function activeCategories(items: { category: string }[]): string[] {
   const present = new Set<string>();
-  for (const connector of connectors) present.add(connector.category);
-  for (const provider of providers) present.add(provider.category);
+  for (const item of items) present.add(item.category);
   return CATEGORY_ORDER.filter((name) => name === "All" || present.has(name));
+}
+
+/** Sort order inside the grid: by category row, then alphabetically. */
+export function sortIntegrations(items: ShowcaseIntegration[]): ShowcaseIntegration[] {
+  const rank = (category: string) => {
+    const index = CATEGORY_ORDER.indexOf(category as (typeof CATEGORY_ORDER)[number]);
+    return index === -1 ? CATEGORY_ORDER.length : index;
+  };
+  return [...items].sort(
+    (a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name),
+  );
 }

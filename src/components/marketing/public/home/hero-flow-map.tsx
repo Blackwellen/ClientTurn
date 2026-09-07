@@ -10,7 +10,7 @@ import {
   SquareCheckBig,
   User,
 } from "lucide-react";
-import Image from "next/image";
+import { Lockup } from "../ui";
 
 /**
  * The hero orchestration map.
@@ -280,11 +280,13 @@ export function HeroFlowMap({ className }: { className?: string }) {
           />
 
           {/* The new enquiry entering the platform. */}
-          <Connector d="M 102 199 L 102 246 C 102 260 110 266 124 267 L 271 268" dotted />
+          <Connector d="M 102 199 L 102 232 C 102 252 118 262 142 265 L 271 272" dotted />
 
-          {/* Platform out to the outbound lane. */}
+          {/* Platform out to the outbound lane. The descent finishes at x=4
+              before it reaches the lane label at y=324 — routed inside that,
+              it cut straight through the pill's corner. */}
           <Connector
-            d="M 271 281 L 120 281 C 58 281 34 300 34 336 L 34 414 C 34 440 44 452 66 452 L 15 452"
+            d="M 271 284 C 212 300 142 304 76 304 C 32 304 4 310 4 328 L 4 424 C 4 442 6 452 18 452"
             pulse
             duration={11}
             delay={2.2}
@@ -419,17 +421,10 @@ export function HeroFlowMap({ className }: { className?: string }) {
               "inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 60px -14px rgb(183 243 74 / 0.55)",
           }}
         >
-          <Image
-            src="/dark_background_logo.png"
-            alt=""
-            width={2172}
-            height={724}
-            priority
-            style={{ height: u(56), width: "auto" }}
-          />
+          <Lockup inkHeight={u(34)} priority />
           <p
             className="pub-eyebrow"
-            style={{ fontSize: u(8), letterSpacing: u(1.7), marginTop: u(-5) }}
+            style={{ fontSize: u(8), letterSpacing: u(1.7), marginTop: u(9) }}
           >
             Automate&nbsp;&middot;&nbsp;Qualify&nbsp;&middot;&nbsp;Convert
           </p>

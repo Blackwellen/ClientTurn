@@ -13,6 +13,7 @@ import {
   SubmitButton,
   TextField,
 } from "../_components/auth-form-parts";
+import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
 
 export function LoginForm({
   redirectTo,
@@ -94,6 +95,13 @@ export function LoginForm({
       </div>
 
       <SubmitButton pendingLabel="Signing in…" busy={Boolean(state?.ok && state.redirectTo)}>Sign in</SubmitButton>
+
+      <AuthDivider />
+
+      <GoogleAuthButton
+        label={"Sign in with Google"}
+        next={redirectTo}
+      />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Don&apos;t have an account?{" "}

@@ -1,41 +1,39 @@
 import type { Metadata } from "next";
 import {
   BarChart3,
-  CalendarCheck,
   CheckCircle2,
   Clock,
   Eye,
   Gauge,
   ListChecks,
-  MessageSquare,
   Route,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
-  Target,
   TrendingUp,
   UserCheck,
 } from "lucide-react";
-import "../evaluation.css";
 import {
   PublicContainer,
   PublicCard,
   SectionEyebrow,
-  SectionHeading,
   GlyphTile,
   GridTexture,
   Glow,
 } from "@/components/marketing/public/ui";
 import {
-  Panel,
-  PanelStack,
+  Band,
+  BandStack,
   StepStrip,
   StepRail,
   TrustRow,
   StatePill,
   IllustrativeTag,
 } from "@/components/marketing/public/shell";
-import { Reveal } from "@/components/marketing/public/reveal";
+import {
+  Reveal,
+  RevealGrid,
+  ScrollProgress,
+} from "@/components/marketing/public/reveal";
 import {
   PrimaryCta,
   SecondaryCta,
@@ -46,14 +44,12 @@ import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { Architecture } from "@/components/marketing/public/how-it-works/architecture";
 import { DecisionFlow } from "@/components/marketing/public/how-it-works/decision-flow";
 import {
-  Screen,
-  ScreenTable,
-  ScreenBlock,
-  ScreenRows,
-  Pill,
-  RangeChip,
-  FunnelBars,
-} from "@/components/marketing/public/screen";
+  AppFrame,
+  DashboardFrame,
+  AcquisitionFrame,
+  AnalyticsFrame,
+} from "@/components/marketing/public/home/app-frames";
+import { IllustrativeNote } from "@/components/marketing/public/screen";
 import {
   Donut,
   DonutLegend,
@@ -155,49 +151,19 @@ const structuredData = {
 };
 
 const INBOUND_STEPS = [
-  {
-    title: "Capture",
-    body: "An enquiry lands from a connected lead source, a form, an import or manual entry — with its source recorded.",
-  },
-  {
-    title: "Engage",
-    body: "Permitted follow-up begins, inside quiet hours and on a channel this contact is eligible for.",
-  },
-  {
-    title: "Qualify",
-    body: "Your questions are asked in order and your rules decide. The same answers always reach the same verdict.",
-  },
-  {
-    title: "Route",
-    body: "Booking, handover, nurture or review — anything the rules cannot match confidently goes to a person.",
-  },
+  { title: "Capture", body: "All enquiries in one inbox, with their source." },
+  { title: "Engage", body: "Automated, permitted follow-up." },
+  { title: "Qualify", body: "Apply your rules and scoring." },
+  { title: "Route", body: "Book, hand over or nurture." },
 ] as const;
 
 const OUTBOUND_STEPS = [
-  {
-    title: "Profile",
-    body: "Your business, services and ideal customer, held once and reused by every search.",
-  },
-  {
-    title: "Search",
-    body: "Describe who you want in plain English. ClientTurn turns it into a structured search plan.",
-  },
-  {
-    title: "Source",
-    body: "You approve the targeting, then the plan runs against licensed data providers.",
-  },
-  {
-    title: "Verify",
-    body: "Contact details and company data are checked for validity, freshness and eligibility.",
-  },
-  {
-    title: "Outreach",
-    body: "Email-first sequences run under sender limits, suppression checks and campaign budgets.",
-  },
-  {
-    title: "Lead",
-    body: "A prospect who engages is promoted to a lead and joins the same qualification path.",
-  },
+  { title: "Profile", body: "Tell us about your business." },
+  { title: "Search", body: "Turn a plain-English brief into a plan." },
+  { title: "Source", body: "Find prospects from licensed providers." },
+  { title: "Verify", body: "Check contact details and eligibility." },
+  { title: "Outreach", body: "Run controlled campaigns." },
+  { title: "Lead", body: "Promote engaged prospects to leads." },
 ] as const;
 
 const SOURCES = [
@@ -209,43 +175,13 @@ const SOURCES = [
   { label: "Other", value: 37, colour: "#5b6577" },
 ];
 
-const STOP_STATES = [
-  {
-    icon: MessageSquare,
-    title: "Reply received",
-    body: "The sequence stops and the lead moves into qualification.",
-    tone: "go" as const,
-    state: "Stopped",
-  },
-  {
-    icon: CalendarCheck,
-    title: "Booking confirmed",
-    body: "The sequence stops. Nothing further is sent about that opportunity.",
-    tone: "go" as const,
-    state: "Stopped",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Opt-out or complaint",
-    body: "The contact is suppressed across every campaign, permanently.",
-    tone: "stop" as const,
-    state: "Suppressed",
-  },
-  {
-    icon: Gauge,
-    title: "Sender health or budget",
-    body: "Sending pauses until the problem is resolved or the limit is raised.",
-    tone: "hold" as const,
-    state: "Paused",
-  },
-];
 
 export default function HowItWorksPage() {
   return (
     <>
+      <ScrollProgress />
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- built from a local constant; no user input reaches this string.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
@@ -289,10 +225,6 @@ export default function HowItWorksPage() {
                     label: "Qualification rules you configure",
                   },
                   {
-                    icon: <ShieldCheck className="size-3.5" />,
-                    label: "Eligibility re-checked before every send",
-                  },
-                  {
                     icon: <BarChart3 className="size-3.5" />,
                     label: "Measured from first signal to won",
                   },
@@ -308,10 +240,9 @@ export default function HowItWorksPage() {
       </section>
 
       <PublicContainer>
-        <PanelStack>
+        <BandStack>
           {/* ---------------------------------------------------- inbound --- */}
-          <Reveal>
-            <Panel id="inbound" aria-labelledby="hiw-inbound">
+          <Band id="inbound" aria-labelledby="hiw-inbound">
               <div className="pub-split">
                 <div>
                   <div className="pub-head-row">
@@ -328,68 +259,21 @@ export default function HowItWorksPage() {
                     enquiry against your own criteria and route it to the right
                     next step — without anyone having to remember to chase.
                   </p>
+
+                  <StepRail steps={INBOUND_STEPS} />
                 </div>
 
-                <Screen
-                  active="Leads"
-                  title="Leads"
-                  meta={<RangeChip>All sources</RangeChip>}
-                  label="The ClientTurn leads list, showing each lead with its source, current status and last activity, above a qualification outcome summary."
-                >
-                  <ScreenTable
-                    head={["Name", "Source", "Status", "Last activity"]}
-                    rows={[
-                      [
-                        "Sarah Mitchell",
-                        "Website",
-                        <Pill key="s" tone="new">
-                          New
-                        </Pill>,
-                        "2 minutes ago",
-                      ],
-                      [
-                        "James Carter",
-                        "Meta Lead Ads",
-                        <Pill key="j" tone="progress">
-                          In follow-up
-                        </Pill>,
-                        "18 minutes ago",
-                      ],
-                      [
-                        "Rachel Brooks",
-                        "Phone",
-                        <Pill key="r" tone="won">
-                          Qualified
-                        </Pill>,
-                        "1 hour ago",
-                      ],
-                      [
-                        "Emma Lewis",
-                        "Website",
-                        <Pill key="e" tone="neutral">
-                          Review
-                        </Pill>,
-                        "2 hours ago",
-                      ],
-                    ]}
-                  />
-                  <ScreenBlock title="Qualification outcome">
-                    <p className="text-[11.5px] leading-relaxed text-[#4a5568]">
-                      Service in scope · Postcode inside your area · Timing
-                      within 30 days — <strong>Qualified</strong>, routed to
-                      booking.
-                    </p>
-                  </ScreenBlock>
-                </Screen>
+                <div>
+                  <AppFrame label="ClientTurn lead conversion dashboard showing connection status, lead and booking counts, the conversion funnel and estimated pipeline.">
+                    <DashboardFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
               </div>
-
-              <StepRail steps={INBOUND_STEPS} />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* --------------------------------------------------- outbound --- */}
-          <Reveal>
-            <Panel id="outbound" aria-labelledby="hiw-outbound">
+          <Band id="outbound" aria-labelledby="hiw-outbound">
               <div className="pub-split">
                 <div>
                   <div className="pub-head-row">
@@ -407,55 +291,25 @@ export default function HowItWorksPage() {
                     sources from licensed providers, verifies what it finds and
                     coordinates permitted outreach.
                   </p>
+
+                  <StepRail steps={OUTBOUND_STEPS} />
                 </div>
 
-                <Screen
-                  active="Find Leads"
-                  title="Search plan"
-                  meta={<RangeChip>Review before running</RangeChip>}
-                  label="The Find Leads search plan, showing the industry, location, company size and role a search will target, with estimated matched, contactable and verified counts."
-                >
-                  <ScreenBlock title="Targeting">
-                    <ScreenRows
-                      rows={[
-                        ["Industry", "Property management"],
-                        ["Location", "Within 40 miles of Bournemouth"],
-                        ["Company size", "5 to 200 employees"],
-                        ["Role", "Property or facilities manager"],
-                      ]}
-                    />
-                  </ScreenBlock>
-
-                  <ScreenBlock
-                    title="Estimated results"
-                    action={
-                      <span className="text-[11px] font-semibold text-[#3f6b10]">
-                        Review before sourcing
-                      </span>
-                    }
-                  >
-                    <FunnelBars
-                      rows={[
-                        { label: "Matched", value: 1200, colour: "#2f7ff0" },
-                        { label: "Contactable", value: 860, colour: "#4fb3f7" },
-                        { label: "Verified", value: 640, colour: "#7bd36f" },
-                      ]}
-                    />
-                  </ScreenBlock>
-                </Screen>
+                <div>
+                  <AppFrame label="ClientTurn Find Leads screen showing a natural-language target, the filters derived from it and a list of verified prospects with scores.">
+                    <AcquisitionFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
               </div>
-
-              <StepRail steps={OUTBOUND_STEPS} />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------------------- decision layer --- */}
-          <Reveal>
-            <Panel id="decision-layer" aria-labelledby="hiw-decision">
+          <Band id="decision-layer" aria-labelledby="hiw-decision">
               <div className="pub-head-row">
                 <SectionEyebrow>Decision layer</SectionEyebrow>
                 <StepStrip
-                  steps={["Rules", "Scoring", "Contactability", "Suppression"]}
+                  steps={["Rules", "Scoring", "Contactability", "Suppression", "Lead"]}
                 />
               </div>
               <h2 id="hiw-decision" className="pub-h2">
@@ -467,21 +321,21 @@ export default function HowItWorksPage() {
                 your criteria, and it never makes a commitment on your behalf.
               </p>
 
-              <div className="pub-split pub-split-wide mt-10">
-                <div className="pub-grid pub-grid-2">
+              <div className="pub-split pub-split-narrow mt-10">
+                <RevealGrid className="pub-grid pub-grid-3">
                   <PublicCard interactive className="pub-cell">
                     <GlyphTile icon={ListChecks} size={38} glyph={18} />
                     <h3 className="mt-4">Qualification rules</h3>
                     <p>
-                      Your configured questions, service scope and routing rules
-                      define what a qualified opportunity is.
+                      Use your questions, rules and service scope to define what
+                      a qualified opportunity is.
                     </p>
                     <ul className="pub-ticks">
                       {[
                         "Custom questions, in your order",
                         "Service and service-area rules",
                         "Automatic routing on the outcome",
-                        "Deterministic, repeatable verdicts",
+                        "Explainable, repeatable outcomes",
                       ].map((item) => (
                         <li key={item}>
                           <CheckCircle2 className="size-3.5" aria-hidden />
@@ -493,18 +347,17 @@ export default function HowItWorksPage() {
 
                   <PublicCard interactive className="pub-cell">
                     <GlyphTile icon={ShieldCheck} size={38} glyph={18} />
-                    <h3 className="mt-4">Contactability and consent</h3>
+                    <h3 className="mt-4">Contactability &amp; consent</h3>
                     <p>
-                      Every channel is checked against relationship type,
-                      opt-out status, policy and provider availability before a
-                      send.
+                      Only contact records that are eligible, based on
+                      verification, consent and your policies.
                     </p>
                     <ul className="pub-ticks">
                       {[
                         "Address and number validity",
                         "Channel eligibility per contact",
                         "Consent and relationship checks",
-                        "Quiet hours and attempt limits",
+                        "One suppression list, checked before every send",
                       ].map((item) => (
                         <li key={item}>
                           <CheckCircle2 className="size-3.5" aria-hidden />
@@ -515,27 +368,20 @@ export default function HowItWorksPage() {
                   </PublicCard>
 
                   <PublicCard interactive className="pub-cell">
-                    <GlyphTile icon={Sparkles} size={38} glyph={18} />
-                    <h3 className="mt-4">Explainable scoring</h3>
+                    <GlyphTile icon={Gauge} size={38} glyph={18} />
+                    <h3 className="mt-4">Stop conditions</h3>
                     <p>
-                      Prospect scores show the evidence behind them, where it
-                      came from, how fresh it is and how confident the match is
-                      — rather than a number with no argument attached.
+                      Automatically stop or pause outreach when a reply, a
+                      booking or any other condition is met. None of them can be
+                      bypassed.
                     </p>
-                  </PublicCard>
-
-                  <PublicCard interactive className="pub-cell">
-                    <GlyphTile icon={Target} size={38} glyph={18} />
-                    <h3 className="mt-4">Suppression</h3>
-                    <p>One list, re-checked immediately before every send.</p>
                     <ul className="pub-ticks">
                       {[
-                        "Opt-out",
-                        "Invalid contact",
-                        "Complaint",
-                        "Already booked",
-                        "Active conversation",
-                        "Platform suppression",
+                        "Reply received",
+                        "Booking confirmed",
+                        "Opt-out or complaint",
+                        "Bounce or invalid contact",
+                        "Budget or sender-health limits",
                       ].map((item) => (
                         <li key={item}>
                           <CheckCircle2 className="size-3.5" aria-hidden />
@@ -544,7 +390,7 @@ export default function HowItWorksPage() {
                       ))}
                     </ul>
                   </PublicCard>
-                </div>
+                </RevealGrid>
 
                 <PublicCard className="pub-cell">
                   <div className="mb-5 flex items-center justify-between gap-3">
@@ -554,61 +400,10 @@ export default function HowItWorksPage() {
                   <DecisionFlow />
                 </PublicCard>
               </div>
-            </Panel>
-          </Reveal>
-
-          {/* -------------------------------------------- stop conditions --- */}
-          <Reveal>
-            <Panel aria-labelledby="hiw-stop">
-              <div className="pub-split pub-split-narrow">
-                <div>
-                  <SectionEyebrow className="mb-5">
-                    Stop conditions
-                  </SectionEyebrow>
-                  <h2 id="hiw-stop" className="pub-h2">
-                    ClientTurn knows when to stop.
-                  </h2>
-                  <p className="pub-lead mt-5">
-                    Chasing someone who has already replied, already booked or
-                    already asked you to stop is how automation loses a
-                    customer. Every stop condition is re-checked immediately
-                    before each send, and none of them can be bypassed.
-                  </p>
-                  <ul className="pub-checks">
-                    {[
-                      "A reply ends the sequence and opens the conversation.",
-                      "A confirmed booking ends the sequence.",
-                      "Opt-outs, bounces and complaints suppress the contact permanently.",
-                      "Won work stops further outreach on that opportunity.",
-                      "A paused campaign, an exhausted budget or a sender-health problem holds everything queued behind it.",
-                    ].map((item) => (
-                      <li key={item}>
-                        <CheckCircle2 className="size-4" aria-hidden />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="pub-grid pub-grid-2">
-                  {STOP_STATES.map((item) => (
-                    <PublicCard key={item.title} interactive className="pub-cell">
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <GlyphTile icon={item.icon} size={38} glyph={17} />
-                        <StatePill tone={item.tone}>{item.state}</StatePill>
-                      </div>
-                      <h3>{item.title}</h3>
-                      <p>{item.body}</p>
-                    </PublicCard>
-                  ))}
-                </div>
-              </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ----------------------------------------------- measurement --- */}
-          <Reveal>
-            <Panel aria-labelledby="hiw-measure">
+          <Band aria-labelledby="hiw-measure">
               <div className="pub-head-row">
                 <SectionEyebrow>Measure and improve</SectionEyebrow>
                 <StepStrip
@@ -624,27 +419,15 @@ export default function HowItWorksPage() {
                 the journey stalls.
               </p>
 
-              <div className="pub-split pub-split-wide mt-10">
-                <Screen
-                  active="Analytics"
-                  title="Prospect to customer journey"
-                  meta={<RangeChip />}
-                  label="The ClientTurn analytics view, showing counts at each stage from prospects discovered through verified, contacted, replies, qualified and converted, to won."
-                >
-                  <FunnelBars
-                    rows={[
-                      { label: "Prospects", value: 1248, colour: "#2f7ff0" },
-                      { label: "Verified", value: 892, colour: "#4fb3f7" },
-                      { label: "Contacted", value: 604, colour: "#7f9df5" },
-                      { label: "Replies", value: 428, colour: "#9b7ff0" },
-                      { label: "Qualified", value: 312, colour: "#5fd39a" },
-                      { label: "Converted", value: 186, colour: "#7bd36f" },
-                      { label: "Won", value: 98, colour: "#b7f34a" },
-                    ]}
-                  />
-                </Screen>
+              <div className="pub-split pub-split-narrow mt-10">
+                <div>
+                  <AppFrame label="ClientTurn analytics screen showing lead, qualified, appointment and converted counts with conversion and lead-source performance charts.">
+                    <AnalyticsFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
 
-                <div className="pub-grid">
+                <div className="pub-grid pub-grid-2">
                   <PublicCard className="pub-cell">
                     <div className="mb-4 flex items-center justify-between gap-3">
                       <h3>Lead sources</h3>
@@ -678,10 +461,64 @@ export default function HowItWorksPage() {
                       />
                     </div>
                   </PublicCard>
+
+                  <PublicCard className="pub-cell sm:col-span-2">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3>Campaign performance</h3>
+                      <IllustrativeTag />
+                    </div>
+                    <div className="pub-screen-scroll">
+                      <table className="w-full border-collapse text-[12px]">
+                        <thead>
+                          <tr className="text-[var(--pub-text-muted)]">
+                            <th scope="col" className="pb-2 text-left font-semibold">
+                              Campaign
+                            </th>
+                            <th scope="col" className="pb-2 text-right font-semibold">
+                              Contacted
+                            </th>
+                            <th scope="col" className="pb-2 text-right font-semibold">
+                              Replied
+                            </th>
+                            <th scope="col" className="pb-2 text-right font-semibold">
+                              Booked
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-[var(--pub-text-secondary)]">
+                          {[
+                            ["Roofing Q4", 124, 32, "26%"],
+                            ["Facilities managers", 98, 18, "18%"],
+                            ["Commercial builders", 76, 12, "16%"],
+                          ].map(([name, contacted, replied, booked]) => (
+                            <tr
+                              key={String(name)}
+                              className="border-t border-[var(--lr-border-subtle)]"
+                            >
+                              <th
+                                scope="row"
+                                className="py-2.5 text-left font-medium text-[var(--pub-text)]"
+                              >
+                                {name}
+                              </th>
+                              <td className="py-2.5 text-right tabular-nums">
+                                {contacted}
+                              </td>
+                              <td className="py-2.5 text-right tabular-nums">
+                                {replied}
+                              </td>
+                              <td className="py-2.5 text-right tabular-nums">
+                                {booked}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </PublicCard>
                 </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------- final CTA --- */}
           <Reveal>
@@ -694,6 +531,7 @@ export default function HowItWorksPage() {
                 </>
               }
               body="Start with your own leads and your own rules. Connect a source, configure your questions and watch the whole path run before you pay anything."
+              assurances={["Quick setup", "No card required", "Cancel anytime"]}
               actions={
                 <>
                   <PrimaryCta placement="how_it_works_final" size="lg">
@@ -732,7 +570,7 @@ export default function HowItWorksPage() {
               ]}
             />
           </Reveal>
-        </PanelStack>
+        </BandStack>
       </PublicContainer>
     </>
   );

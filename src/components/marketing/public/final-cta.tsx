@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Check } from "lucide-react";
 import { PublicCard, SectionHeading } from "./ui";
 
 /**
@@ -15,12 +16,15 @@ export function FinalCtaBand({
   title,
   body,
   actions,
+  assurances,
   points,
 }: {
   eyebrow: string;
   title: React.ReactNode;
   body: string;
   actions: React.ReactNode;
+  /** Short reassurances under the buttons, as the reference lays them out. */
+  assurances?: readonly string[];
   points: readonly { icon: React.ReactNode; title: string; body: string }[];
 }) {
   return (
@@ -34,6 +38,17 @@ export function FinalCtaBand({
             description={body}
           />
           <div className="mt-8 flex flex-wrap items-center gap-3">{actions}</div>
+
+          {assurances && (
+            <ul className="pub-assurances">
+              {assurances.map((item) => (
+                <li key={item}>
+                  <Check aria-hidden className="size-3.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <ul className="pub-final-points">

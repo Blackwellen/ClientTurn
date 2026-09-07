@@ -18,14 +18,18 @@ import {
 } from "@/lib/affiliates/portal";
 import {
   buildLifecycle,
-  comparisonLabel,
   countDelta,
   getDailySeries,
   getOverview,
   rateDelta,
 } from "@/lib/affiliates/analytics";
 import { formatMinor } from "@/lib/affiliates/types";
-import { formatPercent, parseRange } from "@/lib/affiliates/programme";
+import {
+  formatPercent,
+  parseCustomRange,
+  rangeComparisonLabel,
+  parseRange,
+} from "@/lib/affiliates/programme";
 import {
   Donut,
   KpiCard,
@@ -56,6 +60,8 @@ export default async function AffiliateReferralsPage({
 }: {
   searchParams: Promise<{
     range?: string;
+    from?: string;
+    to?: string;
     page?: string;
     q?: string;
     status?: string;
@@ -67,11 +73,12 @@ export default async function AffiliateReferralsPage({
 
   const params = await searchParams;
   const range = parseRange(params.range ?? affiliate.preferences.defaultRange);
+  const custom = parseCustomRange(params.from, params.to);
   const currency = affiliate.policy.currency;
 
   const [overview, series, page, events] = await Promise.all([
-    getOverview(affiliate.id, range, affiliate.joinedAt),
-    getDailySeries(affiliate.id, range),
+    getOverview(affiliate.id, range, affiliate.joinedAt, custom),
+    getDailySeries(affiliate.id, range, custom),
     listReferralPage(affiliate.id, {
       page: Number(params.page ?? 1),
       search: params.q,
@@ -81,7 +88,7 @@ export default async function AffiliateReferralsPage({
   ]);
 
   const { current, previous } = overview;
-  const baseline = comparisonLabel(range);
+  const baseline = rangeComparisonLabel(range, overview.days);
   const clicks = series.map((point) => point.clicks);
   const signups = series.map((point) => point.signups);
   const paid = series.map((point) => point.paidCustomers);
@@ -101,6 +108,8 @@ export default async function AffiliateReferralsPage({
             basePath="/affiliates/app/referrals"
             current={range}
             extraParams={{ q: params.q, status: params.status }}
+            customFrom={custom?.fromDate}
+            customTo={custom?.toDate}
           />
         }
       />

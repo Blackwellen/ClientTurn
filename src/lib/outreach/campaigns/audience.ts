@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GRADES, type CampaignDraft, type Grade } from "../campaign-draft";
+import { milesToKm } from "./geography";
 
 /**
  * Audience sizing for the wizard (V4 section 16.9).
@@ -25,6 +26,14 @@ export type AudienceEstimate = {
   total: number;
   /** Null when the count could not be produced at all. */
   available: boolean;
+  /**
+   * How the count was produced. "RADIUS" is a real distance measurement;
+   * "NAMES" matched location names as text, which is weaker and the card says
+   * so rather than presenting the two as the same number.
+   */
+  method: "RADIUS" | "NAMES";
+  /** Set when a radius was asked for but the place could not be geocoded. */
+  radiusUnresolved: boolean;
   gradeDistribution: { grade: Grade; count: number; percent: number }[];
 };
 
@@ -110,6 +119,70 @@ const needsCompanyJoin = (draft: CampaignDraft) =>
  * denominator is everyone the criteria match rather than everyone who already
  * passes the grade filter.
  */
+/**
+ * The audience counted by distance from a resolved centre.
+ *
+ * Returns null when the function is unavailable, so the caller falls back to
+ * the name-matched count rather than showing nothing.
+ */
+async function countByRadius(
+  businessId: string,
+  draft: CampaignDraft,
+  centre: { lat: number; lon: number },
+  radiusMiles: number,
+): Promise<AudienceEstimate | null> {
+  const admin = createAdminClient();
+  const { audience } = draft;
+
+  // `outreach_audience_geo_count` ships with 0060, which post-dates the last
+  // `database.types.ts` generation, so the generated RPC union does not name it
+  // yet. Cast at this one call rather than widening the client everywhere.
+  const rpc = admin.rpc as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: { grade: string; prospect_count: number }[] | null; error: unknown }>;
+
+  const { data, error } = await rpc("outreach_audience_geo_count", {
+    p_business_id: businessId,
+    p_lat: centre.lat,
+    p_lon: centre.lon,
+    p_radius_km: milesToKm(radiusMiles),
+    p_industries: audience.industries.length > 0 ? audience.industries : null,
+    p_company_sizes: audience.companySizes.length > 0 ? audience.companySizes : null,
+    // Matched with ILIKE inside the function, so a role is a contains match
+    // exactly as it is on the name-matched path.
+    p_roles:
+      audience.roles.length > 0 ? audience.roles.map((role) => `%${role}%`) : null,
+    p_exclude_customers: audience.exclusions.existingCustomers,
+  });
+
+  if (error) return null;
+
+  const rows = data ?? [];
+  const byGrade = new Map(rows.map((row) => [row.grade, Number(row.prospect_count)]));
+  const existing = rows.reduce((total, row) => total + Number(row.prospect_count), 0);
+
+  const sourcingTarget =
+    audience.source === "EXISTING_ONLY" ? 0 : draft.budget.prospectsPerRun;
+
+  return {
+    existing,
+    sourcingTarget,
+    total: audience.source === "NEW_ONLY" ? sourcingTarget : existing + sourcingTarget,
+    available: true,
+    method: "RADIUS",
+    radiusUnresolved: false,
+    gradeDistribution: GRADES.map((grade) => {
+      const count = byGrade.get(grade) ?? 0;
+      return {
+        grade,
+        count,
+        percent: existing > 0 ? Math.round((count / existing) * 100) : 0,
+      };
+    }).reverse(),
+  };
+}
+
 export async function estimateAudience(
   businessId: string,
   draft: CampaignDraft,
@@ -119,6 +192,21 @@ export async function estimateAudience(
   const select = join
     ? "id, prospect_companies!inner(id)"
     : "id";
+
+  // A radius is a distance, so when there is a resolved centre the count is a
+  // real geographic one rather than a name match. `outreach_audience_geo_count`
+  // does the bounding box and the great-circle test in one round trip.
+  const centre = draft.audience.center;
+  const radiusMiles = draft.audience.radiusMiles;
+
+  if (radiusMiles && radiusMiles > 0 && centre) {
+    const geo = await countByRadius(businessId, draft, centre, radiusMiles);
+    if (geo) return geo;
+  }
+
+  // A radius was asked for and could not be measured. Saying so beats
+  // returning a name-matched number that looks like it honoured the radius.
+  const radiusUnresolved = Boolean(radiusMiles && radiusMiles > 0 && !centre);
 
   const base = () =>
     applyAudience(
@@ -157,6 +245,8 @@ export async function estimateAudience(
       total:
         draft.audience.source === "NEW_ONLY" ? sourcingTarget : existing + sourcingTarget,
       available: true,
+      method: "NAMES",
+      radiusUnresolved,
       gradeDistribution: distribution,
     };
   } catch {
@@ -167,6 +257,8 @@ export async function estimateAudience(
       sourcingTarget: 0,
       total: 0,
       available: false,
+      method: "NAMES",
+      radiusUnresolved: false,
       gradeDistribution: [],
     };
   }

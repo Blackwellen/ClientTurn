@@ -4,10 +4,20 @@ import * as React from "react";
 import { CONVERSION_GOALS } from "@/lib/outreach/campaign-draft";
 import { trackEngagement } from "@/lib/marketing/track";
 import {
+  AnimatePresence,
+  fadeUp,
+  motion,
+  stagger,
+  useReducedMotion,
+  wizardStepSlide,
+  T,
+} from "../motion";
+import {
   CAMPAIGN_CHECKS,
   CAMPAIGN_LIMITS,
   CAMPAIGN_SEQUENCE,
   CAMPAIGN_STEPS,
+  GOAL_BLURBS,
 } from "../data";
 import {
   AppSurface,
@@ -46,6 +56,15 @@ const GOALS = CONVERSION_GOALS.filter((goal) =>
 export function CampaignPanel() {
   const [step, setStep] = React.useState(0);
   const [goal, setGoal] = React.useState(GOALS[0]?.value ?? "");
+  const reduced = useReducedMotion();
+  // Which way the wizard is travelling, so a panel enters from the side
+  // the visitor came from rather than always from the right.
+  const [direction, setDirection] = React.useState<1 | -1>(1);
+
+  function goToStep(next: number) {
+    setDirection(next >= step ? 1 : -1);
+    setStep(next);
+  }
 
   return (
     <AppSurface
@@ -81,26 +100,41 @@ export function CampaignPanel() {
               index === step ? "current" : index < step ? "done" : "todo"
             }
           >
-            <button
+            <motion.button
               type="button"
               className="fl-step-dot"
               aria-current={index === step ? "step" : undefined}
               aria-label={`Step ${wizardStep.number}: ${wizardStep.label}`}
               onClick={() => {
-                setStep(index);
+                goToStep(index);
                 trackEngagement(
                   "find_leads_campaign_interaction",
                   wizardStep.label,
                 );
               }}
+              animate={
+                reduced || index !== step
+                  ? { scale: 1 }
+                  : { scale: [1, 1.14, 1] }
+              }
+              whileTap={reduced ? undefined : { scale: 0.92 }}
+              transition={T.fast}
             >
               {index < step ? <Check size={11} /> : wizardStep.number}
-            </button>
+            </motion.button>
             <span>{wizardStep.label}</span>
           </li>
         ))}
       </ol>
 
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={step}
+          initial={reduced ? "shown" : "hidden"}
+          animate="shown"
+          exit={reduced ? "shown" : "exit"}
+          variants={wizardStepSlide(direction)}
+        >
       {/* -------------------------------------------------------- goal */}
       <div className="fl-block" style={{ marginTop: 20 }}>
         <p className="fl-sublabel">Campaign goal</p>
@@ -109,9 +143,12 @@ export function CampaignPanel() {
             const GoalIcon = GOAL_ICONS[index] ?? Calendar;
             return (
               <li key={option.value}>
-                <button
+                <motion.button
                   type="button"
                   className="fl-goal"
+                  whileHover={reduced ? undefined : { y: -2 }}
+                  whileTap={reduced ? undefined : { scale: 0.98 }}
+                  transition={T.fast}
                   data-selected={goal === option.value}
                   aria-pressed={goal === option.value}
                   onClick={() => {
@@ -131,8 +168,10 @@ export function CampaignPanel() {
                     )}
                     <strong>{option.label}</strong>
                   </span>
-                  <small>{option.description}</small>
-                </button>
+                  <small>
+                    {GOAL_BLURBS[option.value] ?? option.description}
+                  </small>
+                </motion.button>
               </li>
             );
           })}
@@ -169,9 +208,14 @@ export function CampaignPanel() {
       {/* --------------------------------------------- outreach sequence */}
       <div className="fl-block">
         <p className="fl-sublabel">Outreach sequence (email first)</p>
-        <ol className="fl-seq">
+        <motion.ol
+          className="fl-seq"
+          initial={reduced ? "shown" : "hidden"}
+          animate="shown"
+          variants={stagger(reduced ? 0 : 0.07)}
+        >
           {CAMPAIGN_SEQUENCE.map((item, index) => (
-            <li key={item.day}>
+            <motion.li key={item.day} variants={fadeUp}>
               <span aria-hidden className="fl-seq-dot">
                 {index + 1}
               </span>
@@ -186,9 +230,9 @@ export function CampaignPanel() {
               </div>
               <span aria-hidden className="fl-switch-sm" />
               <span className="fl-mini-btn">Edit</span>
-            </li>
+            </motion.li>
           ))}
-        </ol>
+        </motion.ol>
         <span className="fl-addstep">
           <Plus size={12} />
           Add step
@@ -216,15 +260,22 @@ export function CampaignPanel() {
       {/* -------------------------------------------------------- checks */}
       <div className="fl-block">
         <p className="fl-sublabel">Checked before launch</p>
-        <ul className="fl-checks">
+        <motion.ul
+          className="fl-checks"
+          initial={reduced ? "shown" : "hidden"}
+          animate="shown"
+          variants={stagger(reduced ? 0 : 0.06)}
+        >
           {CAMPAIGN_CHECKS.map((check) => (
-            <li key={check}>
+            <motion.li key={check} variants={fadeUp}>
               <Check size={13} />
               {check}
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
       </div>
+        </motion.div>
+      </AnimatePresence>
     </AppSurface>
   );
 }

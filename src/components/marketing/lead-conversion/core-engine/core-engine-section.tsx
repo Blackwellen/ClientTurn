@@ -1,7 +1,16 @@
 "use client";
 
 import { ArrowRight, Clock, Eye, GitBranch, Inbox, ListChecks, MessagesSquare, ScrollText, ShieldCheck, UserCheck } from "lucide-react";
+import { motion } from "motion/react";
 import { LcpCta } from "../lcp-cta";
+import {
+  Reveal,
+  RevealGroup,
+  RevealItem,
+  panelEnter,
+  pathDraw,
+  softFade,
+} from "../motion";
 import { BenefitStrip } from "../primitives";
 import { CapturePanel } from "./capture-panel";
 import { FollowUpPanel } from "./follow-up-panel";
@@ -45,20 +54,29 @@ const COLUMNS = [
   },
 ];
 
-/** The lime thread that reads left to right across the three stages. */
+/**
+ * The lime thread that reads left to right across the three stages. It leaves
+ * each circle and climbs clear of the eyebrow beside it before running across,
+ * so the line never crosses a label.
+ */
 function Rail() {
   return (
     <div className="lcp-rail" aria-hidden>
       <svg viewBox="0 0 1200 40" preserveAspectRatio="none">
-        {[0, 408].map((shift) => (
-          <path
+        {[0, 408].map((shift, i) => (
+          <motion.path
             key={shift}
-            d={`M${42 + shift} 30 C ${112 + shift} 30 ${132 + shift} 6 ${204 + shift} 6 L ${340 + shift} 6 C ${390 + shift} 6 ${386 + shift} 30 ${404 + shift} 30`}
+            d={`M${40 + shift} 24 C ${52 + shift} 24 ${54 + shift} 4 ${68 + shift} 4 L ${376 + shift} 4 C ${390 + shift} 4 ${392 + shift} 24 ${404 + shift} 24`}
             fill="none"
             stroke="#b7f34a"
             strokeOpacity="0.42"
             strokeWidth="1"
             vectorEffect="non-scaling-stroke"
+            variants={pathDraw}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.6 }}
+            transition={{ delay: 0.15 + i * 0.25 }}
           />
         ))}
       </svg>
@@ -75,47 +93,60 @@ export function CoreEngineSection() {
     >
       <span className="lcp-texture" aria-hidden />
       <div className="lcp-shell">
-        <div className="lcp-band-head">
-          <div>
+        <RevealGroup className="lcp-band-head" step={0.1}>
+          <RevealItem>
             <span className="lcp-eyebrow">The core engine</span>
             <h2 id="lcp-core-title">
               From capture to qualification,{" "}
               <span className="lcp-accent">in one flow.</span>
             </h2>
-          </div>
-          <p>
+          </RevealItem>
+          <RevealItem as="p">
             Capture leads, run personalised follow-up and qualify each enquiry
             automatically — so your team can focus on the opportunities that are
             ready to move forward.
-          </p>
+          </RevealItem>
+          <RevealItem>
           <LcpCta
             placement="lead_conversion_core"
             className="lcp-btn lcp-btn-sm lcp-btn-ghost"
           >
             See it in action <ArrowRight size={15} aria-hidden />
           </LcpCta>
-        </div>
+          </RevealItem>
+        </RevealGroup>
 
         <Rail />
 
         <div className="lcp-columns">
           {COLUMNS.map((column, i) => (
-            <div key={column.eyebrow} className="lcp-col">
-              <div className="lcp-col-head">
+            <RevealGroup
+              key={column.eyebrow}
+              className="lcp-col"
+              step={0.08}
+              delay={i * 0.08}
+            >
+              <RevealItem className="lcp-col-head">
                 <span className="lcp-step-no" aria-hidden>
                   {i + 1}
                 </span>
                 <span className="lcp-eyebrow">{column.eyebrow}</span>
-              </div>
-              <h3>{column.title}</h3>
-              <p>{column.lead}</p>
-              <div className="lcp-col-panel">{column.panel}</div>
-              <BenefitStrip items={column.benefits} />
-            </div>
+              </RevealItem>
+              <RevealItem as="div">
+                <h3>{column.title}</h3>
+              </RevealItem>
+              <RevealItem as="p">{column.lead}</RevealItem>
+              <RevealItem className="lcp-col-panel" variants={panelEnter}>
+                {column.panel}
+              </RevealItem>
+              <RevealItem as="div" className="lcp-benefits-slot">
+                <BenefitStrip items={column.benefits} />
+              </RevealItem>
+            </RevealGroup>
           ))}
         </div>
 
-        <div className="lcp-trust">
+        <Reveal className="lcp-trust" variants={softFade}>
           <span className="lcp-trust-icon" aria-hidden>
             <ShieldCheck size={22} strokeWidth={2} />
           </span>
@@ -127,7 +158,7 @@ export function CoreEngineSection() {
             Learn more about qualification
             <ArrowRight size={14} aria-hidden />
           </a>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

@@ -236,6 +236,7 @@ export const RUN_CONTROLS = ["Pause", "Resume", "Stop"] as const;
 
 export type DemoProspect = {
   company: string;
+  /** Size and sector, shown under the company name. */
   companyMeta: string;
   initials: string;
   contact: string;
@@ -261,7 +262,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 92,
     grade: "A",
     intent: "High",
-    location: "Bournemouth, UK",
+    location: "Bournemouth",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: "South Coast — Q4",
@@ -277,7 +278,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 88,
     grade: "A",
     intent: "Medium",
-    location: "Poole, UK",
+    location: "Poole",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: "South Coast — Q4",
@@ -293,7 +294,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 84,
     grade: "B",
     intent: "Medium",
-    location: "Southampton, UK",
+    location: "Southampton",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: "South Coast — Q4",
@@ -309,7 +310,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 82,
     grade: "B",
     intent: "Medium",
-    location: "Winchester, UK",
+    location: "Winchester",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: "South Coast — Q4",
@@ -325,7 +326,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 79,
     grade: "B",
     intent: "High",
-    location: "Portsmouth, UK",
+    location: "Portsmouth",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -341,7 +342,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 78,
     grade: "B",
     intent: "None",
-    location: "Dorchester, UK",
+    location: "Dorchester",
     verification: "Verified",
     eligibility: "Review",
     campaign: null,
@@ -357,7 +358,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 76,
     grade: "B",
     intent: "Medium",
-    location: "Bath, UK",
+    location: "Bath",
     verification: "Pending",
     eligibility: "Review",
     campaign: null,
@@ -373,7 +374,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 74,
     grade: "B",
     intent: "Low",
-    location: "Salisbury, UK",
+    location: "Salisbury",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -389,7 +390,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 72,
     grade: "B",
     intent: "Medium",
-    location: "Taunton, UK",
+    location: "Taunton",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -405,7 +406,7 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     fit: 68,
     grade: "C",
     intent: "Low",
-    location: "Exeter, UK",
+    location: "Exeter",
     verification: "Verified",
     eligibility: "Review",
     campaign: null,
@@ -608,6 +609,19 @@ export const INTENT_FILTERS = [
 
 /* -------------------------------------------------------------- campaigns */
 
+/**
+ * A one-line version of each conversion goal.
+ *
+ * The wizard's own `description` is written for a full-width form and
+ * runs to eight lines in a third-width card. The value is the same
+ * promise, said shorter; the label itself still comes from the product.
+ */
+export const GOAL_BLURBS: Record<string, string> = {
+  BOOK_SITE_VISIT: "Arrange an on-site survey or inspection.",
+  REQUEST_QUOTE: "Invite a prospect to ask for a price.",
+  PHONE_CALL: "Get a call booked with the decision maker.",
+};
+
 /** The six wizard steps, read from the wizard's own definition. */
 export const CAMPAIGN_STEPS = WIZARD_STEPS.map((step, index) => ({
   number: index + 1,
@@ -619,13 +633,13 @@ export const CAMPAIGN_SEQUENCE = [
   {
     day: "Day 0",
     channel: "Email",
-    subject: "Helping with your upcoming project",
+    subject: "Your upcoming project",
   },
-  { day: "Day 3", channel: "Email", subject: "Quick question on your plans" },
+  { day: "Day 3", channel: "Email", subject: "A quick question" },
   {
     day: "Day 7",
     channel: "Email",
-    subject: "A few examples from nearby sites",
+    subject: "Two nearby examples",
   },
   { day: "Day 14", channel: "Email", subject: "Final follow up" },
 ] as const;

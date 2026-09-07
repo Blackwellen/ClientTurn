@@ -3,6 +3,7 @@ import { PublicHeader } from "@/components/marketing/public/public-header";
 import { PublicFooter } from "@/components/marketing/public/public-footer";
 import { CookieConsent } from "@/components/marketing/cookie-consent";
 import "./clientturn.css";
+import "./evaluation.css";
 
 /**
  * The public shell.

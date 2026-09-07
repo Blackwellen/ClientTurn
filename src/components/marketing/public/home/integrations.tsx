@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { showcaseConnectors, showcaseProviders } from "@/lib/marketing/integrations";
+import { showcaseIntegrations } from "@/lib/marketing/integrations";
 import { activeCategories } from "@/lib/marketing/integration-types";
 import { Arc, Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
 import { IntegrationFlow, IntegrationFlowStack } from "./integration-flow";
@@ -20,9 +20,8 @@ import { IntegrationGrid } from "./integration-grid";
  * itself.
  */
 export function IntegrationsSection() {
-  const connectors = showcaseConnectors();
-  const providers = showcaseProviders();
-  const categories = activeCategories(connectors, providers);
+  const items = showcaseIntegrations();
+  const categories = activeCategories(items);
 
   return (
     <PublicSection
@@ -63,11 +62,7 @@ export function IntegrationsSection() {
         </div>
 
         <div id="integration-catalogue" className="scroll-mt-28">
-          <IntegrationGrid
-            connectors={connectors}
-            categories={categories}
-            providers={providers}
-          />
+          <IntegrationGrid items={items} categories={categories} />
         </div>
       </PublicContainer>
     </PublicSection>

@@ -65,7 +65,7 @@
 .fl-section {
   position: relative;
   isolation: isolate;
-  padding: clamp(64px, 7vw, 104px) 0;
+  padding: clamp(56px, 5vw, 78px) 0;
 }
 .fl-section > .fl-wrap {
   position: relative;
@@ -94,12 +94,13 @@
 .fl-wrap {
   margin-inline: auto;
   width: 100%;
-  max-width: 1400px;
-  padding-inline: 40px;
+  /* The approved designs are drawn on a 1536 canvas with 32px gutters. */
+  max-width: 1496px;
+  padding-inline: 32px;
 }
 @media (max-width: 1100px) {
   .fl-wrap {
-    padding-inline: 28px;
+    padding-inline: 26px;
   }
 }
 @media (max-width: 640px) {
@@ -175,13 +176,15 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  height: 52px;
-  padding: 0 26px;
+  min-height: 52px;
+  padding: 12px 26px;
   border: 1px solid transparent;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.3;
+  text-align: center;
+  text-wrap: balance;
   transition:
     background-color 0.2s,
     border-color 0.2s,
@@ -210,8 +213,8 @@
   border-color: rgb(183 243 74 / 0.4);
 }
 .fl-btn-ghost {
-  height: 44px;
-  padding: 0 20px;
+  min-height: 44px;
+  padding: 10px 20px;
   border-radius: 9px;
   border-color: var(--fl-line-strong);
   background: #0d1523;
@@ -335,7 +338,7 @@
 }
 .fl-hero-shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1.42fr) 300px 290px;
+  grid-template-columns: 196px minmax(0, 1.44fr) minmax(0, 260px) minmax(0, 236px);
   min-height: 470px;
 }
 .fl-hero-shell > * {
@@ -411,7 +414,42 @@
   display: block;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--fl-ink-2);
+  color: #dbe3ee;
+}
+.fl-side-figure {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  font-family: var(--fl-mono);
+  font-size: 11px;
+  color: var(--fl-ink-3);
+}
+.fl-side-figure b {
+  color: var(--fl-lime);
+  font-weight: 600;
+}
+.fl-side-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  margin-top: 12px;
+  border: 1px solid rgb(183 243 74 / 0.35);
+  border-radius: 8px;
+  background: rgb(183 243 74 / 0.08);
+  color: var(--fl-lime-soft);
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+.fl-side-btn:hover {
+  background: rgb(183 243 74 / 0.14);
+  border-color: rgb(183 243 74 / 0.55);
 }
 .fl-meter {
   height: 5px;
@@ -438,6 +476,7 @@
 /* Chat column */
 .fl-chat {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   padding: 20px 22px 18px;
 }
@@ -449,9 +488,18 @@
 }
 .fl-msglist {
   display: grid;
+  align-content: start;
   gap: 14px;
+  /* The frame keeps the design's proportions however far the demo has run:
+     the conversation scrolls, exactly as it does in the product. */
+  max-height: 292px;
   margin: 20px 0 0;
-  padding: 0;
+  padding: 0 2px 0 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #27314a transparent;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
   list-style: none;
 }
 .fl-msg {
@@ -511,7 +559,7 @@
 .fl-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
+  gap: 8px;
   margin: 18px 0 0;
   padding: 0;
   list-style: none;
@@ -550,23 +598,28 @@
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 12px 12px 12px 15px;
-  border: 1px solid var(--fl-line-strong);
+  padding: 13px 12px 13px 15px;
+  border: 1px solid #d8dee8;
   border-radius: var(--fl-r-md);
-  background: var(--fl-app-input);
+  background: #fbfcfe;
+  box-shadow: 0 10px 30px -18px #000;
 }
 .fl-composer-box:focus-within {
-  border-color: rgb(183 243 74 / 0.5);
+  border-color: #9ed23f;
+  box-shadow:
+    0 10px 30px -18px #000,
+    0 0 0 3px rgb(183 243 74 / 0.22);
 }
 .fl-composer-box p {
   flex: 1;
+  min-width: 0;
   margin: 0;
-  color: var(--fl-ink-2);
+  color: #16202f;
   font-size: 13.5px;
   line-height: 1.55;
 }
 .fl-composer-box p[data-placeholder="true"] {
-  color: var(--fl-ink-4);
+  color: #7c8798;
 }
 .fl-send {
   display: grid;
@@ -575,11 +628,23 @@
   height: 32px;
   flex-shrink: 0;
   border-radius: 8px;
-  background: var(--fl-lime);
-  color: #0b1020;
+  background: #93d62f;
+  color: #10240a;
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
+}
+.fl-send:hover {
+  background: #a6e83c;
+}
+.fl-send:focus-visible {
+  outline: 2px solid #16202f;
+  outline-offset: 2px;
 }
 .fl-clip {
-  color: var(--fl-ink-4);
+  flex-shrink: 0;
+  margin-bottom: 6px;
+  color: #8b95a5;
 }
 .fl-composer-foot {
   display: flex;
@@ -650,14 +715,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 5px 10px;
   border: 1px solid var(--fl-line-strong);
   border-radius: 7px;
   background: #0e1622;
   color: var(--fl-ink-2);
   font-size: 11.5px;
   font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
 }
 .fl-mini-btn:hover {
   border-color: rgb(183 243 74 / 0.4);
@@ -718,21 +785,28 @@
 
 /* Recent-searches column */
 .fl-recent {
-  padding: 20px 18px 18px;
+  min-width: 0;
+  padding: 20px 16px 18px;
+  overflow: hidden;
 }
 .fl-recent-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 9px;
   margin: 18px 0 0;
   padding: 0;
   list-style: none;
 }
+.fl-recent-list > li {
+  min-width: 0;
+}
 .fl-recent-row {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  padding: 11px 12px;
+  min-width: 0;
+  padding: 10px 11px;
   border: 1px solid var(--fl-line-soft);
   border-radius: var(--fl-r-sm);
   background: #0a1018;
@@ -774,8 +848,12 @@
 }
 .fl-recent-age {
   flex-shrink: 0;
-  font-size: 10.5px;
+  width: 58px;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--fl-ink-4);
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------- hero step ribbon */
@@ -784,7 +862,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
-  margin: 34px 0 0;
+  margin: 30px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -853,22 +931,40 @@
   font-size: 14px;
   line-height: 1.6;
 }
-.fl-chapter-head .fl-h2 {
+.fl-chapter-head .fl-h2,
+.fl-chapter-head .fl-display {
   margin-top: 18px;
+}
+/* The chapter's opening display line. Sized like a heading, but it is not one:
+   the six product-section titles below are the page's H2 sequence, and the
+   region is named with aria-label instead. */
+.fl-display {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(31px, 3.4vw, 48px);
+  font-weight: 500;
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.fl-display em {
+  font-style: normal;
+  color: var(--fl-lime);
 }
 
 /* Three-column chapter card grid. */
 .fl-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-  margin-top: 44px;
+  align-items: start;
+  gap: 20px;
+  margin-top: 38px;
 }
 .fl-card {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  padding: 28px 26px 26px;
+  padding: 26px 22px 22px;
   border: 1px solid var(--fl-line);
   border-radius: var(--fl-r-lg);
   background: linear-gradient(#0a1120, #070c16);
@@ -928,7 +1024,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   background: var(--fl-app-top);
   border-bottom: 1px solid var(--fl-line-soft);
 }
@@ -946,7 +1042,7 @@
   color: var(--fl-ink-4);
 }
 .fl-app-body {
-  padding: 16px 18px 18px;
+  padding: 15px 16px 16px;
 }
 .fl-app-foot {
   display: flex;
@@ -954,12 +1050,24 @@
   justify-content: space-between;
   gap: 12px;
   margin-top: auto;
-  padding: 14px 18px;
+  padding: 13px 16px;
   border-top: 1px solid var(--fl-line-soft);
 }
 .fl-app-foot span {
   font-size: 11.5px;
+  line-height: 1.35;
   color: var(--fl-ink-4);
+}
+/* The one emphasised action inside an application surface footer. */
+.fl-mini-btn-primary {
+  border-color: transparent;
+  background: var(--fl-lime);
+  color: #0b1020;
+  font-weight: 600;
+}
+.fl-mini-btn-primary:hover {
+  background: #c6ff58;
+  color: #0b1020;
 }
 
 /* ================================================================ badges */
@@ -968,7 +1076,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
+  padding: 3px 8px;
   border: 1px solid var(--fl-line-strong);
   border-radius: 6px;
   background: #101827;
@@ -1042,11 +1150,11 @@
   overflow: hidden;
 }
 .fl-progress-fill {
+  display: block;
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #8fd42f, var(--fl-lime));
   box-shadow: 0 0 16px rgb(183 243 74 / 0.4);
-  transition: width 0.9s ease;
 }
 .fl-progress > b {
   flex-shrink: 0;
@@ -1059,14 +1167,14 @@
 .fl-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
+  gap: 7px;
   margin: 15px 0 0;
   padding: 0;
   list-style: none;
 }
 .fl-tile {
   min-width: 0;
-  padding: 11px 10px 10px;
+  padding: 10px 8px 9px;
   border: 1px solid var(--fl-line-soft);
   border-radius: var(--fl-r-sm);
   background: var(--fl-app-raised);
@@ -1082,8 +1190,8 @@
 .fl-tile span {
   display: block;
   margin-top: 4px;
-  font-size: 10.5px;
-  line-height: 1.35;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--fl-ink-4);
 }
 
@@ -1177,7 +1285,7 @@
 
 .fl-counters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px 14px;
   margin: 14px 0 0;
   padding: 14px 0 0;
@@ -1229,17 +1337,19 @@
 .fl-table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #27314a transparent;
 }
 .fl-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
 }
 .fl-table th {
-  padding: 9px 10px;
+  padding: 7px 5px;
   border-bottom: 1px solid var(--fl-line);
   color: var(--fl-ink-4);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-align: left;
@@ -1247,10 +1357,18 @@
   white-space: nowrap;
 }
 .fl-table td {
-  padding: 9px 10px;
+  padding: 7px 4px;
   border-bottom: 1px solid var(--fl-line-soft);
   vertical-align: middle;
   white-space: nowrap;
+}
+.fl-table th:first-child,
+.fl-table td:first-child {
+  padding-left: 0;
+}
+.fl-table th:last-child,
+.fl-table td:last-child {
+  padding-right: 0;
 }
 .fl-table tbody tr:last-child td {
   border-bottom: 0;
@@ -1261,13 +1379,31 @@
 .fl-cell-company {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+}
+/* A name is more useful truncated on one line than wrapped onto four, so the
+   row height stays the row height. */
+.fl-cell-company > span:last-child,
+.fl-cell-contact {
+  display: block;
+  min-width: 0;
+  max-width: 76px;
+  overflow: hidden;
+}
+.fl-cell-company strong,
+.fl-cell-company small,
+.fl-cell-contact strong,
+.fl-cell-contact small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .fl-logo {
   display: grid;
   place-items: center;
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   border-radius: 7px;
   border: 1px solid var(--fl-line-strong);
@@ -1279,26 +1415,30 @@
 }
 .fl-cell-company strong {
   display: block;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 500;
+  line-height: 1.25;
   color: var(--fl-ink);
 }
 .fl-cell-company small {
   display: block;
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: 10px;
+  line-height: 1.25;
   color: var(--fl-ink-4);
 }
 .fl-cell-contact strong {
   display: block;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 500;
+  line-height: 1.25;
   color: var(--fl-ink);
 }
 .fl-cell-contact small {
   display: block;
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: 10px;
+  line-height: 1.25;
   color: var(--fl-ink-4);
 }
 .fl-fit {
@@ -1309,9 +1449,9 @@
 .fl-fit b {
   display: grid;
   place-items: center;
-  min-width: 30px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 27px;
+  height: 21px;
+  padding: 0 5px;
   border-radius: 6px;
   font-size: 11.5px;
   font-weight: 700;
@@ -1444,7 +1584,7 @@
 
 .fl-score-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 16px;
   border-bottom: 1px solid var(--fl-line-soft);
@@ -1502,8 +1642,10 @@
   color: var(--fl-ink);
 }
 .fl-ring-caption {
-  margin-top: 7px;
-  font-size: 10px;
+  margin-top: 8px;
+  max-width: 86px;
+  font-size: 9.5px;
+  line-height: 1.32;
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--fl-lime);
@@ -1513,20 +1655,24 @@
 
 .fl-tabs {
   display: flex;
-  gap: 2px;
-  padding: 0 16px;
+  gap: 0;
+  padding: 0 14px;
   border-bottom: 1px solid var(--fl-line-soft);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
+  /* A fade at the trailing edge, so a clipped tab reads as "scroll me"
+     rather than as a rendering fault. */
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
 }
 .fl-tabs::-webkit-scrollbar {
   display: none;
 }
 .fl-tab {
   position: relative;
-  padding: 11px 10px;
+  padding: 11px 7px;
   color: var(--fl-ink-4);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1738,7 +1884,8 @@
 .fl-event {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
+  min-width: 0;
   padding: 11px 12px;
   border: 1px solid var(--fl-line-soft);
   border-radius: var(--fl-r-sm);
@@ -1768,16 +1915,17 @@
 .fl-event small {
   display: block;
   margin-top: 3px;
-  overflow: hidden;
-  font-size: 11px;
+  font-size: 10.5px;
+  line-height: 1.35;
   color: var(--fl-ink-4);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .fl-event-age {
   flex-shrink: 0;
-  font-size: 10.5px;
+  width: 58px;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--fl-ink-4);
+  text-align: right;
 }
 .fl-event[data-new="true"] {
   animation: fl-pulse 1.5s ease-out 1;
@@ -1817,13 +1965,18 @@
   flex-shrink: 0;
   color: var(--fl-lime);
 }
+.fl-cat-top {
+  align-items: flex-start;
+}
+.fl-cat-top svg {
+  margin-top: 2px;
+}
 .fl-cat strong {
-  overflow: hidden;
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.35;
   color: var(--fl-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .fl-cat small {
   display: block;
@@ -1899,12 +2052,12 @@
 }
 .fl-stepper li > span:last-child {
   max-width: 100%;
-  overflow: hidden;
-  font-size: 10.5px;
+  padding-inline: 2px;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--fl-ink-4);
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-wrap: balance;
 }
 .fl-stepper li[data-state="current"] > span:last-child {
   color: var(--fl-lime);
@@ -1952,19 +2105,24 @@
 .fl-goal[data-selected="true"] .fl-goal-top svg {
   color: var(--fl-lime);
 }
+.fl-goal-top {
+  align-items: flex-start;
+}
+.fl-goal-top svg {
+  margin-top: 2px;
+}
 .fl-goal strong {
-  overflow: hidden;
+  min-width: 0;
   font-size: 11.5px;
   font-weight: 600;
+  line-height: 1.32;
   color: var(--fl-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .fl-goal small {
   display: block;
   margin-top: 6px;
-  font-size: 10.5px;
-  line-height: 1.45;
+  font-size: 10px;
+  line-height: 1.4;
   color: var(--fl-ink-4);
 }
 
@@ -2027,7 +2185,8 @@
 .fl-seq li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
+  min-width: 0;
   padding: 10px 11px;
   border: 1px solid var(--fl-line-soft);
   border-radius: var(--fl-r-sm);
@@ -2062,11 +2221,9 @@
 .fl-seq small {
   display: block;
   margin-top: 3px;
-  overflow: hidden;
-  font-size: 10.5px;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--fl-ink-4);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .fl-switch-sm {
   position: relative;
@@ -2102,9 +2259,12 @@
 
 .fl-limits {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px 14px;
   margin: 0;
+}
+.fl-limits dd {
+  min-width: 0;
 }
 .fl-limits > div {
   display: flex;
@@ -2147,16 +2307,29 @@
 
 /* ============================================================ promotion */
 
+/* A record header: identity on the first line, its metadata under it, and
+   the actions on their own row once the card is too narrow for one. */
 .fl-entity {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px 11px;
   padding: 15px 16px;
   border-bottom: 1px solid var(--fl-line-soft);
 }
+.fl-entity-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 9px;
+  padding-top: 4px;
+  border-top: 1px solid var(--fl-line-soft);
+}
+.fl-entity-actions > :last-child {
+  margin-left: auto;
+}
 .fl-entity > div:nth-child(2) {
   min-width: 0;
-  flex: 1;
 }
 .fl-entity strong {
   display: block;
@@ -2171,8 +2344,10 @@
   color: var(--fl-ink-4);
 }
 .fl-fit-block {
+  display: flex;
   flex-shrink: 0;
-  text-align: center;
+  align-items: center;
+  gap: 8px;
 }
 .fl-fit-block b {
   display: grid;
@@ -2187,9 +2362,8 @@
   font-variant-numeric: tabular-nums;
 }
 .fl-fit-block span {
-  display: block;
-  margin-top: 5px;
   font-size: 9.5px;
+  line-height: 1.2;
   color: var(--fl-ink-4);
 }
 .fl-btn-blue {
@@ -2319,6 +2493,7 @@
 
 .fl-promote {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-top: 14px;
@@ -2338,11 +2513,14 @@
   font-size: 12px;
   font-weight: 700;
 }
+.fl-promote > div {
+  min-width: 150px;
+}
 .fl-promote p {
   margin: 4px 0 0;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--fl-ink-3);
+  color: var(--fl-ink-2);
 }
 .fl-promote-btn {
   display: inline-flex;
@@ -2419,7 +2597,7 @@
   height: 100%;
   border-radius: 6px;
   background: linear-gradient(90deg, rgb(183 243 74 / 0.85), rgb(183 243 74 / 0.35));
-  transition: width 1s ease;
+  transform-origin: left center;
 }
 .fl-funnel-value {
   width: 58px;
@@ -2465,8 +2643,9 @@
 .fl-split {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: start;
   gap: 22px;
-  margin-top: 44px;
+  margin-top: 38px;
 }
 
 .fl-bars {
@@ -2761,10 +2940,526 @@
 
 /* Compact call to action, used inside an application surface footer. */
 .fl-btn-sm {
-  height: 44px;
-  padding: 0 20px;
+  min-height: 44px;
+  padding: 10px 20px;
   border-radius: 9px;
   font-size: 14px;
+}
+
+/* ═══════════════════════ Hero: the light application surface ══════════════
+ *
+ * A full dashboard is light; a component is dark. This block is the whole of
+ * that exception, scoped to the hero frame, so nothing below the hero can pick
+ * up a light token by accident.
+ */
+
+.fl-appframe {
+  --fl-l-bg: #ffffff;
+  --fl-l-canvas: #f6f8fb;
+  --fl-l-rail: #fbfcfe;
+  --fl-l-line: #e4eaf2;
+  --fl-l-line-soft: #eff3f8;
+  --fl-l-ink: #0f1728;
+  --fl-l-ink-2: #5a6779;
+  --fl-l-ink-3: #8b97a8;
+  --fl-l-lime-ink: #3f6b00;
+
+  border-color: #d9e1ec;
+  background: var(--fl-l-bg);
+  box-shadow:
+    0 1px 0 #ffffff inset,
+    0 40px 90px -44px rgb(4 8 18 / 0.85),
+    0 0 90px -46px rgb(183 243 74 / 0.4);
+}
+
+.fl-appframe .fl-hero-shell > * {
+  border-right-color: var(--fl-l-line);
+  border-bottom-color: var(--fl-l-line);
+}
+
+/* ------------------------------------------------------------------- rail */
+.fl-appframe .fl-side {
+  background: var(--fl-l-rail);
+}
+.fl-appframe .fl-side-brand span {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-side-nav li {
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-side-nav li svg {
+  color: var(--fl-l-ink-3);
+}
+.fl-appframe .fl-side-nav li[data-active="true"] {
+  background: #eefbd2;
+  border-color: #cdeb8e;
+  color: var(--fl-l-lime-ink);
+}
+.fl-appframe .fl-side-nav li[data-active="true"] svg {
+  color: #6a9c14;
+}
+.fl-appframe .fl-side-credits {
+  border-color: var(--fl-l-line);
+  background: var(--fl-l-bg);
+}
+.fl-appframe .fl-side-credits > strong {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-meter {
+  background: #e7ecf3;
+}
+.fl-appframe .fl-meter > span {
+  background: #8fd42f;
+}
+.fl-appframe .fl-side-figure {
+  color: var(--fl-l-ink-3);
+}
+.fl-appframe .fl-side-figure b {
+  color: var(--fl-l-lime-ink);
+}
+.fl-appframe .fl-side-btn {
+  border-color: #cdeb8e;
+  background: #f4fce4;
+  color: var(--fl-l-lime-ink);
+}
+.fl-appframe .fl-side-btn:hover {
+  border-color: #b6e05e;
+  background: #eefbd2;
+}
+
+/* ------------------------------------------------------------ conversation */
+.fl-appframe .fl-chat {
+  background: var(--fl-l-bg);
+}
+.fl-appframe .fl-chat-title {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-msglist {
+  scrollbar-color: #cfd8e4 transparent;
+}
+.fl-appframe .fl-avatar {
+  border-color: #cdeb8e;
+  background: #f4fce4;
+}
+.fl-appframe .fl-avatar-user {
+  border-color: var(--fl-l-line);
+  background: #eef2f7;
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-bubble {
+  border-color: var(--fl-l-line);
+  background: var(--fl-l-canvas);
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-bubble strong {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-bubble-user {
+  border-color: #cdeb8e;
+  background: #f4fce4;
+  color: #2f5405;
+}
+/* The plan summary inside the assistant's reply. */
+.fl-appframe .fl-bubble dl,
+.fl-appframe .fl-bubble > div {
+  border-color: var(--fl-l-line) !important;
+}
+.fl-appframe .fl-bubble dt {
+  color: var(--fl-l-ink-3) !important;
+}
+.fl-appframe .fl-bubble dd {
+  color: var(--fl-l-ink) !important;
+}
+
+.fl-appframe .fl-chip {
+  border-color: #dbe3ee;
+  background: var(--fl-l-bg);
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-chip:hover,
+.fl-appframe .fl-chip[data-selected="true"] {
+  border-color: #b6e05e;
+  background: #f4fce4;
+  color: var(--fl-l-lime-ink);
+}
+.fl-appframe .fl-chip:focus-visible,
+.fl-appframe .fl-recent-row:focus-visible,
+.fl-appframe .fl-side-btn:focus-visible {
+  outline: 2px solid #7fb50f;
+  outline-offset: 2px;
+}
+
+.fl-appframe .fl-composer-box {
+  border-color: #d3dbe7;
+  background: var(--fl-l-canvas);
+  box-shadow: none;
+}
+.fl-appframe .fl-composer-box:focus-within {
+  border-color: #8fd42f;
+  box-shadow: 0 0 0 3px rgb(143 212 47 / 0.2);
+}
+.fl-appframe .fl-pill {
+  border-color: #dbe3ee;
+  background: var(--fl-l-bg);
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-toggle-row {
+  color: var(--fl-l-ink-3);
+}
+.fl-appframe .fl-toggle-row b {
+  color: var(--fl-l-ink-2);
+}
+
+/* ------------------------------------------------------------ side panels */
+.fl-appframe .fl-ctx,
+.fl-appframe .fl-recent {
+  background: var(--fl-l-canvas);
+}
+.fl-appframe .fl-panel-title {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-mini-btn {
+  border-color: #d3dbe7;
+  background: var(--fl-l-bg);
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-mini-btn:hover {
+  border-color: #b6e05e;
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-mini-link {
+  color: #5d900d;
+}
+.fl-appframe .fl-mini-link:hover {
+  color: #3f6b00;
+}
+.fl-appframe .fl-def-icon {
+  border-color: #cdeb8e;
+  background: #f4fce4;
+  color: #5d900d;
+}
+.fl-appframe .fl-def dt {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-def dd {
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-callout {
+  border-color: #cdeb8e;
+  background: #f7fdec;
+  color: #3f6b00;
+}
+.fl-appframe .fl-recent-row {
+  border-color: var(--fl-l-line);
+  background: var(--fl-l-bg);
+}
+.fl-appframe .fl-recent-row:hover {
+  border-color: #b6e05e;
+  background: #fbfefa;
+}
+.fl-appframe .fl-recent-row svg:first-child {
+  color: var(--fl-l-ink-3);
+}
+.fl-appframe .fl-recent-row strong {
+  color: var(--fl-l-ink);
+}
+.fl-appframe .fl-recent-row small,
+.fl-appframe .fl-recent-age {
+  color: var(--fl-l-ink-3);
+}
+
+/* Badges keep their meaning but need light-surface contrast. */
+.fl-appframe .fl-badge {
+  border-color: #dbe3ee;
+  background: var(--fl-l-bg);
+  color: var(--fl-l-ink-2);
+}
+.fl-appframe .fl-badge[data-tone="lime"] {
+  border-color: #cdeb8e;
+  background: #f4fce4;
+  color: var(--fl-l-lime-ink);
+}
+.fl-appframe .fl-badge[data-tone="green"] {
+  border-color: #a7e3c4;
+  background: #eefaf3;
+  color: #10693f;
+}
+.fl-appframe .fl-badge[data-tone="amber"] {
+  border-color: #f0d79a;
+  background: #fdf6e6;
+  color: #85570a;
+}
+.fl-appframe .fl-badge[data-tone="blue"] {
+  border-color: #b7cffb;
+  background: #eef4ff;
+  color: #1d4ed8;
+}
+
+/* ── Hero dashboard density: the house app-frame scale ────────────────────
+ *
+ * Shared verbatim with /product/lead-conversion's frame. A dashboard is
+ * legible because it is dense; scaling this type up to marketing sizes is what
+ * makes an embedded app look like an illustration of one.
+ */
+
+.fl-hero-shell {
+  grid-template-columns: 150px minmax(0, 1.5fr) minmax(0, 252px) minmax(0, 228px);
+  min-height: 452px;
+}
+
+/* Rail */
+.fl-appframe .fl-side {
+  padding: 13px 9px 11px;
+}
+.fl-appframe .fl-side-brand {
+  gap: 7px;
+  padding: 3px 6px 17px;
+}
+.fl-appframe .fl-side-brand img {
+  width: 18px;
+  height: 18px;
+}
+.fl-appframe .fl-side-brand span {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+.fl-appframe .fl-side-nav {
+  gap: 1px;
+}
+.fl-appframe .fl-side-nav li {
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.fl-appframe .fl-side-nav li svg {
+  width: 13px;
+  height: 13px;
+}
+.fl-appframe .fl-side-nav li[data-active="true"] {
+  border-color: transparent;
+  background: #eef4e2;
+  color: #38510f;
+  font-weight: 600;
+}
+.fl-appframe .fl-side-nav li[data-active="true"] svg {
+  color: #5f8a10;
+}
+.fl-appframe .fl-side-credits {
+  padding: 11px 10px 10px;
+  border-radius: 9px;
+}
+.fl-appframe .fl-side-credits > strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.fl-appframe .fl-meter {
+  height: 4px;
+  margin-top: 9px;
+}
+.fl-appframe .fl-side-figure {
+  margin-top: 7px;
+  font-size: 9.5px;
+}
+.fl-appframe .fl-side-btn {
+  height: 27px;
+  margin-top: 10px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+/* Main column */
+.fl-appframe .fl-chat {
+  padding: 0;
+}
+.fl-appframe .fl-chat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--fl-l-line);
+}
+.fl-appframe .fl-chat-top-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fl-appframe .fl-top-icon {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 6px;
+  color: var(--fl-l-ink-3);
+}
+.fl-appframe .fl-top-icon[data-avatar="true"] {
+  background: #eef4e2;
+  color: #5f8a10;
+}
+.fl-appframe .fl-chat-inner {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 13px 15px 12px;
+}
+.fl-appframe .fl-chat-title {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.fl-appframe .fl-msglist {
+  max-height: 244px;
+  margin-top: 13px;
+  gap: 10px;
+}
+.fl-appframe .fl-avatar {
+  width: 25px;
+  height: 25px;
+}
+.fl-appframe .fl-avatar img {
+  width: 14px;
+  height: 14px;
+}
+.fl-appframe .fl-avatar-user {
+  font-size: 9px;
+}
+.fl-appframe .fl-bubble {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.fl-appframe .fl-bubble strong {
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+.fl-appframe .fl-bubble dt {
+  font-size: 9.5px !important;
+}
+.fl-appframe .fl-bubble dd {
+  font-size: 10.5px !important;
+}
+.fl-appframe .fl-badge {
+  padding: 2px 7px;
+  font-size: 9.5px;
+}
+.fl-appframe .fl-chips {
+  gap: 6px;
+  margin-top: 13px;
+}
+.fl-appframe .fl-chip {
+  min-height: 27px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+.fl-appframe .fl-composer {
+  padding-top: 13px;
+}
+.fl-appframe .fl-composer-box {
+  padding: 10px 10px 10px 12px;
+  border-radius: 9px;
+}
+.fl-appframe .fl-composer-box p {
+  font-size: 11.5px;
+}
+.fl-appframe .fl-send {
+  width: 30px;
+  height: 28px;
+  border-radius: 7px;
+}
+.fl-appframe .fl-composer-foot {
+  margin-top: 10px;
+}
+.fl-appframe .fl-pill {
+  height: 27px;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+.fl-appframe .fl-toggle-row {
+  font-size: 10.5px;
+}
+.fl-appframe .fl-switch {
+  width: 30px;
+  height: 17px;
+}
+.fl-appframe .fl-switch::after {
+  width: 11px;
+  height: 11px;
+}
+
+/* Side panels */
+.fl-appframe .fl-ctx,
+.fl-appframe .fl-recent {
+  padding: 13px 13px 12px;
+}
+.fl-appframe .fl-panel-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.fl-appframe .fl-mini-btn {
+  min-height: 25px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10.5px;
+}
+.fl-appframe .fl-mini-link {
+  font-size: 10.5px;
+}
+.fl-appframe .fl-deflist {
+  gap: 12px;
+  margin-top: 13px;
+}
+.fl-appframe .fl-def {
+  gap: 9px;
+}
+.fl-appframe .fl-def-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.fl-appframe .fl-def dt {
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.fl-appframe .fl-def dd {
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 1.42;
+}
+.fl-appframe .fl-callout {
+  margin-top: 14px;
+  padding: 10px 11px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.fl-appframe .fl-recent-list {
+  gap: 6px;
+  margin-top: 13px;
+}
+.fl-appframe .fl-recent-row {
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 7px;
+}
+.fl-appframe .fl-recent-row strong {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.fl-appframe .fl-recent-row small {
+  margin-top: 1px;
+  font-size: 9px;
+}
+.fl-appframe .fl-recent-age {
+  width: 54px;
+  font-size: 9px;
 }
 
 /* ============================================================ responsive */

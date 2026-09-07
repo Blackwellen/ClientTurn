@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { MarketingHeader } from "@/components/marketing/marketing-header";
-import { MarketingFooter } from "@/components/marketing/marketing-footer";
+import { PublicHeader } from "@/components/marketing/public/public-header";
+import { PublicFooter } from "@/components/marketing/public/public-footer";
 // The dark palette the rest of the public site uses. It lives with the
 // marketing group rather than in globals, so it is imported explicitly here.
 import "../(marketing)/clientturn.css";
@@ -28,9 +28,9 @@ export default function StatusLayout({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <MarketingHeader />
+      <PublicHeader />
       {children}
-      <MarketingFooter />
+      <PublicFooter />
     </div>
   );
 }

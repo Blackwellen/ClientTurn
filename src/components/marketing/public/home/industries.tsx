@@ -6,133 +6,39 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
-  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   FileText,
-  HardHat,
-  Home,
-  Leaf,
   MessageSquareText,
   Plus,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { trackEngagement } from "@/lib/marketing/track";
 import { Arc, Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
-import { ANCHORS } from "../nav-data";
 import { Reveal } from "../reveal";
+import { INDUSTRIES, INDUSTRY_STRIP, type Industry } from "./industry-data";
 
 /**
  * "Built around your conversion goal — not your industry label."
  *
- * Six sectors, each shown as the same three-stage route: the enquiry that
- * arrives, what gets qualified, and the action it ends in. The point of the
- * section is that the engine is one engine, so every card renders from the
- * same shape.
+ * Two rows deep and scrolling sideways, as approved: `grid-flow-col` with
+ * `grid-rows-2` fills column by column, so a page is three columns by two
+ * rows and the arrows advance exactly one page. With sixteen sectors those
+ * arrows have real work to do.
  *
- * Imagery: the repository ships no sector photography, and inventing it is
- * not something a marketing page should do on its own. Each card therefore
- * renders a restrained tonal motif in place of a photograph, and carries an
- * optional `image` field — set it to a real asset path and the card uses the
- * photograph instead, with no other change.
+ * The track is a native scroll region, so trackpad, touch and keyboard all
+ * work whether or not the visitor uses the buttons.
  */
-
-type Industry = {
-  id: string;
-  name: string;
-  category: string;
-  icon: LucideIcon;
-  promise: string;
-  /** Real photography, when it exists. Falls back to the tonal motif. */
-  image?: string;
-  imageAlt?: string;
-  /** The motif's two stops. Distinct per sector, all within the dark palette. */
-  motif: [string, string];
-  stages: [string, string, string];
-  final: { label: string; value: string };
-};
-
-const INDUSTRIES: Industry[] = [
-  {
-    id: "roofing",
-    name: "Roofing",
-    category: "Home services",
-    icon: Home,
-    promise: "Turn roof enquiries into booked surveys.",
-    motif: ["#16303c", "#071019"],
-    stages: ["New roof quote", "Property, scope, timing", "Site survey"],
-    final: { label: "Book", value: "Site survey" },
-  },
-  {
-    id: "kitchens",
-    name: "Kitchens",
-    category: "Home improvements",
-    icon: Building2,
-    promise: "Convert kitchen enquiries into design appointments.",
-    motif: ["#2a2438", "#0a0d16"],
-    stages: ["New kitchen quote", "Budget, style, timeline", "Design appointment"],
-    final: { label: "Book", value: "Design appointment" },
-  },
-  {
-    id: "windows-doors",
-    name: "Windows & Doors",
-    category: "Home improvements",
-    icon: Building2,
-    promise: "Turn enquiries into measured quotes.",
-    motif: ["#12303a", "#060f18"],
-    stages: ["Window or door quote", "Property type, quantity", "Measure-up"],
-    final: { label: "Book", value: "Measure-up" },
-  },
-  {
-    id: "landscaping",
-    name: "Landscaping",
-    category: "Outdoor services",
-    icon: Leaf,
-    promise: "Convert garden enquiries into site visits.",
-    motif: ["#16321f", "#060f0b"],
-    stages: ["Garden project", "Location, scope, budget", "Site visit"],
-    final: { label: "Book", value: "Site visit" },
-  },
-  {
-    id: "plumbing",
-    name: "Plumbing",
-    category: "Trade services",
-    icon: Wrench,
-    promise: "Get the right jobs to the right engineer.",
-    motif: ["#152a3a", "#060d15"],
-    stages: ["Plumbing issue", "Urgency, location, job type", "Engineer visit"],
-    final: { label: "Book", value: "Engineer visit" },
-  },
-  {
-    id: "builders",
-    name: "Builders",
-    category: "Construction",
-    icon: HardHat,
-    promise: "Turn build enquiries into qualified projects.",
-    motif: ["#33291a", "#100c06"],
-    stages: ["Build or extension", "Scope, budget, timeline", "Qualified project"],
-    final: { label: "Handover", value: "Qualified project" },
-  },
-];
-
-const FOOTER_STRIP = [
-  "Service businesses",
-  "Home improvements",
-  "Trade services",
-  "Property services",
-  "Facilities management",
-];
 
 /* ------------------------------------------------------------- artwork --- */
 
 /**
  * The tonal motif that stands in for photography. Decorative only: a soft
  * two-stop wash, a faint technical grid and the sector glyph, under the same
- * dark gradient a photograph would carry so the typography over it stays
- * legible either way.
+ * dark gradient a photograph would carry — so dropping a real image into the
+ * `image` field changes nothing else about the card.
  */
 function Motif({ industry }: { industry: Industry }) {
   return (
@@ -161,12 +67,13 @@ function Motif({ industry }: { industry: Industry }) {
 
 /* --------------------------------------------------------------- card --- */
 
+const STAGE_ICONS: LucideIcon[] = [MessageSquareText, FileText, CalendarDays];
+
 function IndustryCard({ industry }: { industry: Industry }) {
-  const stageIcons: LucideIcon[] = [MessageSquareText, FileText, CalendarDays];
-  const stageLabels = ["Enquiry", "Qualify", industry.final.label];
+  const stageLabels = ["Enquiry", "Qualify", industry.finalLabel];
 
   return (
-    <article className="pub-card pub-card-interactive group flex h-full min-w-0 snap-start flex-col overflow-hidden">
+    <article className="pub-card pub-card-interactive group flex h-full min-w-0 flex-col overflow-hidden">
       <div className="relative h-[168px] shrink-0 overflow-hidden">
         {industry.image ? (
           <Image
@@ -174,7 +81,9 @@ function IndustryCard({ industry }: { industry: Industry }) {
             alt={industry.imageAlt ?? ""}
             fill
             sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            // Toned back so the photograph sits in the dark palette rather
+            // than punching a bright hole in it; it lifts slightly on hover.
+            className="object-cover brightness-[0.72] saturate-[0.85] transition-[transform,filter] duration-500 group-hover:scale-[1.03] group-hover:brightness-[0.82]"
           />
         ) : (
           <Motif industry={industry} />
@@ -182,7 +91,7 @@ function IndustryCard({ industry }: { industry: Industry }) {
         {/* Legibility wash. Needed over a photograph, harmless over the motif. */}
         <span
           aria-hidden
-          className="absolute inset-0 bg-[linear-gradient(180deg,rgb(2_6_10/0.15),rgb(2_6_10/0.86)_78%,var(--pub-card))]"
+          className="absolute inset-0 bg-[linear-gradient(180deg,rgb(2_6_10/0.35),rgb(2_6_10/0.9)_74%,var(--pub-card))]"
         />
       </div>
 
@@ -195,19 +104,20 @@ function IndustryCard({ industry }: { industry: Industry }) {
             <industry.icon className="size-6" strokeWidth={2} />
           </span>
           <div className="min-w-0 flex-1 pt-2">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-[20px] font-semibold tracking-[-0.02em] text-[var(--pub-text)]">
-                {industry.name}
-              </h3>
-              <span className="pub-chip shrink-0 !py-1 !text-[10.5px]">{industry.category}</span>
-            </div>
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--pub-text-secondary)]">
-              {industry.promise}
+            <h3 className="text-[19px] font-semibold leading-tight tracking-[-0.02em] text-[var(--pub-text)]">
+              {industry.name}
+            </h3>
+            <p className="mt-1 text-[11px] uppercase tracking-[0.1em] text-[var(--pub-text-muted)]">
+              {industry.category}
             </p>
           </div>
         </div>
 
-        <ol className="mt-5 flex items-stretch gap-1.5">
+        <p className="mt-3.5 min-h-[2.9em] text-[13.5px] leading-relaxed text-[var(--pub-text-secondary)]">
+          {industry.promise}
+        </p>
+
+        <ol className="mt-4 flex items-stretch gap-1.5">
           {industry.stages.map((stage, index) => (
             <React.Fragment key={stage}>
               {index > 0 ? (
@@ -225,7 +135,7 @@ function IndustryCard({ industry }: { industry: Industry }) {
                   )}
                   style={{ width: 30, height: 30 }}
                 >
-                  {React.createElement(stageIcons[index], {
+                  {React.createElement(STAGE_ICONS[index], {
                     className: "size-3.5",
                     strokeWidth: 2.1,
                   })}
@@ -243,12 +153,16 @@ function IndustryCard({ industry }: { industry: Industry }) {
           ))}
         </ol>
 
+        {/* There is no per-sector page to link to, and inventing sixteen of
+            them to satisfy a label would be worse than labelling the link
+            for where it actually goes. It goes to How It Works, which is
+            what a visitor reading this card wants next. */}
         <Link
-          href={ANCHORS.howItWorks}
+          href="/how-it-works"
           className="pub-link mt-auto pt-5"
           onClick={() => trackEngagement("public_nav_click", `industry:${industry.id}`)}
         >
-          View {industry.name.toLowerCase()} solution
+          See how it works
           <ArrowRight aria-hidden className="size-4" />
         </Link>
       </div>
@@ -259,15 +173,37 @@ function IndustryCard({ industry }: { industry: Industry }) {
 /* =========================================================== section === */
 
 export function IndustriesSection() {
-  const scroller = React.useRef<HTMLDivElement>(null);
+  const track = React.useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = React.useState(true);
+  const [atEnd, setAtEnd] = React.useState(false);
 
-  /* Below the three-column breakpoint the grid becomes a snap carousel, and
-     these controls page it. At xl all six cards are on screen, so the
-     controls are hidden rather than left on the page doing nothing. */
-  function page(direction: -1 | 1) {
-    const node = scroller.current;
+  /* The buttons only ever say what the track can actually do, so neither is
+     left enabled at an end it cannot move past. */
+  const sync = React.useCallback(() => {
+    const node = track.current;
     if (!node) return;
-    node.scrollBy({ left: direction * node.clientWidth * 0.9, behavior: "smooth" });
+    const max = node.scrollWidth - node.clientWidth;
+    setAtStart(node.scrollLeft <= 2);
+    setAtEnd(node.scrollLeft >= max - 2);
+  }, []);
+
+  React.useEffect(() => {
+    sync();
+    const node = track.current;
+    if (!node) return;
+    node.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      node.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [sync]);
+
+  function page(direction: -1 | 1) {
+    const node = track.current;
+    if (!node) return;
+    // One viewport at a time, so a card is never left half in view.
+    node.scrollBy({ left: direction * node.clientWidth, behavior: "smooth" });
   }
 
   return (
@@ -299,45 +235,72 @@ export function IndustriesSection() {
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-4 lg:mt-14">
-            <Link href={ANCHORS.howItWorks} className={buttonClass("primary", "lg")}>
-              Explore all industries
-              <ArrowRight aria-hidden className="size-4" />
-            </Link>
-            <div className="flex gap-2 xl:hidden">
-              <button
-                type="button"
-                aria-label="Previous industries"
-                onClick={() => page(-1)}
-                className={buttonClass("secondary", "md", "!w-11 !rounded-full !px-0")}
-              >
-                <ArrowLeft aria-hidden className="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next industries"
-                onClick={() => page(1)}
-                className={buttonClass("secondary", "md", "!w-11 !rounded-full !px-0")}
-              >
+          <div className="flex shrink-0 flex-col items-start gap-4 lg:mt-14 lg:items-end">
+            {/* Wraps at 320px, where the CTA and the two arrows together are
+                wider than the viewport. */}
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/signup" className={buttonClass("primary", "lg")}>
+                Start free
                 <ArrowRight aria-hidden className="size-4" />
-              </button>
+              </Link>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-label="Previous industries"
+                  aria-controls="industry-track"
+                  disabled={atStart}
+                  onClick={() => page(-1)}
+                  className={buttonClass(
+                    "secondary",
+                    "md",
+                    "!w-11 !rounded-full !px-0 disabled:cursor-default disabled:opacity-35",
+                  )}
+                >
+                  <ArrowLeft aria-hidden className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next industries"
+                  aria-controls="industry-track"
+                  disabled={atEnd}
+                  onClick={() => page(1)}
+                  className={buttonClass(
+                    "secondary",
+                    "md",
+                    "!w-11 !rounded-full !px-0 disabled:cursor-default disabled:opacity-35",
+                  )}
+                >
+                  <ArrowRight aria-hidden className="size-4" />
+                </button>
+              </div>
             </div>
+            <p className="pub-small">Different enquiries. The same conversion engine.</p>
           </div>
         </div>
 
-        <p className="pub-small mt-4 lg:text-right">
-          Different enquiries. The same conversion engine.
-        </p>
-
+        {/* A native scroll region, so trackpad, touch and keyboard all work
+            whether or not the visitor uses the buttons. */}
         <div
-          ref={scroller}
-          className="-mx-[var(--pub-gutter)] mt-10 flex snap-x snap-mandatory gap-5 overflow-x-auto px-[var(--pub-gutter)] pb-2 [scrollbar-width:none] md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0 xl:grid-cols-3"
+          id="industry-track"
+          ref={track}
+          role="group"
+          aria-label="Industries"
+          tabIndex={0}
+          className="mt-10 grid snap-x snap-mandatory grid-flow-col grid-rows-2 gap-5 overflow-x-auto scroll-smooth pb-3 auto-cols-[84vw] [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--pub-lime)] md:auto-cols-[calc((100%-1.25rem)/2)] xl:auto-cols-[calc((100%-2.5rem)/3)] [&::-webkit-scrollbar]:hidden"
+          // The track bleeds to the viewport edge so a partially visible card
+          // reads as "there is more", but its content still starts on the
+          // container's gutter so the first card lines up with the heading.
+          style={{
+            marginInline: "calc(var(--pub-gutter) * -1)",
+            paddingInline: "var(--pub-gutter)",
+            scrollPaddingInline: "var(--pub-gutter)",
+          }}
         >
           {INDUSTRIES.map((industry, index) => (
             <Reveal
               key={industry.id}
-              delay={(index % 3) * 0.06}
-              className="w-[min(86vw,340px)] shrink-0 md:w-auto md:shrink"
+              delay={(index % 6) * 0.05}
+              className="h-full min-w-0 snap-start"
             >
               <IndustryCard industry={industry} />
             </Reveal>
@@ -345,7 +308,7 @@ export function IndustriesSection() {
         </div>
 
         <ul className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 border-t border-[var(--pub-border)] pt-8">
-          {FOOTER_STRIP.map((item) => (
+          {INDUSTRY_STRIP.map((item) => (
             <li
               key={item}
               className="flex items-center gap-2 text-[13.5px] text-[var(--pub-text-secondary)]"

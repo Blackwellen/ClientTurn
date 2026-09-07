@@ -14,6 +14,7 @@ import {
   Send,
   Users,
 } from "./pieces";
+import { Reveal, StaggerItem, StaggerReveal, panelEnter } from "./motion";
 
 /**
  * Chapter C — intent, campaigns and the handover into the warm lead engine.
@@ -24,8 +25,13 @@ import {
  */
 export function ChapterC() {
   return (
-    <FlSection id="campaigns" glow="left">
+    <FlSection
+      id="campaigns"
+      glow="left"
+      aria-label="Intent, campaigns and growth"
+    >
       <ChapterHead
+        heading={false}
         eyebrow="Intent, campaigns & growth"
         title="Find the right opportunities."
         accent="Take the next step."
@@ -38,8 +44,10 @@ export function ChapterC() {
         }
       />
 
-      <div className="fl-cards">
+      <StaggerReveal className="fl-cards" step={0.12}>
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-intent-title"
           index="01"
           eyebrow="Buying intent"
           title="Prioritise companies showing a reason to care now."
@@ -47,8 +55,11 @@ export function ChapterC() {
         >
           <IntentPanel />
         </ChapterCard>
+        </StaggerItem>
 
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-campaigns-title"
           index="02"
           eyebrow="Campaigns"
           title="Coordinate acquisition without building a generic automation maze."
@@ -56,8 +67,11 @@ export function ChapterC() {
         >
           <CampaignPanel />
         </ChapterCard>
+        </StaggerItem>
 
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-promotion-title"
           index="03"
           eyebrow="Prospect → Lead"
           title="When a prospect engages, the history moves with them."
@@ -67,8 +81,10 @@ export function ChapterC() {
             <PromotionPanel />
           </div>
         </ChapterCard>
-      </div>
+        </StaggerItem>
+      </StaggerReveal>
 
+      <Reveal>
       <Ribbon
         arrows
         items={[
@@ -99,6 +115,7 @@ export function ChapterC() {
           },
         ]}
       />
+      </Reveal>
     </FlSection>
   );
 }

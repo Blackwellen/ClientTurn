@@ -1,7 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { programmeConversionRate, resolveRange, type RangeKey } from "./programme";
+import {
+  programmeConversionRate,
+  resolveRange,
+  type CustomRange,
+  type RangeKey,
+} from "./programme";
 import { EMPTY_METRICS, type AffiliateMetrics } from "./metrics";
 
 /**
@@ -85,6 +90,8 @@ export type AffiliateOverview = {
   range: RangeKey;
   from: string;
   to: string;
+  /** Length of the window, so a custom range can caption its own comparison. */
+  days: number;
   current: AffiliateMetrics;
   /** Null when the comparison window predates the account, so no fake trend. */
   previous: AffiliateMetrics | null;
@@ -138,8 +145,9 @@ export const getOverview = cache(async function getOverview(
   affiliateId: string,
   range: RangeKey,
   joinedAt: string,
+  custom?: CustomRange | null,
 ): Promise<AffiliateOverview> {
-  const { from, to, previousFrom } = resolveRange(range);
+  const { from, to, days, previousFrom } = resolveRange(range, new Date(), custom);
 
   const accountOpened = new Date(joinedAt).getTime();
   const comparable = Number.isFinite(accountOpened)
@@ -155,6 +163,7 @@ export const getOverview = cache(async function getOverview(
     range,
     from: from.toISOString(),
     to: to.toISOString(),
+    days,
     current,
     previous,
   };
@@ -165,8 +174,9 @@ export const getOverview = cache(async function getOverview(
 export const getDailySeries = cache(async function getDailySeries(
   affiliateId: string,
   range: RangeKey,
+  custom?: CustomRange | null,
 ): Promise<DailyPoint[]> {
-  const { from, to } = resolveRange(range);
+  const { from, to } = resolveRange(range, new Date(), custom);
 
   const { data, error } = await createAdminClient().rpc("affiliate_daily_series", {
     p_affiliate_id: affiliateId,
@@ -192,8 +202,9 @@ export const getDailySeries = cache(async function getDailySeries(
 export const getLinkMetrics = cache(async function getLinkMetrics(
   affiliateId: string,
   range: RangeKey,
+  custom?: CustomRange | null,
 ): Promise<LinkMetrics[]> {
-  const { from, to } = resolveRange(range);
+  const { from, to } = resolveRange(range, new Date(), custom);
 
   const { data, error } = await createAdminClient().rpc("affiliate_link_metrics", {
     p_affiliate_id: affiliateId,
@@ -242,8 +253,9 @@ export const getLinkMetrics = cache(async function getLinkMetrics(
 export const getCampaignMetrics = cache(async function getCampaignMetrics(
   affiliateId: string,
   range: RangeKey,
+  custom?: CustomRange | null,
 ): Promise<CampaignMetrics[]> {
-  const links = await getLinkMetrics(affiliateId, range);
+  const links = await getLinkMetrics(affiliateId, range, custom);
   const byCampaign = new Map<string, CampaignMetrics>();
 
   for (const link of links) {

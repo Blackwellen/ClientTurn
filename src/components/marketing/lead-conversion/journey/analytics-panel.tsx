@@ -101,7 +101,7 @@ export function AnalyticsPanel() {
               {LEAD_SOURCES.map((source) => (
                 <li key={source.label}>
                   <i style={{ background: source.colour }} aria-hidden />
-                  {source.label}
+                  <b>{source.label}</b>
                   <span>{source.pct}%</span>
                 </li>
               ))}
@@ -115,7 +115,7 @@ export function AnalyticsPanel() {
 
         <Panel title="Response time">
           <div className="lcp-rt">
-            <Clock size={22} strokeWidth={2} aria-hidden />
+            <Clock size={18} strokeWidth={2} aria-hidden />
             <b>2h 18m</b>
             <span className="lcp-rt-delta">Last 30 days</span>
           </div>

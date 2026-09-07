@@ -1,6 +1,8 @@
+"use client";
+
 import * as React from "react";
 import { cn } from "@/lib/cn";
-import { PublicCard } from "./ui";
+import { RevealStagger, RevealItem } from "./reveal";
 
 /**
  * Compositions the evaluation pages add to the shared V2 primitives.
@@ -16,25 +18,36 @@ import { PublicCard } from "./ui";
  */
 
 /**
- * A section panel: one idea, with a visible edge.
+ * A page section.
  *
- * The surface is `PublicCard`, so a panel and a card can never drift apart —
- * `pub-panel` only adds the padding and the scroll offset that a full-width
- * section needs.
+ * Sits directly on the page ground — no container surface. The only raised
+ * surfaces on these pages are the things that genuinely are objects: a card, a
+ * product screen, the closing CTA band. Wrapping every section in a panel as
+ * well put a box inside a box and flattened the hierarchy, so sections carry
+ * rhythm through spacing and a hairline instead.
  */
-export function Panel({
+export function Band({
+  divided = true,
   className,
   ...props
-}: React.ComponentProps<typeof PublicCard>) {
-  return <PublicCard as="section" className={cn("pub-panel", className)} {...props} />;
+}: React.HTMLAttributes<HTMLElement> & {
+  /** The hairline above the section. Omitted on the first band of a page. */
+  divided?: boolean;
+}) {
+  return (
+    <section
+      className={cn("pub-band", divided && "pub-band-divided", className)}
+      {...props}
+    />
+  );
 }
 
-/** The vertical rhythm between stacked panels. */
-export function PanelStack({
+/** The vertical rhythm of a page's sections. */
+export function BandStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("pub-panel-stack", className)} {...props} />;
+  return <div className={cn("pub-band-stack", className)} {...props} />;
 }
 
 /**
@@ -71,21 +84,24 @@ export function StepRail({
   variant?: "rail" | "timeline";
   className?: string;
 }) {
+  // Steps arrive in order, which is the one thing the rail is saying.
   return (
-    <ol
+    <RevealStagger
+      as="ol"
+      step={0.09}
       className={cn(variant === "rail" ? "pub-rail" : "pub-timeline", className)}
       style={{ "--pub-rail-steps": steps.length } as React.CSSProperties}
     >
       {steps.map((step, index) => (
-        <li key={step.title} className="pub-step">
+        <RevealItem as="li" key={step.title} className="pub-step">
           <span className="pub-step-num" aria-hidden>
             {index + 1}
           </span>
           <h3>{step.title}</h3>
           <p>{step.body}</p>
-        </li>
+        </RevealItem>
       ))}
-    </ol>
+    </RevealStagger>
   );
 }
 
@@ -98,16 +114,16 @@ export function TrustRow({
   className?: string;
 }) {
   return (
-    <ul className={cn("pub-trust", className)}>
+    <RevealStagger as="ul" step={0.06} className={cn("pub-trust", className)}>
       {items.map((item) => (
-        <li key={item.label}>
+        <RevealItem as="li" key={item.label}>
           <span className="pub-ring" aria-hidden>
             {item.icon}
           </span>
           {item.label}
-        </li>
+        </RevealItem>
       ))}
-    </ul>
+    </RevealStagger>
   );
 }
 

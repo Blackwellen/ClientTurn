@@ -1,3 +1,4 @@
+﻿import * as React from "react";
 import {
   Zap,
   CalendarCheck2,
@@ -16,9 +17,15 @@ import {
   Server,
   ScrollText,
 } from "lucide-react";
+import {
+  AdminFrame,
+  AppFrame,
+  DashboardFrame,
+  AcquisitionFrame,
+} from "@/components/marketing/public/home/app-frames";
+import { PartnerFrame } from "@/components/marketing/public/home/partner-frame";
 import { Annotation } from "./annotation";
 import { FeatureList, type AuthFeature } from "./feature-list";
-import { DashboardPreview, SecurityPreview, StackedCardsPreview } from "./product-preview";
 import { TiltWrapper } from "./tilt-wrapper";
 import { WorksWithStrip } from "./works-with-strip";
 
@@ -128,91 +135,70 @@ const COPY: Record<
   },
 };
 
-const RECENT_LEADS = [
-  { initials: "SM", name: "Sarah Mitchell", detail: "Roof repair", time: "2m ago" },
-  { initials: "JC", name: "James Carter", detail: "Loft conversion", time: "14m ago" },
-  { initials: "EW", name: "Emma Wilson", detail: "New roof", time: "1h ago" },
-];
+/**
+ * Placement of the handwritten note.
+ *
+ * Every auth design puts it in the same place: top-right of the brand column,
+ * clear of the headline, sweeping down-right into the top-left corner of the
+ * tilted product frame. It is measured up from the column's vertical centre —
+ * the same anchor the product visual uses — so the note and the frame it
+ * points at move together instead of drifting apart between breakpoints.
+ *
+ * The offsets put the note's first line level with the top of the headline
+ * beside it — measured, not guessed — so the two read as one row.
+ */
+const ANNOTATION_POSITION =
+  "bottom-[256px] right-[18px] min-[1536px]:bottom-[281px] min-[1536px]:right-[42px] min-[1700px]:bottom-[321px] min-[1700px]:right-[102px]";
 
-const RECENT_ACTIVITY = [
-  { initials: "SM", name: "Sarah Mitchell", detail: "New lead", time: "2m ago" },
-  { initials: "JC", name: "James Carter", detail: "Booking confirmed", time: "14m ago" },
-  { initials: "EW", name: "Emma Wilson", detail: "Follow-up sent", time: "1h ago" },
-];
-
-/** Placement of the handwritten note, measured from the brand column's right
- * edge at its vertical centre — the same anchor the product visual uses — so
- * the two stay related while living in separate stacking contexts. */
-const ANNOTATION_POSITION: Record<AuthVariant, string> = {
-  signup:
-    "bottom-[225px] -right-[20px] min-[1536px]:bottom-[245px] min-[1536px]:right-[20px] min-[1700px]:bottom-[300px] min-[1700px]:right-[125px]",
-  login:
-    "bottom-[225px] -right-[20px] min-[1536px]:bottom-[245px] min-[1536px]:right-[20px] min-[1700px]:bottom-[300px] min-[1700px]:right-[95px]",
-  forgot:
-    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
-  reset:
-    "bottom-[175px] -right-[60px] min-[1536px]:right-[0px] min-[1700px]:bottom-[200px] min-[1700px]:right-[70px]",
+/**
+ * The product visual beside the form.
+ *
+ * These are the same workspace rebuilds the marketing site uses, not a
+ * separate set of mockups. Two different-looking "products" either side of a
+ * sign-in button is how a site tells a visitor that one of them is a
+ * marketing illustration — so the doors show the real thing.
+ *
+ * Sample workspace, sample names, sample figures, as the frames' own
+ * documentation records. Nothing here is a customer or a result.
+ */
+const FRAME_LABEL = {
+  dashboard:
+    "ClientTurn lead conversion dashboard showing connection status, lead and booking counts, the conversion funnel and estimated pipeline.",
+  acquisition:
+    "ClientTurn Find Leads screen showing a natural-language target, the filters derived from it and a list of verified prospects with scores.",
   partner:
-    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
-  "partner-signup":
-    "top-[110px] right-[45px] min-[1536px]:right-[70px] min-[1700px]:top-[130px] min-[1700px]:right-[190px]",
-  // Never rendered -- the operator door has no handwritten note.
-  admin: "",
-};
+    "The ClientTurn partner portal, showing clicks, signups, trials and paid customers, commission earned by month, a commission summary and recent referrals.",
+  admin:
+    "The ClientTurn operations console, showing workspace, trial and subscription counts, recent workspaces and system health.",
+} as const;
 
 function ProductVisual({ variant }: { variant: AuthVariant }) {
+  // `AppFrame` measures itself against its container, and this one is
+  // absolutely positioned and `w-fit` — so the width has to be stated here or
+  // the frame has nothing to scale from.
+  const frame = (node: React.ReactNode, label: string) => (
+    <div className="w-[800px]">
+      <AppFrame label={label}>{node}</AppFrame>
+    </div>
+  );
+
+  // The operator door shows the operations console, not a customer's
+  // workspace — but in the same frame as every other door, so the product
+  // reads as one thing. It still carries no handwritten note or trust strip.
+  if (variant === "admin") {
+    return frame(<AdminFrame />, FRAME_LABEL.admin);
+  }
+
+  // A partner signing in wants their own portal, not a customer's workspace.
+  if (variant === "partner" || variant === "partner-signup") {
+    return frame(<PartnerFrame />, FRAME_LABEL.partner);
+  }
+
   if (variant === "signup") {
-    return (
-      <DashboardPreview
-        title="Good afternoon!"
-        subtitle="Here's what's happening with your leads today."
-        kpis={[
-          { label: "New Leads", value: "142", delta: "12%" },
-          { label: "Contacted", value: "87", delta: "8%" },
-          { label: "Booked", value: "36", delta: "20%" },
-        ]}
-        chartTitle="Lead Funnel"
-        bars={[
-          { label: "Leads", value: "142", height: 100 },
-          { label: "Contacted", value: "87", height: 62 },
-          { label: "Responded", value: "36", height: 34 },
-          { label: "Qualified", value: "28", height: 27 },
-          { label: "Booked", value: "18", height: 18 },
-        ]}
-        showBarValues
-        listTitle="Recent Leads"
-        rows={RECENT_LEADS}
-      />
-    );
+    return frame(<AcquisitionFrame />, FRAME_LABEL.acquisition);
   }
-  if (variant === "login") {
-    return (
-      <DashboardPreview
-        title="Good to see you again!"
-        subtitle="Here's your latest performance."
-        kpis={[
-          { label: "New Leads", value: "142", delta: "12%" },
-          { label: "Booked Jobs", value: "87", delta: "8%" },
-          { label: "Revenue", value: "£12.4k", delta: "20%" },
-        ]}
-        chartTitle="Leads This Month"
-        chartChip="This Month"
-        bars={[
-          { label: "Jan", value: "58", height: 46 },
-          { label: "Feb", value: "72", height: 58 },
-          { label: "Mar", value: "104", height: 84 },
-          { label: "Apr", value: "81", height: 66 },
-          { label: "May", value: "96", height: 78 },
-          { label: "Jun", value: "124", height: 100 },
-        ]}
-        listTitle="Recent Activity"
-        rows={RECENT_ACTIVITY}
-      />
-    );
-  }
-  if (variant === "forgot" || variant === "partner" || variant === "partner-signup")
-    return <StackedCardsPreview />;
-  return <SecurityPreview />;
+
+  return frame(<DashboardFrame />, FRAME_LABEL.dashboard);
 }
 
 const EYEBROW: Record<AuthVariant, string> = {
@@ -232,6 +218,7 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
 
   return (
     <div className="relative flex flex-col justify-center py-10 lg:py-0">
+      <div className="max-w-[430px] min-[1440px]:max-w-[430px] min-[1536px]:max-w-[440px] min-[1700px]:max-w-[465px]">
       <p className="text-[13px] font-medium tracking-[0.24em] text-[var(--auth-eyebrow)] uppercase">
         {EYEBROW[variant]}
       </p>
@@ -239,8 +226,8 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
       <h1
         className="mt-5 font-bold text-[var(--auth-text)]"
         style={{
-          fontSize: "clamp(2.75rem, 2rem + 3.2vw, 4.75rem)",
-          lineHeight: 0.98,
+          fontSize: "clamp(2.5rem, 1.9rem + 2.6vw, 4.25rem)",
+          lineHeight: 1,
           letterSpacing: "-0.04em",
         }}
       >
@@ -254,19 +241,20 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
         </span>
       </h1>
 
-      <p className="mt-6 max-w-[440px] text-[17px] leading-relaxed text-[var(--auth-text-muted)] lg:text-[19px] min-[1440px]:max-w-[400px]">
+      <p className="mt-6 text-[17px] leading-relaxed text-[var(--auth-text-muted)] lg:text-[19px]">
         {copy.support}
       </p>
 
       <div className="mt-11">
         <FeatureList items={features} />
       </div>
+      </div>
 
       {/* The product visual sits beside the feature list and runs past the
           column edge to tuck behind the auth card, as in the mockups. Its
           wrapper is transformed, so it forms its own stacking context and
           stays below the card — which is exactly what we want here. */}
-      <div className="absolute top-1/2 right-0 hidden w-fit -translate-y-1/2 translate-x-[52%] scale-[0.8] min-[1440px]:block min-[1536px]:translate-x-[48%] min-[1536px]:scale-[0.88] min-[1700px]:translate-x-[47%] min-[1700px]:scale-[1.1]">
+      <div className="absolute top-1/2 right-0 hidden w-fit -translate-y-1/2 translate-x-[70%] scale-[0.82] min-[1440px]:block min-[1536px]:translate-x-[69%] min-[1536px]:scale-[0.9] min-[1700px]:translate-x-[66%] min-[1700px]:scale-[1.02]">
         <div className="ct-auth-float" style={{ perspective: 1600 }}>
           <TiltWrapper baseTransform="perspective(1500px) rotateY(-7deg) rotateZ(3deg)">
             <ProductVisual variant={variant} />
@@ -279,23 +267,14 @@ export function AuthBrandPanel({ variant }: { variant: AuthVariant }) {
           auth card rather than being trapped underneath it. */}
       {!internal && (
       <div className="pointer-events-none absolute top-1/2 right-0 z-40 hidden -translate-y-1/2 min-[1440px]:block">
-        <div className={`absolute w-max ${ANNOTATION_POSITION[variant]}`}>
-          <Annotation
-            lines={copy.annotation}
-            arrow={
-              variant === "forgot" ||
-              variant === "partner" ||
-              variant === "partner-signup"
-                ? "up-right"
-                : "down-left"
-            }
-          />
+        <div className={`absolute w-max ${ANNOTATION_POSITION}`}>
+          <Annotation lines={copy.annotation} arrow="down-right" />
         </div>
       </div>
       )}
 
       {!internal && (
-        <div className="mt-12 lg:mt-16">
+        <div className="mt-12 max-w-[620px] min-[1536px]:max-w-[680px] lg:mt-16">
           <WorksWithStrip />
         </div>
       )}

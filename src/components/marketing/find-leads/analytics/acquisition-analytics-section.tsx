@@ -5,6 +5,7 @@ import {
   ChapterHead,
   FlSection,
 } from "../pieces";
+import { AcquisitionFunnel, ProviderBars, MetricTiles } from "./funnel";
 
 /**
  * Acquisition analytics.
@@ -32,42 +33,14 @@ export function AcquisitionAnalyticsSection() {
           subtitle="Illustrative figures, not customer results"
           actions={<Badge tone="lime">Demo</Badge>}
         >
-          <ul className="fl-funnel">
-            {FUNNEL_STEPS.map((step) => (
-              <li key={step.label}>
-                <span className="fl-funnel-label">{step.label}</span>
-                <span className="fl-funnel-bar" aria-hidden>
-                  <span
-                    style={{
-                      width: `${Math.max((step.value / widest) * 100, 4)}%`,
-                    }}
-                  />
-                </span>
-                <span className="fl-funnel-value">
-                  {step.value.toLocaleString("en-GB")}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <AcquisitionFunnel steps={FUNNEL_STEPS} widest={widest} />
         </AppSurface>
 
         <AppSurface
           title="Where the sourcing effort went"
           subtitle="By provider capability"
         >
-          <ul className="fl-bars">
-            {PROVIDER_ROWS.map((row) => (
-              <li key={row.label}>
-                <div>
-                  <strong>{row.label}</strong>
-                  <small>{row.detail}</small>
-                </div>
-                <span className="fl-bars-track" aria-hidden>
-                  <span style={{ width: `${row.share}%` }} />
-                </span>
-              </li>
-            ))}
-          </ul>
+          <ProviderBars rows={PROVIDER_ROWS} />
           <p className="fl-note-line">
             Capability, not vendor pricing. Raw provider unit costs stay
             internal — what you see is your own spend against your own
@@ -76,14 +49,7 @@ export function AcquisitionAnalyticsSection() {
         </AppSurface>
       </div>
 
-      <ul className="fl-metrics" style={{ marginTop: 22 }}>
-        {ANALYTICS_METRICS.map((metric) => (
-          <li className="fl-metric" key={metric.label}>
-            <b>{metric.value}</b>
-            <span>{metric.label}</span>
-          </li>
-        ))}
-      </ul>
+      <MetricTiles items={ANALYTICS_METRICS} />
     </FlSection>
   );
 }

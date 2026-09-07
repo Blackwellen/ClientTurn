@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { trackCta, withCampaignParams, type CtaPlacement } from "@/lib/marketing/track";
 
 type Variant = "primary" | "secondary" | "quiet";
-type Size = "md" | "lg";
+type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
@@ -18,6 +18,7 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 const SIZES: Record<Size, string> = {
+  sm: "h-8 px-3 text-[13px] gap-1.5 rounded-md",
   md: "h-9 px-4 text-sm gap-2 rounded-md",
   lg: "h-11 px-6 text-[15px] gap-2 rounded-lg",
 };

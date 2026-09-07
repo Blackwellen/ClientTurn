@@ -47,8 +47,14 @@ export function FlSection({
 }
 
 /**
- * A chapter's opening block: eyebrow, split headline and a right-hand aside
- * carrying one supporting sentence and one link out.
+ * A chapter's opening block: eyebrow, split display line and a right-hand
+ * aside carrying one supporting sentence and one link out.
+ *
+ * `heading` decides whether the display line joins the document outline. The
+ * two three-card chapters pass `false`, because the six product-section titles
+ * inside their cards are the page's H2 sequence and the region is named with
+ * `aria-label` instead — a second big line above them would put two competing
+ * headings at the same level.
  */
 export function ChapterHead({
   eyebrow,
@@ -56,6 +62,8 @@ export function ChapterHead({
   accent,
   aside,
   action,
+  heading = true,
+  id,
 }: {
   eyebrow: string;
   title: string;
@@ -63,14 +71,28 @@ export function ChapterHead({
   accent: string;
   aside: string;
   action?: React.ReactNode;
+  heading?: boolean;
+  id?: string;
 }) {
+  const line = (
+    <>
+      {title} <em>{accent}</em>
+    </>
+  );
+
   return (
     <div className="fl-chapter-head">
       <div>
         <p className="fl-eyebrow">{eyebrow}</p>
-        <h2 className="fl-h2">
-          {title} <em>{accent}</em>
-        </h2>
+        {heading ? (
+          <h2 className="fl-h2" id={id}>
+            {line}
+          </h2>
+        ) : (
+          <p className="fl-display" id={id}>
+            {line}
+          </p>
+        )}
       </div>
       <div className="fl-chapter-aside">
         <p>{aside}</p>
@@ -80,28 +102,39 @@ export function ChapterHead({
   );
 }
 
+/**
+ * One chapter card.
+ *
+ * The title is an `h2` styled at h3 size: heading *level* describes the
+ * document, font size describes the layout, and the brief's H2 sequence is
+ * these six product-section titles.
+ */
 export function ChapterCard({
   index,
   eyebrow,
   title,
   body,
+  id,
   children,
 }: {
   index: string;
   eyebrow: string;
   title: React.ReactNode;
   body: string;
+  id?: string;
   children: React.ReactNode;
 }) {
   return (
-    <article className="fl-card">
+    <article className="fl-card" aria-labelledby={id}>
       <div className="fl-card-head">
         <span aria-hidden className="fl-card-num">
           {index}
         </span>
         <div>
           <p className="fl-eyebrow">{eyebrow}</p>
-          <h3 className="fl-h3">{title}</h3>
+          <h2 className="fl-h3" id={id}>
+            {title}
+          </h2>
           <p className="fl-body">{body}</p>
         </div>
       </div>

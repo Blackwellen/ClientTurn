@@ -2,6 +2,15 @@
 
 import * as React from "react";
 import { trackEngagement } from "@/lib/marketing/track";
+import {
+  fadeUp,
+  motion,
+  panelEnter,
+  planField,
+  stagger,
+  useReducedMotion,
+  T,
+} from "../motion";
 import { FlCta } from "../fl-cta";
 import { HERO_PLAN, HERO_REPLY, HERO_REQUEST } from "../data";
 import {
@@ -48,6 +57,7 @@ const TRUST_CHECKS = [
 
 export function SearchPlanSection() {
   const [open, setOpen] = React.useState(false);
+  const reduced = useReducedMotion();
 
   return (
     <FlSection id="search-plan" glow="right">
@@ -69,23 +79,36 @@ export function SearchPlanSection() {
 
       <div className="fl-split">
         {/* -------------------------------------------------- conversation */}
+        <motion.div
+          initial={reduced ? "shown" : "hidden"}
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.2 }}
+          variants={panelEnter}
+        >
         <AppSurface
           title="Search session"
           subtitle="Property managers — Bournemouth"
           actions={<Badge tone="lime">Draft plan</Badge>}
         >
-          <ul className="fl-msglist" style={{ marginTop: 0 }}>
-            <li className="fl-msg fl-msg-user">
+          <motion.ul
+            className="fl-msglist"
+            style={{ marginTop: 0 }}
+            initial={reduced ? "shown" : "hidden"}
+            whileInView="shown"
+            viewport={{ once: true, amount: 0.3 }}
+            variants={stagger(reduced ? 0 : 0.12)}
+          >
+            <motion.li className="fl-msg fl-msg-user" variants={fadeUp}>
               <div className="fl-bubble fl-bubble-user">{HERO_REQUEST}</div>
               <span className="fl-avatar fl-avatar-user">You</span>
-            </li>
-            <li className="fl-msg">
+            </motion.li>
+            <motion.li className="fl-msg" variants={fadeUp}>
               <span className="fl-avatar">
                 <BrandMark />
               </span>
               <div className="fl-bubble">{HERO_REPLY}</div>
-            </li>
-            <li className="fl-msg">
+            </motion.li>
+            <motion.li className="fl-msg" variants={fadeUp}>
               <span className="fl-avatar">
                 <BrandMark />
               </span>
@@ -93,13 +116,15 @@ export function SearchPlanSection() {
                 Anything you would like to change? I can widen the radius, add
                 roles, or exclude specific domains before we start.
               </div>
-            </li>
-          </ul>
+            </motion.li>
+          </motion.ul>
 
           {/* Mobile route into the plan; hidden once there is room beside it. */}
-          <button
+          <motion.button
             type="button"
             className="fl-btn fl-btn-ghost fl-plan-toggle"
+            whileTap={reduced ? undefined : { scale: 0.98 }}
+            transition={T.fast}
             aria-expanded={open}
             aria-controls="fl-plan-panel"
             onClick={() => {
@@ -112,8 +137,9 @@ export function SearchPlanSection() {
               size={14}
               style={{ rotate: open ? "180deg" : "0deg", transition: "rotate .25s" }}
             />
-          </button>
+          </motion.button>
         </AppSurface>
+        </motion.div>
 
         {/* ---------------------------------------------------- plan panel */}
         <div
@@ -153,14 +179,21 @@ export function SearchPlanSection() {
                 </div>
               }
             >
-              <dl className="fl-limits" style={{ gridTemplateColumns: "1fr" }}>
+              <motion.dl
+                className="fl-limits"
+                style={{ gridTemplateColumns: "1fr" }}
+                initial={reduced ? "shown" : "hidden"}
+                whileInView="shown"
+                viewport={{ once: true, amount: 0.15 }}
+                variants={stagger(reduced ? 0 : 0.045)}
+              >
                 {PLAN_ROWS.map((row) => (
-                  <div key={row.label}>
+                  <motion.div key={row.label} variants={planField}>
                     <dt>{row.label}</dt>
                     <dd>{row.value.join(", ")}</dd>
-                  </div>
+                  </motion.div>
                 ))}
-              </dl>
+              </motion.dl>
 
               {/* ------------------------------------------ budget panel */}
               <div
@@ -198,14 +231,21 @@ export function SearchPlanSection() {
                 </div>
               </div>
 
-              <ul className="fl-checks" style={{ marginTop: 14 }}>
+              <motion.ul
+                className="fl-checks"
+                style={{ marginTop: 14 }}
+                initial={reduced ? "shown" : "hidden"}
+                whileInView="shown"
+                viewport={{ once: true, amount: 0.4 }}
+                variants={stagger(reduced ? 0 : 0.07)}
+              >
                 {TRUST_CHECKS.map((check) => (
-                  <li key={check}>
+                  <motion.li key={check} variants={fadeUp}>
                     <Check size={13} />
                     {check}
-                  </li>
+                  </motion.li>
                 ))}
-              </ul>
+              </motion.ul>
             </AppSurface>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
   SubmitButton,
   TextField,
 } from "@/app/(auth)/_components/auth-form-parts";
+import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
 
 /**
  * Partner sign-in.
@@ -99,6 +100,13 @@ export function AffiliateLoginForm({
       >
         Sign in to partner portal
       </SubmitButton>
+
+      <AuthDivider />
+
+      <GoogleAuthButton
+        label={"Sign in with Google"}
+          next={"/affiliates/app"}
+      />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Not a partner yet?{" "}

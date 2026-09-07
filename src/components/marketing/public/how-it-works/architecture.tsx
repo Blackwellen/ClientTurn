@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { PathDraw, RevealStagger, RevealItem } from "../reveal";
 import {
   ArrowDownToLine,
   CalendarCheck,
@@ -75,14 +78,14 @@ function NodeGroup({
   return (
     <div className="pub-arch-group" data-tone={tone}>
       <p className="pub-arch-title">{title}</p>
-      <ul>
+      <RevealStagger as="ul" step={0.05}>
         {nodes.map((node) => (
-          <li key={node.label}>
+          <RevealItem as="li" key={node.label} preset="fadeIn">
             <span aria-hidden>{node.icon}</span>
             {node.label}
-          </li>
+          </RevealItem>
         ))}
-      </ul>
+      </RevealStagger>
     </div>
   );
 }
@@ -106,10 +109,12 @@ export function Architecture() {
             <stop offset="100%" stopColor="#B7F34A" stopOpacity="0.05" />
           </linearGradient>
         </defs>
-        <path d="M30 22 C 42 22 42 50 50 50" stroke="url(#pub-arch-in)" strokeWidth="0.5" fill="none" />
-        <path d="M30 78 C 42 78 42 50 50 50" stroke="url(#pub-arch-in)" strokeWidth="0.5" fill="none" />
-        <path d="M50 50 C 58 50 58 22 70 22" stroke="url(#pub-arch-out)" strokeWidth="0.5" fill="none" />
-        <path d="M50 50 C 58 50 58 78 70 78" stroke="url(#pub-arch-out)" strokeWidth="0.5" fill="none" />
+        {/* Drawn in the order the system works: both lanes arrive at the hub,
+            then leave it as opportunities and then as business. */}
+        <PathDraw d="M30 22 C 42 22 42 50 50 50" stroke="url(#pub-arch-in)" strokeWidth="0.5" fill="none" delay={0.1} />
+        <PathDraw d="M30 78 C 42 78 42 50 50 50" stroke="url(#pub-arch-in)" strokeWidth="0.5" fill="none" delay={0.2} />
+        <PathDraw d="M50 50 C 58 50 58 22 70 22" stroke="url(#pub-arch-out)" strokeWidth="0.5" fill="none" delay={0.75} />
+        <PathDraw d="M50 50 C 58 50 58 78 70 78" stroke="url(#pub-arch-out)" strokeWidth="0.5" fill="none" delay={0.85} />
       </svg>
 
       <div className="pub-arch-col">

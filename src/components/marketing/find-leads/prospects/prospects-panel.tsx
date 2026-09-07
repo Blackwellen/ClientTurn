@@ -3,6 +3,15 @@
 import * as React from "react";
 import { trackEngagement } from "@/lib/marketing/track";
 import {
+  AnimatePresence,
+  fadeUp,
+  motion,
+  prospectTableReveal,
+  stagger,
+  useReducedMotion,
+  T,
+} from "../motion";
+import {
   DEMO_PROSPECTS,
   PROSPECT_ACTIONS,
   PROSPECT_FILTERS,
@@ -11,7 +20,6 @@ import {
 import {
   AppSurface,
   Badge,
-  Dots,
   Filter,
   Plus,
   Sliders,
@@ -21,14 +29,22 @@ import {
 /**
  * The Prospect Inbox.
  *
- * Prospects are deliberately *not* leads: the eligibility and outreach columns
- * exist so a buyer can see that a sourced record is held back until it is
- * either engaged or explicitly promoted. The quick filters work, because a
- * filter bar that does nothing when clicked teaches a visitor that the demo is
- * a picture.
+ * Prospects are deliberately *not* leads: eligibility and outreach state are
+ * shown so a buyer can see that a sourced record is held back until it either
+ * engages or is explicitly promoted.
  *
- * Ten columns cannot survive a phone, so below 768px the same fields render as
- * cards. Both markups are present; CSS chooses.
+ * Two representations of the same eleven fields, because eleven columns cannot
+ * fit a third-width card at any legible size:
+ *
+ *   * the table carries the eight columns the approved design shows, scrolling
+ *     horizontally inside its own container if the card is narrower still;
+ *   * the card list below it — the only representation under 768px — carries
+ *     all eleven, including eligibility, campaign, outreach and last activity.
+ *
+ * Nothing is hidden either way; the fields are simply not all in one row.
+ *
+ * The quick filters really filter. A filter bar that does nothing when clicked
+ * teaches a visitor that the whole demo is a picture.
  */
 
 const INTENT_TONE: Record<DemoProspect["intent"], BadgeTone> = {
@@ -66,6 +82,7 @@ function matches(prospect: DemoProspect, filter: string): boolean {
 
 export function ProspectsPanel() {
   const [filter, setFilter] = React.useState("All");
+  const reduced = useReducedMotion();
   const rows = DEMO_PROSPECTS.filter((p) => matches(p, filter));
 
   return (
@@ -87,7 +104,7 @@ export function ProspectsPanel() {
       footer={
         <div className="fl-app-foot">
           <span>
-            Showing {rows.length} of {DEMO_PROSPECTS.length} example prospects
+            {rows.length} of {DEMO_PROSPECTS.length} examples
           </span>
           <span className="fl-mini-btn">
             <Plus size={11} />
@@ -97,10 +114,17 @@ export function ProspectsPanel() {
       }
     >
       {/* --------------------------------------------------- quick filters */}
-      <ul className="fl-filters" aria-label="Prospect quick filters">
+      <motion.ul
+        className="fl-filters"
+        aria-label="Prospect quick filters"
+        initial={reduced ? "shown" : "hidden"}
+        whileInView="shown"
+        viewport={{ once: true, amount: 0.4 }}
+        variants={stagger(reduced ? 0 : 0.04)}
+      >
         {PROSPECT_FILTERS.map((item) => (
-          <li key={item.label}>
-            <button
+          <motion.li key={item.label} variants={fadeUp}>
+            <motion.button
               type="button"
               className="fl-filter"
               aria-pressed={filter === item.label}
@@ -108,100 +132,96 @@ export function ProspectsPanel() {
                 setFilter(item.label);
                 trackEngagement("find_leads_prospect_open", item.label);
               }}
+              whileTap={reduced ? undefined : { scale: 0.96 }}
+              transition={T.fast}
             >
               {item.label}
               <b>{item.count.toLocaleString("en-GB")}</b>
-            </button>
-          </li>
+            </motion.button>
+          </motion.li>
         ))}
-      </ul>
+      </motion.ul>
 
       {/* --------------------------------------------------- table (≥768px) */}
       <div className="fl-table-scroll">
         <table className="fl-table">
           <caption className="sr-only">
-            Example sourced prospects, with fit, intent, verification,
-            eligibility and outreach state
+            Example sourced prospects with company, location and size,
+            contact and role, fit, intent and verification. Eligibility,
+            campaign, outreach state and last activity follow the table.
           </caption>
           <thead>
             <tr>
-              <th scope="col">
-                <span className="sr-only">Select</span>
-              </th>
-              <th scope="col">Prospect</th>
+              <th scope="col">Company</th>
+              <th scope="col">Contact</th>
               <th scope="col">Fit</th>
               <th scope="col">Intent</th>
-              <th scope="col">Role</th>
-              <th scope="col">Location</th>
-              <th scope="col">Verification</th>
-              <th scope="col">Eligibility</th>
-              <th scope="col">Campaign</th>
-              <th scope="col">Outreach</th>
-              <th scope="col">Last activity</th>
-              <th scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
+              <th scope="col">Verified</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.company}>
-                <td>
-                  <span aria-hidden className="fl-check" />
-                </td>
-                <td>
-                  <span className="fl-cell-company">
-                    <span aria-hidden className="fl-logo">
-                      {row.initials}
+          <motion.tbody
+            initial={reduced ? "shown" : "hidden"}
+            whileInView="shown"
+            viewport={{ once: true, amount: 0.15 }}
+            variants={stagger(reduced ? 0 : 0.045)}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              {rows.map((row) => (
+                <motion.tr
+                  key={row.company}
+                  layout={!reduced}
+                  variants={prospectTableReveal}
+                  initial={reduced ? "shown" : "hidden"}
+                  animate="shown"
+                  exit={reduced ? undefined : { opacity: 0 }}
+                >
+                  <td>
+                    <span className="fl-cell-company">
+                      <span aria-hidden className="fl-logo">
+                        {row.initials}
+                      </span>
+                      <span>
+                        <strong>{row.company}</strong>
+                        <small>
+                          {row.location} · {row.companyMeta}
+                        </small>
+                      </span>
                     </span>
-                    <span>
+                  </td>
+                  <td>
+                    <span className="fl-cell-contact">
                       <strong>{row.contact}</strong>
-                      <small>{row.company}</small>
+                      <small>{row.role}</small>
                     </span>
-                  </span>
-                </td>
-                <td>
-                  <span className="fl-fit" data-grade={row.grade}>
-                    <b>{row.fit}</b>
-                    <span>{row.grade}</span>
-                  </span>
-                </td>
-                <td>
-                  {row.intent === "None" ? (
-                    <span className="fl-muted">No recent intent</span>
-                  ) : (
-                    <Badge tone={INTENT_TONE[row.intent]}>
-                      {row.intent} intent
+                  </td>
+                  <td>
+                    <span className="fl-fit" data-grade={row.grade}>
+                      <b>{row.fit}</b>
+                      <span>{row.grade}</span>
+                    </span>
+                  </td>
+                  <td>
+                    {row.intent === "None" ? (
+                      <span className="fl-muted">None</span>
+                    ) : (
+                      <Badge tone={INTENT_TONE[row.intent]}>{row.intent}</Badge>
+                    )}
+                  </td>
+                  <td>
+                    <Badge
+                      tone={row.verification === "Verified" ? "green" : "amber"}
+                    >
+                      {row.verification}
                     </Badge>
-                  )}
-                </td>
-                <td className="fl-muted">{row.role}</td>
-                <td className="fl-muted">{row.location}</td>
-                <td>
-                  <Badge tone={row.verification === "Verified" ? "green" : "amber"}>
-                    {row.verification}
-                  </Badge>
-                </td>
-                <td>
-                  <Badge tone={row.eligibility === "Eligible" ? "lime" : "amber"}>
-                    {row.eligibility}
-                  </Badge>
-                </td>
-                <td className="fl-muted">{row.campaign ?? "—"}</td>
-                <td>
-                  <Badge tone={OUTREACH_TONE[row.outreach]}>{row.outreach}</Badge>
-                </td>
-                <td className="fl-muted">{row.lastActivity}</td>
-                <td>
-                  <Dots size={13} className="text-[#5b6679]" />
-                </td>
-              </tr>
-            ))}
-          </tbody>
+                  </td>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
+          </motion.tbody>
         </table>
       </div>
 
-      {/* --------------------------------------------------- cards (<768px) */}
+      {/* -------------------------------- every field, per prospect (<768px) */}
       <ul className="fl-pcards" aria-label="Example sourced prospects">
         {rows.map((row) => (
           <li className="fl-pcard" key={row.company}>
@@ -210,14 +230,15 @@ export function ProspectsPanel() {
                 {row.initials}
               </span>
               <div>
-                <strong className="block text-[13px] font-medium text-[#f2f6fb]">
+                <strong className="block text-[13px] font-medium text-[#f2f6fa]">
                   {row.contact}
                 </strong>
-                <small className="mt-0.5 block text-[11px] text-[#6c778a]">
+                <small className="mt-0.5 block text-[11px] text-[#56637a]">
                   {row.role} · {row.company}
                 </small>
-                <small className="mt-0.5 block text-[11px] text-[#6c778a]">
+                <small className="mt-0.5 block text-[11px] text-[#56637a]">
                   {row.location}
+                  {row.campaign ? ` · ${row.campaign}` : ""}
                 </small>
               </div>
               <span className="fl-fit" data-grade={row.grade}>
@@ -248,9 +269,50 @@ export function ProspectsPanel() {
       {rows.length === 0 && (
         <p className="fl-note-line">
           No example prospects match that filter — the product shows an empty
-          state here with the filter that produced it.
+          state here, naming the filter that produced it.
         </p>
       )}
+
+      {/* The four fields the table cannot fit, for the selected cohort. */}
+      <div className="fl-block">
+        <p className="fl-sublabel">Selected prospect</p>
+        <ul className="fl-rowlist">
+          {rows[0] && (
+            <>
+              <li>
+                <span className="fl-rowlist-label">Eligibility</span>
+                <span className="fl-rowlist-value">
+                  <Badge
+                    tone={rows[0].eligibility === "Eligible" ? "lime" : "amber"}
+                  >
+                    {rows[0].eligibility}
+                  </Badge>
+                </span>
+              </li>
+              <li>
+                <span className="fl-rowlist-label">Campaign</span>
+                <span className="fl-rowlist-value">
+                  {rows[0].campaign ?? "Not assigned"}
+                </span>
+              </li>
+              <li>
+                <span className="fl-rowlist-label">Outreach</span>
+                <span className="fl-rowlist-value">
+                  <Badge tone={OUTREACH_TONE[rows[0].outreach]}>
+                    {rows[0].outreach}
+                  </Badge>
+                </span>
+              </li>
+              <li>
+                <span className="fl-rowlist-label">Last activity</span>
+                <span className="fl-rowlist-value">
+                  {rows[0].lastActivity}
+                </span>
+              </li>
+            </>
+          )}
+        </ul>
+      </div>
 
       {/* Row actions, listed rather than hidden in a menu the demo cannot open. */}
       <ul className="fl-controls">

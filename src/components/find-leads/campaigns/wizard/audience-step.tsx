@@ -24,6 +24,7 @@ import {
 import type { AudienceEstimate, CampaignWizardOptions } from "@/lib/outreach/campaigns/audience";
 import { CheckRow, Field, RadioRow, RailCard, SectionCard, SummaryRow } from "./pieces";
 import { TokenSelect } from "./token-select";
+import { CompanyListUpload } from "./company-list-upload";
 
 const RADIUS_OPTIONS = [0, 5, 10, 25, 50, 100];
 
@@ -294,6 +295,13 @@ export function AudienceStep({
               title="Named company list (optional)"
               description="Add specific companies you want to include or prioritise in this campaign."
               bodyClassName="space-y-2"
+              action={
+                <CompanyListUpload
+                  existing={audience.namedCompanies}
+                  max={500}
+                  onAdd={(namedCompanies) => setAudience({ namedCompanies })}
+                />
+              }
             >
               <TokenSelect
                 id="named-companies"
@@ -400,6 +408,19 @@ export function AudienceStep({
                   {formatCount(estimate.sourcingTarget)} to source
                 </p>
               )}
+              {/* How the number was reached, because "within 25 miles" and
+                  "the word Bournemouth appears" are different claims. */}
+              {estimate.method === "RADIUS" && audience.radiusMiles ? (
+                <p className="mt-1 text-[11.5px] text-content-muted">
+                  Measured within {audience.radiusMiles} miles of{" "}
+                  {audience.center?.label || audience.locations[0]}
+                </p>
+              ) : estimate.radiusUnresolved ? (
+                <p className="mt-1 text-[11.5px] text-warning-700">
+                  We could not place &ldquo;{audience.locations[0]}&rdquo; on a map, so this
+                  counts matching location names instead of the radius.
+                </p>
+              ) : null}
               <p className="mt-2.5 flex gap-1.5 text-[11.5px] leading-snug text-content-muted">
                 <Info className="mt-px size-3.5 shrink-0" aria-hidden />
                 <span>

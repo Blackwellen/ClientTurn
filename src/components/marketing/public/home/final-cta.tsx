@@ -1,10 +1,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { CircleCheck } from "lucide-react";
-import Image from "next/image";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 import { PublicCta } from "../cta-link";
-import { Arc, Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
+import {
+  Arc,
+  Glow,
+  GridTexture,
+  Lockup,
+  PublicContainer,
+  PublicSection,
+  buttonClass,
+} from "../ui";
 import { ScrollDraw } from "./scroll-draw";
 
 /**
@@ -91,14 +98,12 @@ function OutcomeMap() {
         </svg>
 
         {/* The mark. */}
-        <Image
-          src="/dark_background_logo.png"
-          alt=""
-          width={2172}
-          height={724}
-          className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: `calc(92 * var(--u))`, height: `calc(58 * var(--u))`, width: "auto" }}
-        />
+        <span
+          className="absolute left-1/2 flex -translate-x-1/2 justify-center"
+          style={{ top: `calc(104 * var(--u))` }}
+        >
+          <Lockup inkHeight="calc(34 * var(--u))" />
+        </span>
 
         {/* The centre statement. */}
         <div

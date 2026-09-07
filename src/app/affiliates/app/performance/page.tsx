@@ -16,7 +16,6 @@ import {
 import { getAffiliateAccount } from "@/lib/affiliates/portal";
 import {
   buildFunnel,
-  comparisonLabel,
   countDelta,
   getCampaignMetrics,
   getDailySeries,
@@ -25,7 +24,13 @@ import {
   rateDelta,
 } from "@/lib/affiliates/analytics";
 import { formatMinor } from "@/lib/affiliates/types";
-import { formatPercent, parseRange, RANGE_LABEL } from "@/lib/affiliates/programme";
+import {
+  formatPercent,
+  parseCustomRange,
+  rangeComparisonLabel,
+  parseRange,
+  RANGE_LABEL,
+} from "@/lib/affiliates/programme";
 import { siteOrigin } from "@/lib/affiliates/origin";
 import {
   AreaChart,
@@ -58,7 +63,7 @@ export const dynamic = "force-dynamic";
 export default async function AffiliatePerformancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const affiliate = await getAffiliateAccount();
   if (!affiliate) return null;
@@ -66,18 +71,19 @@ export default async function AffiliatePerformancePage({
 
   const params = await searchParams;
   const range = parseRange(params.range ?? affiliate.preferences.defaultRange);
+  const custom = parseCustomRange(params.from, params.to);
   const currency = affiliate.policy.currency;
 
   const [overview, series, links, campaigns, origin] = await Promise.all([
-    getOverview(affiliate.id, range, affiliate.joinedAt),
-    getDailySeries(affiliate.id, range),
-    getLinkMetrics(affiliate.id, range),
-    getCampaignMetrics(affiliate.id, range),
+    getOverview(affiliate.id, range, affiliate.joinedAt, custom),
+    getDailySeries(affiliate.id, range, custom),
+    getLinkMetrics(affiliate.id, range, custom),
+    getCampaignMetrics(affiliate.id, range, custom),
     siteOrigin(),
   ]);
 
   const { current, previous } = overview;
-  const baseline = comparisonLabel(range);
+  const baseline = rangeComparisonLabel(range, overview.days);
   const funnel = buildFunnel(current);
 
   const from = new Date(overview.from);
@@ -101,7 +107,12 @@ export default async function AffiliatePerformancePage({
         description="Track clicks, signups, conversions and commission performance across your referral activity."
         action={
           <div className="flex flex-col items-end gap-1.5">
-            <RangeTabs basePath="/affiliates/app/performance" current={range} />
+            <RangeTabs
+              basePath="/affiliates/app/performance"
+              current={range}
+              customFrom={custom?.fromDate}
+              customTo={custom?.toDate}
+            />
             <p className="text-[11.5px] text-content-muted">
               {RANGE_LABEL[range]} · {rangeCaption}
             </p>

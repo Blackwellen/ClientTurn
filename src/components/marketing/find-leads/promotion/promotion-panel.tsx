@@ -2,6 +2,16 @@
 
 import * as React from "react";
 import { trackEngagement } from "@/lib/marketing/track";
+import {
+  AnimatePresence,
+  Collapse,
+  entityPromotion,
+  fadeUp,
+  motion,
+  stagger,
+  useReducedMotion,
+  T,
+} from "../motion";
 import { LEAD_READY_ACTIONS, PROMOTION_CONVERSATION } from "../data";
 import {
   AppSurface,
@@ -31,6 +41,7 @@ const ACTION_ICONS = [Check, Send, Calendar];
 
 export function PromotionPanel() {
   const [promoted, setPromoted] = React.useState(false);
+  const reduced = useReducedMotion();
 
   return (
     <AppSurface
@@ -60,20 +71,44 @@ export function PromotionPanel() {
           <div className="flex items-center gap-2">
             <strong>Peninsula Estates</strong>
             {/* The chip is the only thing that changes identity. */}
-            <span
-              className="fl-entity-chip"
-              data-state={promoted ? "lead" : "prospect"}
-            >
-              {promoted ? "Lead" : "Prospect"}
-            </span>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={promoted ? "lead" : "prospect"}
+                className="fl-entity-chip"
+                data-state={promoted ? "lead" : "prospect"}
+                initial={reduced ? "shown" : "hidden"}
+                animate="shown"
+                exit={reduced ? "shown" : "exit"}
+                variants={entityPromotion}
+              >
+                {promoted ? "Lead" : "Prospect"}
+              </motion.span>
+            </AnimatePresence>
           </div>
           <small>peninsula-estates.co.uk · Bournemouth, UK · 11–50 emp</small>
         </div>
-        <div className="fl-fit-block">
-          <b>92</b>
-          <span>High fit</span>
+        <div className="fl-entity-actions">
+          <div className="fl-fit-block">
+            <b>92</b>
+            <span>High fit</span>
+          </div>
+          {!promoted && (
+            <motion.button
+              type="button"
+              className="fl-btn-blue"
+              onClick={() => {
+                setPromoted(true);
+                trackEngagement("find_leads_promotion_demo", "header");
+              }}
+              whileHover={reduced ? undefined : { y: -1 }}
+              whileTap={reduced ? undefined : { scale: 0.97 }}
+              transition={T.fast}
+            >
+              Promote to lead
+            </motion.button>
+          )}
+          <Dots size={14} className="shrink-0 text-[#4c576a]" />
         </div>
-        <Dots size={14} className="shrink-0 text-[#5b6679]" />
       </div>
 
       <div className="fl-tabs" role="tablist" aria-label="Record detail">
@@ -96,9 +131,20 @@ export function PromotionPanel() {
 
       {/* ------------------------------------------ the same conversation */}
       <div className="pt-4">
-        <ul className="fl-thread" aria-label="Conversation history">
+        <motion.ul
+          className="fl-thread"
+          aria-label="Conversation history"
+          initial={reduced ? "shown" : "hidden"}
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.2 }}
+          variants={stagger(reduced ? 0 : 0.08)}
+        >
           {PROMOTION_CONVERSATION.map((message) => (
-            <li key={message.when} data-outbound={message.outbound}>
+            <motion.li
+              key={message.when}
+              data-outbound={message.outbound}
+              variants={fadeUp}
+            >
               <span aria-hidden className="fl-thread-av">
                 {message.initials}
               </span>
@@ -109,9 +155,9 @@ export function PromotionPanel() {
                 </div>
                 <p>{message.body}</p>
               </div>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
 
         {/* Campaign context: retained, and collapsed into activity once
             promoted rather than discarded. */}
@@ -136,7 +182,7 @@ export function PromotionPanel() {
               <ChevronDown size={10} />
             </span>
           </div>
-          {promoted && (
+          <Collapse open={promoted}>
             <div className="fl-context-card" style={{ marginTop: 8 }}>
               <span aria-hidden className="fl-event-icon">
                 <Sparkle size={13} />
@@ -149,7 +195,7 @@ export function PromotionPanel() {
                 </small>
               </div>
             </div>
-          )}
+          </Collapse>
         </div>
 
         {/* -------------------------------------------------- promote step */}
@@ -168,17 +214,22 @@ export function PromotionPanel() {
                 </p>
               </div>
             </div>
-            <ul className="fl-lead-actions">
+            <motion.ul
+              className="fl-lead-actions"
+              initial={reduced ? "shown" : "hidden"}
+              animate="shown"
+              variants={stagger(reduced ? 0 : 0.08)}
+            >
               {LEAD_READY_ACTIONS.map((action, index) => {
                 const ActionIcon = ACTION_ICONS[index] ?? Check;
                 return (
-                  <li key={action}>
+                  <motion.li key={action} variants={fadeUp}>
                     <ActionIcon size={12} />
                     {action}
-                  </li>
+                  </motion.li>
                 );
               })}
-            </ul>
+            </motion.ul>
             <p className="fl-note-line">
               Status: engaged · qualification ready · follow-up on the warm lead
               policy · conversion goal site visit.
@@ -196,17 +247,20 @@ export function PromotionPanel() {
                 signals and campaign details.
               </p>
             </div>
-            <button
+            <motion.button
               type="button"
               className="fl-promote-btn"
               onClick={() => {
                 setPromoted(true);
                 trackEngagement("find_leads_promotion_demo", "promote");
               }}
+              whileHover={reduced ? undefined : { y: -2 }}
+              whileTap={reduced ? undefined : { scale: 0.96 }}
+              transition={T.fast}
             >
               Promote to lead
               <ArrowRight size={13} />
-            </button>
+            </motion.button>
           </div>
         )}
 

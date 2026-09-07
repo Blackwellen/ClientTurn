@@ -15,15 +15,20 @@
 .ct-marketing {
   color-scheme: dark;
 
-  /* ---------------------------------------------------- public surfaces --- */
-  --pub-bg: #02060a;
-  --pub-bg-raised: #07101a;
-  --pub-bg-elevated: #0b1521;
-  --pub-card: #09131e;
-  --pub-card-hover: #0d1924;
+  /* ---------------------------------------------------- public surfaces ---
+     One black across the whole site: the landing hero, both product pages,
+     the evaluation pages and the footer all sit on #020409 / #04070e. */
+  --pub-bg: #020409;
+  --pub-bg-raised: #070c16;
+  --pub-bg-elevated: #0b1220;
+  --pub-card: #0a1120;
+  --pub-card-hover: #0e1626;
 
-  --pub-border: rgb(117 148 180 / 0.18);
-  --pub-border-strong: rgb(137 164 193 / 0.26);
+  /* Borders are opaque near-navy, not translucent blue-grey. A 0.18 alpha
+     blue-grey over near-black renders as a light hairline — which is what
+     made every band seam look like a white rule drawn across the page. */
+  --pub-border: #1b2434;
+  --pub-border-strong: #27314a;
 
   --pub-text: #f5f7fa;
   --pub-text-secondary: #a8b6c9;
@@ -56,7 +61,7 @@
   --lr-text-inverse: var(--pub-lime-ink);
   --lr-text-accent: var(--ct-lime);
   --lr-border: var(--pub-border);
-  --lr-border-subtle: rgb(117 148 180 / 0.1);
+  --lr-border-subtle: #141c2a;
   --lr-border-strong: var(--pub-border-strong);
   --lr-accent-50: rgb(183 243 74 / 0.12);
   --lr-accent-100: rgb(183 243 74 / 0.2);
@@ -352,6 +357,14 @@
      silently clip the screen: the fallback lets it scroll instead. */
   .pub-shot {
     container-type: inline-size;
+
+    /* The workspace frames are used by the auth doors too, and those pages do
+       not sit inside `.ct-marketing`. Restating the handful of tokens the
+       frame itself paints with keeps it self-sufficient wherever it lands. */
+    --pub-lime: var(--ct-lime, #b7f34a);
+    --pub-lime-border: rgb(183 243 74 / 0.42);
+    --pub-lime-soft: rgb(183 243 74 / 0.11);
+    --pub-lime-ink: #0a1206;
   }
 
   /* The scaler is taken out of flow: `transform` does not change layout size,
@@ -448,9 +461,12 @@
   .pub-btn-md { height: 44px; padding-inline: 18px; font-size: 0.9rem; }
   .pub-btn-lg { height: 52px; padding-inline: 26px; font-size: 1rem; }
 
+  /* Standalone affordances, not links inside a sentence, so they have to
+     clear the 24px WCAG 2.2 minimum target size on their own. */
   .pub-link {
     display: inline-flex;
     align-items: center;
+    min-height: 24px;
     gap: 8px;
     font-size: 0.9rem;
     font-weight: 600;
@@ -487,9 +503,10 @@
   .pub-nav-trigger {
     display: inline-flex;
     align-items: center;
+    white-space: nowrap;
     gap: 5px;
     height: 36px;
-    padding-inline: 12px;
+    padding-inline: 9px;
     border-radius: 8px;
     font-size: 0.86rem;
     font-weight: 500;

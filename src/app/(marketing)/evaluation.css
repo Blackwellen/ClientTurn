@@ -14,30 +14,54 @@
    whole public site.
    ========================================================================== */
 
-/* ====================================================== panelled layout === */
+/* ========================================================= page sections ===
 
-/*
- * These pages read as a stack of bordered panels rather than as full-bleed
- * bands, which is what makes a long evaluation page scannable: each panel is
- * one idea with a visible edge. `.pub-panel` only adds padding and rhythm —
- * the surface itself is `.pub-card`, so panels and cards can never drift.
- */
-.pub-panel {
-  padding: clamp(26px, 3.4vw, 48px);
+   These pages read as one continuous descent rather than a stack of boxes.
+   A section sits directly on the page ground and is separated from the next
+   by space and a hairline — the only raised surfaces are the things that
+   genuinely are objects: a card, a product screen, the closing CTA band.
+   ========================================================================= */
+
+.pub-band {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
   scroll-margin-top: calc(var(--pub-header-h) + 16px);
+  padding-block: clamp(56px, 6.5vw, 108px);
 }
 
-.pub-panel-stack {
-  display: grid;
-  gap: clamp(20px, 2.2vw, 30px);
+/* One hairline, faded at both ends so it reads as a seam and not a rule.
+   Deliberately dimmer than a panel border: this is the join between two
+   halves of the same ground, and at full border strength it reads as a
+   white line drawn across the page. */
+.pub-band-divided::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #141c2a 22%,
+    #141c2a 78%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.pub-band-stack {
   padding-block-end: clamp(56px, 6vw, 104px);
 }
 
-/* The page hero above the stack. */
+/* The page hero above the first band. */
 .pub-page-hero {
   position: relative;
   isolation: isolate;
-  padding-block: clamp(44px, 5.4vw, 84px) clamp(26px, 3vw, 44px);
+  /* The glow behind the hero is wider than the viewport by design; without a
+     clip it forces a horizontal scrollbar at narrow widths. */
+  overflow: clip;
+  padding-block: clamp(44px, 5.4vw, 84px) clamp(30px, 3.6vw, 52px);
 }
 
 .pub-hero-split {
@@ -62,6 +86,13 @@
   grid-template-columns: minmax(0, 1.14fr) minmax(0, 0.86fr);
 }
 
+/* Columns of very different heights read as broken when centred: the shorter
+   one floats against the middle of the taller one. */
+.pub-split-top,
+.pub-hero-split.pub-split-top {
+  align-items: start;
+}
+
 @media (max-width: 980px) {
   .pub-hero-split,
   .pub-split,
@@ -71,23 +102,27 @@
   }
 }
 
-/* Eyebrow and the decorative step strip share a baseline. */
-.pub-head-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 20px;
-  margin-bottom: 18px;
-}
-
-.pub-head-row .pub-eyebrow {
-  margin: 0;
-}
-
 /* Generic grids. */
 .pub-grid {
   display: grid;
   gap: 16px;
+}
+
+/*
+ * Cards in a grid fill their row.
+ *
+ * The reveal wrapper sits between the grid and the card, so `h-full` on the
+ * card alone would measure against a wrapper that has not been stretched.
+ * Doing it here keeps every card grid flush-bottomed without each call site
+ * having to remember two utilities.
+ */
+.pub-grid > * {
+  min-width: 0;
+}
+
+.pub-grid > * > .pub-card,
+.pub-grid > .pub-card {
+  height: 100%;
 }
 .pub-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .pub-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -104,12 +139,72 @@
   .pub-grid-4 { grid-template-columns: 1fr; }
 }
 
+/* Eyebrow and the decorative step strip share a baseline. */
+.pub-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  margin-bottom: 18px;
+}
+
+.pub-head-row .pub-eyebrow {
+  margin: 0;
+}
+
+/*
+ * Two columns of prose inside one section.
+ *
+ * They sit on the page ground rather than in cards, so they need their own
+ * separation: a hairline above each and a wide column gap. A 16px grid gap
+ * alone would let two blocks of body copy run into one another.
+ */
+.pub-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(30px, 4vw, 64px);
+}
+
+@media (max-width: 900px) {
+  .pub-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+.pub-column {
+  position: relative;
+  padding-top: 28px;
+}
+
+.pub-column::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: var(--pub-border);
+}
+
+@media (max-width: 900px) {
+  .pub-column {
+    padding-block: 28px 0;
+  }
+  .pub-column:first-child {
+    padding-top: 0;
+  }
+  .pub-column:first-child::before {
+    content: none;
+  }
+}
+
 /* ============================================================== content === */
 
 /* Inner card. `.pub-card` supplies the surface; this supplies the padding. */
 .pub-cell {
   padding: 22px 20px 20px;
   border-radius: 12px;
+  container-type: inline-size;
 }
 
 .pub-cell h3 {
@@ -182,12 +277,21 @@
 }
 
 /* The ringed assurance row under a hero. Facts only, never a metric. */
+/*
+ * One row under the hero, as the reference lays it out. The minimum is small
+ * enough that four short assurances stay on a single line in a hero column,
+ * and the auto-fit still wraps them cleanly on a narrow screen.
+ */
 .pub-trust {
   margin-top: 34px;
   display: grid;
-  gap: 16px 26px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   list-style: none;
+}
+
+.pub-trust li {
+  align-items: start;
 }
 
 .pub-trust li {
@@ -209,6 +313,13 @@
   border: 1px solid var(--pub-lime-border);
   background: var(--pub-lime-softer);
   color: var(--pub-lime);
+}
+
+/* The larger ring used beside a heading. A modifier rather than a utility, so
+   the size cannot depend on which stylesheet the bundler emits last. */
+.pub-ring-lg {
+  width: 42px;
+  height: 42px;
 }
 
 /* The decorative "CAPTURE -> ENGAGE -> QUALIFY -> ROUTE" strip. */
@@ -304,10 +415,19 @@
 
 .pub-step p {
   margin-top: 7px;
-  max-width: 27ch;
-  font-size: 0.78rem;
-  line-height: 1.62;
+  font-size: 0.72rem;
+  line-height: 1.55;
   color: var(--pub-text-muted);
+  text-wrap: pretty;
+}
+
+.pub-step h3 {
+  font-size: 0.85rem;
+}
+
+/* The rail sits inside a column, so the markers need room between them. */
+.pub-rail {
+  gap: 14px;
 }
 
 @media (max-width: 980px) {
@@ -353,7 +473,7 @@
   border: 1px solid var(--pub-border);
   border-radius: 12px;
   overflow: hidden;
-  background: var(--pub-bg-raised);
+  background: linear-gradient(180deg, var(--pub-bg-elevated), var(--pub-card));
 }
 
 .pub-stat {
@@ -802,9 +922,6 @@
 }
 
 .pub-compare thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   background: var(--pub-bg-raised);
   font-size: 0.82rem;
   font-weight: 600;
@@ -1489,11 +1606,28 @@
 
 /* ================================================== donut + integrations === */
 
+/*
+ * The donut sits beside its legend in a wide card and above it in a narrow
+ * one. A viewport breakpoint cannot tell those apart — the same card is wide
+ * on one page and half that on another — so this asks the container.
+ */
 .pub-donut {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 20px;
   align-items: center;
+}
+
+@container (max-width: 330px) {
+  .pub-donut {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 16px;
+  }
+
+  .pub-donut-legend {
+    width: 100%;
+  }
 }
 
 .pub-donut-legend {
@@ -1603,4 +1737,330 @@
   font-size: 0.82rem;
   line-height: 1.7;
   color: var(--pub-text-muted);
+}
+
+/* ============================================================== motion === */
+
+/*
+ * The scroll indicator under the sticky header. Transform-only, driven by a
+ * spring off scroll position, and removed entirely under reduced motion.
+ */
+.pub-scroll-progress {
+  position: fixed;
+  top: var(--pub-header-h);
+  left: 0;
+  z-index: 55;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(
+    90deg,
+    rgb(183 243 74 / 0.35),
+    var(--pub-lime)
+  );
+  box-shadow: 0 0 14px rgb(183 243 74 / 0.5);
+  pointer-events: none;
+}
+
+/*
+ * Belt and braces for reduced motion. The components already return static
+ * markup, but a stray transition added later must not slip past the setting.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .pub-scroll-progress {
+    display: none;
+  }
+
+  .pub-card,
+  .pub-card-interactive:hover,
+  .pub-cell {
+    transition: none;
+  }
+}
+
+/*
+ * Entry animations must never be load-bearing for reading the page.
+ *
+ * The reveal wrappers write an inline `opacity: 0` that only JavaScript
+ * clears, so where scripting is unavailable the content would stay invisible
+ * forever. `!important` is required here specifically because it is competing
+ * with an inline style.
+ */
+@media (scripting: none) {
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/*
+ * Reduced motion must not depend on JavaScript.
+ *
+ * The reveal wrappers write an inline `opacity: 0` during server rendering and
+ * clear it once the animation runs. A visitor who has asked for reduced motion
+ * should never be waiting on a frame loop to be allowed to read the page, so
+ * their end state is asserted here instead. `!important` is needed because it
+ * is competing with an inline style.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal-item] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ======================================================== entry reveals ===
+
+   Reveals are CSS, driven by one data attribute.
+
+   They were previously Motion variants, and that put the readability of the
+   page behind a JavaScript frame loop: the server emitted `opacity: 0` and a
+   whole hero could stay invisible if the animation never settled. Content is
+   too important to depend on that. Here the hidden state is a class, the shown
+   state is an attribute an observer sets, and both fallbacks below are plain
+   CSS — so the worst case is content that appears without animating.
+   ========================================================================= */
+
+.pub-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--pub-reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.pub-reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* A stagger container hands each child an increasing delay. The container
+   itself does not animate — only its children — so a long list never holds
+   its own first item back. */
+.pub-reveal-group > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pub-reveal-group[data-shown="true"] > * {
+  opacity: 1;
+  transform: none;
+}
+
+.pub-reveal-group > *:nth-child(1) { transition-delay: 0ms; }
+.pub-reveal-group > *:nth-child(2) { transition-delay: 70ms; }
+.pub-reveal-group > *:nth-child(3) { transition-delay: 140ms; }
+.pub-reveal-group > *:nth-child(4) { transition-delay: 210ms; }
+.pub-reveal-group > *:nth-child(5) { transition-delay: 280ms; }
+.pub-reveal-group > *:nth-child(6) { transition-delay: 350ms; }
+.pub-reveal-group > *:nth-child(7) { transition-delay: 420ms; }
+.pub-reveal-group > *:nth-child(n + 8) { transition-delay: 490ms; }
+
+/* Both fallbacks: nothing here may leave content unreadable. */
+@media (prefers-reduced-motion: reduce) {
+  .pub-reveal,
+  .pub-reveal[data-shown="true"],
+  .pub-reveal-group > *,
+  .pub-reveal-group[data-shown="true"] > * {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+@media (scripting: none) {
+  .pub-reveal,
+  .pub-reveal-group > * {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Short reassurances under a closing CTA. */
+.pub-assurances {
+  margin-top: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  list-style: none;
+}
+
+.pub-assurances li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--pub-text-muted);
+}
+
+.pub-assurances svg {
+  color: var(--pub-lime);
+}
+
+/* ===================================================== the journey row ===
+
+   Eight stages in one row, separated by chevrons, as the reference lays them
+   out. Below the desktop breakpoint it becomes a scroll-snapping rail rather
+   than eight cards squeezed to nothing: the sequence is the point, and a
+   150px card cannot carry a stage name and a definition.
+   ======================================================================== */
+
+.pub-journey {
+  margin-top: clamp(28px, 3.4vw, 44px);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  list-style: none;
+}
+
+.pub-journey > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+}
+
+/* The chevron between stages. Decorative: the list order carries the sequence. */
+.pub-journey > li:not(:last-child)::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-inline: 6px;
+  border-top: 1.5px solid rgb(117 148 180 / 0.55);
+  border-right: 1.5px solid rgb(117 148 180 / 0.55);
+  rotate: 45deg;
+}
+
+.pub-journey-card {
+  height: 100%;
+  min-width: 0;
+  padding: 14px 12px 13px;
+  border-radius: 12px;
+}
+
+.pub-journey-card h3 {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--pub-text);
+}
+
+.pub-journey-card p {
+  margin-top: 5px;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--pub-text-muted);
+}
+
+.pub-journey-step {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--pub-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) {
+  .pub-journey {
+    grid-auto-columns: minmax(178px, 1fr);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 8px;
+  }
+
+  .pub-journey > li {
+    scroll-snap-align: start;
+  }
+}
+
+/* A hero whose headline needs the room more than its screenshot does. */
+.pub-hero-split.pub-hero-copy-wide {
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+}
+
+@media (max-width: 980px) {
+  .pub-hero-split.pub-hero-copy-wide {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==================================================== integration tiles ===
+
+   A compact grid of provider tiles, as the reference lays it out. Each tile
+   still carries the state the provider registry derived, because a marketing
+   badge that disagrees with Settings is the whole thing this page must not
+   do — it is just said in a chip rather than a paragraph.
+   ======================================================================== */
+
+.pub-tiles {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+}
+
+.pub-tile-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--pub-border);
+  border-radius: 10px;
+  background: var(--pub-bg-raised);
+  padding: 12px 13px;
+}
+
+.pub-tile-card strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--pub-text);
+}
+
+.pub-tile-group + .pub-tile-group {
+  margin-top: 22px;
+}
+
+.pub-tile-group > h3 {
+  margin-bottom: 10px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+}
+
+/* The security status register: one row per control, name and state. */
+.pub-register {
+  list-style: none;
+  display: grid;
+  gap: 0;
+}
+
+.pub-register li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--lr-border-subtle);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--pub-text-secondary);
+}
+
+.pub-register li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.pub-register li > span:first-child {
+  min-width: 0;
 }

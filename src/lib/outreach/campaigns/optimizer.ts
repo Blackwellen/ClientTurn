@@ -73,7 +73,7 @@ export async function optimizeCampaign(input: {
   if (campaign.status !== "ACTIVE" && campaign.status !== "OPTIMIZING") return empty;
 
   const proposals = [
-    ...(await proposeVariantAllocation(input.businessId, input.campaignId)),
+    ...(await proposeVariantAllocation(input.businessId)),
     ...(await proposeSendWindow(input.businessId, input.campaignId)),
   ];
 
@@ -104,10 +104,7 @@ type Candidate = { proposal: OptimizationProposal; rationale: string };
  * few hundred sends is often not a lead at all, and a gradual shift keeps
  * enough traffic on the other variant to find out.
  */
-async function proposeVariantAllocation(
-  businessId: string,
-  campaignId: string,
-): Promise<Candidate[]> {
+async function proposeVariantAllocation(businessId: string): Promise<Candidate[]> {
   const admin = createAdminClient();
 
   const { data: variants } = await admin

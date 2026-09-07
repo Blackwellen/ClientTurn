@@ -6,7 +6,6 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { trackEngagement } from "@/lib/marketing/track";
 import { Arc, Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
-import { ANCHORS } from "../nav-data";
 import { HOME_FAQS, type HomeFaq } from "./faq-data";
 
 /**
@@ -22,7 +21,7 @@ import { HOME_FAQS, type HomeFaq } from "./faq-data";
  */
 
 function FaqRow({ faq, index }: { faq: HomeFaq; index: number }) {
-  const [open, setOpen] = React.useState(index === 0);
+  const [open, setOpen] = React.useState(false);
   const id = `faq-${index}`;
 
   return (

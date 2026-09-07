@@ -3,9 +3,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth/session";
 import { getAffiliateAccount, getPublicPolicy } from "@/lib/affiliates/portal";
-import { MarketingHeader } from "@/components/marketing/marketing-header";
-import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { AffiliateLanding } from "@/components/affiliates/public/affiliate-landing";
+import "./affiliates.css";
 
 export const metadata: Metadata = {
   title: "Affiliate Programme | ClientTurn",
@@ -17,6 +16,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * The public affiliate programme page (V4 §29).
+ *
+ * Lives in the `(marketing)` route group so it inherits the public shell —
+ * the same header, footer, cookie banner and `--pub-*` canvas as every other
+ * public page. It previously mounted its own header and footer from outside
+ * the group, which is why it drifted away from the rest of the site.
  *
  * The CTA resolves against who is actually looking at it, because "Become an
  * Affiliate" means four different things depending on the visitor:
@@ -47,15 +51,13 @@ export default async function AffiliateProgrammePage() {
   const ctaHref = user ? "/affiliates/onboarding" : "/affiliates/signup";
 
   return (
-    <>
-      <MarketingHeader />
+    <div className="afp">
       <AffiliateLanding
         policy={policy}
         ctaHref={ctaHref}
         ctaLabel="Become an Affiliate"
         signedIn={Boolean(user)}
       />
-      <MarketingFooter />
-    </>
+    </div>
   );
 }

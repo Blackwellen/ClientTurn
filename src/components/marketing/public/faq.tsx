@@ -138,7 +138,6 @@ export function FaqJsonLd({ items }: { items: readonly FaqItem[] }) {
   return (
     <script
       type="application/ld+json"
-      // eslint-disable-next-line react/no-danger -- JSON-LD built from a local constant; no user input reaches this string.
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
     />
   );

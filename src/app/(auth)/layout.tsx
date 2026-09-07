@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { AuthEnvironment } from "@/components/auth/auth-environment";
 import { caveat } from "@/components/auth/fonts";
+// The auth doors show the same workspace frames as the public site, and those
+// carry their layout in the public stylesheet. Imported explicitly because the
+// auth group sits outside the marketing layout that normally loads it.
+import "../(marketing)/clientturn.css";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (

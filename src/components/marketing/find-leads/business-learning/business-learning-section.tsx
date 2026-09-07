@@ -13,6 +13,7 @@ import {
   Users,
   Wrench,
 } from "../pieces";
+import { StaggerItem, StaggerReveal, panelEnter } from "../motion";
 
 const PROFILE_ICONS = [Briefcase, Wrench, Pin, Users, Target];
 
@@ -42,8 +43,9 @@ export function BusinessLearningSection() {
         </div>
       </div>
 
-      <div className="fl-split">
+      <StaggerReveal className="fl-split" step={0.12}>
         {/* --------------------------------------------- website analysis */}
+        <StaggerItem as="div" variants={panelEnter}>
         <AppSurface
           title="Analyse your business"
           subtitle="Interface demonstration"
@@ -93,8 +95,10 @@ export function BusinessLearningSection() {
             listed with the source it came from.
           </p>
         </AppSurface>
+        </StaggerItem>
 
         {/* ------------------------------------------ acquisition profile */}
+        <StaggerItem as="div" variants={panelEnter}>
         <AppSurface
           title="Acquisition profile"
           subtitle="Editable, and attributed to a source"
@@ -117,26 +121,29 @@ export function BusinessLearningSection() {
             })}
           </dl>
         </AppSurface>
-      </div>
+        </StaggerItem>
+      </StaggerReveal>
 
       {/* --------------------------------------- knowledge source callouts */}
-      <ul
+      <StaggerReveal
+        as="ul"
         className="fl-cats"
+        step={0.06}
         style={{
           gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
           marginTop: 22,
         }}
       >
         {KNOWLEDGE_SOURCES.map((source) => (
-          <li key={source.title} className="fl-cat" style={{ padding: "16px 16px 15px" }}>
+          <StaggerItem as="li" key={source.title} className="fl-cat" style={{ padding: "16px 16px 15px" }}>
             <div className="fl-cat-top">
               <Check size={14} />
               <strong style={{ fontSize: 13 }}>{source.title}</strong>
             </div>
             <small style={{ fontSize: 12, lineHeight: 1.55 }}>{source.body}</small>
-          </li>
+          </StaggerItem>
         ))}
-      </ul>
+      </StaggerReveal>
     </FlSection>
   );
 }

@@ -15,7 +15,6 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import "../evaluation.css";
 import {
   SECURITY_CONTROLS,
   STATUS_LABEL,
@@ -37,14 +36,18 @@ import {
   Glow,
 } from "@/components/marketing/public/ui";
 import {
-  Panel,
-  PanelStack,
+  Band,
+  BandStack,
   StepRail,
   TrustRow,
   StatePill,
   type StateTone,
 } from "@/components/marketing/public/shell";
-import { Reveal } from "@/components/marketing/public/reveal";
+import {
+  Reveal,
+  RevealGrid,
+  ScrollProgress,
+} from "@/components/marketing/public/reveal";
 import {
   PrimaryCta,
   SecondaryCta,
@@ -54,14 +57,10 @@ import {
 import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/public/faq";
 import {
-  Screen,
-  ScreenBlock,
-  ScreenTable,
-  RangeChip,
-  Kpis,
-  Pill,
-} from "@/components/marketing/public/screen";
-import { TrendLine } from "@/components/marketing/public/charts";
+  AppFrame,
+  DashboardFrame,
+} from "@/components/marketing/public/home/app-frames";
+import { IllustrativeNote } from "@/components/marketing/public/screen";
 
 const title = "Enterprise";
 const description =
@@ -127,6 +126,46 @@ const INTEGRATION_NOTE: Record<MarketingAvailability, string> = {
   coming_soon:
     "Not connectable yet on this deployment. Raise it at discovery and we will tell you where it sits.",
 };
+
+/**
+ * The six security themes the reference shows.
+ *
+ * Each is a heading over controls that live in `SECURITY_CONTROLS`; the
+ * register beside them carries the per-control status, so nothing here can
+ * imply a control the catalogue marks unavailable.
+ */
+const SECURITY_GROUPS = [
+  {
+    icon: ShieldCheck,
+    heading: "Secure by design",
+    body: "Row-level security on every tenant table, server-only secrets and signed, short-lived file access.",
+  },
+  {
+    icon: Users,
+    heading: "Authentication and access",
+    body: "Ranked roles checked on the server, and step-up verification for platform administration.",
+  },
+  {
+    icon: Layers,
+    heading: "Data isolation",
+    body: "Each workspace is a separate tenant. There is no cross-workspace read path in the application.",
+  },
+  {
+    icon: FileText,
+    heading: "Audit and monitoring",
+    body: "Configuration and lifecycle changes are written to an append-only log against the acting user.",
+  },
+  {
+    icon: Gauge,
+    heading: "AI governance",
+    body: "Deterministic decisions remain the system of record. AI assists inside configured bounds, off by default.",
+  },
+  {
+    icon: Lock,
+    heading: "Payments and billing",
+    body: "Card details are entered on Stripe's own pages. ClientTurn stores a customer reference, not a card.",
+  },
+] as const;
 
 const IMPLEMENTATION = [
   {
@@ -222,10 +261,10 @@ export default function EnterprisePage() {
 
   return (
     <>
+      <ScrollProgress />
       <FaqJsonLd items={FAQS} />
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- built from a local constant; no user input reaches this string.
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             "@context": "https://schema.org",
@@ -248,7 +287,7 @@ export default function EnterprisePage() {
         <GridTexture />
         <Glow x="right" y="top" />
         <PublicContainer>
-          <div className="pub-hero-split">
+          <div className="pub-hero-split pub-hero-copy-wide">
             <Reveal>
               <SectionEyebrow className="mb-5">Enterprise</SectionEyebrow>
               <h1 id="ent-hero" className="pub-h1">
@@ -279,58 +318,40 @@ export default function EnterprisePage() {
                 items={[
                   {
                     icon: <Scale className="size-3.5" />,
-                    label: "Custom entitlements per tenant",
+                    label: "Scale with confidence",
                   },
                   {
                     icon: <ShieldCheck className="size-3.5" />,
-                    label: "Workspace isolation and audit logging",
+                    label: "Enterprise-grade controls",
                   },
                   {
                     icon: <Plug className="size-3.5" />,
-                    label: "Integration discovery before you commit",
+                    label: "Integrate with your systems",
                   },
                   {
                     icon: <Headphones className="size-3.5" />,
-                    label: "Dedicated support contact",
+                    label: "Dedicated support",
                   },
                 ]}
               />
             </Reveal>
 
             <Reveal delay={0.08}>
-              <Screen
-                active="Dashboard"
-                title="Workspace overview"
-                meta={<RangeChip />}
-                label="A ClientTurn workspace overview, showing total leads, active campaigns, team members and conversion rate above a lead-volume trend by source."
-              >
-                <Kpis
-                  items={[
-                    { value: "12,480", label: "Total leads", delta: "+24%" },
-                    { value: "28", label: "Active campaigns", delta: "+12%" },
-                    { value: "46", label: "Team members", delta: "+8%" },
-                    { value: "12.4%", label: "Conversion rate", delta: "+3%" },
-                  ]}
-                />
-                <ScreenBlock title="Lead volume by source">
-                  <TrendLine
-                    points={[18, 24, 22, 31, 36, 34, 42, 48, 46, 54]}
-                    colour="#2f7ff0"
-                    height={88}
-                    label="Illustrative lead volume trend across the period."
-                  />
-                </ScreenBlock>
-              </Screen>
+              <div>
+                  <AppFrame label="ClientTurn lead conversion dashboard showing connection status, lead and booking counts, the conversion funnel and estimated pipeline.">
+                    <DashboardFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
             </Reveal>
           </div>
         </PublicContainer>
       </section>
 
       <PublicContainer>
-        <PanelStack>
+        <BandStack>
           {/* ------------------------------------------------------ scale --- */}
-          <Reveal>
-            <Panel id="scale" aria-labelledby="ent-scale">
+          <Band id="scale" aria-labelledby="ent-scale">
               <div className="pub-split pub-split-narrow">
                 <div>
                   <SectionEyebrow className="mb-5">Scale</SectionEyebrow>
@@ -363,7 +384,7 @@ export default function EnterprisePage() {
                   </p>
                 </div>
 
-                <div className="pub-grid pub-grid-2">
+                <RevealGrid className="pub-grid pub-grid-2">
                   {[
                     {
                       icon: Layers,
@@ -392,63 +413,19 @@ export default function EnterprisePage() {
                       <p>{item.body}</p>
                     </PublicCard>
                   ))}
-                </div>
+                </RevealGrid>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* --------------------------------------------- multi-location --- */}
-          <Reveal>
-            <Panel aria-labelledby="ent-locations">
+          <Band aria-labelledby="ent-locations">
               <div className="pub-split">
-                <Screen
-                  nav={["Dashboard", "Leads", "Follow-Up", "Analytics", "Settings"]}
-                  active="Settings"
-                  title="Workspace and team"
-                  meta={<RangeChip>Per workspace</RangeChip>}
-                  label="A ClientTurn workspace settings screen, listing team members with their role and status."
-                >
-                  <ScreenTable
-                    head={["Member", "Role", "Status"]}
-                    rows={[
-                      [
-                        "Alex Doyle",
-                        "Owner",
-                        <Pill key="a" tone="won">
-                          Active
-                        </Pill>,
-                      ],
-                      [
-                        "Priya Shah",
-                        "Admin",
-                        <Pill key="p" tone="won">
-                          Active
-                        </Pill>,
-                      ],
-                      [
-                        "Tom Reeves",
-                        "Member",
-                        <Pill key="t" tone="won">
-                          Active
-                        </Pill>,
-                      ],
-                      [
-                        "Jo Adeyemi",
-                        "Member",
-                        <Pill key="j" tone="new">
-                          Invited
-                        </Pill>,
-                      ],
-                    ]}
-                  />
-                  <ScreenBlock title="Isolation">
-                    <p className="text-[11.5px] leading-relaxed text-[#4a5568]">
-                      Every record in this workspace carries its business id and
-                      is protected by row-level security. Nothing here is
-                      reachable from another workspace&rsquo;s session.
-                    </p>
-                  </ScreenBlock>
-                </Screen>
+                <div>
+                  <AppFrame label="ClientTurn lead conversion dashboard showing connection status, lead and booking counts, the conversion funnel and estimated pipeline.">
+                    <DashboardFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
 
                 <div>
                   <SectionEyebrow className="mb-5">
@@ -485,7 +462,7 @@ export default function EnterprisePage() {
                     later costs us the account.
                   */}
                   <div className="pub-evidence mt-8">
-                    <span className="pub-ring size-[42px]" aria-hidden>
+                    <span className="pub-ring pub-ring-lg" aria-hidden>
                       <Lock className="size-4" />
                     </span>
                     <div>
@@ -502,12 +479,10 @@ export default function EnterprisePage() {
                   </div>
                 </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ----------------------------------------------- integrations --- */}
-          <Reveal>
-            <Panel aria-labelledby="ent-integrations">
+          <Band aria-labelledby="ent-integrations">
               <SectionEyebrow className="mb-5">Integrations</SectionEyebrow>
               <h2 id="ent-integrations" className="pub-h2">
                 Connect ClientTurn to your existing systems.
@@ -523,46 +498,32 @@ export default function EnterprisePage() {
                 send us leads through the hosted webhook bridge.
               </p>
 
-              <div className="mt-10 grid gap-8">
+              <div className="mt-10">
                 {providerGroups.map(([category, items]) => (
-                  <div key={category}>
-                    <h3 className="mb-4 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[var(--pub-text-muted)]">
-                      {category}
-                    </h3>
-                    <div className="pub-integrations">
+                  <div key={category} className="pub-tile-group">
+                    <h3>{category}</h3>
+                    <div className="pub-tiles">
                       {items.map((item) => (
-                        <div key={item.id} className="pub-integration">
+                        <div key={item.id} className="pub-tile-card">
                           <strong>{item.name}</strong>
-                          <span>
-                            <StatePill tone={INTEGRATION_TONE[item.availability]}>
-                              {AVAILABILITY_LABEL[item.availability]}
-                            </StatePill>
-                          </span>
-                          <p className="mt-2.5 text-[0.72rem] leading-relaxed text-[var(--pub-text-muted)]">
-                            {INTEGRATION_NOTE[item.availability]}
-                          </p>
+                          <StatePill tone={INTEGRATION_TONE[item.availability]}>
+                            {AVAILABILITY_LABEL[item.availability]}
+                          </StatePill>
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
 
-                <div>
-                  <h3 className="mb-4 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[var(--pub-text-muted)]">
-                    Inbound webhook bridge
-                  </h3>
-                  <div className="pub-integrations">
+                <div className="pub-tile-group">
+                  <h3>Inbound webhook bridge</h3>
+                  <div className="pub-tiles">
                     {connectors.map((connector) => (
-                      <div key={connector.id} className="pub-integration">
+                      <div key={connector.id} className="pub-tile-card">
                         <strong>{connector.name}</strong>
-                        <span>
-                          <StatePill tone={INTEGRATION_TONE[connector.availability]}>
-                            {AVAILABILITY_LABEL[connector.availability]}
-                          </StatePill>
-                        </span>
-                        <p className="mt-2.5 text-[0.72rem] leading-relaxed text-[var(--pub-text-muted)]">
-                          {connector.description}
-                        </p>
+                        <StatePill tone={INTEGRATION_TONE[connector.availability]}>
+                          {AVAILABILITY_LABEL[connector.availability]}
+                        </StatePill>
                       </div>
                     ))}
                   </div>
@@ -573,17 +534,40 @@ export default function EnterprisePage() {
                 </div>
               </div>
 
+              {/*
+                What each state means, said once rather than repeated on every
+                tile — the reference keeps the grid compact.
+              */}
+              <ul className="pub-checks mt-8 sm:grid-cols-2">
+                {(
+                  [
+                    "native_live",
+                    "platform_managed",
+                    "webhook_bridge_live",
+                    "coming_soon",
+                  ] as MarketingAvailability[]
+                ).map((state) => (
+                  <li key={state}>
+                    <CheckCircle2 className="size-4" aria-hidden />
+                    <span>
+                      <strong className="font-semibold text-[var(--pub-text)]">
+                        {AVAILABILITY_LABEL[state]}
+                      </strong>{" "}
+                      — {INTEGRATION_NOTE[state]}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
               <p className="pub-small mt-8">
                 Anything not listed is a technical discovery conversation, not a
                 switch we can flip. We will tell you what is realistic before
                 you commit to anything.
               </p>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------------------------- security --- */}
-          <Reveal>
-            <Panel id="security" aria-labelledby="ent-security">
+          <Band id="security" aria-labelledby="ent-security">
               <SectionEyebrow className="mb-5">Security and data</SectionEyebrow>
               <h2 id="ent-security" className="pub-h2">
                 Controls for serious business operations.
@@ -595,22 +579,43 @@ export default function EnterprisePage() {
                 in for an audit that has not happened.
               </p>
 
-              <div className="mt-8">
-                {SECURITY_CONTROLS.map((control) => (
-                  <div key={control.id} className="pub-control">
-                    <div>
-                      <h3>{control.name}</h3>
-                      <p>{control.detail}</p>
-                    </div>
-                    <StatePill tone={CONTROL_TONE[control.status]}>
-                      {STATUS_LABEL[control.status]}
-                    </StatePill>
+              {/*
+                Two columns, as the reference lays it out: the controls that
+                are built on the left, and the full status register — including
+                what we do not have — on the right. The register is what makes
+                the section honest, so it is never the half that gets cut.
+              */}
+              <div className="pub-split pub-split-narrow mt-10">
+                <RevealGrid className="pub-grid pub-grid-2">
+                  {SECURITY_GROUPS.map((group) => (
+                    <PublicCard key={group.heading} interactive className="pub-cell">
+                      <GlyphTile icon={group.icon} size={38} glyph={17} />
+                      <h3 className="mt-4">{group.heading}</h3>
+                      <p>{group.body}</p>
+                    </PublicCard>
+                  ))}
+                </RevealGrid>
+
+                <PublicCard className="pub-cell">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h3>Status register</h3>
+                    <StatePill tone="muted">{SECURITY_CONTROLS.length} controls</StatePill>
                   </div>
-                ))}
+                  <ul className="pub-register">
+                    {SECURITY_CONTROLS.map((control) => (
+                      <li key={control.id}>
+                        <span title={control.detail}>{control.name}</span>
+                        <StatePill tone={CONTROL_TONE[control.status]}>
+                          {STATUS_LABEL[control.status]}
+                        </StatePill>
+                      </li>
+                    ))}
+                  </ul>
+                </PublicCard>
               </div>
 
               <div className="pub-evidence mt-10">
-                <span className="pub-ring size-[42px]" aria-hidden>
+                <span className="pub-ring pub-ring-lg" aria-hidden>
                   <ShieldCheck className="size-4" />
                 </span>
                 <div>
@@ -624,12 +629,10 @@ export default function EnterprisePage() {
                   </p>
                 </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------ commercial --- */}
-          <Reveal>
-            <Panel aria-labelledby="ent-commercial">
+          <Band aria-labelledby="ent-commercial">
               <div className="pub-split pub-split-narrow">
                 <div>
                   <SectionEyebrow className="mb-5">Commercial</SectionEyebrow>
@@ -642,7 +645,7 @@ export default function EnterprisePage() {
                     rather than assumed from a rate card.
                   </p>
 
-                  <div className="pub-grid pub-grid-2 mt-8">
+                  <RevealGrid className="pub-grid pub-grid-2 mt-8">
                     {[
                       {
                         icon: Scale,
@@ -675,7 +678,7 @@ export default function EnterprisePage() {
                         </div>
                       </PublicCard>
                     ))}
-                  </div>
+                  </RevealGrid>
                 </div>
 
                 <PublicCard className="pub-cell">
@@ -705,12 +708,10 @@ export default function EnterprisePage() {
                   </ActionRow>
                 </PublicCard>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------------------- implementation --- */}
-          <Reveal>
-            <Panel aria-labelledby="ent-implementation">
+          <Band aria-labelledby="ent-implementation">
               <SectionEyebrow className="mb-5">Implementation</SectionEyebrow>
               <h2 id="ent-implementation" className="pub-h2">
                 A structured path from discovery to go-live.
@@ -723,12 +724,10 @@ export default function EnterprisePage() {
               </p>
 
               <StepRail steps={IMPLEMENTATION} variant="timeline" />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------------------------------- FAQ --- */}
-          <Reveal>
-            <Panel aria-labelledby="enterprise-faq-heading">
+          <Band aria-labelledby="enterprise-faq-heading">
               <PublicFaq
                 id="enterprise-faq"
                 eyebrow="Frequently asked questions"
@@ -736,8 +735,7 @@ export default function EnterprisePage() {
                 items={FAQS}
                 event="enterprise_faq_expand"
               />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------- final CTA --- */}
           <Reveal>
@@ -792,7 +790,7 @@ export default function EnterprisePage() {
               ]}
             />
           </Reveal>
-        </PanelStack>
+        </BandStack>
       </PublicContainer>
     </>
   );

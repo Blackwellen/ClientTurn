@@ -12,7 +12,6 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import "../evaluation.css";
 import {
   PLANS,
   TRIAL_DAYS,
@@ -32,12 +31,16 @@ import {
   Glow,
 } from "@/components/marketing/public/ui";
 import {
-  Panel,
-  PanelStack,
+  Band,
+  BandStack,
   TrustRow,
   StatePill,
 } from "@/components/marketing/public/shell";
-import { Reveal } from "@/components/marketing/public/reveal";
+import {
+  Reveal,
+  RevealGrid,
+  ScrollProgress,
+} from "@/components/marketing/public/reveal";
 import {
   PrimaryCta,
   SecondaryCta,
@@ -139,10 +142,10 @@ const FAQS: FaqItem[] = [
 export default function PricingPage() {
   return (
     <>
+      <ScrollProgress />
       <FaqJsonLd items={FAQS} />
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- built from a local constant; no user input reaches this string.
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             "@context": "https://schema.org",
@@ -245,17 +248,14 @@ export default function PricingPage() {
       </section>
 
       <PublicContainer>
-        <PanelStack>
+        <BandStack>
           {/* ------------------------------------------------------ plans --- */}
-          <Reveal>
-            <Panel id="plans" aria-label="Plans">
+          <Band id="plans" aria-label="Plans">
               <PlanGrid />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------ usage rules --- */}
-          <Reveal>
-            <Panel aria-labelledby="pricing-usage">
+          <Band aria-labelledby="pricing-usage">
               <SectionEyebrow className="mb-5">Usage explained</SectionEyebrow>
               <h2 id="pricing-usage" className="pub-h2">
                 Simple allowances. Clear limits.
@@ -266,7 +266,7 @@ export default function PricingPage() {
                 messages and people.
               </p>
 
-              <div className="pub-grid pub-grid-4 mt-10">
+              <RevealGrid className="pub-grid pub-grid-4 mt-10">
                 <PublicCard interactive className="pub-cell">
                   <GlyphTile icon={Inbox} size={38} glyph={18} />
                   <h3 className="mt-4">Inbound leads</h3>
@@ -318,13 +318,11 @@ export default function PricingPage() {
                     Varies by plan
                   </p>
                 </PublicCard>
-              </div>
-            </Panel>
-          </Reveal>
+              </RevealGrid>
+          </Band>
 
           {/* ------------------------------------------------ comparison --- */}
-          <Reveal>
-            <Panel aria-labelledby="pricing-compare">
+          <Band aria-labelledby="pricing-compare">
               <SectionEyebrow className="mb-5">Plan comparison</SectionEyebrow>
               <h2 id="pricing-compare" className="pub-h2">
                 Find the right plan for your business.
@@ -336,203 +334,203 @@ export default function PricingPage() {
               </p>
 
               <PlanComparison />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------- allowances in more detail --- */}
-          <div className="pub-grid pub-grid-2">
-            <Reveal>
-              <Panel className="h-full" aria-labelledby="pricing-comms">
-                <div className="pub-cell-row">
-                  <GlyphTile icon={Mail} size={44} glyph={20} />
-                  <div>
-                    <SectionEyebrow className="mb-3">
-                      Communication allowance
-                    </SectionEyebrow>
-                    <h2
-                      id="pricing-comms"
-                      className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
-                    >
-                      Reach out with confidence.
-                    </h2>
+          <Band>
+            <div className="pub-columns">
+              <Reveal className="pub-column">
+                <div aria-labelledby="pricing-comms">
+                  <div className="pub-cell-row">
+                    <GlyphTile icon={Mail} size={44} glyph={20} />
+                    <div>
+                      <SectionEyebrow className="mb-3">
+                        Communication allowance
+                      </SectionEyebrow>
+                      <h2
+                        id="pricing-comms"
+                        className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
+                      >
+                        Reach out with confidence.
+                      </h2>
+                    </div>
                   </div>
+                  <p className="pub-lead mt-5">
+                    Each plan includes a monthly email allowance and a number of
+                    UK SMS segments, with WhatsApp available from{" "}
+                    {PLANS.growth.name}. A long SMS costs more than one segment,
+                    which is why the allowance is counted that way rather than in
+                    messages.
+                  </p>
+                  <ul className="pub-ticks">
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        Every send is checked for opt-out, eligibility and quiet
+                        hours immediately beforehand.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        Additional SMS credits are sold in fixed bundles — from £
+                        {SMS_OVERAGE_BUNDLES[0].priceGbp} for{" "}
+                        {NUMBER.format(SMS_OVERAGE_BUNDLES[0].credits)} segments —
+                        so a top-up is never open-ended.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        WhatsApp needs an approved business sender and approved
+                        templates for first contact. That is part of setup.
+                      </span>
+                    </li>
+                  </ul>
                 </div>
-                <p className="pub-lead mt-5">
-                  Each plan includes a monthly email allowance and a number of
-                  UK SMS segments, with WhatsApp available from{" "}
-                  {PLANS.growth.name}. A long SMS costs more than one segment,
-                  which is why the allowance is counted that way rather than in
-                  messages.
-                </p>
-                <ul className="pub-ticks">
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      Every send is checked for opt-out, eligibility and quiet
-                      hours immediately beforehand.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      Additional SMS credits are sold in fixed bundles — from £
-                      {SMS_OVERAGE_BUNDLES[0].priceGbp} for{" "}
-                      {NUMBER.format(SMS_OVERAGE_BUNDLES[0].credits)} segments —
-                      so a top-up is never open-ended.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      WhatsApp needs an approved business sender and approved
-                      templates for first contact. That is part of setup.
-                    </span>
-                  </li>
-                </ul>
-              </Panel>
-            </Reveal>
-
-            <Reveal delay={0.06}>
-              <Panel className="h-full" aria-labelledby="pricing-sourcing">
-                <div className="pub-cell-row">
-                  <GlyphTile icon={Database} size={44} glyph={20} />
-                  <div>
-                    <SectionEyebrow className="mb-3">
-                      Sourcing and prospects
-                    </SectionEyebrow>
-                    <h2
-                      id="pricing-sourcing"
-                      className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
-                    >
-                      Verified prospects, within your plan.
-                    </h2>
+              </Reveal>
+  
+              <Reveal delay={0.06} className="pub-column">
+                <div aria-labelledby="pricing-sourcing">
+                  <div className="pub-cell-row">
+                    <GlyphTile icon={Database} size={44} glyph={20} />
+                    <div>
+                      <SectionEyebrow className="mb-3">
+                        Sourcing and prospects
+                      </SectionEyebrow>
+                      <h2
+                        id="pricing-sourcing"
+                        className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
+                      >
+                        Verified prospects, within your plan.
+                      </h2>
+                    </div>
                   </div>
+                  <p className="pub-lead mt-5">
+                    Your sourcing allowance covers verified prospects, the runs
+                    that produce them, the searches you keep, and the intent
+                    monitors watching for buying signals.
+                  </p>
+                  <ul className="pub-ticks">
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        You review and approve the targeting before a run
+                        executes, so allowance is never spent on a search you did
+                        not want.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        A prospect counts once, when it has been sourced and
+                        verified — not when it appears in an estimate.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        Sourcing and cold email are off during the free trial and
+                        switch on with your first paid plan.
+                      </span>
+                    </li>
+                  </ul>
                 </div>
-                <p className="pub-lead mt-5">
-                  Your sourcing allowance covers verified prospects, the runs
-                  that produce them, the searches you keep, and the intent
-                  monitors watching for buying signals.
-                </p>
-                <ul className="pub-ticks">
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      You review and approve the targeting before a run
-                      executes, so allowance is never spent on a search you did
-                      not want.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      A prospect counts once, when it has been sourced and
-                      verified — not when it appears in an estimate.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      Sourcing and cold email are off during the free trial and
-                      switch on with your first paid plan.
-                    </span>
-                  </li>
-                </ul>
-              </Panel>
-            </Reveal>
-
-            <Reveal>
-              <Panel className="h-full" aria-labelledby="pricing-overage">
-                <div className="pub-cell-row">
-                  <GlyphTile icon={Wallet} size={44} glyph={20} />
-                  <div>
-                    <SectionEyebrow className="mb-3">
-                      Overage and limits
-                    </SectionEyebrow>
-                    <h2
-                      id="pricing-overage"
-                      className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
-                    >
-                      Stay in control.
-                    </h2>
+              </Reveal>
+  
+              <Reveal className="pub-column">
+                <div aria-labelledby="pricing-overage">
+                  <div className="pub-cell-row">
+                    <GlyphTile icon={Wallet} size={44} glyph={20} />
+                    <div>
+                      <SectionEyebrow className="mb-3">
+                        Overage and limits
+                      </SectionEyebrow>
+                      <h2
+                        id="pricing-overage"
+                        className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
+                      >
+                        Stay in control.
+                      </h2>
+                    </div>
                   </div>
+                  <p className="pub-lead mt-5">
+                    Automatic overage is{" "}
+                    <strong className="text-[var(--pub-text)]">
+                      {AUTOMATIC_OVERAGE_DEFAULT_ON ? "on" : "off"} by default
+                    </strong>
+                    . A limit you did not agree to is not a limit — so reaching
+                    one stops the activity rather than quietly billing you for
+                    more.
+                  </p>
+                  <ul className="pub-ticks">
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        You are warned as you approach a limit, in the product.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        At the limit, the affected activity stops. Everything else
+                        keeps running.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        If you do turn overage on, you set a monthly spend cap
+                        with it.
+                      </span>
+                    </li>
+                  </ul>
                 </div>
-                <p className="pub-lead mt-5">
-                  Automatic overage is{" "}
-                  <strong className="text-[var(--pub-text)]">
-                    {AUTOMATIC_OVERAGE_DEFAULT_ON ? "on" : "off"} by default
-                  </strong>
-                  . A limit you did not agree to is not a limit — so reaching
-                  one stops the activity rather than quietly billing you for
-                  more.
-                </p>
-                <ul className="pub-ticks">
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      You are warned as you approach a limit, in the product.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      At the limit, the affected activity stops. Everything else
-                      keeps running.
-                    </span>
-                  </li>
-                  <li>
-                    <ShieldCheck className="size-3.5" aria-hidden />
-                    <span>
-                      If you do turn overage on, you set a monthly spend cap
-                      with it.
-                    </span>
-                  </li>
-                </ul>
-              </Panel>
-            </Reveal>
-
-            <Reveal delay={0.06}>
-              <Panel className="h-full" aria-labelledby="pricing-enterprise">
-                <div className="pub-cell-row">
-                  <GlyphTile icon={Building2} size={44} glyph={20} />
-                  <div>
-                    <SectionEyebrow className="mb-3">
-                      Enterprise
-                    </SectionEyebrow>
-                    <h2
-                      id="pricing-enterprise"
-                      className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
-                    >
-                      Built for larger organisations.
-                    </h2>
+              </Reveal>
+  
+              <Reveal delay={0.06} className="pub-column">
+                <div aria-labelledby="pricing-enterprise">
+                  <div className="pub-cell-row">
+                    <GlyphTile icon={Building2} size={44} glyph={20} />
+                    <div>
+                      <SectionEyebrow className="mb-3">
+                        Enterprise
+                      </SectionEyebrow>
+                      <h2
+                        id="pricing-enterprise"
+                        className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
+                      >
+                        Built for larger organisations.
+                      </h2>
+                    </div>
                   </div>
+                  <p className="pub-lead mt-5">
+                    Custom lead volume, sourcing allowance, messaging volume, user
+                    and workspace limits — plus the commercial and security
+                    requirements procurement will ask about.
+                  </p>
+                  <ActionRow>
+                    <SecondaryCta
+                      placement="pricing_page_contact_sales"
+                      href="/contact-sales"
+                      withArrow
+                    >
+                      Contact sales
+                    </SecondaryCta>
+                    <SecondaryCta
+                      placement="pricing_page_contact_sales"
+                      href="/enterprise"
+                    >
+                      See enterprise capabilities
+                    </SecondaryCta>
+                  </ActionRow>
                 </div>
-                <p className="pub-lead mt-5">
-                  Custom lead volume, sourcing allowance, messaging volume, user
-                  and workspace limits — plus the commercial and security
-                  requirements procurement will ask about.
-                </p>
-                <ActionRow>
-                  <SecondaryCta
-                    placement="pricing_page_contact_sales"
-                    href="/contact-sales"
-                    withArrow
-                  >
-                    Contact sales
-                  </SecondaryCta>
-                  <SecondaryCta
-                    placement="pricing_page_contact_sales"
-                    href="/enterprise"
-                  >
-                    See enterprise capabilities
-                  </SecondaryCta>
-                </ActionRow>
-              </Panel>
-            </Reveal>
-          </div>
+              </Reveal>
+            </div>
+          </Band>
 
           {/* -------------------------------------------------------- FAQ --- */}
-          <Reveal>
-            <Panel aria-labelledby="pricing-faq-heading">
+          <Band aria-labelledby="pricing-faq-heading">
               <PublicFaq
                 id="pricing-faq"
                 eyebrow="Frequently asked questions"
@@ -548,8 +546,7 @@ export default function PricingPage() {
                   </p>
                 }
               />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------- final CTA --- */}
           <Reveal>
@@ -600,7 +597,7 @@ export default function PricingPage() {
               ]}
             />
           </Reveal>
-        </PanelStack>
+        </BandStack>
       </PublicContainer>
     </>
   );

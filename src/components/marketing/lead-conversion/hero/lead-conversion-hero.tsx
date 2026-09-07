@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { motion } from "motion/react";
 import {
   ArrowRight,
   BarChart3,
@@ -15,6 +16,15 @@ import {
 } from "lucide-react";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 import { LcpCta } from "../lcp-cta";
+import {
+  Reveal,
+  RevealGroup,
+  RevealItem,
+  panelEnter,
+  slideIn,
+  softFade,
+  useHeroDrift,
+} from "../motion";
 import { useStageLoop } from "../use-stage";
 import { LeadConversionAppFrame } from "./lead-conversion-app-frame";
 
@@ -66,28 +76,39 @@ const ASSURANCES = [
 ] as const;
 
 export function LeadConversionHero() {
+  const sectionRef = React.useRef<HTMLElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
+  // A few pixels of drift so the hero gains depth as the page starts moving.
+  const drift = useHeroDrift(sectionRef, 20);
   // Five beats at ~1.5s, then a pause on the finished state: an 8.4s loop.
   const stage = useStageLoop(stageRef, 5, 1500, 2400);
 
   return (
-    <section className="lcp-section lcp-hero" aria-labelledby="lcp-hero-title">
+    <section
+      ref={sectionRef}
+      className="lcp-section lcp-hero"
+      aria-labelledby="lcp-hero-title"
+    >
       <span className="lcp-texture" aria-hidden />
       <span className="lcp-bloom" aria-hidden />
 
       <div className="lcp-shell lcp-hero-inner">
-        <div className="lcp-hero-copy">
-          <span className="lcp-eyebrow">Lead conversion</span>
-          <h1 id="lcp-hero-title">
-            Turn more inbound enquiries into{" "}
-            <span className="lcp-accent">booked business.</span>
-          </h1>
-          <p className="lcp-hero-body">
+        <RevealGroup className="lcp-hero-copy" step={0.09}>
+          <RevealItem as="span" className="lcp-eyebrow">
+            Lead conversion
+          </RevealItem>
+          <RevealItem as="div">
+            <h1 id="lcp-hero-title">
+              Turn more inbound enquiries into{" "}
+              <span className="lcp-accent">booked business.</span>
+            </h1>
+          </RevealItem>
+          <RevealItem as="p" className="lcp-hero-body">
             ClientTurn responds, follows up, qualifies and routes warm leads so
             fewer good opportunities depend on manual timing.
-          </p>
+          </RevealItem>
 
-          <div className="lcp-hero-actions">
+          <RevealItem className="lcp-hero-actions">
             <LcpCta
               placement="lead_conversion_hero"
               className="lcp-btn lcp-btn-primary"
@@ -100,8 +121,9 @@ export function LeadConversionHero() {
               </span>
               See the workflow
             </Link>
-          </div>
+          </RevealItem>
 
+          <RevealItem as="div">
           <ul className="lcp-assurances">
             {ASSURANCES.map((item) => (
               <li key={item} className="lcp-assurance">
@@ -110,20 +132,24 @@ export function LeadConversionHero() {
               </li>
             ))}
           </ul>
-        </div>
+          </RevealItem>
+        </RevealGroup>
 
         <div className="lcp-hero-visual">
-          <div className="lcp-hero-stage" ref={stageRef}>
-            <LeadConversionAppFrame litRow={stage <= 1 ? 0 : -1} />
+          <motion.div className="lcp-hero-stage" ref={stageRef} style={{ y: drift }}>
+            <Reveal variants={panelEnter} amount={0.2}>
+              <LeadConversionAppFrame litRow={stage <= 1 ? 0 : -1} />
+            </Reveal>
 
-            <div className="lcp-signals">
+            <RevealGroup className="lcp-signals" step={0.1} delay={0.25}>
               <span className="lcp-wire" data-lit={stage >= 1} aria-hidden />
               {SIGNALS.map((signal, i) => {
                 const Icon = signal.icon;
                 const lit = stage >= i;
                 return (
-                  <div
+                  <RevealItem
                     key={signal.title}
+                    variants={slideIn("right")}
                     className="lcp-signal"
                     data-lit={lit ? "true" : undefined}
                     aria-hidden
@@ -144,12 +170,12 @@ export function LeadConversionHero() {
                     {signal.tick && (
                       <Check size={15} className="lcp-signal-tick" />
                     )}
-                  </div>
+                  </RevealItem>
                 );
               })}
-            </div>
+            </RevealGroup>
 
-            <div className="lcp-hero-outcome" aria-hidden>
+            <Reveal className="lcp-hero-outcome" variants={softFade} delay={0.5} aria-hidden>
               <span className="lcp-hero-outcome-icon">
                 <BarChart3 size={19} strokeWidth={2} />
               </span>
@@ -160,9 +186,9 @@ export function LeadConversionHero() {
                 <br />
                 A more efficient business.
               </p>
-            </div>
+            </Reveal>
 
-            <p className="lcp-hero-script" aria-hidden>
+            <Reveal as="p" className="lcp-hero-script" variants={softFade} delay={0.7} aria-hidden>
               From enquiry to booked.
               <svg width="52" height="20" viewBox="0 0 52 20" fill="none">
                 <path
@@ -178,8 +204,8 @@ export function LeadConversionHero() {
                   strokeLinecap="round"
                 />
               </svg>
-            </p>
-          </div>
+            </Reveal>
+          </motion.div>
         </div>
       </div>
     </section>

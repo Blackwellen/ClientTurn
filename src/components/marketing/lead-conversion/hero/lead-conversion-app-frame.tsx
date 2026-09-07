@@ -115,7 +115,7 @@ export function LeadConversionAppFrame({ litRow }: { litRow: number }) {
               <span>Source</span>
               <span>Status</span>
               <span className="lcp-app-hide-sm">Last activity</span>
-              <span />
+              <span className="lcp-app-hide-sm" />
             </div>
             {LEADS.map((lead, i) => (
               <div
@@ -140,7 +140,7 @@ export function LeadConversionAppFrame({ litRow }: { litRow: number }) {
                   <b>{lead.activity}</b>
                   <small>{lead.activityDetail}</small>
                 </span>
-                <MoreVertical size={13} className="lcp-app-kebab" />
+                <MoreVertical size={13} className="lcp-app-kebab lcp-app-hide-sm" />
               </div>
             ))}
           </div>

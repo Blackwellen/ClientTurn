@@ -13,6 +13,7 @@ import {
   Send,
   Shield,
 } from "./pieces";
+import { Reveal, StaggerItem, StaggerReveal, panelEnter } from "./motion";
 
 /**
  * Chapter B — from prompt to prospects.
@@ -24,8 +25,13 @@ import {
  */
 export function ChapterB() {
   return (
-    <FlSection id="sourcing" glow="centre">
+    <FlSection
+      id="sourcing"
+      glow="centre"
+      aria-label="From prompt to prospects"
+    >
       <ChapterHead
+        heading={false}
         eyebrow="From prompt to prospects"
         title="Transparent sourcing."
         accent="Higher quality opportunities."
@@ -38,8 +44,10 @@ export function ChapterB() {
         }
       />
 
-      <div className="fl-cards">
+      <StaggerReveal className="fl-cards" step={0.12}>
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-sourcing-title"
           index="1"
           eyebrow="Sourcing run"
           title="See what ClientTurn is doing while it builds the list."
@@ -47,8 +55,11 @@ export function ChapterB() {
         >
           <SourcingAgentChat />
         </ChapterCard>
+        </StaggerItem>
 
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-prospects-title"
           index="2"
           eyebrow="Prospects"
           title="Review sourced prospects before they become leads."
@@ -58,8 +69,11 @@ export function ChapterB() {
             <ProspectsPanel />
           </div>
         </ChapterCard>
+        </StaggerItem>
 
+        <StaggerItem as="div" variants={panelEnter}>
         <ChapterCard
+          id="fl-scoring-title"
           index="3"
           eyebrow="Explainable scoring"
           title="A score should explain itself."
@@ -67,8 +81,10 @@ export function ChapterB() {
         >
           <ScoringPanel />
         </ChapterCard>
-      </div>
+        </StaggerItem>
+      </StaggerReveal>
 
+      <Reveal>
       <Ribbon
         items={[
           {
@@ -93,6 +109,7 @@ export function ChapterB() {
           },
         ]}
       />
+      </Reveal>
     </FlSection>
   );
 }

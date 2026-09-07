@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FlCta } from "../fl-cta";
 import { CLOSING_FLOW, INTEGRATION_ROWS } from "../data";
 import { ArrowRight, ChevronRight } from "../pieces";
+import { Reveal, StaggerItem, StaggerReveal, fadeUp } from "../motion";
 
 /**
  * Closing panel.
@@ -19,7 +20,7 @@ export function FindLeadsFinalCta() {
       <div aria-hidden className="fl-glow" />
 
       <div className="fl-wrap">
-        <div className="fl-final-inner">
+        <Reveal className="fl-final-inner">
           <p className="fl-eyebrow">Build your pipeline</p>
           <h2 className="fl-h2" id="fl-final-title" style={{ marginTop: 18 }}>
             Tell ClientTurn <em>who you want to reach.</em>
@@ -29,16 +30,16 @@ export function FindLeadsFinalCta() {
             verified prospect list and a controlled acquisition workflow.
           </p>
 
-          <ol className="fl-final-flow">
+          <StaggerReveal as="ol" className="fl-final-flow" step={0.09}>
             {CLOSING_FLOW.map((step, index) => (
-              <li key={step}>
+              <StaggerItem as="li" key={step} variants={fadeUp}>
                 <span>{step}</span>
                 {index < CLOSING_FLOW.length - 1 && (
                   <ChevronRight aria-hidden size={15} />
                 )}
-              </li>
+              </StaggerItem>
             ))}
-          </ol>
+          </StaggerReveal>
 
           <div className="fl-final-actions">
             <FlCta placement="find_leads_final_cta">
@@ -58,11 +59,18 @@ export function FindLeadsFinalCta() {
             Already using something for outbound? Prospects and replies can be
             pushed onward through the app and webhook connector.
           </p>
-          <ul className="fl-integrations" style={{ justifyContent: "center" }}>
+          <StaggerReveal
+            as="ul"
+            className="fl-integrations"
+            step={0.04}
+            style={{ justifyContent: "center" }}
+          >
             {INTEGRATION_ROWS.map((name) => (
-              <li key={name}>{name}</li>
+              <StaggerItem as="li" key={name} variants={fadeUp}>
+                {name}
+              </StaggerItem>
             ))}
-          </ul>
+          </StaggerReveal>
           <p
             className="fl-body"
             style={{ marginTop: 12, fontSize: 12.5, color: "var(--fl-ink-4)" }}
@@ -91,7 +99,7 @@ export function FindLeadsFinalCta() {
               </Link>
             ))}
           </nav>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

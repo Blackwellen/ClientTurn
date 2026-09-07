@@ -10,6 +10,7 @@ import {
   type WizardStepKey,
 } from "../campaign-draft";
 import type { CampaignStatus } from "../types";
+import { centreIsCurrent, resolveAudienceCentre } from "./geography";
 
 /**
  * Draft persistence for the acquisition campaign wizard (V4 section 17.2).
@@ -116,6 +117,7 @@ export async function loadDraft(
       locations: strings(audience.locations),
       radiusMiles:
         typeof audience.radiusMiles === "number" ? audience.radiusMiles : null,
+      center: readCentre(audience.center),
       industries: strings(audience.industries),
       companySizes: strings(audience.companySizes),
       roles: strings(audience.roles),
@@ -174,6 +176,29 @@ export async function loadDraft(
       updatedAt: row.updated_at,
       createdBy: row.created_by,
     },
+  };
+}
+
+/**
+ * The stored centre, read defensively.
+ *
+ * A blob written by an older version, or hand-edited, must produce "no centre"
+ * rather than a coordinate that is not one.
+ */
+function readCentre(
+  value: unknown,
+): { lat: number; lon: number; label: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const centre = value as { lat?: unknown; lon?: unknown; label?: unknown };
+
+  if (typeof centre.lat !== "number" || typeof centre.lon !== "number") return null;
+  if (!Number.isFinite(centre.lat) || !Number.isFinite(centre.lon)) return null;
+  if (Math.abs(centre.lat) > 90 || Math.abs(centre.lon) > 180) return null;
+
+  return {
+    lat: centre.lat,
+    lon: centre.lon,
+    label: typeof centre.label === "string" ? centre.label : "",
   };
 }
 
@@ -255,6 +280,14 @@ export async function saveDraft(input: {
   const references = await resolveReferences(input.businessId, draft);
   if (!references.ok) return { ok: false, error: references.error };
 
+  // Geocoding is a paid provider call and step 2 autosaves on every edit, so
+  // the centre is only re-resolved when the place or the radius has actually
+  // changed. An unresolvable place stores null, and the estimate then says it
+  // could not measure the radius rather than quietly counting the wrong area.
+  const centre = centreIsCurrent(draft.audience)
+    ? draft.audience.center
+    : await resolveAudienceCentre(draft.audience);
+
   const { error } = await admin
     .from("outreach_campaigns")
     .update({
@@ -269,6 +302,9 @@ export async function saveDraft(input: {
       audience_json: {
         locations: draft.audience.locations,
         radiusMiles: draft.audience.radiusMiles,
+        // Resolved here, never taken from the browser: a client-supplied
+        // coordinate would let a crafted request point the radius anywhere.
+        center: centre,
         industries: draft.audience.industries,
         companySizes: draft.audience.companySizes,
         roles: draft.audience.roles,

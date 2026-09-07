@@ -389,6 +389,21 @@ export const audienceSchema = z.object({
   /** Miles around the first named location. Stored so the server geocodes
    *  once rather than the browser guessing a bounding box. */
   radiusMiles: z.number().int().min(0).max(250).nullable(),
+  /**
+   * The resolved centre of the radius.
+   *
+   * Written by the server when the location or radius changes, never by the
+   * browser — a client-supplied coordinate would let a crafted request target
+   * anywhere. Null means the place could not be geocoded, and the audience
+   * estimate then says so rather than quietly falling back to name matching.
+   */
+  center: z
+    .object({
+      lat: z.number().min(-90).max(90),
+      lon: z.number().min(-180).max(180),
+      label: trimmed(200),
+    })
+    .nullable(),
   industries: z.array(trimmed(120)).max(20),
   companySizes: z.array(trimmed(40)).max(10),
   roles: z.array(trimmed(120)).max(20),
@@ -499,6 +514,7 @@ export function emptyDraft(): CampaignDraft {
       icpProfileId: null,
       locations: [],
       radiusMiles: null,
+      center: null,
       industries: [],
       companySizes: [],
       roles: [],

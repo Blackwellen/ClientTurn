@@ -6,6 +6,7 @@ import { ChapterB } from "@/components/marketing/find-leads/chapter-b";
 import { ChapterC } from "@/components/marketing/find-leads/chapter-c";
 import { AcquisitionAnalyticsSection } from "@/components/marketing/find-leads/analytics/acquisition-analytics-section";
 import { FindLeadsFinalCta } from "@/components/marketing/find-leads/final-cta/find-leads-final-cta";
+import { MotionRoot } from "@/components/marketing/find-leads/motion-root";
 import "./find-leads.css";
 
 const title = "AI Lead Generation & Prospecting Software";
@@ -130,6 +131,15 @@ const structuredData = {
 };
 
 /**
+ * Overrides the entrance states when scripting is unavailable.
+ *
+ * `!important` is warranted precisely once: the values being overridden
+ * are inline styles written by the animation library, and an inline style
+ * cannot be beaten any other way.
+ */
+const NOSCRIPT_CSS = `.fl [style*="opacity:0"],.fl [style*="opacity: 0"]{opacity:1!important;transform:none!important}`;
+
+/**
  * /product/find-leads — the public acquisition page for Find Leads.
  *
  * A server component composing seven sections, five of which contain a small
@@ -145,13 +155,21 @@ export default function FindLeadsProductPage() {
         // Static, author-controlled object — no user input reaches this string.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <FindLeadsHero />
-      <BusinessLearningSection />
-      <SearchPlanSection />
-      <ChapterB />
-      <ChapterC />
-      <AcquisitionAnalyticsSection />
-      <FindLeadsFinalCta />
+      {/* Scroll-triggered entrances ship as `opacity: 0` in the HTML.
+          Without scripting nothing would ever clear them, so the whole
+          page is forced to its final state instead. */}
+      <noscript>
+        <style>{NOSCRIPT_CSS}</style>
+      </noscript>
+      <MotionRoot>
+        <FindLeadsHero />
+        <BusinessLearningSection />
+        <SearchPlanSection />
+        <ChapterB />
+        <ChapterC />
+        <AcquisitionAnalyticsSection />
+        <FindLeadsFinalCta />
+      </MotionRoot>
     </div>
   );
 }

@@ -3,10 +3,12 @@ import { INSTALLABLE_APPS } from "@/lib/integrations/apps";
 import { PROVIDERS, type ProviderDefinition } from "@/lib/integrations/catalog";
 import { brandMarkSrc } from "@/lib/integrations/brand-marks";
 import { providerCategoryLabel } from "./integration-types";
-import type {
-  MarketingAvailability,
-  ShowcaseConnector,
-  ShowcaseProvider,
+import {
+  sortIntegrations,
+  type MarketingAvailability,
+  type ShowcaseConnector,
+  type ShowcaseIntegration,
+  type ShowcaseProvider,
 } from "./integration-types";
 
 /**
@@ -74,7 +76,21 @@ export function showcaseProviders(): ShowcaseProvider[] {
     id: definition.id,
     name: definition.name,
     category: providerCategoryLabel(definition.category),
+    // The catalogue summary is written for Settings, where the product is
+    // called "Client Turn". The public site spells it as one word.
+    description: definition.summary.replace(/Client Turn/g, "ClientTurn"),
     logo: brandMarkSrc(definition.id),
     availability: providerAvailability(definition),
   }));
+}
+
+/**
+ * The whole marketplace as one list, ordered by the category row.
+ *
+ * Both halves are presented together deliberately: the section's job is to
+ * answer "is my stack supported", and splitting the answer into two grids
+ * made a visitor check twice.
+ */
+export function showcaseIntegrations(): ShowcaseIntegration[] {
+  return sortIntegrations([...showcaseProviders(), ...showcaseConnectors()]);
 }

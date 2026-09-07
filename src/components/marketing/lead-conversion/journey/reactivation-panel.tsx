@@ -28,7 +28,6 @@ export function ReactivationPanel() {
 
       <div className="lcp-react-table">
         <div className="lcp-react-thead">
-          <span className="lcp-check" aria-hidden />
           <span>Name</span>
           <span>Last enquiry</span>
           <span>Status</span>
@@ -40,7 +39,6 @@ export function ReactivationPanel() {
             className="lcp-react-row"
             data-out={row.actionable ? undefined : "true"}
           >
-            <span className="lcp-check" aria-hidden />
             <span className="lcp-react-who">
               <Avatar initials={row.initials} colours={row.avatar} />
               <b>{row.name}</b>

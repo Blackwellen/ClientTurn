@@ -15,7 +15,6 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import "../evaluation.css";
 import { COMPANY } from "@/lib/marketing/company";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 import {
@@ -27,12 +26,16 @@ import {
   Glow,
 } from "@/components/marketing/public/ui";
 import {
-  Panel,
-  PanelStack,
+  Band,
+  BandStack,
   StepRail,
   TrustRow,
 } from "@/components/marketing/public/shell";
-import { Reveal } from "@/components/marketing/public/reveal";
+import {
+  Reveal,
+  RevealGrid,
+  ScrollProgress,
+} from "@/components/marketing/public/reveal";
 import {
   PrimaryCta,
   SecondaryCta,
@@ -43,12 +46,10 @@ import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/public/faq";
 import { SalesForm } from "@/components/marketing/public/contact-sales/sales-form";
 import {
-  Screen,
-  ScreenBlock,
-  RangeChip,
-  Kpis,
-} from "@/components/marketing/public/screen";
-import { TrendLine } from "@/components/marketing/public/charts";
+  AppFrame,
+  DashboardFrame,
+} from "@/components/marketing/public/home/app-frames";
+import { IllustrativeNote } from "@/components/marketing/public/screen";
 
 const title = "Contact Sales";
 const description =
@@ -141,10 +142,10 @@ const FAQS: FaqItem[] = [
 export default function ContactSalesPage() {
   return (
     <>
+      <ScrollProgress />
       <FaqJsonLd items={FAQS} />
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- built from a local constant; no user input reaches this string.
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             "@context": "https://schema.org",
@@ -192,7 +193,7 @@ export default function ContactSalesPage() {
         <GridTexture />
         <Glow x="right" y="top" />
         <PublicContainer>
-          <div className="pub-hero-split">
+          <div className="pub-hero-split pub-split-top">
             <Reveal>
               <SectionEyebrow className="mb-5">Contact sales</SectionEyebrow>
               <h1 id="cs-hero" className="pub-h1">
@@ -228,29 +229,12 @@ export default function ContactSalesPage() {
               />
 
               <div className="mt-10">
-                <Screen
-                  active="Dashboard"
-                  title="Your growth, our focus"
-                  meta={<RangeChip />}
-                  label="A ClientTurn dashboard showing new opportunities, engaged contacts, qualified and converted totals above a pipeline growth trend."
-                >
-                  <Kpis
-                    items={[
-                      { value: "1,248", label: "New opportunities", delta: "+12%" },
-                      { value: "892", label: "Engaged contacts", delta: "+8%" },
-                      { value: "428", label: "Qualified", delta: "+16%" },
-                      { value: "186", label: "Converted", delta: "+6%" },
-                    ]}
-                  />
-                  <ScreenBlock title="Pipeline growth">
-                    <TrendLine
-                      points={[16, 22, 20, 29, 34, 32, 41, 47, 45, 53]}
-                      colour="#2f7ff0"
-                      height={82}
-                      label="Illustrative pipeline growth across the period."
-                    />
-                  </ScreenBlock>
-                </Screen>
+                <div>
+                  <AppFrame label="ClientTurn lead conversion dashboard showing connection status, lead and booking counts, the conversion funnel and estimated pipeline.">
+                    <DashboardFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
               </div>
             </Reveal>
 
@@ -264,10 +248,9 @@ export default function ContactSalesPage() {
       </section>
 
       <PublicContainer>
-        <PanelStack>
+        <BandStack>
           {/* --------------------------------------------- why talk to us --- */}
-          <Reveal>
-            <Panel aria-labelledby="cs-why">
+          <Band aria-labelledby="cs-why">
               <SectionEyebrow className="mb-5">
                 Why talk to sales?
               </SectionEyebrow>
@@ -279,7 +262,7 @@ export default function ContactSalesPage() {
                 you already run, and support your team from rollout to results.
               </p>
 
-              <div className="pub-grid pub-grid-4 mt-10">
+              <RevealGrid className="pub-grid pub-grid-4 mt-10">
                 {[
                   {
                     icon: Layers,
@@ -308,13 +291,11 @@ export default function ContactSalesPage() {
                     <p>{item.body}</p>
                   </PublicCard>
                 ))}
-              </div>
-            </Panel>
-          </Reveal>
+              </RevealGrid>
+          </Band>
 
           {/* ------------------------------------------------ the process --- */}
-          <Reveal>
-            <Panel aria-labelledby="cs-process">
+          <Band aria-labelledby="cs-process">
               <SectionEyebrow className="mb-5">
                 What happens next
               </SectionEyebrow>
@@ -327,98 +308,98 @@ export default function ContactSalesPage() {
               </p>
 
               <StepRail steps={STEPS} />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------- who it is for + use cases --- */}
-          <div className="pub-grid pub-grid-2">
-            <Reveal>
-              <Panel className="h-full" aria-labelledby="cs-who">
-                <h2 id="cs-who" className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]">
-                  Who is this for?
-                </h2>
-                <p className="pub-lead mt-4">
-                  We work with businesses that need a more tailored setup than
-                  the self-serve plans cover, including:
-                </p>
-                <ul className="pub-checks">
-                  {[
-                    "Higher lead or prospect volumes than the published plans include",
-                    "Multiple locations or business units",
-                    "Custom integration requirements",
-                    "Security, compliance or procurement review",
-                    "Dedicated onboarding and support",
-                  ].map((item) => (
-                    <li key={item}>
-                      <CheckCircle2 className="size-4" aria-hidden />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="pub-small mt-6">
-                  If none of these apply, the {TRIAL_DAYS}-day trial will
-                  probably answer your questions faster than we can.
-                </p>
-                <ActionRow>
-                  <SecondaryCta
-                    placement="contact_sales_start_free"
-                    href="/pricing"
-                  >
-                    Compare self-serve plans
-                  </SecondaryCta>
-                </ActionRow>
-              </Panel>
-            </Reveal>
-
-            <Reveal delay={0.06}>
-              <Panel className="h-full" aria-labelledby="cs-cases">
-                <h2
-                  id="cs-cases"
-                  className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
-                >
-                  Common use cases
-                </h2>
-                <p className="pub-lead mt-4">
-                  The conversations we have most often:
-                </p>
-                <ul className="mt-6 grid gap-3">
-                  {[
-                    {
-                      icon: MessagesSquare,
-                      label: "Lead Conversion for inbound enquiries",
-                    },
-                    { icon: Search, label: "Find Leads for new pipeline" },
-                    {
-                      icon: Sparkles,
-                      label: "Both acquisition and conversion together",
-                    },
-                    {
-                      icon: Plug,
-                      label: "Integration with an existing CRM or calendar",
-                    },
-                    { icon: Building2, label: "Multi-location operations" },
-                    {
-                      icon: ShieldCheck,
-                      label: "Security and data requirements",
-                    },
-                    { icon: Users, label: "Custom workflows and team structures" },
-                  ].map((item) => (
-                    <li
-                      key={item.label}
-                      className="flex items-center gap-3 rounded-[10px] border border-[var(--pub-border)] bg-[var(--pub-bg-raised)] px-3.5 py-3 text-[0.82rem] text-[var(--pub-text-secondary)]"
+          <Band>
+            <div className="pub-columns">
+              <Reveal className="pub-column">
+                <div aria-labelledby="cs-who">
+                  <h2 id="cs-who" className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]">
+                    Who is this for?
+                  </h2>
+                  <p className="pub-lead mt-4">
+                    We work with businesses that need a more tailored setup than
+                    the self-serve plans cover, including:
+                  </p>
+                  <ul className="pub-checks">
+                    {[
+                      "Higher lead or prospect volumes than the published plans include",
+                      "Multiple locations or business units",
+                      "Custom integration requirements",
+                      "Security, compliance or procurement review",
+                      "Dedicated onboarding and support",
+                    ].map((item) => (
+                      <li key={item}>
+                        <CheckCircle2 className="size-4" aria-hidden />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="pub-small mt-6">
+                    If none of these apply, the {TRIAL_DAYS}-day trial will
+                    probably answer your questions faster than we can.
+                  </p>
+                  <ActionRow>
+                    <SecondaryCta
+                      placement="contact_sales_start_free"
+                      href="/pricing"
                     >
-                      <GlyphTile icon={item.icon} size={30} glyph={14} />
-                      {item.label}
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
-            </Reveal>
-          </div>
+                      Compare self-serve plans
+                    </SecondaryCta>
+                  </ActionRow>
+                </div>
+              </Reveal>
+  
+              <Reveal delay={0.06} className="pub-column">
+                <div aria-labelledby="cs-cases">
+                  <h2
+                    id="cs-cases"
+                    className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
+                  >
+                    Common use cases
+                  </h2>
+                  <p className="pub-lead mt-4">
+                    The conversations we have most often:
+                  </p>
+                  <ul className="mt-6 grid gap-3">
+                    {[
+                      {
+                        icon: MessagesSquare,
+                        label: "Lead Conversion for inbound enquiries",
+                      },
+                      { icon: Search, label: "Find Leads for new pipeline" },
+                      {
+                        icon: Sparkles,
+                        label: "Both acquisition and conversion together",
+                      },
+                      {
+                        icon: Plug,
+                        label: "Integration with an existing CRM or calendar",
+                      },
+                      { icon: Building2, label: "Multi-location operations" },
+                      {
+                        icon: ShieldCheck,
+                        label: "Security and data requirements",
+                      },
+                      { icon: Users, label: "Custom workflows and team structures" },
+                    ].map((item) => (
+                      <li
+                        key={item.label}
+                        className="flex items-center gap-3 rounded-[10px] border border-[var(--pub-border)] bg-[var(--pub-bg-raised)] px-3.5 py-3 text-[0.82rem] text-[var(--pub-text-secondary)]"
+                      >
+                        <GlyphTile icon={item.icon} size={30} glyph={14} />
+                        {item.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
+            </div>
+          </Band>
 
           {/* -------------------------------------------------------- FAQ --- */}
-          <Reveal>
-            <Panel aria-labelledby="contact-sales-faq-heading">
+          <Band aria-labelledby="contact-sales-faq-heading">
               <PublicFaq
                 id="contact-sales-faq"
                 eyebrow="Common questions"
@@ -439,8 +420,7 @@ export default function ContactSalesPage() {
                   </p>
                 }
               />
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------- final CTA --- */}
           <Reveal>
@@ -490,7 +470,7 @@ export default function ContactSalesPage() {
               ]}
             />
           </Reveal>
-        </PanelStack>
+        </BandStack>
       </PublicContainer>
     </>
   );

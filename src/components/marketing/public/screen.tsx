@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { GrowBar } from "./reveal";
 import { cn } from "@/lib/cn";
 import { IllustrativeTag } from "./shell";
 
@@ -124,16 +127,15 @@ export function FunnelBars({
 
   return (
     <div className="pub-bars">
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <div key={row.label} className="pub-bar">
           <span>{row.label}</span>
           <span className="pub-bar-track">
-            <span
+            <GrowBar
               className="pub-bar-fill"
-              style={{
-                width: `${Math.max((row.value / ceiling) * 100, 3)}%`,
-                background: row.colour,
-              }}
+              width={`${Math.max((row.value / ceiling) * 100, 3)}%`}
+              colour={row.colour}
+              delay={index * 0.07}
             />
           </span>
           <b>{row.value.toLocaleString("en-GB")}</b>
@@ -256,4 +258,20 @@ export function RangeChip({ children = "Last 30 days" }: { children?: string }) 
       </svg>
     </span>
   );
+}
+
+/**
+ * The caption under a product frame.
+ *
+ * The frames rebuilt in `home/app-frames.tsx` show a sample workspace with
+ * sample names and sample figures. That has to be said in visible copy next
+ * to the frame, not only in an aria-label — a sighted visitor is exactly who
+ * would otherwise read a dashboard mock as a result.
+ */
+export function IllustrativeNote({
+  children = "A rebuild of the ClientTurn workspace with sample data. Not a customer, and not a result.",
+}: {
+  children?: React.ReactNode;
+}) {
+  return <p className="pub-small mt-3">{children}</p>;
 }

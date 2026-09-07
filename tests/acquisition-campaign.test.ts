@@ -50,6 +50,10 @@ import {
   type LaunchFacts,
 } from "../src/lib/outreach/campaign-validation.ts";
 import { summariseCampaignBudget } from "../src/lib/outreach/campaign-budget.ts";
+import {
+  MAX_COMPANY_ROWS,
+  parseCompanyCsv,
+} from "../src/lib/outreach/company-list.ts";
 
 /**
  * The acquisition campaign wizard's decision layer.
@@ -886,5 +890,60 @@ describe("estimated results", () => {
     assert.deepEqual(ESTIMATE_BANDS.reply, [0.15, 0.25]);
     assert.deepEqual(ESTIMATE_BANDS.qualified, [0.05, 0.1]);
     assert.deepEqual(ESTIMATE_BANDS.conversion, [0.03, 0.07]);
+  });
+});
+
+/* ------------------------------------------------------- named company CSV */
+
+describe("named company list upload", () => {
+  test("a one-column list with no header keeps every row", () => {
+    const csv = "Acme Roofing\nDorset Property Group\nHarbour Estates";
+    assert.deepEqual(parseCompanyCsv(csv), [
+      "Acme Roofing",
+      "Dorset Property Group",
+      "Harbour Estates",
+    ]);
+  });
+
+  test("a recognised header selects its column and is not itself imported", () => {
+    const csv = "id,company,city\n1,Acme Roofing,Poole\n2,Harbour Estates,Bournemouth";
+    assert.deepEqual(parseCompanyCsv(csv), ["Acme Roofing", "Harbour Estates"]);
+  });
+
+  test("a domain column is recognised too", () => {
+    const csv = "domain\nacme-roofing.co.uk\nharbour.example";
+    assert.deepEqual(parseCompanyCsv(csv), ["acme-roofing.co.uk", "harbour.example"]);
+  });
+
+  test("quoted fields with embedded commas stay one company", () => {
+    const csv = 'company,city\n"Acme Roofing, Ltd",Poole';
+    assert.deepEqual(parseCompanyCsv(csv), ["Acme Roofing, Ltd"]);
+  });
+
+  test("escaped quotes survive", () => {
+    const csv = 'company\n"The ""Big"" Roofing Co"';
+    assert.deepEqual(parseCompanyCsv(csv), ['The "Big" Roofing Co']);
+  });
+
+  test("blank lines and empty cells are dropped", () => {
+    const csv = "company\nAcme\n\n,\nHarbour\n";
+    assert.deepEqual(parseCompanyCsv(csv), ["Acme", "Harbour"]);
+  });
+
+  test("an empty file yields nothing rather than throwing", () => {
+    assert.deepEqual(parseCompanyCsv(""), []);
+    assert.deepEqual(parseCompanyCsv("\n\n"), []);
+  });
+
+  test("the row count is bounded", () => {
+    const csv = Array.from({ length: MAX_COMPANY_ROWS + 500 }, (_, i) => `Company ${i}`).join(
+      "\n",
+    );
+    assert.equal(parseCompanyCsv(csv).length, MAX_COMPANY_ROWS);
+  });
+
+  test("a very long cell is truncated rather than stored whole", () => {
+    const csv = `company\n${"x".repeat(500)}`;
+    assert.equal(parseCompanyCsv(csv)[0].length, 200);
   });
 });

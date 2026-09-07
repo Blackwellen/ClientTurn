@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -139,6 +140,11 @@ export function PublicHeader() {
     setDrawerOpen(false);
   }
 
+  /* On the partner pages the primary action is joining the programme, not
+     starting a product trial: sending a would-be affiliate to /signup drops
+     them into the customer funnel they were not looking for. */
+  const partnerRoute = pathname === "/affiliates" || pathname.startsWith("/affiliates/");
+
   const onNavigate = React.useCallback((label: string) => {
     trackEngagement("public_nav_click", label);
     setOpenMenu(null);
@@ -193,12 +199,17 @@ export function PublicHeader() {
       <div className="pub-container">
         <div className="pub-header-bar relative">
           <Link href="/" aria-label="ClientTurn home" className="mr-2 inline-flex shrink-0 items-center">
-            <Logo href={null} height={56} imgClassName="h-9 w-auto sm:h-12" />
+            {/* Matches the auth shell, which renders the lockup at an 80px
+                box (`<Logo height={80} />`) — the two shells sit either side
+                of signup, so a mark that changes size across that boundary
+                reads as two different products. Smaller below `sm`, where an
+                80px box crowds a 72px bar. */}
+            <Logo href={null} height={80} imgClassName="h-14 w-auto sm:h-20" />
           </Link>
 
           <nav
             aria-label="Primary"
-            className="ml-4 hidden items-center gap-0.5 lg:flex xl:ml-8 xl:gap-1"
+            className="ml-4 hidden items-center gap-0.5 min-[1440px]:ml-6 min-[1440px]:flex"
           >
             {PRIMARY_NAV.map(renderItem)}
           </nav>
@@ -218,9 +229,19 @@ export function PublicHeader() {
             >
               Contact Sales
             </Link>
-            <PublicCta placement="header" size="sm" className="hidden min-[420px]:inline-flex">
-              Start Free
-            </PublicCta>
+            {partnerRoute ? (
+              <Link
+                href="/affiliates/signup"
+                className={cn(buttonClass("primary", "sm"), "hidden min-[420px]:inline-flex")}
+                onClick={() => onNavigate("Become an Affiliate")}
+              >
+                Become an Affiliate
+              </Link>
+            ) : (
+              <PublicCta placement="header" size="sm" className="hidden min-[420px]:inline-flex">
+                Start Free
+              </PublicCta>
+            )}
 
             <button
               type="button"
@@ -228,7 +249,7 @@ export function PublicHeader() {
               aria-controls="public-mobile-nav"
               aria-label={drawerOpen ? "Close menu" : "Open menu"}
               onClick={() => setDrawerOpen((open) => !open)}
-              className={cn(buttonClass("secondary", "sm"), "!px-3 lg:hidden")}
+              className={cn(buttonClass("secondary", "sm"), "!px-3 min-[1440px]:hidden")}
             >
               {drawerOpen ? (
                 <X aria-hidden className="size-5" />
@@ -258,6 +279,11 @@ function MobileDrawer({
   onNavigate: (label: string) => void;
   onClose: () => void;
 }) {
+  /* Same rule as the header bar: on a partner route the primary action is
+     joining the programme, not starting a product trial. */
+  const partnerRoute =
+    pathname === "/affiliates" || pathname.startsWith("/affiliates/");
+
   const panelRef = React.useRef<HTMLDivElement>(null);
 
   /* Focus moves into the drawer on open and is trapped inside it while open,
@@ -288,8 +314,15 @@ function MobileDrawer({
     return () => panel.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  return (
-    <div className="fixed inset-x-0 bottom-0 top-[var(--pub-header-h)] z-50 lg:hidden">
+  /* Portalled to the body rather than rendered inside the header.
+     The header takes `backdrop-filter` once the page is scrolled, and a
+     filtered element becomes the containing block for its fixed-position
+     descendants — so in there the drawer measured itself against a 72px bar
+     and collapsed to nothing. `.ct-marketing` comes along so the design
+     tokens still resolve outside the shell, and the z-index stays below the
+     header's so the close button is never dimmed by its own overlay. */
+  return createPortal(
+    <div className="ct-marketing fixed inset-0 z-50 min-[1440px]:hidden">
       <div aria-hidden onClick={onClose} className="absolute inset-0 bg-[var(--lr-overlay)]" />
       <div
         id="public-mobile-nav"
@@ -298,13 +331,23 @@ function MobileDrawer({
         aria-modal="true"
         aria-label="Site navigation"
         tabIndex={-1}
-        className="absolute inset-x-0 top-0 max-h-full overflow-y-auto border-b border-[var(--pub-border)] bg-[var(--pub-bg-raised)] px-[var(--pub-gutter)] pb-8 pt-5 outline-none"
+        className="absolute inset-x-0 top-[var(--pub-header-h)] max-h-[calc(100dvh-var(--pub-header-h))] overflow-y-auto overscroll-contain border-b border-[var(--pub-border)] bg-[var(--pub-bg-raised)] px-[var(--pub-gutter)] pb-10 pt-5 outline-none"
       >
         {/* The primary conversion action stays at the top of the drawer: it is
             never buried under an accordion the visitor has to open first. */}
-        <PublicCta placement="header_mobile" size="lg" fullWidth arrow>
-          Start Free
-        </PublicCta>
+        {partnerRoute ? (
+          <Link
+            href="/affiliates/signup"
+            className={cn(buttonClass("primary", "lg"), "w-full")}
+            onClick={() => onNavigate("Become an Affiliate")}
+          >
+            Become an Affiliate
+          </Link>
+        ) : (
+          <PublicCta placement="header_mobile" size="lg" fullWidth arrow>
+            Start Free
+          </PublicCta>
+        )}
 
         <nav aria-label="Mobile" className="mt-6 space-y-6">
           {PRIMARY_NAV.map((item) =>
@@ -314,13 +357,13 @@ function MobileDrawer({
                 href={item.href}
                 aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
                 onClick={() => onNavigate(item.label)}
-                className="block min-h-11 py-2 text-[17px] font-semibold text-[var(--pub-text)]"
+                className="block min-h-11 py-2 text-center text-[17px] font-semibold text-[var(--pub-text)] sm:text-left"
               >
                 {item.label}
               </Link>
             ) : (
               <div key={item.id}>
-                <p className="pub-footer-heading mb-2">{item.label}</p>
+                <p className="pub-footer-heading mb-2 text-center sm:text-left">{item.label}</p>
                 <ul className="space-y-0.5">
                   {item.columns.flatMap((column) =>
                     column.links.map((link) => (
@@ -328,7 +371,7 @@ function MobileDrawer({
                         <Link
                           href={link.href}
                           onClick={() => onNavigate(link.label)}
-                          className="flex min-h-11 items-center text-[15px] text-[var(--pub-text-secondary)]"
+                          className="flex min-h-11 items-center justify-center text-[15px] text-[var(--pub-text-secondary)] sm:justify-start"
                         >
                           {link.label}
                         </Link>
@@ -358,6 +401,7 @@ function MobileDrawer({
           </Link>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 import { PublicCta } from "../cta-link";
 import { Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
@@ -58,12 +58,15 @@ export function Hero() {
               <PublicCta placement="hero_primary" size="lg" arrow className="sm:min-w-[200px]">
                 Start Free
               </PublicCta>
+              {/* No play glyph: there is no video behind this, and an icon
+                  that promises one is a small lie. It goes to the How It
+                  Works page. */}
               <Link
-                href={ANCHORS.howItWorks}
+                href="/how-it-works"
                 className={buttonClass("secondary", "lg", "sm:min-w-[220px]")}
               >
-                <Play aria-hidden className="size-4 fill-current" />
                 See how it works
+                <ArrowRight aria-hidden className="size-4" />
               </Link>
             </div>
 

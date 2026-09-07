@@ -1,21 +1,26 @@
-import {
-  CalendarCheck2,
-  CalendarDays,
-  CreditCard,
-  Megaphone,
-  MessageSquare,
-  type LucideIcon,
-} from "lucide-react";
+import Image from "next/image";
+import { brandMarkSrc } from "@/lib/integrations/brand-marks";
+import type { ProviderType } from "@/lib/integrations/catalog";
 
-/** Muted "works with" strip for the auth brand panel. Lists only providers
- * ClientTurn actually integrates with — never framed as customer proof, and
- * never using a partner's trademark as an endorsement. */
-const PROVIDERS: { name: string; icon: LucideIcon }[] = [
-  { name: "Meta", icon: Megaphone },
-  { name: "Twilio", icon: MessageSquare },
-  { name: "Stripe", icon: CreditCard },
-  { name: "Google Calendar", icon: CalendarDays },
-  { name: "Calendly", icon: CalendarCheck2 },
+/**
+ * The "works with" strip on the auth brand panel.
+ *
+ * Every entry is a provider ClientTurn genuinely integrates with, named from
+ * the connection catalogue, and carrying that provider's own mark from
+ * `public/brands/` — the same assets Settings → Connections uses, so the two
+ * surfaces cannot drift apart. The marks identify their provider; they are the
+ * trademark of their owners and are never presented as an endorsement, which
+ * is why the heading reads "Works with" and no logo is scaled up or given
+ * prominence over the others.
+ *
+ * Marks are supplied as single-colour SVGs on a light tile so a brand's own
+ * colours stay legible against the dark panel without recolouring the mark.
+ */
+const PROVIDERS: { name: string; provider: ProviderType }[] = [
+  { name: "Meta", provider: "meta" },
+  { name: "Twilio", provider: "twilio_sms" },
+  { name: "Google Calendar", provider: "google_calendar" },
+  { name: "Calendly", provider: "calendly" },
 ];
 
 export function WorksWithStrip() {
@@ -24,25 +29,39 @@ export function WorksWithStrip() {
       <p className="text-[11.5px] font-semibold tracking-[0.22em] text-[var(--auth-text-subtle)] uppercase">
         Works with
       </p>
-      <ul className="mt-4 flex flex-wrap items-center gap-x-7 gap-y-3">
-        {PROVIDERS.map(({ name, icon: Icon }) => (
-          <li
-            key={name}
-            className="group flex items-center gap-2.5 text-[15px] font-semibold text-[#8b97a8] transition-colors duration-200 hover:text-[#c3cddb]"
-          >
-            {/* Neutral glyph in a tinted tile — never a reproduced brand mark. */}
-            <span
-              className="flex size-8 shrink-0 items-center justify-center rounded-[9px] text-[#9aa7b8] transition-colors duration-200 group-hover:text-[var(--auth-lime)]"
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.07)",
-              }}
+      {/* Four labelled marks, on one line. The name sits beside its logo
+          rather than in a tooltip: a mark alone asks the reader to recognise a
+          glyph, and the point of this strip is to say plainly which systems
+          ClientTurn connects to. Four is what fits the column at this size. */}
+      <ul className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3.5">
+        {PROVIDERS.map(({ name, provider }) => {
+          const src = brandMarkSrc(provider);
+          return (
+            <li
+              key={name}
+              className="group flex shrink-0 items-center gap-2.5 text-[14.5px] font-semibold whitespace-nowrap text-[#8b97a8] transition-colors duration-200 hover:text-[#c3cddb]"
             >
-              <Icon className="size-4" strokeWidth={2} aria-hidden />
-            </span>
-            {name}
-          </li>
-        ))}
+              <span
+                className="flex size-9 shrink-0 items-center justify-center rounded-[10px] transition-colors duration-200"
+                style={{
+                  background: "rgba(255,255,255,0.94)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
+                {src && (
+                  <Image
+                    src={src}
+                    alt=""
+                    width={20}
+                    height={20}
+                    className="size-5 object-contain"
+                  />
+                )}
+              </span>
+              {name}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

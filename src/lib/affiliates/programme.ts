@@ -307,16 +307,98 @@ export function rangeDays(key: RangeKey): number {
   return 30;
 }
 
+/** How far back a custom range may reach. */
+export const MAX_CUSTOM_RANGE_DAYS = 365;
+
 /**
- * Resolves a range key into a half-open window `[from, to)`.
+ * A custom window, as two ISO dates.
+ *
+ * Held separately from `RangeKey` because a custom range is two extra facts
+ * that the three preset keys do not carry, and widening `RangeKey` into a
+ * union of key-or-dates would make every call site handle a case it does not
+ * have.
+ */
+export type CustomRange = { fromDate: string; toDate: string };
+
+/**
+ * Parses and clamps a caller-supplied custom window.
+ *
+ * Everything about this is defensive because both dates arrive in a query
+ * string. An unparseable date, a reversed pair, a zero-length window or a
+ * ten-year span would each produce a chart that is wrong rather than empty, so
+ * each is corrected here instead of being passed down to SQL.
+ *
+ * Returns null when the input is not usable at all, and the caller falls back
+ * to the default preset rather than rendering nothing.
+ */
+export function parseCustomRange(
+  fromValue: string | null | undefined,
+  toValue: string | null | undefined,
+  now: Date = new Date(),
+): CustomRange | null {
+  if (!fromValue || !toValue) return null;
+
+  const start = new Date(`${fromValue}T00:00:00.000Z`);
+  const end = new Date(`${toValue}T00:00:00.000Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return null;
+  }
+
+  // Reversed pairs are corrected rather than rejected: someone picking the end
+  // date first is making an ordering mistake, not asking for nothing.
+  let low = start <= end ? start : end;
+  let high = start <= end ? end : start;
+
+  // Never past today. A window reaching into the future renders empty days
+  // that read as a collapse in performance.
+  const today = new Date(now);
+  today.setUTCHours(0, 0, 0, 0);
+  if (high > today) high = today;
+  if (low > today) low = today;
+
+  // Clamp the span. A multi-year window would ask the daily series for
+  // thousands of buckets to draw a chart a few hundred pixels wide.
+  const span = Math.round((high.getTime() - low.getTime()) / 86400000);
+  if (span > MAX_CUSTOM_RANGE_DAYS) {
+    low = new Date(high.getTime() - MAX_CUSTOM_RANGE_DAYS * 86400000);
+  }
+
+  return {
+    fromDate: low.toISOString().slice(0, 10),
+    toDate: high.toISOString().slice(0, 10),
+  };
+}
+
+/**
+ * Resolves a range into a half-open window `[from, to)`.
  *
  * Half-open because a closed window double-counts anything that lands exactly
  * on midnight, which for a daily-bucketed chart is every boundary.
+ *
+ * A custom window's `toDate` is inclusive to the person who picked it — they
+ * chose "up to and including the 30th" — so `to` is the start of the day
+ * after, and the comparison window is the same number of days immediately
+ * before it.
  */
 export function resolveRange(
   key: RangeKey,
   now: Date = new Date(),
+  custom?: CustomRange | null,
 ): { from: Date; to: Date; days: number; previousFrom: Date } {
+  if (key === "custom" && custom) {
+    const from = new Date(`${custom.fromDate}T00:00:00.000Z`);
+    const to = new Date(`${custom.toDate}T00:00:00.000Z`);
+    to.setUTCDate(to.getUTCDate() + 1);
+
+    const days = Math.max(
+      1,
+      Math.round((to.getTime() - from.getTime()) / 86400000),
+    );
+    const previousFrom = new Date(from.getTime() - days * 86400000);
+
+    return { from, to, days, previousFrom };
+  }
+
   const to = new Date(now);
   to.setUTCHours(0, 0, 0, 0);
   to.setUTCDate(to.getUTCDate() + 1);
@@ -335,6 +417,12 @@ export function parseRange(value: string | null | undefined): RangeKey {
   return (RANGE_KEYS as readonly string[]).includes(value ?? "")
     ? (value as RangeKey)
     : DEFAULT_RANGE;
+}
+
+/** The comparison caption for a window, including a custom one. */
+export function rangeComparisonLabel(key: RangeKey, days: number): string {
+  if (key === "custom") return `vs. previous ${days} days`;
+  return `vs. previous ${rangeDays(key)} days`;
 }
 
 /* ---------------------------------------------------- programme policy --- */

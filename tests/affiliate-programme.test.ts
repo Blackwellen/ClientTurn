@@ -15,7 +15,10 @@ import {
   formatPointDelta,
   isEarningState,
   maskIdentifier,
+  MAX_CUSTOM_RANGE_DAYS,
+  parseCustomRange,
   parseRange,
+  rangeComparisonLabel,
   programmeConversionRate,
   resolveNotificationPrefs,
   resolvePreferences,
@@ -472,5 +475,79 @@ describe("preferences", () => {
 
   test("an invalid stored range falls back rather than breaking the page", () => {
     assert.equal(resolvePreferences({ defaultRange: "eternity" }).defaultRange, "30d");
+  });
+});
+
+/* ---------------------------------------------------------- custom ranges -- */
+
+describe("custom date ranges", () => {
+  const now = new Date("2026-04-15T09:30:00.000Z");
+
+  test("a valid pair is accepted as given", () => {
+    const range = parseCustomRange("2026-03-01", "2026-03-31", now);
+    assert.deepEqual(range, { fromDate: "2026-03-01", toDate: "2026-03-31" });
+  });
+
+  test("a reversed pair is corrected rather than rejected", () => {
+    // Picking the end date first is an ordering mistake, not a request for
+    // nothing.
+    const range = parseCustomRange("2026-03-31", "2026-03-01", now);
+    assert.deepEqual(range, { fromDate: "2026-03-01", toDate: "2026-03-31" });
+  });
+
+  test("a window reaching into the future is clamped to today", () => {
+    // Future days render as empty buckets, which reads as a collapse in
+    // performance rather than as "not yet".
+    const range = parseCustomRange("2026-04-01", "2026-12-31", now);
+    assert.equal(range?.toDate, "2026-04-15");
+  });
+
+  test("a multi-year span is shortened to the maximum", () => {
+    const range = parseCustomRange("2020-01-01", "2026-04-15", now);
+    assert.ok(range);
+    const span =
+      (new Date(`${range.toDate}T00:00:00Z`).getTime() -
+        new Date(`${range.fromDate}T00:00:00Z`).getTime()) /
+      86400000;
+    assert.equal(span, MAX_CUSTOM_RANGE_DAYS);
+  });
+
+  test("unparseable or missing dates yield null, not a broken window", () => {
+    assert.equal(parseCustomRange("not-a-date", "2026-03-01", now), null);
+    assert.equal(parseCustomRange("2026-03-01", null, now), null);
+    assert.equal(parseCustomRange(null, null, now), null);
+  });
+
+  test("the resolved window includes the chosen end date exactly once", () => {
+    const custom = parseCustomRange("2026-03-01", "2026-03-31", now);
+    const { from, to, days } = resolveRange("custom", now, custom);
+
+    assert.equal(from.toISOString(), "2026-03-01T00:00:00.000Z");
+    // Half-open: `to` is the start of the day after the chosen end.
+    assert.equal(to.toISOString(), "2026-04-01T00:00:00.000Z");
+    assert.equal(days, 31);
+  });
+
+  test("the comparison window is the same length, immediately before", () => {
+    const custom = parseCustomRange("2026-03-01", "2026-03-31", now);
+    const { from, previousFrom, days } = resolveRange("custom", now, custom);
+
+    const gap = (from.getTime() - previousFrom.getTime()) / 86400000;
+    assert.equal(gap, days);
+    assert.equal(previousFrom.toISOString(), "2026-01-29T00:00:00.000Z");
+  });
+
+  test("custom without a window falls back to the preset behaviour", () => {
+    // A `range=custom` query string with no dates must not produce an empty
+    // or infinite window.
+    const { days } = resolveRange("custom", now, null);
+    assert.equal(days, 30);
+  });
+
+  test("a custom window captions its own comparison length", () => {
+    assert.equal(rangeComparisonLabel("custom", 31), "vs. previous 31 days");
+    assert.equal(rangeComparisonLabel("30d", 30), "vs. previous 30 days");
+    // A preset ignores the passed length and uses its own definition.
+    assert.equal(rangeComparisonLabel("7d", 99), "vs. previous 7 days");
   });
 });

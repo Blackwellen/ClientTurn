@@ -3,7 +3,13 @@
 import * as React from "react";
 import { CATEGORY_TEMPLATES } from "@/lib/intent/types";
 import { trackEngagement } from "@/lib/marketing/track";
-import { useStagedReveal } from "../../use-staged";
+import {
+  fadeUp,
+  motion,
+  stagger,
+  useSequence,
+  T,
+} from "../motion";
 import { INTENT_EVENTS, INTENT_FILTERS } from "../data";
 import {
   AppSurface,
@@ -38,13 +44,16 @@ const EVENT_ICONS = [Doc, Users, Building, Globe, Chart];
 const CATEGORY_ICONS = [Trend, Doc, Building, Users, Globe, Bolt];
 
 export function IntentPanel() {
-  const { ref, revealed } = useStagedReveal<HTMLUListElement>(1, 400);
-  const [filter, setFilter] = React.useState("High intent");
+  // One pulse on the newest signal, once, when the feed is first seen.
+  const { ref, step, reduced } = useSequence<HTMLUListElement>(1, 500);
+  const [filter, setFilter] = React.useState("All signals");
 
   const events =
     filter === "High intent"
       ? INTENT_EVENTS.filter((e) => e.strength === "High")
-      : INTENT_EVENTS;
+      : filter === "New this week"
+        ? INTENT_EVENTS.slice(0, 3)
+        : INTENT_EVENTS;
 
   return (
     <AppSurface
@@ -77,12 +86,21 @@ export function IntentPanel() {
         </div>
       }
     >
-      <ul className="fl-filters" aria-label="Intent signal filters">
+      <motion.ul
+        className="fl-filters"
+        aria-label="Intent signal filters"
+        initial={reduced ? "shown" : "hidden"}
+        whileInView="shown"
+        viewport={{ once: true, amount: 0.4 }}
+        variants={stagger(reduced ? 0 : 0.04)}
+      >
         {INTENT_FILTERS.map((item) => (
-          <li key={item.label}>
-            <button
+          <motion.li key={item.label} variants={fadeUp}>
+            <motion.button
               type="button"
               className="fl-filter"
+              whileTap={reduced ? undefined : { scale: 0.96 }}
+              transition={T.fast}
               aria-pressed={filter === item.label}
               onClick={() => {
                 setFilter(item.label);
@@ -91,19 +109,29 @@ export function IntentPanel() {
             >
               {item.label}
               <b>{item.count}</b>
-            </button>
-          </li>
+            </motion.button>
+          </motion.li>
         ))}
-      </ul>
+      </motion.ul>
 
-      <ul className="fl-events" ref={ref} aria-label="Recent intent signals">
+      <motion.ul
+        className="fl-events"
+        ref={ref}
+        aria-label="Recent intent signals"
+        initial={reduced ? "shown" : "hidden"}
+        whileInView="shown"
+        viewport={{ once: true, amount: 0.2 }}
+        variants={stagger(reduced ? 0 : 0.06)}
+      >
         {events.map((event, index) => {
           const EventIcon = EVENT_ICONS[index] ?? Doc;
           return (
-            <li
+            <motion.li
               className="fl-event"
               key={event.title}
-              data-new={index === 0 && revealed > 0}
+              layout={!reduced}
+              variants={fadeUp}
+              data-new={index === 0 && !reduced && step > 0}
             >
               <span aria-hidden className="fl-event-icon">
                 <EventIcon size={14} />
@@ -116,19 +144,25 @@ export function IntentPanel() {
                 {event.strength}
               </Badge>
               <span className="fl-event-age">{event.age}</span>
-            </li>
+            </motion.li>
           );
         })}
-      </ul>
+      </motion.ul>
 
       {/* --------------------------------------------- signal categories */}
       <div className="fl-block">
         <p className="fl-sublabel">Signal categories</p>
-        <ul className="fl-cats">
+        <motion.ul
+          className="fl-cats"
+          initial={reduced ? "shown" : "hidden"}
+          whileInView="shown"
+          viewport={{ once: true, amount: 0.25 }}
+          variants={stagger(reduced ? 0 : 0.05)}
+        >
           {CATEGORY_TEMPLATES.map((template, index) => {
             const CategoryIcon = CATEGORY_ICONS[index] ?? Trend;
             return (
-              <li className="fl-cat" key={template.name}>
+              <motion.li className="fl-cat" key={template.name} variants={fadeUp}>
                 <div className="fl-cat-top">
                   <CategoryIcon size={13} />
                   <strong>{template.name}</strong>
@@ -136,10 +170,10 @@ export function IntentPanel() {
                 <small>
                   Monitoring · {template.freshnessDays}-day freshness window
                 </small>
-              </li>
+              </motion.li>
             );
           })}
-        </ul>
+        </motion.ul>
       </div>
 
       <p className="fl-note-line">

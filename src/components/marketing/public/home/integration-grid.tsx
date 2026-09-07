@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { Plus, Webhook } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { trackEngagement } from "@/lib/marketing/track";
@@ -10,18 +9,21 @@ import { COMPANY } from "@/lib/marketing/company";
 import {
   AVAILABILITY_LABEL,
   type MarketingAvailability,
-  type ShowcaseConnector,
-  type ShowcaseProvider,
+  type ShowcaseIntegration,
 } from "@/lib/marketing/integration-types";
 
 /**
- * The marketplace preview and the supported-provider strip.
+ * The integration marketplace.
+ *
+ * One grid, one category row. Ad, messaging, booking and CRM providers sit
+ * alongside the inbound connectors rather than in a separate strip: someone
+ * checking whether their stack is covered should find the answer in one
+ * place, and the state badge on each tile carries the distinction that used
+ * to be carried by which list a logo was in.
  *
  * Every badge is rendered from a state computed on the server against the
  * deployment's own configuration — never from a hard-coded list — so this
- * grid cannot claim an integration the product cannot make. The three states
- * it can render are: a live native connection, the signed webhook bridge, and
- * not yet available.
+ * grid cannot claim a connection the product cannot make.
  */
 
 const BADGE_TONE: Record<MarketingAvailability, string> = {
@@ -31,8 +33,7 @@ const BADGE_TONE: Record<MarketingAvailability, string> = {
     "border-[var(--pub-lime-border)] bg-[var(--pub-lime-soft)] text-[var(--pub-lime)]",
   platform_managed:
     "border-[var(--pub-border-strong)] bg-[rgb(255_255_255/0.03)] text-[var(--pub-text-secondary)]",
-  coming_soon:
-    "border-[var(--pub-border)] bg-transparent text-[var(--pub-text-muted)]",
+  coming_soon: "border-[var(--pub-border)] bg-transparent text-[var(--pub-text-muted)]",
 };
 
 function Badge({ availability }: { availability: MarketingAvailability }) {
@@ -48,17 +49,11 @@ function Badge({ availability }: { availability: MarketingAvailability }) {
   );
 }
 
-function ConnectorLogo({ connector }: { connector: ShowcaseConnector }) {
+function TileLogo({ item }: { item: ShowcaseIntegration }) {
   return (
     <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-[rgb(255_255_255/0.05)]">
-      {connector.logo ? (
-        <Image
-          src={connector.logo}
-          alt=""
-          width={24}
-          height={24}
-          className="size-6 object-contain"
-        />
+      {item.logo ? (
+        <Image src={item.logo} alt="" width={24} height={24} className="size-5 object-contain" />
       ) : (
         <Webhook aria-hidden className="size-5 text-[var(--pub-lime)]" strokeWidth={2.1} />
       )}
@@ -67,27 +62,16 @@ function ConnectorLogo({ connector }: { connector: ShowcaseConnector }) {
 }
 
 export function IntegrationGrid({
-  connectors,
+  items,
   categories,
-  providers,
 }: {
-  connectors: ShowcaseConnector[];
+  items: ShowcaseIntegration[];
   categories: string[];
-  providers: ShowcaseProvider[];
 }) {
   const [category, setCategory] = React.useState("All");
 
-  /* One selection drives both halves of the section, so a chip like
-     "Lead sources" — which no marketplace connector carries — still has an
-     answer in the supported-provider strip below. */
-  const visibleConnectors =
-    category === "All"
-      ? connectors
-      : connectors.filter((connector) => connector.category === category);
-  const visibleProviders =
-    category === "All"
-      ? providers
-      : providers.filter((provider) => provider.category === category);
+  const visible =
+    category === "All" ? items : items.filter((item) => item.category === category);
 
   return (
     <>
@@ -116,28 +100,31 @@ export function IntegrationGrid({
         })}
       </div>
 
-      <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        {visibleConnectors.map((connector) => (
-          <li key={connector.id} className="pub-card pub-card-interactive flex flex-col p-4">
-            {/* The badge sits under the name rather than beside it: at six
-                columns there is not room for both on one line, and a
-                truncated provider name is worse than a stacked badge. */}
+      <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {visible.map((item) => (
+          <li
+            key={item.id}
+            className="pub-card pub-card-interactive flex h-full min-w-0 flex-col p-4"
+          >
+            {/* The badge shares a row with the name rather than being pinned
+                over it: reserving a fixed gutter guessed wrong for the longer
+                provider names, and "Google Calendar" ran under its badge. */}
             <div className="flex items-start gap-2.5">
-              <ConnectorLogo connector={connector} />
+              <TileLogo item={item} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14px] font-semibold text-[var(--pub-text)]">
-                  {connector.name}
-                </span>
-                <span className="mt-1 flex items-center gap-2">
-                  <span className="truncate text-[11px] text-[var(--pub-text-muted)]">
-                    {connector.category}
+                <span className="flex items-start justify-between gap-2">
+                  <span className="text-[14px] font-semibold leading-tight text-[var(--pub-text)]">
+                    {item.name}
                   </span>
-                  <Badge availability={connector.availability} />
+                  <Badge availability={item.availability} />
+                </span>
+                <span className="mt-1 block text-[11px] text-[var(--pub-text-muted)]">
+                  {item.category}
                 </span>
               </span>
             </div>
             <p className="mt-3.5 text-[12.5px] leading-relaxed text-[var(--pub-text-secondary)]">
-              {connector.description}
+              {item.description}
             </p>
           </li>
         ))}
@@ -155,86 +142,29 @@ export function IntegrationGrid({
         </li>
       </ul>
 
-      {/* Direction of travel, stated plainly. These connectors are an inbound
-          bridge — ClientTurn receives contacts, it does not reach into the
-          other system — so the grid above must not imply a two-way sync. */}
-      <p className="pub-small mt-6 text-center">
-        Connector integrations use ClientTurn&rsquo;s signed inbound endpoint: the other system
-        sends contacts to ClientTurn. ClientTurn does not read or write data in it.
-      </p>
-
-      <ProviderStrip providers={visibleProviders} />
-    </>
-  );
-}
-
-function ProviderStrip({ providers }: { providers: ShowcaseProvider[] }) {
-  const live = providers.filter((provider) => provider.availability !== "coming_soon");
-  const soon = providers.filter((provider) => provider.availability === "coming_soon");
-
-  return (
-    <div className="mt-14 border-t border-[var(--pub-border)] pt-10">
-      {live.length > 0 ? (
-        <ProviderRow heading="Also supported" providers={live} />
-      ) : null}
-      {soon.length > 0 ? (
-        <div className={live.length > 0 ? "mt-8" : undefined}>
-          <ProviderRow heading="Coming soon" providers={soon} dim />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ProviderRow({
-  heading,
-  providers,
-  dim,
-}: {
-  heading: string;
-  providers: ShowcaseProvider[];
-  dim?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:gap-8">
-      <p className="pub-footer-heading shrink-0 lg:w-28">{heading}</p>
-      <ul className="flex flex-wrap items-center gap-x-3 gap-y-3">
-        {providers.map((provider) => (
-          <li
-            key={provider.id}
-            className={cn(
-              "flex items-center gap-2 rounded-lg border border-[var(--pub-border)] px-3 py-2",
-              dim && "opacity-60",
-            )}
-          >
-            {provider.logo ? (
-              <Image
-                src={provider.logo}
-                alt=""
-                width={18}
-                height={18}
-                className="size-4.5 shrink-0 object-contain"
-              />
-            ) : null}
-            <span className="text-[12.5px] text-[var(--pub-text-secondary)]">{provider.name}</span>
-            {provider.availability === "platform_managed" ? (
-              <span className="text-[10.5px] text-[var(--pub-text-muted)]">&middot; built in</span>
-            ) : null}
-          </li>
+      {/* The four states, said once in plain words rather than repeated on
+          every tile. "Connector" in particular has to be explained: those are
+          an inbound bridge, not a two-way sync. */}
+      <dl className="mt-8 flex flex-wrap justify-center gap-x-8 gap-y-3 text-[12.5px]">
+        {(
+          [
+            ["native_live", "Connect it from Settings."],
+            [
+              "webhook_bridge_live",
+              "The other system sends contacts to ClientTurn's signed endpoint.",
+            ],
+            ["platform_managed", "Run by ClientTurn on your behalf."],
+            ["coming_soon", "Being set up for launch."],
+          ] as [MarketingAvailability, string][]
+        ).map(([state, meaning]) => (
+          <div key={state} className="flex items-center gap-2">
+            <dt>
+              <Badge availability={state} />
+            </dt>
+            <dd className="text-[var(--pub-text-muted)]">{meaning}</dd>
+          </div>
         ))}
-      </ul>
-    </div>
-  );
-}
-
-export function ViewAllIntegrations({ href }: { href: string }) {
-  return (
-    <Link
-      href={href}
-      className="pub-btn pub-btn-primary pub-btn-lg mt-9"
-      onClick={() => trackEngagement("public_nav_click", "integrations_view_all")}
-    >
-      View all integrations
-    </Link>
+      </dl>
+    </>
   );
 }

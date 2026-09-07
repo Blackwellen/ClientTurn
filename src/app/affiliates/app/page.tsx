@@ -22,7 +22,6 @@ import {
 import { getAffiliateAccount, listReferralPage } from "@/lib/affiliates/portal";
 import { getResourceHub } from "@/lib/affiliates/portal";
 import {
-  comparisonLabel,
   countDelta,
   getDailySeries,
   getLinkMetrics,
@@ -33,6 +32,8 @@ import { getBalances, nextPayoutDate } from "@/lib/affiliates/payouts";
 import { formatMinor } from "@/lib/affiliates/types";
 import {
   formatPercent,
+  parseCustomRange,
+  rangeComparisonLabel,
   parseRange,
   PAYOUT_READINESS_LABEL,
   PAYOUT_READINESS_TONE,
@@ -71,7 +72,7 @@ export const dynamic = "force-dynamic";
 export default async function AffiliateDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const affiliate = await getAffiliateAccount();
   if (!affiliate) return null;
@@ -84,18 +85,20 @@ export default async function AffiliateDashboardPage({
 
   const params = await searchParams;
   const range = parseRange(params.range ?? affiliate.preferences.defaultRange);
+  // Re-parsed and clamped server-side: both dates arrived in a query string.
+  const custom = parseCustomRange(params.from, params.to);
 
   const [overview, series, referrals, links, balances, resources] = await Promise.all([
-    getOverview(affiliate.id, range, affiliate.joinedAt),
-    getDailySeries(affiliate.id, range),
+    getOverview(affiliate.id, range, affiliate.joinedAt, custom),
+    getDailySeries(affiliate.id, range, custom),
     listReferralPage(affiliate.id, { pageSize: 5 }),
-    getLinkMetrics(affiliate.id, range),
+    getLinkMetrics(affiliate.id, range, custom),
     getBalances(affiliate.id),
     getResourceHub(affiliate.id),
   ]);
 
   const { current, previous } = overview;
-  const baseline = comparisonLabel(range);
+  const baseline = rangeComparisonLabel(range, overview.days);
   const currency = affiliate.policy.currency;
 
   const clicks = series.map((point) => point.clicks);
@@ -118,7 +121,14 @@ export default async function AffiliateDashboardPage({
       <PortalHeader
         title="Affiliate Dashboard"
         description="Track clicks, referrals, commissions and payouts across your ClientTurn affiliate account."
-        action={<RangeTabs basePath="/affiliates/app" current={range} />}
+        action={
+          <RangeTabs
+            basePath="/affiliates/app"
+            current={range}
+            customFrom={custom?.fromDate}
+            customTo={custom?.toDate}
+          />
+        }
       />
 
       <KpiGrid>

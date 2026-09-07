@@ -1,5 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
+import { Lockup } from "../ui";
 import {
   CalendarDays,
   Globe,
@@ -47,10 +48,10 @@ const SOURCES: FlowNode[] = [
 ];
 
 const DESTINATIONS: FlowNode[] = [
-  { title: "Calendar", detail: "Book appointments", icon: CalendarDays, x: 626, y: 0, width: 218 },
-  { title: "CRM", detail: "Send contacts on", icon: RefreshCw, x: 626, y: 73, width: 218 },
-  { title: "Email / SMS / WhatsApp", detail: "Follow up automatically", icon: Mail, x: 626, y: 146, width: 218 },
-  { title: "Your tools", detail: "And more…", icon: Grid2x2, x: 626, y: 219, width: 218 },
+  { title: "Calendar", detail: "Book appointments", icon: CalendarDays, x: 626, y: 1, width: 218 },
+  { title: "CRM", detail: "Send contacts on", icon: RefreshCw, x: 626, y: 74, width: 218 },
+  { title: "Email / SMS / WhatsApp", detail: "Follow up automatically", icon: Mail, x: 626, y: 147, width: 218 },
+  { title: "Your tools", detail: "And more…", icon: Grid2x2, x: 626, y: 220, width: 218 },
 ];
 
 function Node({ node }: { node: FlowNode }) {
@@ -129,19 +130,31 @@ function Dotted({ d, delay }: { d: string; delay: number }) {
   );
 }
 
-/* Source right edge -> node left edge, and node right edge -> destination. */
+/* The platform node, measured from the approved comp. Keeping it here rather
+   than inline is what lets the two fans below be derived from its edges. */
+const NODE = { x: 321, y: 65, w: 192, h: 174 };
+const NODE_R = NODE.x + NODE.w;
+const NODE_MID = NODE.y + NODE.h / 2;
+
+/* Both fans are single cubics with a horizontal tangent at each end, and the
+   four entry points are ordered the same way as the four cards they serve.
+   Two monotonic sequences cannot produce a crossing, which is what keeps the
+   diagram readable — an earlier version curved back on itself and the top two
+   destination wires crossed. */
+const FAN_Y = [NODE_MID - 24, NODE_MID - 8, NODE_MID + 8, NODE_MID + 24];
+
 const SOURCE_PATHS = [
-  "M 169 28 C 250 28 280 90 330 118 L 376 122",
-  "M 187 105 C 250 105 290 118 330 126 L 376 130",
-  "M 201 178 C 250 178 290 158 330 146 L 376 140",
-  "M 215 251 C 260 251 300 190 340 162 L 376 150",
+  `M 169 28 C 240 28 270 ${FAN_Y[0]} ${NODE.x} ${FAN_Y[0]}`,
+  `M 187 105 C 250 105 280 ${FAN_Y[1]} ${NODE.x} ${FAN_Y[1]}`,
+  `M 201 178 C 260 178 290 ${FAN_Y[2]} ${NODE.x} ${FAN_Y[2]}`,
+  `M 215 251 C 270 251 300 ${FAN_Y[3]} ${NODE.x} ${FAN_Y[3]}`,
 ];
 
 const DEST_PATHS = [
-  "M 581 122 C 520 118 560 40 596 30 L 626 28",
-  "M 581 130 C 540 128 570 100 596 102 L 626 101",
-  "M 581 140 C 540 142 570 172 596 174 L 626 176",
-  "M 581 150 C 540 156 570 240 596 246 L 626 248",
+  `M ${NODE_R} ${FAN_Y[0]} C 556 ${FAN_Y[0]} 578 28 626 28`,
+  `M ${NODE_R} ${FAN_Y[1]} C 556 ${FAN_Y[1]} 578 101 626 101`,
+  `M ${NODE_R} ${FAN_Y[2]} C 556 ${FAN_Y[2]} 578 174 626 174`,
+  `M ${NODE_R} ${FAN_Y[3]} C 556 ${FAN_Y[3]} 578 247 626 247`,
 ];
 
 export function IntegrationFlow({ className }: { className?: string }) {
@@ -171,10 +184,10 @@ export function IntegrationFlow({ className }: { className?: string }) {
           {DEST_PATHS.map((d, index) => (
             <Dotted key={`d${index}`} d={d} delay={2.4 + index * 0.4} />
           ))}
-          <circle data-draw-pop cx={352} cy={134} r={7} fill="rgb(183 243 74 / 0.2)" />
-          <circle data-draw-pop cx={352} cy={134} r={3.4} fill="var(--pub-lime)" />
-          <circle data-draw-pop cx={606} cy={134} r={7} fill="rgb(183 243 74 / 0.2)" />
-          <circle data-draw-pop cx={606} cy={134} r={3.4} fill="var(--pub-lime)" />
+          <circle data-draw-pop cx={NODE.x} cy={NODE_MID} r={7} fill="rgb(183 243 74 / 0.2)" />
+          <circle data-draw-pop cx={NODE.x} cy={NODE_MID} r={3.4} fill="var(--pub-lime)" />
+          <circle data-draw-pop cx={NODE_R} cy={NODE_MID} r={7} fill="rgb(183 243 74 / 0.2)" />
+          <circle data-draw-pop cx={NODE_R} cy={NODE_MID} r={3.4} fill="var(--pub-lime)" />
         </svg>
 
         {SOURCES.map((node) => (
@@ -184,10 +197,10 @@ export function IntegrationFlow({ className }: { className?: string }) {
         <div
           className="pub-card absolute flex flex-col items-center justify-center text-center"
           style={{
-            left: u(376),
-            top: u(69),
-            width: u(205),
-            height: u(174),
+            left: u(NODE.x),
+            top: u(NODE.y),
+            width: u(NODE.w),
+            height: u(NODE.h),
             borderRadius: u(18),
             borderColor: "var(--pub-lime-border)",
             boxShadow:
@@ -195,13 +208,7 @@ export function IntegrationFlow({ className }: { className?: string }) {
             padding: u(14),
           }}
         >
-          <Image
-            src="/dark_background_logo.png"
-            alt=""
-            width={2172}
-            height={724}
-            style={{ height: u(40), width: "auto" }}
-          />
+          <Lockup inkHeight={u(30)} />
           <p
             className="pub-eyebrow"
             style={{ fontSize: u(8.5), letterSpacing: u(1.4), marginTop: u(10), lineHeight: 1.7 }}

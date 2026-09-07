@@ -17,6 +17,7 @@ import {
   SubmitButton,
   TextField,
 } from "../_components/auth-form-parts";
+import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
 
 export function SignupForm() {
   const router = useRouter();
@@ -140,6 +141,12 @@ export function SignupForm() {
       </div>
 
       <SubmitButton pendingLabel="Creating account…" busy={Boolean(state?.ok && state.redirectTo)}>Create your account</SubmitButton>
+
+      <AuthDivider />
+
+      <GoogleAuthButton
+        label={"Sign up with Google"}
+      />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Already have an account?{" "}

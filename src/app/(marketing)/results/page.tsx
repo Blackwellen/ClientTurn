@@ -1,9 +1,9 @@
+import * as React from "react";
 import type { Metadata } from "next";
 import {
   BadgeCheck,
   BarChart3,
   CalendarCheck,
-  CheckCircle2,
   Download,
   Filter,
   Info,
@@ -18,7 +18,6 @@ import {
   Trophy,
   UserCheck,
 } from "lucide-react";
-import "../evaluation.css";
 import { METRICS, type MetricDefinition } from "@/lib/analytics/v4-metrics";
 import {
   PublicContainer,
@@ -29,15 +28,19 @@ import {
   Glow,
 } from "@/components/marketing/public/ui";
 import {
-  Panel,
-  PanelStack,
+  Band,
+  BandStack,
   StepStrip,
   TrustRow,
   StatStrip,
   StatePill,
   IllustrativeTag,
 } from "@/components/marketing/public/shell";
-import { Reveal } from "@/components/marketing/public/reveal";
+import {
+  Reveal,
+  RevealGrid,
+  ScrollProgress,
+} from "@/components/marketing/public/reveal";
 import {
   PrimaryCta,
   SecondaryCta,
@@ -46,13 +49,10 @@ import {
 } from "@/components/marketing/public/actions";
 import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import {
-  Screen,
-  ScreenBlock,
-  ScreenTable,
-  RangeChip,
-  FunnelBars,
-  Kpis,
-} from "@/components/marketing/public/screen";
+  AppFrame,
+  AnalyticsFrame,
+} from "@/components/marketing/public/home/app-frames";
+import { IllustrativeNote } from "@/components/marketing/public/screen";
 import {
   Donut,
   DonutLegend,
@@ -216,33 +216,43 @@ const CONVERSION_KEYS = [
   "time_to_conversion",
 ] as const;
 
-function MetricList({ keys }: { keys: readonly string[] }) {
+/**
+ * The metrics a view reports, named rather than defined at length.
+ *
+ * The labels come from `METRICS`, so this cannot list a measurement the
+ * product does not compute. Each carries its published definition as a title,
+ * which keeps the full wording one hover away without turning the section into
+ * a glossary the reference does not have.
+ */
+function MetricNote({ keys }: { keys: readonly string[] }) {
   return (
-    <ul className="pub-ticks">
-      {keys.map((key) => {
+    <p className="pub-small mt-4">
+      Reported here:{" "}
+      {keys.map((key, index) => {
         const definition = METRICS[key];
         return (
-          <li key={key}>
-            <CheckCircle2 className="size-3.5" aria-hidden />
-            <span>
-              <strong className="font-semibold text-[var(--pub-text)]">
-                {definition.label}
-              </strong>{" "}
-              — {definition.definition}
+          <React.Fragment key={key}>
+            {index > 0 && ", "}
+            <span
+              title={definition.definition}
+              className="text-[var(--pub-text-secondary)]"
+            >
+              {definition.label}
             </span>
-          </li>
+          </React.Fragment>
         );
       })}
-    </ul>
+      .
+    </p>
   );
 }
 
 export default function ResultsPage() {
   return (
     <>
+      <ScrollProgress />
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- built from a local constant; no user input reaches this string.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
@@ -296,43 +306,21 @@ export default function ResultsPage() {
             </Reveal>
 
             <Reveal delay={0.08}>
-              <Screen
-                active="Analytics"
-                title="Analytics overview"
-                meta={<RangeChip />}
-                label="The ClientTurn analytics overview, showing new prospects, verified contacts, replies and converted totals above the prospect-to-customer journey."
-              >
-                <Kpis
-                  items={[
-                    { value: "1,248", label: "New prospects", delta: "+12%" },
-                    { value: "892", label: "Verified contacts", delta: "+8%" },
-                    { value: "428", label: "Replied", delta: "+16%" },
-                    { value: "186", label: "Converted", delta: "+6%" },
-                  ]}
-                />
-                <ScreenBlock title="Prospect to customer journey">
-                  <FunnelBars
-                    rows={[
-                      { label: "Discovered", value: 1248, colour: "#2f7ff0" },
-                      { label: "Verified", value: 892, colour: "#4fb3f7" },
-                      { label: "Contacted", value: 604, colour: "#7f9df5" },
-                      { label: "Replies", value: 428, colour: "#9b7ff0" },
-                      { label: "Qualified", value: 312, colour: "#5fd39a" },
-                      { label: "Converted", value: 186, colour: "#b7f34a" },
-                    ]}
-                  />
-                </ScreenBlock>
-              </Screen>
+              <div>
+                  <AppFrame label="ClientTurn analytics screen showing lead, qualified, appointment and converted counts with conversion and lead-source performance charts.">
+                    <AnalyticsFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
             </Reveal>
           </div>
         </PublicContainer>
       </section>
 
       <PublicContainer>
-        <PanelStack>
+        <BandStack>
           {/* ---------------------------------------------------- journey --- */}
-          <Reveal>
-            <Panel id="journey" aria-labelledby="results-journey">
+          <Band id="journey" aria-labelledby="results-journey">
               <div className="pub-head-row">
                 <SectionEyebrow>The complete journey</SectionEyebrow>
                 <StepStrip steps={["Acquire", "Engage", "Qualify", "Convert"]} />
@@ -346,31 +334,30 @@ export default function ResultsPage() {
                 about what a &ldquo;qualified lead&rdquo; is.
               </p>
 
-              <ol className="mt-10 grid gap-3 [grid-template-columns:repeat(4,minmax(0,1fr))] max-[1080px]:[grid-template-columns:repeat(2,minmax(0,1fr))] max-[560px]:[grid-template-columns:1fr]">
+              <ol className="pub-journey">
                 {JOURNEY.map((stage, index) => (
                   <li key={stage.metric.key}>
-                    <PublicCard interactive className="pub-cell h-full">
-                      <div className="flex items-center justify-between gap-3">
-                        <GlyphTile icon={stage.icon} size={36} glyph={16} />
-                        <span className="text-[11px] font-semibold tabular-nums text-[var(--pub-text-muted)]">
+                    <PublicCard
+                      interactive
+                      className="pub-journey-card"
+                      title={stage.metric.definition}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <GlyphTile icon={stage.icon} size={30} glyph={14} />
+                        <span className="pub-journey-step">
                           {String(index + 1).padStart(2, "0")}
                         </span>
                       </div>
-                      <h3 className="mt-4">{stage.metric.label}</h3>
+                      <h3>{stage.metric.label}</h3>
                       <p>{stage.note}</p>
-                      <p className="mt-3 border-t border-[var(--lr-border-subtle)] pt-3 text-[11.5px] leading-relaxed text-[var(--pub-text-muted)]">
-                        {stage.metric.definition}
-                      </p>
                     </PublicCard>
                   </li>
                 ))}
               </ol>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------ attribution --- */}
-          <Reveal>
-            <Panel aria-labelledby="results-sources">
+          <Band aria-labelledby="results-sources">
               <div className="pub-split pub-split-narrow">
                 <div>
                   <SectionEyebrow className="mb-5">
@@ -417,76 +404,112 @@ export default function ResultsPage() {
                   />
                 </PublicCard>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------- acquisition + outreach performance --- */}
-          <div className="pub-grid pub-grid-2">
-            <Reveal>
-              <Panel className="h-full" aria-labelledby="results-acquisition">
-                <SectionEyebrow className="mb-5">
-                  Acquisition performance
-                </SectionEyebrow>
-                <h2 id="results-acquisition" className="pub-h2 !text-[clamp(1.7rem,2.4vw,2.4rem)]">
-                  Measure the efficiency of your prospecting.
-                </h2>
-                <p className="pub-lead mt-5">
-                  Sourcing runs, verification quality, grading and intent — so
-                  you can judge the pipeline you are building, not just its size.
-                </p>
+          <Band>
+            <div className="pub-columns">
+              <Reveal className="pub-column">
+                <div aria-labelledby="results-acquisition">
+                  <SectionEyebrow className="mb-5">
+                    Acquisition performance
+                  </SectionEyebrow>
+                  <h2 id="results-acquisition" className="pub-h2 !text-[clamp(1.7rem,2.4vw,2.4rem)]">
+                    Measure the efficiency of your prospecting.
+                  </h2>
+                  <p className="pub-lead mt-5">
+                    Sourcing runs, verification quality, grading and intent — so
+                    you can judge the pipeline you are building, not just its size.
+                  </p>
+  
+                  <StatStrip
+                    className="mt-8"
+                    items={[
+                      { value: "24", label: "Sourcing runs" },
+                      { value: "892", label: "Verified prospects" },
+                      { value: "71%", label: "Verification rate" },
+                      { value: "428", label: "Intent matches" },
+                    ]}
+                  />
+                  <p className="mt-3 flex justify-end">
+                    <IllustrativeTag />
+                  </p>
+  
+                  <PublicCard className="pub-cell mt-4">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3>Sourcing performance</h3>
+                      <StatePill tone="muted">Last 30 days</StatePill>
+                    </div>
+                    <Columns
+                      height={168}
+                      label="Illustrative verified prospects produced per sourcing run across the period"
+                      bars={[
+                        { label: "1 Aug", value: 210, colour: "#2f7ff0" },
+                        { label: "5 Aug", value: 265, colour: "#2f7ff0" },
+                        { label: "10 Aug", value: 240, colour: "#2f7ff0" },
+                        { label: "15 Aug", value: 360, colour: "#2f7ff0" },
+                        { label: "20 Aug", value: 300, colour: "#2f7ff0" },
+                        { label: "25 Aug", value: 330, colour: "#2f7ff0" },
+                        { label: "30 Aug", value: 245, colour: "#2f7ff0" },
+                      ]}
+                    />
+                  </PublicCard>
 
-                <StatStrip
-                  className="mt-8"
-                  items={[
-                    { value: "24", label: "Sourcing runs" },
-                    { value: "892", label: "Verified prospects" },
-                    { value: "71%", label: "Verification rate" },
-                    { value: "428", label: "Intent matches" },
-                  ]}
-                />
-                <p className="mt-3 flex justify-end">
-                  <IllustrativeTag />
-                </p>
+                  <MetricNote keys={ACQUISITION_KEYS} />
+                </div>
+              </Reveal>
+  
+              <Reveal delay={0.06} className="pub-column">
+                <div aria-labelledby="results-outreach">
+                  <SectionEyebrow className="mb-5">
+                    Outreach performance
+                  </SectionEyebrow>
+                  <h2 id="results-outreach" className="pub-h2 !text-[clamp(1.7rem,2.4vw,2.4rem)]">
+                    Understand engagement across your campaigns.
+                  </h2>
+                  <p className="pub-lead mt-5">
+                    Delivery, bounces, replies and opt-outs across every supported
+                    channel — email, SMS and WhatsApp, where your plan and the
+                    contact&rsquo;s eligibility allow it.
+                  </p>
+  
+                  <StatStrip
+                    className="mt-8"
+                    items={[
+                      { value: "12,486", label: "Emails sent" },
+                      { value: "98%", label: "Delivery rate" },
+                      { value: "6.8%", label: "Reply rate" },
+                      { value: "2.1%", label: "Positive replies" },
+                    ]}
+                  />
+                  <p className="mt-3 flex justify-end">
+                    <IllustrativeTag />
+                  </p>
+  
+                  <PublicCard className="pub-cell mt-4">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3>Replies by channel</h3>
+                      <StatePill tone="muted">Last 30 days</StatePill>
+                    </div>
+                    <Columns
+                      height={168}
+                      label="Illustrative reply rate by channel across the period"
+                      bars={[
+                        { label: "Email", value: 84, colour: "#2f7ff0" },
+                        { label: "SMS", value: 52, colour: "#4fb3f7" },
+                        { label: "WhatsApp", value: 31, colour: "#7bd36f" },
+                      ]}
+                    />
+                  </PublicCard>
 
-                <MetricList keys={ACQUISITION_KEYS} />
-              </Panel>
-            </Reveal>
-
-            <Reveal delay={0.06}>
-              <Panel className="h-full" aria-labelledby="results-outreach">
-                <SectionEyebrow className="mb-5">
-                  Outreach performance
-                </SectionEyebrow>
-                <h2 id="results-outreach" className="pub-h2 !text-[clamp(1.7rem,2.4vw,2.4rem)]">
-                  Understand engagement across your campaigns.
-                </h2>
-                <p className="pub-lead mt-5">
-                  Delivery, bounces, replies and opt-outs across every supported
-                  channel — email, SMS and WhatsApp, where your plan and the
-                  contact&rsquo;s eligibility allow it.
-                </p>
-
-                <StatStrip
-                  className="mt-8"
-                  items={[
-                    { value: "12,486", label: "Emails sent" },
-                    { value: "98%", label: "Delivery rate" },
-                    { value: "6.8%", label: "Reply rate" },
-                    { value: "2.1%", label: "Positive replies" },
-                  ]}
-                />
-                <p className="mt-3 flex justify-end">
-                  <IllustrativeTag />
-                </p>
-
-                <MetricList keys={OUTREACH_KEYS} />
-              </Panel>
-            </Reveal>
-          </div>
+                  <MetricNote keys={OUTREACH_KEYS} />
+                </div>
+              </Reveal>
+            </div>
+          </Band>
 
           {/* ------------------------------------------------- conversion --- */}
-          <Reveal>
-            <Panel aria-labelledby="results-conversion">
+          <Band aria-labelledby="results-conversion">
               <div className="pub-split">
                 <div>
                   <SectionEyebrow className="mb-5">
@@ -513,7 +536,7 @@ export default function ResultsPage() {
                     <IllustrativeTag />
                   </p>
 
-                  <MetricList keys={CONVERSION_KEYS} />
+                  <MetricNote keys={CONVERSION_KEYS} />
                 </div>
 
                 <div className="pub-grid">
@@ -586,12 +609,10 @@ export default function ResultsPage() {
                   </PublicCard>
                 </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* --------------------------------------- detailed analytics --- */}
-          <Reveal>
-            <Panel aria-labelledby="results-detail">
+          <Band aria-labelledby="results-detail">
               <div className="pub-split pub-split-narrow">
                 <div>
                   <SectionEyebrow className="mb-5">
@@ -607,7 +628,7 @@ export default function ResultsPage() {
                     itself is drawn from.
                   </p>
 
-                  <div className="pub-grid pub-grid-2 mt-8">
+                  <RevealGrid className="pub-grid pub-grid-2 mt-8">
                     <PublicCard interactive className="pub-cell">
                       <div className="pub-cell-row">
                         <GlyphTile icon={Layers} size={36} glyph={16} />
@@ -659,47 +680,27 @@ export default function ResultsPage() {
                         </div>
                       </div>
                     </PublicCard>
-                  </div>
+                  </RevealGrid>
                 </div>
 
-                <Screen
-                  active="Analytics"
-                  title="Conversion performance"
-                  meta={<RangeChip />}
-                  label="The ClientTurn conversion analytics view, showing a trend of leads, qualified and converted over the period above a table of top performing campaigns."
-                >
-                  <TrendLine
-                    points={[22, 30, 27, 38, 44, 41, 52, 58, 55, 64]}
-                    colour="#2f7ff0"
-                    height={92}
-                    label="Illustrative trend of leads created across the period."
-                  />
-                  <ScreenBlock title="Top performing campaigns">
-                    <ScreenTable
-                      head={["Campaign", "Leads", "Qualified", "Won"]}
-                      rows={[
-                        ["Property managers Q4", "124", "32", "9"],
-                        ["Facilities managers", "98", "18", "6"],
-                        ["Commercial builders", "76", "12", "4"],
-                        ["Property developers", "58", "9", "3"],
-                      ]}
-                    />
-                  </ScreenBlock>
-                </Screen>
+                <div>
+                  <AppFrame label="ClientTurn analytics screen showing lead, qualified, appointment and converted counts with conversion and lead-source performance charts.">
+                    <AnalyticsFrame />
+                  </AppFrame>
+                  <IllustrativeNote />
+                </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* -------------------------------------------------- evidence --- */}
-          <Reveal>
-            <Panel aria-labelledby="results-evidence">
+          <Band aria-labelledby="results-evidence">
               <SectionEyebrow className="mb-5">Customer evidence</SectionEyebrow>
               <h2 id="results-evidence" className="pub-h2">
                 What we will not put on this page.
               </h2>
 
               <div className="pub-evidence mt-8">
-                <span className="pub-ring size-[42px]" aria-hidden>
+                <span className="pub-ring pub-ring-lg" aria-hidden>
                   <Info className="size-4" />
                 </span>
                 <div>
@@ -714,8 +715,7 @@ export default function ResultsPage() {
                   </p>
                 </div>
               </div>
-            </Panel>
-          </Reveal>
+          </Band>
 
           {/* ------------------------------------------------- final CTA --- */}
           <Reveal>
@@ -766,7 +766,7 @@ export default function ResultsPage() {
               ]}
             />
           </Reveal>
-        </PanelStack>
+        </BandStack>
       </PublicContainer>
     </>
   );

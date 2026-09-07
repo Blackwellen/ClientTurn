@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Arc, Glow, GridTexture, PublicCard, PublicContainer, PublicSection, SectionHeading, buttonClass } from "../ui";
-import { ANCHORS } from "../nav-data";
 import { ScrollDraw } from "./scroll-draw";
 import { Reveal } from "../reveal";
 
@@ -30,6 +29,24 @@ import { Reveal } from "../reveal";
 
 const CANVAS_W = 662;
 const CANVAS_H = 430;
+
+/**
+ * The copy column's footprint, in canvas units.
+ *
+ * The scatter is drawn on an absolute canvas that spans the whole card, so
+ * nothing stops a panel or a connector from landing on top of the heading.
+ * These bounds are what does: every panel sits either right of `TEXT_RIGHT`
+ * or below `TEXT_BOTTOM`, and every connector is routed to stay out of that
+ * rectangle.
+ *
+ * The numbers are the *worst case*, not the typical one. The canvas scales
+ * with the card while the copy stays at fixed pixel sizes, so the text eats
+ * more canvas units the narrower the card gets — measured, it is 272u at a
+ * 1440px viewport but 296u at 1280px, the narrowest width that still shows
+ * the scatter. Everything below clears 296u.
+ */
+const TEXT_RIGHT = 385;
+const TEXT_BOTTOM = 300;
 
 function u(value: number): string {
   return `calc(${value} * var(--u))`;
@@ -153,7 +170,7 @@ function Junction({ cx, cy }: { cx: number; cy: number }) {
 function Canvas({ children }: { children: React.ReactNode }) {
   return (
     <ScrollDraw
-      className="pointer-events-none absolute inset-0 hidden lg:block"
+      className="pointer-events-none absolute inset-0 hidden xl:block"
     >
     <div
       aria-hidden
@@ -240,14 +257,15 @@ function PathCard({
   return (
     <PublicCard
       interactive
-      className="relative flex min-w-0 flex-col overflow-hidden p-6 sm:p-8 lg:min-h-[560px]"
+      className="relative flex min-w-0 flex-col overflow-hidden p-6 sm:p-8 xl:min-h-[600px]"
     >
       {canvas}
 
       {/* The copy column is measured to clear the fragment scatter beside and
-          below it: at the approved sizes the CTA ends just above the first
-          fragment, which is what keeps the two from colliding. */}
-      <div className="relative lg:max-w-[58%]">
+          below it (see TEXT_RIGHT / TEXT_BOTTOM). `z-10` is belt and braces:
+          if a future edit moves a panel into this rectangle, the words stay
+          readable rather than disappearing behind a card. */}
+      <div className="relative z-10 xl:max-w-[58%]">
         <p className="pub-eyebrow pub-eyebrow-pill" style={{ fontSize: "0.66rem" }}>
           {eyebrow}
         </p>
@@ -264,7 +282,7 @@ function PathCard({
       </div>
 
       {/* The narrow-column stand-in for the scatter above. */}
-      <div aria-hidden className="relative mt-8 lg:hidden">
+      <div aria-hidden className="relative mt-8 xl:hidden">
         {stack}
       </div>
 
@@ -278,7 +296,7 @@ function PathCard({
 /** Stacked fragments for narrow columns. */
 function StackList({ items }: { items: { icon: Step["icon"]; title: string; detail: string }[] }) {
   return (
-    <ul className="grid gap-3 sm:grid-cols-2 lg:hidden">
+    <ul className="grid gap-3 sm:grid-cols-2 xl:hidden">
       {items.map((item) => (
         <li key={item.title} className="pub-fragment flex items-center gap-3 p-3">
           <span className="pub-tile" style={{ width: 32, height: 32, borderRadius: 8 }}>
@@ -334,7 +352,7 @@ export function GrowthPathSection() {
             titleAccent="Existing Leads"
             copy="Respond, follow up, qualify, book and reactivate the enquiries already coming into your business."
             ctaLabel="Explore Lead Conversion"
-            href={ANCHORS.capabilities}
+            href="/product/lead-conversion"
             steps={[
               { icon: Users, title: "Lead", detail: "New enquiry" },
               { icon: SquareCheckBig, title: "Qualify", detail: "Guided conversation" },
@@ -358,11 +376,14 @@ export function GrowthPathSection() {
                   className="absolute inset-0 h-full w-full"
                 >
                   <DottedLink d="M 530 89 L 530 127" />
-                  <DottedLink d="M 435 200 C 400 208 380 232 356 262" />
-                  <DottedLink d="M 371 372 C 396 372 410 350 434 341" />
+                  {/* Stays right of TEXT_RIGHT until it is below TEXT_BOTTOM,
+                      then turns in to meet the qualification panel's top-right
+                      corner — so it never crosses the paragraph. */}
+                  <DottedLink d="M 436 252 C 424 284 404 308 372 312" />
+                  <DottedLink d="M 372 396 C 398 396 412 366 435 358" />
                   <Junction cx={530} cy={108} />
-                  <Junction cx={419} cy={212} />
-                  <Junction cx={396} cy={360} />
+                  <Junction cx={410} cy={296} />
+                  <Junction cx={404} cy={378} />
                 </svg>
 
                 <MiniPanel icon={Users} title="New enquiry" meta="Website form" x={434} y={31} width={194} dot />
@@ -371,11 +392,11 @@ export function GrowthPathSection() {
                   <Bubble>Hi James! Thanks for your enquiry. How can we help?</Bubble>
                 </MiniPanel>
 
-                <MiniPanel icon={SquareCheckBig} title="Qualified" meta="Fit for service" x={199} y={263} width={172}>
+                <MiniPanel icon={SquareCheckBig} title="Qualified" meta="Fit for service" x={199} y={310} width={172}>
                   <CriteriaRows rows={["Budget", "Authority", "Need", "Timeline"]} />
                 </MiniPanel>
 
-                <MiniPanel icon={CalendarDays} title="Appointment booked" x={434} y={289} width={192}>
+                <MiniPanel icon={CalendarDays} title="Appointment booked" x={434} y={300} width={192}>
                   <div className="pub-fragment flex items-center" style={{ padding: u(9), borderRadius: u(9), gap: u(8) }}>
                     <span className="flex-1">
                       <span className="block font-medium text-[var(--pub-text)]" style={{ fontSize: u(10.5) }}>
@@ -404,7 +425,7 @@ export function GrowthPathSection() {
             titleAccent="New Customers"
             copy="Describe your target, source and verify prospects, monitor intent and coordinate permitted outbound outreach."
             ctaLabel="Explore Find Leads"
-            href={ANCHORS.proof}
+            href="/product/find-leads"
             steps={[
               { icon: Target, title: "Target", detail: "Define your ICP" },
               { icon: ShieldCheck, title: "Verify", detail: "Validate prospects" },
@@ -426,12 +447,14 @@ export function GrowthPathSection() {
                   preserveAspectRatio="none"
                   className="absolute inset-0 h-full w-full"
                 >
-                  <DottedLink d="M 428 92 C 396 100 356 176 336 236" />
-                  <DottedLink d="M 560 158 L 560 236" />
-                  <DottedLink d="M 443 318 L 469 318" />
-                  <Junction cx={378} cy={143} />
-                  <Junction cx={560} cy={200} />
-                  <Junction cx={456} cy={318} />
+                  {/* Runs down the right of the copy and only crosses back
+                      once it is below TEXT_BOTTOM. */}
+                  <DottedLink d="M 429 100 C 402 170 392 250 388 292 C 384 304 372 310 347 310" />
+                  <DottedLink d="M 559 145 L 559 310" />
+                  <DottedLink d="M 444 388 L 470 380" />
+                  <Junction cx={390} cy={264} />
+                  <Junction cx={559} cy={226} />
+                  <Junction cx={457} cy={384} />
                 </svg>
 
                 <MiniPanel icon={Search} title="Target audience" meta="Define your ideal customer" x={428} y={27} width={209}>
@@ -448,7 +471,7 @@ export function GrowthPathSection() {
                   </div>
                 </MiniPanel>
 
-                <MiniPanel icon={ShieldCheck} title="Verified prospects" meta="High-quality, validated" x={249} y={239} width={194}>
+                <MiniPanel icon={ShieldCheck} title="Verified prospects" meta="High-quality, validated" x={249} y={310} width={194}>
                   <div className="pub-fragment" style={{ padding: u(7), borderRadius: u(9) }}>
                     {["Smith Construction", "Riverside Homes", "Oakwood Developments"].map((name) => (
                       <div key={name} className="flex items-center" style={{ gap: u(7), paddingBlock: u(4.5) }}>
@@ -471,7 +494,7 @@ export function GrowthPathSection() {
                   </div>
                 </MiniPanel>
 
-                <MiniPanel icon={Send} title="Outreach" meta="AI-assisted messaging" x={469} y={239} width={181}>
+                <MiniPanel icon={Send} title="Outreach" meta="AI-assisted messaging" x={469} y={310} width={181}>
                   <Bubble>Hi there, We help contractors win more high-value projects&hellip;</Bubble>
                 </MiniPanel>
               </Canvas>

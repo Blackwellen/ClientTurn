@@ -8,6 +8,10 @@ import {
   getBalances,
   syncReadiness,
 } from "@/lib/affiliates/payouts";
+import {
+  autoDispatchEnabled,
+  dispatchApprovedPayouts,
+} from "@/lib/affiliates/dispatch";
 
 /**
  * The affiliate ledger tick (V4 §35).
@@ -35,10 +39,22 @@ export async function handleAffiliateLedger(): Promise<void> {
   const flagged = await flagSuspectReferrals();
   const payouts = await runPayoutBatch();
 
+  // Sending is opt-in. Without AFFILIATE_AUTO_PAYOUT=true the payouts sit
+  // APPROVED for a person to release from the admin surface — a platform that
+  // starts wiring money on a cron the day it deploys is one misconfigured plan
+  // away from an incident.
+  const dispatched = autoDispatchEnabled()
+    ? await dispatchApprovedPayouts()
+    : null;
+
   // Surfaced in the job's own log line rather than swallowed, so an operator
   // can see whether a quiet night was "nothing due" or "nothing ran".
   console.info(
-    `[affiliate.ledger] approved=${approved} trialsExpired=${expired} flagged=${flagged} payouts=${payouts}`,
+    `[affiliate.ledger] approved=${approved} trialsExpired=${expired} ` +
+      `flagged=${flagged} payoutsRaised=${payouts} ` +
+      (dispatched
+        ? `sent=${dispatched.sent} failed=${dispatched.failed} skipped=${dispatched.skipped}`
+        : "dispatch=manual"),
   );
 }
 

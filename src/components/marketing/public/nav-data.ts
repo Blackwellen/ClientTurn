@@ -172,6 +172,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { kind: "link", label: "Results", href: "/results" },
   { kind: "mega", label: "Resources", id: "resources", columns: RESOURCES_MENU },
   { kind: "link", label: "Pricing", href: "/pricing" },
+  { kind: "link", label: "Enterprise", href: "/enterprise" },
   { kind: "link", label: "Partners", href: "/affiliates" },
 ];
 
@@ -202,7 +203,6 @@ export const FOOTER_SOLUTIONS: NavLink[] = [
 export const FOOTER_RESOURCES: NavLink[] = [
   { label: "How it works", href: "/how-it-works" },
   { label: "Results", href: "/results" },
-  { label: "Product tour", href: ANCHORS.proof },
   { label: "FAQ", href: ANCHORS.faq },
   { label: "System status", href: "/status" },
 ];
