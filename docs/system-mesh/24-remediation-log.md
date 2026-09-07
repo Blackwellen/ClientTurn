@@ -334,46 +334,146 @@ beside the working one. The correct fix needs one `draft_state jsonb` column, is
 Downgraded from P1 to P2 in [19](19-missing-architecture-register.md).
 
 
+### R18 · One suppression list — P0-3
+
+**Severity: P0, and the most consequential compliance defect in the audit.**
+[04 · 4.3](04-database-audit.md), [11 · 1.3](11-compliance-permission-mesh.md).
+
+Two lists that never saw each other:
+
+| | Written by | Read by |
+|---|---|---|
+| `contact_suppressions` | SMS `STOP`, the agent's `apply_suppression` tool, email bounces, the unsubscribe page | the warm send guard, the reactivation audience resolver, manual send |
+| `suppression_entries` | the cold reply classifier, prospect actions, admin compliance, the unsubscribe page | `check_suppression()` → cold dispatch, sourcing, CSV import, Add Lead |
+
+A lead who texted STOP was still emailable by an acquisition campaign. A prospect who replied
+"unsubscribe" was still sendable warm SMS — while `suppressProspect()` set channel `ALL` with a
+comment saying an opt-out means every channel. The split silently defeated the stated intent.
+
+`0069` backfills into `suppression_entries` — strictly the richer model: nullable `business_id`
+for platform-wide entries, `expires_at` for a provider's temporary block, separate destination
+columns instead of one opaque `normalized_contact`, and `source`/`source_reference`/`note` for
+evidence. Nine call sites across seven files are repointed through `lib/policy/suppression.ts`.
+
+The unsubscribe page is the telling one: it had been **deliberately dual-writing both tables**,
+with a comment explaining that the follow-up and reactivation engines read a different list from
+the dispatcher. That workaround is now a single call.
+
+`contact_suppressions` is left populated and unread for one release, so this is revertible by
+repointing code rather than by restoring data.
+
+`lift_suppression_for_destination()` is deliberately separate from `unsuppress()`. That one
+refuses `OPT_OUT` because a workspace may not overturn someone's opt-out. This one allows it,
+because a person texting `START` is that person changing their own mind, and refusing it would
+leave them unable to resume a conversation they asked to resume. Platform-scope entries are never
+touched.
+
+Two structural tests keep it unified: no application code may name the deprecated table, and
+`suppression_entries` is reachable only through the policy module — with an explicit allow-list
+for surfaces that *display or manage* the list rather than gating a send, because those two reads
+are different acts.
+
+### R19 · Cold email is metered and enforced — P0-6
+
+**Severity: P0.** [12 · 12.2](12-usage-billing-mesh.md).
+
+`outreach/dispatch.ts` recorded **no usage at all** — not even a message count. So `email_sent`,
+the metered unit of the acquisition product, was shown on Billing & Usage, read by the campaign
+budget card, and never consumed. A workspace could run ten campaigns, each inside its own
+`daily_contact_cap`, and pass the plan limit without anything noticing.
+
+Now: `checkCapacity("email_sent")` before the dispatch loop, halting the run with
+`EMAIL_ALLOWANCE_EXHAUSTED` rather than refusing message by message — the allowance is a property
+of the workspace, so stopping and saying so beats a partial batch failing silently. Each send
+records `usage_events` with `operationId` set to the send key, which is deterministic across a
+retry; `0062`'s unique partial index on `(business_id, operation_id)` turns that into real
+idempotency, so a provider retry or a replayed job is charged exactly once.
+
+The metric is `email_sent`, not `cold_email_sent`. That is the one carrying the plan entitlement
+and the one `checkCapacity` and Billing & Usage both read — recording a different name would have
+left the allowance displayed-but-never-consumed, which is the defect being fixed. Cold and warm
+are separated by `feature`, which is what `0062` added the column for.
+
+### R20 · Two corrections to my own work
+
+**Meta's `connectPath`.** The concurrent stream landed a complete Meta adapter — OAuth, poller,
+registered in `jobs/register.ts` — with `connectPath: null`, so it was unreachable. I set the
+path, and reverted it: `public-pages.test.ts` ties that null to enterprise copy, with a comment
+saying that if it changes the copy should be revisited. The flow has also never been run against a
+real Meta app. Exposing an unverified connect flow is precisely the "advertises a capability it
+cannot deliver" defect catalogued in this audit.
+
+**An over-strict test of mine.** I had asserted "every registered adapter is reachable from the
+catalogue". It is wrong. An adapter the catalogue does not expose harms nobody — the card reads
+"Not yet available" and the button is disabled, which is the correct state for an integration
+built but not yet verified. The assertion turned part-finished work into a build failure and
+pushed towards shipping an unverified flow to make a test pass. Removed; the reasoning is kept in
+the test file. The direction that matters — a `connectPath` with no adapter, which 503s — is still
+asserted.
+
+
 ---
 
-## Deployment state — complete
+## Deployment state
 
-Every migration in this branch is applied to production and verified directly against the live
-database after each one.
+Verified against the live database after each apply. **181 tables.**
 
-| Migration | Applied | Verified |
-|---|---|---|
-| `0054_v4_expansion` | ✅ | 175 tables, all three `copilot_*`, `automation_steps.subject` |
-| `0062_usage_ledger` | ✅ | all 7 provenance columns + the append-only `usage_events_no_update` trigger |
-| `0063_fix_prospect_promotion` | ✅ | live function body carries `'NEW'`, writes `promoted_from_prospect_id` and `contact_permissions`, both constraints created, execute granted to `service_role` only |
-| `0064_lead_archive_and_notes` | ✅ | `leads.archived_at` / `archived_by`, `lead_notes` table |
-| `0065_connector_event_failures` | ✅ | table + `record_connector_event_failure()`, RLS on, policy present, `security definer` with execute granted to `service_role` only |
-| `0066_data_controls` | ✅ | `business_data_controls`, RLS on, policy present, `set_updated_at` trigger |
+### Applied — the audit's migrations
 
-**181 tables.** The branch is deployable.
+| Migration | Verified |
+|---|---|
+| `0054_v4_expansion` | all three `copilot_*`, `automation_steps.subject` |
+| `0062_usage_ledger` | 7 provenance columns + the append-only trigger |
+| `0063_fix_prospect_promotion` | live body carries `'NEW'`, writes lineage and `contact_permissions`, both constraints, `service_role`-only execute |
+| `0064_lead_archive_and_notes` | `leads.archived_at`/`archived_by`, `lead_notes` |
+| `0065_connector_event_failures` | table + function, RLS on, policy, `service_role`-only execute |
+| `0066_data_controls` | table, RLS on, policy, `set_updated_at` trigger |
+| `0069_unify_suppression` | `lift_suppression_for_destination` present with `service_role`-only execute; deprecation comment on `contact_suppressions` |
 
-`0062` was pre-flighted before applying: every `metric` value present in the live `usage_events`
-and `usage_counters` was checked against the widened CHECK constraint first, because adding a
-CHECK to a populated table fails on the first violating row. All seven existing values were
-already in the new list, which is a superset.
+`0062` was pre-flighted: every `metric` value in the live `usage_events` and `usage_counters` was
+checked against the widened CHECK first, because adding a CHECK to a populated table fails on the
+first violating row.
 
-Two grants were checked specifically rather than assumed. `create or replace function` does not
-preserve an ACL, and `security definer` runs as the owner — so `promote_reviewed_prospect` and
-`record_connector_event_failure` were both confirmed to have execute revoked from `anon` and
-`authenticated` and granted only to `service_role`.
+Both `security definer` / replaced functions had their ACLs checked rather than assumed —
+`create or replace function` does not preserve a grant, and a definer function runs as the owner.
 
-### One note for whoever runs these again
+### Pending — the concurrent stream's migrations
 
-`0065` and `0066` contain unguarded `create policy` and `create trigger` statements. They applied
-cleanly once, and would fail on a second run. `0054` was given `drop … if exists` guards here for
-exactly that reason; these two were left as their author wrote them, and should get the same
-treatment before any environment is rebuilt from the migration set.
+`0067_social_outreach` · `0068_social_tiktok` · `0070_admin_rls_coverage` · `0071_developer_platform`
+
+**Not applied, deliberately.** That agent is still writing them — `0071` and its
+`src/lib/api/public.ts` were being edited minutes before this was written. Applying a migration
+someone is mid-way through authoring is how you get a half-shaped schema nobody can reason about.
+
+**The branch cannot ship until they are.** Their code is committed and references tables that do
+not exist yet — `api_keys`, `webhook_endpoints`, the social outreach tables. The unit suite does
+not catch this because it does not touch a database.
+
+They should be reviewed and applied, in numerical order, by whoever owns that stream, using the
+same one-file-at-a-time shape recorded below.
+
+```bash
+set -a && . ./.env.local && . ./.env && set +a
+python3 -c "
+import json,sys
+sql=open('supabase/migrations/<NAME>.sql',encoding='utf8').read()
+sys.stdout.write(json.dumps({'query':'begin;'+chr(10)+sql+chr(10)+'commit;'}))" > /tmp/apply.json
+curl -sS -w "HTTP %{http_code}
+" -o /dev/null   -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query"   -H "Authorization: Bearer $SUPABASE_PAT" -H "Content-Type: application/json"   --data-binary @/tmp/apply.json
+```
+
+### Re-runnability
+
+`0065`, `0066` and the concurrent stream's migrations carry unguarded `create policy` and
+`create trigger` statements: they apply once and fail on a second run. `0054` and `0069` were
+given `drop … if exists` guards. Anything rebuilding an environment from the migration set will
+hit this.
 
 ---
 
 ## Verification
 
-`npm test` — **1,281 tests, 0 failures** (1,165 + 116 across the two runners).
+`npm test` — **1,333 tests, 0 failures** (1,199 + 134 across the two runners).
 `npm run typecheck` — **clean**, including the two files the other agent left broken.
 `npm run lint` — **clean**.
 
