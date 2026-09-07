@@ -8,6 +8,8 @@
  */
 
 import { z } from "zod";
+import { operationsForCaller } from "../services/registry.ts";
+import { isWrite, requiresConfirmation } from "../services/types.ts";
 
 /* ------------------------------------------------------------------- tools */
 
@@ -36,7 +38,40 @@ export type ToolDeclaration = {
   requiresConfirmation: boolean;
   /** What the confirmation dialog explains will happen. */
   effect?: string;
+  /**
+   * True when the tool acts on one record and therefore cannot be run from a
+   * bare list with no argument. Declared rather than inferred from the name, so
+   * the Actions tab does not have to keep its own list of exceptions in step.
+   */
+  needsObject?: boolean;
 };
+
+/**
+ * Tools that are really service-layer operations.
+ *
+ * The catalogue for a ported domain is *derived* rather than restated. That is
+ * the whole point of the service layer: Copilot, MCP and the agent runtime all
+ * read the same registry, so a capability cannot exist for one of them and not
+ * the others, and a permission cannot be tightened in one place and forgotten
+ * in another.
+ *
+ * A tool here has no implementation in this file — `tool-service.ts` recognises
+ * the name and calls `runOperation`.
+ */
+const SERVICE_TOOLS: ToolDeclaration[] = operationsForCaller("COPILOT").map(
+  (operation) => ({
+    name: operation.name,
+    kind: isWrite(operation.risk) ? "WRITE" : "READ",
+    summary: operation.summary,
+    scope: operation.minimumRole,
+    requiresConfirmation: requiresConfirmation(operation.risk),
+    effect: operation.effect,
+    // Anything naming a single record needs one selected first.
+    needsObject: /\.(get|update|assign|set_status|add_note|archive|restore|flag_attention)$/.test(
+      operation.name,
+    ),
+  }),
+);
 
 /**
  * The whole tool surface.
@@ -48,21 +83,16 @@ export type ToolDeclaration = {
  * could express them.
  */
 export const COPILOT_TOOLS: ToolDeclaration[] = [
+  /* ------------------------------------------- service-layer operations
+   *
+   * Leads live here now. The four hand-written lead tools this replaced each
+   * had their own workspace scoping and their own idea of what a result looked
+   * like; there is one implementation of each now, shared with MCP and the
+   * agent runtime.
+   */
+  ...SERVICE_TOOLS,
+
   /* ------------------------------------------------------------- reads */
-  {
-    name: "searchLeads",
-    kind: "READ",
-    summary: "Find leads matching a description",
-    scope: "viewer",
-    requiresConfirmation: false,
-  },
-  {
-    name: "getLead",
-    kind: "READ",
-    summary: "Read one lead and its recent activity",
-    scope: "viewer",
-    requiresConfirmation: false,
-  },
   {
     name: "getProspects",
     kind: "READ",
@@ -172,20 +202,6 @@ export const COPILOT_TOOLS: ToolDeclaration[] = [
       "Changes which campaign gets budget and sending capacity first when they compete.",
   },
   {
-    name: "assignLead",
-    kind: "WRITE",
-    summary: "Assign a lead to someone",
-    scope: "member",
-    requiresConfirmation: false,
-  },
-  {
-    name: "markNeedsAttention",
-    kind: "WRITE",
-    summary: "Flag a lead for attention",
-    scope: "member",
-    requiresConfirmation: false,
-  },
-  {
     name: "updateBusinessFact",
     kind: "WRITE",
     summary: "Update a business profile fact",
@@ -204,6 +220,22 @@ export const COPILOT_TOOLS: ToolDeclaration[] = [
 ];
 
 const BY_NAME = new Map(COPILOT_TOOLS.map((tool) => [tool.name, tool]));
+
+/**
+ * Tool names as the model is shown them, and back again.
+ *
+ * A provider requires `^[a-zA-Z0-9_-]+$`, and service operations are named
+ * `lead.archive`. The mapping has to be reversible, because a call the model
+ * makes has to be routed back to the operation it named — a lossy encoding
+ * would make some tools unreachable rather than merely ugly.
+ */
+export function toFunctionName(toolName: string): string {
+  return toolName.replace(/\./g, "__");
+}
+
+export function fromFunctionName(functionName: string): string {
+  return functionName.replace(/__/g, ".");
+}
 
 export function copilotTool(name: string): ToolDeclaration | undefined {
   return BY_NAME.get(name);
@@ -249,6 +281,27 @@ export type CopilotMessage = {
     label?: string;
     /** A domain action the customer can take on this answer. */
     cta?: { tool: string; label: string; objectId?: string };
+    /** What ran this turn, in order, with the audit row for each write. */
+    steps?: {
+      tool: string;
+      ok: boolean;
+      summary: string;
+      entityId?: string | null;
+      auditEventId?: string | null;
+      warnings?: { code: string; message: string }[];
+    }[];
+    /**
+     * An action Copilot stopped short of, because it needs a person to agree.
+     * Carries the exact arguments so the confirmation applies to this call and
+     * not to the next one that happens to use the same tool.
+     */
+    awaiting?: {
+      tool: string;
+      summary: string;
+      effect: string;
+      args: Record<string, unknown>;
+    } | null;
+    correlationId?: string;
   };
 };
 
@@ -311,6 +364,20 @@ export const askSchema = z.object({
     .object({
       type: z.enum(["LEAD", "PROSPECT", "CAMPAIGN"]),
       id: z.uuid(),
+    })
+    .nullable()
+    .optional(),
+  /**
+   * A confirmation the person just gave, carried back with the next message.
+   *
+   * It names both the tool and the exact arguments. Matching on the tool alone
+   * would let a model obtain agreement to archive one lead and then spend that
+   * agreement on a different one.
+   */
+  confirmed: z
+    .object({
+      tool: z.string().trim().max(80),
+      args: z.record(z.string(), z.unknown()),
     })
     .nullable()
     .optional(),

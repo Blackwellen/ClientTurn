@@ -43,7 +43,7 @@ export default async function SearchSessionPage({
           description="Sourcing new prospects is available on Starter and above."
           action={
             <a
-              href="/app/settings?view=billing"
+              href="/app/settings?section=billing"
               className="text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
             >
               See plans

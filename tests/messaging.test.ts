@@ -164,6 +164,13 @@ describe("a STOP suppresses subsequent sends", () => {
           },
         };
       },
+      // This test is about the stop-condition guard, so contactability is held
+      // permissive: an opt-out must abort here on its own merits, not because
+      // a second gate happened to catch it.
+      async policy() {
+        return { action: "allow" as const };
+      },
+      async blockedByPolicy() {},
       async markSent() {},
       async markFailed() {},
       async abort() {},

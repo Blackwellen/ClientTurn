@@ -1,4 +1,5 @@
 import "server-only";
+import { rate } from "@/lib/analytics/v4-metrics";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -268,7 +269,11 @@ export async function getLeadHeaderMetrics(
 
   return {
     total: countResult.count ?? 0,
-    replyRate: contacted.length === 0 ? 0 : (replied.length / contacted.length) * 100,
+    // A fraction, null when nothing has been contacted — the same contract as
+    // every other rate in the product. This used to return percentage points,
+    // and 0 for an empty denominator, which made it the fifth different
+    // definition of "reply rate" in the codebase.
+    replyRate: rate(replied.length, contacted.length),
     averageFirstResponseSeconds:
       latencies.length === 0
         ? null

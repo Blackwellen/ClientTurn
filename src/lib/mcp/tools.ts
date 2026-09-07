@@ -16,6 +16,12 @@
  *      parks for a human rather than executing (§88.5).
  */
 
+import {
+  isWrite,
+  requiresConfirmation,
+  type RiskClass,
+} from "../services/types.ts";
+
 export type ToolKind = "READ" | "WRITE" | "APPROVAL_GATED";
 
 export const MCP_SCOPES = [
@@ -42,8 +48,14 @@ export type ToolDefinition = {
     properties: Record<string, { type: string; description: string }>;
     required?: string[];
   };
-  /** The minimum workspace role the authorising user must hold. */
-  minimumRole: "viewer" | "member" | "admin";
+  /**
+   * The minimum workspace role the authorising user must hold.
+   *
+   * Includes `owner` because service-layer operations are described as MCP
+   * tools and the registry can restrict one to the workspace owner. Narrowing
+   * it here would have silently downgraded such an operation to admin.
+   */
+  minimumRole: "viewer" | "member" | "admin" | "owner";
 };
 
 const noArgs = { type: "object" as const, properties: {} };
@@ -290,6 +302,23 @@ export const MCP_TOOLS: ToolDefinition[] = [
     minimumRole: "admin",
   },
 ];
+
+/**
+ * How a service-layer risk class appears to an MCP client.
+ *
+ * Anything a person would have to confirm becomes APPROVAL_GATED rather than
+ * WRITE: over MCP there is nobody at a keyboard, so "ask the user" is not
+ * available and the only honest options are to park it for a human or refuse
+ * it. Parking is the more useful of the two.
+ *
+ * Pure and separate from the gateway so the mapping can be asserted directly —
+ * a destructive operation silently arriving as a plain WRITE is exactly the
+ * regression that would otherwise pass review unnoticed.
+ */
+export function mcpKindForRisk(risk: RiskClass): ToolKind {
+  if (requiresConfirmation(risk)) return "APPROVAL_GATED";
+  return isWrite(risk) ? "WRITE" : "READ";
+}
 
 export function toolByName(name: string): ToolDefinition | null {
   return MCP_TOOLS.find((tool) => tool.name === name) ?? null;

@@ -1,5 +1,11 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  unitFor,
+  type UsageFeature,
+  type UsageMetric,
+} from "@/lib/billing/usage-metrics";
+import type { ServiceOperationName } from "@/lib/services/registry";
 
 export type AuditAction =
   // Business Profile (V4 section 26): the customer-visible memory layer.
@@ -147,6 +153,7 @@ export type AuditAction =
   | "prospect.removed_from_campaign"
   | "prospect.marked_for_review"
   | "prospect.research_refreshed"
+  | "prospect.contact_enriched"
   | "prospect.research_summarised"
   | "prospect.exported"
   | "recurring_search.created"
@@ -215,47 +222,136 @@ export type AuditAction =
   | "copilot.action_executed"
   | "copilot.action_denied";
 
+/**
+ * The full audit vocabulary.
+ *
+ * `AuditAction` covers the surfaces that predate the service layer. Every
+ * operation in the service registry audits under its own name — `lead.archive`
+ * — with `.denied` appended when it was refused, and both are admitted here as
+ * literal unions rather than as `string`, so a typo is a build failure and not
+ * an audit row nobody can search for.
+ */
+export type AnyAuditAction =
+  | AuditAction
+  | ServiceOperationName
+  | `${ServiceOperationName}.denied`;
+
+/**
+ * Writes one audit row and returns its id.
+ *
+ * The id matters: the service layer puts it in the envelope, so a caller
+ * claiming "I archived that lead" hands back the row that proves it. An
+ * assertion nobody can check is not an audit trail.
+ */
 export async function recordAudit(entry: {
   businessId: string | null;
   actorUserId?: string | null;
   actorType?: "user" | "system" | "platform_admin" | "provider";
-  action: AuditAction;
+  action: AnyAuditAction;
   entityType?: string;
   entityId?: string | null;
   metadata?: Record<string, unknown>;
-}) {
+}): Promise<string | null> {
   const supabase = createAdminClient();
-  await supabase.from("audit_log").insert({
-    business_id: entry.businessId,
-    actor_user_id: entry.actorUserId ?? null,
-    actor_type: entry.actorType ?? "user",
-    action: entry.action,
-    entity_type: entry.entityType ?? null,
-    entity_id: entry.entityId ?? null,
-    metadata: (entry.metadata ?? {}) as never,
-  });
+  const { data } = await supabase
+    .from("audit_log")
+    .insert({
+      business_id: entry.businessId,
+      actor_user_id: entry.actorUserId ?? null,
+      actor_type: entry.actorType ?? "user",
+      action: entry.action,
+      entity_type: entry.entityType ?? null,
+      entity_id: entry.entityId ?? null,
+      metadata: (entry.metadata ?? {}) as never,
+    })
+    .select("id")
+    .single();
+
+  return data?.id ?? null;
 }
 
-export async function recordUsage(entry: {
+export type UsageEntry = {
   businessId: string;
-  metric:
-    | "lead_processed"
-    | "message_sent"
-    | "message_received"
-    | "ai_call"
-    | "campaign_message";
+  metric: UsageMetric;
   quantity?: number;
   unitCost?: number;
   source?: string;
+  /** The product surface being charged. See `usage-metrics.ts`. */
+  feature?: UsageFeature;
+  /** The external provider paid for this, where one was. */
+  provider?: string;
+  /** What the charge was for, so a line can be traced back to a record. */
+  entity?: { type: string; id: string };
+  /**
+   * Stable key for the operation being charged. A retried worker presenting the
+   * same key is charged once. Omit only for a metric no retry can duplicate.
+   */
+  operationId?: string;
   metadata?: Record<string, unknown>;
-}) {
+};
+
+/**
+ * The one way anything is written to the usage ledger.
+ *
+ * Nothing else may insert into `usage_events`. That rule is the whole point:
+ * Billing & Usage is an aggregation of this table, and a counter incremented
+ * somewhere else is a number no invoice can defend.
+ *
+ * Idempotent when given an `operationId` — a repeat is dropped rather than
+ * charged again, and a duplicate is not an error, because the caller's job is
+ * to record the fact once, not to know whether it already has.
+ */
+export async function recordUsage(entry: UsageEntry) {
   const supabase = createAdminClient();
-  await supabase.from("usage_events").insert({
+
+  const { error } = await supabase.from("usage_events").insert({
     business_id: entry.businessId,
     metric: entry.metric,
+    unit: unitFor(entry.metric),
     quantity: entry.quantity ?? 1,
     unit_cost: entry.unitCost ?? null,
     source: entry.source ?? null,
+    feature: entry.feature ?? null,
+    provider: entry.provider ?? null,
+    entity_type: entry.entity?.type ?? null,
+    entity_id: entry.entity?.id ?? null,
+    operation_id: entry.operationId ?? null,
     metadata: (entry.metadata ?? {}) as never,
   });
+
+  // 23505 is the unique index on (business_id, operation_id): this operation
+  // has already been charged, which is the outcome the caller wanted.
+  if (error && error.code !== "23505") throw error;
+}
+
+/**
+ * Reverses a charge without rewriting history.
+ *
+ * The ledger refuses UPDATE by trigger, so a provider that failed after billing
+ * us, or a charge raised in error, is corrected by posting the opposite
+ * quantity against the same operation. Both rows survive, and the balance is
+ * their sum.
+ */
+export async function reverseUsage(input: {
+  businessId: string;
+  metric: UsageMetric;
+  /** The `operationId` of the entry being reversed. */
+  operationId: string;
+  quantity?: number;
+  reason: string;
+}) {
+  const supabase = createAdminClient();
+
+  const { error } = await supabase.from("usage_events").insert({
+    business_id: input.businessId,
+    metric: input.metric,
+    unit: unitFor(input.metric),
+    quantity: -(input.quantity ?? 1),
+    source: "adjustment",
+    operation_id: `reversal:${input.operationId}`,
+    adjusts_operation_id: input.operationId,
+    metadata: { reason: input.reason } as never,
+  });
+
+  if (error && error.code !== "23505") throw error;
 }

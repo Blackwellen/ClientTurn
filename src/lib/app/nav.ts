@@ -83,7 +83,6 @@ const TITLES: [string, string][] = [
   ["/app/analytics", "Analytics"],
   ["/app/settings", "Settings"],
   ["/app/support", "Support"],
-  ["/app/status", "Status"],
   ["/app/help", "Help"],
 ];
 

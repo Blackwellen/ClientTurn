@@ -68,13 +68,31 @@ export function CopilotChat({
     label: string;
     objectId?: string;
   } | null>(null);
+  /**
+   * An action Copilot planned but stopped short of.
+   *
+   * Held with the prompt that produced it, because confirming re-asks the same
+   * question with the agreement attached rather than executing the tool
+   * directly — so the model still narrates the outcome, and the service layer
+   * still applies every check it would have applied anyway.
+   */
+  const [awaiting, setAwaiting] = React.useState<{
+    tool: string;
+    summary: string;
+    effect: string;
+    args: Record<string, unknown>;
+    prompt: string;
+  } | null>(null);
   const endRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages.length, pending]);
 
-  async function send(text: string) {
+  async function send(
+    text: string,
+    confirmed?: { tool: string; args: Record<string, unknown> },
+  ) {
     const trimmed = text.trim();
     if (trimmed.length < 2 || pending) return;
 
@@ -99,6 +117,7 @@ export function CopilotChat({
         sessionId,
         prompt: trimmed,
         route: pathname,
+        ...(confirmed ? { confirmed: { tool: confirmed.tool, args: confirmed.args } } : {}),
       });
 
       if (!result.ok) {
@@ -108,6 +127,11 @@ export function CopilotChat({
 
       onSession(result.data.sessionId);
       setMessages((current) => [...current, ...result.data.messages]);
+
+      const pendingAction = result.data.messages[0]?.toolSummary?.awaiting ?? null;
+      setAwaiting(
+        pendingAction ? { ...pendingAction, prompt: trimmed } : null,
+      );
     } catch {
       setError("Copilot could not answer that. Please try again.");
     } finally {
@@ -285,6 +309,34 @@ export function CopilotChat({
           </Button>
         </div>
       </div>
+
+      {awaiting && (
+        <div className="mx-4 mb-3 rounded-lg border border-warning-100 bg-warning-50/70 p-3">
+          <p className="text-[12.5px] font-medium text-warning-800">
+            {awaiting.summary}?
+          </p>
+          <p className="mt-0.5 text-[12px] text-content-secondary">{awaiting.effect}</p>
+          <p className="mt-1 text-[11.5px] text-content-subtle">
+            Nothing has happened yet.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="xs" variant="secondary" onClick={() => setAwaiting(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              loading={pending}
+              onClick={() => {
+                const action = awaiting;
+                setAwaiting(null);
+                void send(action.prompt, { tool: action.tool, args: action.args });
+              }}
+            >
+              Confirm
+            </Button>
+          </div>
+        </div>
+      )}
 
       {confirming && (
         <ConfirmToolDialog

@@ -61,6 +61,10 @@ function summarise(rows: CohortRow[]): PeriodCounts {
     qualified: rows.filter((row) => row.qualified_at).length,
     booked,
     won: rows.filter((row) => row.won_at).length,
+    // percentage-points: the Dashboard works in percentage points end to end —
+    // the KPI value, its sparkline series and its delta ("0.8 pts") all share
+    // that unit, and `formatPercent` renders it. It is a self-consistent module
+    // convention, not the cross-surface divergence the rate rule exists to stop.
     bookingRate: leads === 0 ? 0 : (booked / leads) * 100,
   };
 }
@@ -135,6 +139,7 @@ function buildSeries(rows: CohortRow[], range: ResolvedRange): DashboardSeries {
 
   for (let index = 0; index < points; index += 1) {
     const leads = series.leads[index];
+    // percentage-points: the sparkline series shares the KPI's unit.
     series.bookingRate[index] =
       leads === 0 ? 0 : (series.booked[index] / leads) * 100;
   }
@@ -246,16 +251,27 @@ function followUpSnapshot(
   return {
     // Median, not mean: one stalled lead should not move the headline figure.
     latency: median(latencies),
+    // percentage-points: every figure in this block. The Dashboard works in
+    // percentage points end to end — the KPI value, its sparkline series and
+    // its delta ("0.8 pts") share that unit, and `formatPercent` renders it.
+    //
+    // These four already return null rather than zero for an empty denominator,
+    // which is the behaviour the rest of the product has now adopted. They are
+    // percentage points by module convention, not by the divergence the rate
+    // rule exists to stop.
     repliesFirst:
       attempts.firstSent === 0
         ? null
         : (attempts.firstReplies / attempts.firstSent) * 100,
+    // percentage-points: as above.
     repliesFollowUp:
       attempts.laterSent === 0
         ? null
         : (attempts.laterReplies / attempts.laterSent) * 100,
+    // percentage-points: as above.
     failureRate:
       outboundAttempted === 0 ? null : (failed / outboundAttempted) * 100,
+    // percentage-points: as above.
     // Canonical denominator: leads that were actually contacted.
     optOutRate: contacted === 0 ? null : (optOuts / contacted) * 100,
   };
@@ -455,6 +471,8 @@ export async function getDashboardData(
     sourceMap.set(key, existing);
   }
   for (const entry of sourceMap.values()) {
+    // percentage-points: the source-performance card renders this with
+    // `formatPercent`, in the same unit as the rest of the Dashboard.
     entry.conversionRate =
       entry.leads === 0 ? 0 : (entry.booked / entry.leads) * 100;
   }

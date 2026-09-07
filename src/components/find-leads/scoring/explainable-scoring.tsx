@@ -92,7 +92,7 @@ export function ExplainableScoring({ detail }: { detail: ProspectScoringDetail }
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
         <IdentityCard detail={detail} name={name} />
         {score ? (
           <HeadlineCard grade={score.grade} />
@@ -115,12 +115,12 @@ export function ExplainableScoring({ detail }: { detail: ProspectScoringDetail }
         </section>
       ) : (
         <>
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
             <ScoreBreakdown factors={score.factors} version={score.scoreVersion} />
             <GradeBandsCard current={score.grade} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <PositiveFactorsCard detail={detail} />
             <ConcernsCard detail={detail} />
             <EvidenceCard detail={detail} />
@@ -143,7 +143,7 @@ function IdentityCard({
   const location = locationLabel(company?.location_json);
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3.5">
           <Avatar name={name} size="xl" />
@@ -281,7 +281,7 @@ function ScoreBreakdown({
   const [open, setOpen] = React.useState<ScoreFactorKey | null>(null);
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-[16px] font-semibold text-content">Score breakdown</h2>
@@ -417,7 +417,7 @@ function FactorDetail({ factor }: { factor: ScoreFactor }) {
 
 function GradeBandsCard({ current }: { current: "A+" | "A" | "B" | "C" | "D" }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <h2 className="text-[16px] font-semibold text-content">Grade bands</h2>
       <p className="mt-0.5 text-[12.5px] text-content-muted">
         Prospects are automatically graded based on their total score.
@@ -518,7 +518,7 @@ function ContributionCard({
   items: { key: string; title: string; detail: string; points: string }[];
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex items-start gap-2.5">
         <span
           className={cn(
@@ -577,7 +577,7 @@ function EvidenceCard({ detail }: { detail: ProspectScoringDetail }) {
   const sources = detail.score ? evidenceSources(detail.score) : [];
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex items-start gap-2.5">
         <span
           className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-content-accent"

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/app/page-header";
 import { CardActionLink } from "./card-action-link";
+import { BookingOutcomeControl } from "./booking-outcome-control";
 
 /** "THU" over "4 SEP", in the workspace's own timezone. */
 function dateBlock(value: string | null, timezone: string) {
@@ -36,10 +37,20 @@ function timeRange(row: BookingListRow, timezone: string) {
  */
 export function UpcomingBookingsCard({
   rows,
+  awaitingOutcome,
   timezone,
   destinationConfigured,
 }: {
   rows: BookingListRow[];
+  /**
+   * Appointments whose time has passed while still `scheduled`.
+   *
+   * Shown above the upcoming list because it is the only part of this card that
+   * needs a decision. Until this existed, a booking could never leave
+   * `scheduled`: no-shows were invisible and booking-to-won conversion was
+   * unmeasurable.
+   */
+  awaitingOutcome: BookingListRow[];
   timezone: string;
   destinationConfigured: boolean;
 }) {
@@ -52,6 +63,44 @@ export function UpcomingBookingsCard({
         />
       </CardHeader>
       <CardContent className="flex-1 pt-0">
+        {awaitingOutcome.length > 0 && (
+          <div className="border-line-subtle mb-3 border-b pb-3">
+            <p className="text-content-muted mb-1.5 text-[11px] font-semibold tracking-[0.04em] uppercase">
+              Did these happen?
+            </p>
+            <ul className="divide-line-subtle divide-y">
+              {awaitingOutcome.map((row) => {
+                const { weekday, day } = dateBlock(row.startsAt, timezone);
+                return (
+                  <li key={row.id} className="flex items-center gap-3 py-2">
+                    <span aria-hidden className="w-12 shrink-0 text-center">
+                      <span className="text-content-muted block text-[10px] leading-tight font-semibold tracking-[0.06em]">
+                        {weekday}
+                      </span>
+                      <span className="text-content block text-[12.5px] leading-tight font-semibold">
+                        {day}
+                      </span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <Link
+                        href={`/app/leads?lead=${row.leadId}`}
+                        className="text-content hover:text-content-accent block truncate text-[13px] font-medium"
+                      >
+                        {row.leadName}
+                      </Link>
+                      <span className="text-content-muted block truncate text-[12px]">
+                        {timeRange(row, timezone)}
+                        {row.serviceName ? ` · ${row.serviceName}` : ""}
+                      </span>
+                    </span>
+                    <BookingOutcomeControl bookingId={row.id} leadName={row.leadName} />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {!destinationConfigured ? (
           <EmptyState
             icon={CalendarClock}
@@ -66,7 +115,7 @@ export function UpcomingBookingsCard({
               </Link>
             }
           />
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && awaitingOutcome.length === 0 ? (
           <EmptyState
             icon={CalendarClock}
             title="No upcoming bookings"

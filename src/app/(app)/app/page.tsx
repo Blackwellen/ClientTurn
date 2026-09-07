@@ -36,6 +36,8 @@ export const metadata: Metadata = { title: "Dashboard · Client Turn" };
 export const dynamic = "force-dynamic";
 
 const UPCOMING_BOOKINGS = 6;
+/** A daily sweep, not a backlog. Anything older is worked from the lead. */
+const AWAITING_OUTCOME = 4;
 const RECENT_CAMPAIGNS = 5;
 
 function delta(
@@ -112,7 +114,7 @@ export default async function DashboardPage({
   // batch rather than a sequential waterfall. `getDashboardData` carries the
   // KPIs, funnel, sparklines, sources and follow-up metrics in a single pass
   // over the lead cohort, so the page never reads the same rows twice.
-  const [data, health, bookings, destination, campaigns] = await Promise.all([
+  const [data, health, bookings, awaitingOutcome, destination, campaigns] = await Promise.all([
     getDashboardData(workspace.businessId, range),
     getHealthStripData(workspace.businessId),
     listBookings(
@@ -123,6 +125,20 @@ export default async function DashboardPage({
         status: "all",
         page: 1,
         pageSize: UPCOMING_BOOKINGS,
+      },
+      workspace.timezone,
+    ),
+    // Appointments whose time has passed while still `scheduled`. Small on
+    // purpose: this is a daily sweep, not a backlog to work through on the
+    // Dashboard, and a long list here would crowd out what is coming next.
+    listBookings(
+      workspace.businessId,
+      {
+        tab: "past",
+        view: "list",
+        status: "scheduled",
+        page: 1,
+        pageSize: AWAITING_OUTCOME,
       },
       workspace.timezone,
     ),
@@ -212,6 +228,7 @@ export default async function DashboardPage({
         <RecentLeadsCard leads={data.recentLeads} />
         <UpcomingBookingsCard
           rows={bookings.rows}
+          awaitingOutcome={awaitingOutcome.rows}
           timezone={workspace.timezone}
           destinationConfigured={destination.configured}
         />

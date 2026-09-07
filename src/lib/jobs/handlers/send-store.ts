@@ -3,10 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { unsubscribeUrl } from "@/lib/email/smtp";
 import { enqueue } from "@/lib/jobs/queue";
 import { recordUsage } from "@/lib/audit";
-import type { StopReason } from "@/lib/automation/scheduler";
+import { nextPermittedSendTime, type StopReason } from "@/lib/automation/scheduler";
+import { evaluate } from "@/lib/policy/service";
+import type { CampaignType, PolicyChannel, PolicyReasonCode } from "@/lib/policy/types";
 import type { Channel, SendResult } from "@/lib/messaging/types";
 import type {
   OutboundMessageRecord,
+  PolicyGate,
   SendFailure,
   SendGuardSnapshot,
   SendOrigin,
@@ -14,6 +17,7 @@ import type {
 } from "@/lib/jobs/send-core";
 import {
   channelState,
+  flagForAttention,
   leadContact,
   leadState,
   loadBusinessContext,
@@ -58,6 +62,46 @@ async function messageEvent(
     payload: payload as never,
   });
 }
+
+/**
+ * The V3 messaging channel names are lower-case; the policy engine's vocabulary
+ * is upper-case and includes SOCIAL, which follow-up never uses.
+ */
+const POLICY_CHANNEL: Record<Channel, PolicyChannel> = {
+  sms: "SMS",
+  whatsapp: "WHATSAPP",
+  email: "EMAIL",
+};
+
+/**
+ * Policy refusals a person in the workspace can actually do something about —
+ * by recording the relationship, capturing consent, or classifying the
+ * recipient. Everything absent from this set (opt-out, suppression, an inactive
+ * subscription, a dead address) is settled, and raising it for review would
+ * only invite someone to work around it.
+ */
+const RESOLVABLE_BY_A_HUMAN = new Set<PolicyReasonCode>([
+  "BLOCKED_NO_PERMISSION",
+  "BLOCKED_SUBSCRIBER_TYPE",
+  "REVIEW_REQUIRED",
+]);
+
+/**
+ * What kind of contact each origin represents, in the policy engine's terms.
+ *
+ * Every one of these reads the pack's *warm* rule set — only COLD is treated
+ * differently, and nothing on this path is cold: a lead exists because someone
+ * came to the business. The distinction is still drawn truthfully because it is
+ * written to the contactability record, and "we sent this as reactivation" is
+ * the kind of claim that has to survive being checked.
+ */
+const CAMPAIGN_TYPE: Record<SendOrigin, CampaignType> = {
+  automation: "WARM",
+  agent: "WARM",
+  manual: "WARM",
+  campaign: "REACTIVATION",
+  system: "TRANSACTIONAL",
+};
 
 /**
  * The Supabase-backed implementation of the shared outbound path. Every read
@@ -140,6 +184,137 @@ export function createSendStore(): SendStore & {
         quietHours: business.quietHours,
         origin: message.origin,
       };
+    },
+
+    async policy(
+      message: OutboundMessageRecord,
+      guard: SendGuardSnapshot,
+      at: Date,
+    ): Promise<PolicyGate> {
+      const [business, lead] = await Promise.all([
+        loadBusinessContext(message.businessId),
+        loadLead(message.leadId),
+      ]);
+
+      // Neither can be missing by the time we are here — `snapshot()` already
+      // loaded both — but proceeding on a null would mean sending with no
+      // recipient facts at all, which is exactly the case to refuse.
+      if (!business || !lead) {
+        return {
+          action: "block",
+          reasonCode: "BLOCKED_INVALID_CONTACT",
+          message: "The lead this message belongs to could no longer be read.",
+        };
+      }
+
+      const decision = await evaluate({
+        businessId: message.businessId,
+        subject: {
+          type: "LEAD",
+          id: lead.id,
+          email: lead.email,
+          phone: lead.phone_normalized ?? lead.phone,
+          optedOut: lead.opted_out,
+          // Leads carry no country of their own; the recorded permission does,
+          // and `evaluate` falls back to it. Absent both, the country-neutral
+          // pack applies, which is the restrictive one.
+          timezone: business.timezone,
+        },
+        channel: POLICY_CHANNEL[message.channel],
+        campaignType: CAMPAIGN_TYPE[message.origin],
+        // The guard already resolved provider health for this channel; asking
+        // the database a second time would be a different answer at a different
+        // instant, which is worse than reusing the one we acted on.
+        sender: { available: guard.channel.integrationHealthy, health: "HEALTHY" },
+        record: true,
+        at,
+      });
+
+      if (decision.reasonCode === "BLOCKED_QUIET_HOURS" && decision.quietHours) {
+        return {
+          action: "defer",
+          reasonCode: decision.reasonCode,
+          at: nextPermittedSendTime(at, {
+            enabled: true,
+            start: decision.quietHours.start,
+            end: decision.quietHours.end,
+            timezone: business.timezone,
+          }),
+        };
+      }
+
+      // REQUIRE_TEMPLATE is an allow with an obligation attached, not a refusal:
+      // it is how the pack says "WhatsApp, but only from an approved template".
+      const permitted =
+        decision.outcome === "ALLOWED" || decision.outcome === "REQUIRE_TEMPLATE";
+
+      if (!permitted) {
+        return {
+          action: "block",
+          reasonCode: decision.reasonCode,
+          message: decision.message,
+        };
+      }
+
+      // The pack can require an unsubscribe link. Automated and campaign email
+      // already carry one (see `load`), so this cannot refuse traffic that was
+      // previously fine — it is the assertion that the two stay in step if
+      // either side changes.
+      const needsUnsubscribe = decision.requirements?.includes("UNSUBSCRIBE_LINK");
+      const isBulkEmail =
+        message.channel === "email" &&
+        (message.origin === "automation" || message.origin === "campaign");
+
+      if (needsUnsubscribe && isBulkEmail && !message.unsubscribeUrl) {
+        return {
+          action: "block",
+          reasonCode: "REVIEW_REQUIRED",
+          message:
+            "This email requires an unsubscribe link under the applicable policy and none was attached.",
+        };
+      }
+
+      return { action: "allow" };
+    },
+
+    async blockedByPolicy(message, gate) {
+      const admin = createAdminClient();
+
+      await admin
+        .from("messages")
+        .update({
+          status: "FAILED",
+          error_code: `policy:${gate.reasonCode}`,
+          error_message: gate.message.slice(0, 500),
+          failed_at: new Date().toISOString(),
+        })
+        .eq("id", message.id)
+        .eq("status", "QUEUED");
+
+      await messageEvent(message.businessId, message.id, "blocked", {
+        reason_code: gate.reasonCode,
+        detail: gate.message,
+      });
+
+      // A sequence policy has refused must not keep trying the next step.
+      if (message.origin === "automation") {
+        await stopAutomationRuns(message.businessId, message.leadId, "suppressed");
+      }
+
+      // Two different failures, deliberately handled differently. A contact who
+      // opted out is finished, and putting them in a human's queue invites
+      // someone to message them anyway. A contact we simply lack permission for
+      // is a decision waiting to be made, and that does belong to a person.
+      if (RESOLVABLE_BY_A_HUMAN.has(gate.reasonCode)) {
+        await flagForAttention({
+          businessId: message.businessId,
+          leadId: message.leadId,
+          reason: `policy:${gate.reasonCode}`,
+          title: "A follow-up needs permission before it can be sent",
+          body: gate.message,
+          takeover: true,
+        });
+      }
     },
 
     async markSent(message, result: Extract<SendResult, { ok: true }>) {

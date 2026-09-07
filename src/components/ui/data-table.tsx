@@ -49,6 +49,13 @@ export type DataTableProps<T> = {
   /** Pluralised noun for the count line, e.g. "prospects". */
   paginationNoun?: string;
   pageSizeOptions?: number[];
+  /**
+   * Honour the declared column widths exactly, truncating content that does not
+   * fit, instead of letting a long value widen its column. Use it for dense
+   * tables that must fit the viewport; leave it off where content should be
+   * allowed to size the column.
+   */
+  fixedLayout?: boolean;
   className?: string;
 };
 
@@ -75,6 +82,7 @@ export function DataTable<T>({
   onPageSizeChange,
   paginationNoun,
   pageSizeOptions,
+  fixedLayout,
   className,
 }: DataTableProps<T>) {
   const selectable = !!onSelectionChange;
@@ -129,7 +137,7 @@ export function DataTable<T>({
       {loading ? (
         <SkeletonTable rows={pageSize && pageSize < 10 ? pageSize : 8} />
       ) : (
-        <Table>
+        <Table className={fixedLayout ? "table-fixed" : undefined}>
           <TableHeader sticky={stickyHeader}>
             <tr>
               {selectable && (
@@ -223,6 +231,11 @@ export function DataTable<T>({
                         key={col.key}
                         align={col.align}
                         numeric={col.numeric}
+                        // With `table-fixed` the column keeps its declared
+                        // width, but a child only clips if the cell itself
+                        // does. Without this a long company name spills over
+                        // the next column rather than truncating.
+                        className={fixedLayout ? "overflow-hidden" : undefined}
                       >
                         {col.render
                           ? col.render(row)

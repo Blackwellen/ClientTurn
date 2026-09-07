@@ -106,7 +106,7 @@ export function UsageThisMonthCard({
           <h2 className="text-[14.5px] font-semibold text-content">Usage this month</h2>
         </div>
         <Link
-          href="/app/settings?view=billing"
+          href="/app/settings?section=billing"
           className="inline-flex items-center gap-1 text-[12px] font-medium text-content-accent underline-offset-4 hover:underline"
         >
           View usage
@@ -140,7 +140,7 @@ export function UsageThisMonthCard({
             : "Resets at the end of your billing period"}
           {" · "}
           <Link
-            href="/app/settings?view=billing"
+            href="/app/settings?section=billing"
             className="font-medium text-content-accent underline-offset-4 hover:underline"
           >
             Need more? Upgrade your plan

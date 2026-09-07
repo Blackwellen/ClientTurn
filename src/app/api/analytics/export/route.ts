@@ -202,7 +202,7 @@ export async function GET(request: Request) {
         "Delivered",
         "Delivery rate",
         "Replies",
-        "Reply rate",
+        "Replies per delivered",
         "Opt-outs",
       ]);
       for (const row of channels) {
@@ -213,7 +213,7 @@ export async function GET(request: Request) {
             row.delivered,
             percent(row.deliveryRate),
             row.replies,
-            percent(row.replyRate),
+            percent(row.repliesPerDelivered),
             row.optOuts,
           ]
             .map(csvCell)

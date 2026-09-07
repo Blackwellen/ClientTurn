@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { workspaceEngagement } from "./engagement";
 import {
   buildFunnel,
   metricValue,
@@ -393,9 +394,21 @@ export async function getOutreach(
 ): Promise<OutreachData> {
   const supabase = await createClient();
 
-  const [current, previous] = await Promise.all([
+  // Two units, deliberately. Delivery and bounce are properties of a *message*;
+  // reply and opt-out are properties of a *person*. `v4-metrics.METRICS` has
+  // always said so — these queries used message counts for all four, which is
+  // what made the Analytics reply rate disagree with every other surface.
+  const [current, previous, engagedNow, engagedBefore] = await Promise.all([
     messageCounts(supabase, businessId, bounds.from, bounds.to),
     messageCounts(supabase, businessId, bounds.previousFrom, bounds.previousTo),
+    workspaceEngagement(businessId, {
+      from: bounds.from.toISOString(),
+      to: bounds.to.toISOString(),
+    }),
+    workspaceEngagement(businessId, {
+      from: bounds.previousFrom.toISOString(),
+      to: bounds.previousTo.toISOString(),
+    }),
   ]);
 
   return {
@@ -415,13 +428,13 @@ export async function getOutreach(
       ),
       metricValue(
         "reply_rate",
-        rate(current.inbound, current.sent),
-        rate(previous.inbound, previous.sent),
+        rate(engagedNow.replied, engagedNow.contacted),
+        rate(engagedBefore.replied, engagedBefore.contacted),
       ),
       metricValue(
         "positive_reply_rate",
-        rate(current.positiveReplies, current.totalReplies),
-        rate(previous.positiveReplies, previous.totalReplies),
+        rate(engagedNow.positive, engagedNow.replied),
+        rate(engagedBefore.positive, engagedBefore.replied),
       ),
     ],
     channels: [

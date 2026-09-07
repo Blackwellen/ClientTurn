@@ -8,7 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { assertCapability } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
 import { suppress } from "@/lib/policy/suppression";
-import { refreshProspectResearch } from "./server/research";
+import { enrichProspectContact, refreshProspectResearch } from "./server/research";
 import { generateResearchSummary } from "./server/research-summary";
 import type { ActionResult } from "./actions";
 
@@ -468,4 +468,53 @@ export async function suppressProspectsAction(
 
   refresh();
   return ok({ suppressed, failed });
+}
+
+/* ------------------------------------------------------- contact enrichment */
+
+/**
+ * Finds or re-verifies one contact detail.
+ *
+ * Deliberately separate from `refreshProspectResearchAction`: research asks
+ * whether the company has changed, this asks whether the person is reachable.
+ * They share one daily allowance so neither can be used to get around the
+ * other, and both re-check everything server-side.
+ */
+export async function enrichProspectContactAction(
+  input: unknown,
+): Promise<ActionResult<{ found: boolean; verification: string | null }>> {
+  const parsed = z
+    .object({ prospectId: z.uuid(), channel: z.enum(["EMAIL", "PHONE"]) })
+    .safeParse(input);
+  if (!parsed.success) return fail("That prospect could not be found.");
+
+  const access = await requireProspectAdmin();
+  if (!access.ok) return access;
+
+  const outcome = await enrichProspectContact(
+    access.workspace.businessId,
+    parsed.data.prospectId,
+    parsed.data.channel,
+    access.workspace.userId,
+  );
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "prospect.contact_enriched",
+    entityType: "prospect",
+    entityId: parsed.data.prospectId,
+    metadata: {
+      channel: parsed.data.channel,
+      ok: outcome.ok,
+      found: outcome.found,
+      // Pence. Admin-only by virtue of living in the audit log.
+      costMinor: outcome.costMinor,
+    },
+  });
+
+  if (!outcome.ok) return fail(outcome.error ?? "That could not be enriched.");
+
+  refresh();
+  return ok({ found: outcome.found, verification: outcome.verification });
 }

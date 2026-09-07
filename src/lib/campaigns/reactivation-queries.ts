@@ -3,7 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { leadDisplayName } from "@/lib/leads/types";
 import type { CampaignStatus } from "./types";
 import {
+  bookingRate,
   campaignIconKey,
+  qualificationRate,
   type ReactivationActivityEntry,
   type ReactivationAudienceRow,
   type ReactivationCampaignDetail,
@@ -187,6 +189,8 @@ function progressFor(
   if (status === "DRAFT" || status === "SCHEDULED") return 0;
   if (status === "COMPLETED" || status === "CANCELLED") return 100;
   if (denominator <= 0) return 0;
+  // percentage-points: a progress bar, not a rate. `ReactivationCampaignRow.progress`
+  // is documented as 0–100 and is rendered as a bar width, never as a metric.
   return Math.min(100, Math.round((processed / denominator) * 100));
 }
 
@@ -264,6 +268,8 @@ export async function listReactivationCampaigns(
 
 function trend(current: number, previous: number): ReactivationTrend | null {
   if (previous <= 0) return null;
+  // percentage-points: a period-over-period change, rendered as "+12%". A delta
+  // is not a rate — it has no denominator of its own and can exceed 100.
   const change = ((current - previous) / previous) * 100;
   if (!Number.isFinite(change) || Math.round(change) === 0) return null;
   const rounded = Math.round(change);
@@ -342,12 +348,10 @@ export async function getReactivationSummary(
     replies: totals.replies,
     repliesTrend: trend(current.replies, previous.replies),
     qualified: totals.qualified,
-    qualificationRate:
-      totals.replies === 0 ? 0 : (totals.qualified / totals.replies) * 100,
+    qualificationRate: qualificationRate(totals.replies, totals.qualified),
     qualifiedTrend: trend(current.qualified, previous.qualified),
     booked: totals.booked,
-    bookingRate:
-      totals.replies === 0 ? 0 : (totals.booked / totals.replies) * 100,
+    bookingRate: bookingRate(totals.replies, totals.booked),
     bookedTrend: trend(current.booked, previous.booked),
     revenue: totals.revenue,
   };

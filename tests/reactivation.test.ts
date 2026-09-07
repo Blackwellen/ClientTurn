@@ -364,15 +364,32 @@ describe("status transitions", () => {
 
 describe("conversion rates", () => {
   test("rates follow the funnel, each measured against the step before", () => {
-    assert.equal(replyRate(2480, 412).toFixed(1), "16.6");
-    assert.equal(qualificationRate(412, 86).toFixed(1), "20.9");
-    assert.equal(bookingRate(412, 32).toFixed(1), "7.8");
+    // Fractions, not percentage points. Every rate in the product is now a
+    // fraction produced by `analytics/v4-metrics.rate()`, so the number means
+    // the same thing whichever module produced it.
+    assert.equal((replyRate(2480, 412)! * 100).toFixed(1), "16.6");
+    assert.equal((qualificationRate(412, 86)! * 100).toFixed(1), "20.9");
+    assert.equal((bookingRate(412, 32)! * 100).toFixed(1), "7.8");
   });
 
-  test("a zero denominator is zero, never NaN or Infinity", () => {
-    assert.equal(replyRate(0, 0), 0);
-    assert.equal(qualificationRate(0, 5), 0);
-    assert.equal(bookingRate(0, 5), 0);
+  test("an empty denominator has no rate, and does not read as failure", () => {
+    // Null, not zero. A campaign that has sent nothing has no reply rate;
+    // "0.0%" would be a measured failure, which is a different claim and a
+    // false one. `formatMetric(null, "percent")` renders this as "—".
+    assert.equal(replyRate(0, 0), null);
+    assert.equal(qualificationRate(0, 5), null);
+    assert.equal(bookingRate(0, 5), null);
+  });
+
+  test("rates are never NaN or Infinity", () => {
+    for (const value of [
+      replyRate(0, 0),
+      replyRate(10, 0),
+      qualificationRate(0, 5),
+      bookingRate(3, 1),
+    ]) {
+      assert.ok(value === null || Number.isFinite(value), `got ${value}`);
+    }
   });
 });
 

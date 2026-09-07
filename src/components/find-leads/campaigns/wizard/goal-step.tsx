@@ -159,7 +159,7 @@ export function GoalStep({
             <div className="rounded-lg border border-dashed border-line bg-surface-sunken/50 px-3.5 py-3 text-[12.5px] text-content-muted">
               No active services yet.{" "}
               <Link
-                href="/app/settings?view=services"
+                href="/app/settings?section=workspace"
                 className="font-medium text-content-accent underline-offset-4 hover:underline"
               >
                 Add one in Settings

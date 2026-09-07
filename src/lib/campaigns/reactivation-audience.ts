@@ -201,6 +201,9 @@ function rank(
 
   return entries.map((entry) => ({
     ...entry,
+    // percentage-points: a share of a breakdown that must sum to 100 across its
+    // entries, rendered as a segmented bar. Zero for an empty set is correct
+    // here — no entries means every share is genuinely nothing.
     share: total === 0 ? 0 : Math.round((entry.count / total) * 100),
   }));
 }

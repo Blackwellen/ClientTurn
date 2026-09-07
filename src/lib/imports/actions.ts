@@ -217,6 +217,110 @@ export async function createImport(input: unknown): Promise<ActionResult<{ id: s
   return { ok: true, data: { id: created.id } };
 }
 
+export type ImportReviewRow = {
+  id: string;
+  rowNumber: number;
+  name: string;
+  email: string | null;
+  companyName: string | null;
+  /** What the server decided, before any override. */
+  classification: RowClassification;
+  classificationReason: string | null;
+  /** What the operator decided instead, if anything. */
+  userClassification: "IMPORT_AS_LEAD" | "IMPORT_AS_PROSPECT" | "SKIP" | null;
+  flags: string[];
+};
+
+export type ImportReview = {
+  counts: Record<RowClassification, number>;
+  totalRows: number;
+  /** The rows a person actually has to decide about. */
+  rows: ImportReviewRow[];
+  /** True when more rows need review than the page shows. */
+  truncated: boolean;
+};
+
+/** How many undecided rows the review step lists at once. */
+const REVIEW_PAGE = 100;
+
+/**
+ * The staged import, as the server classified it.
+ *
+ * The wizard's earlier preview is computed in the browser from the parsed file
+ * alone; it cannot see suppression, existing leads or existing prospects. This
+ * is the real verdict, and it is what the review step must show — a person
+ * deciding whether a row is a lead or a cold prospect is making a lawful-basis
+ * decision, and they have to make it against the truth.
+ *
+ * Only rows classified REVIEW are returned. Rows the classifier is confident
+ * about do not need a person, and listing five thousand of them would bury the
+ * forty that do.
+ */
+export async function getImportReview(
+  importId: unknown,
+): Promise<ActionResult<ImportReview>> {
+  const parsed = z.uuid().safeParse(importId);
+  if (!parsed.success) return { ok: false, error: "Invalid import." };
+
+  const workspace = await requireRole("admin");
+  const db = createAdminClient();
+
+  const { data: record } = await db
+    .from("lead_imports")
+    .select("id, total_rows, lead_rows, prospect_rows, review_rows, skip_rows")
+    .eq("id", parsed.data)
+    .eq("business_id", workspace.businessId)
+    .maybeSingle();
+
+  if (!record) return { ok: false, error: "That import could not be found." };
+
+  const { data: rows } = await db
+    .from("lead_import_rows")
+    // One literal, not a concatenation: the generated types parse the select
+    // string to infer the row shape, and a runtime-built string erases it.
+    .select(
+      "id, row_number, first_name, last_name, company_name, email, classification, classification_reason, user_classification, validation_flags",
+    )
+    .eq("business_id", workspace.businessId)
+    .eq("import_id", parsed.data)
+    .eq("classification", "REVIEW")
+    .order("row_number")
+    .limit(REVIEW_PAGE + 1);
+
+  const found = rows ?? [];
+  const truncated = found.length > REVIEW_PAGE;
+
+  return {
+    ok: true,
+    data: {
+      totalRows: record.total_rows,
+      counts: {
+        IMPORT_AS_LEAD: record.lead_rows,
+        IMPORT_AS_PROSPECT: record.prospect_rows,
+        REVIEW: record.review_rows,
+        SKIP: record.skip_rows,
+      },
+      truncated,
+      rows: found.slice(0, REVIEW_PAGE).map((row) => ({
+        id: row.id,
+        rowNumber: row.row_number,
+        name:
+          [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+          row.company_name ||
+          row.email ||
+          `Row ${row.row_number}`,
+        email: row.email,
+        companyName: row.company_name,
+        classification: row.classification as RowClassification,
+        classificationReason: row.classification_reason,
+        userClassification:
+          row.user_classification as ImportReviewRow["userClassification"],
+        flags: row.validation_flags ?? [],
+      })),
+    },
+  };
+}
+
 /** Overrides one row's classification during review. */
 export async function setRowClassification(
   rowId: unknown,

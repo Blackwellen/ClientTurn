@@ -913,7 +913,33 @@ export async function promoteProspectToLeadAction(
     p_prospect_id: id.data,
     p_user_id: access.workspace.userId,
   });
-  if (error || !leadId) return fail("Only engaged, unsuppressed prospects can move to Leads. Review the conversation first.");
+
+  if (error || !leadId) {
+    // The routine raises a distinct sentence per refusal. Passing those through
+    // matters: for eighteen months every failure here reported "record
+    // engagement first", which was a plausible-sounding message for a database
+    // constraint violation and made a hard defect look like a business rule.
+    // Anything we do not recognise is reported as a fault, not as a rule.
+    const raised = error?.message ?? "";
+    if (raised.includes("Suppressed prospects cannot be promoted")) {
+      return fail("This prospect is suppressed and cannot be promoted.");
+    }
+    if (raised.includes("Record engagement before promoting")) {
+      return fail(
+        "Only prospects who have replied can move to Leads. Review the conversation first.",
+      );
+    }
+    if (raised.includes("Prospect not found")) {
+      return fail("That prospect could not be found.");
+    }
+    console.error("promote_reviewed_prospect failed", {
+      prospectId: id.data,
+      code: error?.code,
+      message: error?.message,
+    });
+    return fail("This prospect could not be promoted. The team has been notified.");
+  }
+
   const lead = { id: leadId };
 
   await recordAudit({

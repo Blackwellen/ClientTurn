@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { recordAudit } from "@/lib/audit";
+import { recordAudit, recordUsage } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { PermanentJobError } from "@/lib/jobs/registry";
@@ -1875,12 +1875,17 @@ async function completeRun(context: RunContext): Promise<void> {
   // Verified prospects are the metered unit, billed on what was produced —
   // never on what was requested.
   if (counters.ready > 0) {
-    await admin.from("usage_events").insert({
-      business_id: context.businessId,
+    await recordUsage({
+      businessId: context.businessId,
       metric: "verified_prospect",
       quantity: counters.ready,
       source: "find_leads",
-      metadata: { runId: context.runId } as never,
+      feature: "find_leads",
+      entity: { type: "sourcing_run", id: context.runId },
+      // One charge per run. A worker that is retried after the counters were
+      // already written must not bill the same prospects a second time.
+      operationId: `verified_prospect:${context.runId}`,
+      metadata: { runId: context.runId },
     });
   }
 

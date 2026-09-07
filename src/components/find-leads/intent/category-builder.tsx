@@ -110,7 +110,7 @@ export function CategoryBuilder({
   }
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">
         <CircleCheck className="size-4 text-content-accent" aria-hidden />
         {category ? "Edit intent category" : "Create intent category"}

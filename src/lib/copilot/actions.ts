@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runTool, type ToolContext } from "./tool-service";
+import { runCopilotTurn } from "./loop";
 import {
   askSchema,
   runToolSchema,
@@ -137,7 +138,28 @@ export async function askCopilot(input: unknown): Promise<
     sessionId,
   };
 
-  const answer = await answerFrom(context, parsed.data.prompt);
+  // The model plans and acts; `answerFrom` is the fallback for when it is
+  // unavailable or the workspace is out of allowance. Keeping the deterministic
+  // router as the fallback rather than deleting it means an AI outage degrades
+  // Copilot to what it used to be, instead of removing it.
+  const history = await recentTurns(sessionId, workspace.businessId);
+  const turn = await runCopilotTurn({
+    context,
+    message: parsed.data.prompt,
+    history,
+    confirmed: parsed.data.confirmed ?? null,
+  });
+
+  const answer = turn.degraded
+    ? await answerFrom(context, parsed.data.prompt)
+    : {
+        content: turn.reply,
+        toolSummary: {
+          steps: turn.steps,
+          awaiting: turn.awaitingConfirmation,
+          correlationId: turn.correlationId,
+        } as Record<string, unknown>,
+      };
 
   const assistant = await appendMessage({
     sessionId,
@@ -163,6 +185,38 @@ export async function askCopilot(input: unknown): Promise<
 }
 
 /**
+ * Reads back the last few turns, so a follow-up question ("archive that one")
+ * has something to refer to.
+ *
+ * Bounded deliberately: an unbounded history is an unbounded input-token bill
+ * on every message, and Copilot's usefulness does not come from remembering a
+ * conversation from an hour ago.
+ */
+async function recentTurns(
+  sessionId: string,
+  businessId: string,
+): Promise<{ role: "user" | "assistant"; content: string }[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("copilot_messages")
+    .select("role, content")
+    .eq("session_id", sessionId)
+    .eq("business_id", businessId)
+    .in("role", ["USER", "ASSISTANT"])
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  return (data ?? [])
+    .reverse()
+    .map((row) => ({
+      role: row.role === "USER" ? ("user" as const) : ("assistant" as const),
+      content: row.content,
+    }));
+}
+
+/**
+ * The deterministic fallback, used when the model is unavailable.
+ *
  * Routes a question to the read tools that can answer it and states the
  * finding, the evidence and — where one exists — the action.
  *

@@ -224,10 +224,10 @@ export function fixtureSummary(): ReactivationSummary {
     replies: 2842,
     repliesTrend: { value: "+12%", direction: "up" },
     qualified: 612,
-    qualificationRate: 21.5,
+    qualificationRate: 0.215,
     qualifiedTrend: { value: "+18%", direction: "up" },
     booked: 184,
-    bookingRate: 6.5,
+    bookingRate: 0.065,
     bookedTrend: { value: "+24%", direction: "up" },
     revenue: 24680,
   };

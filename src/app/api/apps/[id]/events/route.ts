@@ -42,6 +42,13 @@ const payloadSchema = z
   })
   .refine((v) => !!v.email || !!v.phone);
 
+/** Best-effort read of the sender's own event id, for deduplicating a replay. */
+function readEventId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as { eventId?: unknown }).eventId;
+  return typeof candidate === "string" ? candidate.slice(0, 150) : undefined;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -56,8 +63,21 @@ export async function POST(
 
   const db = createAdminClient();
 
-  /** Records why a request was refused, then refuses it. */
-  async function reject(reason: string, message: string, status: number) {
+  /**
+   * Records why a request was refused, then refuses it.
+   *
+   * `keep` carries the body into the failure log so a person can see what was
+   * lost and replay it. It is passed **only after authentication succeeded** —
+   * a request that failed the signature check is recorded as a reason and a
+   * count, never as content. Storing unauthenticated bodies would make a public
+   * endpoint a place anyone can write arbitrary JSON for staff to read back.
+   */
+  async function reject(
+    reason: string,
+    message: string,
+    status: number,
+    keep?: { payload: unknown; externalEventId?: string },
+  ) {
     await db
       .rpc("record_workspace_app_failure", { p_install_id: id, p_reason: reason })
       // A failed bookkeeping write must not turn a 401 into a 500.
@@ -65,6 +85,21 @@ export async function POST(
         () => undefined,
         () => undefined,
       );
+
+    if (keep) {
+      await db
+        .rpc("record_connector_event_failure", {
+          p_install_id: id,
+          p_reason: reason,
+          p_payload: keep.payload as never,
+          p_external_event_id: keep.externalEventId ?? null,
+        })
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    }
+
     return Response.json({ error: message }, { status });
   }
 
@@ -182,10 +217,13 @@ export async function POST(
 
   const parsed = payloadSchema.safeParse(value);
   if (!parsed.success) {
+    // Authenticated but malformed. Worth keeping: this is a sender whose field
+    // mapping is wrong, and the body is what shows which field.
     return reject(
       "invalid_payload",
       "Provide eventId and a valid email or E.164 phone.",
       400,
+      { payload: value, externalEventId: readEventId(value) },
     );
   }
 
@@ -196,7 +234,12 @@ export async function POST(
   });
 
   if (error) {
-    return reject("queue_failed", "Event could not be queued", 503);
+    // Authenticated and valid, and we still lost it. This is the case replay
+    // exists for.
+    return reject("queue_failed", "Event could not be queued", 503, {
+      payload: parsed.data,
+      externalEventId: parsed.data.eventId,
+    });
   }
 
   return Response.json(

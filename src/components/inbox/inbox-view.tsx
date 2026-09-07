@@ -69,7 +69,7 @@ export function InboxView({
           size="lg"
         />
         <Link
-          href="/app/settings?view=connections"
+          href="/app/settings?section=connections"
           className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-9 shrink-0 items-center rounded-md border px-3.5 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           Manage channels
@@ -157,10 +157,15 @@ function ChannelRail({
             >
               <Icon className="size-4 shrink-0" aria-hidden />
               <span className="truncate">{definition.label}</span>
-              {/* A channel we cannot read is marked here rather than only
-                  discovered after clicking into an empty list. */}
-              {!definition.canRead ? (
-                <span className="ml-auto text-[10px] text-content-subtle">n/a</span>
+              {/* A channel that cannot fill is marked here rather than only
+                  discovered after clicking into an empty list. The two reasons
+                  read differently on purpose: "n/a" is permanent, "soon" is
+                  work we have not done, and a customer deciding where to reply
+                  needs to know which. */}
+              {definition.ingestion !== "live" ? (
+                <span className="ml-auto text-[10px] text-content-subtle">
+                  {definition.ingestion === "impossible" ? "n/a" : "soon"}
+                </span>
               ) : (
                 unreadFor(key) > 0 && (
                   <span
@@ -303,14 +308,21 @@ function ThreadPane({
           <InboxIcon className="size-5" />
         </span>
         <h2 className="text-[15px] font-semibold text-content">
-          {definition.canRead ? "Your conversations, together" : `${definition.label} cannot be synced`}
+          {definition.ingestion === "live"
+            ? "Your conversations, together"
+            : definition.ingestion === "impossible"
+              ? `${definition.label} cannot be synced`
+              : `${definition.label} is not synced yet`}
         </h2>
         <p className="mt-2 max-w-sm text-[12.5px] leading-relaxed text-content-muted">
           {definition.emptyExplanation}
         </p>
-        {definition.canRead && (
+        {/* Only offered where connecting something would actually change the
+            outcome. Pointing at Connections for a channel we have not built
+            sends the customer to configure their way out of our gap. */}
+        {definition.ingestion === "live" && (
           <Link
-            href="/app/settings?view=connections"
+            href="/app/settings?section=connections"
             className="mt-4 text-[12.5px] font-medium text-content-accent underline-offset-4 hover:underline"
           >
             View connections

@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/outreach/campaign-actions";
 import { saveFact } from "@/lib/business-profile/actions";
 import { createSupportTicket } from "@/lib/support/actions";
+import { runOperation, serviceOperation } from "@/lib/services";
 import { copilotTool, roleAllows, type ToolDeclaration } from "./types";
 
 /**
@@ -48,7 +50,28 @@ export type ToolContext = {
 };
 
 export type ToolOutcome =
-  | { ok: true; summary: string; data: unknown }
+  | {
+      ok: true;
+      summary: string;
+      data: unknown;
+      /**
+       * Present when the tool was a service-layer operation.
+       *
+       * This is what lets Copilot *report* rather than narrate. "I've archived
+       * that lead" is a claim; the same sentence carrying the before and after
+       * values, the audit row id and any warnings is a claim that can be
+       * checked. Copilot must never assert a change without one of these.
+       */
+      envelope?: {
+        entityId: string | null;
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown> | null;
+        auditEventId: string | null;
+        warnings: { code: string; message: string }[];
+        billingEffect: { metric: string; quantity: number }[];
+        correlationId: string;
+      };
+    }
   | { ok: false; error: string; denied?: boolean; needsConfirmation?: boolean };
 
 /* ------------------------------------------------------------------ audit */
@@ -163,7 +186,7 @@ export async function runTool(
       : null;
 
   try {
-    const outcome = await execute(context, tool, args);
+    const outcome = await execute(context, tool, args, confirmed);
 
     if (tool.kind === "WRITE") {
       await closeAction(
@@ -200,17 +223,79 @@ export async function runTool(
 
 /* -------------------------------------------------------- implementations */
 
+/**
+ * Runs a service-layer operation on Copilot's behalf.
+ *
+ * Copilot supplies no permission of its own: the acting user's live role goes
+ * in, `caller` says who is asking, and the runtime decides. `confirmed` is
+ * passed through from the dialog the person actually saw — Copilot cannot set
+ * it for itself, which is why a destructive operation cannot be talked into
+ * running.
+ */
+async function delegate(
+  context: ToolContext,
+  tool: ToolDeclaration,
+  args: Record<string, unknown>,
+  confirmed: boolean,
+): Promise<ToolOutcome> {
+  const result = await runOperation(tool.name, args, {
+    businessId: context.businessId,
+    userId: context.userId,
+    role: context.role as "owner" | "admin" | "member" | "viewer",
+    caller: "COPILOT",
+    confirmed,
+    correlationId: randomUUID(),
+  });
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.message,
+      denied: result.code === "FORBIDDEN_ROLE" || result.code === "FORBIDDEN_SCOPE",
+      needsConfirmation: result.code === "NEEDS_CONFIRMATION",
+    };
+  }
+
+  // The warning travels into the summary rather than being dropped: a caller
+  // that says "done" while the envelope says follow-up stopped has told the
+  // customer less than it knew.
+  const summary = result.warnings.length
+    ? `${tool.summary}. ${result.warnings.map((w) => w.message).join(" ")}`
+    : tool.summary;
+
+  return {
+    ok: true,
+    summary,
+    data: result.data,
+    envelope: {
+      entityId: result.entityId,
+      before: result.before,
+      after: result.after,
+      auditEventId: result.auditEventId,
+      warnings: result.warnings,
+      billingEffect: result.billingEffect.map((b) => ({
+        metric: b.metric,
+        quantity: b.quantity,
+      })),
+      correlationId: result.correlationId,
+    },
+  };
+}
+
 async function execute(
   context: ToolContext,
   tool: ToolDeclaration,
   args: Record<string, unknown>,
+  confirmed: boolean,
 ): Promise<ToolOutcome> {
+  // Ported domains go to the one implementation. Anything still listed below is
+  // a surface the service layer has not taken over yet.
+  if (serviceOperation(tool.name)) {
+    return delegate(context, tool, args, confirmed);
+  }
+
   switch (tool.name) {
     /* ---------------------------------------------------------- reads */
-    case "searchLeads":
-      return searchLeads(context, args);
-    case "getLead":
-      return getLead(context, args);
     case "getProspects":
       return getProspects(context, args);
     case "getCampaign":
@@ -237,10 +322,6 @@ async function execute(
       return campaignPriority(args);
     case "createCampaignDraft":
       return campaignDraft();
-    case "assignLead":
-      return assignLead(context, args);
-    case "markNeedsAttention":
-      return markAttention(context, args);
     case "updateBusinessFact":
       return updateFact(args);
     case "createSupportTicket":
@@ -252,53 +333,6 @@ async function execute(
 }
 
 /* ------------------------------------------------------------------ reads */
-
-async function searchLeads(context: ToolContext, args: Record<string, unknown>) {
-  const query = z.string().trim().max(120).optional().parse(args.query);
-  const admin = createAdminClient();
-
-  let request = admin
-    .from("leads")
-    .select("id, first_name, last_name, email, status, created_at, needs_attention")
-    .eq("business_id", context.businessId)
-    .eq("is_test", false)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (query) {
-    // `%` and `_` are ILIKE wildcards; a customer typing them means them.
-    const safe = query.replace(/[%_\\]/g, (m) => `\\${m}`);
-    request = request.or(
-      `first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%`,
-    );
-  }
-
-  const { data } = await request;
-  return {
-    ok: true as const,
-    summary: `${data?.length ?? 0} leads found`,
-    data: data ?? [],
-  };
-}
-
-async function getLead(context: ToolContext, args: Record<string, unknown>) {
-  const id = z.uuid().parse(args.id);
-  const admin = createAdminClient();
-
-  const { data } = await admin
-    .from("leads")
-    .select(
-      "id, first_name, last_name, email, phone, status, qualification_state, needs_attention, attention_reason, created_at, first_contacted_at, first_replied_at, booked_at",
-    )
-    .eq("id", id)
-    // Scoped to the caller's workspace, always. A lead id from another tenant
-    // simply does not resolve.
-    .eq("business_id", context.businessId)
-    .maybeSingle();
-
-  if (!data) return { ok: false as const, error: "That lead could not be found." };
-  return { ok: true as const, summary: "Lead loaded", data };
-}
 
 async function getProspects(context: ToolContext, args: Record<string, unknown>) {
   const limit = z.number().int().min(1).max(50).catch(20).parse(args.limit ?? 20);
@@ -444,52 +478,6 @@ async function campaignDraft() {
         data: { id: result.data.id },
       }
     : { ok: false as const, error: result.error };
-}
-
-async function assignLead(context: ToolContext, args: Record<string, unknown>) {
-  const leadId = z.uuid().parse(args.leadId ?? args.id);
-  const assigneeId = z.uuid().nullable().parse(args.assigneeId ?? null);
-  const admin = createAdminClient();
-
-  // Membership is verified before the assignment: assigning a lead to someone
-  // outside the workspace would be a quiet data leak.
-  if (assigneeId) {
-    const { data: member } = await admin
-      .from("business_members")
-      .select("user_id")
-      .eq("business_id", context.businessId)
-      .eq("user_id", assigneeId)
-      .maybeSingle();
-    if (!member) {
-      return { ok: false as const, error: "That person is not in this workspace." };
-    }
-  }
-
-  const { error } = await admin
-    .from("leads")
-    .update({ assigned_user_id: assigneeId })
-    .eq("id", leadId)
-    .eq("business_id", context.businessId);
-
-  return error
-    ? { ok: false as const, error: "That lead could not be assigned." }
-    : { ok: true as const, summary: "Lead assigned", data: { leadId, assigneeId } };
-}
-
-async function markAttention(context: ToolContext, args: Record<string, unknown>) {
-  const leadId = z.uuid().parse(args.leadId ?? args.id);
-  const reason = z.string().trim().max(120).catch("copilot_flagged").parse(args.reason);
-  const admin = createAdminClient();
-
-  const { error } = await admin
-    .from("leads")
-    .update({ needs_attention: true, attention_reason: reason })
-    .eq("id", leadId)
-    .eq("business_id", context.businessId);
-
-  return error
-    ? { ok: false as const, error: "That lead could not be flagged." }
-    : { ok: true as const, summary: "Lead flagged for attention", data: { leadId } };
 }
 
 /**

@@ -69,7 +69,7 @@ export function IntentView({
     <div className="space-y-4">
       <IntentKpiStrip data={data} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <CategoryTable
           categories={categories}
           canManage={canManage}
@@ -99,7 +99,7 @@ export function IntentView({
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         <MonitoredCompaniesCard companies={monitoredCompanies} canManage={canManage} />
         <RecentSignalsCard events={events} />
         <SourceUsageCard usage={sourceUsage} />
@@ -164,7 +164,7 @@ function IntentKpiStrip({ data }: { data: IntentViewData }) {
       {cards.map((card) => (
         <div
           key={card.key}
-          className="rounded-xl border border-line bg-surface px-4 py-3.5 shadow-xs"
+          className="min-w-0 rounded-xl border border-line bg-surface px-4 py-3.5 shadow-xs"
         >
           <div className="flex items-start gap-3">
             <span
@@ -226,7 +226,7 @@ function CategoryTable({
   onEdit: (id: string) => void;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
         <div>
           <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">
@@ -473,7 +473,7 @@ function MonitorsCard({
   icpProfiles: { id: string; name: string }[];
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">
@@ -586,7 +586,7 @@ function MonitoredCompaniesCard({
   canManage: boolean;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">
@@ -607,7 +607,7 @@ function MonitoredCompaniesCard({
         </p>
       ) : (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[420px] border-collapse">
+          <table className="w-full min-w-[470px] border-collapse">
             <caption className="sr-only">Companies watched by name</caption>
             <thead>
               <tr className="border-b border-line">
@@ -634,7 +634,7 @@ function MonitoredCompaniesCard({
                     <div className="flex flex-wrap gap-1">
                       {company.categories.slice(0, 2).map((name) => (
                         <Badge key={name} tone="purple" dense>
-                          <span className="max-w-[7rem] truncate">{name}</span>
+                          <span className="max-w-[5.5rem] truncate">{name}</span>
                         </Badge>
                       ))}
                       {company.categories.length > 2 && (
@@ -651,6 +651,7 @@ function MonitoredCompaniesCard({
                   </Td>
                   <Td>
                     <Badge
+                      className="whitespace-nowrap"
                       tone={
                         company.status === "INTENT_DETECTED"
                           ? "success"
@@ -682,7 +683,7 @@ function MonitoredCompaniesCard({
 
 function RecentSignalsCard({ events }: { events: IntentViewData["events"] }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">
@@ -764,7 +765,7 @@ function SourceUsageCard({ usage }: { usage: IntentViewData["sourceUsage"] }) {
   const total = usage.reduce((sum, row) => sum + row.events, 0);
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-xs">
+    <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-[14px] font-semibold text-content">

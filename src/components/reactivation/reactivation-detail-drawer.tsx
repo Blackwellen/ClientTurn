@@ -32,9 +32,9 @@ import {
   formatDate,
   formatDateTime,
   formatGbp,
-  formatPercent,
   formatRelative,
 } from "@/lib/dates";
+import { formatMetric } from "@/lib/analytics/v4-metrics";
 import {
   bookingRate,
   canPerform,
@@ -115,12 +115,14 @@ function Panel({
   );
 }
 
-function Rate({ label, value }: { label: string; value: number }) {
+function Rate({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">
       <span className="text-[12.5px] text-content-secondary">{label}</span>
       <span className="lr-tabular text-[12.5px] font-semibold text-content">
-        {formatPercent(value, 1)}
+        {/* A fraction from `rate()`, so it uses the formatter that speaks
+            fractions and renders an absent rate as "—" rather than "0.0%". */}
+        {formatMetric(value, "percent")}
       </span>
     </div>
   );

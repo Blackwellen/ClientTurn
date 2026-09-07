@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { Brain, Building2, CreditCard, Link2, Users } from "lucide-react";
+import { Brain, Building2, CreditCard, Link2, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { SETTINGS_SECTIONS, type SettingsSection } from "@/lib/settings/types";
 
@@ -12,12 +12,14 @@ const ICONS: Record<
   connections: Link2,
   "business-profile": Brain,
   team: Users,
+  "data-controls": ShieldCheck,
   billing: CreditCard,
 };
 
 /**
- * The five canonical Settings sections (V4 §24): Workspace, Connections,
- * Business Profile, Team, and Billing & Usage. Deliberately substantial cards
+ * The canonical Settings sections (V4 §24): Workspace, Connections, Business
+ * Profile, Team, Data Controls & Compliance, and Billing & Usage. Deliberately
+ * substantial cards
  * rather than a tab strip: they are the only navigation inside Settings, and
  * each one is a destination a customer looks for by name.
  *

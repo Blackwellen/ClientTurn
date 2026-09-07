@@ -64,9 +64,12 @@ export default async function FindLeadsPage({
   const filters = parseProspectFilters(params);
   const prospectId = first(params.prospect);
 
-  // Read server-side so a list-view user never sees a flash of cards.
+  // Read server-side so nobody sees a flash of the wrong shape. The table is
+  // the default here — unlike Leads, this surface is a review queue, and the
+  // columns that decide whether to contact someone (fit, eligibility,
+  // verification) only line up for comparison in rows.
   const stored = cookieStore.get(VIEW_COOKIE)?.value;
-  const viewMode: ViewMode = stored === "list" ? "list" : "card";
+  const viewMode: ViewMode = stored === "card" ? "card" : "list";
 
   const entitlements = await getV4Entitlements(workspace.businessId);
 
@@ -86,7 +89,7 @@ export default async function FindLeadsPage({
           description="Sourcing new prospects is available on Starter and above. Your existing leads, follow-up and reactivation are unaffected."
           action={
             <a
-              href="/app/settings?view=billing"
+              href="/app/settings?section=billing"
               className="text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
             >
               See plans

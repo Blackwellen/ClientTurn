@@ -71,7 +71,7 @@ export default async function NewCampaignPage({
           description="Acquisition campaigns are available on Starter and above. Your existing leads, follow-up and reactivation are unaffected."
           action={
             <Link
-              href="/app/settings?view=billing"
+              href="/app/settings?section=billing"
               className="text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
             >
               See plans

@@ -189,6 +189,17 @@ export async function handleCampaignSend(job: ClaimedJob) {
         .from("campaign_contacts")
         .update({ state: "suppressed", stopped_reason: outcome.reason })
         .eq("id", contact.id);
+    } else if (outcome.outcome === "blocked") {
+      // Refused by contact policy rather than by a stop condition. The contact
+      // is settled either way, but the reason is recorded as the policy code so
+      // a reactivation campaign's suppressed count can be explained.
+      await admin
+        .from("campaign_contacts")
+        .update({
+          state: "suppressed",
+          stopped_reason: `policy:${outcome.reasonCode}`,
+        })
+        .eq("id", contact.id);
     } else if (outcome.outcome === "rescheduled") {
       await admin
         .from("campaign_contacts")

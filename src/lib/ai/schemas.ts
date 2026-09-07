@@ -17,6 +17,10 @@ export const TASK_TYPES = [
   "agent_decision",
   "search_planning",
   "research_summary",
+  // Copilot's tool-calling turn. Unlike every other task here it has no fixed
+  // response schema: a turn either asks for a tool or answers in prose, and the
+  // loop in `copilot/loop.ts` — not a schema — decides which happened.
+  "copilot_turn",
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -124,6 +128,10 @@ export const researchSummarySchema = z.object({
 export type ResearchSummaryResult = z.infer<typeof researchSummarySchema>;
 
 export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
+  // Present so the map stays exhaustive. `copilot_turn` never reaches
+  // `runTask`, which is the only thing that reads this — the tool loop calls
+  // the transport directly because its output is not one JSON object.
+  copilot_turn: z.unknown(),
   intent_classification: leadIntentSchema,
   answer_extraction: qualificationExtractionSchema,
   reply_generation: replyPlanSchema,

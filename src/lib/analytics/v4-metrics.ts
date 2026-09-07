@@ -47,6 +47,49 @@ export function rate(numerator: number, denominator: number): number | null {
   return numerator / denominator;
 }
 
+/* ------------------------------------------------------ engagement rates --- */
+
+/**
+ * Engagement counted in **people**, not messages.
+ *
+ * Lives here, beside `rate()` and the metric registry, because it is pure: the
+ * arithmetic of "how many of the people we contacted answered" has no I/O in
+ * it, and keeping it out of the `server-only` query module is what lets it be
+ * unit-tested. `analytics/engagement.ts` is the shell that fills these numbers
+ * in from the database.
+ */
+export type EngagementTotals = {
+  /** Distinct people this workspace actually messaged in the window. */
+  contacted: number;
+  /** Of those, how many sent at least one inbound message back. */
+  replied: number;
+  /** Replies a classifier judged interested or meaningfully engaged. */
+  positive: number;
+  /** People who opted out in the window. */
+  optedOut: number;
+};
+
+export type EngagementRates = EngagementTotals & {
+  /** replied / contacted — null when nothing was sent. */
+  replyRate: number | null;
+  /** positive / replied — null when nothing replied. */
+  positiveReplyRate: number | null;
+  /** optedOut / contacted — null when nothing was sent. */
+  optOutRate: number | null;
+};
+
+export function withRates(totals: EngagementTotals): EngagementRates {
+  return {
+    ...totals,
+    replyRate: rate(totals.replied, totals.contacted),
+    // Deliberately *of replies*, not of contacts. "Half our replies were
+    // positive" and "half the people we contacted replied positively" are
+    // different claims, and the second one flatters.
+    positiveReplyRate: rate(totals.positive, totals.replied),
+    optOutRate: rate(totals.optedOut, totals.contacted),
+  };
+}
+
 /** Period-over-period change. Null when the baseline is empty, for the same
  *  reason: growth from zero is not "+100%", it is undefined. */
 export function delta(current: number, previous: number): number | null {
@@ -154,6 +197,16 @@ export const METRICS: Record<string, MetricDefinition> = {
     label: "Positive reply rate",
     definition:
       "Replies classified as positive interest or a meaningful question, divided by all replies.",
+    format: "percent",
+    higherIsBetter: true,
+  },
+  replies_per_delivered: {
+    key: "replies_per_delivered",
+    label: "Replies per delivered",
+    definition:
+      "Inbound messages on this channel divided by outbound messages delivered on it. " +
+      "A message-level ratio, deliberately named apart from Reply rate, which counts " +
+      "contacts: one person replying four times moves this and not that.",
     format: "percent",
     higherIsBetter: true,
   },

@@ -94,8 +94,22 @@
   /* --- semantic text --- */
   --lr-text: var(--lr-neutral-900);
   --lr-text-secondary: var(--lr-neutral-600);
-  --lr-text-muted: var(--lr-neutral-500);
-  --lr-text-subtle: var(--lr-neutral-400);
+  /* Deliberately NOT neutral-500/400.
+     Those steps are tuned for borders, dividers and decorative glyphs, where
+     3:1 is the bar. As *text* they measured 4.37:1 and 2.44:1 on white, and
+     worse on surface-sunken -- so every muted label, KPI caption, hint and
+     placeholder in the product failed WCAG 2.2 SC 1.4.3, `text-content-subtle`
+     across roughly 280 text usages. These two values are the same hue and
+     saturation walked down in lightness only, until each clears 4.5:1 against
+     the *worst* ground it is ever painted on (surface-sunken #f1f5f9), so the
+     ramp still reads as three distinct greys:
+
+       secondary 6.91 : 1   muted 5.74 : 1   subtle 4.98 : 1   (on white)
+
+     The neutral ramp itself is untouched, so anything using neutral-400/500
+     for a border or a decorative icon is unaffected. */
+  --lr-text-muted: #5b6779;
+  --lr-text-subtle: #607188;
   --lr-text-inverse: var(--lr-neutral-0);
   --lr-text-accent: var(--lr-accent-700);
 

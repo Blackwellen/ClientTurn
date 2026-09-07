@@ -7,6 +7,7 @@ import {
   isPermanentOutcome,
   type OutboundMessageRecord,
   type SendGuardSnapshot,
+  type PolicyGate,
   type SendOutcome,
   type SendStore,
 } from "../src/lib/jobs/send-core.ts";
@@ -263,21 +264,26 @@ type Calls = {
   markedSent: number;
   markedFailed: { terminal: boolean }[];
   aborted: string[];
+  blocked: string[];
   rescheduled: Date[];
   metered: number;
+  policyChecks: number;
 };
 
 function fakeStore(
   message: OutboundMessageRecord,
   guard: SendGuardSnapshot = snapshot(),
+  gate: PolicyGate = { action: "allow" },
 ): SendStore & { calls: Calls; record: OutboundMessageRecord } {
   const record = { ...message };
   const calls: Calls = {
     markedSent: 0,
     markedFailed: [],
     aborted: [],
+    blocked: [],
     rescheduled: [],
     metered: 0,
+    policyChecks: 0,
   };
 
   return {
@@ -288,6 +294,14 @@ function fakeStore(
     },
     async snapshot() {
       return guard;
+    },
+    async policy() {
+      calls.policyChecks += 1;
+      return gate;
+    },
+    async blockedByPolicy(_message, blockedGate) {
+      record.status = "FAILED";
+      calls.blocked.push(blockedGate.reasonCode);
     },
     async markSent() {
       // Mirrors the real store: the row leaves QUEUED before the call returns.
@@ -498,5 +512,126 @@ describe("retry classification", () => {
     const outcome: SendOutcome = { outcome: "aborted", reason: "opted_out" };
     assert.equal(shouldRetrySend(outcome), false);
     assert.equal(isPermanentOutcome(outcome), false);
+  });
+});
+
+/* --------------------------------------------------- contactability gate --- */
+
+describe("the contactability gate", () => {
+  test("a permitted contact reaches the provider", async () => {
+    const provider = fakeProvider();
+    const store = fakeStore(QUEUED, snapshot(), { action: "allow" });
+
+    const outcome = await performSend({
+      store,
+      provider,
+      messageId: QUEUED.id,
+      now: MIDDAY,
+    });
+
+    assert.equal(outcome.outcome, "sent");
+    assert.equal(store.calls.policyChecks, 1);
+    assert.equal(provider.requests.length, 1);
+  });
+
+  test("a policy refusal stops the send and never reaches the provider", async () => {
+    const provider = fakeProvider();
+    const store = fakeStore(QUEUED, snapshot(), {
+      action: "block",
+      reasonCode: "BLOCKED_NO_PERMISSION",
+      message: "No recorded relationship.",
+    });
+
+    const outcome = await performSend({
+      store,
+      provider,
+      messageId: QUEUED.id,
+      now: MIDDAY,
+    });
+
+    assert.equal(outcome.outcome, "blocked");
+    assert.deepEqual(store.calls.blocked, ["BLOCKED_NO_PERMISSION"]);
+    assert.equal(provider.requests.length, 0);
+    assert.equal(store.calls.metered, 0);
+    assert.equal(store.record.status, "FAILED");
+  });
+
+  test("a policy refusal is settled, not retried", () => {
+    const outcome: SendOutcome = {
+      outcome: "blocked",
+      reasonCode: "BLOCKED_OPT_OUT",
+      message: "Opted out.",
+    };
+    assert.equal(shouldRetrySend(outcome), false);
+    assert.equal(isPermanentOutcome(outcome), true);
+  });
+
+  test("quiet hours in the policy pack reschedule rather than discard", async () => {
+    const provider = fakeProvider();
+    const reopensAt = new Date("2026-06-16T08:00:00.000Z");
+    const store = fakeStore(QUEUED, snapshot(), {
+      action: "defer",
+      at: reopensAt,
+      reasonCode: "BLOCKED_QUIET_HOURS",
+    });
+
+    const outcome = await performSend({
+      store,
+      provider,
+      messageId: QUEUED.id,
+      now: MIDDAY,
+    });
+
+    assert.equal(outcome.outcome, "rescheduled");
+    assert.deepEqual(store.calls.rescheduled, [reopensAt]);
+    assert.equal(provider.requests.length, 0);
+    // Still QUEUED: a deferred message is one we intend to send later.
+    assert.equal(store.record.status, "QUEUED");
+  });
+
+  test("a stopped conversation is never charged a policy lookup", async () => {
+    const provider = fakeProvider();
+    const store = fakeStore(
+      QUEUED,
+      snapshot({
+        lead: {
+          status: "CONTACTED",
+          optedOut: true,
+          humanTakeover: false,
+          automationActive: true,
+          hasReplied: false,
+        },
+      }),
+    );
+
+    const outcome = await performSend({
+      store,
+      provider,
+      messageId: QUEUED.id,
+      now: MIDDAY,
+    });
+
+    assert.equal(outcome.outcome, "aborted");
+    assert.equal(store.calls.policyChecks, 0);
+  });
+
+  test("a policy refusal cannot be reached twice for the same message", async () => {
+    const provider = fakeProvider();
+    const store = fakeStore(QUEUED, snapshot(), {
+      action: "block",
+      reasonCode: "BLOCKED_OPT_OUT",
+      message: "Opted out.",
+    });
+
+    await performSend({ store, provider, messageId: QUEUED.id, now: MIDDAY });
+    const second = await performSend({
+      store,
+      provider,
+      messageId: QUEUED.id,
+      now: MIDDAY,
+    });
+
+    assert.equal(second.outcome, "already_processed");
+    assert.equal(store.calls.blocked.length, 1);
   });
 });

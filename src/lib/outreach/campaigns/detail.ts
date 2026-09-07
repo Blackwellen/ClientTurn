@@ -411,7 +411,7 @@ async function buildAttentionItems(input: {
       title: "This campaign was paused automatically",
       detail: input.header.pauseReason,
       tone: "danger",
-      action: { label: "View", href: "/app/settings?view=connections" },
+      action: { label: "View", href: "/app/settings?section=connections" },
     });
   }
 

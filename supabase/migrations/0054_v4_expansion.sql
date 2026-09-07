@@ -94,6 +94,10 @@ create table if not exists public.copilot_sessions (
   updated_at timestamptz not null default now()
 );
 
+-- Guarded so the whole migration is re-runnable. Every other statement in this
+-- file already is; this one was the single exception, and a migration that
+-- cannot be safely retried is one nobody wants to run.
+drop trigger if exists copilot_sessions_set_updated_at on public.copilot_sessions;
 create trigger copilot_sessions_set_updated_at
   before update on public.copilot_sessions
   for each row execute function public.set_updated_at();

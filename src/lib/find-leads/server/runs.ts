@@ -213,18 +213,14 @@ export async function createRun(input: {
 
   await recordUsage({
     businessId: input.businessId,
-    metric: "ai_call",
-    quantity: 0,
-    source: "sourcing_run_created",
-    metadata: { runId: run.id },
-  });
-
-  await admin.from("usage_events").insert({
-    business_id: input.businessId,
     metric: "search_run",
     quantity: 1,
     source: "find_leads",
-    metadata: { runId: run.id } as never,
+    feature: "find_leads",
+    entity: { type: "sourcing_run", id: run.id },
+    // One run, one charge, however many times this path is retried.
+    operationId: `search_run:${run.id}`,
+    metadata: { runId: run.id },
   });
 
   await recordAudit({

@@ -11,6 +11,7 @@ import { WorkspaceSection } from "./_sections/workspace-section";
 import { ConnectionsSection } from "./_sections/connections-section";
 import { TeamSection } from "./_sections/team-section";
 import { BillingSection } from "./_sections/billing-section";
+import { DataControlsSection } from "./_sections/data-controls-section";
 import { BusinessProfileSectionLoader } from "./_sections/business-profile-section";
 
 export const metadata: Metadata = { title: "Settings · Client Turn" };
@@ -52,6 +53,7 @@ export default async function SettingsPage({
         {section === "connections" && <ConnectionsSection />}
         {section === "business-profile" && <BusinessProfileSectionLoader />}
         {section === "team" && <TeamSection />}
+        {section === "data-controls" && <DataControlsSection />}
         {section === "billing" && <BillingSection />}
       </React.Suspense>
     </div>

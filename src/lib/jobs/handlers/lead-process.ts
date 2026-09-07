@@ -8,6 +8,8 @@ import {
   EntitlementError,
 } from "@/lib/billing/entitlements";
 import { normalisePhone } from "@/lib/messaging/types";
+import { recordPermission } from "@/lib/policy/service";
+import type { RelationshipType } from "@/lib/policy/types";
 import {
   conversationFor,
   flagForAttention,
@@ -101,6 +103,75 @@ async function resolveService(
   return rows.length === 1 ? rows[0].id : null;
 }
 
+/**
+ * The relationship each inbound source actually establishes.
+ *
+ * Someone who completed a Meta lead form or a form on the website *did* contact
+ * the business — that is what the form is — so recording it is a statement of
+ * fact, not a convenience. `csv` and `manual` are absent deliberately: the
+ * import flow and the Add Lead wizard ask a person to classify the relationship
+ * and record their answer, and guessing here would overwrite a considered
+ * answer with an assumed one.
+ */
+const SOURCE_RELATIONSHIP: Record<string, RelationshipType> = {
+  meta: "THEY_CONTACTED_US",
+  webform: "THEY_CONTACTED_US",
+  // A test lead has to travel the same road as a real one, or the test proves
+  // nothing about what happens in production.
+  test: "THEY_CONTACTED_US",
+};
+
+/**
+ * Records how this lead came to the business, once, if nothing has recorded it
+ * already.
+ *
+ * This is what lets the contactability engine permit follow-up at all: the warm
+ * rule set in every seeded pack requires a relationship, and a lead with none
+ * is refused at send time and handed to a human. It never overwrites an
+ * existing record — a permission captured by a person, with evidence, outranks
+ * anything inferred from a form submission.
+ */
+async function providerForSource(sourceId: string | null): Promise<string | null> {
+  if (!sourceId) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("lead_sources")
+    .select("provider")
+    .eq("id", sourceId)
+    .maybeSingle();
+  return data?.provider ?? null;
+}
+
+async function recordArrivalPermission(
+  businessId: string,
+  lead: LeadRecord,
+  provider: string | null,
+): Promise<void> {
+  const relationship = provider ? SOURCE_RELATIONSHIP[provider] : undefined;
+  if (!relationship) return;
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("contact_permissions")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("subject_type", "LEAD")
+    .eq("subject_id", lead.id)
+    .maybeSingle();
+
+  if (existing) return;
+
+  await recordPermission({
+    businessId,
+    subject: { type: "LEAD", id: lead.id },
+    relationshipType: relationship,
+    relationshipDetail: `Submitted an enquiry via ${provider}`,
+    consentSource: `lead_source:${provider}`,
+    email: lead.email,
+    phone: lead.phone_normalized ?? lead.phone,
+  });
+}
+
 async function alreadyMetered(businessId: string, leadId: string) {
   const admin = createAdminClient();
   const { data } = await admin
@@ -184,6 +255,16 @@ export async function handleLeadProcess(job: ClaimedJob) {
 
   const lead = (await loadLead(initial.id)) ?? initial;
   const contact = leadContact(lead);
+
+  // How this lead arrived is a compliance fact, and the send-time policy gate
+  // needs it recorded before the first follow-up is attempted. Prefer the
+  // payload's provider; fall back to the stored source for a lead that was
+  // already attributed on a previous pass.
+  await recordArrivalPermission(
+    business.businessId,
+    lead,
+    payload.source?.provider ?? (await providerForSource(lead.source_id)),
+  );
 
   if (contact && !lead.opted_out) {
     // A number suppressed before this lead arrived must never be contacted.

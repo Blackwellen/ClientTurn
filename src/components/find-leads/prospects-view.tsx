@@ -133,49 +133,48 @@ export function ProspectsView({
     {
       key: "prospect",
       header: "Prospect",
-      width: "minmax(220px, 2fr)",
       render: (row) => <ProspectIdentityCell row={row} />,
     },
     {
       key: "fit",
       header: <HeaderWithHelp label="Fit" help="A deterministic 0-100 score against your ideal customer profile. Click a grade to see exactly how it was calculated." />,
-      width: "130px",
+      width: "122px",
       render: (row) => <ProspectFitCell row={row} onOpenScore={openScore} />,
     },
     {
       key: "intent",
       header: <HeaderWithHelp label="Intent" help="The strongest buying signal still inside its freshness window. Expired signals are not counted." />,
-      width: "150px",
+      width: "128px",
       render: (row) => <ProspectIntentCell row={row} />,
     },
-    { key: "role", header: "Role", width: "140px", render: (row) => <ProspectRoleCell row={row} /> },
-    { key: "location", header: "Location", width: "115px", render: (row) => <ProspectLocationCell row={row} /> },
+    { key: "role", header: "Role", width: "136px", render: (row) => <ProspectRoleCell row={row} /> },
+    { key: "location", header: "Location", width: "100px", render: (row) => <ProspectLocationCell row={row} /> },
     {
       key: "verification",
       header: <HeaderWithHelp label="Verification" help="Whether the email address itself was confirmed by a verification provider." />,
-      width: "115px",
+      width: "106px",
       render: (row) => <ProspectVerificationCell row={row} />,
     },
     {
       key: "eligibility",
       header: <HeaderWithHelp label="Eligibility" help="Whether this person may lawfully be contacted. Independent of the score — a high-scoring prospect can still be suppressed." />,
-      width: "135px",
+      width: "126px",
       render: (row) => <ProspectEligibilityCell row={row} />,
     },
     { key: "campaign", header: "Campaign", width: "140px", render: (row) => <ProspectCampaignCell row={row} /> },
     {
       key: "status",
       header: <HeaderWithHelp label="Outreach" help="Where this prospect has reached in the outreach lifecycle." />,
-      width: "115px",
+      width: "106px",
       render: (row) => <ProspectStatusCell row={row} />,
     },
     {
       key: "activity",
       header: "Last activity",
-      width: "150px",
+      width: "138px",
       render: (row) => <ProspectActivityCell row={row} />,
     },
-    { key: "open", header: "", width: "80px", align: "right", render: () => <ProspectOpenCell /> },
+    { key: "open", header: "", width: "58px", align: "right", render: () => <ProspectOpenCell /> },
   ];
 
   return (
@@ -242,45 +241,64 @@ export function ProspectsView({
             }
           />
         </div>
-      ) : mode === "list" ? (
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          onRowClick={(row) => params.openProspect(row.id)}
-          selectedKeys={canManage ? selected : undefined}
-          onSelectionChange={canManage ? setSelected : undefined}
-          page={filters.page}
-          pageSize={filters.pageSize}
-          total={total}
-          onPageChange={params.setPage}
-          onPageSizeChange={(size) => params.setParam("size", String(size))}
-          paginationNoun="prospects"
-          pageSizeOptions={PAGE_SIZES}
-          stickyHeader
-        />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {rows.map((row) => (
-              <ProspectCard
-                key={row.id}
-                row={row}
-                onOpen={() => params.openProspect(row.id)}
+          {/*
+            The eleven-column table is only honest above `xl`. Below it the
+            declared widths cannot all fit, and a fixed-layout table that does
+            not fit does not wrap — it truncates every cell until the row says
+            nothing. So the table is hidden there and the cards take over,
+            whichever mode is selected.
+
+            Done in CSS rather than with a media-query hook so the server and
+            the first client render agree: a JS breakpoint would flash the
+            wrong shape on load, which is the problem `viewMode` exists to
+            avoid.
+          */}
+          {mode === "list" && (
+            <div className="hidden xl:block">
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.id}
+                onRowClick={(row) => params.openProspect(row.id)}
+                selectedKeys={canManage ? selected : undefined}
+                onSelectionChange={canManage ? setSelected : undefined}
+                page={filters.page}
+                pageSize={filters.pageSize}
+                total={total}
+                onPageChange={params.setPage}
+                onPageSizeChange={(size) => params.setParam("size", String(size))}
+                fixedLayout
+                paginationNoun="prospects"
+                pageSizeOptions={PAGE_SIZES}
+                stickyHeader
               />
-            ))}
-          </div>
-          <div className="rounded-xl border border-line bg-surface">
-            <Pagination
-              page={filters.page}
-              pageSize={filters.pageSize}
-              total={total}
-              noun="prospects"
-              pageSizeOptions={PAGE_SIZES}
-              onPageChange={params.setPage}
-              onPageSizeChange={(size) => params.setParam("size", String(size))}
-              className="border-t-0"
-            />
+            </div>
+          )}
+
+          <div className={mode === "list" ? "space-y-4 xl:hidden" : "space-y-4"}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {rows.map((row) => (
+                <ProspectCard
+                  key={row.id}
+                  row={row}
+                  onOpen={() => params.openProspect(row.id)}
+                />
+              ))}
+            </div>
+            <div className="rounded-xl border border-line bg-surface">
+              <Pagination
+                page={filters.page}
+                pageSize={filters.pageSize}
+                total={total}
+                noun="prospects"
+                pageSizeOptions={PAGE_SIZES}
+                onPageChange={params.setPage}
+                onPageSizeChange={(size) => params.setParam("size", String(size))}
+                className="border-t-0"
+              />
+            </div>
           </div>
         </>
       )}

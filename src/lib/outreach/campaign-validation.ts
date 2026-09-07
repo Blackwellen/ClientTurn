@@ -100,7 +100,7 @@ const HEALTH_WARNING = new Set(["WARNING", "WATCH"]);
 
 function senderCheck(draft: CampaignDraft, facts: LaunchFacts): LaunchCheck {
   const base = { key: "SENDER_HEALTH" as const, label: LAUNCH_CHECK_LABELS.SENDER_HEALTH };
-  const connections = { label: "Open Connections", href: "/app/settings?view=connections" };
+  const connections = { label: "Open Connections", href: "/app/settings?section=connections" };
   const sender = facts.sender;
 
   if (!draft.outreach.senderIdentityId || !sender || !sender.exists) {
@@ -157,7 +157,7 @@ function senderCheck(draft: CampaignDraft, facts: LaunchFacts): LaunchCheck {
 
 function planCheck(draft: CampaignDraft, facts: LaunchFacts): LaunchCheck {
   const base = { key: "PLAN_ENTITLEMENTS" as const, label: LAUNCH_CHECK_LABELS.PLAN_ENTITLEMENTS };
-  const billing = { label: "See plans", href: "/app/settings?view=billing" };
+  const billing = { label: "See plans", href: "/app/settings?section=billing" };
 
   if (!facts.plan.active) {
     return { ...base, state: "BLOCK", detail: "No active subscription", fix: billing };

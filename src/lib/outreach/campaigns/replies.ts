@@ -245,7 +245,27 @@ export async function promoteCampaignProspect(
     p_user_id: null as unknown as string,
   });
 
-  if (error || !leadId) return null;
+  if (error || !leadId) {
+    // A refusal here is a business rule (suppressed, or not yet engaged) and is
+    // expected. Anything else is a fault that would otherwise be invisible:
+    // the reply is processed, the sequence stops, and no lead is ever created.
+    const raised = error?.message ?? "";
+    const expected =
+      raised.includes("Suppressed prospects cannot be promoted") ||
+      raised.includes("Record engagement before promoting") ||
+      raised.includes("Prospect not found");
+
+    if (!expected) {
+      console.error("promote_reviewed_prospect failed on reply", {
+        businessId,
+        prospectId,
+        trigger,
+        code: error?.code,
+        message: error?.message,
+      });
+    }
+    return null;
+  }
 
   await recordAudit({
     businessId,

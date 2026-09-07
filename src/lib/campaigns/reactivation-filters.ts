@@ -15,6 +15,7 @@ import {
   type CampaignStatus,
 } from "./types.ts";
 import type { ReactivationCampaignRow } from "./reactivation-types.ts";
+import { rate } from "../analytics/v4-metrics.ts";
 
 export const REACTIVATION_VIEWS = ["cards", "list"] as const;
 export type ReactivationView = (typeof REACTIVATION_VIEWS)[number];
@@ -239,8 +240,17 @@ export function filterCampaignRows(
   });
 }
 
+/**
+ * Sort key for "best converting first".
+ *
+ * `rate()` is the one ratio rule, and it returns null for a campaign that has
+ * sent nothing. A comparator cannot order null, so it is mapped to -1 here —
+ * below every real rate, so unsent campaigns sort last rather than tying with
+ * genuine zero-conversion ones. The distinction only exists in the sort; the
+ * cards themselves render "—" for the same campaigns.
+ */
 function conversion(row: ReactivationCampaignRow) {
-  return row.sent === 0 ? 0 : row.booked / row.sent;
+  return rate(row.booked, row.sent) ?? -1;
 }
 
 export function sortCampaignRows(

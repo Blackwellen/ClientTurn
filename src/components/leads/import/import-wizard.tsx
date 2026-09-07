@@ -18,9 +18,16 @@ import {
   type ImportField,
   type ParsedRow,
   type RowVerdict,
+  type ValidationFlag,
 } from "@/lib/imports/classify";
 import { relationshipLabel, type RelationshipType } from "@/lib/policy/types";
-import { commitImport, createImport } from "@/lib/imports/actions";
+import {
+  commitImport,
+  createImport,
+  getImportReview,
+  setRowClassification,
+  type ImportReview,
+} from "@/lib/imports/actions";
 
 /**
  * The lead import wizard (V4 §7).
@@ -107,6 +114,17 @@ export function ImportWizard() {
   const [relationship, setRelationship] = React.useState<RelationshipType | null>(null);
   const [sourceDetail, setSourceDetail] = React.useState("");
   const [startFollowUp, setStartFollowUp] = React.useState(false);
+  /**
+   * The staged import.
+   *
+   * Set once `createImport` has written the rows and the server has classified
+   * them against live suppression and duplicate state. Until then the review
+   * step shows the browser-side preview, which cannot see any of that.
+   */
+  const [staged, setStaged] = React.useState<{
+    importId: string;
+    review: ImportReview;
+  } | null>(null);
 
   function onFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -181,7 +199,16 @@ export function ImportWizard() {
     [preview],
   );
 
-  function submit() {
+  /**
+   * Phase one: write the rows and let the server classify them.
+   *
+   * Staging and committing used to be one click, which meant the REVIEW
+   * classification — and the per-row override built for it — could never be
+   * acted on. Whether a row enters the workspace as a lead or as a cold
+   * prospect is a lawful-basis decision; a classifier that is unsure has to be
+   * able to ask.
+   */
+  function stage() {
     startTransition(async () => {
       const created = await createImport({
         filename,
@@ -198,15 +225,77 @@ export function ImportWizard() {
         return;
       }
 
-      const committed = await commitImport(created.data!.id);
+      const review = await getImportReview(created.data!.id);
+      if (!review.ok) {
+        setError(review.error);
+        return;
+      }
+
+      setError("");
+      setStaged({ importId: created.data!.id, review: review.data! });
+    });
+  }
+
+  /** Phase two: write the decided rows. */
+  function commit() {
+    if (!staged) return;
+    startTransition(async () => {
+      const committed = await commitImport(staged.importId);
       if (!committed.ok) {
         setError(committed.error);
         return;
       }
-
       router.push("/app/leads");
     });
   }
+
+  /**
+   * Optimistic, because the alternative is a list that jumps under the cursor
+   * while someone works through forty decisions. A failure re-reads the server
+   * rather than guessing, so the list cannot drift away from what will import.
+   */
+  function decide(
+    rowId: string,
+    classification: "IMPORT_AS_LEAD" | "IMPORT_AS_PROSPECT" | "SKIP",
+  ) {
+    setStaged((current) =>
+      current
+        ? {
+            ...current,
+            review: {
+              ...current.review,
+              rows: current.review.rows.map((row) =>
+                row.id === rowId ? { ...row, userClassification: classification } : row,
+              ),
+            },
+          }
+        : current,
+    );
+
+    startTransition(async () => {
+      const result = await setRowClassification(rowId, classification);
+      if (result.ok || !staged) return;
+
+      setError(result.error);
+      const review = await getImportReview(staged.importId);
+      if (review.ok) setStaged({ importId: staged.importId, review: review.data! });
+    });
+  }
+
+  /** Rows the operator has decided, plus the confident ones the server decided. */
+  const decidedForImport = staged
+    ? staged.review.counts.IMPORT_AS_LEAD +
+      staged.review.counts.IMPORT_AS_PROSPECT +
+      staged.review.rows.filter(
+        (row) =>
+          row.userClassification === "IMPORT_AS_LEAD" ||
+          row.userClassification === "IMPORT_AS_PROSPECT",
+      ).length
+    : 0;
+
+  const undecided = staged
+    ? staged.review.rows.filter((row) => row.userClassification === null).length
+    : 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -366,7 +455,130 @@ export function ImportWizard() {
         </Panel>
       )}
 
-      {step === 3 && (
+      {step === 3 && staged && (
+        <Panel
+          title="Decide the rows we are unsure about"
+          description={
+            staged.review.counts.REVIEW === 0
+              ? "Nothing needs a decision. Every row was classified against your live workspace."
+              : `${staged.review.counts.REVIEW.toLocaleString("en-GB")} of ${staged.review.totalRows.toLocaleString("en-GB")} rows need a decision.`
+          }
+        >
+          <div className="mb-4 grid gap-3 sm:grid-cols-4">
+            {(
+              ["IMPORT_AS_LEAD", "IMPORT_AS_PROSPECT", "REVIEW", "SKIP"] as const
+            ).map((key) => (
+              <div key={key} className="rounded-lg border border-line bg-surface p-3">
+                <p className="text-[19px] font-semibold tabular-nums text-content">
+                  {staged.review.counts[key]}
+                </p>
+                <p className="mt-0.5 text-[11.5px] text-content-muted">
+                  {CLASSIFICATION_LABELS[key]}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {staged.review.rows.length > 0 && (
+            <div className="max-h-96 overflow-y-auto rounded-lg border border-line">
+              <table className="w-full text-left">
+                <thead className="sticky top-0 bg-surface">
+                  <tr className="border-b border-line text-[11px] uppercase tracking-wide text-content-muted">
+                    <th className="px-3 py-2 font-medium">Row</th>
+                    <th className="px-3 py-2 font-medium">Why we are unsure</th>
+                    <th className="px-3 py-2 font-medium">Your decision</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line-subtle">
+                  {staged.review.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-3 py-2 align-top">
+                        <p className="text-[12.5px] text-content">{row.name}</p>
+                        {row.email && (
+                          <p className="text-[11px] text-content-subtle">{row.email}</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <p className="text-[11.5px] text-content-muted">
+                          {row.classificationReason ?? "No reason recorded."}
+                        </p>
+                        {row.flags.length > 0 && (
+                          <p className="mt-0.5 text-[11px] text-content-subtle">
+                            {row.flags
+                              .map((flag) => flagSentence(flag as ValidationFlag))
+                              .join(" · ")}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <div
+                          role="group"
+                          aria-label={`Decision for ${row.name}`}
+                          className="flex flex-wrap gap-1"
+                        >
+                          {(
+                            [
+                              ["IMPORT_AS_LEAD", "Lead"],
+                              ["IMPORT_AS_PROSPECT", "Prospect"],
+                              ["SKIP", "Skip"],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              aria-pressed={row.userClassification === value}
+                              onClick={() => decide(row.id, value)}
+                              className={cn(
+                                "rounded-md border px-2 py-1 text-[11.5px] font-medium",
+                                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
+                                row.userClassification === value
+                                  ? "border-content-accent bg-surface-sunken text-content"
+                                  : "border-line-strong text-content-muted hover:text-content",
+                              )}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {staged.review.truncated && (
+            <p className="mt-3 text-[11.5px] text-content-subtle">
+              Showing the first {staged.review.rows.length} rows that need a decision.
+              Import these and re-upload the rest, or refine the column mapping so
+              fewer rows are ambiguous.
+            </p>
+          )}
+
+          {undecided > 0 && (
+            <p className="mt-4 flex gap-3 rounded-lg border border-warning-200 bg-warning-50 p-3.5 text-[12px] text-content-secondary">
+              <ShieldCheck className="size-4 shrink-0 text-warning-600" aria-hidden />
+              <span>
+                {undecided} row{undecided === 1 ? " is" : "s are"} still undecided and
+                will not be imported. Leaving a row undecided is a valid choice — it is
+                the safe one.
+              </span>
+            </p>
+          )}
+
+          <p className="mt-4 flex gap-3 rounded-lg border border-line bg-surface-sunken/50 p-3.5 text-[12px] text-content-secondary">
+            <ShieldCheck className="size-4 shrink-0 text-content-accent" aria-hidden />
+            <span>
+              These figures come from the server, checked against your live workspace.
+              Suppression is checked once more at the moment of import, so a contact who
+              opts out between now and then is still not written.
+            </span>
+          </p>
+        </Panel>
+      )}
+
+      {step === 3 && !staged && (
         <Panel
           title="Review"
           description={`Showing the first ${preview.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} rows.`}
@@ -451,7 +663,16 @@ export function ImportWizard() {
             Cancel
           </Button>
         ) : (
-          <Button variant="secondary" onClick={() => setStep(step - 1)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              // Stepping back off a staged review discards it: the rows are
+              // re-derived on the next stage, so a changed mapping or
+              // relationship cannot be committed against stale classifications.
+              if (staged) setStaged(null);
+              else setStep(step - 1);
+            }}
+          >
             Back
           </Button>
         )}
@@ -481,10 +702,14 @@ export function ImportWizard() {
             Continue
             <ArrowRight className="size-4" aria-hidden />
           </Button>
+        ) : !staged ? (
+          <Button loading={pending} onClick={stage}>
+            Check against your workspace
+            <ArrowRight className="size-4" aria-hidden />
+          </Button>
         ) : (
-          <Button loading={pending} onClick={submit}>
-            Import {summary.IMPORT_AS_LEAD + summary.IMPORT_AS_PROSPECT} record
-            {summary.IMPORT_AS_LEAD + summary.IMPORT_AS_PROSPECT === 1 ? "" : "s"}
+          <Button loading={pending} onClick={commit} disabled={decidedForImport === 0}>
+            Import {decidedForImport} record{decidedForImport === 1 ? "" : "s"}
           </Button>
         )}
       </div>

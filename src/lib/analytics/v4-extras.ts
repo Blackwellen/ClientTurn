@@ -136,7 +136,8 @@ export type ChannelRow = {
   replies: number;
   optOuts: number;
   deliveryRate: number | null;
-  replyRate: number | null;
+  /** Message-level. See METRICS.replies_per_delivered for why it is not "reply rate". */
+  repliesPerDelivered: number | null;
 };
 
 /**
@@ -190,8 +191,12 @@ export async function getChannelPerformance(
         delivered: delivered.count ?? 0,
         replies: replies.count ?? 0,
         optOuts: optOuts.count ?? 0,
+        // Delivery is measured against everything attempted; replies against
+        // what actually arrived. A message that failed was never delivered and
+        // could not have been replied to, so counting it in the denominator
+        // only depresses the number.
         deliveryRate: rate(delivered.count ?? 0, sentCount),
-        replyRate: rate(replies.count ?? 0, sentCount),
+        repliesPerDelivered: rate(replies.count ?? 0, delivered.count ?? 0),
       };
     }),
   );
@@ -410,12 +415,14 @@ export function deriveInsights(input: {
   }
 
   const ranked = [...input.channels]
-    .filter((row) => row.replyRate !== null && row.sent >= 20)
-    .sort((a, b) => (b.replyRate ?? 0) - (a.replyRate ?? 0));
+    .filter((row) => row.repliesPerDelivered !== null && row.sent >= 20)
+    .sort((a, b) => (b.repliesPerDelivered ?? 0) - (a.repliesPerDelivered ?? 0));
 
   if (ranked.length >= 2) {
     const [best, next] = ranked;
-    const lift = ((best.replyRate ?? 0) - (next.replyRate ?? 0)) / (next.replyRate || 1);
+    const lift =
+      ((best.repliesPerDelivered ?? 0) - (next.repliesPerDelivered ?? 0)) /
+      (next.repliesPerDelivered || 1);
     if (lift >= 0.1) {
       out.push({
         key: "best_channel",

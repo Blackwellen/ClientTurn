@@ -45,10 +45,14 @@ export function CopilotActions({ sessionId }: { sessionId: string | null }) {
     }
   }
 
-  /** A tool that needs an object id cannot be run from a bare list. */
+  /**
+   * A tool that acts on one record cannot be run from a bare list with no
+   * argument. Read from the declaration rather than from a list of names kept
+   * here: the catalogue is now partly derived from the service registry, and a
+   * hardcoded exception list would silently fall out of step with it.
+   */
   const runnable = (tool: ToolDeclaration) =>
-    tool.kind === "READ" &&
-    !["getLead", "getCampaign"].includes(tool.name);
+    tool.kind === "READ" && !tool.needsObject && tool.name !== "getCampaign";
 
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">

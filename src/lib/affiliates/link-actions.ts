@@ -9,7 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import { getAffiliateAccount } from "./portal";
 import { markNotificationsRead } from "./notifications";
-import { isValidSlug, randomSuffix } from "./types";
+import { randomSuffix } from "./types";
 
 /**
  * Promo codes and resource shortlists (V4 §31, §33).
@@ -292,15 +292,3 @@ export async function markAffiliateNotificationsRead(): Promise<LinkActionResult
 
 /* --------------------------------------------------------------- exports -- */
 
-/** Re-exported for the links page, which validates a slug before submitting. */
-export async function checkSlugAvailable(slug: string): Promise<boolean> {
-  if (!isValidSlug(slug)) return false;
-
-  const { data } = await createAdminClient()
-    .from("affiliate_links")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  return !data;
-}

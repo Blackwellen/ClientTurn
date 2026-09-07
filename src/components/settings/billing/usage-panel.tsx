@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { cn } from "@/lib/cn";
+import { formatMetric } from "@/lib/analytics/v4-metrics";
 import {
   saveAllocation,
   saveDailyCaps,
@@ -436,7 +437,7 @@ export function UsagePanel({
                     <th scope="col" className="pb-1.5 font-medium">Channel</th>
                     <th scope="col" className="pb-1.5 text-right font-medium">Sent</th>
                     <th scope="col" className="pb-1.5 text-right font-medium">Delivery</th>
-                    <th scope="col" className="pb-1.5 text-right font-medium">Reply</th>
+                    <th scope="col" className="pb-1.5 text-right font-medium">Replies</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line-subtle">
@@ -449,14 +450,10 @@ export function UsagePanel({
                         {row.sent.toLocaleString("en-GB")}
                       </td>
                       <td className="lr-tabular py-2 text-right text-content-secondary">
-                        {row.deliveryRate === null
-                          ? "—"
-                          : `${(row.deliveryRate * 100).toFixed(1)}%`}
+                        {formatMetric(row.deliveryRate, "percent")}
                       </td>
                       <td className="lr-tabular py-2 text-right text-content-secondary">
-                        {row.replyRate === null
-                          ? "—"
-                          : `${(row.replyRate * 100).toFixed(1)}%`}
+                        {formatMetric(row.repliesPerDelivered, "percent")}
                       </td>
                     </tr>
                   ))}

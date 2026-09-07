@@ -38,9 +38,19 @@ describe("settings sections", () => {
   // still asserted exactly: Settings is one route, and the rail order is part
   // of the IA rather than an implementation detail.
   test("the sections are the documented set, in order", () => {
+    // Data Controls sits before Billing deliberately: it is where a workspace
+    // states its compliance position, and someone setting up outreach should
+    // meet it on the way through rather than after they have started paying.
     assert.deepEqual(
       SETTINGS_SECTIONS.map((section) => section.id),
-      ["workspace", "connections", "business-profile", "team", "billing"],
+      [
+        "workspace",
+        "connections",
+        "business-profile",
+        "team",
+        "data-controls",
+        "billing",
+      ],
     );
   });
 

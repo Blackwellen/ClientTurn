@@ -180,7 +180,7 @@ export function BudgetStep({
                 Additional usage is switched off for this account, so this cannot be enabled
                 here.{" "}
                 <Link
-                  href="/app/settings?view=billing"
+                  href="/app/settings?section=billing"
                   className="font-medium underline underline-offset-2"
                 >
                   Billing &amp; Usage

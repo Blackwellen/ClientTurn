@@ -20,6 +20,7 @@ import {
   uninstallWorkspaceApp,
   type AppInstall,
 } from "@/lib/integrations/app-actions";
+import { ConnectorOperations } from "./connector-operations";
 
 /**
  * Settings → Connections.
@@ -276,6 +277,14 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
                 )}
               </dl>
             </div>
+          )}
+
+          {current && (
+            <ConnectorOperations
+              installId={current.id}
+              authMethod={current.authMethod}
+              canManage={canManage}
+            />
           )}
 
           <fieldset>

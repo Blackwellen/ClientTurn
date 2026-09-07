@@ -34,6 +34,11 @@ export const SETTINGS_SECTIONS = [
   },
   { id: "team", label: "Team", description: "Manage your team" },
   {
+    id: "data-controls",
+    label: "Data Controls",
+    description: "Compliance, sources and retention",
+  },
+  {
     id: "billing",
     label: "Billing & Usage",
     description: "Plan, usage and invoices",

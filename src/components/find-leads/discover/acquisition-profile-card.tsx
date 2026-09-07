@@ -262,7 +262,7 @@ function ProfileSummaryCard({
         </div>
         {canManage ? (
           <Link
-            href="/app/settings?view=workspace"
+            href="/app/settings?section=workspace"
             className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-7 shrink-0 items-center rounded-sm border px-2.5 text-xs font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             Edit

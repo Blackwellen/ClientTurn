@@ -1,4 +1,5 @@
 import "server-only";
+import { rate } from "@/lib/analytics/v4-metrics";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { loadSenderHealth } from "@/lib/outreach/campaigns/sender";
@@ -33,7 +34,8 @@ export type ChannelUsage = {
   delivered: number;
   replies: number;
   deliveryRate: number | null;
-  replyRate: number | null;
+  /** Message-level. See METRICS.replies_per_delivered — not the contact-level reply rate. */
+  repliesPerDelivered: number | null;
 };
 
 export type UsageMonth = {
@@ -223,8 +225,10 @@ async function getChannelUsage(
         replies: replies.count ?? 0,
         // Null, not zero: "0% delivery" on a channel nothing was sent through
         // reads as failure rather than as absence.
-        deliveryRate: sentCount > 0 ? (delivered.count ?? 0) / sentCount : null,
-        replyRate: sentCount > 0 ? (replies.count ?? 0) / sentCount : null,
+        // The one ratio rule, shared with Analytics. Delivery is measured
+        // against everything attempted; replies against what arrived.
+        deliveryRate: rate(delivered.count ?? 0, sentCount),
+        repliesPerDelivered: rate(replies.count ?? 0, delivered.count ?? 0),
       };
     }),
   );

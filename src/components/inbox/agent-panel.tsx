@@ -89,7 +89,7 @@ export function AgentPanel({
           <span className="text-[11.5px] text-content-muted">
             The assistant is off for this channel.{" "}
             <Link
-              href="/app/settings?view=workspace"
+              href="/app/settings?section=workspace"
               className="text-content-accent underline-offset-4 hover:underline"
             >
               Settings

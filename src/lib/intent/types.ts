@@ -24,6 +24,7 @@ export type SignalSourceKey =
   | "FIRST_PARTY_WEB"
   | "CRM_ACTIVITY"
   | "EMAIL_REPLY"
+  | "AD_ENGAGEMENT"
   | "CUSTOMER_DATASET";
 
 export type SignalSourceDefinition = {
@@ -107,6 +108,27 @@ export const SIGNAL_SOURCES: Record<SignalSourceKey, SignalSourceDefinition> = {
     mechanism: "Your connected mailbox",
     requiresConnection: true,
   },
+  /**
+   * Engagement with your own Meta, LinkedIn and TikTok advertising.
+   *
+   * This is *first-party* data: it is your ad account's own reporting about
+   * people who interacted with your campaigns, read through the connector you
+   * authorised. It is emphatically not profile scraping — none of these
+   * platforms offers a compliant cold-contact search API, and all three forbid
+   * scraping in their terms, so nothing here browses or harvests profiles.
+   *
+   * The practical consequence: this source can tell you that a company already
+   * engaging with your ads is worth prioritising. It cannot find you new
+   * strangers — that is what the sourcing providers are for.
+   */
+  AD_ENGAGEMENT: {
+    key: "AD_ENGAGEMENT",
+    label: "Your ad engagement",
+    description:
+      "People who engaged with your own Meta, LinkedIn or TikTok campaigns — your first-party audience data, not scraped profiles.",
+    mechanism: "Your connected ad accounts' reporting APIs",
+    requiresConnection: true,
+  },
   CUSTOMER_DATASET: {
     key: "CUSTOMER_DATASET",
     label: "Your own dataset",
@@ -151,6 +173,13 @@ export const CATEGORY_TEMPLATES: {
     signalTypes: ["JOB_POSTING"],
     freshnessDays: 45,
     scoreImpact: 8,
+  },
+  {
+    name: "Engaged with your ads",
+    description: "Someone from the company interacted with your Meta, LinkedIn or TikTok campaigns.",
+    signalTypes: ["AD_ENGAGEMENT"],
+    freshnessDays: 30,
+    scoreImpact: 15,
   },
   {
     name: "Visited your website",

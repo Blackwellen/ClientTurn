@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
+  BadgeCheck,
   Brain,
   Globe,
   Lock,
@@ -31,6 +32,7 @@ import {
 import {
   analyseWebsite,
   deleteFact,
+  verifyFact,
   saveFact,
   setFactLocked,
   setIcpActive,
@@ -206,11 +208,30 @@ export function BusinessProfileSection({
                     {fact.sourceType === "AI" && !fact.verifiedByUser && (
                       <span className="text-[11px] text-warning-700">Worth checking</span>
                     )}
+                    {fact.verifiedByUser && fact.sourceType !== "USER" && (
+                      <Badge tone="success" dense>
+                        <BadgeCheck className="size-2.5" aria-hidden /> confirmed
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
                 {canManage && (
                   <div className="flex shrink-0 gap-1">
+                    {/* Only offered where it means something. A fact the
+                        customer typed is verified by definition; this is for
+                        the ones the product inferred and flagged as "Worth
+                        checking", which had no way to stop being flagged. */}
+                    {!fact.verifiedByUser && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        title="Confirm this is right"
+                        onClick={() => run(() => verifyFact(fact.id))}
+                      >
+                        <BadgeCheck className="size-3.5" />
+                      </Button>
+                    )}
                     <Button
                       size="xs"
                       variant="ghost"

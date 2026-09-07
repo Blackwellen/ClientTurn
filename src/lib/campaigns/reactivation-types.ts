@@ -6,6 +6,9 @@
  */
 
 import type { CampaignStatus } from "./types.ts";
+// `rate()` is pure — no server-only, no Supabase — which is what lets the one
+// ratio rule be shared between Analytics and this module.
+import { rate } from "../analytics/v4-metrics.ts";
 
 /* ------------------------------------------------------------- rows --- */
 
@@ -53,10 +56,12 @@ export type ReactivationSummary = {
   replies: number;
   repliesTrend: ReactivationTrend | null;
   qualified: number;
-  qualificationRate: number;
+  /** Fraction in [0,1]; null when nothing replied. */
+  qualificationRate: number | null;
   qualifiedTrend: ReactivationTrend | null;
   booked: number;
-  bookingRate: number;
+  /** Fraction in [0,1]; null when nothing replied. */
+  bookingRate: number | null;
   bookedTrend: ReactivationTrend | null;
   revenue: number;
 };
@@ -275,13 +280,26 @@ export const STATUS_BANNER: Record<
 
 /* ------------------------------------------------------------ rates --- */
 
-export function replyRate(sent: number, replies: number) {
-  return sent === 0 ? 0 : (replies / sent) * 100;
+/**
+ * All three rates go through `rate()`, the same helper Analytics uses, which
+ * fixes two things they got wrong independently.
+ *
+ * **Unit.** They returned 0–100 while every other rate in the product returns a
+ * fraction, so the same number meant different things depending on which module
+ * produced it and every consumer had to remember which.
+ *
+ * **The empty case.** They returned `0`. A campaign that has sent nothing has
+ * no reply rate; rendering it as "0%" is a lie that reads as failure, which is
+ * exactly the reasoning already written above `rate()` and not followed here.
+ * Null renders as "—".
+ */
+export function replyRate(sent: number, replies: number): number | null {
+  return rate(replies, sent);
 }
 
 /** Qualification is measured against replies — you cannot qualify a silence. */
-export function qualificationRate(replies: number, qualified: number) {
-  return replies === 0 ? 0 : (qualified / replies) * 100;
+export function qualificationRate(replies: number, qualified: number): number | null {
+  return rate(qualified, replies);
 }
 
 /**
@@ -291,6 +309,6 @@ export function qualificationRate(replies: number, qualified: number) {
  * booked — and each rate is measured against the step before it, so the three
  * rates in the drawer read as one chain rather than two different baselines.
  */
-export function bookingRate(replies: number, booked: number) {
-  return replies === 0 ? 0 : (booked / replies) * 100;
+export function bookingRate(replies: number, booked: number): number | null {
+  return rate(booked, replies);
 }

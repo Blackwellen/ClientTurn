@@ -1,8 +1,12 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MCP_TOOLS, roleAllows, toolByName, toolsForScopes } from "./tools";
+import { MCP_TOOLS, mcpKindForRisk, roleAllows, toolByName, toolsForScopes } from "./tools";
 import type { ToolDefinition } from "./tools";
+import { serviceOperation, runOperation } from "@/lib/services";
+import { handlerSchema } from "@/lib/services/runtime";
+import { toolInputSchema } from "@/lib/services/json-schema";
+import { operationsForCaller } from "@/lib/services/registry";
 
 /**
  * The MCP gateway (V4 §88).
@@ -97,10 +101,54 @@ export async function authenticate(bearer: string | null): Promise<AuthContext |
   };
 }
 
+/**
+ * Service-layer operations, described as MCP tools.
+ *
+ * Derived, not restated. The catalogue, the permission model and the risk class
+ * all come from the one registry Copilot and the agent runtime read, so an MCP
+ * client cannot be offered a capability the others do not have — nor be denied
+ * one they do. The argument schema is generated from the operation's own
+ * validator, so what a client is shown is exactly what will be enforced.
+ *
+ * Anything needing a person's confirmation becomes APPROVAL_GATED: over MCP
+ * there is nobody at a keyboard to confirm, so it parks for a human instead of
+ * executing.
+ */
+function serviceTools(): ToolDefinition[] {
+  const out: ToolDefinition[] = [];
+
+  for (const operation of operationsForCaller("MCP")) {
+    const schema = handlerSchema(operation.name);
+    // An operation with no implementation yet is simply not advertised. A tool
+    // that lists but always fails is worse than one that is absent.
+    if (!schema) continue;
+
+    out.push({
+      name: operation.name,
+      kind: mcpKindForRisk(operation.risk),
+      scope: operation.scope as ToolDefinition["scope"],
+      description: operation.effect
+        ? `${operation.summary}. ${operation.effect}`
+        : operation.summary,
+      inputSchema: toolInputSchema(schema) as ToolDefinition["inputSchema"],
+      minimumRole: operation.minimumRole,
+    });
+  }
+
+  return out;
+}
+
 /** The tools this token may see. Listing is itself scope-filtered, so an
  *  assistant cannot learn a capability exists that it cannot use. */
 export function listTools(auth: AuthContext): ToolDefinition[] {
-  return toolsForScopes(auth.scopes).filter((tool) => roleAllows(auth.userRole, tool));
+  const granted = new Set(auth.scopes);
+  const service = serviceTools().filter(
+    (tool) => granted.has(tool.scope) && roleAllows(auth.userRole, tool),
+  );
+  const legacy = toolsForScopes(auth.scopes).filter((tool) =>
+    roleAllows(auth.userRole, tool),
+  );
+  return [...service, ...legacy];
 }
 
 async function audit(
@@ -146,7 +194,9 @@ export async function callTool(
   args: Record<string, unknown>,
 ): Promise<ToolCallResult> {
   const started = Date.now();
-  const tool = toolByName(name);
+  const tool = serviceOperation(name)
+    ? (serviceTools().find((candidate) => candidate.name === name) ?? null)
+    : toolByName(name);
 
   if (!tool) {
     await audit(auth, name, "READ", args, "NOT_FOUND", "No such tool", null, Date.now() - started);
@@ -228,6 +278,42 @@ export async function callTool(
   }
 
   try {
+    // A ported operation goes to the one implementation the UI, Copilot and the
+    // agent runtime all use. `confirmed` is deliberately absent: an MCP client
+    // has nobody at a keyboard, and anything needing confirmation was parked
+    // above rather than reaching here.
+    if (serviceOperation(name)) {
+      const result = await runOperation(name, args, {
+        businessId: auth.businessId,
+        userId: auth.userId,
+        role: auth.userRole as "owner" | "admin" | "member" | "viewer",
+        caller: "MCP",
+        correlationId: randomUUID(),
+      });
+
+      if (!result.success) {
+        await audit(auth, name, tool.kind, args, "ERROR", result.message, null, Date.now() - started);
+        return { ok: false, code: result.code, message: result.message };
+      }
+
+      await audit(auth, name, tool.kind, args, "OK", null, null, Date.now() - started);
+      return {
+        ok: true,
+        content: {
+          ...(result.data as Record<string, unknown>),
+          // Returned so an assistant can report what changed rather than assert
+          // that something did.
+          _change: {
+            entityId: result.entityId,
+            before: result.before,
+            after: result.after,
+            auditEventId: result.auditEventId,
+            warnings: result.warnings,
+          },
+        },
+      };
+    }
+
     const { runReadOrWriteTool } = await import("./handlers");
     const content = await runReadOrWriteTool(auth, tool, args);
     await audit(auth, name, tool.kind, args, "OK", null, null, Date.now() - started);

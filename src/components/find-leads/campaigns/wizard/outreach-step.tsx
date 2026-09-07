@@ -195,7 +195,7 @@ export function OutreachStep({
             <div className="rounded-lg border border-dashed border-line bg-surface-sunken/50 px-3.5 py-3 text-[12.5px] text-content-muted">
               No connected sender identities.{" "}
               <Link
-                href="/app/settings?view=connections"
+                href="/app/settings?section=connections"
                 className="font-medium text-content-accent underline-offset-4 hover:underline"
               >
                 Go to Connections

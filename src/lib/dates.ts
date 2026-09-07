@@ -225,6 +225,19 @@ export function formatGbp(value: number) {
   }).format(value);
 }
 
+/**
+ * A percentage from a value **already expressed in percentage points** (0–100).
+ *
+ * The unit is documented because it is not obvious and was not consistent: the
+ * product has two percentage conventions, and passing the wrong one renders
+ * without complaint. This one takes 0–100, which is what every current caller
+ * passes.
+ *
+ * For a rate produced by `analytics/v4-metrics.rate()` — a fraction in [0, 1],
+ * or null when the denominator is empty — use `formatMetric(value, "percent")`
+ * instead. Do not convert at the call site; picking the formatter that matches
+ * the producer is what stops the two conventions leaking into each other.
+ */
 export function formatPercent(value: number, digits = 1) {
   if (!Number.isFinite(value)) return "—";
   return `${value.toFixed(digits)}%`;

@@ -33,6 +33,7 @@ import {
   promoteProspectToLeadAction,
 } from "@/lib/find-leads/actions";
 import {
+  enrichProspectContactAction,
   generateResearchSummaryAction,
   refreshProspectResearchAction,
   suppressProspectAction,
@@ -537,7 +538,7 @@ function ContactabilityCard({ detail }: { detail: ProspectDetail }) {
                 ) : (
                   <Phone className="size-3.5 text-content-subtle" aria-hidden />
                 )}
-                {titleCase(row.channel)}
+                {channelLabel(row.channel)}
               </span>
               <Badge
                 tone={
@@ -560,7 +561,89 @@ function ContactabilityCard({ detail }: { detail: ProspectDetail }) {
           No channel has been evaluated yet. Nothing can be sent until one has.
         </p>
       )}
+
+      <div className="mt-3">
+        <EnrichButton
+          prospectId={prospect.id}
+          channel="PHONE"
+          hasValue={Boolean(prospect.phone_e164)}
+          disabled={prospect.outreach_eligibility === "SUPPRESSED"}
+          disabledReason={
+            prospect.outreach_eligibility === "SUPPRESSED"
+              ? "This prospect is suppressed and cannot be contacted on any channel"
+              : undefined
+          }
+        />
+        <p className="mt-1.5 text-[11px] text-content-subtle">
+          A found number is not a usable cold channel — UK policy blocks cold SMS, and the
+          policy engine decides that at send time.
+        </p>
+      </div>
     </Card>
+  );
+}
+
+/**
+ * Find or re-verify one contact detail.
+ *
+ * Spends provider budget, so it says which of the two it is doing — finding an
+ * address costs more than confirming one — and it shares the research daily
+ * allowance rather than having its own.
+ *
+ * A found address never changes eligibility. Discovering a way to reach someone
+ * is not permission to use it; that stays with the policy engine.
+ */
+function EnrichButton({
+  prospectId,
+  channel,
+  hasValue,
+  disabled,
+  disabledReason,
+}: {
+  prospectId: string;
+  channel: "EMAIL" | "PHONE";
+  hasValue: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, startTransition] = React.useTransition();
+
+  const noun = channel === "EMAIL" ? "email" : "phone number";
+  const label = hasValue
+    ? channel === "EMAIL"
+      ? "Re-verify"
+      : "Refresh"
+    : `Find ${noun}`;
+
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      loading={pending}
+      disabled={disabled || pending}
+      title={disabledReason}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await enrichProspectContactAction({ prospectId, channel });
+          if (!result.ok) {
+            toast({ variant: "error", title: result.error ?? "That did not work." });
+            return;
+          }
+          toast({
+            variant: "success",
+            title: hasValue
+              ? `Re-checked the ${noun}.`
+              : `Found a ${noun}. It has not been verified yet.`,
+          });
+          router.refresh();
+        })
+      }
+    >
+      <Sparkles className="size-3.5" aria-hidden />
+      {label}
+    </Button>
   );
 }
 
@@ -591,6 +674,20 @@ function VerificationCard({ detail }: { detail: ProspectDetail }) {
           Last verified {shortAgo(latest.verifiedAt)} · {latest.provider}
         </p>
       )}
+
+      <div className="mt-3">
+        <EnrichButton
+          prospectId={prospect.id}
+          channel="EMAIL"
+          hasValue={Boolean(prospect.email)}
+          disabled={prospect.outreach_eligibility === "SUPPRESSED"}
+          disabledReason={
+            prospect.outreach_eligibility === "SUPPRESSED"
+              ? "This prospect is suppressed, so a verified address would change nothing"
+              : undefined
+          }
+        />
+      </div>
     </Card>
   );
 }
@@ -1073,7 +1170,7 @@ function ActivityView({ detail }: { detail: ProspectDetail }) {
     })),
     ...detail.verification.map((row) => ({
       at: row.verifiedAt,
-      label: `Verified ${row.channel.toLowerCase()}: ${verificationLabel(row.result as never)}`,
+      label: `Verified ${channelLabel(row.channel)}: ${verificationLabel(row.result as never)}`,
       actor: row.provider,
     })),
     ...detail.intentEvents.map((event) => ({
@@ -1085,7 +1182,7 @@ function ActivityView({ detail }: { detail: ProspectDetail }) {
       at: message.sentAt ?? message.createdAt,
       label:
         message.direction === "inbound"
-          ? `Reply received on ${message.channel.toLowerCase()}`
+          ? `Reply received on ${channelLabel(message.channel.toUpperCase())}`
           : `${message.channel} sent`,
       actor: message.direction === "inbound" ? "Prospect" : "Campaign",
     })),
@@ -1355,8 +1452,19 @@ function SuppressDialog({
 
 /* ------------------------------------------------------------------ helpers */
 
-function titleCase(value: string): string {
-  return value.charAt(0) + value.slice(1).toLowerCase();
+/**
+ * Channel names as people write them. Title-casing the raw enum turns SMS into
+ * "Sms", which reads like a typo rather than a channel.
+ */
+const CHANNEL_LABELS: Record<string, string> = {
+  EMAIL: "Email",
+  SMS: "SMS",
+  WHATSAPP: "WhatsApp",
+  SOCIAL: "Social",
+};
+
+function channelLabel(value: string): string {
+  return CHANNEL_LABELS[value] ?? value.charAt(0) + value.slice(1).toLowerCase();
 }
 
 function humanField(value: string): string {

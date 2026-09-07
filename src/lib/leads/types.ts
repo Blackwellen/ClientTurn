@@ -140,7 +140,8 @@ export type LeadCapabilities = {
 
 export type LeadHeaderMetrics = {
   total: number;
-  replyRate: number;
+  /** Fraction in [0,1]; null when nothing has been contacted. */
+  replyRate: number | null;
   averageFirstResponseSeconds: number | null;
 };
 

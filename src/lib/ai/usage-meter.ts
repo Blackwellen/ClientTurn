@@ -1,7 +1,30 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recordUsage } from "@/lib/audit";
+import type { UsageFeature, UsageMetric } from "@/lib/billing/usage-metrics";
 import type { AiDeployment } from "./azure-client";
 import type { TaskType } from "./schemas";
+
+/**
+ * Which product surface spent the tokens (V4 section 18).
+ *
+ * Task type says what the model was asked to do; this says who was asking, and
+ * it is the difference between a workspace being told "you used 9.1M tokens"
+ * and being told which part of the product used them. A workspace can act on
+ * the second and not on the first.
+ */
+const TASK_FEATURE: Record<TaskType, UsageFeature> = {
+  intent_classification: "inbox",
+  conversation_summary: "inbox",
+  answer_extraction: "qualification",
+  handover_reasoning: "qualification",
+  reply_generation: "follow_up",
+  reactivation_copy: "reactivation",
+  agent_decision: "agents",
+  search_planning: "find_leads",
+  research_summary: "find_leads",
+  copilot_turn: "copilot",
+};
 
 type PriceRow = { unit_cost: number; unit: string };
 type PriceBook = {
@@ -80,44 +103,61 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
   const outputCost = costFor(input.outputTokens, priceBook.output);
   const estimatedCostUsd = inputCost + cachedCost + outputCost;
 
-  await supabase.from("ai_runs").insert({
-    business_id: input.businessId,
-    lead_id: input.leadId ?? null,
-    conversation_id: input.conversationId ?? null,
-    automation_run_id: input.automationRunId ?? null,
-    task_type: input.taskType,
-    deployment: input.deployment,
-    prompt_key: input.promptKey,
-    prompt_version: input.promptVersion,
-    input_tokens: input.inputTokens,
-    cached_input_tokens: input.cachedInputTokens,
-    output_tokens: input.outputTokens,
-    estimated_cost_usd: estimatedCostUsd,
-    latency_ms: input.latencyMs,
-    confidence: input.confidence,
-    result_json: input.resultJson as never,
-    status: input.status,
-    error_code: input.errorCode ?? null,
-  });
+  const { data: run } = await supabase
+    .from("ai_runs")
+    .insert({
+      business_id: input.businessId,
+      lead_id: input.leadId ?? null,
+      conversation_id: input.conversationId ?? null,
+      automation_run_id: input.automationRunId ?? null,
+      task_type: input.taskType,
+      deployment: input.deployment,
+      prompt_key: input.promptKey,
+      prompt_version: input.promptVersion,
+      input_tokens: input.inputTokens,
+      cached_input_tokens: input.cachedInputTokens,
+      output_tokens: input.outputTokens,
+      estimated_cost_usd: estimatedCostUsd,
+      latency_ms: input.latencyMs,
+      confidence: input.confidence,
+      result_json: input.resultJson as never,
+      status: input.status,
+      error_code: input.errorCode ?? null,
+    })
+    .select("id")
+    .single();
 
-  const prefix = input.deployment === "nano" ? "ai_nano" : "ai_mini";
+  const runId = run?.id ?? null;
   const occurredAt = new Date().toISOString();
-  const usageRows = [
-    { metric: `${prefix}_input_token`, quantity: input.inputTokens },
-    { metric: `${prefix}_cached_token`, quantity: input.cachedInputTokens },
-    { metric: `${prefix}_output_token`, quantity: input.outputTokens },
+
+  // Named explicitly rather than built by interpolation, so a renamed metric is
+  // caught here by the compiler instead of at the database constraint.
+  const tokenMetrics: Record<AiDeployment, [UsageMetric, UsageMetric, UsageMetric]> = {
+    nano: ["ai_nano_input_token", "ai_nano_cached_token", "ai_nano_output_token"],
+    mini: ["ai_mini_input_token", "ai_mini_cached_token", "ai_mini_output_token"],
+  };
+  const [inputMetric, cachedMetric, outputMetric] = tokenMetrics[input.deployment];
+
+  const usageRows: { metric: UsageMetric; quantity: number }[] = [
+    { metric: inputMetric, quantity: input.inputTokens },
+    { metric: cachedMetric, quantity: input.cachedInputTokens },
+    { metric: outputMetric, quantity: input.outputTokens },
   ].filter((row) => row.quantity > 0);
 
-  if (usageRows.length > 0) {
-    await supabase.from("usage_events").insert(
-      usageRows.map((row) => ({
-        business_id: input.businessId,
-        metric: row.metric as never,
-        quantity: row.quantity,
-        source: "ai_run",
-        occurred_at: occurredAt,
-      })),
-    );
+  for (const row of usageRows) {
+    await recordUsage({
+      businessId: input.businessId,
+      metric: row.metric,
+      quantity: row.quantity,
+      source: "ai_run",
+      feature: TASK_FEATURE[input.taskType],
+      provider: "azure_openai",
+      ...(runId ? { entity: { type: "ai_run", id: runId } } : {}),
+      // Keyed on the run, so a retried handler re-recording the same model call
+      // does not bill the tokens twice.
+      ...(runId ? { operationId: `${row.metric}:${runId}` } : {}),
+      metadata: { task_type: input.taskType, deployment: input.deployment },
+    });
   }
 
   if (estimatedCostUsd > 0) {

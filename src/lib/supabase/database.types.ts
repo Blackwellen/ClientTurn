@@ -249,79 +249,79 @@ export type Database = {
           affiliate_id: string
           approved_at: string | null
           approved_by: string | null
+          available_at: string | null
           base_amount_minor: number
           business_id: string | null
           commission_amount_minor: number
           commission_plan_id: string | null
           created_at: string
           currency: string
+          entry_type: string
           id: string
+          idempotency_key: string | null
+          metadata: Json
           paid_at: string | null
           payable_at: string | null
           payout_id: string | null
           period_month: string | null
           referral_id: string | null
+          reversal_of_id: string | null
           reversal_reason: string | null
           reversed_at: string | null
           status: string
           stripe_invoice_id: string | null
-          available_at: string | null
-          entry_type: string
-          idempotency_key: string | null
-          metadata: Json
-          reversal_of_id: string | null
         }
         Insert: {
           affiliate_id: string
           approved_at?: string | null
           approved_by?: string | null
+          available_at?: string | null
           base_amount_minor?: number
           business_id?: string | null
           commission_amount_minor?: number
           commission_plan_id?: string | null
           created_at?: string
           currency?: string
+          entry_type?: string
           id?: string
+          idempotency_key?: string | null
+          metadata?: Json
           paid_at?: string | null
           payable_at?: string | null
           payout_id?: string | null
           period_month?: string | null
           referral_id?: string | null
+          reversal_of_id?: string | null
           reversal_reason?: string | null
           reversed_at?: string | null
           status?: string
           stripe_invoice_id?: string | null
-          available_at?: string | null
-          entry_type?: string
-          idempotency_key?: string | null
-          metadata?: Json
-          reversal_of_id?: string | null
         }
         Update: {
           affiliate_id?: string
           approved_at?: string | null
           approved_by?: string | null
+          available_at?: string | null
           base_amount_minor?: number
           business_id?: string | null
           commission_amount_minor?: number
           commission_plan_id?: string | null
           created_at?: string
           currency?: string
+          entry_type?: string
           id?: string
+          idempotency_key?: string | null
+          metadata?: Json
           paid_at?: string | null
           payable_at?: string | null
           payout_id?: string | null
           period_month?: string | null
           referral_id?: string | null
+          reversal_of_id?: string | null
           reversal_reason?: string | null
           reversed_at?: string | null
           status?: string
           stripe_invoice_id?: string | null
-          available_at?: string | null
-          entry_type?: string
-          idempotency_key?: string | null
-          metadata?: Json
-          reversal_of_id?: string | null
         }
         Relationships: [
           {
@@ -359,6 +359,13 @@ export type Database = {
             referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "affiliate_commissions_reversal_of_id_fkey"
+            columns: ["reversal_of_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_commissions"
+            referencedColumns: ["id"]
+          },
         ]
       }
       affiliate_links: {
@@ -371,18 +378,18 @@ export type Database = {
           destination_path: string
           id: string
           label: string
+          last_click_at: string | null
           paid_count: number
+          promo_code_id: string | null
           signup_count: number
           slug: string
+          trial_count: number
           updated_at: string
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
           utm_source: string | null
           utm_term: string | null
-          last_click_at: string | null
-          promo_code_id: string | null
-          trial_count: number
         }
         Insert: {
           affiliate_id: string
@@ -393,18 +400,18 @@ export type Database = {
           destination_path?: string
           id?: string
           label: string
+          last_click_at?: string | null
           paid_count?: number
+          promo_code_id?: string | null
           signup_count?: number
           slug: string
+          trial_count?: number
           updated_at?: string
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
-          last_click_at?: string | null
-          promo_code_id?: string | null
-          trial_count?: number
         }
         Update: {
           affiliate_id?: string
@@ -415,18 +422,18 @@ export type Database = {
           destination_path?: string
           id?: string
           label?: string
+          last_click_at?: string | null
           paid_count?: number
+          promo_code_id?: string | null
           signup_count?: number
           slug?: string
+          trial_count?: number
           updated_at?: string
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
-          last_click_at?: string | null
-          promo_code_id?: string | null
-          trial_count?: number
         }
         Relationships: [
           {
@@ -443,377 +450,11 @@ export type Database = {
             referencedRelation: "affiliate_campaigns"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      affiliate_payouts: {
-        Row: {
-          affiliate_id: string
-          amount_minor: number
-          approved_at: string | null
-          approved_by: string | null
-          batch_reference: string | null
-          commission_count: number
-          created_at: string
-          currency: string
-          external_reference: string | null
-          failure_reason: string | null
-          id: string
-          method: string | null
-          paid_at: string | null
-          period_end: string | null
-          period_start: string | null
-          status: string
-          updated_at: string
-          adjustments_minor: number
-          failure_code: string | null
-          gross_amount_minor: number
-          idempotency_key: string | null
-          notes: string | null
-          processed_at: string | null
-          processor_payout_id: string | null
-          scheduled_at: string | null
-        }
-        Insert: {
-          affiliate_id: string
-          amount_minor?: number
-          approved_at?: string | null
-          approved_by?: string | null
-          batch_reference?: string | null
-          commission_count?: number
-          created_at?: string
-          currency?: string
-          external_reference?: string | null
-          failure_reason?: string | null
-          id?: string
-          method?: string | null
-          paid_at?: string | null
-          period_end?: string | null
-          period_start?: string | null
-          status?: string
-          updated_at?: string
-          adjustments_minor?: number
-          failure_code?: string | null
-          gross_amount_minor?: number
-          idempotency_key?: string | null
-          notes?: string | null
-          processed_at?: string | null
-          processor_payout_id?: string | null
-          scheduled_at?: string | null
-        }
-        Update: {
-          affiliate_id?: string
-          amount_minor?: number
-          approved_at?: string | null
-          approved_by?: string | null
-          batch_reference?: string | null
-          commission_count?: number
-          created_at?: string
-          currency?: string
-          external_reference?: string | null
-          failure_reason?: string | null
-          id?: string
-          method?: string | null
-          paid_at?: string | null
-          period_end?: string | null
-          period_start?: string | null
-          status?: string
-          updated_at?: string
-          adjustments_minor?: number
-          failure_code?: string | null
-          gross_amount_minor?: number
-          idempotency_key?: string | null
-          notes?: string | null
-          processed_at?: string | null
-          processor_payout_id?: string | null
-          scheduled_at?: string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "affiliate_payouts_affiliate_id_fkey"
-            columns: ["affiliate_id"]
+            foreignKeyName: "affiliate_links_promo_code_id_fkey"
+            columns: ["promo_code_id"]
             isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_promo_codes: {
-        Row: {
-          affiliate_id: string | null
-          code: string
-          created_at: string
-          created_by: string | null
-          description: string | null
-          discount_amount_minor: number | null
-          discount_percent: number | null
-          expires_at: string | null
-          id: string
-          max_redemptions: number | null
-          redemption_count: number
-          status: string
-          stripe_promotion_code_id: string | null
-          offer_id: string | null
-        }
-        Insert: {
-          affiliate_id?: string | null
-          code: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          discount_amount_minor?: number | null
-          discount_percent?: number | null
-          expires_at?: string | null
-          id?: string
-          max_redemptions?: number | null
-          redemption_count?: number
-          status?: string
-          stripe_promotion_code_id?: string | null
-          offer_id?: string | null
-        }
-        Update: {
-          affiliate_id?: string | null
-          code?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          discount_amount_minor?: number | null
-          discount_percent?: number | null
-          expires_at?: string | null
-          id?: string
-          max_redemptions?: number | null
-          redemption_count?: number
-          status?: string
-          stripe_promotion_code_id?: string | null
-          offer_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_promo_codes_affiliate_id_fkey"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_referrals: {
-        Row: {
-          affiliate_id: string
-          attribution_expires_at: string | null
-          attribution_id: string | null
-          business_id: string
-          churned_at: string | null
-          created_at: string
-          display_label: string | null
-          id: string
-          lifetime_revenue_minor: number
-          paid_at: string | null
-          plan_key: string | null
-          signup_at: string | null
-          status: string
-          trial_at: string | null
-          updated_at: string
-          flagged_reason: string | null
-          paid_state: string
-          promo_code_id: string | null
-          renewal_count: number
-          renewed_at: string | null
-          source_link_id: string | null
-          trial_state: string
-        }
-        Insert: {
-          affiliate_id: string
-          attribution_expires_at?: string | null
-          attribution_id?: string | null
-          business_id: string
-          churned_at?: string | null
-          created_at?: string
-          display_label?: string | null
-          id?: string
-          lifetime_revenue_minor?: number
-          paid_at?: string | null
-          plan_key?: string | null
-          signup_at?: string | null
-          status?: string
-          trial_at?: string | null
-          updated_at?: string
-          flagged_reason?: string | null
-          paid_state?: string
-          promo_code_id?: string | null
-          renewal_count?: number
-          renewed_at?: string | null
-          source_link_id?: string | null
-          trial_state?: string
-        }
-        Update: {
-          affiliate_id?: string
-          attribution_expires_at?: string | null
-          attribution_id?: string | null
-          business_id?: string
-          churned_at?: string | null
-          created_at?: string
-          display_label?: string | null
-          id?: string
-          lifetime_revenue_minor?: number
-          paid_at?: string | null
-          plan_key?: string | null
-          signup_at?: string | null
-          status?: string
-          trial_at?: string | null
-          updated_at?: string
-          flagged_reason?: string | null
-          paid_state?: string
-          promo_code_id?: string | null
-          renewal_count?: number
-          renewed_at?: string | null
-          source_link_id?: string | null
-          trial_state?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_referrals_affiliate_id_fkey"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_attribution_id_fkey"
-            columns: ["attribution_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_attributions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_referrals_business_id_fkey"
-            columns: ["business_id"]
-            isOneToOne: false
-            referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_resource_downloads: {
-        Row: {
-          affiliate_id: string
-          downloaded_at: string
-          id: string
-          resource_id: string
-        }
-        Insert: {
-          affiliate_id: string
-          downloaded_at?: string
-          id?: string
-          resource_id: string
-        }
-        Update: {
-          affiliate_id?: string
-          downloaded_at?: string
-          id?: string
-          resource_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_resource_downloads_affiliate_id_fkey"
-            columns: ["affiliate_id"]
-            isOneToOne: false
-            referencedRelation: "affiliates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "affiliate_resource_downloads_resource_id_fkey"
-            columns: ["resource_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_resources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      affiliate_resources: {
-        Row: {
-          category: string
-          created_at: string
-          created_by: string | null
-          description: string | null
-          dimensions: string | null
-          download_count: number
-          external_url: string | null
-          file_size_bytes: number | null
-          id: string
-          keywords: string[]
-          pack_id: string | null
-          preview_key: string | null
-          resource_type: string
-          sort_order: number
-          status: string
-          storage_key: string | null
-          text_content: string | null
-          title: string
-          updated_at: string
-          version: string
-          file_type_label: string | null
-          published_at: string | null
-          supersedes_resource_id: string | null
-          usage_rights: string
-        }
-        Insert: {
-          category: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          dimensions?: string | null
-          download_count?: number
-          external_url?: string | null
-          file_size_bytes?: number | null
-          id?: string
-          keywords?: string[]
-          pack_id?: string | null
-          preview_key?: string | null
-          resource_type?: string
-          sort_order?: number
-          status?: string
-          storage_key?: string | null
-          text_content?: string | null
-          title: string
-          updated_at?: string
-          version?: string
-          file_type_label?: string | null
-          published_at?: string | null
-          supersedes_resource_id?: string | null
-          usage_rights?: string
-        }
-        Update: {
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          dimensions?: string | null
-          download_count?: number
-          external_url?: string | null
-          file_size_bytes?: number | null
-          id?: string
-          keywords?: string[]
-          pack_id?: string | null
-          preview_key?: string | null
-          resource_type?: string
-          sort_order?: number
-          status?: string
-          storage_key?: string | null
-          text_content?: string | null
-          title?: string
-          updated_at?: string
-          version?: string
-          file_type_label?: string | null
-          published_at?: string | null
-          supersedes_resource_id?: string | null
-          usage_rights?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "affiliate_resources_pack_fk"
-            columns: ["pack_id"]
-            isOneToOne: false
-            referencedRelation: "affiliate_resources"
+            referencedRelation: "affiliate_promo_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -855,6 +496,164 @@ export type Database = {
             columns: ["affiliate_id"]
             isOneToOne: false
             referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_payouts: {
+        Row: {
+          adjustments_minor: number
+          affiliate_id: string
+          amount_minor: number
+          approved_at: string | null
+          approved_by: string | null
+          batch_reference: string | null
+          commission_count: number
+          created_at: string
+          currency: string
+          external_reference: string | null
+          failure_code: string | null
+          failure_reason: string | null
+          gross_amount_minor: number
+          id: string
+          idempotency_key: string | null
+          method: string | null
+          notes: string | null
+          paid_at: string | null
+          period_end: string | null
+          period_start: string | null
+          processed_at: string | null
+          processor_payout_id: string | null
+          scheduled_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          adjustments_minor?: number
+          affiliate_id: string
+          amount_minor?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_reference?: string | null
+          commission_count?: number
+          created_at?: string
+          currency?: string
+          external_reference?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
+          gross_amount_minor?: number
+          id?: string
+          idempotency_key?: string | null
+          method?: string | null
+          notes?: string | null
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          processed_at?: string | null
+          processor_payout_id?: string | null
+          scheduled_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          adjustments_minor?: number
+          affiliate_id?: string
+          amount_minor?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_reference?: string | null
+          commission_count?: number
+          created_at?: string
+          currency?: string
+          external_reference?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
+          gross_amount_minor?: number
+          id?: string
+          idempotency_key?: string | null
+          method?: string | null
+          notes?: string | null
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          processed_at?: string | null
+          processor_payout_id?: string | null
+          scheduled_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_payouts_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_promo_codes: {
+        Row: {
+          affiliate_id: string | null
+          code: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          discount_amount_minor: number | null
+          discount_percent: number | null
+          expires_at: string | null
+          id: string
+          max_redemptions: number | null
+          offer_id: string | null
+          redemption_count: number
+          status: string
+          stripe_promotion_code_id: string | null
+        }
+        Insert: {
+          affiliate_id?: string | null
+          code: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_amount_minor?: number | null
+          discount_percent?: number | null
+          expires_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          offer_id?: string | null
+          redemption_count?: number
+          status?: string
+          stripe_promotion_code_id?: string | null
+        }
+        Update: {
+          affiliate_id?: string | null
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_amount_minor?: number | null
+          discount_percent?: number | null
+          expires_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          offer_id?: string | null
+          redemption_count?: number
+          status?: string
+          stripe_promotion_code_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_promo_codes_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_promo_codes_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_promo_offers"
             referencedColumns: ["id"]
           },
         ]
@@ -904,6 +703,153 @@ export type Database = {
         }
         Relationships: []
       }
+      affiliate_referrals: {
+        Row: {
+          affiliate_id: string
+          attribution_expires_at: string | null
+          attribution_id: string | null
+          business_id: string
+          churned_at: string | null
+          created_at: string
+          display_label: string | null
+          flagged_reason: string | null
+          id: string
+          lifetime_revenue_minor: number
+          paid_at: string | null
+          paid_state: string
+          plan_key: string | null
+          promo_code_id: string | null
+          renewal_count: number
+          renewed_at: string | null
+          signup_at: string | null
+          source_link_id: string | null
+          status: string
+          trial_at: string | null
+          trial_state: string
+          updated_at: string
+        }
+        Insert: {
+          affiliate_id: string
+          attribution_expires_at?: string | null
+          attribution_id?: string | null
+          business_id: string
+          churned_at?: string | null
+          created_at?: string
+          display_label?: string | null
+          flagged_reason?: string | null
+          id?: string
+          lifetime_revenue_minor?: number
+          paid_at?: string | null
+          paid_state?: string
+          plan_key?: string | null
+          promo_code_id?: string | null
+          renewal_count?: number
+          renewed_at?: string | null
+          signup_at?: string | null
+          source_link_id?: string | null
+          status?: string
+          trial_at?: string | null
+          trial_state?: string
+          updated_at?: string
+        }
+        Update: {
+          affiliate_id?: string
+          attribution_expires_at?: string | null
+          attribution_id?: string | null
+          business_id?: string
+          churned_at?: string | null
+          created_at?: string
+          display_label?: string | null
+          flagged_reason?: string | null
+          id?: string
+          lifetime_revenue_minor?: number
+          paid_at?: string | null
+          paid_state?: string
+          plan_key?: string | null
+          promo_code_id?: string | null
+          renewal_count?: number
+          renewed_at?: string | null
+          signup_at?: string | null
+          source_link_id?: string | null
+          status?: string
+          trial_at?: string | null
+          trial_state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_referrals_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_attribution_id_fkey"
+            columns: ["attribution_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_attributions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_promo_code_id_fkey"
+            columns: ["promo_code_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_promo_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_referrals_source_link_id_fkey"
+            columns: ["source_link_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_resource_downloads: {
+        Row: {
+          affiliate_id: string
+          downloaded_at: string
+          id: string
+          resource_id: string
+        }
+        Insert: {
+          affiliate_id: string
+          downloaded_at?: string
+          id?: string
+          resource_id: string
+        }
+        Update: {
+          affiliate_id?: string
+          downloaded_at?: string
+          id?: string
+          resource_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_resource_downloads_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_resource_downloads_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       affiliate_resource_saves: {
         Row: {
           affiliate_id: string
@@ -937,11 +883,108 @@ export type Database = {
           },
         ]
       }
+      affiliate_resources: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          dimensions: string | null
+          download_count: number
+          external_url: string | null
+          file_size_bytes: number | null
+          file_type_label: string | null
+          id: string
+          keywords: string[]
+          pack_id: string | null
+          preview_key: string | null
+          published_at: string | null
+          resource_type: string
+          sort_order: number
+          status: string
+          storage_key: string | null
+          supersedes_resource_id: string | null
+          text_content: string | null
+          title: string
+          updated_at: string
+          usage_rights: string
+          version: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          dimensions?: string | null
+          download_count?: number
+          external_url?: string | null
+          file_size_bytes?: number | null
+          file_type_label?: string | null
+          id?: string
+          keywords?: string[]
+          pack_id?: string | null
+          preview_key?: string | null
+          published_at?: string | null
+          resource_type?: string
+          sort_order?: number
+          status?: string
+          storage_key?: string | null
+          supersedes_resource_id?: string | null
+          text_content?: string | null
+          title: string
+          updated_at?: string
+          usage_rights?: string
+          version?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          dimensions?: string | null
+          download_count?: number
+          external_url?: string | null
+          file_size_bytes?: number | null
+          file_type_label?: string | null
+          id?: string
+          keywords?: string[]
+          pack_id?: string | null
+          preview_key?: string | null
+          published_at?: string | null
+          resource_type?: string
+          sort_order?: number
+          status?: string
+          storage_key?: string | null
+          supersedes_resource_id?: string | null
+          text_content?: string | null
+          title?: string
+          updated_at?: string
+          usage_rights?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_resources_pack_fk"
+            columns: ["pack_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_resources_supersedes_resource_id_fkey"
+            columns: ["supersedes_resource_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       affiliates: {
         Row: {
           approved_at: string | null
           approved_by: string | null
           audience_description: string | null
+          closed_at: string | null
           code: string
           commission_plan_id: string | null
           company_name: string | null
@@ -950,25 +993,20 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
-          payment_profile_json: Json
-          promotion_methods: string[]
-          status: string
-          status_reason: string | null
-          tax_status: string
-          updated_at: string
-          user_id: string
-          website_url: string | null
-          closed_at: string | null
           identity_address_state: string | null
           identity_checked_at: string | null
           identity_document_state: string | null
           identity_selfie_state: string | null
           identity_status: string
           notification_prefs: Json
+          payment_profile_json: Json
           payout_readiness: string
           phone: string | null
           preferences: Json
           preferred_language: string
+          promotion_methods: string[]
+          status: string
+          status_reason: string | null
           stripe_charges_enabled: boolean
           stripe_connect_account_id: string | null
           stripe_connect_status: string
@@ -980,14 +1018,19 @@ export type Database = {
           tax_country: string | null
           tax_entity_type: string | null
           tax_identifier_last4: string | null
+          tax_status: string
           tax_submitted_at: string | null
           tier: string
           timezone: string
+          updated_at: string
+          user_id: string
+          website_url: string | null
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
           audience_description?: string | null
+          closed_at?: string | null
           code: string
           commission_plan_id?: string | null
           company_name?: string | null
@@ -996,25 +1039,20 @@ export type Database = {
           created_at?: string
           display_name: string
           id?: string
-          payment_profile_json?: Json
-          promotion_methods?: string[]
-          status?: string
-          status_reason?: string | null
-          tax_status?: string
-          updated_at?: string
-          user_id: string
-          website_url?: string | null
-          closed_at?: string | null
           identity_address_state?: string | null
           identity_checked_at?: string | null
           identity_document_state?: string | null
           identity_selfie_state?: string | null
           identity_status?: string
           notification_prefs?: Json
+          payment_profile_json?: Json
           payout_readiness?: string
           phone?: string | null
           preferences?: Json
           preferred_language?: string
+          promotion_methods?: string[]
+          status?: string
+          status_reason?: string | null
           stripe_charges_enabled?: boolean
           stripe_connect_account_id?: string | null
           stripe_connect_status?: string
@@ -1026,14 +1064,19 @@ export type Database = {
           tax_country?: string | null
           tax_entity_type?: string | null
           tax_identifier_last4?: string | null
+          tax_status?: string
           tax_submitted_at?: string | null
           tier?: string
           timezone?: string
+          updated_at?: string
+          user_id: string
+          website_url?: string | null
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
           audience_description?: string | null
+          closed_at?: string | null
           code?: string
           commission_plan_id?: string | null
           company_name?: string | null
@@ -1042,25 +1085,20 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
-          payment_profile_json?: Json
-          promotion_methods?: string[]
-          status?: string
-          status_reason?: string | null
-          tax_status?: string
-          updated_at?: string
-          user_id?: string
-          website_url?: string | null
-          closed_at?: string | null
           identity_address_state?: string | null
           identity_checked_at?: string | null
           identity_document_state?: string | null
           identity_selfie_state?: string | null
           identity_status?: string
           notification_prefs?: Json
+          payment_profile_json?: Json
           payout_readiness?: string
           phone?: string | null
           preferences?: Json
           preferred_language?: string
+          promotion_methods?: string[]
+          status?: string
+          status_reason?: string | null
           stripe_charges_enabled?: boolean
           stripe_connect_account_id?: string | null
           stripe_connect_status?: string
@@ -1072,9 +1110,13 @@ export type Database = {
           tax_country?: string | null
           tax_entity_type?: string | null
           tax_identifier_last4?: string | null
+          tax_status?: string
           tax_submitted_at?: string | null
           tier?: string
           timezone?: string
+          updated_at?: string
+          user_id?: string
+          website_url?: string | null
         }
         Relationships: [
           {
@@ -2414,6 +2456,72 @@ export type Database = {
           },
         ]
       }
+      billing_credit_entries: {
+        Row: {
+          amount_minor: number
+          business_id: string
+          created_at: string
+          created_by: string | null
+          created_by_email: string | null
+          currency: string
+          entry_type: string
+          failure_reason: string | null
+          id: string
+          reason: string
+          reverses_entry_id: string | null
+          state: string
+          stripe_balance_transaction_id: string | null
+          support_reference: string | null
+        }
+        Insert: {
+          amount_minor: number
+          business_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_email?: string | null
+          currency?: string
+          entry_type: string
+          failure_reason?: string | null
+          id?: string
+          reason: string
+          reverses_entry_id?: string | null
+          state?: string
+          stripe_balance_transaction_id?: string | null
+          support_reference?: string | null
+        }
+        Update: {
+          amount_minor?: number
+          business_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_email?: string | null
+          currency?: string
+          entry_type?: string
+          failure_reason?: string | null
+          id?: string
+          reason?: string
+          reverses_entry_id?: string | null
+          state?: string
+          stripe_balance_transaction_id?: string | null
+          support_reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_credit_entries_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_credit_entries_reverses_entry_id_fkey"
+            columns: ["reverses_entry_id"]
+            isOneToOne: false
+            referencedRelation: "billing_credit_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           assigned_user_id: string | null
@@ -2731,6 +2839,80 @@ export type Database = {
             foreignKeyName: "business_cost_daily_business_id_fkey"
             columns: ["business_id"]
             isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_data_controls: {
+        Row: {
+          allowed_sources: string[]
+          basis_reviewed_at: string | null
+          business_id: string
+          created_at: string
+          dpo_contact: string | null
+          lawful_basis_note: string | null
+          legal_name: string | null
+          marketing_lawful_basis: string
+          privacy_contact_email: string | null
+          privacy_policy_url: string | null
+          prospect_countries: string[]
+          prospect_type: string
+          registered_address: string | null
+          registered_country: string | null
+          retain_inactive_leads_days: number | null
+          retain_raw_events_days: number | null
+          retain_uncontacted_prospects_days: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed_sources?: string[]
+          basis_reviewed_at?: string | null
+          business_id: string
+          created_at?: string
+          dpo_contact?: string | null
+          lawful_basis_note?: string | null
+          legal_name?: string | null
+          marketing_lawful_basis?: string
+          privacy_contact_email?: string | null
+          privacy_policy_url?: string | null
+          prospect_countries?: string[]
+          prospect_type?: string
+          registered_address?: string | null
+          registered_country?: string | null
+          retain_inactive_leads_days?: number | null
+          retain_raw_events_days?: number | null
+          retain_uncontacted_prospects_days?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed_sources?: string[]
+          basis_reviewed_at?: string | null
+          business_id?: string
+          created_at?: string
+          dpo_contact?: string | null
+          lawful_basis_note?: string | null
+          legal_name?: string | null
+          marketing_lawful_basis?: string
+          privacy_contact_email?: string | null
+          privacy_policy_url?: string | null
+          prospect_countries?: string[]
+          prospect_type?: string
+          registered_address?: string | null
+          registered_country?: string | null
+          retain_inactive_leads_days?: number | null
+          retain_raw_events_days?: number | null
+          retain_uncontacted_prospects_days?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_data_controls_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
             referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
@@ -3308,6 +3490,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: true
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_settings_default_sender_identity_id_fkey"
+            columns: ["default_sender_identity_id"]
+            isOneToOne: false
+            referencedRelation: "sender_identities"
             referencedColumns: ["id"]
           },
         ]
@@ -4318,6 +4507,53 @@ export type Database = {
             columns: ["last_message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connector_event_failures: {
+        Row: {
+          business_id: string
+          created_at: string
+          external_event_id: string | null
+          id: string
+          install_id: string
+          payload: Json | null
+          reason: string
+          replayed_at: string | null
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          install_id: string
+          payload?: Json | null
+          reason: string
+          replayed_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          install_id?: string
+          payload?: Json | null
+          reason?: string
+          replayed_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connector_event_failures_install_id_fkey"
+            columns: ["install_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_app_installs"
             referencedColumns: ["id"]
           },
         ]
@@ -5945,6 +6181,13 @@ export type Database = {
             referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "jobs_retried_from_job_id_fkey"
+            columns: ["retried_from_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
         ]
       }
       lead_assignments: {
@@ -6412,6 +6655,44 @@ export type Database = {
           },
         ]
       }
+      lead_notes: {
+        Row: {
+          author_kind: string
+          author_user_id: string | null
+          body: string
+          business_id: string
+          created_at: string
+          id: string
+          lead_id: string
+        }
+        Insert: {
+          author_kind?: string
+          author_user_id?: string | null
+          body: string
+          business_id: string
+          created_at?: string
+          id?: string
+          lead_id: string
+        }
+        Update: {
+          author_kind?: string
+          author_user_id?: string | null
+          body?: string
+          business_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_sources: {
         Row: {
           ad_id: string | null
@@ -6481,6 +6762,8 @@ export type Database = {
         Row: {
           agent_id: string | null
           assigned_user_id: string | null
+          archived_at: string | null
+          archived_by: string | null
           attention_reason: string | null
           automation_active: boolean
           booked_at: string | null
@@ -6531,6 +6814,8 @@ export type Database = {
         Insert: {
           agent_id?: string | null
           assigned_user_id?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           attention_reason?: string | null
           automation_active?: boolean
           booked_at?: string | null
@@ -6581,6 +6866,8 @@ export type Database = {
         Update: {
           agent_id?: string | null
           assigned_user_id?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           attention_reason?: string | null
           automation_active?: boolean
           booked_at?: string | null
@@ -8412,92 +8699,6 @@ export type Database = {
           },
         ]
       }
-      platform_provider_checks: {
-        Row: {
-          checked_at: string
-          error_code: string | null
-          id: string
-          latency_ms: number | null
-          provider: string
-          status: string
-        }
-        Insert: {
-          checked_at?: string
-          error_code?: string | null
-          id?: string
-          latency_ms?: number | null
-          provider: string
-          status: string
-        }
-        Update: {
-          checked_at?: string
-          error_code?: string | null
-          id?: string
-          latency_ms?: number | null
-          provider?: string
-          status?: string
-        }
-        Relationships: []
-      }
-      billing_credit_entries: {
-        Row: {
-          amount_minor: number
-          business_id: string
-          created_at: string
-          created_by: string | null
-          created_by_email: string | null
-          currency: string
-          entry_type: string
-          failure_reason: string | null
-          id: string
-          reason: string
-          reverses_entry_id: string | null
-          state: string
-          stripe_balance_transaction_id: string | null
-          support_reference: string | null
-        }
-        Insert: {
-          amount_minor: number
-          business_id: string
-          created_at?: string
-          created_by?: string | null
-          created_by_email?: string | null
-          currency?: string
-          entry_type: string
-          failure_reason?: string | null
-          id?: string
-          reason: string
-          reverses_entry_id?: string | null
-          state?: string
-          stripe_balance_transaction_id?: string | null
-          support_reference?: string | null
-        }
-        Update: {
-          amount_minor?: number
-          business_id?: string
-          created_at?: string
-          created_by?: string | null
-          created_by_email?: string | null
-          currency?: string
-          entry_type?: string
-          failure_reason?: string | null
-          id?: string
-          reason?: string
-          reverses_entry_id?: string | null
-          state?: string
-          stripe_balance_transaction_id?: string | null
-          support_reference?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "billing_credit_entries_business_id_fkey"
-            columns: ["business_id"]
-            isOneToOne: false
-            referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       platform_feature_flags: {
         Row: {
           business_ids: string[]
@@ -8528,6 +8729,33 @@ export type Database = {
           status?: string
           updated_at?: string
           updated_by?: string | null
+        }
+        Relationships: []
+      }
+      platform_provider_checks: {
+        Row: {
+          checked_at: string
+          error_code: string | null
+          id: string
+          latency_ms: number | null
+          provider: string
+          status: string
+        }
+        Insert: {
+          checked_at?: string
+          error_code?: string | null
+          id?: string
+          latency_ms?: number | null
+          provider: string
+          status: string
+        }
+        Update: {
+          checked_at?: string
+          error_code?: string | null
+          id?: string
+          latency_ms?: number | null
+          provider?: string
+          status?: string
         }
         Relationships: []
       }
@@ -8669,6 +8897,54 @@ export type Database = {
         }
         Relationships: []
       }
+      privacy_notice_events: {
+        Row: {
+          business_id: string
+          channel: string
+          delivered_at: string
+          id: string
+          message_id: string | null
+          notice_version: string
+          subject_id: string
+          subject_type: string
+        }
+        Insert: {
+          business_id: string
+          channel: string
+          delivered_at?: string
+          id?: string
+          message_id?: string | null
+          notice_version: string
+          subject_id: string
+          subject_type: string
+        }
+        Update: {
+          business_id?: string
+          channel?: string
+          delivered_at?: string
+          id?: string
+          message_id?: string | null
+          notice_version?: string
+          subject_id?: string
+          subject_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "privacy_notice_events_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "privacy_notice_events_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       privacy_requests: {
         Row: {
           business_id: string | null
@@ -8721,54 +8997,6 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      privacy_notice_events: {
-        Row: {
-          business_id: string
-          channel: string
-          delivered_at: string
-          id: string
-          message_id: string | null
-          notice_version: string
-          subject_id: string
-          subject_type: string
-        }
-        Insert: {
-          business_id: string
-          channel: string
-          delivered_at?: string
-          id?: string
-          message_id?: string | null
-          notice_version: string
-          subject_id: string
-          subject_type: string
-        }
-        Update: {
-          business_id?: string
-          channel?: string
-          delivered_at?: string
-          id?: string
-          message_id?: string | null
-          notice_version?: string
-          subject_id?: string
-          subject_type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "privacy_notice_events_business_id_fkey"
-            columns: ["business_id"]
-            isOneToOne: false
-            referencedRelation: "businesses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "privacy_notice_events_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
@@ -11390,36 +11618,57 @@ export type Database = {
       }
       usage_events: {
         Row: {
+          adjusts_operation_id: string | null
           business_id: string
           currency: string | null
+          entity_id: string | null
+          entity_type: string | null
+          feature: string | null
           id: string
           metadata: Json
           metric: string
           occurred_at: string
+          operation_id: string | null
+          provider: string | null
           quantity: number
           source: string | null
+          unit: string | null
           unit_cost: number | null
         }
         Insert: {
+          adjusts_operation_id?: string | null
           business_id: string
           currency?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          feature?: string | null
           id?: string
           metadata?: Json
           metric: string
           occurred_at?: string
+          operation_id?: string | null
+          provider?: string | null
           quantity?: number
           source?: string | null
+          unit?: string | null
           unit_cost?: number | null
         }
         Update: {
+          adjusts_operation_id?: string | null
           business_id?: string
           currency?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          feature?: string | null
           id?: string
           metadata?: Json
           metric?: string
           occurred_at?: string
+          operation_id?: string | null
+          provider?: string | null
           quantity?: number
           source?: string | null
+          unit?: string | null
           unit_cost?: number | null
         }
         Relationships: [
@@ -11748,20 +11997,20 @@ export type Database = {
       affiliate_link_metrics: {
         Args: { p_affiliate_id: string; p_from: string; p_to: string }
         Returns: {
-          campaign_name: string | null
+          campaign_name: string
           clicks: number
           commission_minor: number
           destination_path: string
           label: string
           link_id: string
           paid_customers: number
-          promo_code: string | null
+          promo_code: string
           revenue_minor: number
           signups: number
           slug: string
           trials: number
           updated_at: string
-          utm_campaign: string | null
+          utm_campaign: string
         }[]
       }
       affiliate_metrics: {
@@ -11769,7 +12018,7 @@ export type Database = {
         Returns: {
           approved_minor: number
           clicks: number
-          conversion_rate: number | null
+          conversion_rate: number
           paid_customers: number
           paid_minor: number
           pending_minor: number
@@ -11779,13 +12028,6 @@ export type Database = {
           signups: number
           trials: number
           unique_clicks: number
-        }[]
-      }
-      claim_commissions_for_payout: {
-        Args: { p_affiliate_id: string; p_payout_id: string }
-        Returns: {
-          claimed_count: number
-          claimed_minor: number
         }[]
       }
       affiliate_summaries: {
@@ -11834,6 +12076,13 @@ export type Database = {
       claim_campaign_contact_slot: {
         Args: { p_business_id: string; p_campaign_id: string }
         Returns: boolean
+      }
+      claim_commissions_for_payout: {
+        Args: { p_affiliate_id: string; p_payout_id: string }
+        Returns: {
+          claimed_count: number
+          claimed_minor: number
+        }[]
       }
       claim_jobs: {
         Args: { batch_size: number; worker: string }
@@ -11937,6 +12186,22 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: never; Returns: boolean }
+      outreach_audience_geo_count: {
+        Args: {
+          p_business_id: string
+          p_company_sizes?: string[]
+          p_exclude_customers?: boolean
+          p_industries?: string[]
+          p_lat: number
+          p_lon: number
+          p_radius_km: number
+          p_roles?: string[]
+        }
+        Returns: {
+          grade: string
+          prospect_count: number
+        }[]
+      }
       outreach_campaign_bookings: {
         Args: { p_business_id: string; p_campaign_id: string }
         Returns: number
@@ -12077,13 +12342,22 @@ export type Database = {
         }[]
       }
       reap_stalled_jobs: { Args: { stale_after?: string }; Returns: number }
-      record_workspace_app_failure: {
-        Args: { p_install_id: string; p_reason: string }
-        Returns: undefined
-      }
       receive_workspace_app_event: {
         Args: { p_event_id: string; p_install_id: string; p_payload: Json }
         Returns: string
+      }
+      record_connector_event_failure: {
+        Args: {
+          p_external_event_id?: string | null
+          p_install_id: string
+          p_payload?: Json | null
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      record_workspace_app_failure: {
+        Args: { p_install_id: string; p_reason: string }
+        Returns: undefined
       }
       release_agent_turn: {
         Args: { target_conversation_id: string; turn_seq: number }

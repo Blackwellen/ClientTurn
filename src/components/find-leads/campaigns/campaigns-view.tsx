@@ -152,7 +152,7 @@ export function CampaignsView({
             description="Cold email needs a connected mailbox with a verified sender before any campaign can run. Nothing will be sent until one exists."
             action={
               <Link
-                href="/app/settings?view=connections"
+                href="/app/settings?section=connections"
                 className="text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
               >
                 Connect a mailbox
@@ -304,7 +304,7 @@ function CampaignKpiStrip({ data }: { data: CampaignListData }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
       {cards.map((card) => (
         <div
           key={card.key}
@@ -564,9 +564,9 @@ function CampaignTable({
   canManage: boolean;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-xs">
+    <section className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-xs">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse">
+        <table className="w-full min-w-[1180px] border-collapse">
           <caption className="sr-only">Acquisition campaigns</caption>
           <thead>
             <tr className="border-b border-line bg-surface-sunken/60">
@@ -620,7 +620,7 @@ function CampaignRowView({
           >
             <Megaphone className="size-3.5" />
           </span>
-          <div className="min-w-0 max-w-[15rem]">
+          <div className="min-w-0 max-w-[17rem]">
             <p className="text-[12.5px] font-semibold text-content">{campaign.name}</p>
             {campaign.description && (
               <p className="mt-0.5 text-[11.5px] text-content-muted">
@@ -646,7 +646,7 @@ function CampaignRowView({
       </Td>
 
       <Td>
-        <div className="max-w-[11rem]">
+        <div className="max-w-[12rem]">
           <p className="text-[12px] text-content-secondary">
             {audience.segment ?? campaign.icpProfileName ?? "No audience set"}
           </p>
@@ -667,7 +667,7 @@ function CampaignRowView({
       </Td>
 
       <Td>
-        <p className="max-w-[9rem] text-[12px] text-content-secondary">
+        <p className="max-w-[10rem] text-[12px] text-content-secondary">
           {campaign.conversionGoalName ?? "No goal set"}
         </p>
       </Td>

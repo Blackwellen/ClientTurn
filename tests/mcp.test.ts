@@ -5,10 +5,12 @@ import {
   MCP_TOOLS,
   MCP_SCOPES,
   SCOPE_DESCRIPTIONS,
+  mcpKindForRisk,
   roleAllows,
   toolByName,
   toolsForScopes,
 } from "../src/lib/mcp/tools.ts";
+import { operationsForCaller } from "../src/lib/services/registry.ts";
 
 /**
  * The MCP catalogue is a permission boundary, so these tests are written from
@@ -154,6 +156,66 @@ describe("MCP tool catalogue", () => {
         (MCP_SCOPES as readonly string[]).includes(scope),
         `${scope} is used by a tool but is not grantable`,
       );
+    }
+  });
+});
+
+/* ------------------------------------------------- the service-layer bridge */
+
+describe("service operations exposed over MCP", () => {
+  test("risk maps to the kind that keeps a human in the loop", () => {
+    // The regression this catches: a destructive operation quietly arriving as
+    // a plain WRITE, which would execute inline instead of parking for someone.
+    assert.equal(mcpKindForRisk("READ"), "READ");
+    assert.equal(mcpKindForRisk("SAFE_WRITE"), "WRITE");
+    assert.equal(mcpKindForRisk("REVERSIBLE_WRITE"), "WRITE");
+
+    for (const risk of [
+      "EXTERNAL",
+      "BULK_EXTERNAL",
+      "FINANCIAL",
+      "DESTRUCTIVE",
+      "RESTRICTED",
+    ] as const) {
+      assert.equal(
+        mcpKindForRisk(risk),
+        "APPROVAL_GATED",
+        `${risk} must park for a person, not execute`,
+      );
+    }
+  });
+
+  test("every MCP-reachable operation uses a scope MCP actually grants", () => {
+    // Drift guard. An operation declaring a scope the MCP scope list does not
+    // contain would be invisible to every token — listed by the registry,
+    // grantable by nobody.
+    for (const operation of operationsForCaller("MCP")) {
+      assert.ok(
+        (MCP_SCOPES as readonly string[]).includes(operation.scope),
+        `${operation.name} uses scope "${operation.scope}", which MCP cannot grant`,
+      );
+    }
+  });
+
+  test("every grantable scope is described for the consent screen", () => {
+    // A person approving a connection is agreeing to these words. A scope with
+    // no description would be an unlabelled checkbox on a permission dialog.
+    for (const scope of MCP_SCOPES) {
+      assert.ok(
+        SCOPE_DESCRIPTIONS[scope] && SCOPE_DESCRIPTIONS[scope].length > 10,
+        `${scope} has no readable description`,
+      );
+    }
+  });
+
+  test("a write operation never sits behind a read scope", () => {
+    for (const operation of operationsForCaller("MCP")) {
+      if (mcpKindForRisk(operation.risk) !== "READ") {
+        assert.ok(
+          operation.scope.endsWith(":write") || operation.scope.endsWith(":run"),
+          `${operation.name} writes but is gated by "${operation.scope}"`,
+        );
+      }
     }
   });
 });

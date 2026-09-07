@@ -138,8 +138,8 @@ export function ProspectIntentCell({ row }: { row: ProspectListRow }) {
     >
       <span className="block min-w-0">
         <span className="flex items-center gap-1.5">
-          <Badge tone="purple" dense>
-            <span className="max-w-[8.5rem] truncate">{row.intent.categoryName}</span>
+          <Badge tone="purple" dense className="min-w-0">
+            <span className="truncate">{row.intent.categoryName}</span>
           </Badge>
           {extra > 0 && <span className="text-[11px] text-content-subtle">+{extra}</span>}
         </span>
@@ -248,9 +248,11 @@ export function ProspectCampaignCell({ row }: { row: ProspectListRow }) {
     return <span className="text-[12px] text-content-subtle">—</span>;
   }
   return (
-    <span className="block truncate text-[12.5px] text-content-secondary">
-      {row.campaignName}
-    </span>
+    <Tooltip content={row.campaignName}>
+      <span className="block truncate text-[12.5px] text-content-secondary">
+        {row.campaignName}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -260,7 +262,10 @@ export function ProspectActivityCell({ row }: { row: ProspectListRow }) {
   const at = row.lastActivity?.at ?? row.created_at;
 
   return (
-    <time dateTime={at} className="text-[12.5px] text-content-secondary">
+    <time
+      dateTime={at}
+      className="block whitespace-nowrap text-[12.5px] text-content-secondary"
+    >
       {label}
     </time>
   );

@@ -82,6 +82,13 @@ export type PolicyDecision = {
   policyVersion: string;
   /** Set when the decision is "not now" rather than "not ever". */
   retryAt?: Date;
+  /**
+   * The window that produced a BLOCKED_QUIET_HOURS decision, as the pack states
+   * it. The rules are pure and hold only a local wall-clock, so they cannot
+   * build a `retryAt` themselves; the caller turns this into a concrete instant
+   * in the recipient's timezone and reschedules rather than aborting.
+   */
+  quietHours?: { start: string; end: string };
   /** Obligations the caller must satisfy before sending. */
   requirements?: PolicyRequirement[];
 };

@@ -260,7 +260,7 @@ export function SourcesTab({ sources }: { sources: AgentSourceRow[] }) {
       title="Sources"
       action={
         <Link
-          href="/app/settings?view=connections"
+          href="/app/settings?section=connections"
           className="text-[12.5px] font-medium text-content-accent underline-offset-4 hover:underline"
         >
           Manage connections

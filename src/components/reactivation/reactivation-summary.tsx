@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/feedback";
-import { formatGbp, formatPercent } from "@/lib/dates";
+import { formatGbp } from "@/lib/dates";
+import { formatMetric } from "@/lib/analytics/v4-metrics";
 import type {
   ReactivationSummary as SummaryData,
   ReactivationTrend,
@@ -167,7 +168,7 @@ export function ReactivationSummary({ summary }: { summary: SummaryData }) {
         tone="success"
         value={number(summary.qualified)}
         label="Qualified"
-        hint={formatPercent(summary.qualificationRate, 1) + " qualification rate"}
+        hint={formatMetric(summary.qualificationRate, "percent") + " qualification rate"}
         trend={summary.qualifiedTrend}
       />
       <SummaryStatCard
@@ -175,7 +176,7 @@ export function ReactivationSummary({ summary }: { summary: SummaryData }) {
         tone="info"
         value={number(summary.booked)}
         label="Booked"
-        hint={formatPercent(summary.bookingRate, 1) + " booking rate"}
+        hint={formatMetric(summary.bookingRate, "percent") + " booking rate"}
         trend={summary.bookedTrend}
       />
       <SummaryStatCard

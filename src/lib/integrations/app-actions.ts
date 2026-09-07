@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sealSecret } from "@/lib/security/secret-box";
@@ -13,6 +14,15 @@ import {
   type AuthMethod,
   type ConnectorStatus,
 } from "./apps";
+import {
+  connectorEndpoint,
+  dismissFailedEvent,
+  exampleCurl,
+  loadConnectorActivity,
+  replayFailedEvent,
+  rotateSigningSecret,
+  sendTestEvent,
+} from "./connector-ops";
 
 export type AppInstall = {
   id: string;
@@ -206,4 +216,111 @@ export async function uninstallWorkspaceApp(id: unknown) {
     .eq("business_id", workspace.businessId);
 
   return error ? { error: "Could not uninstall app." } : { ok: true };
+}
+
+/* ------------------------------------------------- operating a connector */
+
+/**
+ * Rotates a signed connector's secret and returns the new one once.
+ *
+ * The installation id — and therefore the URL the customer already configured
+ * in someone else's product — is deliberately unchanged. Rotation that broke
+ * the URL would be indistinguishable from uninstalling.
+ */
+export async function rotateConnectorSecretAction(input: unknown) {
+  const parsed = z.uuid().safeParse(input);
+  if (!parsed.success) return { error: "Invalid installation." };
+
+  const workspace = await requireRole("admin");
+  const result = await rotateSigningSecret({
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    installId: parsed.data,
+  });
+
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/app/settings");
+  return { secret: result.secret };
+}
+
+/** Sends a correctly-signed synthetic event through the real endpoint. */
+export async function testConnectorAction(input: unknown) {
+  const parsed = z.uuid().safeParse(input);
+  if (!parsed.success) return { error: "Invalid installation." };
+
+  const workspace = await requireRole("admin");
+  const result = await sendTestEvent({
+    businessId: workspace.businessId,
+    installId: parsed.data,
+  });
+
+  revalidatePath("/app/settings");
+  return result.ok ? { ok: true, message: result.message } : { error: result.message };
+}
+
+/** Puts a lost event back through processing. */
+export async function replayConnectorEventAction(input: unknown) {
+  const parsed = z.uuid().safeParse(input);
+  if (!parsed.success) return { error: "Invalid event." };
+
+  const workspace = await requireRole("admin");
+  const result = await replayFailedEvent({
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    failureId: parsed.data,
+  });
+
+  revalidatePath("/app/settings");
+  return result.ok ? { ok: true, message: result.message } : { error: result.message };
+}
+
+/** Closes a failed event without replaying it. */
+export async function dismissConnectorEventAction(input: unknown) {
+  const parsed = z.uuid().safeParse(input);
+  if (!parsed.success) return { error: "Invalid event." };
+
+  const workspace = await requireRole("admin");
+  const done = await dismissFailedEvent({
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    failureId: parsed.data,
+  });
+
+  if (!done) return { error: "That event has already been dealt with." };
+
+  revalidatePath("/app/settings");
+  return { ok: true };
+}
+
+/**
+ * Everything Settings needs to *operate* one connector: what it has delivered,
+ * what it lost, and a command a person can paste to reproduce a call.
+ *
+ * Separate from `listAppInstalls` because it is per-connection detail behind a
+ * disclosure, and loading event counts for every connector on every render
+ * would make the section slower for the common case of glancing at status.
+ */
+export async function connectorActivityAction(input: unknown) {
+  const parsed = z
+    .object({ installId: z.uuid(), authMethod: z.string().max(40).optional() })
+    .safeParse(input);
+  if (!parsed.success) return { error: "Invalid installation." };
+
+  const workspace = await requireRole("admin");
+  const activity = await loadConnectorActivity(workspace.businessId, [
+    parsed.data.installId,
+  ]);
+
+  const entry = activity.get(parsed.data.installId);
+  if (!entry) return { error: "That connection could not be found." };
+
+  return {
+    activity: entry,
+    endpoint: connectorEndpoint(parsed.data.installId),
+    curl: exampleCurl({
+      endpoint: connectorEndpoint(parsed.data.installId),
+      authMethod: (parsed.data.authMethod ?? "hmac_sha256") as AuthMethod,
+    }),
+  };
 }

@@ -332,7 +332,7 @@ function ChannelCard({ rows, wide }: { rows: ChannelRow[]; wide?: boolean }) {
               <th scope="col" className="pb-2 text-right font-medium">Sent</th>
               <th scope="col" className="pb-2 text-right font-medium">Delivery</th>
               <th scope="col" className="pb-2 text-right font-medium">Replies</th>
-              <th scope="col" className="pb-2 text-right font-medium">Reply rate</th>
+              <th scope="col" className="pb-2 text-right font-medium">Replies / delivered</th>
               <th scope="col" className="pb-2 text-right font-medium">Opt-outs</th>
             </tr>
           </thead>
@@ -352,7 +352,7 @@ function ChannelCard({ rows, wide }: { rows: ChannelRow[]; wide?: boolean }) {
                   {row.replies.toLocaleString("en-GB")}
                 </td>
                 <td className="lr-tabular py-2 text-right text-content-secondary">
-                  {percent(row.replyRate)}
+                  {percent(row.repliesPerDelivered)}
                 </td>
                 <td className="lr-tabular py-2 text-right text-content-secondary">
                   {row.optOuts.toLocaleString("en-GB")}

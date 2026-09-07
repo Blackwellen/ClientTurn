@@ -245,6 +245,10 @@ export function canSend(input: PolicyInput): PolicyDecision {
   if (quiet && quiet.channels.includes(input.channel) && isWithinQuietHours(input.localTime, quiet)) {
     return decide(input, "BLOCKED", "BLOCKED_QUIET_HOURS", {
       message: `Contact hours for ${titleCase(input.channel)} resume at ${quiet.end}.`,
+      // Carried out so a sender can reschedule to the reopening minute instead
+      // of discarding the message: this is the one block that is "not now"
+      // rather than "not ever".
+      quietHours: { start: quiet.start, end: quiet.end },
     });
   }
 

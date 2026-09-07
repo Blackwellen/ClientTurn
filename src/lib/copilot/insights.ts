@@ -6,6 +6,8 @@ import {
   getCampaignPerformance,
   getChannelPerformance,
 } from "@/lib/analytics/v4-extras";
+import { workspaceEngagement } from "@/lib/analytics/engagement";
+import { rate } from "@/lib/analytics/v4-metrics";
 
 /**
  * Copilot insights (V4 §28.12).
@@ -33,7 +35,8 @@ export async function buildInsights(businessId: string): Promise<CopilotInsight[
   const bounds = rangeBounds("30d");
   const insights: CopilotInsight[] = [];
 
-  const [channels, campaigns, attention, staleLeads, intent] = await Promise.all([
+  const [channels, campaigns, attention, staleLeads, intent, engagedNow, engagedBefore] =
+    await Promise.all([
     getChannelPerformance(businessId, bounds),
     getCampaignPerformance(businessId, 8),
     admin
@@ -55,6 +58,17 @@ export async function buildInsights(businessId: string): Promise<CopilotInsight[
       .eq("business_id", businessId)
       .gt("expires_at", new Date().toISOString())
       .gte("observed_at", new Date(Date.now() - 7 * 864e5).toISOString()),
+    // The same recipient-level figures the Analytics page uses. Passing null
+    // here silently disabled the reply-rate insight, so Copilot could never
+    // surface the one movement the page would have led with.
+    workspaceEngagement(businessId, {
+      from: bounds.from.toISOString(),
+      to: bounds.to.toISOString(),
+    }),
+    workspaceEngagement(businessId, {
+      from: bounds.previousFrom.toISOString(),
+      to: bounds.previousTo.toISOString(),
+    }),
   ]);
 
   const intentCount = intent.count ?? 0;
@@ -96,8 +110,8 @@ export async function buildInsights(businessId: string): Promise<CopilotInsight[
     channels,
     trends: [],
     campaigns,
-    replyRateNow: null,
-    replyRatePrevious: null,
+    replyRateNow: rate(engagedNow.replied, engagedNow.contacted),
+    replyRatePrevious: rate(engagedBefore.replied, engagedBefore.contacted),
   })) {
     insights.push({
       key: derived.key,

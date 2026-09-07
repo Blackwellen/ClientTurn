@@ -21,6 +21,7 @@ import type {
   MessagingProvider,
   SendResult,
 } from "../messaging/types.ts";
+import type { PolicyReasonCode } from "../policy/types.ts";
 
 // "agent" behaves like "system" in the guard: a lead having replied does
 // not block the reply owed back to them, while opt-out, suppression and a
@@ -43,6 +44,22 @@ export type SendDecision =
   | { action: "send" }
   | { action: "abort"; reason: StopReason }
   | { action: "reschedule"; at: Date };
+
+/**
+ * The contactability verdict, taken immediately before dispatch.
+ *
+ * The guard above answers "has this conversation stopped?"; this answers "may
+ * this workspace lawfully contact this person, on this channel, right now?" —
+ * jurisdiction pack, subscriber type, recorded relationship and consent. They
+ * are separate questions with separate failure modes, so they stay separate
+ * decisions rather than one merged verdict nobody can reason about.
+ *
+ * `defer` is the quiet-hours case and reschedules; `block` is terminal.
+ */
+export type PolicyGate =
+  | { action: "allow" }
+  | { action: "block"; reasonCode: PolicyReasonCode; message: string }
+  | { action: "defer"; at: Date; reasonCode: PolicyReasonCode };
 
 /**
  * A reply stops an automation sequence, but it must not stop the reply we owe
@@ -104,6 +121,24 @@ export type SendFailure = Extract<SendResult, { ok: false }>;
 export interface SendStore {
   load(messageId: string): Promise<OutboundMessageRecord | null>;
   snapshot(message: OutboundMessageRecord): Promise<SendGuardSnapshot | null>;
+  /**
+   * The contactability decision for this exact message, taken now. Implementors
+   * must record it, so "why was this person contacted" has an answer later.
+   *
+   * A throw is a refusal, not a retry: the caller cannot distinguish "policy
+   * says no" from "policy is unreachable", and sending on an unknown verdict is
+   * the one outcome worse than not sending.
+   */
+  policy(
+    message: OutboundMessageRecord,
+    snapshot: SendGuardSnapshot,
+    at: Date,
+  ): Promise<PolicyGate>;
+  /** Closes a message out as refused by policy, with the reason on the record. */
+  blockedByPolicy(
+    message: OutboundMessageRecord,
+    gate: Extract<PolicyGate, { action: "block" }>,
+  ): Promise<void>;
   markSent(
     message: OutboundMessageRecord,
     result: Extract<SendResult, { ok: true }>,
@@ -127,6 +162,7 @@ export type SendOutcome =
       errorMessage: string;
     }
   | { outcome: "aborted"; reason: StopReason }
+  | { outcome: "blocked"; reasonCode: PolicyReasonCode; message: string }
   | { outcome: "rescheduled"; at: Date }
   | { outcome: "already_processed"; status: string }
   | { outcome: "missing" };
@@ -168,6 +204,28 @@ export async function performSend(input: {
     return { outcome: "rescheduled", at: decision.at };
   }
 
+  /*
+   * The contactability gate, last thing before the carrier.
+   *
+   * It runs after the stop-condition guard rather than before it because the
+   * guard answers from state already in hand, while this reads permissions,
+   * suppression and the jurisdiction pack — so a conversation that has already
+   * stopped never pays for the lookup. It runs *here*, and not when the message
+   * was queued, because permission is a fact about this moment: a lead can
+   * withdraw consent, or a pack can change, between scheduling and sending.
+   */
+  const gate = await store.policy(message, snapshot, now);
+
+  if (gate.action === "block") {
+    await store.blockedByPolicy(message, gate);
+    return { outcome: "blocked", reasonCode: gate.reasonCode, message: gate.message };
+  }
+
+  if (gate.action === "defer") {
+    await store.reschedule(message, gate.at);
+    return { outcome: "rescheduled", at: gate.at };
+  }
+
   const result = await provider.send({
     businessId: message.businessId,
     to: message.to,
@@ -204,6 +262,9 @@ export function shouldRetrySend(outcome: SendOutcome): boolean {
 
 export function isPermanentOutcome(outcome: SendOutcome): boolean {
   if (outcome.outcome === "missing") return true;
+  // A policy refusal is settled, not transient. Retrying it would re-ask a
+  // question already answered and re-record the same denial.
+  if (outcome.outcome === "blocked") return true;
   if (outcome.outcome === "failed") return outcome.permanent;
   return false;
 }
