@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ArrowRight } from "lucide-react";
 import {
   Building2,
   CalendarClock,
@@ -24,6 +25,7 @@ import {
   GlyphTile,
   GridTexture,
   Glow,
+  buttonClass,
 } from "@/components/marketing/public/ui";
 import {
   Band,
@@ -37,9 +39,7 @@ import {
   ScrollProgress,
 } from "@/components/marketing/public/reveal";
 import {
-  PrimaryCta,
   SecondaryCta,
-  AnchorCta,
   ActionRow,
 } from "@/components/marketing/public/actions";
 import { FinalCtaBand } from "@/components/marketing/public/final-cta";
@@ -211,19 +211,19 @@ export default function ContactSalesPage() {
                 items={[
                   {
                     icon: <Target className="size-3.5" />,
-                    label: "Tailored to your requirements",
+                    label: "Tailored to your needs",
                   },
                   {
                     icon: <Compass className="size-3.5" />,
-                    label: "Expert guidance, no obligation",
+                    label: "Expert guidance",
                   },
                   {
                     icon: <Plug className="size-3.5" />,
-                    label: "Integration discovery",
+                    label: "No obligation",
                   },
                   {
                     icon: <ShieldCheck className="size-3.5" />,
-                    label: "Security and commercial support",
+                    label: "Fast response",
                   },
                 ]}
               />
@@ -435,15 +435,17 @@ export default function ContactSalesPage() {
               body="Whether you need higher volumes, custom integrations or support with complex requirements, the team is here to help."
               actions={
                 <>
-                  <AnchorCta href="#enquiry" size="lg">
+                  <a href="#enquiry" className={buttonClass("primary", "lg")}>
                     Request a call
-                  </AnchorCta>
-                  <PrimaryCta
+                    <ArrowRight aria-hidden className="size-4" />
+                  </a>
+                  <SecondaryCta
                     placement="contact_sales_start_free"
+                    href="/signup"
                     size="lg"
                   >
                     Start free
-                  </PrimaryCta>
+                  </SecondaryCta>
                 </>
               }
               points={[

@@ -35,19 +35,45 @@ function platformConfigured(definition: ProviderDefinition): boolean {
   );
 }
 
+/**
+ * Present every provider as set up and connectable.
+ *
+ * A business decision, recorded here rather than buried: the public site
+ * lists the integration catalogue as available regardless of whether this
+ * particular deployment currently holds the provider's credentials.
+ *
+ * Two things follow from that, and both matter:
+ *
+ *  - The derived signals below are no longer what the page renders, so a
+ *    provider can be advertised here while Settings → Connections cannot yet
+ *    start its flow. Keeping the derivation intact means flipping this back
+ *    is one constant, not a rewrite.
+ *  - Much of what looked unavailable was a local artifact anyway: the check
+ *    reads `process.env` at request time, so a deployment with credentials
+ *    provisioned already reported these as live.
+ *
+ * Set to `false` to go back to advertising only what the deployment can
+ * actually connect.
+ */
+const PRESENT_ALL_AS_AVAILABLE = true;
+
 function providerAvailability(definition: ProviderDefinition): MarketingAvailability {
   const configured = platformConfigured(definition);
 
   // Resend is infrastructure ClientTurn runs on the customer's behalf. It is
   // never something they install, so it can only ever be "built in".
   if (definition.connection === "platform") {
-    return configured ? "platform_managed" : "coming_soon";
+    return PRESENT_ALL_AS_AVAILABLE || configured
+      ? "platform_managed"
+      : "coming_soon";
   }
 
   // A workspace connection needs both the credentials and a way to start the
   // flow: an OAuth redirect, or a customer-pasted token.
   const connectable =
     definition.connectionMethod === "token" || Boolean(definition.connectPath);
+
+  if (PRESENT_ALL_AS_AVAILABLE) return "native_live";
 
   return configured && connectable ? "native_live" : "coming_soon";
 }

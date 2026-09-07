@@ -3,7 +3,6 @@ import { ArrowRight } from "lucide-react";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 import { PublicCta } from "../cta-link";
 import { Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
-import { ANCHORS } from "../nav-data";
 import { HeroFlowMap, HeroFlowStack } from "./hero-flow-map";
 import { ScrollDraw } from "./scroll-draw";
 

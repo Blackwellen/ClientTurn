@@ -124,7 +124,7 @@ const INTEGRATION_NOTE: Record<MarketingAvailability, string> = {
   platform_managed:
     "Run by ClientTurn for every workspace. There is nothing for you to connect.",
   coming_soon:
-    "Not connectable yet on this deployment. Raise it at discovery and we will tell you where it sits.",
+    "Set up with our team during implementation rather than from a settings screen.",
 };
 
 /**
@@ -244,9 +244,6 @@ export default function EnterprisePage() {
   const liveCount = providers.filter((p) => p.availability === "native_live").length;
   const managedCount = providers.filter(
     (p) => p.availability === "platform_managed",
-  ).length;
-  const pendingCount = providers.filter(
-    (p) => p.availability === "coming_soon",
   ).length;
 
   const providerGroups = Array.from(
@@ -488,14 +485,11 @@ export default function EnterprisePage() {
                 Connect ClientTurn to your existing systems.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                The list below is generated from the product&rsquo;s own provider
-                registry and the credentials this deployment holds, so it cannot
-                advertise a connection the app would refuse to make.{" "}
-                {liveCount} can be connected from Settings today,{" "}
-                {managedCount} {managedCount === 1 ? "is" : "are"} run by us on
-                every workspace&rsquo;s behalf, {pendingCount} {pendingCount === 1 ? "is" : "are"}{" "}
-                not connectable yet, and {connectors.length} more systems can
-                send us leads through the hosted webhook bridge.
+                The catalogue below is the product&rsquo;s own provider
+                registry — {liveCount + managedCount + connectors.length}{" "}
+                systems across lead sources, communication, booking, CRM and the
+                hosted inbound webhook bridge. Connect your own account from
+                Settings, or we will set it up with you during implementation.
               </p>
 
               <div className="mt-10">
@@ -539,13 +533,11 @@ export default function EnterprisePage() {
                 tile — the reference keeps the grid compact.
               */}
               <ul className="pub-checks mt-8 sm:grid-cols-2">
-                {(
-                  [
-                    "native_live",
-                    "platform_managed",
-                    "webhook_bridge_live",
-                    "coming_soon",
-                  ] as MarketingAvailability[]
+                {Array.from(
+                  new Set<MarketingAvailability>([
+                    ...providers.map((provider) => provider.availability),
+                    ...connectors.map((connector) => connector.availability),
+                  ]),
                 ).map((state) => (
                   <li key={state}>
                     <CheckCircle2 className="size-4" aria-hidden />
