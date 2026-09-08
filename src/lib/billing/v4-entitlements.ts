@@ -171,14 +171,26 @@ export async function getV4Usage(
   const admin = createAdminClient();
   const from = since ?? new Date(Date.now() - 30 * 864e5).toISOString();
 
-  const { data } = await admin
-    .from("usage_events")
-    .select("quantity")
-    .eq("business_id", businessId)
-    .eq("metric", metric)
-    .gte("occurred_at", from);
+  // Summed in SQL, not here. This previously fetched every matching row and
+  // added them up in JavaScript, so PostgREST's row cap decided the answer: a
+  // workspace past that many events in a period had its usage under-reported,
+  // `checkCapacity` saw room that did not exist, and the allowance stopped
+  // being enforced with nothing anywhere saying so. The failure was silent and
+  // it only ever erred towards giving away more than the plan sold.
+  const { data, error } = await admin.rpc("sum_usage_events", {
+    p_business_id: businessId,
+    p_metric: metric,
+    p_since: from,
+  });
 
-  return (data ?? []).reduce((total, row) => total + Number(row.quantity), 0);
+  // A failed read must not read as zero. Zero is indistinguishable from "no
+  // usage", which is precisely the state that unlocks the allowance — so the
+  // one thing this must never do on error is return the permissive answer.
+  if (error) throw new Error(`Could not read ${metric} usage: ${error.message}`);
+
+  // `numeric` arrives as a string over PostgREST; Number() on the whole value
+  // rather than on parts of it, so a fractional quantity survives.
+  return Number(data ?? 0);
 }
 
 export type CapacityCheck = {

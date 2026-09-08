@@ -578,8 +578,32 @@ describe("inbox channels", () => {
         definition.emptyExplanation.length > 60,
         `Channel "${channel}" cannot fill and does not explain why.`,
       );
+
       // "Connect X and it will work" is exactly the wrong thing to say about a
-      // channel where connecting changes nothing.
+      // channel where connecting changes nothing -- but it is the *right* thing
+      // to say about a `recorded` channel, where connecting a sending account
+      // is precisely what starts putting threads in the tab. The two states are
+      // separated here rather than lumped together as "not live", because the
+      // sentence the customer reads differs between them.
+      if (definition.ingestion === "recorded") {
+        assert.ok(
+          definition.requires && definition.requires.length > 0,
+          `Channel "${channel}" is filled by work the customer does, so it must ` +
+            `say what to connect before that work can start.`,
+        );
+        // The explanation still has to be honest about the mechanism. A
+        // recorded thread is not a synced one, and a customer who believes
+        // their inbox is syncing will assume silence means no replies.
+        assert.match(
+          definition.emptyExplanation.toLowerCase(),
+          /record/,
+          `Channel "${channel}" is recorded rather than synced, and its empty ` +
+            `state must say so -- otherwise silence reads as "no replies" when ` +
+            `it means "nobody has entered one".`,
+        );
+        continue;
+      }
+
       assert.equal(
         definition.requires,
         null,

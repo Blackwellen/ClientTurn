@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -2157,6 +2137,140 @@ export type Database = {
           },
         ]
       }
+      api_keys: {
+        Row: {
+          allowed_ips: string[]
+          business_id: string
+          created_at: string
+          created_by: string | null
+          environment: string
+          expires_at: string | null
+          id: string
+          key_hash: string
+          key_last_four: string
+          key_prefix: string
+          last_used_at: string | null
+          last_used_ip: string | null
+          name: string
+          request_count: number
+          revoked_at: string | null
+          revoked_by: string | null
+          scopes: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          allowed_ips?: string[]
+          business_id: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          key_last_four: string
+          key_prefix: string
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name: string
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          scopes?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          allowed_ips?: string[]
+          business_id?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          key_last_four?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name?: string
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          scopes?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_request_logs: {
+        Row: {
+          api_key_id: string | null
+          business_id: string | null
+          created_at: string
+          error_code: string | null
+          id: string
+          ip: string | null
+          latency_ms: number | null
+          method: string
+          outcome: string
+          path: string
+          status_code: number
+          user_agent: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          business_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          ip?: string | null
+          latency_ms?: number | null
+          method: string
+          outcome?: string
+          path: string
+          status_code: number
+          user_agent?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          business_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          ip?: string | null
+          latency_ms?: number | null
+          method?: string
+          outcome?: string
+          path?: string
+          status_code?: number
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_request_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_request_logs_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -2883,6 +2997,11 @@ export type Database = {
           retain_inactive_leads_days: number | null
           retain_raw_events_days: number | null
           retain_uncontacted_prospects_days: number | null
+          social_auto_promote_on_reply: boolean
+          social_autonomous_sending: boolean
+          social_follow_up_gap_hours: number
+          social_max_follow_ups: number
+          social_withdraw_after_days: number | null
           updated_at: string
           updated_by: string | null
         }
@@ -2904,6 +3023,11 @@ export type Database = {
           retain_inactive_leads_days?: number | null
           retain_raw_events_days?: number | null
           retain_uncontacted_prospects_days?: number | null
+          social_auto_promote_on_reply?: boolean
+          social_autonomous_sending?: boolean
+          social_follow_up_gap_hours?: number
+          social_max_follow_ups?: number
+          social_withdraw_after_days?: number | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -2925,6 +3049,11 @@ export type Database = {
           retain_inactive_leads_days?: number | null
           retain_raw_events_days?: number | null
           retain_uncontacted_prospects_days?: number | null
+          social_auto_promote_on_reply?: boolean
+          social_autonomous_sending?: boolean
+          social_follow_up_gap_hours?: number
+          social_max_follow_ups?: number
+          social_withdraw_after_days?: number | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -7287,6 +7416,7 @@ export type Database = {
       }
       mcp_audit_logs: {
         Row: {
+          api_key_id: string | null
           approval_id: string | null
           arguments_json: Json
           business_id: string | null
@@ -7301,6 +7431,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          api_key_id?: string | null
           approval_id?: string | null
           arguments_json?: Json
           business_id?: string | null
@@ -7315,6 +7446,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          api_key_id?: string | null
           approval_id?: string | null
           arguments_json?: Json
           business_id?: string | null
@@ -7329,6 +7461,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "mcp_audit_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "mcp_audit_logs_approval_fk"
             columns: ["approval_id"]
@@ -9526,6 +9665,9 @@ export type Database = {
           agent_id: string | null
           approved_at: string | null
           approved_by: string | null
+          avatar_expires_at: string | null
+          avatar_source: string | null
+          avatar_url: string | null
           business_id: string
           campaign_id: string | null
           company_id: string | null
@@ -9552,6 +9694,12 @@ export type Database = {
           role_classification: string
           role_title: string | null
           score: number | null
+          social_external_id: string | null
+          social_followers: number | null
+          social_handle: string | null
+          social_platform: string | null
+          social_profile_url: string | null
+          social_verified: boolean | null
           source_provider: string | null
           source_run_id: string | null
           status: string
@@ -9567,6 +9715,9 @@ export type Database = {
           agent_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          avatar_expires_at?: string | null
+          avatar_source?: string | null
+          avatar_url?: string | null
           business_id: string
           campaign_id?: string | null
           company_id?: string | null
@@ -9593,6 +9744,12 @@ export type Database = {
           role_classification?: string
           role_title?: string | null
           score?: number | null
+          social_external_id?: string | null
+          social_followers?: number | null
+          social_handle?: string | null
+          social_platform?: string | null
+          social_profile_url?: string | null
+          social_verified?: boolean | null
           source_provider?: string | null
           source_run_id?: string | null
           status?: string
@@ -9608,6 +9765,9 @@ export type Database = {
           agent_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          avatar_expires_at?: string | null
+          avatar_source?: string | null
+          avatar_url?: string | null
           business_id?: string
           campaign_id?: string | null
           company_id?: string | null
@@ -9634,6 +9794,12 @@ export type Database = {
           role_classification?: string
           role_title?: string | null
           score?: number | null
+          social_external_id?: string | null
+          social_followers?: number | null
+          social_handle?: string | null
+          social_platform?: string | null
+          social_profile_url?: string | null
+          social_verified?: boolean | null
           source_provider?: string | null
           source_run_id?: string | null
           status?: string
@@ -10600,62 +10766,92 @@ export type Database = {
         Row: {
           accepted_at: string | null
           account_id: string | null
+          attempts: number
+          autopilot: boolean
           business_id: string
+          conversation_id: string | null
           created_at: string
           declined_at: string | null
           external_ref: string | null
+          halted_reason: string | null
           id: string
           invite_sent_at: string | null
           last_error: string | null
+          last_outbound_at: string | null
           messaged_at: string | null
+          next_action: string | null
+          next_action_at: string | null
           note_attached: boolean
           note_body: string | null
+          parked_reason: string | null
           platform: string
           profile_url: string | null
           prospect_id: string
           replied_at: string | null
+          sequence_step: number
           state: string
           updated_at: string
+          withdrawn_at: string | null
         }
         Insert: {
           accepted_at?: string | null
           account_id?: string | null
+          attempts?: number
+          autopilot?: boolean
           business_id: string
+          conversation_id?: string | null
           created_at?: string
           declined_at?: string | null
           external_ref?: string | null
+          halted_reason?: string | null
           id?: string
           invite_sent_at?: string | null
           last_error?: string | null
+          last_outbound_at?: string | null
           messaged_at?: string | null
+          next_action?: string | null
+          next_action_at?: string | null
           note_attached?: boolean
           note_body?: string | null
+          parked_reason?: string | null
           platform: string
           profile_url?: string | null
           prospect_id: string
           replied_at?: string | null
+          sequence_step?: number
           state?: string
           updated_at?: string
+          withdrawn_at?: string | null
         }
         Update: {
           accepted_at?: string | null
           account_id?: string | null
+          attempts?: number
+          autopilot?: boolean
           business_id?: string
+          conversation_id?: string | null
           created_at?: string
           declined_at?: string | null
           external_ref?: string | null
+          halted_reason?: string | null
           id?: string
           invite_sent_at?: string | null
           last_error?: string | null
+          last_outbound_at?: string | null
           messaged_at?: string | null
+          next_action?: string | null
+          next_action_at?: string | null
           note_attached?: boolean
           note_body?: string | null
+          parked_reason?: string | null
           platform?: string
           profile_url?: string | null
           prospect_id?: string
           replied_at?: string | null
+          sequence_step?: number
           state?: string
           updated_at?: string
+          withdrawn_at?: string | null
         }
         Relationships: [
           {
@@ -10673,7 +10869,172 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "social_connection_states_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "social_connection_states_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_inbound_replies: {
+        Row: {
+          body: string
+          business_id: string
+          classification: string | null
+          classified_at: string | null
+          created_at: string
+          external_ref: string
+          id: string
+          ingested_by: string
+          ingested_by_user_id: string | null
+          platform: string
+          promoted_lead_id: string | null
+          prospect_id: string
+          received_at: string
+        }
+        Insert: {
+          body: string
+          business_id: string
+          classification?: string | null
+          classified_at?: string | null
+          created_at?: string
+          external_ref: string
+          id?: string
+          ingested_by?: string
+          ingested_by_user_id?: string | null
+          platform: string
+          promoted_lead_id?: string | null
+          prospect_id: string
+          received_at?: string
+        }
+        Update: {
+          body?: string
+          business_id?: string
+          classification?: string | null
+          classified_at?: string | null
+          created_at?: string
+          external_ref?: string
+          id?: string
+          ingested_by?: string
+          ingested_by_user_id?: string | null
+          platform?: string
+          promoted_lead_id?: string | null
+          prospect_id?: string
+          received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_inbound_replies_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_inbound_replies_promoted_lead_id_fkey"
+            columns: ["promoted_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_inbound_replies_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_outbound_messages: {
+        Row: {
+          account_id: string | null
+          body: string
+          business_id: string
+          composed_by: string
+          created_at: string
+          discarded_reason: string | null
+          due_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          model_ref: string | null
+          performed_by: string | null
+          platform: string
+          prospect_id: string
+          sent_at: string | null
+          sent_by: string | null
+          sequence_step: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          body: string
+          business_id: string
+          composed_by?: string
+          created_at?: string
+          discarded_reason?: string | null
+          due_at?: string
+          id?: string
+          kind: string
+          last_error?: string | null
+          model_ref?: string | null
+          performed_by?: string | null
+          platform: string
+          prospect_id: string
+          sent_at?: string | null
+          sent_by?: string | null
+          sequence_step?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          body?: string
+          business_id?: string
+          composed_by?: string
+          created_at?: string
+          discarded_reason?: string | null
+          due_at?: string
+          id?: string
+          kind?: string
+          last_error?: string | null
+          model_ref?: string | null
+          performed_by?: string | null
+          platform?: string
+          prospect_id?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          sequence_step?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_outbound_messages_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_sending_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_outbound_messages_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_outbound_messages_prospect_id_fkey"
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"
@@ -11985,6 +12346,140 @@ export type Database = {
           },
         ]
       }
+      webhook_deliveries: {
+        Row: {
+          attempts: number
+          business_id: string
+          created_at: string
+          delivered_at: string | null
+          endpoint_id: string
+          error: string | null
+          event_id: string
+          event_type: string
+          id: string
+          max_attempts: number
+          next_attempt_at: string | null
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          business_id: string
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id: string
+          error?: string | null
+          event_id: string
+          event_type: string
+          id?: string
+          max_attempts?: number
+          next_attempt_at?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          business_id?: string
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id?: string
+          error?: string | null
+          event_id?: string
+          event_type?: string
+          id?: string
+          max_attempts?: number
+          next_attempt_at?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_deliveries_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_endpoints: {
+        Row: {
+          business_id: string
+          consecutive_failures: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          disabled_reason: string | null
+          events: string[]
+          id: string
+          last_error: string | null
+          last_failure_at: string | null
+          last_success_at: string | null
+          secret_hint: string
+          secret_sealed: string
+          status: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          business_id: string
+          consecutive_failures?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          disabled_reason?: string | null
+          events?: string[]
+          id?: string
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          secret_hint: string
+          secret_sealed: string
+          status?: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          business_id?: string
+          consecutive_failures?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          disabled_reason?: string | null
+          events?: string[]
+          id?: string
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          secret_hint?: string
+          secret_sealed?: string
+          status?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_endpoints_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_events: {
         Row: {
           attempts: number
@@ -12205,6 +12700,80 @@ export type Database = {
         }
         Relationships: []
       }
+      social_due_actions: {
+        Row: {
+          account_id: string | null
+          attempts: number | null
+          autopilot: boolean | null
+          business_id: string | null
+          conversation_id: string | null
+          id: string | null
+          next_action: string | null
+          next_action_at: string | null
+          platform: string | null
+          prospect_id: string | null
+          sequence_step: number | null
+          state: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          attempts?: number | null
+          autopilot?: boolean | null
+          business_id?: string | null
+          conversation_id?: string | null
+          id?: string | null
+          next_action?: string | null
+          next_action_at?: string | null
+          platform?: string | null
+          prospect_id?: string | null
+          sequence_step?: number | null
+          state?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          attempts?: number | null
+          autopilot?: boolean | null
+          business_id?: string | null
+          conversation_id?: string | null
+          id?: string | null
+          next_action?: string | null
+          next_action_at?: string | null
+          platform?: string | null
+          prospect_id?: string | null
+          sequence_step?: number | null
+          state?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_connection_states_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_sending_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_states_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_states_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_states_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       admin_event_series: {
@@ -12299,6 +12868,33 @@ export type Database = {
           queued: number
         }[]
       }
+      analytics_conversion_goal_counts: {
+        Args: { p_business_id: string; p_from: string; p_to: string }
+        Returns: {
+          booked: number
+          goal_id: string
+        }[]
+      }
+      analytics_daily_trends: {
+        Args: { p_business_id: string; p_from: string; p_to: string }
+        Returns: {
+          contacts_sent: number
+          converted: number
+          day: string
+          leads: number
+          prospects: number
+          replies: number
+        }[]
+      }
+      analytics_provider_waterfall: {
+        Args: { p_business_id: string; p_from: string; p_to: string }
+        Returns: {
+          candidates: number
+          enriched_fields: number
+          provider: string
+          verified: number
+        }[]
+      }
       approve_due_commissions: { Args: never; Returns: number }
       check_suppression: {
         Args: {
@@ -12343,6 +12939,32 @@ export type Database = {
       claim_sender_send_slot: {
         Args: { p_business_id: string; p_sender_id: string }
         Returns: boolean
+      }
+      claim_webhook_deliveries: {
+        Args: { batch_size: number }
+        Returns: {
+          attempts: number
+          business_id: string
+          created_at: string
+          delivered_at: string | null
+          endpoint_id: string
+          error: string | null
+          event_id: string
+          event_type: string
+          id: string
+          max_attempts: number
+          next_attempt_at: string | null
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "webhook_deliveries"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       clientturn_dispatch_cron: {
         Args: { endpoint_path: string }
@@ -12507,6 +13129,10 @@ export type Database = {
           replies: number
         }[]
       }
+      outreach_campaign_promoted: {
+        Args: { p_business_id: string; p_campaign_id: string }
+        Returns: number
+      }
       outreach_campaign_results: {
         Args: { p_business_id: string; p_campaign_id?: string }
         Returns: {
@@ -12544,6 +13170,13 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      prospect_counts_by_icp: {
+        Args: { p_business_id: string }
+        Returns: {
+          icp_profile_id: string
+          prospects: number
+        }[]
       }
       prospect_live_intent: {
         Args: { p_business_id: string; p_prospect_ids: string[] }
@@ -12644,6 +13277,13 @@ export type Database = {
           notes_this_month: number
         }[]
       }
+      social_businesses_with_due_work: {
+        Args: { p_limit?: number }
+        Returns: {
+          business_id: string
+          due_count: number
+        }[]
+      }
       sourcing_run_counters: {
         Args: { p_business_id: string; p_run_id: string }
         Returns: {
@@ -12658,6 +13298,14 @@ export type Database = {
           suppressed: number
           verified: number
         }[]
+      }
+      sum_usage_events: {
+        Args: { p_business_id: string; p_metric: string; p_since: string }
+        Returns: number
+      }
+      touch_api_key: {
+        Args: { p_ip: string; p_key_id: string }
+        Returns: undefined
       }
     }
     Enums: {
@@ -12787,11 +13435,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
-

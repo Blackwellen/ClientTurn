@@ -78,18 +78,16 @@ export async function loadBusinessProfile(
         .gte("sample_size", 10)
         .order("created_at", { ascending: false })
         .limit(20),
-      supabase
-        .from("prospects")
-        .select("icp_profile_id")
-        .eq("business_id", businessId)
-        .not("icp_profile_id", "is", null)
-        .limit(5000),
+      // Grouped in SQL. Counted here, the panel plateaued at exactly 5,000
+      // prospects and gave no sign that it had -- a workspace past that saw
+      // its ICP profiles stop growing rather than an error.
+      supabase.rpc("prospect_counts_by_icp", { p_business_id: businessId }),
     ]);
 
   const countByIcp = new Map<string, number>();
   for (const row of prospectCounts.data ?? []) {
     if (!row.icp_profile_id) continue;
-    countByIcp.set(row.icp_profile_id, (countByIcp.get(row.icp_profile_id) ?? 0) + 1);
+    countByIcp.set(row.icp_profile_id, row.prospects);
   }
 
   const icpProfiles: IcpProfileRow[] = (icps.data ?? []).map((row) => {

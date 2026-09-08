@@ -32,10 +32,10 @@ is building `src/lib/services/` for exactly that. See
 | **P1-4** | Email reply from the Inbox, and reply on a prospect conversation | The primary cold channel is receive-only in the unified inbox. `canReplyOn()` requires SMS/WhatsApp **and** a lead | [07 · C](07-messaging-conversation-mesh.md) |
 | **P1-5** | Messenger / Instagram ingestion, or removal of the tabs | Three Inbox channels can never populate. `inbox_channels` and eight columns on `conversations`/`messages` are schema with no software | [07 · C](07-messaging-conversation-mesh.md) |
 | **P1-6** | `variant_generation` in the prompt registry | AI spend with no prompt version, no token capacity check, no `ai_runs` row, no cost event. Invisible to the customer's meter and to margin reporting | [10 · A1](10-ai-copilot-mcp-mesh.md) |
-| **P1-7** | `getV4Usage` as a SQL `sum()` | Fetches rows and sums in JS; past the PostgREST row cap the allowance silently stops being enforced | [12 · 12.3](12-usage-billing-mesh.md) |
+| ~~P1-7~~ | ~~`getV4Usage` as a SQL `sum()`~~ | **DONE AND DEPLOYED** — `0074`. `sum_usage_events` sums in Postgres, and a failed read now throws rather than returning 0, because 0 is the permissive answer | [24 · R22](24-remediation-log.md) |
 | ~~P1-8~~ | ~~Correct settings deep links~~ | **DONE** — [24 · R4](24-remediation-log.md) | |
 | **P1-9** | One acquisition-campaign UI | Two builders write the same table with different validation, and both render on the same page | [18 · D5](18-duplication-bloat-register.md) |
-| **P1-10** | A route-guard test | Authorisation lives in layouts, pages and actions; `proxy.ts` performs none. A new route that forgets its guard is silently public | [11 · 2.3](11-compliance-permission-mesh.md) |
+| ~~P1-10~~ | ~~A route-guard test~~ | **DONE** — `tests/route-guards.test.ts`, 44 assertions. Every page is in a declared guarded or public tree, every one of the 30 route handlers declares its mechanism by name, and each public endpoint carries a written justification. It found no live defect: every route on disk is guarded today | [24 · R21](24-remediation-log.md) |
 | ~~P1-11~~ | ~~Per-row import classification UI~~ | **DONE** — [24 · R10](24-remediation-log.md) | |
 | **P1-12** | A `SUPPRESSED`/`BLOCKED` terminal state on `messages` | A blocked send is indistinguishable from a failed one, and `FAILED` is counted in the "sent" denominator of every rate | [16 · §6](16-state-machines.md) |
 | **P1-13** | `createPolicyVersion` reachable from the UI | The versioned compliance pack that the whole policy engine reads cannot be authored from inside the product | [13 · §4](13-page-action-button-audit.md) |
@@ -84,15 +84,20 @@ Flagged where the architecture will bite, not speculatively.
 
 | # | Location | Pattern | Breaks at |
 |---|---|---|---|
-| **S1** | `analytics/v4-extras.ts` — nine queries with `.limit(50000)` | Fetches up to 50k rows into Node and aggregates in JS | A workspace with >50k messages in a range gets **silently truncated analytics**. This is a correctness bug at scale, not just a slow page |
-| **S2** | `billing/v4-entitlements.getV4Usage` | Fetches every matching `usage_events` row and sums in JS, with no explicit limit — so the PostgREST cap applies | ~1,000 usage events per metric per period |
-| **S3** | `business-profile/queries.ts:82` | `prospects.select("icp_profile_id").limit(5000)` then counts in JS | 5,000 prospects |
+| ~~S1~~ | ~~`analytics/v4-extras.ts` — nine queries with `.limit(50000)`~~ | **FIXED** — `0074`. `limit(50000)` now appears zero times in that file; trends, conversion goals, the provider waterfall and campaign promotions are all grouped in SQL | [24 · R22](24-remediation-log.md) |
+| ~~S2~~ | ~~`billing/v4-entitlements.getV4Usage`~~ | **FIXED** — `sum_usage_events`, a `security definer` SQL sum granted to `service_role` only | [24 · R22](24-remediation-log.md) |
+| ~~S3~~ | ~~`business-profile/queries.ts:82`~~ | **FIXED** — `prospect_counts_by_icp`, grouped in SQL | [24 · R22](24-remediation-log.md) |
 | **S4** | `admin/customers.ts`, `admin/overview.ts`, `admin/health.ts`, `admin/economics.ts`, `admin/providers.ts` | `.limit(20000)` scans across all workspaces | Platform-wide totals go wrong as the customer base grows |
 | **S5** | `campaigns/queries.resolveAudience` | Audience resolution reads `filter_config` jsonb with no jsonb path index | Large lead tables |
 | **S6** | `jobs` claiming one row at a time | One round trip per job | Job throughput, not correctness. The comment explains the trade-off and it is currently the right one |
 
 **The pattern:** aggregation is done in JavaScript over a capped row fetch. Where a limit is
-reached, the answer is *wrong* rather than *slow*, and nothing tells anyone. The codebase already
+reached, the answer is *wrong* rather than *slow*, and nothing tells anyone.
+
+**S1–S3 are now closed** (`0074`, [24 · R22](24-remediation-log.md)). **S4 remains**: the admin
+console's five `.limit(20000)` cross-workspace scans. They are platform-operator surfaces rather
+than customer-facing, so they were left for the stream that owns `lib/admin/`, but they fail the
+same way and the same technique applies. The codebase already
 knows the right technique — `{ count: "exact", head: true }` and the several purpose-built SQL
 rollup functions (`outreach_campaign_performance`, `reactivation_campaign_results`,
 `rollup_business_cost_daily`) — it just is not applied consistently.
@@ -112,7 +117,7 @@ Can a production operator answer these? Measured against what exists.
 | Why was this prospect rejected? | ✅ | `prospect_scores.explanation` + `prospect_score_factors` + `/app/find-leads/scoring/[id]` |
 | Why was this reply not detected? | ⚠️ | `messages.reply_classification` + `reply_confidence` exist; no log of the classifier input |
 | Why did this booking not sync? | ❌ | No booking provider adapter exists |
-| Why was this usage charged? | ⚠️ | `usage_events.source` + `metadata`; but `email_sent` is never charged and `generateVariants` never recorded |
+| Why was this usage charged? | ✅ mostly | `usage_events.source` + `metadata`; `email_sent` is now metered ([24 · R19](24-remediation-log.md)) and summed in SQL ([24 · R22](24-remediation-log.md)). `generateVariants` is still unrecorded — P1-6 |
 | Why is this integration unhealthy? | ⚠️ | `integrations.last_error_code/message`; but only Twilio has a real probe |
 | Who changed this lead's owner? | ⚠️ | Three audit trails, and Copilot/MCP assignments write no `lead_assignments` row |
 | Why did this send go out? | ❌ warm / ✅ cold | `compliance_decisions` exists only for cold |

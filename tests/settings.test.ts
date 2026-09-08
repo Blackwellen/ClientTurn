@@ -41,6 +41,10 @@ describe("settings sections", () => {
     // Data Controls sits before Billing deliberately: it is where a workspace
     // states its compliance position, and someone setting up outreach should
     // meet it on the way through rather than after they have started paying.
+    //
+    // Developer sits after Team and before Data Controls: it is administered by
+    // the same people who administer members, and an API key is a credential
+    // that answers to the same compliance position stated below it.
     assert.deepEqual(
       SETTINGS_SECTIONS.map((section) => section.id),
       [
@@ -48,6 +52,7 @@ describe("settings sections", () => {
         "connections",
         "business-profile",
         "team",
+        "developer",
         "data-controls",
         "billing",
       ],

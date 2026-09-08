@@ -414,6 +414,86 @@ asserted.
 
 ---
 
+### R21 · A route-guard test — P1-10
+
+`proxy.ts` performs no authorisation. It refreshes the Supabase session and rewrites the status
+host; it decides nothing about who may see what. Every access decision lives in a layout, a page
+or a route handler.
+
+That is defensible — a guard next to the query it protects cannot drift out of step with the data
+it guards — and it has exactly one failure mode: **a route added without one is silently public,
+and nothing says so.** No error, no 500, no red test. The page just renders.
+
+`tests/route-guards.test.ts` is that missing error. 44 assertions:
+
+| What it fixes in place | Assertion |
+|---|---|
+| Page coverage | Every `page.tsx` is under a declared guarded tree, is in the declared public list with a written reason, or guards itself. A page under a *new* top-level path fails until somebody classifies it |
+| The specific guard | `(app)` calls `requireWorkspace`, `admin/(ops)` calls `requirePlatformAdmin`, `affiliates/app` calls `getAffiliateAccount` — by name, not by "some guard is present" |
+| The admin confusion | `admin/(ops)/layout.tsx` must **not** call `requireWorkspace`. That substitution compiles, still redirects a signed-out visitor, and hands the platform console to every paying customer |
+| Dev harnesses | All five `dev/*` pages 404 outside development. A sixth added without the gate fails |
+| Route handlers | All 30 route files are in a table naming their mechanism — session, cron secret, HMAC, Stripe signature, Twilio signature, Meta signature, API key, MCP token, or public — and each file must contain that mechanism's call |
+| Public endpoints | The five genuinely-unauthenticated routes each carry a written justification, and the justification list and the table must agree |
+| Ordering | The OAuth callback must consume its `state` **before** exchanging the code. A token exchanged first is a token anyone who can craft the redirect can obtain |
+| The proxy | `proxy.ts` must stay out of authorisation. A half-migration, where some routes trust the proxy and others guard themselves, is how gaps open |
+
+**It found no bug.** Every route on disk is guarded today, and that is worth writing down as a
+verified fact rather than an assumption. What it does is stop the next one being the exception.
+
+### R22 · The aggregates that were wrong, not slow — P1-7 / S1–S3
+
+Five reads fetched rows and counted or summed them in JavaScript, under a row cap. Past the cap
+the answer is **wrong rather than slow**, and nothing anywhere says so — no error, no warning, no
+truncation marker.
+
+Two of them decided money or the customer's headline chart:
+
+- **`getV4Usage`** summed `usage_events.quantity` in JS with no explicit limit, so PostgREST's own
+  cap decided the result. A workspace past that many events in a billing period had its usage
+  under-reported, `checkCapacity` saw room that did not exist, and **the allowance silently
+  stopped being enforced.** The error was one-directional: it only ever gave away more than the
+  plan sold, so no customer would ever report it.
+- **`getTrends`** read up to 250,000 timestamps across five queries to draw one line. At the cap a
+  busy month renders as a quiet one — and a workspace busy enough for the chart to matter was
+  exactly the workspace whose chart was wrong.
+
+`0074_analytics_rollups.sql` moves all five into SQL, applied and verified:
+
+| Function | Replaces | Was capped at |
+|---|---|---|
+| `sum_usage_events` | `getV4Usage`'s JS reduce | PostgREST's default |
+| `analytics_daily_trends` | five capped fetches bucketed in `getTrends` | 5 × 50,000 rows |
+| `analytics_conversion_goal_counts` | `getConversionGoals`' JS tally | 50,000 booked leads |
+| `analytics_provider_waterfall` | `getProviderWaterfall`'s fetch-then-chunked-`in` | 50,000 source rows *and* a round trip per 500 ids |
+| `outreach_campaign_promoted` | `promotedFromCampaign`'s two-hop chunked count | 50,000 recipients |
+| `prospect_counts_by_icp` | the ICP panel's `limit(5000)` tally | 5,000 prospects |
+
+`limit(50000)` now appears **zero** times in `analytics/v4-extras.ts`.
+
+Three details that were decided rather than defaulted:
+
+- **`getV4Usage` now throws on a read error instead of returning 0.** Zero is indistinguishable
+  from "no usage", which is precisely the state that unlocks the allowance. The one thing a
+  failed meter read must never do is return the permissive answer. All five callers are on spend
+  or gating paths, so failing closed is the safe direction.
+- **The provider function was rebuilt mid-migration** because `create or replace` cannot change an
+  OUT column's name or type, and the first shape did not match what the page actually reports.
+  `candidates` counts distinct prospects, `verified` counts distinct VALID prospects, and
+  `enriched_fields` counts rows the provider returned a value for — three different counts on
+  purpose, and collapsing any two would have changed a published number.
+- **`analytics_daily_trends` returns only days with activity.** The caller still generates the
+  axis from the range bounds. A series that invented its own days would disagree with that axis at
+  the boundaries; one that omitted quiet days would compress a fortnight of silence into a single
+  step and read as growth.
+
+Six covering indexes ship with it, all `if not exists`, on the `(business_id, timestamp)` shapes
+these functions scan.
+
+Five are `security invoker`, so RLS applies exactly as it did to the query each replaced.
+`sum_usage_events` is `security definer` and `service_role`-only: it runs on the admin enforcement
+path, and how much a workspace has consumed is not a figure a browser session should be able to
+ask the database for directly.
+
 ## Deployment state
 
 Verified against the live database after each apply. **181 tables.**
@@ -429,6 +509,7 @@ Verified against the live database after each apply. **181 tables.**
 | `0065_connector_event_failures` | table + function, RLS on, policy, `service_role`-only execute |
 | `0066_data_controls` | table, RLS on, policy, `set_updated_at` trigger |
 | `0069_unify_suppression` | `lift_suppression_for_destination` present with `service_role`-only execute; deprecation comment on `contact_suppressions` |
+| `0074_analytics_rollups` | all six functions present, each smoke-executed against real workspace data; `sum_usage_events` is `definer` + `service_role`-only, the other five are `invoker` with no `anon` grant |
 
 `0062` was pre-flighted: every `metric` value in the live `usage_events` and `usage_counters` was
 checked against the widened CHECK first, because adding a CHECK to a populated table fails on the

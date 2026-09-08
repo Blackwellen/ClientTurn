@@ -42,89 +42,60 @@ function dayKeys(bounds: RangeBounds): string[] {
   return keys;
 }
 
-function bucket(rows: { created_at: string }[] | null): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const row of rows ?? []) {
-    const key = row.created_at.slice(0, 10);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
+/** One day of the trends series, as `analytics_daily_trends` returns it. */
+type TrendRollup = {
+  day: string;
+  prospects: number;
+  contacts_sent: number;
+  replies: number;
+  leads: number;
+  converted: number;
+};
 
 /**
  * The daily series behind the trends chart.
  *
- * Reads timestamps only — never whole rows — and caps each read, because a
- * twelve-month window on a busy workspace is the one query here that could
- * otherwise pull a great deal of data to draw a line.
+ * Grouped in Postgres and returned one row per active day, so the size of the
+ * response is the length of the window rather than the size of the workspace.
  */
 export async function getTrends(
   businessId: string,
   bounds: RangeBounds,
 ): Promise<TrendPoint[]> {
   const supabase = await createClient();
-  const from = bounds.from.toISOString();
-  const to = bounds.to.toISOString();
 
-  const [prospects, outbound, inbound, leads, won] = await Promise.all([
-    supabase
-      .from("prospects")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .gte("created_at", from)
-      .lt("created_at", to)
-      .limit(50000),
-    supabase
-      .from("messages")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("direction", "outbound")
-      .gte("created_at", from)
-      .lt("created_at", to)
-      .limit(50000),
-    supabase
-      .from("messages")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("direction", "inbound")
-      .gte("created_at", from)
-      .lt("created_at", to)
-      .limit(50000),
-    supabase
-      .from("leads")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .gte("created_at", from)
-      .lt("created_at", to)
-      .limit(50000),
-    supabase
-      .from("leads")
-      .select("won_at")
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .gte("won_at", from)
-      .lt("won_at", to)
-      .limit(50000),
-  ]);
+  // One grouped query instead of five capped row fetches bucketed here.
+  //
+  // The previous shape read up to 50,000 timestamps from each of prospects,
+  // outbound messages, inbound messages, leads and wins -- a quarter of a
+  // million rows crossing the wire to draw one line -- and, worse, stopped at
+  // the cap without saying so. A workspace busy enough for the chart to matter
+  // was exactly the workspace whose chart was wrong.
+  const { data, error } = await supabase.rpc("analytics_daily_trends", {
+    p_business_id: businessId,
+    p_from: bounds.from.toISOString(),
+    p_to: bounds.to.toISOString(),
+  });
 
-  const p = bucket(prospects.data);
-  const o = bucket(outbound.data);
-  const i = bucket(inbound.data);
-  const l = bucket(leads.data);
-  const w = bucket(
-    (won.data ?? []).map((row) => ({ created_at: row.won_at as string })),
-  );
+  if (error) throw new Error(`Could not read trends: ${error.message}`);
 
-  return dayKeys(bounds).map((date) => ({
-    date,
-    prospects: p.get(date) ?? 0,
-    contactsSent: o.get(date) ?? 0,
-    replies: i.get(date) ?? 0,
-    leads: l.get(date) ?? 0,
-    converted: w.get(date) ?? 0,
-  }));
+  const byDay = new Map<string, TrendRollup>();
+  for (const row of data ?? []) byDay.set(row.day, row);
+
+  // The axis still comes from the range, not from the data: the function
+  // returns only days with activity, and a chart that skipped quiet days would
+  // compress a fortnight of silence into a single step and read as growth.
+  return dayKeys(bounds).map((date) => {
+    const row = byDay.get(date);
+    return {
+      date,
+      prospects: row?.prospects ?? 0,
+      contactsSent: row?.contacts_sent ?? 0,
+      replies: row?.replies ?? 0,
+      leads: row?.leads ?? 0,
+      converted: row?.converted ?? 0,
+    };
+  });
 }
 
 /* ------------------------------------------------------- channel breakdown */
@@ -237,21 +208,19 @@ export async function getConversionGoals(
       .from("conversion_goals")
       .select("id, name, type")
       .eq("business_id", businessId),
-    supabase
-      .from("leads")
-      .select("conversion_goal_id")
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .not("booked_at", "is", null)
-      .gte("booked_at", bounds.from.toISOString())
-      .lt("booked_at", bounds.to.toISOString())
-      .limit(50000),
+    // Grouped in SQL. Counted here, this stopped at 50,000 booked leads and
+    // reported the shortfall as a smaller business rather than as a truncated
+    // read.
+    supabase.rpc("analytics_conversion_goal_counts", {
+      p_business_id: businessId,
+      p_from: bounds.from.toISOString(),
+      p_to: bounds.to.toISOString(),
+    }),
   ]);
 
   const counts = new Map<string, number>();
   for (const row of leads.data ?? []) {
-    const key = row.conversion_goal_id ?? "__none__";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    counts.set(row.goal_id ?? "__none__", row.booked);
   }
 
   const total = [...counts.values()].reduce((sum, n) => sum + n, 0);
@@ -343,35 +312,24 @@ export async function getCampaignPerformance(
  * How many of a campaign's prospects became leads.
  *
  * Promotion is recorded on the prospect, not on the recipient run, so this is
- * a two-hop count. Chunked because `in` with tens of thousands of ids is a
- * query Postgres will refuse rather than merely run slowly.
+ * a two-hop count, and `count(distinct)` in the join makes a prospect
+ * contacted on several steps of the sequence count once.
  */
 async function promotedFromCampaign(
   supabase: Supa,
   businessId: string,
   campaignId: string,
 ): Promise<number> {
-  const { data } = await supabase
-    .from("outreach_recipient_runs")
-    .select("prospect_id")
-    .eq("business_id", businessId)
-    .eq("campaign_id", campaignId)
-    .limit(50000);
+  // Joined in SQL. This was a fetch of every recipient id followed by one
+  // `in (...)` count per 500 of them: dozens of round trips for one number,
+  // and still capped at 50,000 recipients.
+  const { data, error } = await supabase.rpc("outreach_campaign_promoted", {
+    p_business_id: businessId,
+    p_campaign_id: campaignId,
+  });
 
-  const ids = (data ?? []).map((row) => row.prospect_id);
-  if (ids.length === 0) return 0;
-
-  let promoted = 0;
-  for (let i = 0; i < ids.length; i += 500) {
-    const { count } = await supabase
-      .from("prospects")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", businessId)
-      .not("promoted_to_lead_id", "is", null)
-      .in("id", ids.slice(i, i + 500));
-    promoted += count ?? 0;
-  }
-  return promoted;
+  if (error) throw new Error(`Could not count promotions: ${error.message}`);
+  return data ?? 0;
 }
 
 /* ---------------------------------------------------------------- insights */
@@ -491,65 +449,27 @@ export async function getProviderWaterfall(
 ): Promise<ProviderRow[]> {
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("prospect_data_sources")
-    // `obtained_at` is when the provider actually supplied the field, which is
-    // the moment the cost was incurred. There is no `created_at` on this table.
-    .select("provider, prospect_id, verified_at")
-    .eq("business_id", businessId)
-    .not("prospect_id", "is", null)
-    .gte("obtained_at", bounds.from.toISOString())
-    .lt("obtained_at", bounds.to.toISOString())
-    .limit(50000);
+  // `obtained_at` is when the provider actually supplied the field, which is
+  // the moment the cost was incurred; there is no `created_at` on that table.
+  // The grouping, the distinct-prospect counts and the verified join all
+  // happen in Postgres -- previously this fetched every source row and then
+  // issued a chunked `in (...)` count per 500 prospect ids to resolve
+  // verification, which was both a fan-out of round trips and capped.
+  const { data, error } = await supabase.rpc("analytics_provider_waterfall", {
+    p_business_id: businessId,
+    p_from: bounds.from.toISOString(),
+    p_to: bounds.to.toISOString(),
+  });
 
-  const rows = data ?? [];
-  if (rows.length === 0) return [];
+  if (error) throw new Error(`Could not read provider performance: ${error.message}`);
 
-  const prospectIds = [
-    ...new Set(rows.map((row) => row.prospect_id).filter((id): id is string => Boolean(id))),
-  ];
-  const verifiedIds = new Set<string>();
-
-  // Chunked so a large window cannot build an `in` list Postgres refuses.
-  for (let i = 0; i < prospectIds.length; i += 500) {
-    const { data: verified } = await supabase
-      .from("prospects")
-      .select("id")
-      .eq("business_id", businessId)
-      .eq("verification_status", "VALID")
-      .in("id", prospectIds.slice(i, i + 500));
-    for (const row of verified ?? []) verifiedIds.add(row.id);
-  }
-
-  const byProvider = new Map<
-    string,
-    { seen: Set<string>; verified: Set<string>; enriched: number }
-  >();
-
-  for (const row of rows) {
-    if (!row.prospect_id) continue;
-    const entry = byProvider.get(row.provider) ?? {
-      seen: new Set<string>(),
-      verified: new Set<string>(),
-      enriched: 0,
-    };
-    // A provider that supplied six fields for one prospect supplied one
-    // candidate, not six.
-    entry.seen.add(row.prospect_id);
-    if (verifiedIds.has(row.prospect_id)) entry.verified.add(row.prospect_id);
-    if (row.verified_at) entry.enriched += 1;
-    byProvider.set(row.provider, entry);
-  }
-
-  return [...byProvider.entries()]
-    .map(([provider, entry]) => ({
-      provider,
-      candidates: entry.seen.size,
-      verified: entry.verified.size,
-      enrichedFields: entry.enriched,
-      yield: rate(entry.verified.size, entry.seen.size),
-    }))
-    .sort((a, b) => b.candidates - a.candidates);
+  return (data ?? []).map((row) => ({
+    provider: row.provider,
+    candidates: row.candidates,
+    verified: row.verified,
+    enrichedFields: row.enriched_fields,
+    yield: rate(row.verified, row.candidates),
+  }));
 }
 
 /* ------------------------------------------------ sender/domain health (§21.6) */
