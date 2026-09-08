@@ -13130,7 +13130,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      expire_abandoned_campaign_drafts: {
+        Args: { p_older_than?: unknown }
+        Returns: number
+      }
       expire_intent_matches: { Args: never; Returns: number }
+      expire_stalled_imports: {
+        Args: { p_older_than?: unknown }
+        Returns: number
+      }
       expire_usage_reservations: { Args: never; Returns: number }
       has_business_role: {
         Args: { allowed_roles: string[]; target_business_id: string }
