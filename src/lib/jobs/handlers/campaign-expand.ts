@@ -123,13 +123,28 @@ export async function handleCampaignExpand(job: ClaimedJob) {
       });
   }
 
-  const { data: pending } = await admin
+  const { data: pending, error: pendingError } = await admin
     .from("campaign_contacts")
     .select("id, next_send_at")
     .eq("campaign_id", campaign.id)
     .in("state", ["pending", "scheduled"])
     .order("next_send_at", { ascending: true })
     .limit(5000);
+
+  /**
+   * A failed due-work query must throw, never read as "nothing to do".
+   *
+   * The two outcomes are indistinguishable downstream: both produce an empty
+   * list, the loop runs zero times and the job reports success. That is how a
+   * missing column once left the social channel silently dead while every
+   * signal said healthy. Throwing puts the reason in `jobs.last_error`, where
+   * the worker records it and Admin -> System shows it.
+   */
+  if (pendingError) {
+    throw new Error(
+      `Could not read pending contacts for campaign ${campaign.id}: ${pendingError.message}`,
+    );
+  }
 
   const contacts = pending ?? [];
 

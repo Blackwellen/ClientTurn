@@ -56,3 +56,4 @@ next-env.d.ts
 # history and are not project source.
 /.claude/skills/
 .env.e2e
+screencasts/

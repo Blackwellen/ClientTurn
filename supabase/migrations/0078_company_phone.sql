@@ -1,4 +1,4 @@
--- 0077_company_phone: the business's own published telephone number.
+-- 0078_company_phone: the business's own published telephone number.
 --
 -- `prospect_companies` recorded a name, a domain, a website and a location, and
 -- no way to ring the place. That was not a considered omission -- it followed

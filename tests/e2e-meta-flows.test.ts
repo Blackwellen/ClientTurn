@@ -788,6 +788,36 @@ describe("a human decision is what makes a commenter contactable", () => {
   });
 });
 
+describe("what a refusal tells the customer", () => {
+  test("a prospect that does not exist is not reported as already answered", async () => {
+    // Found by a live probe: a nonexistent id returned "their one reply had
+    // already been sent", which would send somebody hunting for a message that
+    // was never composed. Zero rows updated has two causes and they need two
+    // different sentences.
+    const { sendOnePrivateReply } = await import("../src/lib/social/private-replies.ts");
+
+    const result = await sendOnePrivateReply({
+      businessId: world.businessId,
+      businessName: "Meta Flows Ltd",
+      candidate: {
+        prospectId: "00000000-0000-0000-0000-000000000000",
+        platform: "FACEBOOK",
+        externalId: psid("ghost"),
+        commentId: `COMMENT_${RUN}_ghost`,
+        commentedAt: new Date().toISOString(),
+        firstName: "Ghost",
+        companyName: null,
+      },
+    });
+
+    assert.equal(result.status, "SKIPPED");
+    assert.match(
+      result.status === "SKIPPED" ? result.reason : "",
+      /no longer exists/i,
+    );
+  });
+});
+
 /* ---------------------------------------- flows 2 and 4: the lead forms */
 
 describe("the lead-form route", () => {

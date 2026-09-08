@@ -1,4 +1,4 @@
--- 0045_v4_affiliate_functions: the counters and rollups the affiliate portal
+-- 0052_v4_affiliate_functions: the counters and rollups the affiliate portal
 -- needs (V4 §29-35, §41).
 --
 -- The link counters exist as functions rather than as application reads because

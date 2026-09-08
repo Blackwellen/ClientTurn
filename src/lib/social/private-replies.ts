@@ -229,10 +229,26 @@ export async function sendOnePrivateReply(input: {
     .maybeSingle();
 
   if (!claimed) {
+    // Zero rows updated has two quite different causes, and reporting the wrong
+    // one is a lie shown to a customer. Either the reply really was already
+    // sent — the ordinary race, and the outcome the claim exists to produce —
+    // or the prospect is not there at all: deleted, or belonging to another
+    // workspace. A live probe against a nonexistent id reported "their one
+    // reply had already been sent", which would have somebody hunting for a
+    // message that was never composed.
+    const { data: existing } = await admin
+      .from("prospects")
+      .select("private_reply_sent_at")
+      .eq("business_id", businessId)
+      .eq("id", candidate.prospectId)
+      .maybeSingle();
+
     return {
       status: "SKIPPED",
       prospectId: candidate.prospectId,
-      reason: "Their one reply had already been sent.",
+      reason: existing
+        ? "Their one reply had already been sent."
+        : "That prospect no longer exists in this workspace, so nothing was sent.",
     };
   }
 

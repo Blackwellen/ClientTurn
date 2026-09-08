@@ -1,4 +1,4 @@
--- 0077_company_registry_identity: what the register says a company actually is.
+-- 0080_company_registry_identity: what the register says a company actually is.
 --
 -- Originally this migration also added a company telephone number, sourced free
 -- from Google Places. It was removed before it shipped, and the reason is worth

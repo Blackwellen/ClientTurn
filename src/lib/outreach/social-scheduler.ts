@@ -22,7 +22,11 @@ import {
   recordSocialAction,
   type SocialAccount,
 } from "./social-outreach";
-import { shouldAttachNote, type SocialPlatform } from "./social-limits";
+import {
+  marketingGateApplies,
+  shouldAttachNote,
+  type SocialPlatform,
+} from "./social-limits";
 
 /**
  * The thing that was missing: something that advances social outreach without
@@ -112,6 +116,8 @@ type DueRow = {
   accepted_at: string | null;
   last_outbound_at: string | null;
   replied_at: string | null;
+  email_fallback_at: string | null;
+  warmed_at: string | null;
 };
 
 async function loadSettings(businessId: string): Promise<SocialSequenceSettings & {
@@ -121,7 +127,7 @@ async function loadSettings(businessId: string): Promise<SocialSequenceSettings 
   const { data } = await admin
     .from("business_data_controls")
     .select(
-      "social_autonomous_sending, social_withdraw_after_days, social_follow_up_gap_hours, social_max_follow_ups",
+      "social_autonomous_sending, social_withdraw_after_days, social_skip_to_email_after_days, social_follow_up_gap_hours, social_max_follow_ups, social_warm_before_invite, social_warm_delay_hours",
     )
     .eq("business_id", businessId)
     .maybeSingle();
@@ -129,9 +135,16 @@ async function loadSettings(businessId: string): Promise<SocialSequenceSettings 
   return {
     withdrawAfterDays:
       data?.social_withdraw_after_days ?? DEFAULT_SEQUENCE_SETTINGS.withdrawAfterDays,
+    skipToEmailAfterDays:
+      data?.social_skip_to_email_after_days ??
+      DEFAULT_SEQUENCE_SETTINGS.skipToEmailAfterDays,
     followUpGapHours:
       data?.social_follow_up_gap_hours ?? DEFAULT_SEQUENCE_SETTINGS.followUpGapHours,
     maxFollowUps: data?.social_max_follow_ups ?? DEFAULT_SEQUENCE_SETTINGS.maxFollowUps,
+    warmBeforeInvite:
+      data?.social_warm_before_invite ?? DEFAULT_SEQUENCE_SETTINGS.warmBeforeInvite,
+    warmDelayHours:
+      data?.social_warm_delay_hours ?? DEFAULT_SEQUENCE_SETTINGS.warmDelayHours,
     autonomous: Boolean(data?.social_autonomous_sending),
   };
 }
@@ -145,6 +158,10 @@ export type AdvanceOutcome = {
   parked: number;
   /** Private replies actually delivered to commenters this pass. */
   privateReplies: number;
+  /** Invites that gave up on LinkedIn and moved to email. */
+  handedToEmail: number;
+  /** Profiles viewed as a warming touch before an invite. */
+  visited: number;
 };
 
 export async function advanceSocialWorkspace(
@@ -159,6 +176,8 @@ export async function advanceSocialWorkspace(
     waiting: 0,
     parked: 0,
     privateReplies: 0,
+    handedToEmail: 0,
+    visited: 0,
   };
 
   const [settings, accounts] = await Promise.all([
@@ -166,10 +185,10 @@ export async function advanceSocialWorkspace(
     listSocialAccounts(businessId),
   ]);
 
-  const { data: rows } = await admin
+  const { data: rows, error } = await admin
     .from("social_connection_states")
     .select(
-      "id, prospect_id, platform, state, sequence_step, attempts, autopilot, invite_sent_at, accepted_at, last_outbound_at, replied_at",
+      "id, prospect_id, platform, state, sequence_step, attempts, autopilot, invite_sent_at, accepted_at, last_outbound_at, replied_at, email_fallback_at, warmed_at",
     )
     .eq("business_id", businessId)
     .not("next_action_at", "is", null)
@@ -179,10 +198,34 @@ export async function advanceSocialWorkspace(
     .order("next_action_at", { ascending: true })
     .limit(MAX_ROWS_PER_WORKSPACE);
 
+  /**
+   * A failed due-work query must throw, never read as "nothing to do".
+   *
+   * This is not defensive tidying — it is the fix for a bug that had the whole
+   * channel silently dead. A column named here that does not exist in the
+   * database (a migration written but not applied, which is exactly what
+   * happened with `warmed_at`) makes PostgREST return an error and no rows.
+   * Destructuring only `data` turned that into an empty list, the loop ran zero
+   * times, and the job reported `completed`. Every signal said healthy while
+   * nothing was being sent.
+   *
+   * Throwing puts it in `jobs.last_error` where the worker records failures and
+   * the Admin → System page shows them, which is the difference between a
+   * broken deploy that announces itself and one nobody notices for a week.
+   */
+  if (error) {
+    throw new Error(
+      `Could not read due social work for ${businessId}: ${error.message}`,
+    );
+  }
+
   for (const row of (rows ?? []) as DueRow[]) {
     outcome.examined += 1;
     try {
       const result = await advanceOne({ businessId, row, settings, accounts });
+      // `AdvanceResult` is exactly the set of counter names, so this is total
+      // by construction -- adding an outcome without a counter fails to
+      // compile rather than silently going uncounted.
       outcome[result] += 1;
     } catch {
       // One bad row must never stop the rest of the workspace's queue. The
@@ -289,7 +332,14 @@ type AdvanceContext = {
   accounts: SocialAccount[];
 };
 
-type AdvanceResult = "composed" | "withdrawn" | "halted" | "waiting" | "parked";
+type AdvanceResult =
+  | "composed"
+  | "withdrawn"
+  | "halted"
+  | "waiting"
+  | "parked"
+  | "handedToEmail"
+  | "visited";
 
 async function advanceOne(context: AdvanceContext): Promise<AdvanceResult> {
   const { businessId, row, settings } = context;
@@ -326,6 +376,8 @@ async function advanceOne(context: AdvanceContext): Promise<AdvanceResult> {
     repliedAt: row.replied_at,
     hasPendingDraft: Boolean(pending),
     promoted: Boolean(prospect?.promoted_to_lead_id),
+    emailFallbackStarted: Boolean(row.email_fallback_at),
+    warmedAt: row.warmed_at,
     settings,
     now,
   });
@@ -359,6 +411,12 @@ async function advanceOne(context: AdvanceContext): Promise<AdvanceResult> {
 
     case "WITHDRAW":
       return withdraw(context, decision);
+
+    case "FALL_BACK_TO_EMAIL":
+      return fallBackToEmail(context, decision);
+
+    case "VISIT":
+      return visitProfile(context);
 
     case "INVITE":
     case "COMPOSE":
@@ -435,6 +493,105 @@ async function withdraw(
   return "withdrawn";
 }
 
+/**
+ * Stop waiting for LinkedIn; work this prospect by email instead.
+ *
+ * The invite is deliberately **left standing**. It may still be accepted -- late
+ * acceptances are common -- and withdrawing early would spend the prospect for
+ * nothing. `markSocialAccepted` still fires if they accept, and the row picks
+ * the LinkedIn sequence back up from there.
+ *
+ * What changes is only that the sequencer stops treating an unanswered invite
+ * as a dead end. The email side is the existing cold-outreach path, which
+ * re-checks contactability, caps and the Article 14 disclosure itself -- so
+ * this marks the prospect as available to it rather than sending anything.
+ */
+/**
+ * Views the prospect's profile, as the warming touch before an invite.
+ *
+ * In ASSISTED mode this is queued like everything else -- the person opens the
+ * profile from the queue, which is the visit. There is nothing to compose, so
+ * it records the intent and the timestamp and lets the invite follow on the
+ * next sweep once the delay has passed.
+ */
+async function visitProfile(context: AdvanceContext): Promise<AdvanceResult> {
+  const { businessId, row } = context;
+  const admin = createAdminClient();
+  const now = new Date();
+  const platform = row.platform as SocialPlatform;
+
+  const account = context.accounts.find(
+    (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
+  );
+
+  await admin
+    .from("social_connection_states")
+    .update({
+      warmed_at: now.toISOString(),
+      next_action: "INVITE",
+      // The invite becomes due once the delay has passed, not immediately.
+      next_action_at: new Date(
+        now.getTime() + context.settings.warmDelayHours * 3_600_000,
+      ).toISOString(),
+      attempts: 0,
+    })
+    .eq("business_id", businessId)
+    .eq("id", row.id);
+
+  // Logged like any other action: LinkedIn rate-limits profile views too, and a
+  // limit counted from anything other than what happened is not a limit.
+  if (account) {
+    await admin.from("social_action_log").insert({
+      business_id: businessId,
+      account_id: account.id,
+      prospect_id: row.prospect_id,
+      platform,
+      action: "VISIT",
+      performed_by: account.sendMode,
+      actor_user_id: null,
+    });
+  }
+
+  return "visited";
+}
+
+async function fallBackToEmail(
+  context: AdvanceContext,
+  decision: SocialSequenceDecision & { action: "FALL_BACK_TO_EMAIL" },
+): Promise<AdvanceResult> {
+  const { businessId, row } = context;
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  await admin
+    .from("social_connection_states")
+    .update({
+      email_fallback_at: now,
+      halted_reason: decision.reason,
+      // Still on the clock: the withdrawal window has not passed, and a late
+      // acceptance is worth acting on. Cleared only by a withdraw or a halt.
+      next_action_at: context.settings.withdrawAfterDays
+        ? new Date(
+            new Date(row.invite_sent_at ?? now).getTime() +
+              context.settings.withdrawAfterDays * 86_400_000,
+          ).toISOString()
+        : null,
+    })
+    .eq("business_id", businessId)
+    .eq("id", row.id);
+
+  // Eligible for the email path. The dispatcher decides whether it may
+  // actually send -- this only says LinkedIn is no longer the thing being
+  // waited on.
+  await admin
+    .from("prospects")
+    .update({ last_activity_at: now })
+    .eq("business_id", businessId)
+    .eq("id", row.prospect_id);
+
+  return "handedToEmail";
+}
+
 async function compose(
   context: AdvanceContext,
   decision: SocialSequenceDecision & { action: "INVITE" | "COMPOSE" },
@@ -499,10 +656,50 @@ async function compose(
     permissionOnly: true,
   });
 
+  /**
+   * A bare connection request is not a marketing communication.
+   *
+   * This exemption is narrow and it is the only one in the file, so it is worth
+   * stating exactly what it does and why it is not a way round the rules.
+   *
+   * `BLOCKED_COLD_CHANNEL` means "this channel may not carry cold marketing".
+   * No pack lists SOCIAL as a cold channel and none should: a cold DM to a
+   * stranger is precisely what the gate exists to refuse. But a *follow* on
+   * TikTok, or a connection request with no note on LinkedIn, transmits no
+   * content at all — the recipient gets "X started following you". There is
+   * nothing in it to be marketing. Judging it by the rules for a marketing
+   * message is a category error, and one that makes the channel impossible:
+   * the invite is the only route to the acceptance that makes a lawful message
+   * possible, so refusing every invite refuses the whole channel.
+   *
+   * The codebase already draws this line elsewhere — `visitProfile` performs a
+   * profile view without consulting the engine at all, for the same reason.
+   * This is the same principle, applied to the same kind of action, but kept
+   * inside the engine so the decision is still evaluated and recorded.
+   *
+   * The moment an invite carries a note it is content, it is marketing, and
+   * this exemption does not apply — `carriesNote` is what separates them.
+   * Everything else the engine refuses still refuses: suppression, opt-out,
+   * withdrawn consent, an unpermitted source, a blocked subscriber type. Only
+   * this one reason code, and only for a contentless request.
+   */
+  const carriesNote = plan.action === "INVITE" && plan.attachNote;
+  const contentlessRequest = !marketingGateApplies({
+    action: isInvite ? "INVITE" : "MESSAGE",
+    carriesNote,
+  });
+  const coldChannelOnly =
+    verdict.outcome === "BLOCKED" && verdict.reasonCode === "BLOCKED_COLD_CHANNEL";
+
+  const permitted =
+    verdict.outcome === "ALLOWED" ||
+    verdict.outcome === "REVIEW_REQUIRED" ||
+    (contentlessRequest && coldChannelOnly);
+
   // REVIEW_REQUIRED is not a refusal, but it is not a licence to act
   // unattended either: the message is still composed and queued for a person,
   // and only the autonomous path is stopped. Anything else non-ALLOWED halts.
-  if (verdict.outcome !== "ALLOWED" && verdict.outcome !== "REVIEW_REQUIRED") {
+  if (!permitted) {
     return halt(businessId, row, verdict.message);
   }
   const needsReview = verdict.outcome === "REVIEW_REQUIRED";
@@ -530,7 +727,23 @@ async function compose(
   // the person sending it has nowhere to paste.
   const note = isInvite ? shouldAttachNote(account.capacity, platform) : null;
   if (isInvite && note && !note.attach) {
-    return performBareInvite(context, account, note.reason);
+    /**
+     * Only a *lost* capability is worth telling the operator about.
+     *
+     * `shouldAttachNote` answers two different questions with the same field.
+     * On LinkedIn a refusal means "you have run out of invitation notes this
+     * month", which changes what the invite will achieve and is worth saying.
+     * Everywhere else it means "this platform has no such thing as an
+     * invitation note" — true, permanent, and not news to anybody looking at a
+     * TikTok queue.
+     *
+     * Passing the second one through put "This platform has no invitation
+     * note." in the queue where the operator needed "go and send the follow",
+     * and because it is never null on those platforms it displaced that
+     * sentence entirely rather than sitting alongside it.
+     */
+    const worthSaying = platform === "LINKEDIN" ? note.reason : null;
+    return performBareInvite(context, account, worthSaying);
   }
 
   const composed = await composeSocialMessage({
@@ -633,9 +846,12 @@ async function performBareInvite(
       .update({
         next_action: "INVITE",
         next_action_at: new Date(Date.now() + 12 * 3600_000).toISOString(),
-        halted_reason:
-          reason ??
-          "Waiting for someone to send the connection request from the connected account.",
+        // The instruction always leads. A note constraint, where there is one,
+        // is added to it rather than replacing it — the operator needs to know
+        // what to do before they need to know what it will not carry.
+        halted_reason: reason
+          ? `Waiting for someone to send the connection request from the connected account. ${reason}`
+          : "Waiting for someone to send the connection request from the connected account.",
       })
       .eq("business_id", businessId)
       .eq("id", row.id);

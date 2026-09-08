@@ -226,6 +226,12 @@ const MECHANISMS: Record<string, RegExp> = {
   // Meta signs with sha256 over the raw body; the comparison is constant-time
   // inside the helper, which is where it belongs.
   "meta-signature": /verifyMetaSignature\s*\(/,
+  // Meta's deauthorize and data-deletion callbacks use a different scheme from
+  // its webhooks: a `signed_request` form field carrying its own base64url
+  // signature, rather than an X-Hub-Signature header over the body. Same secret,
+  // different envelope — so it gets its own guard rather than being folded into
+  // "meta-signature", which would let a route claim a check it does not do.
+  "meta-signed-request": /parseSignedRequest\s*\(/,
   // A signed-in user who also has an affiliate account. The partner portal is
   // a separate identity from a workspace membership.
   affiliate: /getAffiliate(Account)?\s*\(/,
@@ -269,6 +275,8 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/v1/me/route.ts": "api-key",
   "api/webhooks/linkedin-ads/route.ts": "hmac",
   "api/webhooks/meta/route.ts": "meta-signature",
+  "api/webhooks/meta/data-deletion/route.ts": "meta-signed-request",
+  "api/webhooks/meta/deauthorize/route.ts": "meta-signed-request",
   "api/webhooks/stripe/route.ts": "stripe-signature",
   "api/webhooks/twilio/route.ts": "twilio-signature",
 };

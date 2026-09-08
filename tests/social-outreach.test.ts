@@ -51,6 +51,8 @@ function input(overrides: Partial<SocialSequenceInput> = {}): SocialSequenceInpu
     repliedAt: null,
     hasPendingDraft: false,
     promoted: false,
+    emailFallbackStarted: false,
+    warmedAt: null,
     settings: DEFAULT_SEQUENCE_SETTINGS,
     now: NOW,
     ...overrides,
@@ -65,17 +67,20 @@ describe("the platform's gate", () => {
     assert.equal(decision.action, "INVITE");
   });
 
-  test("a pending invite is never messaged, however long it has been", () => {
+  test("a pending invite is never messaged on LinkedIn, however long it waits", () => {
     // The single most important rule on this channel. A message before
-    // acceptance is impossible on LinkedIn and invisible on Meta, so attempting
-    // it wastes the one approach the customer gets.
-    const decision = decideSocialSequence(
-      input({
-        state: "INVITE_SENT",
-        inviteSentAt: "2026-03-01T10:00:00.000Z",
-      }),
-    );
-    assert.equal(decision.action, "WAIT");
+    // acceptance is impossible on LinkedIn, so attempting it wastes the one
+    // approach the customer gets. Asserted as "never COMPOSE" rather than
+    // "always WAIT": after a week the sequence may legitimately move to email,
+    // which is a different channel and not subject to this gate.
+    for (const sentAt of [
+      "2026-03-09T10:00:00.000Z",
+      "2026-03-01T10:00:00.000Z",
+      "2025-01-01T10:00:00.000Z",
+    ]) {
+      const decision = decideSocialSequence(input({ state: "INVITE_SENT", inviteSentAt: sentAt }));
+      assert.notEqual(decision.action, "COMPOSE", `composed a message for an invite sent ${sentAt}`);
+    }
   });
 
   test("acceptance opens the door, and the opener is due immediately", () => {
@@ -88,13 +93,64 @@ describe("the platform's gate", () => {
   });
 });
 
+describe("warming before the invite", () => {
+  const warming: SocialSequenceSettings = {
+    ...DEFAULT_SEQUENCE_SETTINGS,
+    warmBeforeInvite: true,
+  };
+
+  test("off by default: the invite goes straight out", () => {
+    // It spends one of the account's own rate-limited actions, so it is a
+    // choice rather than a default.
+    assert.equal(decideSocialSequence(input()).action, "INVITE");
+  });
+
+  test("views the profile first when the workspace asked for it", () => {
+    const decision = decideSocialSequence(input({ settings: warming }));
+    assert.equal(decision.action, "VISIT");
+  });
+
+  test("the invite does not land in the same moment as the view", () => {
+    // A view and an invite arriving together is the pattern that reads as a
+    // script rather than a person.
+    const decision = decideSocialSequence(
+      input({ settings: warming, warmedAt: "2026-03-10T09:00:00.000Z" }),
+    );
+    assert.equal(decision.action, "WAIT");
+    assert.equal(decision.nextActionAt.toISOString(), "2026-03-11T09:00:00.000Z");
+  });
+
+  test("the invite follows once the delay has passed", () => {
+    const decision = decideSocialSequence(
+      input({ settings: warming, warmedAt: "2026-03-08T09:00:00.000Z" }),
+    );
+    assert.equal(decision.action, "INVITE");
+  });
+
+  test("a visit never opens the messaging gate", () => {
+    // The whole point of modelling it as an action rather than a state:
+    // acceptance is the only thing that permits a message.
+    const decision = decideSocialSequence(
+      input({
+        settings: warming,
+        state: "INVITE_SENT",
+        inviteSentAt: "2026-03-09T10:00:00.000Z",
+        warmedAt: "2026-03-08T09:00:00.000Z",
+      }),
+    );
+    assert.notEqual(decision.action, "COMPOSE");
+  });
+});
+
 describe("invites that go unanswered", () => {
-  test("withdrawn once past the workspace's window, to free the allowance", () => {
+  test("withdrawn once past the workspace's window, freeing an outstanding invite", () => {
     const decision = decideSocialSequence(
       input({
         state: "INVITE_SENT",
-        // 22 days: one past the default 21.
-        inviteSentAt: "2026-02-16T10:00:00.000Z",
+        // 31 days: one past the default 30.
+        inviteSentAt: "2026-02-07T10:00:00.000Z",
+        // The fallback has already run, as it would have on day 7.
+        emailFallbackStarted: true,
       }),
     );
     assert.equal(decision.action, "WITHDRAW");
@@ -118,6 +174,9 @@ describe("invites that go unanswered", () => {
         state: "INVITE_SENT",
         inviteSentAt: "2020-01-01T00:00:00.000Z",
         settings,
+        // Long past the fallback too, so the only thing left to decide is
+        // whether to withdraw -- and this workspace has said never.
+        emailFallbackStarted: true,
       }),
     );
     assert.equal(decision.action, "WAIT");
@@ -130,6 +189,94 @@ describe("invites that go unanswered", () => {
       input({ state: "INVITE_SENT", inviteSentAt: null }),
     );
     assert.equal(decision.action, "WAIT");
+  });
+
+  test("after a week of silence the prospect moves to email", () => {
+    // The gap this closes. Previously an unanswered invite waited out the whole
+    // withdrawal window and then halted, so a prospect with a perfectly good
+    // work email was never emailed because a connection request went ignored.
+    const decision = decideSocialSequence(
+      input({ state: "INVITE_SENT", inviteSentAt: "2026-03-02T10:00:00.000Z" }),
+    );
+    assert.equal(decision.action, "FALL_BACK_TO_EMAIL");
+  });
+
+  test("the invite is left standing when the fallback fires", () => {
+    // Not withdrawn. A late acceptance is common and worth waiting for, and
+    // withdrawing early spends the prospect for nothing.
+    const decision = decideSocialSequence(
+      input({ state: "INVITE_SENT", inviteSentAt: "2026-03-02T10:00:00.000Z" }),
+    );
+    assert.notEqual(decision.action, "WITHDRAW");
+    assert.equal(nextActionFor(decision), null);
+  });
+
+  test("the fallback fires once, not on every sweep", () => {
+    const decision = decideSocialSequence(
+      input({
+        state: "INVITE_SENT",
+        inviteSentAt: "2026-03-02T10:00:00.000Z",
+        emailFallbackStarted: true,
+      }),
+    );
+    assert.equal(decision.action, "WAIT");
+  });
+
+  test("withdrawal still wins once its own window passes", () => {
+    // Both clocks due at once: taking the invite back is the more consequential
+    // of the two, and the row should not sit pending another cycle.
+    const decision = decideSocialSequence(
+      input({
+        state: "INVITE_SENT",
+        inviteSentAt: "2026-01-01T10:00:00.000Z",
+        emailFallbackStarted: true,
+      }),
+    );
+    assert.equal(decision.action, "WITHDRAW");
+  });
+
+  test("a workspace can run LinkedIn only", () => {
+    const settings: SocialSequenceSettings = {
+      ...DEFAULT_SEQUENCE_SETTINGS,
+      skipToEmailAfterDays: null,
+    };
+    const decision = decideSocialSequence(
+      input({ state: "INVITE_SENT", inviteSentAt: "2026-03-02T10:00:00.000Z", settings }),
+    );
+    assert.equal(decision.action, "WAIT");
+  });
+
+  test("inside the first week the row sleeps until the fallback is due", () => {
+    // Not polled daily. The row wakes at the earlier of the two clocks, which
+    // is now the email fallback rather than the withdrawal.
+    const decision = decideSocialSequence(
+      input({ state: "INVITE_SENT", inviteSentAt: "2026-03-08T10:00:00.000Z" }),
+    );
+    assert.equal(decision.action, "WAIT");
+    assert.equal(
+      decision.nextActionAt.toISOString(),
+      // 8 March + 7 days, the fallback -- not + 30, the withdrawal.
+      "2026-03-15T10:00:00.000Z",
+    );
+  });
+
+  test("a workspace that wants a seven-day withdrawal gets one", () => {
+    const settings: SocialSequenceSettings = {
+      ...DEFAULT_SEQUENCE_SETTINGS,
+      withdrawAfterDays: 7,
+      skipToEmailAfterDays: 7,
+    };
+    assert.equal(
+      decideSocialSequence(
+        input({
+          state: "INVITE_SENT",
+          inviteSentAt: "2026-03-03T10:00:00.000Z",
+          settings,
+          emailFallbackStarted: true,
+        }),
+      ).action,
+      "WITHDRAW",
+    );
   });
 
   test("a withdrawn invite is never re-sent", () => {

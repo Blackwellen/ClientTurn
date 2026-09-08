@@ -7,6 +7,7 @@ export type ProviderType =
   | "meta"
   | "twilio_sms"
   | "twilio_whatsapp"
+  | "whatsapp_cloud"
   | "google_calendar"
   | "calendly"
   | "email"
@@ -116,6 +117,26 @@ export const PROVIDERS: ProviderDefinition[] = [
     requiresFeature: "whatsapp",
     disconnectConsequence:
       "WhatsApp follow-up stops. Conversations already on WhatsApp fall back to SMS only if a mobile number is on file.",
+    configurable: true,
+  },
+  {
+    id: "whatsapp_cloud",
+    connection: "workspace",
+    connectPath: null,
+    connectionMethod: "oauth",
+    name: "WhatsApp (direct)",
+    category: "messaging",
+    summary:
+      "Connects your own WhatsApp Business number through Meta, without a reseller in between. Replies are free for 24 hours after someone messages you; outside that, only templates you have had approved.",
+    accountLabel: "WhatsApp number",
+    // The app credentials plus the Embedded Signup configuration. Every
+    // customer connects their *own* WhatsApp Business Account and number
+    // through that dialog — this is not one shared sender, which is exactly
+    // why it is an OAuth connection rather than a set of platform env vars.
+    requiredEnv: ["META_APP_ID", "META_APP_SECRET", "META_WHATSAPP_CONFIG_ID"],
+    requiresFeature: "whatsapp",
+    disconnectConsequence:
+      "WhatsApp follow-up stops going out through Meta. If a Twilio WhatsApp sender is connected it takes over; otherwise WhatsApp conversations fall back to SMS where a mobile number is on file.",
     configurable: true,
   },
   {

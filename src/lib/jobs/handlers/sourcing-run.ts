@@ -25,6 +25,10 @@ import {
 } from "@/lib/compliance/strictness";
 import { loadDataControls } from "@/lib/compliance/queries";
 import {
+  recordSignalRun,
+  signalForStrategy,
+} from "@/lib/find-leads/server/signals";
+import {
   cheapChecks,
   companyDedupeKey,
   emailDomain,
@@ -1968,10 +1972,47 @@ async function completeRun(context: RunContext): Promise<void> {
 
   const { data: run } = await admin
     .from("sourcing_runs")
-    .select("session_id")
+    .select("session_id, search_strategy_id")
     .eq("id", context.runId)
     .eq("business_id", context.businessId)
     .maybeSingle();
+
+  // The signal's health, from what this run actually produced.
+  //
+  // Resolved from the strategy rather than carried on the run, because a run
+  // reaches here from three paths -- manual, recurring, signal launch -- and
+  // only one of them knows a signal exists. Looking it up here means every
+  // path updates the Sources list without each having to remember to.
+  //
+  // `ready` rather than `found`: a signal that surfaces two hundred records
+  // and produces four contactable ones is not producing two hundred leads, and
+  // reporting the larger number would make a useless signal look productive.
+  const signalId = await signalForStrategy(
+    context.businessId,
+    run?.search_strategy_id ?? null,
+  );
+
+  if (signalId) {
+    await recordSignalRun({
+      businessId: context.businessId,
+      signalId,
+      leadsFound: counters.ready,
+      // Cleared rather than guessed. The recurring schedule owns the next run
+      // time, and inventing one here would show "runs in 7 days" beside a
+      // signal with no schedule at all.
+      nextRunAt: null,
+      result:
+        counters.ready > 0
+          ? null
+          : "The last run found nobody contactable. Worth widening the targeting or checking the filters.",
+    }).catch(() => null);
+
+    await admin
+      .from("sourcing_signals")
+      .update({ last_run_id: context.runId })
+      .eq("business_id", context.businessId)
+      .eq("id", signalId);
+  }
 
   if (run?.session_id) {
     // The rail's per-session count is the sum of what its runs produced.

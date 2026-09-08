@@ -4,6 +4,8 @@ import { recordAudit, recordUsage } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { estimateRunCost } from "../cost-model";
 import { checkPlanReadiness, describePlan, formatMinor, type SearchPlan } from "../plan";
+import { upsertStrategySignal } from "./signals";
+import type { SignalKind } from "../signals";
 import { currentStageNumber, progressPercent, STAGES, type StageKey } from "../stages";
 import {
   EMPTY_COUNTERS,
@@ -94,6 +96,20 @@ async function autoContactPermitted(
  * into existence, and it is reachable only from an explicit user action —
  * never from a chat turn.
  */
+/**
+ * What kind of signal a plan represents.
+ *
+ * Derived from the plan rather than asked for, because the customer never chose
+ * a "kind" -- they described a target, and this is the label that best describes
+ * what the resulting search actually looks for. Falls back to ICP_TOP, which is
+ * what a plan with no distinguishing feature genuinely is: the best-scoring
+ * slice of the profile.
+ */
+function signalKindFor(plan: SearchPlan): SignalKind {
+  if (plan.intent.categories.length > 0) return "KEYWORD";
+  return "ICP_TOP";
+}
+
 export async function createRun(input: {
   businessId: string;
   userId: string;
@@ -193,6 +209,24 @@ export async function createRun(input: {
       })
       .eq("business_id", input.businessId)
       .eq("id", input.strategyId);
+
+    // Approval is the moment a signal can exist: before it there is nothing
+    // runnable for the Sources list to point at. Upserted rather than inserted
+    // so re-approving an edited plan updates the row instead of leaving a
+    // second one named after the same search.
+    //
+    // Never allowed to fail the run. A signal is how the search is *displayed*;
+    // the search itself has already been created and paid for, and losing it
+    // because a display row could not be written would be the wrong trade.
+    await upsertStrategySignal({
+      businessId: input.businessId,
+      strategyId: input.strategyId,
+      sessionId: input.sessionId ?? null,
+      agentId: input.agentId ?? null,
+      name: title,
+      kind: signalKindFor(input.plan),
+      query: input.plan.industries.join(", ") || null,
+    }).catch(() => null);
   }
 
   if (input.sessionId) {

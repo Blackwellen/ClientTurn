@@ -54,16 +54,47 @@ export type SocialSequenceSettings = {
    * a withdrawn invite is a prospect you have spent and cannot re-approach.
    */
   withdrawAfterDays: number | null;
+  /**
+   * Days to wait for an acceptance before falling back to email.
+   *
+   * Deliberately much shorter than the withdrawal window. Acceptance rates
+   * decay quickly, and silence on LinkedIn is not silence from the person --
+   * a prospect with a good work email should be emailed rather than abandoned
+   * because a connection request went unanswered. Null disables the fallback,
+   * for a workspace running LinkedIn only.
+   */
+  skipToEmailAfterDays: number | null;
   /** Hours between the opening message and each follow-up. */
   followUpGapHours: number;
   /** Follow-ups after the opener. 0, 1 or 2. */
   maxFollowUps: number;
+  /**
+   * View the profile before asking to connect.
+   *
+   * A connection request from somebody who has never looked at your profile is
+   * the coldest possible approach. Viewing first produces a "someone viewed
+   * your profile" notification -- a real, permitted, no-cost touch -- so the
+   * invite that follows lands on somebody who has already seen the name.
+   *
+   * Off by default: it spends one of the account's own rate-limited actions,
+   * and that should be a choice.
+   */
+  warmBeforeInvite: boolean;
+  /** Hours between the view and the invite. */
+  warmDelayHours: number;
 };
 
 export const DEFAULT_SEQUENCE_SETTINGS: SocialSequenceSettings = {
-  withdrawAfterDays: 21,
+  withdrawAfterDays: 30,
+  // A week. Long enough that a genuine acceptance usually lands first, short
+  // enough that a good prospect is not parked for a month.
+  skipToEmailAfterDays: 7,
   followUpGapHours: 96,
   maxFollowUps: 2,
+  warmBeforeInvite: false,
+  // A day. Short enough that the view is still recent when the invite lands,
+  // long enough that the two do not arrive together and read as a script.
+  warmDelayHours: 24,
 };
 
 export type SocialSequenceInput = {
@@ -83,15 +114,40 @@ export type SocialSequenceInput = {
   hasPendingDraft: boolean;
   /** True once the prospect has become a Lead; the agent owns it from there. */
   promoted: boolean;
+  /**
+   * Whether the email fallback has already been started for this prospect.
+   *
+   * Without it the decision would fire on every sweep between the skip window
+   * and the withdrawal window, re-enrolling the prospect in email daily.
+   */
+  emailFallbackStarted: boolean;
+  /** When the profile was viewed as a warming step, if it was. */
+  warmedAt: string | null;
   settings: SocialSequenceSettings;
   now: Date;
 };
 
 export type SocialSequenceDecision =
+  /**
+   * View the profile, as a warming touch before the invite.
+   *
+   * Deliberately not a state change: a visit neither opens nor closes the
+   * messaging gate, which is `ACCEPTED`'s job alone. It changes only the order
+   * of the steps and whether the invite is the first thing the person sees.
+   */
+  | { action: "VISIT"; reason: string }
   /** Send a connection request. The note is decided by `shouldAttachNote`. */
   | { action: "INVITE"; reason: string }
   /** Withdraw a pending invite that has gone unanswered too long. */
   | { action: "WITHDRAW"; reason: string }
+  /**
+   * Stop waiting for LinkedIn and work this prospect by email instead.
+   *
+   * The invite is left standing -- it may still be accepted, and withdrawing
+   * early would throw away that chance for nothing. This only says the sequence
+   * should stop *waiting* on it.
+   */
+  | { action: "FALL_BACK_TO_EMAIL"; reason: string }
   /** Compose a message. `step` is what `sequence_step` becomes once sent. */
   | { action: "COMPOSE"; kind: "OPENER" | "FOLLOW_UP"; step: number; reason: string }
   /** Nothing to do yet. `nextActionAt` is when to look again. */
@@ -178,24 +234,55 @@ export function decideSocialSequence(
 
   // 5. Nothing sent yet: the connection request is the only way in.
   if (canInvite(state)) {
+    if (settings.warmBeforeInvite) {
+      const warmedAt = parse(input.warmedAt);
+
+      if (warmedAt === null) {
+        return {
+          action: "VISIT",
+          reason:
+            "Viewing the profile first means the connection request arrives from a name they have already seen, rather than from a stranger.",
+        };
+      }
+
+      // Viewed, but not long enough ago. A view and an invite landing in the
+      // same minute is the pattern that reads as a script rather than a person.
+      const inviteDueMs = warmedAt + settings.warmDelayHours * HOUR_MS;
+      if (nowMs < inviteDueMs) {
+        return {
+          action: "WAIT",
+          reason: "Profile viewed. The connection request follows shortly, rather than in the same moment.",
+          nextActionAt: new Date(inviteDueMs),
+        };
+      }
+    }
+
     return {
       action: "INVITE",
       reason: "No connection request has been sent yet, and a message is impossible before one is accepted.",
     };
   }
 
-  // 6. Invite out, waiting on them. The only thing we may decide is when to
-  //    give the allowance back.
+  // 6. Invite out, waiting on them.
+  //
+  // Two clocks run here, and conflating them was the design error this branch
+  // used to contain. An unanswered invite raises two separate questions:
+  //
+  //   * **"Should we stop waiting for LinkedIn?"** -- answered by
+  //     `skipToEmailAfterDays`, and the answer is soon. Acceptance rates decay
+  //     fast; a fortnight of silence is a no. But a no *on LinkedIn* is not a
+  //     no from the person, and the previous version treated it as one: the row
+  //     sat untouched until the withdrawal window and then died, so a prospect
+  //     with a perfectly good work email was never emailed because a connection
+  //     request went unanswered.
+  //   * **"Should we take the invite back?"** -- answered by
+  //     `withdrawAfterDays`, and the answer is later. LinkedIn caps *outstanding*
+  //     invitations, so a pending one costs something even while it waits.
+  //
+  // Splitting them is what lets the sequence fall back to email early while
+  // still letting the invite stand a while longer in case it is accepted late.
   if (state === "INVITE_SENT" || state === "INVITE_QUEUED") {
     const sentAt = parse(input.inviteSentAt);
-
-    if (settings.withdrawAfterDays === null) {
-      return {
-        action: "WAIT",
-        reason: "Invite sent. This workspace does not withdraw unanswered invites.",
-        nextActionAt: new Date(nowMs + 7 * DAY_MS),
-      };
-    }
 
     // An INVITE_SENT row with no timestamp cannot be aged. Treating it as
     // stale would withdraw a request sent an hour ago; treating it as fresh
@@ -209,17 +296,52 @@ export function decideSocialSequence(
       };
     }
 
-    const dueMs = sentAt + settings.withdrawAfterDays * DAY_MS;
-    if (nowMs >= dueMs) {
+    const skipMs =
+      settings.skipToEmailAfterDays === null
+        ? null
+        : sentAt + settings.skipToEmailAfterDays * DAY_MS;
+
+    const withdrawMs =
+      settings.withdrawAfterDays === null
+        ? null
+        : sentAt + settings.withdrawAfterDays * DAY_MS;
+
+    // Withdrawal first when both are due: taking the invite back is the more
+    // consequential of the two, and a row that reaches both at once should not
+    // sit pending for another cycle.
+    if (withdrawMs !== null && nowMs >= withdrawMs) {
       return {
         action: "WITHDRAW",
-        reason: `Unanswered for ${settings.withdrawAfterDays} days. Withdrawing frees the allowance for a prospect who will answer.`,
+        reason: `Unanswered for ${settings.withdrawAfterDays} days. Withdrawing frees one of the outstanding invitations LinkedIn allows the account to have open.`,
       };
     }
+
+    if (skipMs !== null && nowMs >= skipMs && !input.emailFallbackStarted) {
+      return {
+        action: "FALL_BACK_TO_EMAIL",
+        reason: `No answer to the connection request after ${settings.skipToEmailAfterDays} days. LinkedIn messaging stays shut, so this prospect moves to email instead of stopping here.`,
+      };
+    }
+
+    // Whichever clock is next. Null means that clock is disabled, and both
+    // being disabled means nothing is scheduled -- the invite stands until the
+    // recipient acts or somebody intervenes.
+    const next = [skipMs, withdrawMs]
+      .filter((at): at is number => at !== null && at > nowMs)
+      .sort((a, b) => a - b)[0];
+
+    if (next === undefined) {
+      return {
+        action: "WAIT",
+        reason: "Invite sent. Nothing further is scheduled for this prospect on LinkedIn.",
+        nextActionAt: new Date(nowMs + 7 * DAY_MS),
+      };
+    }
+
     return {
       action: "WAIT",
-      reason: "Invite sent. Nothing can be messaged until it is accepted.",
-      nextActionAt: new Date(dueMs),
+      reason: "Invite sent. Nothing can be messaged on LinkedIn until it is accepted.",
+      nextActionAt: new Date(next),
     };
   }
 
@@ -312,12 +434,18 @@ export const MAX_SEQUENCE_ATTEMPTS = 5;
  */
 export function nextActionFor(
   decision: SocialSequenceDecision,
-): "INVITE" | "MESSAGE" | "FOLLOW_UP" | "WITHDRAW" | null {
+): "INVITE" | "MESSAGE" | "FOLLOW_UP" | "WITHDRAW" | "VISIT" | null {
   switch (decision.action) {
+    case "VISIT":
+      return "VISIT";
     case "INVITE":
       return "INVITE";
     case "WITHDRAW":
       return "WITHDRAW";
+    // Not a LinkedIn action at all, so the column that describes what the
+    // sweeper will do on this platform has nothing to record.
+    case "FALL_BACK_TO_EMAIL":
+      return null;
     case "COMPOSE":
       return decision.kind === "OPENER" ? "MESSAGE" : "FOLLOW_UP";
     // A wait keeps whatever intent it is waiting for; the caller preserves the

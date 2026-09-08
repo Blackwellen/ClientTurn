@@ -1,4 +1,4 @@
--- 0041_find_leads_workspace: the pieces the Find Leads workspace needs that
+-- 0048_find_leads_workspace: the pieces the Find Leads workspace needs that
 -- 0025-0027 did not model — the customer-visible 12-stage run trail, resumable
 -- run checkpoints, and the website-analysis job that populates the acquisition
 -- profile.

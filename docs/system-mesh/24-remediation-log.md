@@ -1391,3 +1391,88 @@ exists to prevent.
   fails. The two migrations from this lane were applied to local as additive DDL
   instead. The remote project is correct; the local drift predates this work and
   wants a `db reset` when no other lane is running against it.
+
+---
+
+# Closing the Gojiberry gap
+
+**Date:** 2026-09-08 · **Migrations:** `0093`–`0097`
+
+Six features, all of which existed as capability the product had and could not
+show, or as a decision it made and would not let anybody change.
+
+## The one that was a defect, not a gap
+
+**An unanswered connection request was a dead end.** One clock governed a pending
+invite -- `social_withdraw_after_days`, 21 -- so the row waited three weeks, was
+withdrawn, and halted. A prospect with a perfectly good work email was never
+emailed because a *connection request* went ignored.
+
+That conflates two questions with different answers:
+
+| Question | Window | Why |
+|---|---|---|
+| Stop waiting for LinkedIn? | 7 days → fall back to email | Acceptance decays fast; silence on LinkedIn is not silence from the person |
+| Take the invite back? | 30 days → withdraw | LinkedIn caps *outstanding* invites, but late acceptances are common |
+
+The invite is deliberately left standing at the fallback. Withdrawing early
+spends the prospect for nothing, and `markSocialAccepted` still fires if they
+accept late, at which point the LinkedIn sequence resumes. A CHECK constraint
+refuses skip > withdraw, which would silently disable the fallback while
+appearing enabled.
+
+## The rest
+
+| Feature | The gap it closed |
+|---|---|
+| Profile visit (`VISIT`) | A connection request from somebody who never looked at your profile is the coldest possible approach. Modelled as an *action*, not a state: a visit neither opens nor closes the messaging gate, which is `ACCEPTED`'s job alone |
+| Sequence diagram | Five settings columns combined into a specific sequence with no way to see what they combined into. **Derived**, never stored -- a stored copy drifts the moment a setting changes, and the failure is silent |
+| Signals | The waterfall already ran these; they existed only as provider calls, so a customer saw a total and could not tell which search produced it, which had died, or run one on demand |
+| Autopilot ⇄ Review | The setting existed three screens from the queue it governs. "Is this sending on its own right now?" is asked while looking at the queue |
+| Funnel + chart | Four totals let somebody read "354 found" as good news; the same four with "0% contacted" between them say what is actually happening |
+| Inbox interest filters | Every social reply was classified on arrival and the verdict was **thrown away**. `conversations.interest` now carries it |
+
+## Decisions worth arguing with
+
+* **The autopilot toggle tells the truth when it is on and inert.** With only
+  ASSISTED accounts it shows an amber panel saying nothing sends without you.
+  A switch reading "on" while nothing happens is a lie found a week later.
+* **Rates render "—", never 0%, on a zero denominator.** 0% is a measured
+  failure; "—" is a question that cannot be asked yet.
+* **The chart is bars, not a line.** Discrete actions on discrete days; a
+  smoothed curve draws through a Saturday when nothing was sent.
+* **`leadsFound` counts `ready`, not `found`.** A signal surfacing 200 records
+  and producing 4 contactable ones is not producing 200 leads.
+* **`launchSignalAction` goes through `createRun`.** The budget clamp,
+  entitlement check and auto-contact permission live there, and a second path
+  to a run is a second path that must remember all three.
+
+## Defects found and fixed on the way
+
+- **My own first version of `launchSignalAction` enqueued a payload the handler
+  could not parse.** Caught by wiring it end to end rather than by typecheck --
+  the payload was `Record<string, unknown>`, so nothing objected until the job
+  would have run.
+- **A block insertion matched twice** and landed in `postMilestone` as well as
+  `completeRun`, which would have written signal health on every progress
+  message. Removed.
+- **Appended to migration `0094` after it was applied.** The appended half would
+  silently never have run. Split into `0095`.
+- **Two further duplicate migration numbers** with the parallel lane (`0085`,
+  `0096`). Renumbered to `0093` and `0097`. Four collisions this session — this
+  wants a CI check, because it fails at deploy rather than at review.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,707 tests, 0 failures** (1,570 + 137), three consecutive clean runs |
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm run build` | succeeds |
+| e2e — routes/meta/operations/writes/developer | **109 tests, 0 failures**, real Postgres + RLS |
+| Migrations | `0093`–`0097` applied to `losieaikadkadtmezini` and to local |
+
+Two runs during this work reported a single failure that did not reproduce; in
+both cases the test count changed between runs, which is the parallel lane
+editing files mid-run rather than a flaky assertion.

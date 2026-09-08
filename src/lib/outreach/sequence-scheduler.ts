@@ -109,7 +109,7 @@ export async function sweepDueCampaigns(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  const { data: due } = await admin
+  const { data: due, error } = await admin
     .from("outreach_recipient_runs")
     .select("business_id, campaign_id")
     .in("status", ["PENDING", "SCHEDULED", "ACTIVE"])
@@ -117,6 +117,19 @@ export async function sweepDueCampaigns(
     .lte("next_step_due_at", now)
     .order("next_step_due_at", { ascending: true })
     .limit(limit * 20);
+
+  /**
+   * A failed due-work query must throw, never read as "nothing to do".
+   *
+   * The two outcomes are indistinguishable downstream: both produce an empty
+   * list, the loop runs zero times and the job reports success. That is how a
+   * missing column once left the social channel silently dead for a week while
+   * every signal said healthy. Throwing puts the reason in `jobs.last_error`,
+   * where the worker records it and Admin -> System shows it.
+   */
+  if (error) {
+    throw new Error(`Could not read due campaign work: ${error.message}`);
+  }
 
   if (!due?.length) return { campaignsQueued: 0, recipientsDue: 0 };
 

@@ -1,4 +1,4 @@
--- 0054_outreach_sequences_variants_warmup: the three things a multi-step cold
+-- 0058_outreach_sequences_variants_warmup: the three things a multi-step cold
 -- outreach engine needs that the schema could not yet express.
 --
 -- 0029 modelled experiments and variants, and the dispatcher already schedules

@@ -4,7 +4,9 @@ import { z } from "zod";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import {
+  INTERESTED_CLASSIFICATIONS,
   parseChannel,
+  parseView,
   type ConversationRow,
   type ThreadMessage,
 } from "@/lib/inbox/types";
@@ -24,6 +26,7 @@ export default async function InboxPage({
 
   const channel = parseChannel(params.channel);
   const archived = params.archive === "1";
+  const view = parseView(params.view);
   const search = (params.q ?? "").slice(0, 100).trim();
 
   const supabase = await createClient();
@@ -32,7 +35,7 @@ export default async function InboxPage({
     .from("conversations")
     .select(
       `id, channel, counterparty_name, counterparty_handle, counterparty_avatar_url,
-       lead_id, unread_count, last_message_at, last_inbound_at, is_archived,
+       lead_id, unread_count, last_message_at, last_inbound_at, is_archived, interest,
        leads ( first_name, last_name, email )`,
     )
     .eq("business_id", workspace.businessId)
@@ -41,6 +44,19 @@ export default async function InboxPage({
     .limit(100);
 
   if (channel !== "all") query = query.eq("channel", channel);
+
+  // The three views, as predicates rather than as client-side filtering: the
+  // query already caps at 100 rows, so filtering after the fetch would show a
+  // partial answer and call it the whole one.
+  if (view === "received") {
+    // Somebody wrote to us. A thread we opened and nobody answered is not
+    // "received" -- it is waiting, which is a different list.
+    query = query.not("last_inbound_at", "is", null);
+  } else if (view === "unread") {
+    query = query.gt("unread_count", 0);
+  } else if (view === "interested") {
+    query = query.in("interest", [...INTERESTED_CLASSIFICATIONS]);
+  }
 
   // Counts come from the SQL function so the rail reflects the whole inbox,
   // not just the 100 rows this page happens to have fetched.
@@ -122,6 +138,7 @@ export default async function InboxPage({
   const hrefFor = (conversationId: string) => {
     const next = new URLSearchParams({
       channel,
+      view,
       archive: archived ? "1" : "0",
       thread: conversationId,
     });
@@ -132,6 +149,7 @@ export default async function InboxPage({
   return (
     <InboxView
       channel={channel}
+      view={view}
       archived={archived}
       search={search}
       conversations={filtered}

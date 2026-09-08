@@ -161,6 +161,32 @@ export const CHANNEL_DEFINITIONS: Record<InboxChannel, ChannelDefinition> = {
   },
 };
 
+/**
+ * The three questions somebody opens the inbox with.
+ *
+ * Channel answers "where is it". These answer "does it need me". `interested`
+ * is the one that was missing and is the reason the tab exists: every social
+ * reply is classified on arrival, and until `conversations.interest` was added
+ * that verdict never reached the inbox, so a reply saying "yes, let's talk" sat
+ * in the same undifferentiated list as one saying "wrong person".
+ */
+export const INBOX_VIEWS = ["received", "interested", "unread", "all"] as const;
+export type InboxView = (typeof INBOX_VIEWS)[number];
+
+export const VIEW_LABELS: Record<InboxView, string> = {
+  received: "Received",
+  interested: "Interested",
+  unread: "Unread",
+  all: "All",
+};
+
+/** The classifications that count as somebody worth replying to. */
+export const INTERESTED_CLASSIFICATIONS = ["INTERESTED", "QUESTION"] as const;
+
+export function parseView(value: string | undefined): InboxView {
+  return INBOX_VIEWS.includes(value as InboxView) ? (value as InboxView) : "received";
+}
+
 export function channelLabel(channel: string): string {
   return CHANNEL_DEFINITIONS[channel as InboxChannel]?.label ?? channel;
 }

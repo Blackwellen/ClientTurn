@@ -172,6 +172,20 @@ export async function ingestSocialReply(
     .update({ classification, classified_at: new Date().toISOString() })
     .eq("id", inserted.id);
 
+  // Carry the verdict onto the thread.
+  //
+  // The classification already existed and was thrown away: the inbox had no
+  // idea an interested reply had landed, so it could filter by channel and by
+  // unread and not by the question somebody actually opens it with -- who wants
+  // to talk to me.
+  if (conversationId) {
+    await admin
+      .from("conversations")
+      .update({ interest: classification })
+      .eq("business_id", input.businessId)
+      .eq("id", conversationId);
+  }
+
   /* 4. Act --------------------------------------------------------------- */
 
   if (classification === "OPT_OUT") {

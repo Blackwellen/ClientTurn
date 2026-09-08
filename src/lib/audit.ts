@@ -156,6 +156,11 @@ export type AuditAction =
   | "sourcing_run.completed"
   | "sourcing_run.failed"
   | "sourcing_run.target_increased"
+  // Signals. Pausing one silently switches off part of a workspace's pipeline
+  // and launching one spends provider money, so both are recorded.
+  | "signal.paused"
+  | "signal.resumed"
+  | "signal.launched"
   | "sourcing_run.budget_limit_reached"
   | "prospect.suppressed"
   | "prospect.approved"

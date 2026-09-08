@@ -16,19 +16,78 @@ import {
 const API_ROOT = "https://api.twilio.com/2010-04-01";
 
 export type TwilioCredentials = {
+  /** `AC…` — the path segment. Never an API key. */
   accountSid: string;
+  /** What authenticates: either the account auth token, or an API key secret. */
   authToken: string;
+  /** `SK…` when authenticating with an API key, else the account SID again. */
+  authSid: string;
   smsFrom?: string;
   messagingServiceSid?: string;
   whatsappFrom?: string;
 };
 
+/**
+ * Twilio has two credential shapes and they are not interchangeable in the
+ * place it matters.
+ *
+ *   * **Account SID + auth token.** `AC…` in the path, `AC…:token` in the
+ *     header. Same value twice.
+ *   * **API key.** `AC…` in the path, `SK…:secret` in the header. Different
+ *     values, and the safer option — a key can be revoked without rotating the
+ *     account's own token.
+ *
+ * The failure this guards against is silent and total: an `SK…` in the path
+ * returns `20404 not found` on every request, while the credentials are
+ * perfectly valid. The send fails, the error says "not found", and nothing
+ * points at the configuration.
+ *
+ * So the account SID is resolved separately from whatever authenticates, and a
+ * value that cannot be an account SID is refused rather than sent.
+ */
+export function resolveTwilioSids(input: {
+  configuredSid: string | null | undefined;
+  apiKeySid: string | null | undefined;
+}): { accountSid: string | null; authSid: string | null } {
+  const configured = input.configuredSid ?? null;
+  const apiKeySid = input.apiKeySid ?? null;
+
+  // An explicit API key SID means the other value must be the account.
+  if (apiKeySid) {
+    return {
+      accountSid: configured?.startsWith("AC") ? configured : null,
+      authSid: apiKeySid,
+    };
+  }
+
+  // Only one value. If it is an account SID it plays both roles; if it is an
+  // API key there is no account SID to build a URL from, and pretending
+  // otherwise produces the 404 above.
+  if (configured?.startsWith("AC")) {
+    return { accountSid: configured, authSid: configured };
+  }
+
+  return { accountSid: null, authSid: configured };
+}
+
+/** The same decision, against this deployment's environment. */
+function resolveSids(): { accountSid: string | null; authSid: string | null } {
+  return resolveTwilioSids({
+    configuredSid: serverEnv.twilio.accountSid,
+    apiKeySid: serverEnv.twilio.apiKeySid,
+  });
+}
+
 /** Returns the missing variable names, or an empty array when usable. */
 export function twilioConfigProblems(): string[] {
-  const { accountSid, authToken, smsFrom, messagingServiceSid } =
-    serverEnv.twilio;
+  const { authToken, smsFrom, messagingServiceSid } = serverEnv.twilio;
+  const { accountSid } = resolveSids();
   const missing: string[] = [];
-  if (!accountSid) missing.push("TWILIO_ACCOUNT_SID");
+  if (!accountSid) {
+    // Named precisely rather than as a bare "missing": the commonest cause is
+    // an API key SID pasted into the account SID variable, which looks set.
+    missing.push("TWILIO_ACCOUNT_SID (must be the AC… account SID, not an SK… API key)");
+  }
   if (!authToken) missing.push("TWILIO_AUTH_TOKEN");
   if (!smsFrom && !messagingServiceSid) {
     missing.push("TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID");
@@ -43,8 +102,12 @@ export function isTwilioConfigured(): boolean {
 export function twilioCredentials(): TwilioCredentials | null {
   if (!isTwilioConfigured()) return null;
   const env = serverEnv.twilio;
+  const { accountSid, authSid } = resolveSids();
+  if (!accountSid) return null;
+
   return {
-    accountSid: env.accountSid!,
+    accountSid,
+    authSid: authSid ?? accountSid,
     authToken: env.authToken!,
     smsFrom: env.smsFrom,
     messagingServiceSid: env.messagingServiceSid,
@@ -179,7 +242,9 @@ class TwilioProvider implements MessagingProvider {
           method: "POST",
           headers: {
             Authorization: `Basic ${Buffer.from(
-              `${credentials.accountSid}:${credentials.authToken}`,
+              // The auth SID, which is the API key when one is configured.
+              // The path above always uses the account SID.
+              `${credentials.authSid}:${credentials.authToken}`,
             ).toString("base64")}`,
             "Content-Type": "application/x-www-form-urlencoded",
             "I-Twilio-Idempotency-Token": request.sendKey,

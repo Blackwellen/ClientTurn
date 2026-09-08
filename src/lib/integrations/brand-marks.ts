@@ -20,6 +20,9 @@ const BRAND_FILE: Record<ProviderType, string> = {
   linkedin_ads: "linkedin",
   twilio_sms: "twilio",
   twilio_whatsapp: "whatsapp",
+  // The same mark: to a customer these are one channel reached two ways, and
+  // two different logos would suggest two different products.
+  whatsapp_cloud: "whatsapp",
   slack: "slack",
   google_calendar: "google-calendar",
   calendly: "calendly",

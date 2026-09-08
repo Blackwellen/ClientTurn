@@ -195,6 +195,8 @@ export async function storeConnection(params: {
   displayName: string | null;
   scopes: string[];
   token: TokenResponse;
+  /** Non-secret provider facts — a Page id, a phone number id. Never a token. */
+  config?: Record<string, unknown>;
 }): Promise<{ integrationId: string }> {
   const admin = createAdminClient();
 
@@ -207,6 +209,13 @@ export async function storeConnection(params: {
         status: "HEALTHY",
         external_account_id: params.externalAccountId,
         display_name: params.displayName,
+        // Only written when the provider resolved something. An upsert with
+        // `config: {}` on a reconnect would erase a Page id that is still
+        // perfectly valid, and the send path would start reporting "not
+        // connected" for a connection the customer can see is healthy.
+        ...(params.config && Object.keys(params.config).length > 0
+          ? { config: params.config as never }
+          : {}),
         scopes: params.scopes,
         connected_by: params.userId,
         last_success_at: new Date().toISOString(),

@@ -3,6 +3,7 @@ import { serverEnv } from "@/lib/env";
 import { enqueue } from "@/lib/jobs/queue";
 import { verifyMetaSignature } from "@/lib/messaging/meta";
 import { deliveriesFor, type MetaEntry } from "@/lib/messaging/meta-protocol";
+import { ingestWebhookComment } from "@/lib/social/comment-ingest";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +100,11 @@ export async function POST(request: Request) {
   }
 
   const object = body.object ?? "";
-  if (object !== "page" && object !== "instagram") {
+  if (
+    object !== "page" &&
+    object !== "instagram" &&
+    object !== "whatsapp_business_account"
+  ) {
     // A product we have not subscribed to. Acknowledged so Meta stops
     // retrying, and ignored.
     return new Response("ok", { status: 200 });
@@ -138,6 +143,20 @@ export async function POST(request: Request) {
           { provider: "meta", externalEventId: eventId },
           { priority: 10, idempotencyKey: `meta:${eventId}` },
         );
+        continue;
+      }
+
+      if (delivery.kind === "comment") {
+        // Somebody commented on the business's own content. This is the entry
+        // point for the discovery flows: a comment is the only thing that makes
+        // a person reachable who has never messaged the business, and it opens
+        // a seven-day window measured from the comment's own timestamp.
+        //
+        // Handled inline rather than queued because it is one indexed upsert
+        // with no provider I/O — the comment arrived with everything needed.
+        // Queueing would add latency to the one clock in the product that
+        // expires silently.
+        await ingestWebhookComment(delivery.comment, entry.id ?? null);
         continue;
       }
 

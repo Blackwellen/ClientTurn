@@ -86,10 +86,36 @@ export type MetaEntry = {
   changes?: {
     field?: string;
     value?: {
+      // leadgen
       leadgen_id?: string;
       page_id?: string;
       form_id?: string;
       created_time?: number;
+      // feed (Page) and comments (Instagram)
+      id?: string;
+      item?: string;
+      verb?: string;
+      comment_id?: string;
+      post_id?: string;
+      parent_id?: string;
+      message?: string;
+      text?: string;
+      created_at?: number;
+      from?: { id?: string; name?: string; username?: string };
+      media?: { id?: string; media_product_type?: string };
+      permalink_url?: string;
+      // whatsapp
+      messaging_product?: string;
+      metadata?: { display_phone_number?: string; phone_number_id?: string };
+      contacts?: { wa_id?: string; profile?: { name?: string } }[];
+      messages?: {
+        id?: string;
+        from?: string;
+        timestamp?: string;
+        type?: string;
+        text?: { body?: string };
+      }[];
+      statuses?: { id?: string; status?: string; timestamp?: string }[];
     };
   }[];
 };
@@ -134,6 +160,14 @@ export function parseMetaInbound(rawBody: string): InboundMessage[] {
   const body = parse(rawBody);
   if (!body) return [];
 
+  // WhatsApp arrives on the same endpoint under its own object, and is not a
+  // Meta *channel* in this codebase's sense — it is addressed by phone number,
+  // not by a page-scoped id — so it is parsed separately rather than being bent
+  // through `channelForObject`.
+  if (body.object === "whatsapp_business_account") {
+    return parseWhatsAppInbound(body);
+  }
+
   const channel = channelForObject(body.object);
   if (!channel) return [];
 
@@ -157,6 +191,56 @@ export function parseMetaInbound(rawBody: string): InboundMessage[] {
         channel,
         receivedAt: new Date(event.timestamp ?? Date.now()).toISOString(),
       });
+    }
+  }
+
+  return messages;
+}
+
+/**
+ * Inbound WhatsApp messages.
+ *
+ * Addressed by phone number rather than by a platform-scoped id, so the
+ * `from`/`to` here are E.164 rather than a `meta_psid:` address — which is
+ * exactly right: a WhatsApp number is the same number the lead gave on a form,
+ * and suppression keyed on it works across SMS and WhatsApp alike.
+ *
+ * Only text is taken. An image, a location or a reaction is a real message but
+ * not one the qualification engine can read, and passing it on as an empty
+ * string would look to the agent like the person said nothing.
+ */
+function parseWhatsAppInbound(body: MetaWebhookBody): InboundMessage[] {
+  const messages: InboundMessage[] = [];
+
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== "messages") continue;
+
+      const value = change.value;
+      if (!value?.messages?.length) continue;
+
+      // The business's own number, as Meta reports it on the delivery.
+      const to = value.metadata?.display_phone_number
+        ? `+${value.metadata.display_phone_number.replace(/[^\d]/g, "")}`
+        : "";
+
+      for (const message of value.messages) {
+        const text = message.text?.body?.trim();
+        if (!message.id || !message.from || !text) continue;
+        if (message.type && message.type !== "text") continue;
+
+        messages.push({
+          provider: "whatsapp_cloud",
+          providerMessageId: message.id,
+          from: `+${message.from.replace(/[^\d]/g, "")}`,
+          to,
+          body: text,
+          channel: "whatsapp",
+          receivedAt: new Date(
+            message.timestamp ? Number(message.timestamp) * 1000 : Date.now(),
+          ).toISOString(),
+        });
+      }
     }
   }
 
@@ -202,7 +286,37 @@ export function parseMetaStatus(rawBody: string): MessageStatusEvent[] {
 
 export type MetaDelivery =
   | { kind: "message"; eventId: string }
-  | { kind: "leadgen"; eventId: string; pageId: string | null };
+  | { kind: "leadgen"; eventId: string; pageId: string | null }
+  | { kind: "comment"; eventId: string; comment: MetaComment };
+
+/**
+ * Somebody commented on the business's own post, reel or ad.
+ *
+ * This is the entry point for flows 1 and 3: a comment is the only thing that
+ * makes a person reachable who has never messaged the business, and
+ * `commentId` is the address Meta's private-reply endpoint takes.
+ *
+ * Arriving by webhook rather than by polling matters for more than latency.
+ * Reading comments back from `/{page}/feed` needs `pages_read_user_content`,
+ * which the use-case model does not offer on this app — but a comment delivered
+ * to a subscribed webhook needs no read permission at all, because Meta is
+ * handing it to us rather than us going to fetch it. The seven-day reply window
+ * also runs from the comment's own timestamp, so hearing about it immediately
+ * is most of the window.
+ */
+export type MetaComment = {
+  platform: "FACEBOOK" | "INSTAGRAM";
+  channel: MetaChannel;
+  commentId: string;
+  /** The post, reel or ad it was left on. */
+  postId: string | null;
+  /** Platform-scoped id of the commenter. Bare, never prefixed. */
+  fromId: string | null;
+  fromName: string | null;
+  text: string | null;
+  createdAt: string;
+  permalinkUrl: string | null;
+};
 
 /**
  * The individually-addressable events inside one entry, each with a stable id
@@ -214,6 +328,78 @@ export type MetaDelivery =
  * deduplicated, and processing it twice is worse than dropping it, because the
  * poller collects anything genuinely missed.
  */
+/**
+ * A comment change, or null if this change is something else.
+ *
+ * Three exclusions, each one a real event we deliberately ignore:
+ *
+ *   * **Anything but `add`.** An edit or a delete is not a new person to
+ *     answer, and treating a delete as an arrival would create a prospect from
+ *     a comment that no longer exists.
+ *   * **The business's own comments.** A Page replying in its own thread is
+ *     delivered here too; ingesting it would create a prospect for the customer.
+ *     Filtered by the caller, which knows the Page id — see the webhook route.
+ *   * **Replies to comments.** `parent_id` present means this is a reply
+ *     inside a thread. Meta permits one private reply per top-level comment,
+ *     and addressing a nested reply is refused.
+ */
+function commentFrom(
+  object: string,
+  entry: MetaEntry,
+  change: NonNullable<MetaEntry["changes"]>[number],
+): MetaComment | null {
+  const value = change.value;
+  if (!value) return null;
+
+  const isPageComment = change.field === "feed" && value.item === "comment";
+  const isInstagramComment = change.field === "comments";
+  if (!isPageComment && !isInstagramComment) return null;
+
+  // Only additions. `verb` is absent on the Instagram `comments` field, where
+  // every delivery is an arrival.
+  if (isPageComment && value.verb !== "add") return null;
+
+  const commentId = value.comment_id ?? (isInstagramComment ? value.id : null);
+  if (!commentId) return null;
+
+  // A reply inside a thread cannot be privately replied to.
+  if (isPageComment && value.parent_id && value.parent_id !== value.post_id) {
+    return null;
+  }
+
+  // No author id, no delivery.
+  //
+  // A private reply is addressed to the *comment*, so Meta would in principle
+  // accept one — but suppression is keyed on the person's platform address, and
+  // without an id there is no way to establish they have not opted out. An
+  // unverifiable contactability decision is a refusal, never an assumption that
+  // nobody objected. Dropped here rather than in the ingest so it never becomes
+  // a stored event either.
+  if (!value.from?.id) return null;
+
+  const platform = isInstagramComment ? "INSTAGRAM" : "FACEBOOK";
+  const channel: MetaChannel = isInstagramComment ? "instagram" : "messenger";
+
+  const createdSeconds = value.created_time ?? value.created_at;
+
+  return {
+    platform,
+    channel,
+    commentId,
+    postId: value.post_id ?? value.media?.id ?? null,
+    fromId: value.from?.id ?? null,
+    fromName: value.from?.name ?? value.from?.username ?? null,
+    text: (value.message ?? value.text ?? "").trim() || null,
+    // The platform's own timestamp. Meta measures the seven-day private-reply
+    // window from this, never from when we received it, so a receipt time here
+    // would quietly overstate how long is left.
+    createdAt: new Date(
+      createdSeconds ? createdSeconds * 1000 : (entry.time ?? Date.now()),
+    ).toISOString(),
+    permalinkUrl: value.permalink_url ?? null,
+  };
+}
+
 export function deliveriesFor(object: string, entry: MetaEntry): MetaDelivery[] {
   const deliveries: MetaDelivery[] = [];
 
@@ -222,7 +408,34 @@ export function deliveriesFor(object: string, entry: MetaEntry): MetaDelivery[] 
     if (mid) deliveries.push({ kind: "message", eventId: `${object}:msg:${mid}` });
   }
 
+  // WhatsApp messages arrive as a `messages` change rather than in the
+  // `messaging` array, but they are ordinary inbound messages once parsed — so
+  // they become the same kind of delivery and take the same path through
+  // `message.process_inbound`.
+  if (object === "whatsapp_business_account") {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== "messages") continue;
+      for (const message of change.value?.messages ?? []) {
+        if (!message.id) continue;
+        deliveries.push({ kind: "message", eventId: `whatsapp:msg:${message.id}` });
+      }
+    }
+    return deliveries;
+  }
+
   for (const change of entry.changes ?? []) {
+    const comment = commentFrom(object, entry, change);
+    if (comment) {
+      deliveries.push({
+        kind: "comment",
+        // Keyed on the comment id, which is what a redelivery repeats and what
+        // the one-reply-per-comment rule is enforced against.
+        eventId: `${object}:comment:${comment.commentId}`,
+        comment,
+      });
+      continue;
+    }
+
     if (change.field !== "leadgen") continue;
     const leadgenId = change.value?.leadgen_id;
     if (!leadgenId) continue;

@@ -56,6 +56,7 @@ export async function GET(
     const identity = await adapter.identify(token);
 
     const { integrationId } = await storeConnection({
+      config: identity.config,
       businessId: verified.businessId,
       userId: verified.userId,
       provider,

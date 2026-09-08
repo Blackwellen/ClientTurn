@@ -673,3 +673,49 @@ export async function recordSocialReplyAction(
     alreadyRecorded: !result.recorded,
   });
 }
+
+/* --------------------------------------------------------------- autopilot */
+
+/**
+ * Switches the workspace between autopilot and review.
+ *
+ * The same column the settings screen writes, exposed beside the queue it
+ * governs. Admin-only, and audited: turning on autonomous sending is the single
+ * most consequential switch in the product, and "who turned it on and when"
+ * must be answerable from the log rather than inferred.
+ */
+export async function setSocialAutopilotAction(
+  enabled: unknown,
+): Promise<ActionResult<{ enabled: boolean }>> {
+  const parsed = z.boolean().safeParse(enabled);
+  if (!parsed.success) return fail("That setting could not be changed.");
+
+  const access = await requireOutreachAdmin();
+  if (!access.ok) return access;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("business_data_controls")
+    .upsert(
+      {
+        business_id: access.workspace.businessId,
+        social_autonomous_sending: parsed.data,
+        updated_by: access.workspace.userId,
+      },
+      { onConflict: "business_id" },
+    );
+
+  if (error) return fail("That setting could not be saved.");
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "workspace.settings_updated",
+    entityType: "business_data_controls",
+    entityId: access.workspace.businessId,
+    metadata: { section: "social_autopilot", social_autonomous_sending: parsed.data },
+  });
+
+  refresh();
+  return ok({ enabled: parsed.data });
+}

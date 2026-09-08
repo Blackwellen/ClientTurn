@@ -20,10 +20,13 @@ import { cn } from "@/lib/cn";
 import {
   CHANNEL_DEFINITIONS,
   INBOX_CHANNELS,
+  INBOX_VIEWS,
+  VIEW_LABELS,
   channelLabel,
   replyWindow,
   type ConversationRow,
   type InboxChannel,
+  type InboxView,
   type ThreadMessage,
 } from "@/lib/inbox/types";
 import { InboxControls } from "./inbox-controls";
@@ -40,6 +43,7 @@ import { InboxControls } from "./inbox-controls";
  */
 export function InboxView({
   channel,
+  view,
   archived,
   search,
   conversations,
@@ -51,6 +55,7 @@ export function InboxView({
   hrefFor,
 }: {
   channel: InboxChannel;
+  view: InboxView;
   archived: boolean;
   search: string;
   conversations: ConversationRow[];
@@ -82,6 +87,7 @@ export function InboxView({
       <div className="grid min-h-[600px] overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-[190px_320px_1fr]">
         <ChannelRail channel={channel} archived={archived} counts={channelCounts} />
         <ConversationList
+          view={view}
           conversations={conversations}
           selectedId={selected?.id ?? null}
           channel={channel}
@@ -208,6 +214,7 @@ function ConversationList({
   conversations,
   selectedId,
   channel,
+  view,
   archived,
   search,
   hrefFor,
@@ -215,15 +222,43 @@ function ConversationList({
   conversations: ConversationRow[];
   selectedId: string | null;
   channel: InboxChannel;
+  view: InboxView;
   archived: boolean;
   search: string;
   hrefFor: (id: string) => string;
 }) {
   return (
     <section className="flex min-w-0 flex-col border-b border-line lg:border-b-0 lg:border-r">
+      {/* Channel answers "where is it". These answer "does it need me", which
+          is the question somebody actually opens an inbox with. */}
+      <nav
+        aria-label="Filter conversations"
+        className="flex flex-wrap gap-1 border-b border-line px-3 pt-3 pb-2"
+      >
+        {INBOX_VIEWS.map((key) => {
+          const active = view === key;
+          return (
+            <Link
+              key={key}
+              href={`/app/inbox?channel=${channel}&view=${key}${archived ? "&archive=1" : ""}`}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[12px] font-medium",
+                active
+                  ? "bg-accent-100 text-content-accent"
+                  : "text-content-muted hover:bg-surface-hover hover:text-content",
+              )}
+            >
+              {VIEW_LABELS[key]}
+            </Link>
+          );
+        })}
+      </nav>
+
       <form className="relative border-b border-line p-3">
         {/* Preserved so searching does not silently drop the active filters. */}
         <input type="hidden" name="channel" value={channel} />
+        <input type="hidden" name="view" value={view} />
         <input type="hidden" name="archive" value={archived ? "1" : "0"} />
         <Search
           className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-content-subtle"

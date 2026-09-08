@@ -3,7 +3,11 @@ import { PermanentJobError } from "@/lib/jobs/registry";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
-import { isTwilioConfigured, twilioConfigProblems } from "@/lib/messaging/twilio";
+import {
+  isTwilioConfigured,
+  twilioConfigProblems,
+  twilioCredentials,
+} from "@/lib/messaging/twilio";
 import { loadBusinessContext, queueNotification } from "./shared";
 import { parsePayload } from "./parse";
 import { integrationHealthPayload } from "./payloads";
@@ -64,13 +68,29 @@ async function probeTwilio(): Promise<Probe> {
     );
   }
 
-  const { accountSid, authToken } = serverEnv.twilio;
+  // Resolved through `twilioCredentials`, not read raw from the environment.
+  //
+  // Twilio's two SIDs go in two different places: the `AC…` account SID is the
+  // path segment, and an `SK…` API key is what authenticates. Reading one value
+  // and using it for both produces `20404 not found` when an API key is
+  // configured — which this probe would then report as DEGRADED, blaming the
+  // provider for a configuration mistake.
+  const credentials = twilioCredentials();
+  if (!credentials) {
+    return actionRequired(
+      "provider_not_configured",
+      `Twilio credentials are missing: ${twilioConfigProblems().join(", ")}.`,
+    );
+  }
+
   try {
     const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`,
+      `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}.json`,
       {
         headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(
+            `${credentials.authSid}:${credentials.authToken}`,
+          ).toString("base64")}`,
         },
       },
     );
@@ -79,6 +99,15 @@ async function probeTwilio(): Promise<Probe> {
       return actionRequired(
         String(response.status),
         "Twilio rejected the stored credentials.",
+      );
+    }
+    if (response.status === 404) {
+      // Twilio returns 404, not 401, when the path names something the
+      // credentials cannot see — most often an API key SID used as the account
+      // SID. Saying so beats reporting a bare "404 from Twilio".
+      return actionRequired(
+        "account_not_found",
+        "Twilio could not find that account. Check TWILIO_ACCOUNT_SID is the AC… account SID rather than an SK… API key.",
       );
     }
     return {

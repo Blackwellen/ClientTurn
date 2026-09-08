@@ -88,7 +88,26 @@ export const serverEnv = {
    * in this environment; the canonical names win when both are set.
    */
   twilio: {
+    /**
+     * The **Account** SID — `AC…`. It is the path segment in every REST call
+     * (`/Accounts/{AC…}/Messages.json`), and Twilio requires it there even when
+     * the request authenticates with an API key.
+     *
+     * Distinct from `apiKeySid` on purpose. An API key SID (`SK…`) authenticates
+     * perfectly well and is the safer credential to hold — it can be revoked
+     * without rotating the account's own auth token — but putting one in the
+     * path returns `20404 The requested resource was not found`. That is
+     * exactly what was happening: `TWILIO_ACCOUNT_SID` held an `SK…` value, so
+     * every SMS and WhatsApp send 404'd while the credentials themselves were
+     * valid.
+     */
     accountSid: optional("TWILIO_ACCOUNT_SID") ?? optional("TWILIO_SID"),
+    /**
+     * `SK…`, when authenticating with an API key rather than the account's own
+     * auth token. Optional: with it, `TWILIO_ACCOUNT_SID` must still hold the
+     * `AC…` value, because that is what every REST path is built from.
+     */
+    apiKeySid: optional("TWILIO_API_KEY_SID"),
     authToken: optional("TWILIO_AUTH_TOKEN") ?? optional("TWILIO_CLIENT_SECRET"),
     smsFrom: optional("TWILIO_SMS_FROM") ?? optional("TWILIO_PHONE_NUMBER"),
     messagingServiceSid: optional("TWILIO_MESSAGING_SERVICE_SID"),
@@ -152,6 +171,13 @@ export const serverEnv = {
      * only the handshake, never a delivery, which `META_APP_SECRET` signs.
      */
     webhookVerifyToken: optional("META_WEBHOOK_VERIFY_TOKEN"),
+    /**
+     * The Embedded Signup configuration Meta generates when the WhatsApp use
+     * case is set up. Without it the connect dialog is an ordinary Facebook
+     * login that grants scopes and creates no WhatsApp account — so its absence
+     * makes the provider unavailable rather than silently broken.
+     */
+    whatsappConfigId: optional("META_WHATSAPP_CONFIG_ID"),
   },
   slack: {
     clientId: optional("SLACK_CLIENT_ID"),

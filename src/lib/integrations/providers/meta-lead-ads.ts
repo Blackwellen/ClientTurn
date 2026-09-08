@@ -81,7 +81,22 @@ function config(): OAuthConfig | null {
     scope: [
       "pages_show_list",
       "pages_read_engagement",
+      // Deliberately NOT `pages_read_user_content`. Reading the Page's own
+      // posts back needs it, and the use-case model does not offer it on this
+      // app — but a comment *delivered* to a subscribed webhook needs no read
+      // permission at all, because Meta hands it over rather than us fetching
+      // it. `feed` is subscribed, `social/comment-ingest.ts` receives it, and
+      // that path is both permitted and faster: the seven-day private-reply
+      // window runs from the comment's own timestamp, so polling latency came
+      // straight off the only clock that expires silently.
       "leads_retrieval",
+      // Required to reach `/{page}/leadgen_forms`, which the poller below calls
+      // as the backstop for a webhook Meta failed to deliver. Without it that
+      // edge returns `(#200) Requires pages_manage_ads permission to manage the
+      // object`, and the safety net silently stops working while the webhook
+      // path carries on — the worst shape of failure for this route, because
+      // the thing that breaks is the thing that catches breakage.
+      "pages_manage_ads",
       "pages_manage_metadata",
       "pages_messaging",
       "instagram_basic",
@@ -106,10 +121,57 @@ registerOAuthProvider("meta", {
       name?: string;
     } | null;
 
+    // Which Page, and which Instagram account is linked to it.
+    //
+    // Without this the connection completes and every send fails: the transport
+    // reads `config.pageId`, and a token alone does not say which of somebody's
+    // Pages they meant. The first Page with a linked Instagram account is
+    // preferred, because that is the one that can do both halves of the
+    // product; otherwise the first Page.
+    let pageId: string | null = null;
+    let instagramUserId: string | null = null;
+    let pageName: string | null = null;
+
+    try {
+      const pagesResponse = await fetch(
+        `${GRAPH}/me/accounts?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(token.accessToken)}`,
+        { cache: "no-store" },
+      );
+
+      if (pagesResponse.ok) {
+        const pages = (await pagesResponse.json()) as {
+          data?: {
+            id?: string;
+            name?: string;
+            instagram_business_account?: { id?: string };
+          }[];
+        };
+
+        const list = pages.data ?? [];
+        const chosen =
+          list.find((page) => page.instagram_business_account?.id) ?? list[0] ?? null;
+
+        pageId = chosen?.id ?? null;
+        pageName = chosen?.name ?? null;
+        instagramUserId = chosen?.instagram_business_account?.id ?? null;
+      }
+    } catch {
+      // A failure here leaves `config` empty rather than throwing. The
+      // connection is still recorded, the send path reports "no Page
+      // connected", and reconnecting resolves it — which is a far better
+      // outcome than an OAuth callback that 500s after the token was granted.
+    }
+
     return {
       externalAccountId: json?.id ?? null,
-      displayName: json?.name ?? null,
+      // The Page name, not the person's — this row is shown as "which account
+      // is connected", and the Page is what the customer recognises.
+      displayName: pageName ?? json?.name ?? null,
       scopes: [],
+      config: {
+        ...(pageId ? { pageId } : {}),
+        ...(instagramUserId ? { instagramUserId } : {}),
+      },
     };
   },
 });

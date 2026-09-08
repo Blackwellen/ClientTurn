@@ -11,6 +11,7 @@ import {
   shouldAttachNote,
   socialCapacity,
   MAX_SOCIAL_MESSAGE_CHARS,
+  marketingGateApplies,
   type SocialState,
 } from "../src/lib/outreach/social-limits.ts";
 import {
@@ -583,5 +584,79 @@ describe("the agent re-checks the follow gate before every send", () => {
     const result = evaluateSendGate(agentSend({ contactSuppressed: true }));
     assert.equal(result.decision, "DENY");
     assert.equal(result.decision === "DENY" && result.code, "CONTACT_SUPPRESSED");
+  });
+});
+
+/* --------------------------------------- what the cold marketing rule covers */
+
+describe("a bare connection request is not a marketing send", () => {
+  /**
+   * The bug this pins, found by running the flow rather than by reading it.
+   *
+   * Every invite was evaluated as cold SOCIAL. No compliance pack lists SOCIAL
+   * as a permitted cold channel — correctly, because a cold DM to a stranger is
+   * what that gate exists to refuse — so every connection request halted with
+   * BLOCKED_COLD_CHANNEL. Since the invite is the only route to the acceptance
+   * that makes a lawful message possible, refusing every invite refused the
+   * entire channel. The flow could never start.
+   */
+  test("a bare follow or connection request is outside the marketing rule", () => {
+    assert.equal(
+      marketingGateApplies({ action: "INVITE", carriesNote: false }),
+      false,
+      "following an account transmits no content, so there is nothing in it to be marketing",
+    );
+  });
+
+  /**
+   * The other half, and the one that keeps the exemption honest. The moment an
+   * invite carries a note it is content, it is marketing, and it is judged like
+   * any other cold communication.
+   */
+  test("an invite carrying a note is a marketing send", () => {
+    assert.equal(marketingGateApplies({ action: "INVITE", carriesNote: true }), true);
+  });
+
+  test("a message is always a marketing send, note or not", () => {
+    assert.equal(marketingGateApplies({ action: "MESSAGE", carriesNote: false }), true);
+    assert.equal(marketingGateApplies({ action: "MESSAGE", carriesNote: true }), true);
+  });
+
+  /**
+   * TikTok has no invitation note at all, so its invite can never be anything
+   * but contentless. This ties the exemption to the platform fact rather than
+   * leaving the two able to drift apart.
+   */
+  test("TikTok invites are contentless by construction", () => {
+    const capacity = socialCapacity(
+      { dailyConnects: 30, weeklyConnects: 200, monthlyNotes: 99, dailyMessages: 20, monthlyInMail: 0 },
+      { connectsToday: 0, connectsThisWeek: 0, messagesToday: 0, notesThisMonth: 0 },
+    );
+
+    const note = shouldAttachNote(capacity, "TIKTOK");
+    assert.equal(note.attach, false);
+    assert.equal(
+      marketingGateApplies({ action: "INVITE", carriesNote: note.attach }),
+      false,
+    );
+  });
+
+  /**
+   * LinkedIn with notes available is the case that must still be gated. If this
+   * ever returns false the exemption has widened into a way of sending cold
+   * marketing on social, which is exactly what it must not become.
+   */
+  test("a LinkedIn invite with a note left to spend is still gated", () => {
+    const capacity = socialCapacity(
+      { dailyConnects: 15, weeklyConnects: 100, monthlyNotes: 5, dailyMessages: 25, monthlyInMail: 0 },
+      { connectsToday: 0, connectsThisWeek: 0, messagesToday: 0, notesThisMonth: 0 },
+    );
+
+    const note = shouldAttachNote(capacity, "LINKEDIN");
+    assert.equal(note.attach, true, "a free account with notes left should use one");
+    assert.equal(
+      marketingGateApplies({ action: "INVITE", carriesNote: note.attach }),
+      true,
+    );
   });
 });

@@ -26,7 +26,7 @@ const CADENCE_DAYS: Record<string, number> = {
 export async function handleRecurringSearchTick(): Promise<void> {
   const admin = createAdminClient();
 
-  const { data: due } = await admin
+  const { data: due, error } = await admin
     .from("recurring_searches")
     .select(
       "id, business_id, session_id, search_strategy_id, cadence, target_per_run, max_cost_per_run_minor, approved_by, next_run_at",
@@ -34,6 +34,19 @@ export async function handleRecurringSearchTick(): Promise<void> {
     .eq("status", "ACTIVE")
     .lte("next_run_at", new Date().toISOString())
     .limit(25);
+
+  /**
+   * A failed due-work query must throw, never read as "nothing to do".
+   *
+   * The two outcomes are indistinguishable downstream: both produce an empty
+   * list, the loop runs zero times and the job reports success. That is how a
+   * missing column once left the social channel silently dead for a week while
+   * every signal said healthy. Throwing puts the reason in `jobs.last_error`,
+   * where the worker records it and Admin -> System shows it.
+   */
+  if (error) {
+    throw new Error(`Could not read due recurring searches: ${error.message}`);
+  }
 
   for (const schedule of due ?? []) {
     const { data: strategy } = await admin

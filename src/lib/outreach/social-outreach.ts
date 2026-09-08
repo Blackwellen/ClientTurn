@@ -1,4 +1,8 @@
 import "server-only";
+import {
+  DEFAULT_SEQUENCE_SETTINGS,
+  type SocialSequenceSettings,
+} from "./social-sequence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordSocialAcceptance } from "./social-relationship";
 import {
@@ -753,4 +757,42 @@ export async function enrolProspectsInSocialSequence(input: {
     .select("id");
 
   return { enrolled: inserted?.length ?? 0 };
+}
+
+/* ------------------------------------------------------- sequence settings */
+
+/**
+ * The workspace's sequence settings, for surfaces that need to show the plan.
+ *
+ * `social-scheduler.ts` loads the same row for its own use. This one is
+ * exported separately because the diagram is rendered on a page that must not
+ * import the scheduler -- pulling the sweeper's module into a React tree drags
+ * the job queue with it.
+ */
+export async function loadSocialSequenceSettings(
+  businessId: string,
+): Promise<SocialSequenceSettings> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("business_data_controls")
+    .select(
+      "social_withdraw_after_days, social_skip_to_email_after_days, social_follow_up_gap_hours, social_max_follow_ups, social_warm_before_invite, social_warm_delay_hours",
+    )
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  return {
+    withdrawAfterDays:
+      data?.social_withdraw_after_days ?? DEFAULT_SEQUENCE_SETTINGS.withdrawAfterDays,
+    skipToEmailAfterDays:
+      data?.social_skip_to_email_after_days ??
+      DEFAULT_SEQUENCE_SETTINGS.skipToEmailAfterDays,
+    followUpGapHours:
+      data?.social_follow_up_gap_hours ?? DEFAULT_SEQUENCE_SETTINGS.followUpGapHours,
+    maxFollowUps: data?.social_max_follow_ups ?? DEFAULT_SEQUENCE_SETTINGS.maxFollowUps,
+    warmBeforeInvite:
+      data?.social_warm_before_invite ?? DEFAULT_SEQUENCE_SETTINGS.warmBeforeInvite,
+    warmDelayHours:
+      data?.social_warm_delay_hours ?? DEFAULT_SEQUENCE_SETTINGS.warmDelayHours,
+  };
 }

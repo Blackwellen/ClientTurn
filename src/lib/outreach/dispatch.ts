@@ -167,7 +167,7 @@ export async function dispatchCampaign(input: {
 
   // Due work, read from `next_step_due_at` — the same column the scheduler's
   // index covers. Nothing is eligible on a timestamp derived at read time.
-  const { data: due } = await admin
+  const { data: due, error: dueError } = await admin
     .from("outreach_recipient_runs")
     .select(
       `id, prospect_id, conversation_id, status, current_step_position, steps_sent, campaign_variant_id,
@@ -182,6 +182,21 @@ export async function dispatchCampaign(input: {
     .lte("next_step_due_at", new Date().toISOString())
     .order("next_step_due_at", { ascending: true })
     .limit(batchSize);
+
+  /**
+   * A failed due-work query must throw, never read as "nothing to do".
+   *
+   * The two outcomes are indistinguishable downstream: both produce an empty
+   * list, the loop runs zero times and the job reports success. That is how a
+   * missing column once left the social channel silently dead while every
+   * signal said healthy. Throwing puts the reason in `jobs.last_error`, where
+   * the worker records it and Admin -> System shows it.
+   */
+  if (dueError) {
+    throw new Error(
+      `Could not read due recipients for campaign ${input.campaignId}: ${dueError.message}`,
+    );
+  }
 
   const queue = due ?? [];
   if (queue.length === 0) return EMPTY;

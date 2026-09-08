@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
 import { ChannelReality } from "./channel-reality";
+import { AutopilotToggle } from "./autopilot-toggle";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { shortAgo } from "@/lib/prospects/activity";
@@ -48,9 +49,21 @@ import {
 export function SocialQueueView({
   queue,
   canManage,
+  plan,
+  funnel,
+  autopilot,
+  signals,
 }: {
   queue: SocialQueue;
   canManage: boolean;
+  /** The sequence diagram, rendered on the server and passed in. */
+  plan?: React.ReactNode;
+  /** The Found → Contacted → Replied → Interested panel. */
+  funnel?: React.ReactNode;
+  /** Whether the workspace has opted into sending without a person. */
+  autopilot?: boolean;
+  /** The signals feeding this agent. */
+  signals?: React.ReactNode;
 }) {
   const {
     accounts,
@@ -89,9 +102,28 @@ export function SocialQueueView({
     );
   }
 
+  // Whether anything could actually send on its own. An ASSISTED account never
+  // can, and showing autopilot as active while nothing sends would be a lie the
+  // customer discovers a week later.
+  const hasPartnerAccount = accounts.some(
+    (account) => account.sendMode === "PARTNER_API" && account.status === "ACTIVE",
+  );
+
   return (
     <div className="space-y-4">
+      <AutopilotToggle
+        enabled={autopilot ?? false}
+        canManage={canManage}
+        hasPartnerAccount={hasPartnerAccount}
+      />
+
+      {funnel}
+
+      {signals}
+
       <ChannelReality />
+
+      {plan}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => (

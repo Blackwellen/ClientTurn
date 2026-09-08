@@ -14,12 +14,21 @@ import {
 import { loadDiscoverData } from "@/lib/find-leads/server/discover";
 import { loadIntentData } from "@/lib/intent/queries";
 import { listCampaigns } from "@/lib/outreach/queries";
-import { loadSocialQueue } from "@/lib/outreach/social-outreach";
+import {
+  loadSocialQueue,
+  loadSocialSequenceSettings,
+} from "@/lib/outreach/social-outreach";
 import { FindLeadsView } from "@/components/find-leads/find-leads-view";
 import { DiscoverView } from "@/components/find-leads/discover/discover-view";
 import { IntentView } from "@/components/find-leads/intent/intent-view";
 import { CampaignsView } from "@/components/find-leads/campaigns/campaigns-view";
 import { SocialQueueView } from "@/components/find-leads/social/social-queue-view";
+import { SequencePlan } from "@/components/find-leads/social/sequence-plan";
+import { SocialFunnelPanel } from "@/components/find-leads/social/social-funnel";
+import { SignalsPanel } from "@/components/find-leads/social/signals-panel";
+import { listSignals } from "@/lib/find-leads/server/signals";
+import { loadSocialFunnel } from "@/lib/outreach/social-funnel";
+import { loadDataControls } from "@/lib/compliance/queries";
 import { ProspectDrawerHost } from "@/components/find-leads/prospect-drawer-host";
 import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
@@ -116,6 +125,10 @@ export default async function FindLeadsPage({
     intentData,
     campaignData,
     socialQueue,
+    socialSettings,
+    socialFunnel,
+    socialControls,
+    signals,
   ] = await Promise.all([
     filters.view === "prospects"
       ? listProspects(workspace.businessId, filters)
@@ -127,6 +140,14 @@ export default async function FindLeadsPage({
     filters.view === "intent" ? loadIntentData(workspace.businessId) : Promise.resolve(null),
     filters.view === "campaigns" ? listCampaigns(workspace.businessId) : Promise.resolve(null),
     filters.view === "social" ? loadSocialQueue(workspace.businessId) : Promise.resolve(null),
+    loadSocialSequenceSettings(workspace.businessId),
+    filters.view === "social"
+      ? loadSocialFunnel(workspace.businessId, 7)
+      : Promise.resolve(null),
+    loadDataControls(workspace.businessId),
+    filters.view === "social"
+      ? listSignals(workspace.businessId)
+      : Promise.resolve([]),
   ]);
 
   const canManage = hasRole(workspace.role, "admin");
@@ -164,7 +185,18 @@ export default async function FindLeadsPage({
         }
         social={
           socialQueue ? (
-            <SocialQueueView queue={socialQueue} canManage={canManage} />
+            <SocialQueueView
+              queue={socialQueue}
+              canManage={canManage}
+              plan={<SequencePlan settings={socialSettings} />}
+              funnel={
+                socialFunnel ? (
+                  <SocialFunnelPanel funnel={socialFunnel} days={7} />
+                ) : null
+              }
+              autopilot={socialControls.socialAutonomousSending}
+              signals={<SignalsPanel signals={signals} canManage={canManage} />}
+            />
           ) : null
         }
       />

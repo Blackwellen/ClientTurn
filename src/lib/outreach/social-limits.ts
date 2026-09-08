@@ -314,3 +314,42 @@ export function shouldAttachNote(
 /** Invitation notes are hard-capped by the platform, not by us. */
 export const MAX_INVITE_NOTE_CHARS = 300;
 export const MAX_SOCIAL_MESSAGE_CHARS = 1900;
+
+/* ------------------------------------------ what counts as a marketing send */
+
+/**
+ * Does the cold *marketing* channel rule apply to this action?
+ *
+ * Pure, and deliberately here rather than inside the scheduler, because it is
+ * the single most consequential compliance judgement on this channel and it
+ * should be readable and testable without a database.
+ *
+ * The distinction it draws:
+ *
+ *   * A **message** is a communication. It carries content, it is direct
+ *     marketing, and the cold rules govern it. No pack permits cold social,
+ *     which is exactly right — a DM to a stranger is what that gate exists to
+ *     refuse.
+ *   * A **connection or follow request carrying a note** is also a
+ *     communication. The note is content and it is marketing, so it is judged
+ *     the same way.
+ *   * A **bare connection or follow request** is neither. Following an account
+ *     on TikTok transmits nothing; the recipient sees "X started following
+ *     you". There is no content in it to be marketing, and judging it by the
+ *     rules for a marketing message both misdescribes it and makes the channel
+ *     impossible — the invite is the only route to the acceptance that makes a
+ *     lawful message possible, so refusing every invite refuses everything.
+ *
+ * This governs one refusal only (`BLOCKED_COLD_CHANNEL`). Suppression,
+ * opt-out, withdrawn consent, an unpermitted source and a blocked subscriber
+ * type all still apply to a bare request, and are checked by the same engine
+ * call.
+ */
+export function marketingGateApplies(input: {
+  action: "INVITE" | "MESSAGE";
+  /** Whether the invite carries a personalised note. Ignored for a message. */
+  carriesNote: boolean;
+}): boolean {
+  if (input.action === "MESSAGE") return true;
+  return input.carriesNote;
+}

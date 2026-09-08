@@ -159,8 +159,19 @@ async function sendSocial(request: SendRequest): Promise<SendResult> {
     };
   }
 
-  const senderId =
-    channel === "instagram" ? account.instagramUserId! : account.pageId;
+  // The **Page** id, for Instagram as well as Messenger.
+  //
+  // This route is the Messenger Platform ("Instagram API with Facebook login"),
+  // where the Page is the sender and Instagram is a platform on it. Addressing
+  // the Instagram user id belongs to the other route — "Instagram API with
+  // Instagram login" — which uses different permissions and a different token
+  // entirely.
+  //
+  // Verified live: `/{page-id}/conversations?platform=instagram` returns data,
+  // while `/{ig-user-id}/conversations` returns `(#3) Application does not have
+  // the capability`. The linked account is still required, because without one
+  // there is no Instagram inbox to send into.
+  const senderId = account.pageId;
 
   let response: Response;
   try {
@@ -263,8 +274,8 @@ export async function sendPrivateReply(input: {
     };
   }
 
-  const senderId =
-    input.channel === "instagram" ? account.instagramUserId! : account.pageId;
+  // The Page id, for the same reason as `sendSocial` above.
+  const senderId = account.pageId;
 
   let response: Response;
   try {

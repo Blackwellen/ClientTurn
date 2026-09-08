@@ -181,6 +181,37 @@ export function withinHumanAgentWindow(
   return now.getTime() - opened < META_HUMAN_AGENT_WINDOW_HOURS * 3600_000;
 }
 
+/**
+ * WhatsApp's customer service window, in hours.
+ *
+ * Identical in length to Meta's messaging window and deliberately a separate
+ * constant: they are different rules on different platforms that happen to
+ * agree today, and collapsing them would mean a change to one silently moving
+ * the other.
+ *
+ * Inside it, free-form replies. Outside it, only a pre-approved template — the
+ * API refuses free text, and repeated refusals damage the number's quality
+ * rating, which is what throttles a number and eventually blocks it.
+ */
+export const WHATSAPP_SERVICE_WINDOW_HOURS = 24;
+
+/**
+ * Whether a free-form WhatsApp reply would still be delivered.
+ *
+ * `lastInboundAt` is when *they* last wrote. Nothing the business sends extends
+ * it — not a template, not a delivery receipt — which is why the outbound
+ * timestamp is not a parameter.
+ */
+export function withinWhatsAppServiceWindow(
+  lastInboundAt: string | null,
+  now: Date = new Date(),
+): boolean {
+  if (!lastInboundAt) return false;
+  const opened = new Date(lastInboundAt).getTime();
+  if (!Number.isFinite(opened)) return false;
+  return now.getTime() - opened < WHATSAPP_SERVICE_WINDOW_HOURS * 3600_000;
+}
+
 export type SendRequest = {
   businessId: string;
   to: string;

@@ -1,0 +1,187 @@
+Category,Name,Key / ID,Kind,Source file,Notes
+Integration connector,Meta Lead Ads,meta,Lead source,src/lib/integrations/providers/meta-lead-ads.ts,OAuth adapter built; connectPath null (not yet enabled)
+Integration connector,Twilio SMS,twilio_sms,Messaging,src/lib/integrations/catalog.ts,Outbound + inbound SMS
+Integration connector,WhatsApp (Twilio),twilio_whatsapp,Messaging,src/lib/integrations/catalog.ts,Plan-gated on whatsapp feature
+Integration connector,Google Calendar,google_calendar,Booking,src/lib/integrations/catalog.ts,Availability + write-back
+Integration connector,Calendly,calendly,Booking,src/lib/integrations/catalog.ts,Booking link + booking capture
+Integration connector,Resend email,email,Email,src/lib/integrations/catalog.ts,Platform-level (not customer-connected)
+Integration connector,Google Ads,google_ads,Lead source,src/lib/integrations/providers/google-ads.ts,Lead Form extensions; OAuth live
+Integration connector,Microsoft Advertising,microsoft_ads,Lead source,src/lib/integrations/providers/microsoft-ads.ts,Bing Lead Form extensions; OAuth live
+Integration connector,TikTok Lead Generation,tiktok_ads,Lead source,src/lib/integrations/providers/tiktok-ads.ts,
+Integration connector,LinkedIn Lead Gen Forms,linkedin_ads,Lead source,src/lib/integrations/providers/linkedin-ads.ts,
+Integration connector,Slack,slack,Messaging / notify,src/lib/integrations/providers/slack.ts,Notification delivery
+Integration connector,HubSpot,hubspot,CRM,src/lib/integrations/providers/hubspot.ts,Token (private app) rather than OAuth
+Integration connector,Zoho CRM,zoho_crm,CRM,src/lib/integrations/providers/zoho-crm.ts,
+Integration connector,Salesforce,salesforce,CRM,src/lib/integrations/catalog.ts,
+Sourcing provider,Meta engagement,meta_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/meta-engagement.ts,Free / first-party audience
+Sourcing provider,LinkedIn engagement,linkedin_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/linkedin-engagement.ts,Free / first-party audience
+Sourcing provider,TikTok engagement,tiktok_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/tiktok-engagement.ts,Free / first-party audience
+Sourcing provider,Google Places,google_places,COMPANY_SEARCH,src/lib/find-leads/server/providers/google-places.ts,
+Sourcing provider,Meta Ad Library,meta_ad_library,COMPANY_SEARCH,src/lib/find-leads/server/providers/meta-ad-library.ts,Free public advertiser registry
+Sourcing provider,TikTok Commercial Content Library,tiktok_commercial_content,COMPANY_SEARCH,src/lib/find-leads/server/providers/tiktok-commercial-content.ts,Free public advertiser registry
+Sourcing provider,Companies House,companies_house,COMPANY_ENRICHMENT,src/lib/find-leads/server/providers/companies-house.ts,Free; PECR corporate-subscriber check
+Sourcing provider,Website contacts,website_contacts,CONTACT_DISCOVERY,src/lib/find-leads/server/providers/website-contacts.ts,Own fetcher + AI extraction; free first-party
+Sourcing provider,Hunter.io,hunter,CONTACT_DISCOVERY / EMAIL_VERIFICATION,src/lib/find-leads/server/providers/hunter.ts,Metered
+Sourcing provider,Apollo.io,apollo,COMPANY_SEARCH / CONTACT_DISCOVERY,src/lib/find-leads/server/providers/apollo.ts,Metered
+Sourcing provider,LinkedIn Sales Navigator,linkedin_sales_navigator,COMPANY_SEARCH / CONTACT_DISCOVERY,src/lib/find-leads/server/providers/linkedin-sales-navigator.ts,Metered
+Sourcing provider,Clearbit,clearbit,COMPANY_ENRICHMENT,src/lib/find-leads/server/providers/clearbit.ts,Metered
+Sourcing provider,Website intent signals,website_signals,INTENT / WEBSITE_INTELLIGENCE,src/lib/find-leads/server/providers/website-intent.ts,Metered
+Core platform,Supabase (Postgres + Auth + RLS + Realtime),supabase,Infrastructure,src/lib/supabase/,Project ref losieaikadkadtmezini (eu-west-2)
+Core platform,Stripe Billing,stripe,Payments,src/lib/billing/,TEST keys only; snapshot + thin webhook destinations
+Core platform,Cloudflare R2,r2,Object storage,src/lib/storage/,S3 API; signed URLs only
+Core platform,Azure OpenAI (EU),azure,AI,src/lib/ai/azure-client.ts,Two deployments: nano + mini
+Core platform,Twilio,twilio,SMS / WhatsApp,src/lib/messaging/,
+Core platform,Resend,resend,Transactional email,src/lib/email/,
+Core platform,Supabase pg_cron,cron,Scheduler,docs/CRON.md,Drives /api/cron/worker
+AI model tier,Azure nano deployment,nano,Model routing,src/lib/ai/model-router.ts,Fast / structured tasks
+AI model tier,Azure mini deployment,mini,Model routing,src/lib/ai/model-router.ts,Generation / ambiguity tasks
+AI task type,Intent classification,intent_classification,AI task,src/lib/ai/schemas.ts,Fast (nano)
+AI task type,Answer extraction,answer_extraction,AI task,src/lib/ai/schemas.ts,Fast (nano)
+AI task type,Reply generation,reply_generation,AI task,src/lib/ai/schemas.ts,
+AI task type,Conversation summary,conversation_summary,AI task,src/lib/ai/schemas.ts,
+AI task type,Handover reasoning,handover_reasoning,AI task,src/lib/ai/schemas.ts,
+AI task type,Reactivation copy,reactivation_copy,AI task,src/lib/ai/schemas.ts,
+AI task type,Agent decision,agent_decision,AI task,src/lib/ai/schemas.ts,
+AI task type,Search planning,search_planning,AI task,src/lib/ai/schemas.ts,
+AI task type,Research summary,research_summary,AI task,src/lib/ai/schemas.ts,
+AI task type,Social reply classification,social_reply_classification,AI task,src/lib/ai/schemas.ts,Fast (nano)
+AI task type,Social message,social_message,AI task,src/lib/ai/schemas.ts,
+AI task type,Website contacts extraction,website_contacts,AI task,src/lib/ai/schemas.ts,Fast (nano)
+AI task type,Variant generation,variant_generation,AI task,src/lib/ai/schemas.ts,
+AI task type,Copilot turn,copilot_turn,AI task,src/lib/ai/schemas.ts,
+Agent type (customer-facing),Sourcing agent,SOURCING,Agent,src/lib/agents/types.ts,
+Agent type (customer-facing),Booking agent,BOOKING,Agent,src/lib/agents/types.ts,
+Agent type (customer-facing),Re-engagement agent,REENGAGEMENT,Agent,src/lib/agents/types.ts,
+Agent type (customer-facing),Combined agent,COMBINED,Agent,src/lib/agents/types.ts,
+Agent runtime,Conversation agent (singular),lib/agent,Runtime,src/lib/agent/orchestrator.ts,Answers one lead's messages; see docs/AGENT_RUNTIME.md
+Agent runtime,Copilot,lib/copilot,Runtime,src/lib/copilot/loop.ts,In-app assistant over the service layer
+Agent tool,check_service_area,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,get_calendar_availability,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,record_qualification_answer,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,update_lead_fields,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,send_message,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,draft_message,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,send_booking_link,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,create_booking,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,request_human_handover,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,apply_suppression,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,stop_follow_up,,Conversation agent tool,src/lib/agent/tools.ts,
+Agent tool,record_reply_classification,,Conversation agent tool,src/lib/agent/tools.ts,
+Outreach channel,Email,EMAIL,Channel,src/lib/outreach/,Cold outreach channel
+Outreach channel,Instagram,INSTAGRAM,Channel,src/lib/outreach/social-outreach.ts,
+Outreach channel,Facebook,FACEBOOK,Channel,src/lib/outreach/social-outreach.ts,
+Outreach channel,TikTok,TIKTOK,Channel,src/lib/outreach/social-outreach.ts,
+Outreach channel,LinkedIn,LINKEDIN,Channel,src/lib/outreach/social-outreach.ts,
+Outreach channel,SMS,SMS,Channel,src/lib/messaging/,Lead-form submitted mobiles only
+Outreach channel,WhatsApp,WHATSAPP,Channel,src/lib/messaging/,Lead-form submitted mobiles only
+Inbound webhook,Meta,/api/webhooks/meta,Webhook,src/app/api/webhooks/meta/route.ts,
+Inbound webhook,Meta data deletion,/api/webhooks/meta/data-deletion,Webhook,src/app/api/webhooks/meta/data-deletion/,Signed request
+Inbound webhook,Meta deauthorize,/api/webhooks/meta/deauthorize,Webhook,src/app/api/webhooks/meta/deauthorize/,Signed request
+Inbound webhook,LinkedIn Ads,/api/webhooks/linkedin-ads,Webhook,src/app/api/webhooks/linkedin-ads/route.ts,
+Inbound webhook,Stripe,/api/webhooks/stripe,Webhook,src/app/api/webhooks/stripe/route.ts,Snapshot + thin destinations
+Inbound webhook,Twilio,/api/webhooks/twilio,Webhook,src/app/api/webhooks/twilio/route.ts,Signature-verified
+Public API,Leads collection,/api/v1/leads,Developer platform,src/app/api/v1/leads/route.ts,API key + scopes
+Public API,Lead item,/api/v1/leads/[id],Developer platform,src/app/api/v1/leads/[id]/route.ts,
+Public API,Events,/api/v1/events,Developer platform,src/app/api/v1/events/route.ts,
+Public API,Me,/api/v1/me,Developer platform,src/app/api/v1/me/route.ts,
+Public API,MCP endpoint,/api/mcp,Developer platform,src/app/api/mcp/route.ts,MCP server surface (create_lead etc.)
+Internal route,Cron worker,/api/cron/worker,Route handler,src/app/api/cron/worker/route.ts,Driven by pg_cron
+Internal route,Cron daily,/api/cron/daily,Route handler,src/app/api/cron/daily/route.ts,
+Internal route,Integration OAuth connect,/api/integrations/[provider]/connect,Route handler,src/app/api/integrations/[provider]/connect/route.ts,
+Internal route,Integration OAuth callback,/api/integrations/[provider]/callback,Route handler,src/app/api/integrations/[provider]/callback/route.ts,
+Internal route,Outgoing webhooks,jobs/webhook-dispatch,Job,src/lib/jobs/handlers/webhook-dispatch.ts,Signed outgoing webhooks
+Job handler,affiliate-ledger,,Background job,src/lib/jobs/handlers/affiliate-ledger.ts,
+Job handler,agent-run,,Background job,src/lib/jobs/handlers/agent-run.ts,
+Job handler,app-ingest,,Background job,src/lib/jobs/handlers/app-ingest.ts,
+Job handler,automation-advance,,Background job,src/lib/jobs/handlers/automation-advance.ts,
+Job handler,booking-sync,,Background job,src/lib/jobs/handlers/booking-sync.ts,
+Job handler,business-analyse,,Background job,src/lib/jobs/handlers/business-analyse.ts,
+Job handler,campaign-expand,,Background job,src/lib/jobs/handlers/campaign-expand.ts,
+Job handler,campaign-send,,Background job,src/lib/jobs/handlers/campaign-send.ts,
+Job handler,cost-rollup,,Background job,src/lib/jobs/handlers/cost-rollup.ts,
+Job handler,crm-push,,Background job,src/lib/jobs/handlers/crm-push.ts,
+Job handler,email-poll,,Background job,src/lib/jobs/handlers/email-poll.ts,
+Job handler,integration-health,,Background job,src/lib/jobs/handlers/integration-health.ts,
+Job handler,lead-process,,Background job,src/lib/jobs/handlers/lead-process.ts,
+Job handler,lead-source-poll,,Background job,src/lib/jobs/handlers/lead-source-poll.ts,
+Job handler,maintenance,,Background job,src/lib/jobs/handlers/maintenance.ts,
+Job handler,message-inbound,,Background job,src/lib/jobs/handlers/message-inbound.ts,
+Job handler,message-send,,Background job,src/lib/jobs/handlers/message-send.ts,
+Job handler,notification-send,,Background job,src/lib/jobs/handlers/notification-send.ts,
+Job handler,notification-slack,,Background job,src/lib/jobs/handlers/notification-slack.ts,
+Job handler,outreach-audience,,Background job,src/lib/jobs/handlers/outreach-audience.ts,
+Job handler,outreach-dispatch,,Background job,src/lib/jobs/handlers/outreach-dispatch.ts,
+Job handler,outreach-optimize,,Background job,src/lib/jobs/handlers/outreach-optimize.ts,
+Job handler,outreach-tick,,Background job,src/lib/jobs/handlers/outreach-tick.ts,
+Job handler,parse,,Background job,src/lib/jobs/handlers/parse.ts,
+Job handler,qualify,,Background job,src/lib/jobs/handlers/qualify.ts,
+Job handler,recurring-search,,Background job,src/lib/jobs/handlers/recurring-search.ts,
+Job handler,retention-cleanup,,Background job,src/lib/jobs/handlers/retention-cleanup.ts,
+Job handler,send-store,,Background job,src/lib/jobs/handlers/send-store.ts,
+Job handler,social-execute,,Background job,src/lib/jobs/handlers/social-execute.ts,
+Job handler,social-tick,,Background job,src/lib/jobs/handlers/social-tick.ts,
+Job handler,sourcing-run,,Background job,src/lib/jobs/handlers/sourcing-run.ts,
+Job handler,usage-aggregate,,Background job,src/lib/jobs/handlers/usage-aggregate.ts,
+Job handler,webhook-dispatch,,Background job,src/lib/jobs/handlers/webhook-dispatch.ts,
+Job handler,webhook-replay,,Background job,src/lib/jobs/handlers/webhook-replay.ts,
+Service operation,lead.get,,Service (UI/COPILOT/MCP),src/lib/services/registry.ts,READ / leads:read
+Service operation,lead.search,,Service,src/lib/services/registry.ts,READ / leads:read
+Service operation,lead.update,,Service,src/lib/services/registry.ts,REVERSIBLE_WRITE / leads:write
+Service operation,lead.assign,,Service,src/lib/services/registry.ts,REVERSIBLE_WRITE / leads:write
+Service operation,lead.set_status,,Service,src/lib/services/registry.ts,REVERSIBLE_WRITE / leads:write
+Service operation,lead.add_note,,Service,src/lib/services/registry.ts,SAFE_WRITE / leads:write
+Service operation,lead.flag_attention,,Service,src/lib/services/registry.ts,SAFE_WRITE / leads:write
+Service operation,lead.archive,,Service,src/lib/services/registry.ts,DESTRUCTIVE / leads:write
+Service operation,lead.restore,,Service,src/lib/services/registry.ts,REVERSIBLE_WRITE / leads:write
+Service operation,agent.list,,Service,src/lib/services/registry.ts,READ / agents:read
+Service operation,agent.get,,Service,src/lib/services/registry.ts,READ / agents:read
+Service operation,agent.create,,Service,src/lib/services/registry.ts,agents:write
+Service operation,agent.configure,,Service,src/lib/services/registry.ts,agents:write
+Service operation,agent.start,,Service,src/lib/services/registry.ts,agents:write
+Service operation,agent.run_now,,Service,src/lib/services/registry.ts,agents:write
+Service operation,agent.pause,,Service,src/lib/services/registry.ts,agents:write
+Service operation,agent.stop,,Service,src/lib/services/registry.ts,agents:write
+Service operation,ai_settings.get,,Service,src/lib/services/registry.ts,
+Service operation,ai_settings.update,,Service,src/lib/services/registry.ts,
+Service operation,connector.list,,Service,src/lib/services/registry.ts,
+Service operation,connector.get,,Service,src/lib/services/registry.ts,
+Service operation,connector.replay_event,,Service,src/lib/services/registry.ts,
+Service operation,connector.dismiss_event,,Service,src/lib/services/registry.ts,
+Service operation,connector.disconnect,,Service,src/lib/services/registry.ts,
+Service operation,message.send,,Service,src/lib/services/registry.ts,
+Service operation,booking.list,,Service,src/lib/services/registry.ts,
+Service operation,booking.get,,Service,src/lib/services/registry.ts,
+Service operation,booking.set_status,,Service,src/lib/services/registry.ts,
+Service operation,campaign.list,,Service,src/lib/services/registry.ts,
+Service operation,campaign.get,,Service,src/lib/services/registry.ts,
+Service operation,campaign.pause,,Service,src/lib/services/registry.ts,
+Service operation,campaign.resume,,Service,src/lib/services/registry.ts,
+Service operation,campaign.launch,,Service,src/lib/services/registry.ts,
+Service operation,prospect.search,,Service,src/lib/services/registry.ts,
+Service operation,prospect.get,,Service,src/lib/services/registry.ts,
+Service operation,prospect.approve,,Service,src/lib/services/registry.ts,
+Service operation,prospect.reject,,Service,src/lib/services/registry.ts,
+Service operation,business.get_profile,,Service,src/lib/services/registry.ts,
+Service operation,business.get_status,,Service,src/lib/services/registry.ts,
+Service operation,analytics.summary,,Service,src/lib/services/registry.ts,
+Service operation,qualification.list_questions,,Service,src/lib/services/registry.ts,
+External API host,Meta Graph API,graph.facebook.com,External API,src/lib/,Lead ads + messaging + ad library
+External API host,Google APIs,www.googleapis.com / oauth2.googleapis.com,External API,src/lib/,Calendar + OAuth
+External API host,Google Places API,places.googleapis.com / maps.googleapis.com,External API,src/lib/find-leads/server/providers/google-places.ts,
+External API host,Google Ads API,googleads.googleapis.com,External API,src/lib/integrations/providers/google-ads.ts,
+External API host,Microsoft Bing Ads,clientcenter.api.bingads.microsoft.com,External API,src/lib/integrations/providers/microsoft-ads.ts,
+External API host,Microsoft identity,login.microsoftonline.com,External API,src/lib/integrations/providers/microsoft-ads.ts,OAuth
+External API host,LinkedIn API,api.linkedin.com,External API,src/lib/integrations/providers/linkedin-ads.ts,
+External API host,TikTok Business API,business-api.tiktok.com,External API,src/lib/integrations/providers/tiktok-ads.ts,
+External API host,Twilio API,api.twilio.com,External API,src/lib/messaging/,
+External API host,Stripe API,api.stripe.com,External API,src/lib/billing/,
+External API host,Resend API,api.resend.com,External API,src/lib/email/,
+External API host,Calendly API,api.calendly.com,External API,src/lib/bookings/,
+External API host,HubSpot API,api.hubapi.com,External API,src/lib/integrations/providers/hubspot.ts,
+External API host,Zoho API,www.zohoapis.com / accounts.zoho.com,External API,src/lib/integrations/providers/zoho-crm.ts,
+External API host,Slack API,slack.com,External API,src/lib/integrations/providers/slack.ts,
+External API host,Companies House API,api.company-information.service.gov.uk,External API,src/lib/find-leads/server/providers/companies-house.ts,
+External API host,Apollo API,api.apollo.io,External API,src/lib/find-leads/server/providers/apollo.ts,
+External API host,Hunter API,api.hunter.io,External API,src/lib/find-leads/server/providers/hunter.ts,
+External API host,Clearbit API,company.clearbit.com,External API,src/lib/find-leads/server/providers/clearbit.ts,
+External API host,Gravatar,www.gravatar.com,External API,src/lib/,Avatar fallback

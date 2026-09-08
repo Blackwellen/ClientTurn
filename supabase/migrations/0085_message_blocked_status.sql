@@ -1,4 +1,4 @@
--- 0083_message_blocked_status: a refused send is not a failed send.
+-- 0085_message_blocked_status: a refused send is not a failed send.
 --
 -- When `ChannelPolicyService` refuses a message, `blockedByPolicy` wrote
 -- `status = 'FAILED'` with `error_code = 'policy:<reason>'`. Two different

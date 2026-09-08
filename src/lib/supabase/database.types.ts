@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -3022,6 +3002,9 @@ export type Database = {
           social_autonomous_sending: boolean
           social_follow_up_gap_hours: number
           social_max_follow_ups: number
+          social_skip_to_email_after_days: number | null
+          social_warm_before_invite: boolean
+          social_warm_delay_hours: number
           social_withdraw_after_days: number | null
           sourcing_strictness: string
           updated_at: string
@@ -3050,6 +3033,9 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
+          social_skip_to_email_after_days?: number | null
+          social_warm_before_invite?: boolean
+          social_warm_delay_hours?: number
           social_withdraw_after_days?: number | null
           sourcing_strictness?: string
           updated_at?: string
@@ -3078,6 +3064,9 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
+          social_skip_to_email_after_days?: number | null
+          social_warm_before_invite?: boolean
+          social_warm_delay_hours?: number
           social_withdraw_after_days?: number | null
           sourcing_strictness?: string
           updated_at?: string
@@ -4755,6 +4744,7 @@ export type Database = {
           external_thread_id: string | null
           id: string
           inbox_channel_id: string | null
+          interest: string | null
           is_archived: boolean
           last_inbound_at: string | null
           last_message_at: string | null
@@ -4785,6 +4775,7 @@ export type Database = {
           external_thread_id?: string | null
           id?: string
           inbox_channel_id?: string | null
+          interest?: string | null
           is_archived?: boolean
           last_inbound_at?: string | null
           last_message_at?: string | null
@@ -4815,6 +4806,7 @@ export type Database = {
           external_thread_id?: string | null
           id?: string
           inbox_channel_id?: string | null
+          interest?: string | null
           is_archived?: boolean
           last_inbound_at?: string | null
           last_message_at?: string | null
@@ -7957,6 +7949,48 @@ export type Database = {
           },
         ]
       }
+      meta_data_deletion_requests: {
+        Row: {
+          business_ids: string[]
+          completed_at: string | null
+          confirmation_code: string
+          conversations_removed: number
+          id: string
+          integrations_removed: number
+          last_error: string | null
+          meta_user_id: string
+          prospects_removed: number
+          requested_at: string
+          status: string
+        }
+        Insert: {
+          business_ids?: string[]
+          completed_at?: string | null
+          confirmation_code: string
+          conversations_removed?: number
+          id?: string
+          integrations_removed?: number
+          last_error?: string | null
+          meta_user_id: string
+          prospects_removed?: number
+          requested_at?: string
+          status?: string
+        }
+        Update: {
+          business_ids?: string[]
+          completed_at?: string | null
+          confirmation_code?: string
+          conversations_removed?: number
+          id?: string
+          integrations_removed?: number
+          last_error?: string | null
+          meta_user_id?: string
+          prospects_removed?: number
+          requested_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string | null
@@ -9253,8 +9287,6 @@ export type Database = {
           is_existing_customer: boolean
           location_json: Json
           name: string
-          phone: string | null
-          phone_source: string | null
           registration_id: string | null
           registry_checked_at: string | null
           registry_reason: string | null
@@ -9278,8 +9310,6 @@ export type Database = {
           is_existing_customer?: boolean
           location_json?: Json
           name: string
-          phone?: string | null
-          phone_source?: string | null
           registration_id?: string | null
           registry_checked_at?: string | null
           registry_reason?: string | null
@@ -9303,8 +9333,6 @@ export type Database = {
           is_existing_customer?: boolean
           location_json?: Json
           name?: string
-          phone?: string | null
-          phone_source?: string | null
           registration_id?: string | null
           registry_checked_at?: string | null
           registry_reason?: string | null
@@ -10822,6 +10850,7 @@ export type Database = {
           conversation_id: string | null
           created_at: string
           declined_at: string | null
+          email_fallback_at: string | null
           external_ref: string | null
           halted_reason: string | null
           id: string
@@ -10841,6 +10870,7 @@ export type Database = {
           sequence_step: number
           state: string
           updated_at: string
+          warmed_at: string | null
           withdrawn_at: string | null
         }
         Insert: {
@@ -10852,6 +10882,7 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           declined_at?: string | null
+          email_fallback_at?: string | null
           external_ref?: string | null
           halted_reason?: string | null
           id?: string
@@ -10871,6 +10902,7 @@ export type Database = {
           sequence_step?: number
           state?: string
           updated_at?: string
+          warmed_at?: string | null
           withdrawn_at?: string | null
         }
         Update: {
@@ -10882,6 +10914,7 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           declined_at?: string | null
+          email_fallback_at?: string | null
           external_ref?: string | null
           halted_reason?: string | null
           id?: string
@@ -10901,6 +10934,7 @@ export type Database = {
           sequence_step?: number
           state?: string
           updated_at?: string
+          warmed_at?: string | null
           withdrawn_at?: string | null
         }
         Relationships: [
@@ -11566,6 +11600,81 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "search_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sourcing_signals: {
+        Row: {
+          active: boolean
+          agent_id: string | null
+          business_id: string
+          created_at: string
+          id: string
+          kind: string
+          last_result: string | null
+          last_run_at: string | null
+          leads_found: number
+          leads_found_this_week: number
+          name: string
+          next_run_at: string | null
+          query: string | null
+          search_strategy_id: string | null
+          session_id: string | null
+          last_run_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          agent_id?: string | null
+          business_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          last_result?: string | null
+          last_run_at?: string | null
+          leads_found?: number
+          leads_found_this_week?: number
+          name: string
+          next_run_at?: string | null
+          query?: string | null
+          search_strategy_id?: string | null
+          session_id?: string | null
+          last_run_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          agent_id?: string | null
+          business_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          last_result?: string | null
+          last_run_at?: string | null
+          leads_found?: number
+          leads_found_this_week?: number
+          name?: string
+          next_run_at?: string | null
+          query?: string | null
+          search_strategy_id?: string | null
+          session_id?: string | null
+          last_run_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sourcing_signals_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_signals_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
         ]
@@ -12829,69 +12938,6 @@ export type Database = {
       }
     }
     Functions: {
-      status_job_health: {
-        Args: { p_since: string }
-        Returns: {
-          avg_seconds: number | null
-          job_type: string
-          jobs: number
-          last_at: string | null
-          retrying: number
-          state: string
-        }[]
-      }
-      status_probe_daily: {
-        Args: { p_since: string }
-        Returns: {
-          day: string
-          probes: number
-          provider: string
-          status: string
-        }[]
-      }
-      status_provider_latest: {
-        Args: { p_since: string }
-        Returns: {
-          checked_at: string
-          error_code: string | null
-          last_success_at: string | null
-          provider: string
-          status: string
-        }[]
-      }
-      cost_events_by_kind: {
-        Args: { p_business_id: string; p_from: string; p_to: string }
-        Returns: {
-          category: string
-          metric: string
-          provider: string
-          total_cost: number
-        }[]
-      }
-      usage_history_by_month: {
-        Args: { p_business_id: string; p_from: string }
-        Returns: {
-          messages: number
-          month: string
-          prospects: number
-          sourcing_runs: number
-        }[]
-      }
-      automation_stop_reasons: {
-        Args: { p_business_id: string; p_since: string }
-        Returns: {
-          runs: number
-          stopped_reason: string
-        }[]
-      }
-      automation_message_outcomes: {
-        Args: { p_business_id: string; p_since: string }
-        Returns: {
-          channel: string
-          messages: number
-          status: string
-        }[]
-      }
       admin_customer_last_activity: {
         Args: { p_business_ids: string[] }
         Returns: {
@@ -13068,6 +13114,21 @@ export type Database = {
         }[]
       }
       approve_due_commissions: { Args: never; Returns: number }
+      automation_message_outcomes: {
+        Args: { p_business_id: string; p_since: string }
+        Returns: {
+          channel: string
+          messages: number
+          status: string
+        }[]
+      }
+      automation_stop_reasons: {
+        Args: { p_business_id: string; p_since: string }
+        Returns: {
+          runs: number
+          stopped_reason: string
+        }[]
+      }
       check_suppression: {
         Args: {
           p_business_id: string
@@ -13142,6 +13203,15 @@ export type Database = {
         Args: { endpoint_path: string }
         Returns: number
       }
+      connector_install_activity: {
+        Args: { p_business_id: string; p_install_ids: string[] }
+        Returns: {
+          imported_count: number
+          install_id: string
+          last_import_at: string
+          open_failures: number
+        }[]
+      }
       consume_ai_tokens: {
         Args: {
           allow_overdraw?: boolean
@@ -13170,6 +13240,15 @@ export type Database = {
           retry_after: number
         }[]
       }
+      cost_events_by_kind: {
+        Args: { p_business_id: string; p_from: string; p_to: string }
+        Returns: {
+          category: string
+          metric: string
+          provider: string
+          total_cost: number
+        }[]
+      }
       credit_ai_tokens: {
         Args: {
           credit_purchased?: boolean
@@ -13193,22 +13272,13 @@ export type Database = {
         }
         Returns: undefined
       }
-      connector_install_activity: {
-        Args: { p_business_id: string; p_install_ids: string[] }
-        Returns: {
-          imported_count: number
-          install_id: string
-          last_import_at: string | null
-          open_failures: number
-        }[]
-      }
       expire_abandoned_campaign_drafts: {
-        Args: { p_older_than?: unknown }
+        Args: { p_older_than?: string }
         Returns: number
       }
       expire_intent_matches: { Args: never; Returns: number }
       expire_stalled_imports: {
-        Args: { p_older_than?: unknown }
+        Args: { p_older_than?: string }
         Returns: number
       }
       expire_usage_reservations: { Args: never; Returns: number }
@@ -13488,6 +13558,36 @@ export type Database = {
           verified: number
         }[]
       }
+      status_job_health: {
+        Args: { p_since: string }
+        Returns: {
+          avg_seconds: number
+          job_type: string
+          jobs: number
+          last_at: string
+          retrying: number
+          state: string
+        }[]
+      }
+      status_probe_daily: {
+        Args: { p_since: string }
+        Returns: {
+          day: string
+          probes: number
+          provider: string
+          status: string
+        }[]
+      }
+      status_provider_latest: {
+        Args: { p_since: string }
+        Returns: {
+          checked_at: string
+          error_code: string
+          last_success_at: string
+          provider: string
+          status: string
+        }[]
+      }
       sum_usage_events: {
         Args: { p_business_id: string; p_metric: string; p_since: string }
         Returns: number
@@ -13495,6 +13595,15 @@ export type Database = {
       touch_api_key: {
         Args: { p_ip: string; p_key_id: string }
         Returns: undefined
+      }
+      usage_history_by_month: {
+        Args: { p_business_id: string; p_from: string }
+        Returns: {
+          messages: number
+          month: string
+          prospects: number
+          sourcing_runs: number
+        }[]
       }
     }
     Enums: {
@@ -13624,11 +13733,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
-
