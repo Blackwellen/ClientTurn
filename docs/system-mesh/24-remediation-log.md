@@ -569,9 +569,87 @@ The same over-strictness was caught once before in this workstream (the adapter
 reachability test in R16). The pattern: assert the invariant, not the current
 value of a list that is supposed to grow.
 
+### R25 · Proving the database matches the branch — and a correction
+
+Every migration in this branch was verified by hand: read the file, pick an object out of it, query
+for that object. That works, it does not scale, and it cannot be repeated by somebody who was not
+there. `scripts/schema-drift.mjs` (`npm run schema:drift`) does it mechanically for the whole set —
+it parses every migration for the objects it creates, asks the live database which exist, and
+compares the Supabase CLI's own ledger against the files on disk. Read-only; it issues `select`
+and nothing else.
+
+**The result:**
+
+| | |
+|---|---|
+| Migrations | 81 |
+| Tables the set creates | **186 expected, 0 missing** |
+| Functions | **83 expected, 0 missing** |
+| Indexes | **336 expected, 0 missing** |
+| Ledger | **81 recorded, 0 unrecorded** |
+
+Exit code 0. Production matches the branch, and that is now a command anyone can run rather than a
+claim in a document.
+
+#### Correction — the "re-runnability" note was the wrong diagnosis
+
+An earlier version of this log said `0065`, `0066` and the concurrent stream's migrations "carry
+unguarded `create policy` and `create trigger`: they apply once and fail on a second run", and
+implied the fix was to make them idempotent.
+
+That is not how migrations work here, and acting on it would have been a large, risky, pointless
+diff across seventy-odd files. Migrations are applied **once each, in order**, tracked by a ledger;
+a bare `create table` is correct in that model, and it is what almost every migration in this set
+uses. Making them all re-runnable would have changed nothing about whether the set replays
+correctly.
+
+**The real gap was that the ledger was not being kept.** `supabase_migrations.schema_migrations`
+held **22 rows against 81 files** — it was populated by early CLI use and then abandoned once
+migrations started being applied by hand through the Management API. Sixty-odd migrations were
+applied and unrecorded, which is genuinely dangerous in both directions:
+
+- **Applied but unrecorded** → the next `supabase db push` re-applies them. The unguarded
+  `create table` I had misdiagnosed *does* then fail — but as a symptom, and the push stops
+  part-way through a batch, which is the worst outcome available: a half-applied deploy nobody
+  planned.
+- **Recorded but not applied** → invisible. The tooling believes the schema is current, the code
+  assumes a column that is not there, and it surfaces at runtime in whichever request touches it
+  first.
+
+The ledger is now reconciled to all 81, keyed on the version the CLI actually derives (the prefix
+before the first underscore, not the first four characters — this set contains `0024` alongside
+`00241`, `00242` and `00243`, and a four-character slice silently collapses all four).
+
+#### Two defects the check found immediately
+
+**A duplicate version.** `0077_company_phone.sql` and `0077_social_relationship_policy.sql` both
+existed. The ledger is keyed on version, so only one could ever be recorded and the next push would
+skip the other **silently** — no error, no missing-migration warning. Worse, they were in different
+states: the social one was applied, the company-phone one was not, while `database.types.ts`
+already declared its columns. So the generated types described a column the database did not have.
+Renamed to `0078` and applied; `prospect_companies.phone` and `phone_source` verified present.
+
+**A prefix-width hazard.** `00241_agent_runtime`, `00242_pg_cron_worker` and
+`00243_ai_token_allowance` are numbered as though they were "0024.1" and follow
+`0024_platform_admin_ops`. They do not: lexically `00241_` sorts *before* `0024_`, because `1`
+precedes `_`. Every tool that reads this directory in sorted order runs them first.
+
+It is harmless here, and that was checked rather than assumed — none of the three touches
+`platform_error_triage`, `platform_provider_checks` or `admin_event_series`, which is everything
+`0024` creates. They are grandfathered by name in the test. What the test stops is a fourth,
+because the next one numbered this way could easily depend on the migration it appears to follow,
+and that failure would surface only when somebody rebuilt an environment from scratch — during a
+disaster recovery, which is the worst possible moment to learn the migration set does not replay.
+
+Five filename tests in `wiring.test.ts` cover the class with no database and no credentials; the
+script covers the live schema and needs both. The duplicate-version test carries the `0077` case as
+its comment, because it shipped.
+
 ## Deployment state
 
-Verified against the live database after each apply. **186 tables, all 186 with RLS enabled.**
+Verified against the live database after each apply, and now verified in bulk by
+`npm run schema:drift`: **81 migrations, 186 tables, 83 functions, 336 indexes, zero drift**, and
+all 186 tables have RLS enabled.
 
 ### Applied — the audit's migrations
 
@@ -688,3 +766,80 @@ Nothing. Both items previously listed here are resolved:
 |---|---|
 | Applying `0054_v4_expansion.sql` | Applied and verified — [R1](#r1) |
 | Full `npm test` — an unresolvable `@/` alias in a test-reachable module | Resolved in the concurrent stream; the suite runs end to end |
+
+## Follow-on: the catalogue, the agents, and a promise that could not complete
+
+**Date:** 2026-09-08 (same lane)
+
+### The MCP surface was a shopfront
+
+`MCP_TOOLS` held seventeen hand-written entries. Thirteen duplicated a service
+operation that now exists, so an assistant was offered both `get_lead` and
+`lead.get` and had to guess which the customer meant — paying for the catalogue
+twice in its context to do it.
+
+The other four were worse than duplicates. `send_message`, `launch_campaign`,
+`start_sourcing_run` and `change_overage_cap` were APPROVAL_GATED: they parked
+for a person, and then **failed when that person approved them**, because
+`executeApproval` can only run a registered service operation and none of them
+was one. The product advertised "ask your assistant to send a message", a human
+said yes, and nothing was sent. `MCP_TOOLS` now holds one entry.
+
+### What was added
+
+| Domain | Operations |
+|---|---|
+| `agent` | list, get, create, configure, start, run_now, pause, stop |
+| `ai_settings` | get, update |
+| `connector` | list, get, replay_event, dismiss_event, disconnect |
+| `campaign` | list, get, pause, resume, launch |
+| `prospect` | search, get, approve, reject |
+| `booking` | list, get, set_status |
+| `business` | get_profile, get_status |
+| `message` | send |
+| `analytics` | summary |
+| `qualification` | list_questions |
+
+41 service operations, all implemented — no declaration advertises a handler
+that does not exist. Two new scope pairs (`agents:read/write`,
+`business:write`) and `API` as a caller kind.
+
+An assistant can now set an agent up end to end and cannot start one: `create`
+and `configure` are ordinary writes because a DRAFT agent does nothing, while
+`start` and `run_now` are FINANCIAL and park for a person. Verified over real
+HTTP, including the full parked-then-approved-then-sent loop for `message.send`.
+
+### Four things the existing tests caught that review had not
+
+1. **`connector.disconnect` was reachable by an autonomous agent.**
+   `tests/services.test.ts` already forbade a DESTRUCTIVE operation being
+   agent-reachable, because an agent cannot set `confirmed` and so could never
+   have agreed to it.
+2. **`message.send` was offered to Copilot.** `tests/copilot.test.ts` encodes an
+   explicit product rule — Copilot holds no send authority — and it fired
+   immediately. `campaign.launch` was corrected for the same reason before it
+   could be caught.
+3. **Three connector writes sat behind `business:read`.** A read-only credential
+   could have replayed events and disconnected a provider. `business:write`
+   exists because the test that says "no read-scoped tool can write" is right.
+4. **`EntitlementError` used a constructor parameter property**, which the
+   repo's own test runner cannot strip — so the module on the path of every
+   billable action could not be exercised end to end at all. Now a plain field,
+   matching `ServiceError`'s existing comment explaining exactly this.
+
+### Context budget
+
+`tools/list` is ~4.7k tokens for 42 tools. `tests/mcp.test.ts` now fails above
+8k, or if any single description exceeds 400 characters — because the catalogue
+is a standing cost on every conversation a customer has, and nobody notices
+until an assistant is spending a fifth of its context on tool descriptions.
+
+### Surfaces
+
+* **Settings → Developer** — API keys, webhooks, assistant connections.
+* **`/developers`** — public documentation, styled from the same primitives as
+  the other evaluation pages, with the scope and event tables read from the
+  runtime catalogues so the page cannot describe a permission that does not
+  exist. Linked from the footer under Resources.
+* **Help → For developers** — four bundled articles, which also wires up
+  `lib/support/help.ts`, until now an orphan module nothing imported.

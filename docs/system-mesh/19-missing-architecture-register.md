@@ -70,6 +70,7 @@ is building `src/lib/services/` for exactly that. See
 | P3-2 | Explicit transition tables for the warm campaign and lead machines, following `outreach/campaign-state.ts` |
 | P3-3 | CHECK constraints for the impossible states in [16](16-state-machines.md) |
 | P3-4 | Consistent status casing, with a CI test that inserts every enum value |
+| ~~P3-10~~ | ~~A way to prove the live schema matches the migration set~~ — **DONE**, `npm run schema:drift` ([24 · R25](24-remediation-log.md)) |
 | P3-5 | Archive for warm campaigns |
 | P3-6 | Conversation assign / snooze / close (`conversations` has the columns) |
 | P3-7 | Threaded notes on leads |

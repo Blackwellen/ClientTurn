@@ -670,3 +670,131 @@ describe("integration catalogue", () => {
    * test fails and the enterprise copy gets revisited.
    */
 });
+
+/* ------------------------------------------------- migration hygiene --- */
+
+describe("the migration set can be replayed onto an empty database", () => {
+  /**
+   * Migrations are applied once each, in order, and the Supabase CLI decides
+   * which are outstanding by comparing the **version** — the filename prefix
+   * before the first underscore — against `supabase_migrations.schema_migrations`.
+   *
+   * Everything below follows from that one fact. These are filename checks, so
+   * they need no database and cannot flake; `scripts/schema-drift.mjs` is the
+   * counterpart that checks the live schema and the ledger, and it needs
+   * credentials.
+   */
+  const FILES = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql") && !f.startsWith("9999"))
+    .sort();
+
+  const versionOf = (file: string) => file.slice(0, file.indexOf("_"));
+
+  test("there are migrations to check", () => {
+    // A glob that matched nothing would make every assertion below vacuous.
+    assert.ok(FILES.length > 50, `only ${FILES.length} migrations found`);
+  });
+
+  test("every filename is version_name.sql", () => {
+    for (const file of FILES) {
+      assert.match(
+        file,
+        /^\d{4,5}_[a-z0-9_]+\.sql$/,
+        `${file} does not parse into a version and a name`,
+      );
+    }
+  });
+
+  test("no two migrations claim the same version", () => {
+    // This shipped: `0077_company_phone.sql` and
+    // `0077_social_relationship_policy.sql` existed together, one applied and
+    // one not. The ledger is keyed on version, so only one of them could ever
+    // be recorded — and the next push would skip the other silently, with no
+    // error and no missing-migration warning. It is the failure mode that gets
+    // worse with time rather than better: the longer both sit there, the more
+    // likely one is applied by hand and nothing records which.
+    const seen = new Map<string, string>();
+    for (const file of FILES) {
+      const version = versionOf(file);
+      const first = seen.get(version);
+      assert.ok(
+        first === undefined,
+        `${file} and ${first} both claim version ${version}. ` +
+          `Renumber the one that has not been applied.`,
+      );
+      seen.set(version, file);
+    }
+  });
+
+  /**
+   * Three migrations carry a five-digit prefix -- `00241_agent_runtime`,
+   * `00242_pg_cron_worker`, `00243_ai_token_allowance` -- numbered as though
+   * they were "0024.1" and so on, to slot in after `0024_platform_admin_ops`.
+   *
+   * They do not. Lexically `00241_` sorts *before* `0024_`, because `1` comes
+   * before `_`. So the three run before the migration they were numbered to
+   * follow, in every tool that reads this directory in sorted order: the CLI,
+   * the drift script, and this test.
+   *
+   * It is harmless here, and that was checked rather than assumed -- none of
+   * the three references `platform_error_triage`, `platform_provider_checks`
+   * or `admin_event_series`, which is everything `0024` creates. They are
+   * grandfathered by name below.
+   *
+   * What must not happen is a fourth. The next migration numbered this way
+   * could easily depend on the one it appears to follow, and the failure would
+   * only ever appear when somebody rebuilt an environment from scratch --
+   * which is to say during a disaster recovery, which is the worst possible
+   * moment to discover the migration set does not replay.
+   */
+  const GRANDFATHERED_WIDE = new Set([
+    "00241_agent_runtime.sql",
+    "00242_pg_cron_worker.sql",
+    "00243_ai_token_allowance.sql",
+  ]);
+
+  test("no new migration uses a prefix width that sorts wrongly", () => {
+    for (const file of FILES) {
+      if (GRANDFATHERED_WIDE.has(file)) continue;
+      assert.equal(
+        versionOf(file).length,
+        4,
+        `${file} has a ${versionOf(file).length}-digit version. Mixed widths ` +
+          `sort by character, not by number: "00241" comes before "0024". Use ` +
+          `the next free four-digit number.`,
+      );
+    }
+  });
+
+  test("the grandfathered exceptions still exist", () => {
+    // If one is renamed or removed, the exemption above becomes a licence for
+    // a new file to take its name, which is the opposite of what it is for.
+    for (const file of GRANDFATHERED_WIDE) {
+      assert.ok(FILES.includes(file), `${file} is exempted but no longer exists`);
+    }
+  });
+
+  test("four-digit migrations run in numeric order", () => {
+    // With the three exceptions removed, filename order and numeric order must
+    // agree -- otherwise a migration replays before one it depends on.
+    const versions = FILES.filter((f) => !GRANDFATHERED_WIDE.has(f)).map(versionOf);
+    assert.deepEqual(
+      versions,
+      [...versions].sort((a, b) => Number(a) - Number(b)),
+      "filename order and numeric order disagree",
+    );
+  });
+
+  test("a migration never edits an already-applied migration's identity", () => {
+    // Not enforceable from filenames alone, but one half is: a migration whose
+    // name changes gets a new version and is applied twice. Names are stable
+    // once written, so the guard is simply that the set only grows — asserted
+    // here as a floor that has to be raised deliberately.
+    assert.ok(
+      FILES.length >= 81,
+      `the migration set has shrunk to ${FILES.length}. A deleted migration ` +
+        `cannot be replayed, so an environment rebuilt from this set would ` +
+        `differ from production in a way nothing records.`,
+    );
+  });
+});
