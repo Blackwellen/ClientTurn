@@ -24,10 +24,12 @@ import { useAdminAction } from "@/components/admin/use-admin-action";
 import { PolicyDetailDrawer } from "./policy-detail-drawer";
 import {
   archivePolicyVersion,
+  createPolicyVersion,
   publishPolicyVersion,
   removeSuppression,
   updatePrivacyRequest,
 } from "@/lib/admin/compliance-actions";
+import { NewPolicyVersionDialog } from "./new-policy-version-dialog";
 import { formatDate, formatNumber, formatRelative } from "@/lib/admin/format";
 import {
   POLICY_CHANNEL_LABEL,
@@ -104,6 +106,16 @@ export function SystemComplianceView({
     [run],
   );
 
+  const onCreateVersion = React.useCallback(
+    (input: Parameters<typeof createPolicyVersion>[0]) =>
+      void run(
+        "policy:create",
+        () => createPolicyVersion(input),
+        "Draft policy version created.",
+      ),
+    [run],
+  );
+
   const onRemoveSuppression = React.useCallback(
     (entryId: string, reason: string) =>
       void run(
@@ -163,9 +175,19 @@ export function SystemComplianceView({
           tone="accent"
           title="Policy versions"
           description="Manage and publish policy packs."
+          action={
+            <NewPolicyVersionDialog
+              existing={data.versions}
+              onSubmit={onCreateVersion}
+              pending={pending === "policy:create"}
+            />
+          }
         >
           {data.versions.length === 0 ? (
-            <PanelEmpty>No policy packs have been created yet.</PanelEmpty>
+            <PanelEmpty>
+              No policy packs yet. Create one to start recording the rules every
+              send is checked against.
+            </PanelEmpty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] border-collapse text-left">
