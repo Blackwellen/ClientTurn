@@ -12829,6 +12829,69 @@ export type Database = {
       }
     }
     Functions: {
+      status_job_health: {
+        Args: { p_since: string }
+        Returns: {
+          avg_seconds: number | null
+          job_type: string
+          jobs: number
+          last_at: string | null
+          retrying: number
+          state: string
+        }[]
+      }
+      status_probe_daily: {
+        Args: { p_since: string }
+        Returns: {
+          day: string
+          probes: number
+          provider: string
+          status: string
+        }[]
+      }
+      status_provider_latest: {
+        Args: { p_since: string }
+        Returns: {
+          checked_at: string
+          error_code: string | null
+          last_success_at: string | null
+          provider: string
+          status: string
+        }[]
+      }
+      cost_events_by_kind: {
+        Args: { p_business_id: string; p_from: string; p_to: string }
+        Returns: {
+          category: string
+          metric: string
+          provider: string
+          total_cost: number
+        }[]
+      }
+      usage_history_by_month: {
+        Args: { p_business_id: string; p_from: string }
+        Returns: {
+          messages: number
+          month: string
+          prospects: number
+          sourcing_runs: number
+        }[]
+      }
+      automation_stop_reasons: {
+        Args: { p_business_id: string; p_since: string }
+        Returns: {
+          runs: number
+          stopped_reason: string
+        }[]
+      }
+      automation_message_outcomes: {
+        Args: { p_business_id: string; p_since: string }
+        Returns: {
+          channel: string
+          messages: number
+          status: string
+        }[]
+      }
       admin_customer_last_activity: {
         Args: { p_business_ids: string[] }
         Returns: {

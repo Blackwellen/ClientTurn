@@ -229,58 +229,88 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
   const since30d = new Date(now.getTime() - HISTORY_DAYS * 864e5).toISOString();
   const since24h = new Date(now.getTime() - 864e5).toISOString();
 
-  const [probes, jobs24h] = await Promise.all([
+  /*
+   * Grouped in SQL, three small result sets instead of two 20,000-row fetches.
+   *
+   * Six providers on a schedule reach 20,000 probes well inside thirty days,
+   * and the read was ordered newest-first -- so the window silently shortened
+   * and the published uptime was computed over however long the most recent
+   * 20,000 probes happened to cover, while the page said "30 days". This is the
+   * one place in the product where a wrong number is read by people who are not
+   * customers, during an incident, to decide whether to trust the service.
+   *
+   * The meaning of a probe result stays here: `statusFromProbe` and `worst()`
+   * are what the page promises its readers, and belong beside the words they
+   * produce. SQL counts; this file interprets.
+   */
+  const [daily, latest, jobHealth, failingProbes] = await Promise.all([
+    admin.rpc("status_probe_daily", { p_since: since30d }),
+    admin.rpc("status_provider_latest", { p_since: since30d }),
+    admin.rpc("status_job_health", { p_since: since24h }),
+    // Rows, deliberately: the incident list shows individual failures, and no
+    // aggregate can name one. Bounded to the most recent 200 and filtered in
+    // the query rather than after it, so the 40 shown are genuinely the latest
+    // 40 -- the previous shape filtered a page of 20,000 mixed results and
+    // could show none at all while the service was down.
     admin
       .from("platform_provider_checks")
       .select("provider, status, error_code, checked_at")
       .gte("checked_at", since30d)
+      .in("status", ["DOWN", "DEGRADED"])
       .order("checked_at", { ascending: false })
-      .limit(20000),
-    admin
-      .from("jobs")
-      .select("type, state, attempts, created_at, completed_at")
-      .gte("created_at", since24h)
-      .limit(20000),
+      .limit(200),
   ]);
 
-  const probeRows = probes.data ?? [];
-  const jobRows = jobs24h.data ?? [];
+  const probeRows = failingProbes.data ?? [];
 
-  // Newest probe per provider, plus a per-day worst status for the sparkline.
-  const latestByProvider = new Map<string, (typeof probeRows)[number]>();
-  const dailyByProvider = new Map<string, Map<string, ServiceStatus>>();
+  const latestByProvider = new Map<
+    string,
+    { provider: string; status: string; error_code: string | null; checked_at: string }
+  >();
   const lastSuccessByProvider = new Map<string, string>();
+
+  for (const row of latest.data ?? []) {
+    latestByProvider.set(row.provider, {
+      provider: row.provider,
+      status: row.status,
+      error_code: row.error_code,
+      checked_at: row.checked_at as string,
+    });
+    // A real aggregate now, not "the newest HEALTHY row that happened to be in
+    // the page we fetched" -- which under truncation reported "last working:
+    // never" for a provider whose successes had simply fallen off the end.
+    if (row.last_success_at) {
+      lastSuccessByProvider.set(row.provider, row.last_success_at);
+    }
+  }
+
+  const dailyByProvider = new Map<string, Map<string, ServiceStatus>>();
   const probeCounts = new Map<string, { healthy: number; total: number }>();
 
-  for (const row of probeRows) {
-    if (!latestByProvider.has(row.provider)) latestByProvider.set(row.provider, row);
-
-    const day = dayKey(row.checked_at);
+  for (const row of daily.data ?? []) {
+    const day = row.day as string;
     const days = dailyByProvider.get(row.provider) ?? new Map<string, ServiceStatus>();
     const status = statusFromProbe(row.status);
     days.set(day, worst([days.get(day) ?? "OPERATIONAL", status]));
     dailyByProvider.set(row.provider, days);
 
     const counts = probeCounts.get(row.provider) ?? { healthy: 0, total: 0 };
-    counts.total += 1;
-    if (row.status === "HEALTHY") counts.healthy += 1;
+    counts.total += Number(row.probes);
+    if (row.status === "HEALTHY") counts.healthy += Number(row.probes);
     probeCounts.set(row.provider, counts);
-
-    if (row.status === "HEALTHY" && !lastSuccessByProvider.has(row.provider)) {
-      lastSuccessByProvider.set(row.provider, row.checked_at);
-    }
   }
 
   // Queue health per job type, from the last 24 hours.
   const jobStats = new Map<string, { failed: number; total: number; last: string | null }>();
-  for (const row of jobRows) {
-    const entry = jobStats.get(row.type) ?? { failed: 0, total: 0, last: null };
-    entry.total += 1;
-    if (row.state === "failed" || row.state === "dead") entry.failed += 1;
-    if (row.state === "completed" && row.completed_at) {
-      if (!entry.last || row.completed_at > entry.last) entry.last = row.completed_at;
+  for (const row of jobHealth.data ?? []) {
+    const entry = jobStats.get(row.job_type) ?? { failed: 0, total: 0, last: null };
+    const count = Number(row.jobs);
+    entry.total += count;
+    if (row.state === "failed" || row.state === "dead") entry.failed += count;
+    if (row.state === "completed" && row.last_at) {
+      if (!entry.last || row.last_at > entry.last) entry.last = row.last_at;
     }
-    jobStats.set(row.type, entry);
+    jobStats.set(row.job_type, entry);
   }
 
   const historyDays: string[] = [];
@@ -291,7 +321,7 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
   const services: StatusService[] = SERVICES.map((definition) => {
     const providerStatuses = definition.providers
       .map((provider) => latestByProvider.get(provider))
-      .filter((row): row is (typeof probeRows)[number] => Boolean(row))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
       .map((row) => statusFromProbe(row.status));
 
     // A queue with a meaningful failure share degrades its service. One failed
@@ -365,7 +395,6 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
   }
 
   const failures: RecentFailure[] = probeRows
-    .filter((row) => row.status === "DOWN" || row.status === "DEGRADED")
     .slice(0, 40)
     .map((row) => {
       const at = new Date(row.checked_at).getTime();
@@ -389,39 +418,41 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
 
   /* ---------------------------------------------------------------- jobs */
 
-  const completed = jobRows.filter((row) => row.state === "completed");
-  const failed = jobRows.filter(
-    (row) => row.state === "failed" || row.state === "dead",
-  );
-  const retrying = jobRows.filter(
-    (row) => row.state === "pending" && row.attempts > 0,
-  );
+  // Summed from the same grouped read as the per-queue figures, so the totals
+  // on the page and the rows beneath it cannot disagree.
+  let total24h = 0;
+  let completedCount = 0;
+  let failedCount = 0;
+  let retryingCount = 0;
+  let durationWeight = 0;
+  let durationSum = 0;
 
-  const durations = completed
-    .filter((row) => row.completed_at)
-    .map(
-      (row) =>
-        (new Date(row.completed_at!).getTime() - new Date(row.created_at).getTime()) /
-        1000,
-    )
-    .filter((seconds) => seconds >= 0 && seconds < 3600);
-
-  const total24h = jobRows.length;
+  for (const row of jobHealth.data ?? []) {
+    const count = Number(row.jobs);
+    total24h += count;
+    if (row.state === "completed") {
+      completedCount += count;
+      if (row.avg_seconds !== null) {
+        // Weighted: a queue that ran once must not pull the platform average
+        // as hard as one that ran ten thousand times.
+        durationSum += Number(row.avg_seconds) * count;
+        durationWeight += count;
+      }
+    }
+    if (row.state === "failed" || row.state === "dead") failedCount += count;
+    if (row.state === "pending") retryingCount += Number(row.retrying);
+  }
 
   const jobSummary: JobSummary = {
     total24h,
-    completed: completed.length,
-    failed: failed.length,
-    retrying: retrying.length,
-    completedShare: total24h > 0 ? completed.length / total24h : null,
-    failedShare: total24h > 0 ? failed.length / total24h : null,
-    retryingShare: total24h > 0 ? retrying.length / total24h : null,
+    completed: completedCount,
+    failed: failedCount,
+    retrying: retryingCount,
+    completedShare: total24h > 0 ? completedCount / total24h : null,
+    failedShare: total24h > 0 ? failedCount / total24h : null,
+    retryingShare: total24h > 0 ? retryingCount / total24h : null,
     averageProcessingSeconds:
-      durations.length > 0
-        ? Math.round(
-            (durations.reduce((sum, value) => sum + value, 0) / durations.length) * 10,
-          ) / 10
-        : null,
+      durationWeight > 0 ? Math.round((durationSum / durationWeight) * 10) / 10 : null,
   };
 
   /* ------------------------------------------------------------ overall */

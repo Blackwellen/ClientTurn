@@ -276,47 +276,34 @@ async function getUsageHistory(
   from.setUTCMonth(from.getUTCMonth() - 5);
   const fromIso = from.toISOString();
 
-  const [prospects, runs, messages, costs] = await Promise.all([
-    admin
-      .from("prospects")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("is_test", false)
-      .gte("created_at", fromIso)
-      .limit(50000),
-    admin
-      .from("sourcing_runs")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .gte("created_at", fromIso)
-      .limit(5000),
-    admin
-      .from("messages")
-      .select("created_at")
-      .eq("business_id", businessId)
-      .eq("direction", "outbound")
-      .gte("created_at", fromIso)
-      .limit(50000),
+  // One grouped query per source instead of 100,000 timestamps bucketed here
+  // by their first seven characters. The prospect and message reads were capped
+  // at 50,000 each, so a workspace busy enough to care about its usage history
+  // was the one whose history quietly stopped growing.
+  const [history, costs] = await Promise.all([
+    admin.rpc("usage_history_by_month", {
+      p_business_id: businessId,
+      p_from: fromIso,
+    }),
     admin
       .from("business_cost_daily")
       .select("date, total_cost")
       .eq("business_id", businessId)
       .gte("date", fromIso.slice(0, 10))
+      // 400 days comfortably covers the six months asked for; this one was
+      // never at risk of truncating.
       .limit(400),
   ]);
 
-  const bucket = (rows: { created_at: string }[] | null) => {
-    const counts = new Map<string, number>();
-    for (const row of rows ?? []) {
-      const key = row.created_at.slice(0, 7);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return counts;
-  };
+  const prospectCounts = new Map<string, number>();
+  const runCounts = new Map<string, number>();
+  const messageCounts = new Map<string, number>();
 
-  const prospectCounts = bucket(prospects.data);
-  const runCounts = bucket(runs.data);
-  const messageCounts = bucket(messages.data);
+  for (const row of history.data ?? []) {
+    prospectCounts.set(row.month, Number(row.prospects));
+    runCounts.set(row.month, Number(row.sourcing_runs));
+    messageCounts.set(row.month, Number(row.messages));
+  }
 
   const spend = new Map<string, number>();
   for (const row of costs.data ?? []) {

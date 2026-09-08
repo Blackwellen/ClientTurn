@@ -129,13 +129,23 @@ export async function handleCostRollupDaily(job: ClaimedJob) {
   const businessIds = payload.businessId ? [payload.businessId] : await activeBusinessIds();
 
   for (const businessId of businessIds) {
-    const { data } = await admin
-      .from("cost_events")
-      .select("provider, metric, category, total_cost")
-      .eq("business_id", businessId)
-      .gte("occurred_at", dayStart.toISOString())
-      .lt("occurred_at", dayEnd.toISOString())
-      .limit(20000);
+    // Summed in SQL, grouped by (provider, metric, category).
+    //
+    // This read up to 20,000 cost_events and summed them here -- and unlike
+    // every other instance of that pattern, this one *persists* the result. A
+    // workspace past the cap on a busy day had its cost understated in
+    // `business_cost_daily`, and the margin reports, the economics page and the
+    // six-month spend history all read that stored row. The error did not
+    // clear when the query was fixed; only re-running the rollup would.
+    //
+    // `categoryFor` stays here: the mapping from a provider and metric to a
+    // spend bucket is product knowledge, and it now runs over a handful of
+    // groups instead of over rows that might not all have arrived.
+    const { data } = await admin.rpc("cost_events_by_kind", {
+      p_business_id: businessId,
+      p_from: dayStart.toISOString(),
+      p_to: dayEnd.toISOString(),
+    });
 
     const buckets = emptyBuckets();
     for (const row of data ?? []) {

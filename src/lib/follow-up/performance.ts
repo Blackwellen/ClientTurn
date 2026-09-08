@@ -56,28 +56,22 @@ export async function getFollowUpPerformance(
     runsBase(),
     runsBase().eq("state", "COMPLETED"),
     runsBase().eq("state", "STOPPED"),
-    supabase
-      .from("automation_runs")
-      .select("stopped_reason")
-      .eq("business_id", businessId)
-      .eq("state", "STOPPED")
-      .gte("created_at", since)
-      .not("stopped_reason", "is", null)
-      .limit(5000),
-    supabase
-      .from("messages")
-      .select("channel, status")
-      .eq("business_id", businessId)
-      .eq("direction", "outbound")
-      .eq("origin", "automation")
-      .gte("created_at", since)
-      .limit(20000),
+    // Both grouped in SQL. These were a 5,000-row and a 20,000-row fetch
+    // counted here, so a workspace running enough follow-up for the panel to
+    // be interesting was the one whose numbers stopped rising.
+    supabase.rpc("automation_stop_reasons", {
+      p_business_id: businessId,
+      p_since: since,
+    }),
+    supabase.rpc("automation_message_outcomes", {
+      p_business_id: businessId,
+      p_since: since,
+    }),
   ]);
 
   const reasonCounts = new Map<string, number>();
   for (const row of reasons.data ?? []) {
-    const reason = row.stopped_reason as string;
-    reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    reasonCounts.set(row.stopped_reason, Number(row.runs));
   }
 
   // "The lead replied" is a success for a follow-up sequence, not a failure.
@@ -92,9 +86,15 @@ export async function getFollowUpPerformance(
   for (const row of messages.data ?? []) {
     const channel = row.channel as Channel;
     const entry = byChannel.get(channel) ?? { sent: 0, delivered: 0, failed: 0 };
-    entry.sent += 1;
-    if (row.status === "DELIVERED" || row.status === "SENT") entry.delivered += 1;
-    if (row.status === "FAILED") entry.failed += 1;
+    // A message policy refused was never attempted, so it is not a send.
+    // Counting it would depress the delivery rate of exactly the workspace
+    // whose suppression list is working (0083).
+    if (row.status === "BLOCKED") continue;
+
+    const count = Number(row.messages);
+    entry.sent += count;
+    if (row.status === "DELIVERED" || row.status === "SENT") entry.delivered += count;
+    if (row.status === "FAILED") entry.failed += count;
     byChannel.set(channel, entry);
   }
 
