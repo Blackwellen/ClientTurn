@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enqueue, type ClaimedJob } from "@/lib/jobs/queue";
+import { enqueue } from "@/lib/jobs/queue";
 import { assertSafeUrl } from "@/lib/security/safe-fetch";
 import { openSecret } from "@/lib/security/secret-box";
 import { signPayload, SIGNATURE_HEADER } from "@/lib/webhooks/signature";
@@ -53,7 +53,15 @@ type DeliveryRow = {
   max_attempts: number;
 };
 
-export async function handleWebhookDispatch(_job: ClaimedJob) {
+/**
+ * The job's payload is deliberately unread.
+ *
+ * A dispatch job is a nudge to drain the queue, not an instruction about one
+ * delivery. Acting on a delivery id in the payload would mean a job whose row
+ * had already been claimed by an overlapping worker did nothing at all, and the
+ * remaining due deliveries would wait for the next nudge.
+ */
+export async function handleWebhookDispatch() {
   const db = createAdminClient();
 
   const { data, error } = await db.rpc("claim_webhook_deliveries", {

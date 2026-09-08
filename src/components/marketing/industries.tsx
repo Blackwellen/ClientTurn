@@ -7,17 +7,14 @@ import { CtaLink } from "./cta";
 import { useMediaQuery } from "./hero/hooks/useHeroScroll";
 
 const INDUSTRIES = [
-  { name: "Roofing", enquiry: "Roof replacement", action: "Book free survey" },
-  { name: "Windows & Doors", enquiry: "Full house of windows", action: "Book quotation visit" },
-  { name: "Driveways", enquiry: "Block paving driveway", action: "Book measure-up" },
-  { name: "Landscaping", enquiry: "Garden redesign", action: "Book site visit" },
-  { name: "Kitchens", enquiry: "New fitted kitchen", action: "Book design appointment" },
-  { name: "Bathrooms", enquiry: "Full bathroom refit", action: "Book consultation" },
-  { name: "Builders", enquiry: "Single-storey extension", action: "Book site survey" },
-  { name: "Plumbing", enquiry: "Boiler replacement", action: "Book engineer visit" },
-  { name: "Electrical", enquiry: "Full rewire", action: "Book electrician visit" },
-  { name: "Cleaning", enquiry: "Weekly domestic clean", action: "Book first clean" },
-  { name: "Removals", enquiry: "Three-bed house move", action: "Book moving survey" },
+  { name: "Agencies", enquiry: "Retainer enquiry from a paid campaign", action: "Book a scoping call" },
+  { name: "Web development", enquiry: "Rebuild of an ageing site", action: "Book a discovery call" },
+  { name: "SaaS", enquiry: "Demo request from a pricing page", action: "Book a demo" },
+  { name: "Ecommerce", enquiry: "Wholesale or trade account request", action: "Book an account call" },
+  { name: "Accountants", enquiry: "Year-end and payroll enquiry", action: "Book an intro call" },
+  { name: "Law firms", enquiry: "Commercial contract enquiry", action: "Book a consultation" },
+  { name: "Property services", enquiry: "Managed portfolio enquiry", action: "Book a site visit" },
+  { name: "Consultancies", enquiry: "Project brief from a referral", action: "Book a scoping call" },
 ] as const;
 
 type Industry = (typeof INDUSTRIES)[number];

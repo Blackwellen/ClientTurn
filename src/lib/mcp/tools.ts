@@ -61,105 +61,29 @@ export type ToolDefinition = {
   minimumRole: "viewer" | "member" | "admin" | "owner";
 };
 
-const noArgs = { type: "object" as const, properties: {} };
-
+/**
+ * The tools that are not service-layer operations.
+ *
+ * This list used to hold seventeen entries and now holds one, and the shrinking
+ * is the point rather than a loss. Thirteen of them duplicated an operation the
+ * service registry now declares — offering an assistant both `get_lead` and
+ * `lead.get` makes it choose between two tools that do the same thing, and
+ * costs a client's context twice for one capability.
+ *
+ * The other three were worse than duplicates. `send_message`,
+ * `launch_campaign`, `start_sourcing_run` and `change_overage_cap` were
+ * APPROVAL_GATED, which meant they parked for a person — and then failed when
+ * that person approved them, because `executeApproval` can only run a
+ * registered service operation and there was none. They advertised a capability
+ * that could not complete. `message.send` and `campaign.launch` now exist for
+ * real; the other two are gone rather than left as promises.
+ *
+ * `create_lead` stays because it is not a duplicate: `lead.create` is
+ * deliberately absent from the registry, and this handler does the thing that
+ * absence protects — it refuses a contact that is not a warm relationship, and
+ * records the lawful basis for contacting them.
+ */
 export const MCP_TOOLS: ToolDefinition[] = [
-  /* ------------------------------------------------------------ read tools */
-  {
-    name: "search_leads",
-    kind: "READ",
-    scope: "leads:read",
-    description:
-      "Search this workspace's leads by name, email, phone or status. Returns at most 50.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Free text to match against name, email or phone." },
-        status: { type: "string", description: "Optional lead status filter." },
-        limit: { type: "number", description: "Maximum results, 1-50." },
-      },
-    },
-    minimumRole: "viewer",
-  },
-  {
-    name: "get_lead",
-    kind: "READ",
-    scope: "leads:read",
-    description: "Read one lead, including its qualification state and recent activity.",
-    inputSchema: {
-      type: "object",
-      properties: { leadId: { type: "string", description: "The lead's id." } },
-      required: ["leadId"],
-    },
-    minimumRole: "viewer",
-  },
-  {
-    name: "search_prospects",
-    kind: "READ",
-    scope: "prospects:read",
-    description:
-      "Search sourced prospects by grade, status or free text. Prospects are not leads and have not consented to contact.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Free text to match." },
-        grade: { type: "string", description: "Minimum grade: A+, A, B, C or D." },
-        limit: { type: "number", description: "Maximum results, 1-50." },
-      },
-    },
-    minimumRole: "viewer",
-  },
-  {
-    name: "get_prospect",
-    kind: "READ",
-    scope: "prospects:read",
-    description:
-      "Read one prospect, including its explainable score factors and contactability state.",
-    inputSchema: {
-      type: "object",
-      properties: { prospectId: { type: "string", description: "The prospect's id." } },
-      required: ["prospectId"],
-    },
-    minimumRole: "viewer",
-  },
-  {
-    name: "get_business_profile",
-    kind: "READ",
-    scope: "business:read",
-    description:
-      "Read what ClientTurn knows about this business: services, ICPs and conversion goals.",
-    inputSchema: noArgs,
-    minimumRole: "viewer",
-  },
-  {
-    name: "list_campaigns",
-    kind: "READ",
-    scope: "campaigns:read",
-    description: "List acquisition campaigns with their status and funnel counts.",
-    inputSchema: noArgs,
-    minimumRole: "viewer",
-  },
-  {
-    name: "get_dashboard_metrics",
-    kind: "READ",
-    scope: "analytics:read",
-    description: "Headline operational metrics for a period: leads, qualified, booked, won.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        range: { type: "string", description: "One of 7d, 30d, 90d or 12m." },
-      },
-    },
-    minimumRole: "viewer",
-  },
-  {
-    name: "get_status",
-    kind: "READ",
-    scope: "business:read",
-    description: "Whether this workspace's integrations, senders and background work are healthy.",
-    inputSchema: noArgs,
-    minimumRole: "viewer",
-  },
 
   /* ----------------------------------------------------------- write tools */
   {
@@ -186,124 +110,7 @@ export const MCP_TOOLS: ToolDefinition[] = [
     },
     minimumRole: "member",
   },
-  {
-    name: "assign_lead",
-    kind: "WRITE",
-    scope: "leads:write",
-    description: "Assign a lead to a member of the workspace, or unassign it.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        leadId: { type: "string", description: "The lead's id." },
-        userId: { type: "string", description: "The member's id, or empty to unassign." },
-      },
-      required: ["leadId"],
-    },
-    minimumRole: "member",
-  },
-  {
-    name: "update_lead_status",
-    kind: "WRITE",
-    scope: "leads:write",
-    description: "Move a lead to a new status: QUALIFIED, BOOKED, WON or LOST.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        leadId: { type: "string", description: "The lead's id." },
-        status: { type: "string", description: "The new status." },
-      },
-      required: ["leadId", "status"],
-    },
-    minimumRole: "member",
-  },
-  {
-    name: "approve_prospect",
-    kind: "WRITE",
-    scope: "prospects:write",
-    description:
-      "Approve a prospect for outreach. Refused if the policy engine has not cleared it — approval is not an override.",
-    inputSchema: {
-      type: "object",
-      properties: { prospectId: { type: "string", description: "The prospect's id." } },
-      required: ["prospectId"],
-    },
-    minimumRole: "admin",
-  },
-  {
-    name: "pause_campaign",
-    kind: "WRITE",
-    scope: "campaigns:write",
-    description: "Pause a running acquisition campaign. Always permitted — stopping is safe.",
-    inputSchema: {
-      type: "object",
-      properties: { campaignId: { type: "string", description: "The campaign's id." } },
-      required: ["campaignId"],
-    },
-    minimumRole: "admin",
-  },
 
-  /* -------------------------------------------------- approval-gated tools */
-  {
-    name: "send_message",
-    kind: "APPROVAL_GATED",
-    scope: "leads:write",
-    description:
-      "Send a message to a lead. Parks for a person to approve; it is never sent by the assistant alone.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        leadId: { type: "string", description: "The lead's id." },
-        channel: { type: "string", description: "email, sms or whatsapp." },
-        body: { type: "string", description: "The message." },
-      },
-      required: ["leadId", "channel", "body"],
-    },
-    minimumRole: "member",
-  },
-  {
-    name: "launch_campaign",
-    kind: "APPROVAL_GATED",
-    scope: "campaigns:write",
-    description:
-      "Launch an acquisition campaign. Parks for approval: launching starts real outbound contact.",
-    inputSchema: {
-      type: "object",
-      properties: { campaignId: { type: "string", description: "The campaign's id." } },
-      required: ["campaignId"],
-    },
-    minimumRole: "admin",
-  },
-  {
-    name: "start_sourcing_run",
-    kind: "APPROVAL_GATED",
-    scope: "prospects:write",
-    description:
-      "Start a sourcing run against an approved search plan. Parks for approval: runs spend money.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        strategyId: { type: "string", description: "An approved search plan's id." },
-        target: { type: "number", description: "Verified prospects to aim for." },
-      },
-      required: ["strategyId"],
-    },
-    minimumRole: "admin",
-  },
-  {
-    name: "change_overage_cap",
-    kind: "APPROVAL_GATED",
-    scope: "campaigns:write",
-    description:
-      "Change the workspace's additional-usage cap. Parks for approval: it changes what can be billed.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        capMinor: { type: "number", description: "The new cap, in pence." },
-      },
-      required: ["capMinor"],
-    },
-    minimumRole: "admin",
-  },
 ];
 
 /**

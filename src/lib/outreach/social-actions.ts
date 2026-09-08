@@ -18,6 +18,7 @@ import {
   SOCIAL_ACCOUNT_TIERS,
   SOCIAL_PLATFORMS,
 } from "./social-limits";
+import { ingestSocialReply } from "@/lib/social/replies";
 import type { ActionResult } from "@/lib/find-leads/actions";
 
 /**
@@ -200,7 +201,14 @@ export async function socialPlanAction(
 const sendSchema = z.object({
   prospectId: z.uuid(),
   platform: platformSchema,
-  accountId: z.uuid(),
+  /**
+   * Nullable because a draft composed by the sequencer may outlive the account
+   * it was composed for -- `social_outbound_messages.account_id` is
+   * `on delete set null`. Rather than refusing the send, the action resolves
+   * the workspace's active account for that platform, which is the only one it
+   * could legitimately go out from anyway.
+   */
+  accountId: z.uuid().nullish(),
   noteBody: z.string().trim().max(MAX_INVITE_NOTE_CHARS).optional(),
   messageBody: z.string().trim().max(MAX_SOCIAL_MESSAGE_CHARS).optional(),
 });
@@ -223,20 +231,39 @@ export async function sendSocialInviteAction(
   if (!access.ok) return access;
 
   const admin = createAdminClient();
-  const { data: account } = await admin
+
+  // The fallback the schema promises. A draft composed days ago may name an
+  // account that has since been removed (`account_id` is `on delete set null`),
+  // and refusing the send would strand a message a person is looking at. The
+  // workspace's active account for that platform is the only one it could
+  // legitimately go out from, so it is resolved rather than demanded.
+  const accountQuery = admin
     .from("social_sending_accounts")
     .select("id, send_mode")
-    .eq("business_id", access.workspace.businessId)
-    .eq("id", parsed.data.accountId)
-    .maybeSingle();
+    .eq("business_id", access.workspace.businessId);
 
-  if (!account) return fail("That sending account could not be found.");
+  const { data: account } = parsed.data.accountId
+    ? await accountQuery.eq("id", parsed.data.accountId).maybeSingle()
+    : await accountQuery
+        .eq("platform", parsed.data.platform)
+        .eq("status", "ACTIVE")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+  if (!account) {
+    return fail(
+      parsed.data.accountId
+        ? "That sending account could not be found."
+        : `No active ${parsed.data.platform.toLowerCase()} account is connected to send from.`,
+    );
+  }
 
   const result = await recordSocialAction({
     businessId: access.workspace.businessId,
     prospectId: parsed.data.prospectId,
     platform: parsed.data.platform,
-    accountId: parsed.data.accountId,
+    accountId: account.id,
     action: parsed.data.platform === "LINKEDIN" ? "INVITE" : "FOLLOW",
     noteBody: parsed.data.noteBody ?? null,
     performedBy: account.send_mode as "ASSISTED" | "PARTNER_API",
@@ -278,12 +305,19 @@ export async function sendSocialMessageAction(
   if (!access.ok) return access;
 
   const admin = createAdminClient();
-  const { data: account } = await admin
+
+  // Named account where the caller has one, otherwise the workspace's active
+  // account for this platform. Scoped by `business_id` in both branches, so an
+  // id from another workspace resolves to nothing rather than to a send.
+  const accountQuery = admin
     .from("social_sending_accounts")
     .select("id, send_mode")
     .eq("business_id", access.workspace.businessId)
-    .eq("id", parsed.data.accountId)
-    .maybeSingle();
+    .eq("platform", parsed.data.platform);
+
+  const { data: account } = parsed.data.accountId
+    ? await accountQuery.eq("id", parsed.data.accountId).maybeSingle()
+    : await accountQuery.eq("status", "ACTIVE").limit(1).maybeSingle();
 
   if (!account) return fail("That sending account could not be found.");
 
@@ -291,7 +325,7 @@ export async function sendSocialMessageAction(
     businessId: access.workspace.businessId,
     prospectId: parsed.data.prospectId,
     platform: parsed.data.platform,
-    accountId: parsed.data.accountId,
+    accountId: account.id,
     action: "MESSAGE",
     performedBy: account.send_mode as "ASSISTED" | "PARTNER_API",
     actorUserId: access.workspace.userId,
@@ -353,6 +387,58 @@ export async function sendSocialMessageAction(
     .eq("business_id", access.workspace.businessId)
     .eq("id", parsed.data.prospectId)
     .in("status", ["READY", "APPROVED"]);
+
+  // Advance the sequencer's clock.
+  //
+  // Without this the assisted path is a dead end: a person sends the opener,
+  // `sequence_step` stays at 0, `last_outbound_at` stays null, and the sweeper
+  // either composes a second opener or -- because `next_action_at` was left at
+  // its six-hour re-check -- concludes there is nothing to do and never fires a
+  // follow-up at all. The autonomous path does this in `social-execute.ts`;
+  // this is its counterpart, and the two must agree.
+  //
+  // `next_action_at` is set to now rather than to the computed due time: the
+  // sweeper recomputes the gap from `last_outbound_at` on its next pass, so a
+  // workspace that changes its follow-up spacing takes effect immediately
+  // rather than being frozen at the moment somebody clicked send.
+  const sentAt = new Date().toISOString();
+  const { data: current } = await admin
+    .from("social_connection_states")
+    .select("sequence_step")
+    .eq("business_id", access.workspace.businessId)
+    .eq("prospect_id", parsed.data.prospectId)
+    .eq("platform", parsed.data.platform)
+    .maybeSingle();
+
+  await admin
+    .from("social_connection_states")
+    .update({
+      sequence_step: Math.min(3, (current?.sequence_step ?? 0) + 1),
+      last_outbound_at: sentAt,
+      next_action: null,
+      next_action_at: sentAt,
+      attempts: 0,
+      halted_reason: null,
+    })
+    .eq("business_id", access.workspace.businessId)
+    .eq("prospect_id", parsed.data.prospectId)
+    .eq("platform", parsed.data.platform);
+
+  // Whatever the sequencer composed for this step has now been performed. It
+  // is marked sent rather than left in DRAFT, because a DRAFT row is what
+  // stops the next step being composed at all.
+  await admin
+    .from("social_outbound_messages")
+    .update({
+      status: "SENT",
+      sent_at: sentAt,
+      sent_by: access.workspace.userId,
+      performed_by: account.send_mode,
+    })
+    .eq("business_id", access.workspace.businessId)
+    .eq("prospect_id", parsed.data.prospectId)
+    .eq("platform", parsed.data.platform)
+    .eq("status", "DRAFT");
 
   await recordAudit({
     businessId: access.workspace.businessId,
@@ -500,4 +586,90 @@ export async function markSocialDeclinedAction(
 
   refresh();
   return ok({ state });
+}
+
+/* ---------------------------------------------------------------- replies */
+
+const replySchema = z.object({
+  prospectId: z.uuid(),
+  platform: platformSchema,
+  body: z.string().trim().min(1).max(4000),
+  receivedAt: z.string().optional(),
+});
+
+/**
+ * Records that a prospect replied.
+ *
+ * The ASSISTED counterpart of a partner webhook: on LinkedIn there is no API
+ * that can tell us somebody answered, so a person reads the reply and enters
+ * it. That is not a lesser path — it is the only path the platform permits for
+ * a personal account, and everything downstream is identical either way.
+ *
+ * What happens next is deliberately a lot for one button: the sequence stops,
+ * any composed-but-unsent follow-up is discarded, the reply is classified, an
+ * opt-out suppresses globally, and a promotable reply may create the Lead and
+ * hand the conversation to the agent. All of it lives in `social/replies.ts`
+ * rather than here, so the webhook path cannot drift from the human one.
+ */
+export async function recordSocialReplyAction(
+  input: unknown,
+): Promise<
+  ActionResult<{
+    classification: string | null;
+    leadId: string | null;
+    suppressed: boolean;
+    alreadyRecorded: boolean;
+  }>
+> {
+  const parsed = replySchema.safeParse(input);
+  if (!parsed.success) return fail("Enter the reply you received.");
+
+  const access = await requireOutreachAdmin();
+  if (!access.ok) return access;
+
+  // Ownership, before anything is written. A prospect id from another
+  // workspace must not reach the ingest path, which runs as the service role
+  // and would otherwise happily record a reply against it.
+  const admin = createAdminClient();
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("id")
+    .eq("business_id", access.workspace.businessId)
+    .eq("id", parsed.data.prospectId)
+    .maybeSingle();
+
+  if (!prospect) return fail("That prospect could not be found.");
+
+  const result = await ingestSocialReply({
+    businessId: access.workspace.businessId,
+    prospectId: parsed.data.prospectId,
+    platform: parsed.data.platform,
+    body: parsed.data.body,
+    receivedAt: parsed.data.receivedAt,
+    ingestedBy: "ASSISTED",
+    ingestedByUserId: access.workspace.userId,
+  });
+
+  await recordAudit({
+    businessId: access.workspace.businessId,
+    actorUserId: access.workspace.userId,
+    action: "social_outreach.reply_recorded",
+    entityType: "prospect",
+    entityId: parsed.data.prospectId,
+    metadata: {
+      platform: parsed.data.platform,
+      classification: result.classification,
+      promoted: Boolean(result.leadId),
+    },
+  });
+
+  refresh();
+  if (result.leadId) revalidatePath("/app/leads");
+
+  return ok({
+    classification: result.classification,
+    leadId: result.leadId,
+    suppressed: result.suppressed,
+    alreadyRecorded: !result.recorded,
+  });
 }

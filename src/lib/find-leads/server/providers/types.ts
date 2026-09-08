@@ -26,6 +26,26 @@ export type CompanyCandidate = {
   employeeCount: number | null;
   companySize: string | null;
   description: string | null;
+  /* ------------------------------------------------- register identity */
+  // Optional, and set only by a source that actually consulted a register.
+  // Optional rather than nullable so the dozen adapters that know nothing
+  // about incorporation do not each have to say so.
+
+  /** Companies House number, or an equivalent register's identifier. */
+  registrationId?: string | null;
+  /** The legal name, which is often not the trading name we searched. */
+  registeredName?: string | null;
+  /**
+   * What the register says this is, in `policy/types.ts`'s vocabulary.
+   *
+   * The value PECR's corporate-subscriber exemption turns on. Absent means
+   * nobody checked; `UNKNOWN` means somebody checked and could not tell. The
+   * packs treat those the same way -- review -- but the distinction matters
+   * for showing a customer why.
+   */
+  subscriberType?: "CORPORATE" | "PARTNERSHIP" | "UNKNOWN";
+  /** One sentence explaining the verdict, for the prospect record. */
+  registryReason?: string | null;
   location: {
     country: string | null;
     region: string | null;
@@ -42,7 +62,15 @@ export type ContactCandidate = {
   lastName: string | null;
   roleTitle: string | null;
   email: string | null;
-  phone: string | null;
+  /**
+   * Optional, and deliberately not persisted from a sourced record.
+   *
+   * ClientTurn emails cold prospects and texts only mobiles somebody submitted
+   * on a lead form. A number a contact provider happens to return therefore has
+   * no purpose, and `insertProspect` drops it rather than storing personal data
+   * the product will never use.
+   */
+  phone?: string | null;
   linkedinUrl: string | null;
   /** Which company candidate this contact belongs to, by domain or external id. */
   companyExternalId: string | null;
@@ -65,7 +93,7 @@ export type ContactCandidate = {
 export type SocialEngagementCandidate = {
   /** Platform-scoped id (PSID, IGSID, member URN). Never a stable global id. */
   externalId: string;
-  platform: "FACEBOOK" | "INSTAGRAM" | "LINKEDIN";
+  platform: "FACEBOOK" | "INSTAGRAM" | "LINKEDIN" | "TIKTOK";
   /** How they engaged. Drives contactability: a DM is a stronger basis than a
    *  public comment for replying on that channel. */
   engagement: "MESSAGE" | "COMMENT" | "MENTION" | "REACTION";
@@ -78,6 +106,15 @@ export type SocialEngagementCandidate = {
   occurredAt: string | null;
   /** The post, thread or conversation, so provenance can point back at it. */
   sourceReference: string | null;
+  /**
+   * The platform's id for the comment itself, where this engagement was one.
+   *
+   * Kept separately from `sourceReference` because it is not provenance — it is
+   * an **address**. Meta's private-reply endpoint takes a comment id as the
+   * recipient, so this is the only thing that makes a commenter reachable at
+   * all. A record without it can be shown to a customer and never messaged.
+   */
+  commentId?: string | null;
 };
 
 export type VerificationResult = {

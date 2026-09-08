@@ -49,8 +49,9 @@ export function Hero() {
             </h1>
 
             <p className="pub-lead mt-8 max-w-xl">
-              ClientTurn helps you manage inbound leads and build new pipeline — with follow-up,
-              qualification, booking, reactivation and AI-assisted prospecting in one system.
+              ClientTurn helps agencies, software and ecommerce businesses manage inbound
+              leads and build new pipeline — with follow-up, qualification, booking,
+              reactivation and AI-assisted prospecting in one system.
             </p>
 
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">

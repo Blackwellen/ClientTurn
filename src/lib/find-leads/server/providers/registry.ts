@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Capability } from "../../cost-model";
 import { apolloProvider } from "./apollo";
 import { clearbitProvider } from "./clearbit";
+import { companiesHouseProvider } from "./companies-house";
 import { googlePlacesProvider } from "./google-places";
 import { hunterProvider } from "./hunter";
 import { linkedinEngagementProvider } from "./linkedin-engagement";
@@ -10,6 +11,8 @@ import { linkedinSalesNavigatorProvider } from "./linkedin-sales-navigator";
 import { metaAdLibraryProvider } from "./meta-ad-library";
 import { metaEngagementProvider } from "./meta-engagement";
 import { tiktokCommercialContentProvider } from "./tiktok-commercial-content";
+import { tiktokEngagementProvider } from "./tiktok-engagement";
+import { websiteContactsProvider } from "./website-contacts";
 import { websiteIntentProvider } from "./website-intent";
 import type { SourcingProvider } from "./types";
 
@@ -28,11 +31,21 @@ const PROVIDERS: SourcingProvider[] = [
   // database will sell you.
   metaEngagementProvider,
   linkedinEngagementProvider,
+  tiktokEngagementProvider,
   // Then the free public advertiser registries: businesses currently paying
   // for reach, which is a real signal of budget and intent.
   googlePlacesProvider,
   metaAdLibraryProvider,
   tiktokCommercialContentProvider,
+  // The official register. Free, and the only source that can answer whether a
+  // trading name is an incorporated body -- which is what PECR's
+  // corporate-subscriber exemption turns on. Runs before anything metered.
+  companiesHouseProvider,
+  // The company's own team page, read by our own fetcher and parsed by AI.
+  // Free, first-party, and ahead of every paid contact database -- a name the
+  // company published about itself has a better provenance story than one
+  // bought, as well as costing nothing.
+  websiteContactsProvider,
   // Then the metered contact sources.
   hunterProvider,
   apolloProvider,

@@ -20,6 +20,8 @@
  * consent, and a source being technically reachable says nothing about whether
  * its licence permits marketing use.
  */
+import type { SourcingStrictness } from "./strictness";
+
 export const ALLOWED_SOURCE_KINDS = [
   "LICENSED_PROVIDER",
   "PUBLIC_CORPORATE_REGISTER",
@@ -189,6 +191,35 @@ export type DataControls = {
   retainUncontactedProspectsDays: number | null;
   retainInactiveLeadsDays: number | null;
   retainRawEventsDays: number | null;
+
+  /* ------------------------------------------------------------- social */
+  /**
+   * How much of the connect-then-message channel runs without a person.
+   *
+   * These sit with the rest of the workspace's stated position rather than on
+   * the sending account, because they are a decision about the business rather
+   * than a property of one LinkedIn login. Both booleans default to false:
+   * automating a customer's own social account, and creating Leads without
+   * review, are things a workspace opts into.
+   */
+  socialAutonomousSending: boolean;
+  socialAutoPromoteOnReply: boolean;
+  /** Days a pending invite may sit before withdrawal. Null disables it. */
+  socialWithdrawAfterDays: number | null;
+  socialFollowUpGapHours: number;
+  socialMaxFollowUps: number;
+
+  /* --------------------------------------------------------- strictness */
+  /**
+   * How much doubt this workspace tolerates about who it may contact.
+   *
+   * The jurisdiction pack decides what the law permits; this decides what to do
+   * with a record that is not clearly either permitted or refused. See
+   * `compliance/strictness.ts` for why that is a workspace choice.
+   */
+  sourcingStrictness: SourcingStrictness;
+  requireRegistryMatch: boolean;
+
   updatedAt: string | null;
 };
 
@@ -208,6 +239,19 @@ export const EMPTY_DATA_CONTROLS: DataControls = {
   retainUncontactedProspectsDays: null,
   retainInactiveLeadsDays: null,
   retainRawEventsDays: null,
+  // The defaults a workspace that has never answered gets: nothing autonomous,
+  // nothing promoted without review, and the conservative sequence shape from
+  // `outreach/social-sequence.ts`.
+  socialAutonomousSending: false,
+  socialAutoPromoteOnReply: false,
+  socialWithdrawAfterDays: 21,
+  socialFollowUpGapHours: 96,
+  socialMaxFollowUps: 2,
+  // The behaviour the product had before the setting existed, now named.
+  sourcingStrictness: "BALANCED",
+  // Opt-in: Companies House is UK-only, so requiring a match would refuse every
+  // prospect for a workspace selling abroad.
+  requireRegistryMatch: false,
   updatedAt: null,
 };
 

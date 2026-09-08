@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recordSocialAcceptance } from "./social-relationship";
 import {
   canInvite,
   canMessage,
@@ -387,13 +388,58 @@ export async function markSocialAccepted(
   platform: SocialPlatform,
 ): Promise<void> {
   const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: before } = await admin
+    .from("social_connection_states")
+    .select("profile_url")
+    .eq("business_id", businessId)
+    .eq("prospect_id", prospectId)
+    .eq("platform", platform)
+    .in("state", ["INVITE_SENT", "INVITE_QUEUED"])
+    .maybeSingle();
+
   await admin
     .from("social_connection_states")
-    .update({ state: "ACCEPTED", accepted_at: new Date().toISOString() })
+    .update({
+      state: "ACCEPTED",
+      accepted_at: now,
+      // Due immediately. The acceptance is itself the warmest signal this
+      // channel produces, and a gap after it wastes the one moment the person
+      // actually remembers who you are -- so the opener is composed on the
+      // next sweep rather than on a schedule.
+      next_action: "MESSAGE",
+      next_action_at: now,
+      // A row that had been parked or halted while awaiting acceptance is
+      // revived by it. Leaving these set would mean the sweeper skipped the
+      // very rows the gate had just opened for.
+      attempts: 0,
+      parked_reason: null,
+      halted_reason: null,
+    })
     .eq("business_id", businessId)
     .eq("prospect_id", prospectId)
     .eq("platform", platform)
     .in("state", ["INVITE_SENT", "INVITE_QUEUED"]);
+
+  // Only when this call is the one that observed the transition. `before` is
+  // null on a repeat report -- a poller and a person can both notice the same
+  // acceptance -- and re-recording it would rewrite the evidence date on a
+  // relationship that was already established.
+  if (!before) return;
+
+  // The acceptance is what makes the next message lawful: it is the recorded
+  // relationship the warm rules require, and without this row the policy engine
+  // would refuse every message on a prospect the platform was perfectly willing
+  // to deliver to. Deliberately not fatal -- the state transition above is the
+  // one that must not be lost, and a permissions write that fails leaves the
+  // prospect uncontactable rather than wrongly contactable.
+  await recordSocialAcceptance({
+    businessId,
+    prospectId,
+    platform,
+    profileUrl: before.profile_url,
+  });
 }
 
 export { MAX_INVITE_NOTE_CHARS, MAX_SOCIAL_MESSAGE_CHARS };
@@ -453,8 +499,43 @@ export type SocialQueueRow = {
   pendingDays: number | null;
 };
 
+/**
+ * A message the sequencer composed, waiting for somebody to send it.
+ *
+ * The unit of work in ASSISTED mode. Everything upstream -- deciding it was
+ * due, checking the caps, checking contactability, writing the words -- has
+ * already happened; what is left is a person opening the platform and sending
+ * it. That is why the row carries the body rather than a link to it: the
+ * fewest possible clicks between seeing the work and doing it.
+ */
+export type SocialDraft = {
+  id: string;
+  prospectId: string;
+  /** The account it was composed for. Sent back on "mark sent" so the action
+   *  cannot attribute the send to a different account than the one the caps
+   *  were checked against. */
+  accountId: string | null;
+  name: string;
+  companyName: string | null;
+  platform: SocialPlatform;
+  profileUrl: string | null;
+  kind: "INVITE_NOTE" | "OPENER" | "FOLLOW_UP";
+  sequenceStep: number;
+  body: string;
+  /** TEMPLATE or AI. Shown, because a customer is entitled to know which. */
+  composedBy: string;
+  /** Why the model's version was not used, when it was not. */
+  fallbackReason: string | null;
+  composedAt: string;
+};
+
 export type SocialQueue = {
   accounts: SocialAccount[];
+  /**
+   * Composed and waiting to be sent. Listed first in the UI because it is the
+   * only bucket where the work is already done and merely needs performing.
+   */
+  drafts: SocialDraft[];
   /** Approved prospects with a profile and no invite yet. */
   readyToInvite: SocialQueueRow[];
   /** Accepted, not yet messaged. The most valuable list on the page. */
@@ -479,7 +560,7 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
   const admin = createAdminClient();
   const accounts = await listSocialAccounts(businessId);
 
-  const [{ data: states }, { data: candidates }] = await Promise.all([
+  const [{ data: states }, { data: candidates }, { data: draftRows }] = await Promise.all([
     admin
       .from("social_connection_states")
       .select("prospect_id, platform, state, profile_url, invite_sent_at, accepted_at")
@@ -498,6 +579,15 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
       .in("status", ["READY", "APPROVED", "OUTREACH_ACTIVE"])
       .not("linkedin_url", "is", null)
       .limit(500),
+    admin
+      .from("social_outbound_messages")
+      .select(
+        "id, prospect_id, account_id, platform, kind, sequence_step, body, composed_by, last_error, created_at, prospects ( first_name, last_name, linkedin_url, prospect_companies ( name ) )",
+      )
+      .eq("business_id", businessId)
+      .eq("status", "DRAFT")
+      .order("created_at", { ascending: true })
+      .limit(100),
   ]);
 
   type StateRow = NonNullable<typeof states>[number];
@@ -554,5 +644,113 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
   );
   staleInvites.sort((a, b) => (b.pendingDays ?? 0) - (a.pendingDays ?? 0));
 
-  return { accounts, readyToInvite, readyToMessage, awaitingAcceptance, staleInvites };
+  const drafts: SocialDraft[] = (draftRows ?? []).map((row) => {
+    const prospect = row.prospects as unknown as {
+      first_name: string | null;
+      last_name: string | null;
+      linkedin_url: string | null;
+      prospect_companies: { name: string } | null;
+    } | null;
+
+    return {
+      id: row.id,
+      prospectId: row.prospect_id,
+      accountId: row.account_id,
+      name:
+        [prospect?.first_name, prospect?.last_name].filter(Boolean).join(" ").trim() ||
+        "Unnamed prospect",
+      companyName: prospect?.prospect_companies?.name ?? null,
+      platform: row.platform as SocialPlatform,
+      profileUrl: prospect?.linkedin_url ?? null,
+      kind: row.kind as SocialDraft["kind"],
+      sequenceStep: row.sequence_step,
+      body: row.body,
+      composedBy: row.composed_by,
+      fallbackReason: row.last_error,
+      composedAt: row.created_at,
+    };
+  });
+
+  return {
+    accounts,
+    drafts,
+    readyToInvite,
+    readyToMessage,
+    awaitingAcceptance,
+    staleInvites,
+  };
+}
+
+/* ------------------------------------------------------------- enrolment */
+
+/**
+ * Puts approved prospects onto the social sequencer's clock.
+ *
+ * This is the join between approval and the 24/7 sweeper, and its absence is
+ * what made the whole channel human-pull: `social_connection_states` rows were
+ * only ever created when somebody clicked, so the sweeper's due-work query --
+ * however correct -- had nothing to find.
+ *
+ * Enrolment is deliberately narrow. A prospect qualifies only if it is
+ * approved, eligible, not already a lead, and has a profile URL to act on;
+ * anything else is left alone rather than enrolled optimistically, because a
+ * row on the clock with nothing to do is a row the sweeper examines forever.
+ *
+ * Idempotent by the `(prospect_id, platform)` unique constraint, and it never
+ * disturbs a row that already exists -- re-approving a prospect whose invite
+ * was declined must not put it back in the queue.
+ */
+export async function enrolProspectsInSocialSequence(input: {
+  businessId: string;
+  prospectIds: string[];
+  platform?: SocialPlatform;
+}): Promise<{ enrolled: number }> {
+  const platform = input.platform ?? "LINKEDIN";
+  if (input.prospectIds.length === 0) return { enrolled: 0 };
+
+  const admin = createAdminClient();
+
+  // Only an active account for this platform makes enrolment meaningful.
+  // Without one the sequencer would compose an invite it has nowhere to send
+  // from, and halt on the next sweep having already spent the tokens.
+  const accounts = await listSocialAccounts(input.businessId);
+  const account = accounts.find(
+    (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
+  );
+  if (!account) return { enrolled: 0 };
+
+  const { data: eligible } = await admin
+    .from("prospects")
+    .select("id, linkedin_url")
+    .eq("business_id", input.businessId)
+    .in("id", input.prospectIds)
+    .eq("outreach_eligibility", "ELIGIBLE")
+    .in("status", ["APPROVED", "OUTREACH_ACTIVE"])
+    .is("promoted_to_lead_id", null)
+    .not("linkedin_url", "is", null);
+
+  const rows = (eligible ?? [])
+    .filter((prospect) => Boolean(prospect.linkedin_url))
+    .map((prospect) => ({
+      business_id: input.businessId,
+      prospect_id: prospect.id,
+      account_id: account.id,
+      platform,
+      state: "NOT_CONNECTED" as const,
+      profile_url: prospect.linkedin_url,
+      next_action: "INVITE" as const,
+      next_action_at: new Date().toISOString(),
+    }));
+
+  if (rows.length === 0) return { enrolled: 0 };
+
+  // `ignoreDuplicates` rather than a merge: an existing row has a history --
+  // an invite sent, a decline, a withdrawal -- and overwriting it with a fresh
+  // NOT_CONNECTED would re-invite somebody who already said no.
+  const { data: inserted } = await admin
+    .from("social_connection_states")
+    .upsert(rows, { onConflict: "prospect_id,platform", ignoreDuplicates: true })
+    .select("id");
+
+  return { enrolled: inserted?.length ?? 0 };
 }

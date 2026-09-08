@@ -22,6 +22,10 @@ export const agentRunPayload = z.object({
     "INBOUND_SMS",
     "INBOUND_WHATSAPP",
     "INBOUND_EMAIL",
+    "INBOUND_MESSENGER",
+    "INBOUND_INSTAGRAM",
+    "INBOUND_TIKTOK",
+    "INBOUND_LINKEDIN",
     "FORM_SUBMISSION",
     "QUALIFICATION_ANSWER",
     "BOOKING_CREATED",
@@ -35,7 +39,10 @@ export const agentRunPayload = z.object({
   businessId: z.uuid(),
   leadId: z.uuid(),
   conversationId: z.uuid().nullable().default(null),
-  channel: z.enum(["sms", "whatsapp", "email"]).nullable().default(null),
+  channel: z
+    .enum(["sms", "whatsapp", "email", "messenger", "instagram", "tiktok", "linkedin"])
+    .nullable()
+    .default(null),
   provider: z.string().max(60).nullable().default(null),
   occurredAt: z.string(),
   text: z.string().max(8000).nullable().default(null),
@@ -49,6 +56,10 @@ const CHANNEL_EVENT: Record<AgentChannel, AgentEventType> = {
   sms: "INBOUND_SMS",
   whatsapp: "INBOUND_WHATSAPP",
   email: "INBOUND_EMAIL",
+  messenger: "INBOUND_MESSENGER",
+  instagram: "INBOUND_INSTAGRAM",
+  tiktok: "INBOUND_TIKTOK",
+  linkedin: "INBOUND_LINKEDIN",
 };
 
 /** Builds the envelope for an inbound message that has already been stored. */

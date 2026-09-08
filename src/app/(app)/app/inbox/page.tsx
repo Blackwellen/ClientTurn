@@ -31,8 +31,8 @@ export default async function InboxPage({
   let query = supabase
     .from("conversations")
     .select(
-      `id, channel, counterparty_name, counterparty_handle, lead_id, unread_count,
-       last_message_at, is_archived,
+      `id, channel, counterparty_name, counterparty_handle, counterparty_avatar_url,
+       lead_id, unread_count, last_message_at, last_inbound_at, is_archived,
        leads ( first_name, last_name, email )`,
     )
     .eq("business_id", workspace.businessId)
@@ -68,6 +68,13 @@ export default async function InboxPage({
     leadId: row.lead_id,
     unreadCount: row.unread_count,
     lastMessageAt: row.last_message_at,
+    // Proxied rather than passed through: a direct <img> at a platform CDN
+    // would tell that platform, on every render, which of its users this
+    // business is looking at.
+    avatarUrl: row.counterparty_avatar_url
+      ? `/api/avatar/conversation/${row.id}`
+      : null,
+    lastInboundAt: row.last_inbound_at,
   }));
 
   // Filtering here rather than in SQL: the searchable label is composed from

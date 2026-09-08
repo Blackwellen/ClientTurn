@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { platformIdFrom } from "@/lib/messaging/types";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { providersFor, unhealthyProviders } from "./providers/registry";
 import type { SocialEngagementCandidate } from "./providers/types";
@@ -187,6 +188,25 @@ export async function ingestSocialEngagement(
   return { ok: true, error: null, created, updated, skipped };
 }
 
+/**
+ * The handle, where the platform gives one.
+ *
+ * Meta and LinkedIn address people by an opaque scoped id and expose no handle,
+ * so this is usually null for them and that is correct — inventing one from a
+ * display name would produce a link that 404s. TikTok display names *are*
+ * handles often enough to be worth reading, but only when the string actually
+ * looks like one.
+ */
+function handleFrom(candidate: SocialEngagementCandidate): string | null {
+  const fromUrl = candidate.profileUrl?.match(/tiktok\.com\/@([A-Za-z0-9._]{2,24})/i);
+  if (fromUrl) return fromUrl[1];
+
+  if (candidate.platform !== "TIKTOK") return null;
+
+  const name = candidate.displayName?.trim().replace(/^@/, "") ?? "";
+  return /^[A-Za-z0-9._]{2,24}$/.test(name) ? name : null;
+}
+
 async function upsertEngagementProspect(
   businessId: string,
   providerKey: string,
@@ -210,9 +230,23 @@ async function upsertEngagementProspect(
   if (existing?.prospect_id) {
     // Re-engagement is worth recording — it is fresh evidence of interest — but
     // it must never reopen a prospect somebody suppressed.
+    //
+    // A newer comment also replaces the one we would reply to. That is not
+    // merely tidier: the private-reply allowance is one message *per comment*,
+    // so somebody who comments again has handed us a fresh entitlement and a
+    // fresh seven days. Pointing at the older comment would spend a reply on a
+    // window that may already have closed.
     await admin
       .from("prospects")
-      .update({ last_activity_at: candidate.occurredAt ?? now })
+      .update({
+        last_activity_at: candidate.occurredAt ?? now,
+        ...(candidate.commentId
+          ? {
+              social_comment_id: candidate.commentId,
+              social_commented_at: candidate.occurredAt ?? now,
+            }
+          : {}),
+      })
       .eq("business_id", businessId)
       .eq("id", existing.prospect_id)
       .neq("outreach_eligibility", "SUPPRESSED");
@@ -239,6 +273,31 @@ async function upsertEngagementProspect(
       eligibility_reason: reason,
       source_provider: providerKey,
       linkedin_url: candidate.platform === "LINKEDIN" ? candidate.profileUrl : null,
+      // The social identity (0073). Without this a prospect found on TikTok or
+      // Instagram could be created but never addressed: `linkedin_url` was the
+      // only social column, so every non-LinkedIn engager arrived anonymous as
+      // far as the outreach layer was concerned.
+      //
+      // `social_external_id` is the platform's own opaque id, and it is what
+      // dedupe should trust — a handle is chosen by its owner and gets changed,
+      // this does not.
+      social_platform: candidate.platform,
+      // The BARE platform id, with the `meta_psid:` / `meta_igsid:` prefix
+      // stripped. The prefix exists to make a messaging *address* unambiguous;
+      // it has no business in an identity column, where `social_platform`
+      // already says which id space this belongs to. Storing the prefixed form
+      // here silently broke promotion: an inbound webhook looks the person up
+      // by their bare sender id and would never have matched.
+      social_external_id: platformIdFrom(candidate.externalId) ?? candidate.externalId,
+      social_handle: handleFrom(candidate),
+      social_profile_url: candidate.profileUrl,
+      // The one message Meta permits to somebody who has only commented, and
+      // the clock it runs against. `social_commented_at` is the platform's own
+      // timestamp, never our receipt time -- Meta measures the seven days from
+      // when they commented, so a backlogged run can miss the window on a
+      // comment that reached us seconds ago.
+      social_comment_id: candidate.commentId ?? null,
+      social_commented_at: candidate.commentId ? (candidate.occurredAt ?? now) : null,
       subscriber_type: "UNKNOWN",
       verification_status: "UNKNOWN",
       last_activity_at: candidate.occurredAt ?? now,

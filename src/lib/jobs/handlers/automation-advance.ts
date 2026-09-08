@@ -6,7 +6,8 @@ import {
   computeNextRunAt,
   evaluateStopConditions,
 } from "@/lib/automation/scheduler";
-import type { Channel } from "@/lib/messaging/types";
+import { isBroadcastChannel } from "@/lib/messaging/types";
+import type { BroadcastChannel, Channel } from "@/lib/messaging/types";
 import {
   channelState,
   leadContact,
@@ -156,10 +157,18 @@ async function resolveStepChannel(
   business: BusinessContext,
   lead: LeadRecord,
   configured: Channel,
-): Promise<{ channel: Channel; destination: string } | null> {
+): Promise<{ channel: BroadcastChannel; destination: string } | null> {
+  // An automation step schedules a send for the future, which is only
+  // meaningful on a channel where the right to send still exists when the time
+  // arrives. Messenger's window will have closed; LinkedIn and TikTok depend on
+  // an acceptance that may never come. A step configured for one of those is
+  // not a broken step — it is a step on a channel that is driven live by the
+  // agent instead, so there is nothing for this to schedule.
+  if (!isBroadcastChannel(configured)) return null;
+
   const context = await getFollowUpChannelContext(business.businessId);
 
-  const usable = (channel: Channel) => {
+  const usable = (channel: BroadcastChannel) => {
     if (!context.available[channel]) return null;
     const destination = leadContact(lead, channel);
     return destination ? { channel, destination } : null;

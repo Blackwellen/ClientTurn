@@ -7,6 +7,7 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
+  Music,
   Search,
   Smartphone,
 } from "lucide-react";
@@ -14,11 +15,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { AgentPanel } from "./agent-panel";
 import type { ConversationAgentState } from "@/lib/agent/views";
 import { Badge } from "@/components/ui/badge";
+import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/cn";
 import {
   CHANNEL_DEFINITIONS,
   INBOX_CHANNELS,
   channelLabel,
+  replyWindow,
   type ConversationRow,
   type InboxChannel,
   type ThreadMessage,
@@ -112,6 +115,7 @@ const CHANNEL_ICONS: Record<InboxChannel, React.ComponentType<{ className?: stri
   // glyphs instead, which also sidesteps any brand-usage question here.
   instagram: Camera,
   linkedin: Briefcase,
+  tiktok: Music,
 };
 
 function ChannelRail({
@@ -162,7 +166,8 @@ function ChannelRail({
                   read differently on purpose: "n/a" is permanent, "soon" is
                   work we have not done, and a customer deciding where to reply
                   needs to know which. */}
-              {definition.ingestion !== "live" ? (
+              {definition.ingestion !== "live" &&
+              definition.ingestion !== "recorded" ? (
                 <span className="ml-auto text-[10px] text-content-subtle">
                   {definition.ingestion === "impossible" ? "n/a" : "soon"}
                 </span>
@@ -254,22 +259,31 @@ function ConversationList({
                       : "hover:bg-surface-hover",
                   )}
                 >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-[13px] font-semibold text-content">
-                      {conversation.displayName}
-                    </span>
-                    {conversation.unreadCount > 0 && (
-                      <Badge tone="accent" dense>
-                        {conversation.unreadCount}
-                      </Badge>
-                    )}
+                  <div className="flex items-center gap-2.5">
+                    <Avatar
+                      name={conversation.displayName}
+                      src={conversation.avatarUrl}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[13px] font-semibold text-content">
+                          {conversation.displayName}
+                        </span>
+                        {conversation.unreadCount > 0 && (
+                          <Badge tone="accent" dense>
+                            {conversation.unreadCount}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-[11.5px] text-content-muted">
+                        {channelLabel(conversation.channel)}
+                        {conversation.lastMessageAt
+                          ? ` · ${new Date(conversation.lastMessageAt).toLocaleDateString("en-GB")}`
+                          : " · No messages"}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 truncate text-[11.5px] text-content-muted">
-                    {channelLabel(conversation.channel)}
-                    {conversation.lastMessageAt
-                      ? ` · ${new Date(conversation.lastMessageAt).toLocaleDateString("en-GB")}`
-                      : " · No messages"}
-                  </p>
                 </Link>
               </li>
             ))}
@@ -310,9 +324,14 @@ function ThreadPane({
         <h2 className="text-[15px] font-semibold text-content">
           {definition.ingestion === "live"
             ? "Your conversations, together"
-            : definition.ingestion === "impossible"
-              ? `${definition.label} cannot be synced`
-              : `${definition.label} is not synced yet`}
+            : definition.ingestion === "recorded"
+              ? // Not a failure state. The channel fills as the outreach queue
+                // is worked, so the heading says what will make it fill rather
+                // than what we cannot do.
+                `${definition.label} conversations appear as you work them`
+              : definition.ingestion === "impossible"
+                ? `${definition.label} cannot be synced`
+                : `${definition.label} is not synced yet`}
         </h2>
         <p className="mt-2 max-w-sm text-[12.5px] leading-relaxed text-content-muted">
           {definition.emptyExplanation}
@@ -328,21 +347,39 @@ function ThreadPane({
             View connections
           </Link>
         )}
+        {/* A recorded channel fills from the social outreach queue rather than
+            from a connection, so this points at the queue. Sending someone to
+            Connections here would be sending them somewhere that cannot help. */}
+        {definition.ingestion === "recorded" && (
+          <Link
+            href="/app/find-leads?view=social"
+            className="mt-4 text-[12.5px] font-medium text-content-accent underline-offset-4 hover:underline"
+          >
+            Open the social outreach queue
+          </Link>
+        )}
       </section>
     );
   }
 
+  // Not named `window`: shadowing the global in a client component is how a
+  // later edit reaches for `window.location` and silently gets this object.
+  const replyState = replyWindow(selected.channel, selected.lastInboundAt);
+
   return (
     <section className="flex min-w-0 flex-col">
       <header className="flex items-start justify-between gap-3 border-b border-line p-4">
-        <div className="min-w-0">
-          <h2 className="truncate text-[14px] font-semibold text-content">
-            {selected.displayName}
-          </h2>
-          <p className="mt-0.5 text-[11.5px] text-content-muted">
-            {channelLabel(selected.channel)}
-            {selected.handle ? ` · ${selected.handle}` : ""}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={selected.displayName} src={selected.avatarUrl} size="md" />
+          <div className="min-w-0">
+            <h2 className="truncate text-[14px] font-semibold text-content">
+              {selected.displayName}
+            </h2>
+            <p className="mt-0.5 text-[11.5px] text-content-muted">
+              {channelLabel(selected.channel)}
+              {selected.handle ? ` · ${selected.handle}` : ""}
+            </p>
+          </div>
         </div>
         {selected.leadId && (
           <Link
@@ -382,7 +419,41 @@ function ThreadPane({
         )}
       </div>
 
-      {canManage && (
+      {/*
+        Meta will not deliver a reply more than 24 hours after the person last
+        wrote. Saying so, with the reason, is the honest alternative to
+        accepting a carefully typed message that silently never arrives.
+      */}
+      {replyState.state === "CLOSED" && (
+        <p className="border-t border-line bg-warn-50 px-4 py-3 text-[12.5px] text-content">
+          {channelLabel(selected.channel)} stopped accepting replies on this
+          conversation seven days after their last message. It will reopen if
+          they write again.
+        </p>
+      )}
+
+      {/*
+        Past 24 hours the assistant stops but a person has six more days. Saying
+        so is the difference between a customer rescuing the conversation and
+        assuming it is dead.
+      */}
+      {replyState.state === "HUMAN_ONLY" && (
+        <p className="border-t border-line bg-warn-50 px-4 py-3 text-[12.5px] text-content">
+          The assistant has stopped replying here — {channelLabel(selected.channel)}{" "}
+          only allows automated replies for 24 hours. You can still answer
+          yourself for another {replyState.daysLeft}{" "}
+          {replyState.daysLeft === 1 ? "day" : "days"}.
+        </p>
+      )}
+
+      {replyState.state === "OPEN" && replyState.hoursLeft <= 4 && (
+        <p className="border-t border-line px-4 py-2 text-[11.5px] text-content-muted">
+          {replyState.hoursLeft} {replyState.hoursLeft === 1 ? "hour" : "hours"} left
+          before the assistant stops replying on {channelLabel(selected.channel)}.
+        </p>
+      )}
+
+      {canManage && replyState.state !== "CLOSED" && (
         <InboxControls
           id={selected.id}
           channel={selected.channel}

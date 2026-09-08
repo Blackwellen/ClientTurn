@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { enrolProspectsInSocialSequence } from "@/lib/outreach/social-outreach";
 import { assertCapability } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
 import { suppress } from "@/lib/policy/suppression";
@@ -170,21 +171,53 @@ export async function approveProspectsAction(
   if (!access.ok) return access;
 
   const admin = createAdminClient();
+
+  // Approval is what **resolves** a review, not something that requires the
+  // review to have already resolved itself.
+  //
+  // This filter previously read `.eq("outreach_eligibility", "ELIGIBLE")`,
+  // which made the action a no-op for every prospect it most needed to act on.
+  // Nothing anywhere else in the product moves a record from REVIEW to
+  // ELIGIBLE, so a prospect the system flagged for a human decision stayed
+  // flagged for ever — and the whole Meta audience arrives that way, because
+  // `engagement-ingest` sets REVIEW on anyone who commented rather than
+  // messaged. The queue that private replies read from could never fill.
+  //
+  // SUPPRESSED is excluded and stays excluded. That is not a review awaiting a
+  // decision; it is a decision already taken — an opt-out, a complaint, a
+  // bounce — and no amount of approving may reverse one from here.
   const { data: updated } = await admin
     .from("prospects")
     .update({
       status: "APPROVED",
+      // The human decision, recorded on the record it was made about. A
+      // prospect approved out of REVIEW carries the reason it was in review, so
+      // "who decided this was contactable, and what were they told" has an
+      // answer later.
+      outreach_eligibility: "ELIGIBLE",
       approved_by: access.workspace.userId,
       approved_at: new Date().toISOString(),
     })
     .eq("business_id", access.workspace.businessId)
     .in("id", ids.data)
-    .eq("outreach_eligibility", "ELIGIBLE")
+    .in("outreach_eligibility", ["ELIGIBLE", "REVIEW"])
     .in("status", ["READY", "REVIEW", "VERIFIED"])
     .is("promoted_to_lead_id", null)
     .select("id");
 
   const approved = updated?.length ?? 0;
+
+  // Approval is what starts the social clock. Before this call existed the
+  // sequencer's due-work query was correct and permanently empty, because
+  // nothing ever created a row for it to find. Only prospects with a profile
+  // URL and an active sending account are enrolled; the rest are approved for
+  // email and simply not enrolled here.
+  if (approved > 0) {
+    await enrolProspectsInSocialSequence({
+      businessId: access.workspace.businessId,
+      prospectIds: (updated ?? []).map((row) => row.id),
+    });
+  }
 
   await recordAudit({
     businessId: access.workspace.businessId,

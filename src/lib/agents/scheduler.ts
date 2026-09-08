@@ -10,7 +10,24 @@ export async function scheduleAgents() {
   const db = createAdminClient();
   const now = new Date().toISOString();
   const { data: due, error } = await db.from("agents").select("id, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
-    .eq("status", "ACTIVE").in("agent_type", ["SOURCING", "BOOKING", "REENGAGEMENT", "COMBINED"]).lte("next_run_at", now).limit(3);
+    .eq("status", "ACTIVE")
+    .in("agent_type", ["SOURCING", "BOOKING", "REENGAGEMENT", "COMBINED"])
+    .lte("next_run_at", now)
+    // Longest-overdue first, then by id to break a tie deterministically.
+    //
+    // This claims at most three agents per tick, and without an ORDER BY
+    // Postgres was free to return any three of the due set -- in practice the
+    // same ones, in physical order, every tick. A workspace whose agents
+    // happened to sit later in the heap could wait indefinitely while the same
+    // three ran on the half-minute, and nothing would report it: each of those
+    // three looks perfectly healthy, and a starved agent has no failure to log.
+    //
+    // Ordering by how overdue an agent is makes the queue fair by construction:
+    // an agent that has waited longest is next, so the maximum wait is bounded
+    // by the number of due agents rather than by where they sit on disk.
+    .order("next_run_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(3);
   if (error) throw error;
   for (const agent of due ?? []) {
     const hours = ({ HOURLY: 1, DAILY: 24, WEEKLY: 168 } as Record<string, number>)[agent.cadence];

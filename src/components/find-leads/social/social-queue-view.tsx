@@ -4,20 +4,33 @@ import * as React from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Check,
   Clock,
+  Copy,
+  CornerDownLeft,
   ExternalLink,
   Handshake,
   MessageSquare,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
+import { ChannelReality } from "./channel-reality";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { shortAgo } from "@/lib/prospects/activity";
 import { gradeTone } from "@/lib/prospects/types";
-import type { SocialQueue, SocialQueueRow } from "@/lib/outreach/social-outreach";
+import type {
+  SocialDraft,
+  SocialQueue,
+  SocialQueueRow,
+} from "@/lib/outreach/social-outreach";
+import {
+  recordSocialReplyAction,
+  sendSocialMessageAction,
+} from "@/lib/outreach/social-actions";
 
 /**
  * The social work queue (V4 §16, social channels).
@@ -39,8 +52,14 @@ export function SocialQueueView({
   queue: SocialQueue;
   canManage: boolean;
 }) {
-  const { accounts, readyToInvite, readyToMessage, awaitingAcceptance, staleInvites } =
-    queue;
+  const {
+    accounts,
+    drafts,
+    readyToInvite,
+    readyToMessage,
+    awaitingAcceptance,
+    staleInvites,
+  } = queue;
 
   if (accounts.length === 0) {
     return (
@@ -60,12 +79,20 @@ export function SocialQueueView({
             ) : undefined
           }
         />
+        {/* Shown here above all: this is the screen where somebody decides
+            which platforms to connect, and the difference between them is
+            large enough that choosing without knowing it wastes weeks. */}
+        <div className="border-t border-line p-4">
+          <ChannelReality />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <ChannelReality />
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => (
           <div
@@ -130,6 +157,31 @@ export function SocialQueueView({
         </div>
       )}
 
+      {drafts.length > 0 && (
+        <section className="rounded-xl border border-line bg-surface">
+          <header className="border-b border-line px-4 py-3">
+            <h2 className="flex items-center gap-2 text-[13.5px] font-semibold text-content">
+              <Send className="size-4 text-content-accent" aria-hidden />
+              Written and waiting to be sent
+              <Badge tone="accent" dense>
+                {drafts.length}
+              </Badge>
+            </h2>
+            <p className="mt-1 text-[12px] text-content-muted">
+              ClientTurn decided these were due, checked the limits and contactability, and
+              wrote them. All that is left is sending them from your own account — copy the
+              message, open the profile, then mark it sent so the follow-up is timed from
+              the right moment.
+            </p>
+          </header>
+          <ul className="divide-y divide-line">
+            {drafts.map((draft) => (
+              <DraftRow key={draft.id} draft={draft} canManage={canManage} />
+            ))}
+          </ul>
+        </section>
+      )}
+
       <QueueSection
         icon={MessageSquare}
         title="Ready to message"
@@ -158,6 +210,174 @@ export function SocialQueueView({
         showPending
       />
     </div>
+  );
+}
+
+/**
+ * One composed message, and the two things a person can do with it.
+ *
+ * Both buttons are wrong in different directions if pressed carelessly, which
+ * is why neither is combined with the copy action. "I have sent this" advances
+ * the sequence clock, so pressing it without actually sending means the
+ * follow-up chases a message nobody received. "They replied" stops the
+ * sequence and may create a Lead. Neither is undoable from this screen.
+ */
+function DraftRow({ draft, canManage }: { draft: SocialDraft; canManage: boolean }) {
+  const [copied, setCopied] = React.useState(false);
+  const [pending, startTransition] = React.useTransition();
+  const [showReply, setShowReply] = React.useState(false);
+  const [reply, setReply] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(draft.body);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // The browser can refuse clipboard access. The body is on screen and
+      // selectable, so this is a convenience failing rather than the task.
+      setError("Copying was blocked by the browser. Select the message and copy it.");
+    }
+  }
+
+  function markSent() {
+    setError(null);
+    startTransition(async () => {
+      const result = await sendSocialMessageAction({
+        prospectId: draft.prospectId,
+        platform: draft.platform,
+        accountId: draft.accountId,
+        messageBody: draft.body,
+      });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function submitReply() {
+    if (!reply.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await recordSocialReplyAction({
+        prospectId: draft.prospectId,
+        platform: draft.platform,
+        body: reply,
+      });
+      if (result.ok) {
+        setReply("");
+        setShowReply(false);
+      } else {
+        setError(result.error);
+      }
+    });
+  }
+
+  const kindLabel =
+    draft.kind === "INVITE_NOTE"
+      ? "Invitation note"
+      : draft.kind === "OPENER"
+        ? "First message"
+        : `Follow-up ${Math.max(1, draft.sequenceStep - 1)}`;
+
+  return (
+    <li className="px-4 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-semibold text-content">{draft.name}</p>
+          <p className="truncate text-[11.5px] text-content-muted">
+            {draft.companyName ?? "No company recorded"} · {kindLabel}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {/* Which composer wrote it. A customer is entitled to know whether
+              the words going out under their name came from a model. */}
+          <Badge tone={draft.composedBy === "AI" ? "accent" : "neutral"} dense>
+            {draft.composedBy === "AI" ? (
+              <span className="inline-flex items-center gap-1">
+                <Sparkles className="size-3" aria-hidden />
+                Written for this person
+              </span>
+            ) : (
+              "Standard message"
+            )}
+          </Badge>
+          {draft.profileUrl && (
+            <a
+              href={draft.profileUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1 text-[11.5px] font-medium text-content-accent underline-offset-4 hover:underline"
+            >
+              Open profile
+              <ExternalLink className="size-3" aria-hidden />
+            </a>
+          )}
+        </div>
+      </div>
+
+      <p className="mt-2.5 whitespace-pre-wrap rounded-lg border border-line bg-surface-sunken px-3 py-2.5 text-[12.5px] leading-relaxed text-content">
+        {draft.body}
+      </p>
+
+      {draft.fallbackReason && (
+        <p className="mt-1.5 text-[11px] text-content-subtle">{draft.fallbackReason}</p>
+      )}
+
+      {canManage && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={copy} disabled={pending}>
+            {copied ? (
+              <Check className="size-3.5" aria-hidden />
+            ) : (
+              <Copy className="size-3.5" aria-hidden />
+            )}
+            {copied ? "Copied" : "Copy message"}
+          </Button>
+          <Button size="sm" onClick={markSent} disabled={pending}>
+            <Send className="size-3.5" aria-hidden />
+            I have sent this
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowReply((open) => !open)}
+            disabled={pending}
+          >
+            <CornerDownLeft className="size-3.5" aria-hidden />
+            They replied
+          </Button>
+        </div>
+      )}
+
+      {showReply && (
+        <div className="mt-2.5">
+          <label
+            className="text-[11.5px] font-medium text-content-muted"
+            htmlFor={`reply-${draft.id}`}
+          >
+            Paste what they said. It is classified, the sequence stops, and anything that
+            reads as an opt-out suppresses them on every channel.
+          </label>
+          <textarea
+            id={`reply-${draft.id}`}
+            value={reply}
+            onChange={(event) => setReply(event.target.value)}
+            rows={3}
+            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] text-content"
+          />
+          <div className="mt-1.5 flex gap-2">
+            <Button size="sm" onClick={submitReply} disabled={pending || !reply.trim()}>
+              Record reply
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowReply(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-[11.5px] text-danger-700">{error}</p>}
+    </li>
   );
 }
 

@@ -70,29 +70,48 @@ function flowMetric(
 }
 
 /** Running total of items created at or before the end of each bucket. */
+/** One grouped row from `admin_stock_series`. */
+type StockRow = {
+  metric: string;
+  plan: string;
+  billing_interval: string;
+  /** 0 is the balance before the window opened; 1..buckets are its slots. */
+  bucket: number;
+  entries: number;
+};
+
+/**
+ * A cumulative line, accumulated from grouped counts rather than from one row
+ * per record.
+ *
+ * The bucketing is done in Postgres against this exact window, not by
+ * date_trunc: the admin ranges are anchored to `now` rather than to a clock
+ * boundary, so rounding to the hour or the day would shift records across
+ * bucket edges. `width_bucket` over the caller's own start and end is exact.
+ *
+ * `weightOf` prices a row. It exists because MRR is a stock measured in money
+ * rather than in records, and the plan catalogue lives in TypeScript — putting
+ * prices in a SQL function would create a second price list that silently
+ * disagrees with the first the moment either is edited.
+ */
 function cumulativeSeries(
-  createdAt: string[],
+  rows: StockRow[],
   window: RangeWindow,
-  weightOf: (index: number) => number = () => 1,
+  weightOf: (row: StockRow) => number = () => 1,
 ): { series: number[]; atStart: number } {
-  const startMs = window.start.getTime();
   let atStart = 0;
   const perBucket = new Array<number>(window.buckets).fill(0);
 
-  createdAt.forEach((value, index) => {
-    const t = new Date(value).getTime();
-    if (Number.isNaN(t)) return;
-    const weight = weightOf(index);
-    if (t < startMs) {
-      atStart += weight;
-      return;
+  for (const row of rows) {
+    const value = weightOf(row) * Number(row.entries);
+    if (row.bucket <= 0) {
+      atStart += value;
+      continue;
     }
-    const bucket = Math.min(
-      window.buckets - 1,
-      Math.floor((t - startMs) / window.bucketMs),
-    );
-    if (bucket >= 0) perBucket[bucket] += weight;
-  });
+    // SQL buckets are 1-based and already clamped to the window.
+    const index = Math.min(window.buckets - 1, row.bucket - 1);
+    perBucket[index] += value;
+  }
 
   let running = atStart;
   const series = perBucket.map((added) => {
@@ -119,8 +138,7 @@ export async function getAdminOverview(
 
   const [
     seriesResult,
-    businessRows,
-    subscriptionRows,
+    stockRows,
     recentRows,
     failedJobRows,
     integrationRows,
@@ -131,17 +149,15 @@ export async function getAdminOverview(
       p_end: window.end.toISOString(),
       p_buckets: window.buckets * 2,
     }),
-    supabase
-      .from("businesses")
-      .select("id, status, created_at")
-      .order("created_at", { ascending: true })
-      .limit(20000),
-    supabase
-      .from("subscriptions")
-      .select(
-        "business_id, plan, status, billing_interval, created_at, trial_ends_at, updated_at",
-      )
-      .limit(20000),
+    // Active customers, trials and paying subscriptions, grouped by this
+    // window's own buckets. Previously two scans of up to 20,000 rows each,
+    // accumulated here -- so past that many workspaces the platform's headline
+    // customer count would simply stop rising.
+    supabase.rpc("admin_stock_series", {
+      p_start: window.start.toISOString(),
+      p_end: window.end.toISOString(),
+      p_buckets: window.buckets,
+    }),
     supabase
       .from("businesses")
       .select("id, name, website, created_at")
@@ -166,26 +182,13 @@ export async function getAdminOverview(
 
   /* -------------------------------------------------------------- stocks */
 
-  const activeBusinesses = (businessRows.data ?? []).filter(
-    (row) => row.status === "active",
-  );
-  const activeCustomers = cumulativeSeries(
-    activeBusinesses.map((row) => row.created_at),
-    window,
-  );
+  const stock = (stockRows.data ?? []) as StockRow[];
+  const forMetric = (metric: string) => stock.filter((row) => row.metric === metric);
 
-  const subscriptions = subscriptionRows.data ?? [];
-  const trialing = subscriptions.filter((row) => row.status === "TRIALING");
-  const trials = cumulativeSeries(
-    trialing.map((row) => row.created_at),
-    window,
-  );
-
-  const paying = subscriptions.filter((row) => row.status === "ACTIVE");
-  const mrr = cumulativeSeries(
-    paying.map((row) => row.created_at),
-    window,
-    (index) => monthlyValueOf(paying[index].plan, paying[index].billing_interval),
+  const activeCustomers = cumulativeSeries(forMetric("active_customers"), window);
+  const trials = cumulativeSeries(forMetric("trials"), window);
+  const mrr = cumulativeSeries(forMetric("paying"), window, (row) =>
+    monthlyValueOf(row.plan, row.billing_interval || null),
   );
 
   const suffix = range === "24h" ? " today" : "";
@@ -250,7 +253,55 @@ export async function getAdminOverview(
 
   /* ------------------------------------------------------------- panels */
 
-  const subByBusiness = new Map(subscriptions.map((row) => [row.business_id, row]));
+  // The headline metrics now come from `admin_stock_series`, which replaced two
+  // scans of up to 20,000 subscription rows. The panels below still need
+  // subscription detail, but only for a bounded set: the eight workspaces on
+  // the recent list, and the subscriptions that can actually raise an action.
+  // Fetching those two sets is what keeps the panels correct without
+  // reintroducing the scan the rollup removed.
+  const recentIds = (recentRows.data ?? []).map((row) => row.id);
+
+  const [recentSubs, actionableSubs] = await Promise.all([
+    recentIds.length > 0
+      ? supabase
+          .from("subscriptions")
+          .select(
+            "business_id, plan, status, trial_ends_at, billing_interval, created_at, updated_at",
+          )
+          .in("business_id", recentIds)
+      : Promise.resolve({ data: [] as SubscriptionRow[] }),
+    // Only the states that produce a row in Action required. Anything ACTIVE
+    // and paid cannot, so it is never read.
+    supabase
+      .from("subscriptions")
+      .select(
+        "business_id, plan, status, trial_ends_at, billing_interval, created_at, updated_at",
+      )
+      .in("status", ["PAST_DUE", "UNPAID", "TRIALING"])
+      .limit(2000),
+  ]);
+
+  const actionable = (actionableSubs.data ?? []) as SubscriptionRow[];
+
+  // Only the workspaces an action could name. `buildActionRequired` looks each
+  // one up by id, so fetching every business to satisfy it would reintroduce
+  // exactly the platform-wide scan this refactor removed.
+  const actionableBusinessIds = unique([
+    ...actionable.map((row) => row.business_id),
+    ...(integrationRows.data ?? []).map((row) => row.business_id),
+  ]);
+
+  const businessRows =
+    actionableBusinessIds.length > 0
+      ? await supabase
+          .from("businesses")
+          .select("id, status, created_at")
+          .in("id", actionableBusinessIds)
+      : { data: [] as { id: string; status: string; created_at: string }[] };
+
+  const subByBusiness = new Map(
+    ((recentSubs.data ?? []) as SubscriptionRow[]).map((row) => [row.business_id, row]),
+  );
 
   const recentCustomers: RecentCustomerRow[] = (recentRows.data ?? []).map(
     (row) => {
@@ -268,7 +319,7 @@ export async function getAdminOverview(
 
   const actionRequired = await buildActionRequired(
     supabase,
-    subscriptions,
+    actionable,
     integrationRows.data ?? [],
     businessRows.data ?? [],
   );

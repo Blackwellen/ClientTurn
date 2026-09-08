@@ -4,11 +4,13 @@ import type { Metadata } from "next";
 import {
   ArrowUpRight,
   Check,
+  ChevronDown,
   Clock,
   Mail,
   MessageSquareText,
   Plug,
   Sparkles,
+  Terminal,
   Users,
 } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth/session";
@@ -18,6 +20,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader, SectionHeader } from "@/components/app/page-header";
+import { BUNDLED_ARTICLES } from "@/lib/support/help";
 
 export const metadata: Metadata = { title: "Help · Client Turn" };
 export const dynamic = "force-dynamic";
@@ -54,7 +57,25 @@ const GUIDES: {
     href: "/app/settings?section=connections",
     icon: Plug,
   },
+  {
+    label: "API, webhooks & assistants",
+    description: "Create a key, receive events, and connect an AI assistant.",
+    href: "/app/settings?section=developer",
+    icon: Terminal,
+  },
 ];
+
+/**
+ * The developer articles, read from the bundled index rather than restated.
+ *
+ * They are rendered inline as disclosures rather than linked to a separate
+ * reader: there are four of them, someone reading one usually wants the next,
+ * and a page of links to four short articles is a worse experience than the
+ * four articles.
+ */
+const DEVELOPER_ARTICLES = BUNDLED_ARTICLES.filter(
+  (article) => article.category === "Developer",
+);
 
 export default async function HelpPage() {
   const workspace = await requireWorkspace();
@@ -281,6 +302,66 @@ x-clientturn-signature: <hmac_hex>
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <SectionHeader
+            title="For developers"
+            description="Read your workspace from your own systems, receive events, or connect an AI assistant."
+          />
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          {DEVELOPER_ARTICLES.map((article) => (
+            // A native <details> rather than a state-driven accordion: it is
+            // keyboard accessible, findable by the browser's own in-page
+            // search even while closed, and needs no client component.
+            <details
+              key={article.slug}
+              className="group border-line hover:border-line-strong rounded-lg border transition-colors"
+            >
+              <summary className="focus-visible:outline-content-accent flex cursor-pointer items-start gap-3 px-3.5 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+                <span
+                  aria-hidden
+                  className="bg-accent-50 text-content-accent flex size-8 shrink-0 items-center justify-center rounded-md"
+                >
+                  <Terminal className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="text-content block text-[13px] font-medium">
+                    {article.title}
+                  </span>
+                  <span className="text-content-muted block text-[13px]">
+                    {article.summary}
+                  </span>
+                </span>
+                <ChevronDown
+                  aria-hidden
+                  className="text-content-subtle mt-0.5 size-4 shrink-0 transition-transform group-open:rotate-180"
+                />
+              </summary>
+
+              <div className="space-y-3 border-t border-line px-3.5 py-3">
+                {article.body.split("\n\n").map((paragraph, index) => (
+                  <p
+                    key={index}
+                    className="text-content-secondary text-[13px] leading-relaxed"
+                  >
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
+            </details>
+          ))}
+
+          <Link
+            href="/app/settings?section=developer"
+            className="group border-line hover:border-line-strong focus-visible:outline-content-accent mt-1 flex items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-[13px] font-medium focus-visible:outline-2"
+          >
+            <span className="text-content">Open Settings → Developer</span>
+            <ArrowUpRight className="text-content-subtle group-hover:text-content-muted size-3.5 shrink-0" />
+          </Link>
         </CardContent>
       </Card>
     </div>

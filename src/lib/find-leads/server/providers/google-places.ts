@@ -78,7 +78,9 @@ async function searchCompanies(
     headers: {
       "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask":
-        "places.id,places.displayName,places.websiteUri,places.primaryType,places.formattedAddress,places.location,places.addressComponents,nextPageToken",
+        "places.id,places.displayName,places.websiteUri,places.primaryType," +
+        "places.formattedAddress,places.location,places.addressComponents," +
+        "nextPageToken",
     },
     body: {
       textQuery: query,

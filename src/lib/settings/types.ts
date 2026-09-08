@@ -34,6 +34,11 @@ export const SETTINGS_SECTIONS = [
   },
   { id: "team", label: "Team", description: "Manage your team" },
   {
+    id: "developer",
+    label: "Developer",
+    description: "API keys, webhooks and assistants",
+  },
+  {
     id: "data-controls",
     label: "Data Controls",
     description: "Compliance, sources and retention",

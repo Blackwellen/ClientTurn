@@ -2,9 +2,9 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueue } from "@/lib/jobs/queue";
-import { getLiveAccessToken, registerOAuthProvider } from "@/lib/integrations/oauth";
+import { getLiveAccessToken, type OAuthConfig } from "@/lib/integrations/oauth";
+import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
 import { registerLeadSourcePoller } from "@/lib/integrations/providers/lead-source-registry";
-import type { OAuthConfig } from "@/lib/integrations/oauth";
 
 /**
  * Meta Lead Ads: Facebook and Instagram lead forms.
@@ -63,19 +63,37 @@ function config(): OAuthConfig | null {
     clientSecret: appSecret,
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: `${GRAPH}/oauth/access_token`,
-    scopes: [
+    // Meta takes a comma-separated list, not an array. Each one buys a specific
+    // capability and none is speculative:
+    //
+    //   pages_show_list          pick which Page to connect
+    //   pages_read_engagement    read comments and mentions for prospecting
+    //   leads_retrieval          read lead-form submissions
+    //   pages_manage_metadata    subscribe the Page to our webhook
+    //   pages_messaging          send and receive Messenger DMs
+    //   instagram_basic          resolve the linked Instagram account
+    //   instagram_manage_messages  send and receive Instagram DMs
+    //   business_management      resolve the Business the Page belongs to
+    //
+    // The two messaging scopes are what make an autonomous conversation
+    // possible at all; without them the connection reads leads and comments and
+    // can never reply.
+    scope: [
       "pages_show_list",
       "pages_read_engagement",
       "leads_retrieval",
       "pages_manage_metadata",
+      "pages_messaging",
+      "instagram_basic",
+      "instagram_manage_messages",
       "business_management",
-    ],
+    ].join(","),
   };
 }
 
 registerOAuthProvider("meta", {
   getConfig: config,
-  async identify(token) {
+  async identify(token: { accessToken: string }) {
     const response = await fetch(
       `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(token.accessToken)}`,
       { cache: "no-store" },

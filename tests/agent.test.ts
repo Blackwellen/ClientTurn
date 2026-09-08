@@ -351,6 +351,14 @@ function sendGate(overrides: Partial<SendGateSnapshot> = {}): SendGateSnapshot {
     contactSuppressed: false,
     hasDestination: true,
     providerHealthy: true,
+    // Only consulted on Messenger and Instagram. The default is a moment ago so
+    // a test that does not care about the reply window is not silently denied
+    // by it; the window's own tests override it.
+    lastInboundAt: new Date("2026-09-06T13:30:00Z").toISOString(),
+    // Only consulted on TikTok and LinkedIn. ACCEPTED by default for the same
+    // reason as `lastInboundAt` above: a test about quiet hours should not be
+    // denied by a gate it is not exercising. The gate's own tests override it.
+    socialConnectionState: "ACCEPTED",
     quietHours: LONDON_QUIET,
     // 2026-09-06 14:00 UTC is mid-afternoon in London: outside quiet hours.
     now: new Date("2026-09-06T14:00:00Z"),

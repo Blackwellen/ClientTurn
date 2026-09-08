@@ -34,7 +34,7 @@ export function ProspectIdentityCell({ row }: { row: ProspectListRow }) {
   const name = prospectDisplayName(row);
   return (
     <div className="flex min-w-0 items-center gap-2.5">
-      <Avatar name={name} size="md" />
+      <Avatar name={name} src={row.avatarUrl} size="md" />
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-semibold text-content">{name}</span>

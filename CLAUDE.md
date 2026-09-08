@@ -1,7 +1,11 @@
 # Client Turn — Project Instructions
 
 Meta Lead Ads → instant follow-up → deterministic qualification → booking → attribution.
-UK home-service businesses. Next.js (App Router) + Supabase + Stripe + Cloudflare R2 + Azure AI.
+Next.js (App Router) + Supabase + Stripe + Cloudflare R2 + Azure AI.
+
+**Who this is for (2026-09-08, changed):** UK **B2B companies** — agencies, web
+development and design studios, SaaS, ecommerce, and professional services.
+Previously "UK home-service businesses"; see Resolved conflict 5.
 
 ## Canonical source documents
 
@@ -16,6 +20,7 @@ surface.** Do not invent features that are not in them.
 | [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | The implementation plan derived from all three. Tracks phase status. |
 | [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) | The conversation agent: architecture, guardrails, tool permissions, what the model may and may not decide. Read before changing anything under `src/lib/agent/`. |
 | [docs/CRON.md](docs/CRON.md) | How background processing runs 24/7 (Supabase pg_cron -> `/api/cron/worker`). |
+| [docs/DEVELOPER_PLATFORM.md](docs/DEVELOPER_PLATFORM.md) | Workspace API keys, outgoing webhooks and the MCP endpoint: the credential model, scopes, signing and delivery. Read before changing anything under `src/lib/api-keys/`, `src/lib/webhooks/`, `src/lib/mcp/` or `src/app/api/v1/`. |
 
 Where the Bible/Spec conflict with the V3 doc on **navigation/page structure**, the **V3 doc
 wins**. Where the Bible/Spec conflict with each other or with V3 on anything else (data model,
@@ -46,6 +51,33 @@ algorithms, commercial framing), the **Bible wins** unless listed under "Resolve
    Stripe checkout) + Enterprise (contact sales, no public price).
 4. **Admin login.** Admin uses a **separate route** `/admin/login`, separate session check, and
    mandatory step-up. `platform_role` is checked server-side against the database only.
+
+5. **ICP: B2B companies, not home services (2026-09-08).** The canonical documents describe
+   UK home-service businesses (roofers, plumbers, kitchen fitters). The target is now UK
+   **agencies, web development studios, SaaS, ecommerce and professional services.**
+
+   The engine is unaffected — it was always vertical-agnostic, driven by each workspace's own
+   ICP profile and qualification questions. What changed is marketing copy, the industries
+   carousel, onboarding options and seed data.
+
+   Two reasons, and the second is the binding one:
+
+   * **Self-enrichment works.** Agencies, studios and SaaS companies publish team and contact
+     pages about themselves. That is a lawful, free, first-party source (`BUSINESS_WEBSITE`),
+     and AI can extract from it. Sole traders publish almost nothing, so every contact had to
+     be bought.
+   * **PECR.** The corporate-subscriber exemption from consent covers incorporated bodies and
+     LLPs, and **not** sole traders or unincorporated partnerships, who are treated as
+     individuals. Home services is disproportionately sole traders, so the "B2B is easier"
+     assumption largely did not hold for that market. The new ICP is overwhelmingly
+     incorporated, which is verifiable free against Companies House
+     (`providers/companies-house.ts`).
+
+6. **Contact data: business email only (2026-09-08).** Cold outreach is **email**. SMS and
+   WhatsApp go only to a mobile the person submitted on a lead form themselves. A telephone
+   number is therefore never collected from an enrichment provider — holding personal data for
+   a purpose the product does not have is the data-minimisation failure the compliance layer
+   exists to prevent. `contact-legality.assessPhone` remains, screening lead-form numbers.
 
 ## Non-negotiable rules
 

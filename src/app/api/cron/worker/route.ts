@@ -30,6 +30,31 @@ async function scheduleOutreachTick() {
   );
 }
 
+/**
+ * Queues the social outreach sweep, on the same five-minute bucket.
+ *
+ * This is what makes connect-then-message run unattended. Before it existed,
+ * `social_connection_states` had a correct state machine that only ever
+ * advanced when somebody opened the queue and clicked -- so an invite accepted
+ * on Friday evening sat unmessaged until Monday, which is the whole value of
+ * the channel lost to a missing cron line.
+ *
+ * Five minutes is far finer than the channel needs (its gaps are measured in
+ * days) and is chosen to match the outreach sweep rather than for its own
+ * sake: the sweep is a cheap indexed query that queues nothing when nothing is
+ * due, so the cost of running it often is close to zero and the benefit is that
+ * an acceptance is acted on while the person still remembers accepting.
+ *
+ * Kept separate from the outreach sweep rather than folded into it, because the
+ * two answer different questions and fail independently: outreach asks "whose
+ * next step is due", social asks "who has followed us back". A social provider
+ * being down must not stop email follow-ups going out, and vice versa.
+ */
+async function scheduleSocialTick() {
+  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  await enqueue("social.tick", {}, { idempotencyKey: `social.tick:${bucket}` });
+}
+
 export async function GET(request: Request) {
   const startedAt = Date.now();
   const secret = serverEnv.cronSecret;
@@ -50,6 +75,7 @@ export async function GET(request: Request) {
   await scheduleEmailPolls();
   await scheduleAgents();
   await scheduleOutreachTick();
+  await scheduleSocialTick();
 
   const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
   let claimed = 0;

@@ -4,7 +4,14 @@ import * as React from "react";
 import { AlertTriangle, Check, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { saveDataControlsAction } from "@/lib/compliance/actions";
+import {
+  SOURCING_STRICTNESS,
+  STRICTNESS_DESCRIPTIONS,
+  STRICTNESS_LABELS,
+  openModeAvailable,
+} from "@/lib/compliance/strictness";
 import {
   ALLOWED_SOURCE_KINDS,
   BASIS_DESCRIPTIONS,
@@ -110,6 +117,13 @@ export function DataControlsForm({
       retainUncontactedProspectsDays: value.retainUncontactedProspectsDays,
       retainInactiveLeadsDays: value.retainInactiveLeadsDays,
       retainRawEventsDays: value.retainRawEventsDays,
+      sourcingStrictness: value.sourcingStrictness,
+      requireRegistryMatch: value.requireRegistryMatch,
+      socialAutonomousSending: value.socialAutonomousSending,
+      socialAutoPromoteOnReply: value.socialAutoPromoteOnReply,
+      socialWithdrawAfterDays: value.socialWithdrawAfterDays,
+      socialFollowUpGapHours: value.socialFollowUpGapHours,
+      socialMaxFollowUps: value.socialMaxFollowUps,
     });
     setPending(false);
     if (!result.ok) {
@@ -397,6 +411,169 @@ export function DataControlsForm({
             disabled={!canManage}
           />
         </div>
+      </Panel>
+
+      {/* ------------------------------------------------------ strictness */}
+      <Panel
+        title="How cautious to be"
+        description="The rules above decide what the law permits. This decides what to do with a record that is neither clearly permitted nor clearly refused."
+      >
+        <ul className="space-y-1.5">
+          {SOURCING_STRICTNESS.map((mode) => {
+            // `OPEN` means "contact on the basis I stated". A workspace that has
+            // stated none would be selecting "contact on no basis at all", so the
+            // option is disabled and says why rather than being accepted and
+            // failing later.
+            const unavailable =
+              mode === "OPEN" && !openModeAvailable(value.marketingLawfulBasis);
+
+            return (
+              <li key={mode}>
+                <label
+                  className={cn(
+                    "flex items-start gap-2 rounded-md border border-line px-2.5 py-2",
+                    unavailable
+                      ? "cursor-not-allowed opacity-60"
+                      : "cursor-pointer hover:bg-surface-hover",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="sourcing-strictness"
+                    className="mt-0.5 size-3.5 shrink-0 accent-accent-500"
+                    checked={value.sourcingStrictness === mode}
+                    disabled={!canManage || unavailable}
+                    onChange={() => set("sourcingStrictness", mode)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[12.5px] font-medium text-content">
+                      {STRICTNESS_LABELS[mode]}
+                    </span>
+                    <span className="block text-[12px] text-content-muted">
+                      {STRICTNESS_DESCRIPTIONS[mode]}
+                    </span>
+                    {unavailable && (
+                      <span className="mt-1 block text-[12px] text-warning-700">
+                        Choose a lawful basis above before selecting this — it means
+                        &ldquo;contact on the basis I stated&rdquo;, and none is stated yet.
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-2 hover:bg-surface-hover">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-3.5 shrink-0 accent-accent-500"
+            checked={value.requireRegistryMatch}
+            disabled={!canManage}
+            onChange={() => set("requireRegistryMatch", !value.requireRegistryMatch)}
+          />
+          <span className="min-w-0">
+            <span className="block text-[12.5px] font-medium text-content">
+              Require a company register match
+            </span>
+            <span className="block text-[12px] text-content-muted">
+              Only contact people at companies confirmed on Companies House. This is what
+              separates an incorporated company — where the corporate exemption from consent
+              applies — from a sole trader, where it does not. Off by default because
+              Companies House covers the UK only, so a workspace prospecting abroad would find
+              every record unconfirmed.
+            </span>
+          </span>
+        </label>
+      </Panel>
+
+      {/* ---------------------------------------------------------- social */}
+      <Panel
+        title="Social outreach"
+        description="How much of the connect-then-message channel runs without somebody watching."
+      >
+        <ul className="space-y-1.5">
+          <li>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-2 hover:bg-surface-hover">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-3.5 shrink-0 accent-accent-500"
+                checked={value.socialAutonomousSending}
+                disabled={!canManage}
+                onChange={() =>
+                  set("socialAutonomousSending", !value.socialAutonomousSending)
+                }
+              />
+              <span className="min-w-0">
+                <span className="block text-[12.5px] font-medium text-content">
+                  Send without a person
+                </span>
+                <span className="block text-[12px] text-content-muted">
+                  Off by default. ClientTurn always decides what is due, checks the limits
+                  and writes the message; this decides whether it also sends it. It has no
+                  effect unless an account is set to send through a partner integration —
+                  automating a personal LinkedIn account any other way is what gets the
+                  account restricted, so it is not offered.
+                </span>
+              </span>
+            </label>
+          </li>
+          <li>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-2 hover:bg-surface-hover">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-3.5 shrink-0 accent-accent-500"
+                checked={value.socialAutoPromoteOnReply}
+                disabled={!canManage}
+                onChange={() =>
+                  set("socialAutoPromoteOnReply", !value.socialAutoPromoteOnReply)
+                }
+              />
+              <span className="min-w-0">
+                <span className="block text-[12.5px] font-medium text-content">
+                  Turn a positive reply into a Lead automatically
+                </span>
+                <span className="block text-[12px] text-content-muted">
+                  Off by default, so promotion stays a person&rsquo;s decision. Turn it on
+                  and a reply that reads as interested, a question or an objection becomes
+                  a Lead within seconds, and the conversation agent picks it up and tries
+                  to book. Anything unclear, and anything that reads as an opt-out, still
+                  waits for a person either way.
+                </span>
+              </span>
+            </label>
+          </li>
+        </ul>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <NumberField
+            label="Withdraw unanswered invites after"
+            suffix="days"
+            value={value.socialWithdrawAfterDays}
+            onChange={(next) => set("socialWithdrawAfterDays", next)}
+            disabled={!canManage}
+          />
+          <NumberField
+            label="Gap between follow-ups"
+            suffix="hours"
+            value={value.socialFollowUpGapHours}
+            onChange={(next) => set("socialFollowUpGapHours", next ?? 96)}
+            disabled={!canManage}
+          />
+          <NumberField
+            label="Follow-ups after the first message"
+            suffix="max 2"
+            value={value.socialMaxFollowUps}
+            onChange={(next) => set("socialMaxFollowUps", next ?? 0)}
+            disabled={!canManage}
+          />
+        </div>
+        <p className="mt-2 text-[12px] text-content-muted">
+          A pending invite keeps consuming your weekly allowance, so withdrawing the ones
+          that go unanswered frees capacity for someone who will reply. Blank means never
+          withdraw. Whoever you withdraw is not invited again.
+        </p>
       </Panel>
 
       {canManage && (

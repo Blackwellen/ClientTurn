@@ -111,6 +111,93 @@ type LeadFormAnswer = {
   questionId?: number;
 };
 
+/**
+ * A form's own question schema.
+ *
+ * `leadFormResponses` returns answers keyed by the form's `questionId` and
+ * nothing else -- no field name, no type. The mapping from question id to
+ * "this is the email" lives on the form, which has to be fetched separately.
+ */
+type LeadFormQuestion = {
+  questionId?: number;
+  predefinedField?: string;
+  name?: string;
+};
+
+type LeadFormSchema = {
+  id?: string;
+  versionedLeadGenFormUrn?: string;
+  questions?: LeadFormQuestion[];
+};
+
+/**
+ * LinkedIn's predefined field names, mapped onto our lead columns.
+ *
+ * Only the fields a lead actually needs. Everything else on the form is kept
+ * as a note rather than dropped -- a custom qualifying question ("how many
+ * vehicles do you run?") is often the most useful thing on the form, and it
+ * has no column to live in.
+ */
+const PREDEFINED_FIELD_MAP: Record<string, "email" | "phone" | "first_name" | "last_name" | "company"> = {
+  EMAIL: "email",
+  WORK_EMAIL: "email",
+  PHONE_NUMBER: "phone",
+  WORK_PHONE_NUMBER: "phone",
+  FIRST_NAME: "first_name",
+  LAST_NAME: "last_name",
+  COMPANY_NAME: "company",
+  ORGANIZATION: "company",
+};
+
+/**
+ * Question schemas, cached for the life of the process.
+ *
+ * A poll typically returns many responses to the same handful of forms, and
+ * the schema does not change between them -- fetching it per response would
+ * turn one poll into dozens of API calls against a rate-limited endpoint.
+ */
+const FORM_SCHEMA_CACHE = new Map<string, Map<number, string>>();
+
+async function questionMapFor(
+  formUrn: string,
+  accessToken: string,
+): Promise<Map<number, string>> {
+  const cached = FORM_SCHEMA_CACHE.get(formUrn);
+  if (cached) return cached;
+
+  const map = new Map<number, string>();
+
+  try {
+    const response = await fetch(
+      `https://api.linkedin.com/rest/leadForms/${encodeURIComponent(formUrn)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Linkedin-Version": LINKEDIN_VERSION,
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+      },
+    );
+
+    if (response.ok) {
+      const schema = (await response.json().catch(() => null)) as LeadFormSchema | null;
+      for (const question of schema?.questions ?? []) {
+        if (question.questionId === undefined) continue;
+        map.set(question.questionId, question.predefinedField ?? question.name ?? "");
+      }
+    }
+  } catch {
+    // A schema we cannot fetch is not a reason to drop the lead. The caller
+    // falls back to the previous shape-based guess, which is worse but is
+    // still a lead somebody can work.
+  }
+
+  // Cached even when empty, so a form whose schema is unavailable is not
+  // re-fetched for every response in the same poll.
+  FORM_SCHEMA_CACHE.set(formUrn, map);
+  return map;
+}
+
 type LeadFormResponse = {
   id?: string;
   submittedAt?: number;
@@ -121,38 +208,117 @@ type LeadFormResponse = {
   formResponse?: { answers?: LeadFormAnswer[] };
 };
 
-/**
- * Field extraction is best-effort: `leadFormResponses` ties answers to a
- * form's own `questionId`s, not to a fixed predefinedField name, so mapping
- * "which questionId is the email" requires having fetched that form's schema
- * via `leadForms` first. That per-form schema cache is out of scope here;
- * this reads only the free-text answer values in order, which is enough to
- * seed a lead's notes for a human to complete, not to reliably auto-populate
- * phone/email. Flagged in the report as follow-up work.
- */
 function answerTexts(response: LeadFormResponse): string[] {
   return (response.formResponse?.answers ?? [])
     .map((answer) => answer.answerDetails?.textQuestionAnswer?.answer)
     .filter((value): value is string => Boolean(value));
 }
 
+type MappedLead = {
+  email: string | null;
+  phone: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  company: string | null;
+  /** Everything that has no column of its own, kept verbatim. */
+  extras: string[];
+};
+
+/**
+ * Turns a form response into lead fields.
+ *
+ * `leadFormResponses` returns answers keyed only by the form's own
+ * `questionId`, so this needs the form's schema to know which answer is the
+ * email and which is the phone number. Fetching that schema is what this
+ * function is for, and it is the difference between a working route and a
+ * broken one: without it a LinkedIn lead arrived with a guessed email, no
+ * name and no phone, and the instant-follow-up that is the entire point of
+ * the lead-form route had nothing to send to.
+ *
+ * The old shape-based guess ("the answer containing an @ is the email") is
+ * kept as the fallback for a form whose schema could not be fetched. It is
+ * poor, but a lead with a probable email beats a lead with nothing.
+ */
+async function mapLeadFields(
+  response: LeadFormResponse,
+  accessToken: string | null,
+): Promise<MappedLead> {
+  const answers = response.formResponse?.answers ?? [];
+  const mapped: MappedLead = {
+    email: null,
+    phone: null,
+    firstName: null,
+    lastName: null,
+    company: null,
+    extras: [],
+  };
+
+  const formUrn = response.versionedLeadGenFormUrn;
+  const questions =
+    formUrn && accessToken ? await questionMapFor(formUrn, accessToken) : new Map();
+
+  for (const answer of answers) {
+    const value = answer.answerDetails?.textQuestionAnswer?.answer?.trim();
+    if (!value) continue;
+
+    const field = answer.questionId === undefined ? null : questions.get(answer.questionId);
+    const column = field ? PREDEFINED_FIELD_MAP[field.toUpperCase()] : undefined;
+
+    switch (column) {
+      case "email":
+        mapped.email ??= value;
+        break;
+      case "phone":
+        mapped.phone ??= value;
+        break;
+      case "first_name":
+        mapped.firstName ??= value;
+        break;
+      case "last_name":
+        mapped.lastName ??= value;
+        break;
+      case "company":
+        mapped.company ??= value;
+        break;
+      default:
+        // A custom question. Often the most useful thing on the form, and it
+        // has no column, so it is labelled with its own question text rather
+        // than flattened into an anonymous list.
+        mapped.extras.push(field ? `${field}: ${value}` : value);
+    }
+  }
+
+  // Fallback for a form whose schema was unavailable.
+  if (!mapped.email) {
+    mapped.email = answerTexts(response).find((text) => text.includes("@")) ?? null;
+  }
+
+  return mapped;
+}
+
 async function ingestLeadFormResponse(
   businessId: string,
   response: LeadFormResponse,
+  accessToken: string | null,
 ): Promise<void> {
   if (!response.id) return;
 
   const admin = createAdminClient();
   const externalId = `linkedin:${response.id}`;
-  const texts = answerTexts(response);
+  const fields = await mapLeadFields(response, accessToken);
 
   const { data: created, error } = await admin
     .from("leads")
     .insert({
       business_id: businessId,
       external_id: externalId,
-      email: texts.find((text) => text.includes("@")) ?? null,
-      notes: texts.length ? `LinkedIn Lead Gen Forms answers: ${texts.join(" | ")}` : null,
+      email: fields.email,
+      phone: fields.phone,
+      first_name: fields.firstName,
+      last_name: fields.lastName,
+      notes: fields.extras.length
+        ? `LinkedIn Lead Gen Forms answers: ${fields.extras.join(" | ")}`
+        : null,
       status: "NEW",
     })
     .select("id")
@@ -235,7 +401,7 @@ registerLeadSourcePoller("linkedin_ads", {
     const leads = json?.elements ?? [];
 
     for (const lead of leads) {
-      await ingestLeadFormResponse(businessId, lead);
+      await ingestLeadFormResponse(businessId, lead, accessToken);
     }
 
     await admin.from("lead_source_cursors").upsert(

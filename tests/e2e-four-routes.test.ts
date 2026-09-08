@@ -453,3 +453,89 @@ describe("writes have the side effects they promise", () => {
     );
   });
 });
+
+/* --------------------------------------------------------- release readiness */
+
+describe("platform readiness", () => {
+  test("every area reports a state and an explanation", async () => {
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+
+    assert.ok(report.areas.length >= 10, "too few areas to be a useful report");
+
+    for (const area of report.areas) {
+      assert.ok(
+        ["READY", "ATTENTION", "BLOCKED", "UNKNOWN"].includes(area.state),
+        `${area.key} has an unknown state`,
+      );
+      // A verdict without a reason is a verdict nobody can act on.
+      assert.ok(area.detail.length > 20, `${area.key} has no usable explanation`);
+    }
+  });
+
+  test("area keys are unique", async () => {
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const keys = report.areas.map((a) => a.key);
+    assert.equal(new Set(keys).size, keys.length);
+  });
+
+  test("the summary counts match the areas", async () => {
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const { summary, areas } = report;
+    assert.equal(
+      summary.ready + summary.attention + summary.blocked + summary.unknown,
+      areas.length,
+      "the tallies do not add up to the areas shown",
+    );
+  });
+
+  test("RLS coverage is measured, not assumed", async () => {
+    // The product's central security claim is that every tenant table carries
+    // RLS. This asserts the readiness page actually checks it rather than
+    // printing a tick.
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const rls = report.areas.find((a) => a.key === "permissions");
+
+    assert.ok(rls, "no RLS area in the report");
+    assert.notEqual(rls!.state, "UNKNOWN", "RLS coverage could not be measured");
+
+    const total = rls!.evidence.find((e) => e.label === "Public tables")?.value;
+    assert.ok(Number(total) > 100, "the table count looks wrong");
+  });
+
+  test("every public table has row-level security", async () => {
+    // Not a readiness nicety — this is the tenant boundary. A single table
+    // without RLS is a cross-tenant read waiting to be found.
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const rls = report.areas.find((a) => a.key === "permissions")!;
+
+    const enabled = Number(rls.evidence.find((e) => e.label === "Tables with RLS")?.value);
+    const total = Number(rls.evidence.find((e) => e.label === "Public tables")?.value);
+
+    assert.equal(enabled, total, `${total - enabled} tables have no RLS`);
+  });
+
+  test("an area that cannot be measured says so rather than passing", async () => {
+    // Backups live in the hosting project. Reporting them green would be an
+    // assertion about something this code has never observed.
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const dr = report.areas.find((a) => a.key === "disaster_recovery");
+    assert.equal(dr?.state, "UNKNOWN");
+  });
+
+  test("service layer coverage is complete", async () => {
+    const { getReadinessReport } = await import("../src/lib/admin/readiness.ts");
+    const report = await getReadinessReport();
+    const layer = report.areas.find((a) => a.key === "service_layer");
+    assert.equal(
+      layer?.state,
+      "READY",
+      "a declared operation has no handler and would refuse at runtime",
+    );
+  });
+});

@@ -145,6 +145,13 @@ export const serverEnv = {
   meta: {
     appId: optional("META_APP_ID"),
     appSecret: optional("META_APP_SECRET"),
+    /**
+     * The token Meta echoes back during the webhook subscription handshake.
+     * Separate from the app secret because it is typed into Meta's dashboard by
+     * hand and is therefore the more likely of the two to leak; it authenticates
+     * only the handshake, never a delivery, which `META_APP_SECRET` signs.
+     */
+    webhookVerifyToken: optional("META_WEBHOOK_VERIFY_TOKEN"),
   },
   slack: {
     clientId: optional("SLACK_CLIENT_ID"),
@@ -169,12 +176,31 @@ export const serverEnv = {
   sourcing: {
     apolloApiKey: optional("APOLLO_API_KEY"),
     hunterApiKey: optional("HUNTER_API_KEY"),
+    /**
+     * Companies House. Free, and issued instantly from their developer portal.
+     *
+     * Worth having even in a workspace that buys no enrichment at all: it is
+     * what turns "this looks like a company" into a register match, which is
+     * the difference between asserting the corporate-subscriber exemption and
+     * assuming it.
+     */
+    companiesHouseApiKey: optional("COMPANIES_HOUSE_API_KEY"),
     clearbitApiKey: optional("CLEARBIT_API_KEY"),
     googlePlacesApiKey: optional("GOOGLE_PLACES_API_KEY") ?? optional("GOOGLE_MAPS_API_KEY"),
     /** Meta Ad Library. A public-data token, not the Lead Ads app secret. */
     metaAdLibraryToken: optional("META_AD_LIBRARY_TOKEN"),
     /** TikTok Commercial Content Library (DSA transparency data). */
     tiktokCommercialToken: optional("TIKTOK_COMMERCIAL_CONTENT_TOKEN"),
+    /**
+     * TikTok organic engagement (comments on the workspace's own videos).
+     *
+     * A release gate rather than a credential — the credential is the
+     * customer's own connected account. TikTok's `business/comment/list`
+     * response shape could not be confirmed from any fetchable source, so the
+     * adapter ships complete but switched off; one sandbox call confirming it
+     * returns a commenter id is what should flip this on.
+     */
+    tiktokEngagementEnabled: optional("TIKTOK_ENGAGEMENT_ENABLED") === "1",
     /**
      * LinkedIn partner (SNAP / Sales Insights) token.
      *
@@ -184,6 +210,21 @@ export const serverEnv = {
     linkedinSnapToken: optional("LINKEDIN_SNAP_ACCESS_TOKEN"),
     /** Timeout applied to every outbound provider call, in milliseconds. */
     timeoutMs: Number(process.env.SOURCING_PROVIDER_TIMEOUT_MS || 15000),
+  },
+  /**
+   * Social outreach that happens without a person clicking.
+   *
+   * An allow-list rather than a boolean, and empty by default. Automating a
+   * customer's own social account is only defensible where a partner agreement
+   * exists, and that agreement is per platform -- so the permission is granted
+   * per platform too. See `lib/outreach/social-partners.ts` for why the
+   * default is nothing.
+   */
+  social: {
+    partnerSenders: (process.env.SOCIAL_PARTNER_SENDERS || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
   },
   cronSecret: optional("CRON_SECRET"),
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",

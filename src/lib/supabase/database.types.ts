@@ -3001,6 +3001,8 @@ export type Database = {
           social_autonomous_sending: boolean
           social_follow_up_gap_hours: number
           social_max_follow_ups: number
+          sourcing_strictness: string
+          require_registry_match: boolean
           social_withdraw_after_days: number | null
           updated_at: string
           updated_by: string | null
@@ -3027,6 +3029,8 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
+          sourcing_strictness?: string
+          require_registry_match?: boolean
           social_withdraw_after_days?: number | null
           updated_at?: string
           updated_by?: string | null
@@ -3053,6 +3057,8 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
+          sourcing_strictness?: string
+          require_registry_match?: boolean
           social_withdraw_after_days?: number | null
           updated_at?: string
           updated_by?: string | null
@@ -9227,7 +9233,12 @@ export type Database = {
           is_existing_customer: boolean
           location_json: Json
           name: string
+          phone: string | null
+          phone_source: string | null
           registration_id: string | null
+          registry_checked_at: string | null
+          registry_reason: string | null
+          subscriber_type: string
           updated_at: string
           website_url: string | null
         }
@@ -9247,7 +9258,12 @@ export type Database = {
           is_existing_customer?: boolean
           location_json?: Json
           name: string
+          phone?: string | null
+          phone_source?: string | null
           registration_id?: string | null
+          registry_checked_at?: string | null
+          registry_reason?: string | null
+          subscriber_type?: string
           updated_at?: string
           website_url?: string | null
         }
@@ -9267,7 +9283,12 @@ export type Database = {
           is_existing_customer?: boolean
           location_json?: Json
           name?: string
+          phone?: string | null
+          phone_source?: string | null
           registration_id?: string | null
+          registry_checked_at?: string | null
+          registry_reason?: string | null
+          subscriber_type?: string
           updated_at?: string
           website_url?: string | null
         }
@@ -9688,12 +9709,15 @@ export type Database = {
           location_json: Json
           outreach_eligibility: string
           phone_e164: string | null
+          private_reply_sent_at: string | null
           promoted_at: string | null
           promoted_to_lead_id: string | null
           replied_at: string | null
           role_classification: string
           role_title: string | null
           score: number | null
+          social_comment_id: string | null
+          social_commented_at: string | null
           social_external_id: string | null
           social_followers: number | null
           social_handle: string | null
@@ -9738,12 +9762,15 @@ export type Database = {
           location_json?: Json
           outreach_eligibility?: string
           phone_e164?: string | null
+          private_reply_sent_at?: string | null
           promoted_at?: string | null
           promoted_to_lead_id?: string | null
           replied_at?: string | null
           role_classification?: string
           role_title?: string | null
           score?: number | null
+          social_comment_id?: string | null
+          social_commented_at?: string | null
           social_external_id?: string | null
           social_followers?: number | null
           social_handle?: string | null
@@ -9788,12 +9815,15 @@ export type Database = {
           location_json?: Json
           outreach_eligibility?: string
           phone_e164?: string | null
+          private_reply_sent_at?: string | null
           promoted_at?: string | null
           promoted_to_lead_id?: string | null
           replied_at?: string | null
           role_classification?: string
           role_title?: string | null
           score?: number | null
+          social_comment_id?: string | null
+          social_commented_at?: string | null
           social_external_id?: string | null
           social_followers?: number | null
           social_handle?: string | null
@@ -10959,6 +10989,7 @@ export type Database = {
           account_id: string | null
           body: string
           business_id: string
+          comment_id: string | null
           composed_by: string
           created_at: string
           discarded_reason: string | null
@@ -10980,6 +11011,7 @@ export type Database = {
           account_id?: string | null
           body: string
           business_id: string
+          comment_id?: string | null
           composed_by?: string
           created_at?: string
           discarded_reason?: string | null
@@ -11001,6 +11033,7 @@ export type Database = {
           account_id?: string | null
           body?: string
           business_id?: string
+          comment_id?: string | null
           composed_by?: string
           created_at?: string
           discarded_reason?: string | null
@@ -12780,7 +12813,7 @@ export type Database = {
         Args: { p_business_ids: string[] }
         Returns: {
           business_id: string
-          last_activity_at: string | null
+          last_activity_at: string
         }[]
       }
       admin_customer_usage: {
@@ -12791,8 +12824,16 @@ export type Database = {
           messages: number
         }[]
       }
+      admin_event_series: {
+        Args: { p_buckets: number; p_end: string; p_start: string }
+        Returns: {
+          bucket: number
+          event_count: number
+          metric: string
+        }[]
+      }
       admin_job_state_counts: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           job_type: string
           jobs: number
@@ -12804,10 +12845,10 @@ export type Database = {
         Returns: {
           graded: number
           healthy: number
-          last_incident_at: string | null
-          latest_checked_at: string | null
+          last_incident_at: string
+          latest_checked_at: string
           latest_status: string
-          p95_ms: number | null
+          p95_ms: number
           provider: string
         }[]
       }
@@ -12821,6 +12862,7 @@ export type Database = {
           workspaces: number
         }[]
       }
+      admin_rls_coverage: { Args: never; Returns: Json }
       admin_stock_series: {
         Args: { p_buckets: number; p_end: string; p_start: string }
         Returns: {
@@ -12829,14 +12871,6 @@ export type Database = {
           entries: number
           metric: string
           plan: string
-        }[]
-      }
-      admin_event_series: {
-        Args: { p_buckets: number; p_end: string; p_start: string }
-        Returns: {
-          bucket: number
-          event_count: number
-          metric: string
         }[]
       }
       affiliate_balances: {

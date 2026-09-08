@@ -204,7 +204,6 @@ async function readIngestedList(
       // Never from LinkedIn. The waterfall's licensed providers resolve the
       // address from the profile URL below.
       email: null,
-      phone: null,
       linkedinUrl: typeof blob.publicProfileUrl === "string" ? blob.publicProfileUrl : null,
       companyExternalId: null,
       companyDomain: domain,
@@ -277,7 +276,6 @@ async function findContacts(input: {
       // LinkedIn returns no email through any API. This stays null and the
       // waterfall resolves it from the profile URL.
       email: null,
-      phone: null,
       linkedinUrl: element.publicProfileUrl ?? null,
       companyExternalId: null,
       companyDomain,

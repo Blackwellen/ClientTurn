@@ -5,6 +5,7 @@ import { FALLBACK_UNIT_COST_MINOR } from "../cost-model";
 import { loadUnitCosts } from "./budget";
 import { providersFor, unhealthyProviders } from "./providers/registry";
 import type { CompanyCandidate } from "./providers/types";
+import { assessEmail, assessPhone, lawfulBasisFor } from "../contact-legality";
 import {
   RESEARCH_COOLDOWN_HOURS,
   RESEARCH_DAILY_WORKSPACE_LIMIT,
@@ -362,6 +363,7 @@ export async function refreshProspectResearch(
         provider: provider.key,
         source_type: "LICENSED_PROVIDER",
         confidence: 0.8,
+        policy_tags: [`BASIS:${lawfulBasisFor(provider.key)}`] as never,
         obtained_at: new Date().toISOString(),
       })),
     );
@@ -669,6 +671,26 @@ export async function enrichProspectContact(
       );
     }
 
+    // The lawfulness gate, before the address is written and before anything is
+    // charged for it. A licensed provider will happily return a personal Gmail
+    // it holds against a company domain; `compliance/types.ts` says harvested
+    // personal addresses are never permitted, and this is where that stops
+    // being a paragraph and starts being a refusal.
+    //
+    // `hasProvenance` is true unconditionally here because the branch below
+    // writes a `prospect_data_sources` row naming the provider — the provenance
+    // exists by construction. It is still passed explicitly rather than
+    // defaulted, so a future caller that does not record provenance is forced
+    // to say so.
+    const legality = assessEmail(match.email, true);
+
+    if (legality.verdict === "REFUSED") {
+      // Not stored, not suppressed, not queued for review. There is no lawful
+      // basis to hold it, so it is not held — and the run is not charged for a
+      // result it cannot use.
+      return fail("NOT_FOUND", "NO_MATCH", legality.reason);
+    }
+
     const cost = finder.freeOfCharge
       ? 0
       : Math.ceil(unitCosts.CONTACT_DISCOVERY ?? FALLBACK_UNIT_COST_MINOR.CONTACT_DISCOVERY);
@@ -680,6 +702,19 @@ export async function enrichProspectContact(
         // Found, not verified. Presenting a discovered address as verified is
         // how a campaign ends up hard-bouncing against its own sending domain.
         verification_status: "UNKNOWN",
+        // Which PECR regime applies to this person. A role address on a company
+        // domain is a corporate subscriber; the column previously said UNKNOWN
+        // for everybody, which made the distinction unavailable to the send
+        // guard that most needs it.
+        subscriber_type: legality.subscriberType,
+        // A REVIEW verdict must not silently become contactable. The prospect
+        // is kept and shown, with the reason, and a person decides.
+        ...(legality.verdict === "REVIEW"
+          ? {
+              outreach_eligibility: "REVIEW",
+              eligibility_reason: legality.reason,
+            }
+          : {}),
         last_activity_at: new Date().toISOString(),
       })
       .eq("business_id", businessId)
@@ -690,7 +725,14 @@ export async function enrichProspectContact(
       prospect_id: prospectId,
       company_id: company.id,
       field_name: "email",
-      value_json: { value: match.email } as never,
+      value_json: {
+        value: match.email,
+        // The lawfulness assessment travels with the provenance rather than
+        // being recomputed on read: the rules can change, and the record has to
+        // say what was decided at the time it was acted on.
+        legality: legality.code,
+        subscriberType: legality.subscriberType,
+      } as never,
       provider: finder.key,
       source_type: "LICENSED_PROVIDER",
       confidence: 0.7,
@@ -764,13 +806,33 @@ export async function enrichProspectContact(
     );
   }
 
+  // The same gate the email path runs, with the harder judgement. A UK mobile
+  // may be a company line or a sole trader's personal phone, and only the
+  // second needs TPS screening -- so it is kept and sent for review rather than
+  // either refused outright or quietly treated as a corporate number.
+  const legality = assessPhone(phone, true);
+
+  if (legality.verdict === "REFUSED") {
+    return fail("NOT_FOUND", "NO_MATCH", legality.reason);
+  }
+
   const cost = finder.freeOfCharge
     ? 0
     : Math.ceil(unitCosts.CONTACT_DISCOVERY ?? FALLBACK_UNIT_COST_MINOR.CONTACT_DISCOVERY);
 
   await admin
     .from("prospects")
-    .update({ phone_e164: phone, last_activity_at: new Date().toISOString() })
+    .update({
+      phone_e164: phone,
+      subscriber_type: legality.subscriberType,
+      ...(legality.verdict === "REVIEW"
+        ? {
+            outreach_eligibility: "REVIEW",
+            eligibility_reason: legality.reason,
+          }
+        : {}),
+      last_activity_at: new Date().toISOString(),
+    })
     .eq("business_id", businessId)
     .eq("id", prospectId);
 
@@ -779,10 +841,15 @@ export async function enrichProspectContact(
     prospect_id: prospectId,
     company_id: company.id,
     field_name: "phone_e164",
-    value_json: { value: phone } as never,
+    value_json: {
+      value: phone,
+      legality: legality.code,
+      subscriberType: legality.subscriberType,
+    } as never,
     provider: finder.key,
     source_type: "LICENSED_PROVIDER",
     confidence: 0.65,
+    policy_tags: [`BASIS:${lawfulBasisFor(finder.key)}`] as never,
     obtained_at: new Date().toISOString(),
   });
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { defineOperation, ServiceError } from "../runtime";
 import type { HandlerInput, HandlerOutcome } from "../runtime";
 
@@ -386,6 +387,23 @@ defineOperation("lead.set_status", {
         },
       ];
     }
+
+    // Emitted here rather than at each call site, so the event fires whoever
+    // moved the lead — a person in the app, Copilot, an agent, or a customer's
+    // own software through the API. A status change made through one caller and
+    // invisible to the others is precisely the drift the service layer exists
+    // to prevent.
+    await emitWebhookEvent({
+      businessId: context.businessId,
+      type: "lead.status_changed",
+      data: {
+        lead_id: after.id,
+        from: before.status,
+        to: after.status,
+        changed_by: context.caller,
+        user_id: context.userId,
+      },
+    });
 
     return outcome;
   },

@@ -203,6 +203,7 @@ export const FOOTER_SOLUTIONS: NavLink[] = [
 export const FOOTER_RESOURCES: NavLink[] = [
   { label: "How it works", href: "/how-it-works" },
   { label: "Results", href: "/results" },
+  { label: "For developers", href: "/developers" },
   { label: "FAQ", href: ANCHORS.faq },
   { label: "System status", href: "/status" },
 ];

@@ -21,6 +21,10 @@ export const AGENT_EVENT_TYPES = [
   "INBOUND_SMS",
   "INBOUND_WHATSAPP",
   "INBOUND_EMAIL",
+  "INBOUND_MESSENGER",
+  "INBOUND_INSTAGRAM",
+  "INBOUND_TIKTOK",
+  "INBOUND_LINKEDIN",
   "FORM_SUBMISSION",
   "QUALIFICATION_ANSWER",
   "BOOKING_CREATED",
@@ -33,7 +37,61 @@ export const AGENT_EVENT_TYPES = [
 ] as const;
 export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
 
-export type AgentChannel = "sms" | "whatsapp" | "email";
+/**
+ * The channels the agent can hold a conversation on.
+ *
+ * `tiktok` is a direct message, and it only exists as a channel at all once the
+ * recipient has followed back — the platform refuses the send otherwise. That
+ * gate lives in `social_connection_states`, not here; by the time a turn is
+ * running on this channel it has already been passed. What this type governs is
+ * what the agent may say once it is through it.
+ */
+export type AgentChannel =
+  | "sms"
+  | "whatsapp"
+  | "email"
+  | "messenger"
+  | "instagram"
+  | "tiktok"
+  | "linkedin";
+
+/**
+ * The channels where Meta's 24-hour reply window applies.
+ *
+ * Narrower than "social" on purpose. LinkedIn and TikTok also address a person
+ * by platform id, but their gate is acceptance or a follow-back, which does not
+ * expire — so applying a countdown to them would silently stop conversations
+ * the platform was perfectly willing to deliver. `isPlatformAgentChannel` is
+ * the broader test, for the questions that genuinely are shared.
+ */
+export function isMetaAgentChannel(
+  channel: AgentChannel,
+): channel is "messenger" | "instagram" {
+  return channel === "messenger" || channel === "instagram";
+}
+
+/** Every channel addressed by a platform-scoped id rather than a phone or mailbox. */
+export function isPlatformAgentChannel(
+  channel: AgentChannel,
+): channel is "messenger" | "instagram" | "tiktok" | "linkedin" {
+  return (
+    channel === "messenger" ||
+    channel === "instagram" ||
+    channel === "tiktok" ||
+    channel === "linkedin"
+  );
+}
+
+/**
+ * How long after the person's last message Meta permits an automated reply.
+ *
+ * Mirrors `META_MESSAGING_WINDOW_HOURS` in the messaging layer, restated here
+ * so the agent's pure policy module can enforce it without importing a
+ * `server-only` transport. The two are asserted equal in the test suite; a
+ * drift between them would let a turn decide to send something the transport is
+ * then refused for.
+ */
+export const SOCIAL_REPLY_WINDOW_HOURS = 24;
 
 export type AgentEvent = {
   /** Stable id of the originating fact -- a message id, a webhook event id. */
@@ -375,6 +433,33 @@ export const CHANNEL_LIMITS: Record<AgentChannel, { preferred: number; hard: num
   sms: { preferred: 320, hard: 480 },
   whatsapp: { preferred: 600, hard: 900 },
   email: { preferred: 2000, hard: 4000 },
+  // Meta rejects a message body over 2000 characters outright, so the hard
+  // limit is the platform's and not a preference. The preferred length is far
+  // below it because a direct message is read on a phone, in a chat thread,
+  // next to messages from the person's friends -- an essay reads as automated
+  // in a way the same words would not in an email.
+  messenger: { preferred: 500, hard: 2000 },
+  instagram: { preferred: 500, hard: 1000 },
+  /**
+   * The tightest of the set, and not because of a character cap.
+   *
+   * TikTok DMs are a fast, informal chat surface, and a message that reads as a
+   * sales blast gets reported rather than ignored — which costs the customer
+   * the account, not just the conversation. `MAX_SOCIAL_MESSAGE_CHARS` in
+   * `outreach/social-limits.ts` is the platform's own ceiling; this is the much
+   * lower length that actually gets replies.
+   */
+  tiktok: { preferred: 280, hard: 700 },
+  /**
+   * LinkedIn, where the gate is acceptance rather than a time window.
+   *
+   * The `hard` figure is `MAX_SOCIAL_MESSAGE_CHARS` from
+   * `outreach/social-limits.ts`. The preferred length is higher than the Meta
+   * channels because LinkedIn is a work surface and a few short paragraphs read
+   * as normal there — but well under a third of the ceiling, because the
+   * message is still read in a narrow chat pane and not in an inbox.
+   */
+  linkedin: { preferred: 700, hard: 1900 },
 };
 
 /** Hard ceiling on tool/model iterations in a single turn. */

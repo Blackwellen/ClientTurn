@@ -23,6 +23,9 @@ export const PLATFORM_SCOPES = [
   "campaigns:write",
   "analytics:read",
   "business:read",
+  "business:write",
+  "agents:read",
+  "agents:write",
 ] as const;
 
 export type PlatformScope = (typeof PLATFORM_SCOPES)[number];
@@ -36,6 +39,10 @@ export const SCOPE_DESCRIPTIONS: Record<PlatformScope, string> = {
   "campaigns:write": "Change and launch campaigns",
   "analytics:read": "Read your metrics",
   "business:read": "Read your business profile and status",
+  "business:write": "Change connected systems and workspace configuration",
+  "agents:read": "See your AI agents, how they are set up and what they have done",
+  "agents:write":
+    "Create and configure AI agents, and start, pause or stop them",
 };
 
 export function isPlatformScope(value: string): value is PlatformScope {

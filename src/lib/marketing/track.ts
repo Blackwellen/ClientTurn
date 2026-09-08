@@ -61,7 +61,15 @@ export type CtaPlacement =
   | "industry_card"
   | "pricing_compare"
   | "final_contact_sales"
-  | "footer_affiliate";
+  | "footer_affiliate"
+  /* /developers. A visitor who reaches this page is evaluating whether
+     ClientTurn fits a system they already run, which is a different journey
+     from the marketing pages — so it gets its own placements rather than
+     being folded into the evaluation set. */
+  | "developers_hero"
+  | "developers_hero_secondary"
+  | "developers_final"
+  | "developers_contact_sales";
 
 /**
  * Non-CTA engagement on a product page: opening a drawer, expanding a score
@@ -100,7 +108,8 @@ export type EngagementEvent =
   | "capability_click"
   | "product_showcase_tab_change"
   | "integration_category_change"
-  | "home_faq_expand";
+  | "home_faq_expand"
+  | "developers_faq_expand";
 
 const UTM_PARAMS = [
   "utm_source",

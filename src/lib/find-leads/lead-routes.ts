@@ -154,7 +154,96 @@ const CONNECT_THEN_MESSAGE = (
     key: "promote",
     label: "Promote to a Lead",
     detail:
-      "A positive reply makes the prospect eligible. Promotion stays a human decision, and the whole conversation travels with it — the Lead opens on the same thread, with nothing duplicated and nothing lost.",
+      "A positive reply makes the prospect eligible. Promotion is a human decision by default, and a workspace can turn on automatic promotion so the agent picks the conversation up within seconds instead. Either way the whole conversation travels with it — the Lead opens on the same thread, with nothing duplicated and nothing lost.",
+  },
+  {
+    key: "agent",
+    label: "The agent takes over",
+    detail:
+      "From the moment it is a Lead, the conversation agent answers on the channel they used, works through your qualification questions, and tries to book. It runs around the clock, and it hands over to a person the moment it is unsure or they ask for one.",
+  },
+];
+
+/**
+ * The Meta route that actually works: answer the people who spoke to you.
+ *
+ * Written out separately from `CONNECT_THEN_MESSAGE` because it is a different
+ * mechanism with a different legal basis, and conflating them is what produces
+ * a product that promises to "message anyone on Instagram".
+ *
+ * Meta gives no way to follow a person and no way to DM a stranger. What it
+ * does give is a **private reply**: if somebody comments on your post, mentions
+ * you, or replies to your story, you may send them exactly one direct message
+ * within seven days. That is a real, first-party, permitted entry point, and it
+ * is the one this route is built on.
+ *
+ * The trade is that the audience is not "anyone" — it is people who already
+ * engaged with the business. That is a smaller pool and a far warmer one.
+ */
+const PRIVATE_REPLY_THEN_CONVERSE = (
+  platform: string,
+  surfaces: string,
+): RouteStage[] => [
+  {
+    key: "engage",
+    label: "They engage with you",
+    detail: `Somebody comments on ${surfaces}. This is the only thing that opens a route to their inbox — ${platform} provides no way to message a person who has not interacted with you.`,
+    waitsOnRecipient: true,
+  },
+  {
+    key: "ingest",
+    label: "They become a prospect",
+    detail:
+      "The comment brings in a platform id, a display name and what they actually said. No email and no phone — those are not on offer for an engager, on any Meta surface.",
+  },
+  {
+    key: "eligibility",
+    label: "Check contactability",
+    detail:
+      "Suppression and opt-outs are checked. A suppressed person is suppressed on every channel; a public comment is never a route around an opt-out they made elsewhere.",
+  },
+  {
+    key: "approve",
+    label: "Approve for outreach",
+    detail:
+      "A person reviews and approves. A comment is interest, not a request to be sold to, so the judgement stays human.",
+  },
+  {
+    key: "private_reply",
+    label: "Reply privately, once",
+    detail:
+      "One direct message, sent within seven days of their comment. One is the platform's limit, not a pacing choice: a second reply to the same comment is refused, and the seven days run from when they commented rather than from when you got round to it.",
+  },
+  {
+    key: "reply",
+    label: "They answer",
+    detail:
+      "Nothing further can be sent until they do. Their answer is what opens the 24-hour window — the business having sent one message does not.",
+    waitsOnRecipient: true,
+  },
+  {
+    key: "converse",
+    label: "The assistant takes over",
+    detail:
+      "From here it is an ordinary conversation: qualification against your configured questions, answers checked against your services, and a booking offered when they qualify. It runs around the clock, and it says it is automated if asked.",
+  },
+  {
+    key: "window",
+    label: "Inside the reply window",
+    detail:
+      "Automated replies are permitted for 24 hours after their last message. Once that lapses the thread is marked closed rather than accepting a message that would never arrive — a person can still answer by hand for up to seven days.",
+  },
+  {
+    key: "book",
+    label: "Book the job",
+    detail:
+      "A booking link or a handover to a person, against the conversion goal set for the campaign.",
+  },
+  {
+    key: "promote",
+    label: "Promote to a Lead",
+    detail:
+      "Their reply makes them someone who contacted you, which is what a Lead is. The whole thread travels with the promotion — nothing duplicated, nothing lost.",
   },
 ];
 
@@ -183,16 +272,12 @@ export const ROUTES: Record<LeadRouteKey, LeadRoute> = {
     name: "Facebook",
     destination: "PROSPECTS",
     summary:
-      "Work the people who message or comment on your Page, and follow others so a message reaches them.",
+      "Answer the people who message your Page, and privately reply to the ones who comment on your posts.",
     requires: ["A Facebook Page connected with messaging permissions"],
     outreachChannel: "FACEBOOK",
-    stages: CONNECT_THEN_MESSAGE(
-      "Facebook",
-      "Follow the person or Page",
-      "Following first is what gets a later message into their inbox rather than their Message Requests folder, where most people never look.",
-    ),
+    stages: PRIVATE_REPLY_THEN_CONVERSE("Facebook", "your Page's posts or ads"),
     limitation:
-      "A message to somebody who does not follow your Page lands in their Message Requests folder, which most people never open. Following first, and being followed back, is what makes it arrive. Meta returns no email or phone for a person who engaged — only a page-scoped id and a display name.",
+      "Everything here starts with something they did. Facebook offers no way for a Page to follow a person and no way to message somebody who has not interacted with you, so this route cannot reach a cold audience — it works the audience your posts and ads already attract. You get one private reply per comment, within seven days of it. Meta returns no email or phone for an engager, only a page-scoped id and a display name, so a booking is reached through conversation rather than through enrichment.",
   },
 
   /* ----------------------------------------------------------- 3. Instagram */
@@ -201,16 +286,15 @@ export const ROUTES: Record<LeadRouteKey, LeadRoute> = {
     name: "Instagram",
     destination: "PROSPECTS",
     summary:
-      "Turn people who comment on or mention your account into prospects, and reach new ones by following first.",
+      "Answer your Instagram DMs, and privately reply to people who comment on your posts or mention you in a story.",
     requires: ["An Instagram professional account linked to your Facebook Page"],
     outreachChannel: "INSTAGRAM",
-    stages: CONNECT_THEN_MESSAGE(
+    stages: PRIVATE_REPLY_THEN_CONVERSE(
       "Instagram",
-      "Follow the account",
-      "Paced deliberately slowly. Instagram action-blocks accounts that follow in bursts, and a block costs days of every campaign rather than one prospect.",
+      "your posts, reels or ads, or mentions you in a story",
     ),
     limitation:
-      "Same Message Requests problem as Facebook, and Instagram throttles follows harder — a burst gets the account action-blocked for days. Instagram exposes a username, not a name, and no contact details at all.",
+      "The same rule as Facebook: no follow, no cold DM, one private reply per comment within seven days. Instagram is stricter in two ways — replies to comments on a live broadcast must be sent during the broadcast, and the account is capped at 750 private replies an hour. Instagram exposes a username rather than a real name, and no contact details at all.",
   },
 
   /* -------------------------------------------------------------- 4. TikTok */

@@ -1,6 +1,11 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  authenticateApiKey,
+  looksLikeApiKey,
+  touchApiKey,
+} from "@/lib/api-keys/service";
 import { MCP_TOOLS, mcpKindForRisk, roleAllows, toolByName, toolsForScopes } from "./tools";
 import type { ToolDefinition } from "./tools";
 import { serviceOperation, runOperation } from "@/lib/services";
@@ -28,7 +33,11 @@ import { operationsForCaller } from "@/lib/services/registry";
  */
 
 export type AuthContext = {
-  clientId: string;
+  /** The MCP client, when the caller presented an MCP token. Null for a
+   *  workspace API key, which is not tied to a registered client. */
+  clientId: string | null;
+  /** The API key, when that is what was presented. Null otherwise. */
+  apiKeyId: string | null;
   businessId: string;
   userId: string;
   userRole: string;
@@ -50,10 +59,36 @@ export function hashToken(token: string): string {
  * Every check is a reason to refuse: expired, revoked, client suspended, or the
  * authorising user no longer an active member of the workspace.
  */
-export async function authenticate(bearer: string | null): Promise<AuthContext | null> {
+export async function authenticate(
+  bearer: string | null,
+  requestIp = "unknown",
+): Promise<AuthContext | null> {
   if (!bearer) return null;
   const token = bearer.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
+
+  // A workspace API key is the credential a real MCP client can actually hold.
+  // Claude, Codex and Gemini configure a static bearer header; none of them can
+  // perform a refresh exchange, so an hour-long OAuth token meant the
+  // connection worked for an hour and then stopped for no visible reason. The
+  // key resolves through the one credential core, which re-reads the owner's
+  // live membership exactly as the token path does — so this is a second door,
+  // not a second set of rules.
+  if (looksLikeApiKey(token)) {
+    const resolution = await authenticateApiKey(token, requestIp);
+    if (!resolution.ok) return null;
+
+    await touchApiKey(resolution.context.keyId, requestIp);
+
+    return {
+      clientId: null,
+      apiKeyId: resolution.context.keyId,
+      businessId: resolution.context.businessId,
+      userId: resolution.context.userId,
+      userRole: resolution.context.userRole,
+      scopes: resolution.context.scopes,
+    };
+  }
 
   const db = createAdminClient();
 
@@ -94,6 +129,7 @@ export async function authenticate(bearer: string | null): Promise<AuthContext |
 
   return {
     clientId: row.client_id,
+    apiKeyId: null,
     businessId: row.business_id,
     userId: row.user_id,
     userRole: membership.role,
@@ -167,6 +203,7 @@ async function audit(
     .insert({
       business_id: auth.businessId,
       client_id: auth.clientId,
+      api_key_id: auth.apiKeyId,
       user_id: auth.userId,
       tool_name: toolName,
       tool_kind: kind,
@@ -325,7 +362,15 @@ export async function callTool(
   }
 }
 
-/** A one-line summary a person can act on without reading JSON. */
+/**
+ * A one-line summary a person can act on without reading JSON.
+ *
+ * This string is the entire basis on which someone decides whether to allow a
+ * high-impact action, so a fallback of "Run lead.archive" is not good enough —
+ * it names the function rather than the consequence. Service operations fall
+ * back to the registry's own summary and stated effect, which are written for a
+ * customer and are the same words the app's own confirmation dialog uses.
+ */
 function describeRequest(tool: ToolDefinition, args: Record<string, unknown>): string {
   switch (tool.name) {
     case "send_message":
@@ -337,8 +382,26 @@ function describeRequest(tool: ToolDefinition, args: Record<string, unknown>): s
     case "change_overage_cap":
       return `Change the additional-usage cap to ${String(args.capMinor ?? 0)} pence`;
     default:
-      return `Run ${tool.name}`;
+      break;
   }
+
+  const declaration = serviceOperation(tool.name);
+  if (!declaration) return `Run ${tool.name}`;
+
+  // The record being acted on, where the arguments name one. An approver
+  // reading "Archive a lead" without knowing which lead cannot make a decision.
+  const subject =
+    typeof args.leadId === "string"
+      ? ` (lead ${args.leadId})`
+      : typeof args.prospectId === "string"
+        ? ` (prospect ${args.prospectId})`
+        : typeof args.campaignId === "string"
+          ? ` (campaign ${args.campaignId})`
+          : "";
+
+  return declaration.effect
+    ? `${declaration.summary}${subject}. ${declaration.effect}`
+    : `${declaration.summary}${subject}`;
 }
 
 export { MCP_TOOLS };

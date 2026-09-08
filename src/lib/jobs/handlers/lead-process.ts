@@ -2,6 +2,7 @@ import "server-only";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import { enqueue, type ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { recordUsage } from "@/lib/audit";
 import {
   assertLeadCapacity,
@@ -265,6 +266,24 @@ export async function handleLeadProcess(job: ClaimedJob) {
     lead,
     payload.source?.provider ?? (await providerForSource(lead.source_id)),
   );
+
+  // The lead's own id is the event id, so this handler re-running — which it is
+  // built to survive — cannot deliver the same lead to a customer's CRM twice.
+  await emitWebhookEvent({
+    businessId: business.businessId,
+    type: "lead.created",
+    eventId: lead.id,
+    data: {
+      lead_id: lead.id,
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      email: lead.email,
+      phone: lead.phone,
+      postcode: lead.postcode,
+      status: lead.status,
+      source: payload.source?.provider ?? null,
+    },
+  });
 
   if (contact && !lead.opted_out) {
     // A number suppressed before this lead arrived must never be contacted.

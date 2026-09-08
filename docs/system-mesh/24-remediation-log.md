@@ -957,3 +957,389 @@ end-to-end suite runs against the same shape.
 | `npm run lint` | clean |
 | `npm run build` | succeeds; `/developers`, `/api/v1/*` and `/api/mcp` all present in the route manifest |
 | Live HTTP | 42 tools listed and scope-filtered; reads, `agent.create`, and the full park → approve → queued loop for `message.send` |
+
+## Second sweep: the same four bug classes, hunted rather than stumbled on
+
+**Date:** 2026-09-08 (same lane)
+
+The four bugs in the previous section were not four bugs. They were four
+*classes*, and each had more instances. Sweeping them deliberately found **eleven
+more**, six of which meant an operation could never have worked at all.
+
+### Class A — a value the database will not accept
+
+A `CHECK` constraint enumerating strings is invisible to TypeScript. Six
+operations wrote vocabulary the column does not hold. Every one type-checked,
+every one passed the unit tests, and every one would have failed on its first
+real call:
+
+| Operation | Wrote | Column holds |
+|---|---|---|
+| `campaign.launch` / `resume` | `"sending"` | `RUNNING` |
+| `campaign.pause` | `"paused"` | `PAUSED` |
+| `campaign.launch` precondition | compared to `"draft"` | `DRAFT` |
+| `prospect.reject` | `"REJECTED"` | `DISQUALIFIED` (no `REJECTED` exists) |
+| `connector.disconnect` | `"disconnected"` | `DISCONNECTED` |
+| `connector.dismiss_event` | `"dismissed"` | `ignored` (no `dismissed` exists) |
+| `booking.set_status` | offered `"rescheduled"` | not in the constraint |
+
+Two more of the same shape were not writes but reads: `connector.list` and
+`business.get_status` counted anything not equal to `"connected"` as needing
+attention — and `connected` is not one of the five values that column holds, so
+every connector, healthy ones included, read as broken.
+
+The campaign operations also invented their own transition preconditions
+alongside their own status values. They now derive from `canPerform` / `isFinal`
+in `campaigns/reactivation-types` — the table the app's own action already
+enforces — and use the same optimistic-concurrency guard, so two callers racing
+cannot silently overwrite one another.
+
+### Class B — an authority a caller must not hold
+
+`callers` was left unset on the new operations, which means *every* caller. That
+handed an unattended agent six authorities it must never have:
+
+| Operation | What an agent could have done |
+|---|---|
+| `agent.configure` | **Raised its own daily and monthly spend caps**, or set its own autonomy to `AUTO` |
+| `agent.create` | Spawned further agents, each its own schedule spending budget |
+| `ai_settings.update` | **Switched itself from drafting replies to sending them**, or turned off handover-on-review |
+| `campaign.resume` | Restarted bulk outreach to a whole audience |
+| `prospect.approve` | Approved its own sourced output, making `REVIEW_ALL` mean nothing |
+| `connector.dismiss_event` / `replay_event` | Cleared the evidence that an integration was broken |
+
+`campaign.resume` was also mis-graded. It was a `REVERSIBLE_WRITE` while
+`campaign.launch` was `BULK_EXTERNAL` — so "pause, then resume" was a route to
+sending a campaign with nobody confirming it, straight past the gate that launch
+exists to be. It is now `BULK_EXTERNAL` with its own stated effect.
+
+What an unattended agent can still reach is now a coherent set: working leads,
+pausing and stopping, marking a booking, and *rejecting* a prospect — the
+cautious direction in every case.
+
+### The systemic fix
+
+Fixing eleven instances is worth less than making the class impossible, so:
+
+* **`tests/service-operations-e2e.test.ts`** executes every operation against a
+  real Postgres and reads the row back. It asserts the *specific* stored values
+  — `RUNNING`, `DISQUALIFIED`, `ignored`, `DISCONNECTED` — so each of the six
+  vocabulary bugs fails it by name. It ends with a coverage guard: a write
+  operation not exercised by the file fails the suite, because an operation
+  nobody has run is exactly how six of them shipped broken.
+* **`tests/services.test.ts`** now encodes the caller rules directly, including
+  a derived one — anything matching an outbound operation must require
+  confirmation *and* carry an effect — so a new sending operation is caught by
+  an existing rule rather than needing to be remembered.
+* **The safe direction is asserted too**: `agent.pause`, `agent.stop` and
+  `campaign.pause` must never require confirmation and must stay reachable. The
+  thing that stops a misbehaving agent cannot be the thing waiting on an
+  approval.
+
+### Also checked, and clean
+
+| Class | Sweep | Result |
+|---|---|---|
+| Advertised but cannot complete | every declared job type vs `registerHandler` | 33/33 registered |
+| Advertised but cannot complete | every MCP-declared operation vs `handlerSchema` | 41/41 implemented |
+| Value the database rejects | every constraint on `api_keys`, `api_request_logs`, `webhook_*`, `mcp_*`, `messages`, `conversations` | all consistent, and now proven by execution |
+
+### Verification after the sweep
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,612 tests, 0 failures** (1,475 + 137) |
+| `npm run test:e2e:operations` | **21 tests, 0 failures** — every one of the 41 operations executed against a real database |
+| `npm run test:e2e:developer` | **27 tests, 0 failures** |
+| `npx tsc --noEmit` | no errors in any file in this lane |
+| `npm run lint` | clean |
+
+## Follow-on 2: five more of the same, and the test that ends the class
+
+**Date:** 2026-09-08 (same lane)
+
+The first four bugs were reported as individual fixes. They were not
+individual — they were four *classes*, and re-reading the new operations
+through each class found five more. Every one of them shipped, typechecked, and
+passed the unit tests, and every one would have failed the first time a customer
+touched it.
+
+### The five
+
+All the same shape: a string literal written to a column whose CHECK constraint
+does not contain it. TypeScript cannot see a Postgres CHECK, so nothing caught
+them.
+
+| Operation | Wrote | Column permits | Effect |
+|---|---|---|---|
+| `campaign.launch` / `pause` / `resume` | `"sending"`, `"paused"`, `"draft"` | `DRAFT SCHEDULED RUNNING PAUSED COMPLETED CANCELLED` | all three could never succeed; the precondition check also compared lower-case, so launch refused every draft with a nonsense message |
+| `connector.disconnect` | `"disconnected"` | `HEALTHY DEGRADED ACTION_REQUIRED DISCONNECTED TESTING` | never succeeded |
+| `connector.list` / `business.get_status` | tested for `"connected"` | *(not a value the column can hold)* | every connector, healthy ones included, counted as needing attention |
+| `connector.dismiss_event` | `"dismissed"` | `received processing processed failed ignored` | never succeeded |
+| `prospect.reject` | `"REJECTED"` | `… APPROVED … DISQUALIFIED …` | never succeeded |
+| `booking.set_status` | offered `"rescheduled"` | `scheduled completed cancelled no_show` | that one value always failed |
+
+### Why the earlier verification missed them
+
+The live HTTP pass exercised reads, `agent.create`, and `message.send`. It did
+not exercise a single campaign, booking, prospect or connector *write* — so the
+one thing that can see a CHECK constraint, actually running the statement, was
+never run against them. Reads pass whatever the constraint says.
+
+### The fix that matters
+
+`tests/service-writes-e2e.test.ts` (`npm run test:e2e:writes`) runs **all 24
+write operations against a real Postgres**, walking every enum value each one
+accepts — every lead status, every agent type/cadence/autonomy, every booking
+status, every tone and agent mode. A write may succeed or make a *domain*
+refusal; `CONFLICT` is deliberately excluded from the permitted outcomes,
+because that is the code a handler raises when the database rejected the row.
+
+It ends with a completeness guard: adding a write operation without exercising
+it here fails the suite. That is what stops this class returning through the
+next operation somebody writes.
+
+### Caller authority, re-checked
+
+Reviewed every non-READ operation for what an unattended agent can reach. The
+model holds: agents reach only safe-direction writes (`pause`, `stop`,
+`reject`, and the supervised lead operations). `agent.configure`,
+`ai_settings.update`, `campaign.resume`, `prospect.approve` and every connector
+mutation are closed to them — an agent that could raise its own spend caps or
+approve its own sourced prospects is a privilege escalation, not a feature.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,638 tests, 0 failures** (1,501 + 137) |
+| `npm run test:e2e:developer` | 27 / 27 |
+| `npm run test:e2e:writes` | 14 / 14, all 24 write operations against real Postgres |
+| `npx tsc --noEmit` | 0 errors |
+| `npm run lint` | clean |
+| `npm run build` | succeeds |
+
+Also fixed: `/api/v1` advertised `https://clientturn.co.uk/docs/api`, a guess at
+a domain and a path that does not exist. It now points at the deployment's own
+`/developers`.
+
+## Meta end to end: the entry point the product did not know it had
+
+The four flows this lane set out to finish — Instagram and Facebook, both by
+discovery and by lead form, conversing autonomously through to a booking. What
+it found first was that the premise was wrong.
+
+### The correction that changed the design
+
+The working assumption, stated confidently and incorrectly, was that **Meta
+offers no way to message somebody who has not messaged you**, and that
+discovery-led flows therefore had to be assisted at the opener. Half of that is
+true: there is no API for a Page to follow a person, and none to DM a stranger.
+
+But Meta does publish **private replies**. If somebody comments on a post, reel
+or ad, or mentions the account in a story, the Page may send them exactly one
+direct message within seven days. It is addressed to a `comment_id` rather than
+to a person — which is precisely why it is permitted, and why it cannot be bent
+into cold outreach.
+
+That is the entry point the whole Meta strategy rests on, and it was absent from
+the schema, the copy, the scheduler and the route descriptions. Facebook and
+Instagram had been modelled on LinkedIn's connect-then-message shape, which
+produced a queue full of people nobody could ever contact, waiting on an
+acceptance that had no API to arrive through.
+
+### The chain that could never have run
+
+Building it surfaced four defects in sequence, each of which alone would have
+made the feature inert:
+
+1. **The agent had no social channel at all.** `AgentChannel` was
+   `sms | whatsapp | email`. There was no Meta transport, so nothing could reply.
+2. **There was no Meta webhook.** Inbound DMs arrived on a 30-day polling sweep
+   that created the *first* message and dropped every reply after it. Meta's own
+   policy requires an automated conversation to respond within 30 seconds; a
+   poll cannot meet that under any configuration.
+3. **Identity did not match itself.** `engagement-ingest` stored the prefixed
+   messaging address (`meta_psid:123`) in `social_external_id`, while the inbound
+   path looked people up by their bare sender id. A commenter who replied would
+   have created a second, rival record instead of promoting the one we had.
+4. **Approval refused to approve.** `approveProspectsAction` filtered on
+   `outreach_eligibility = 'ELIGIBLE'` — but nothing in the product ever moved a
+   record from `REVIEW` to `ELIGIBLE`, and `engagement-ingest` files every
+   commenter as `REVIEW` by design. So the human decision the product asked for
+   could not be made, and the private-reply queue could never fill for exactly
+   the people it exists for.
+
+The fourth is the one worth remembering: every individual piece was correct, and
+the chain was broken anyway. Approval now resolves the review it was asked to
+resolve, and `SUPPRESSED` stays untouchable — that is a decision already taken,
+not a question awaiting an answer.
+
+### Two windows, not one
+
+Meta permits automation for 24 hours after the person last wrote, and a **human**
+for seven days via the human-agent tag. The composer had been greyed out at 24
+hours for everybody, which had customers abandon threads they could still
+rescue. The agent keeps the 24-hour bound — using the human-agent allowance to
+deliver machine output misrepresents to Meta what the message is — and the inbox
+now says so rather than going silent.
+
+Deliberately two functions rather than one with a flag: two bounds, two legal
+bases, and a shared helper is how the automated path ends up borrowing the human
+one.
+
+### Migration hygiene, again
+
+Two migrations both claimed `0072` with contradictory channel vocabularies and
+rival avatar designs; two later claimed `0075`; two more claimed `0083`. All
+were merged or renumbered. `tests/wiring.test.ts` now fails the build on a
+duplicate version, which is what caught the last one.
+
+### A grant that was only safe by accident
+
+`social_due_actions` (0072) did `revoke all … from anon; grant select … to
+authenticated`, which reads as least privilege and is not: Supabase's default-
+privileges rule had already granted ALL to `authenticated`, and an additive
+`grant select` leaves INSERT, UPDATE and DELETE where the default put them.
+
+Not exploitable today — the view is over `social_connection_states`, which has
+RLS forced and only a SELECT policy, so writes are refused. It is fixed anyway,
+because the protection was coming from the *absence* of a write policy. The day
+somebody adds a legitimate one, every authenticated user in every workspace
+silently gains write access through the view, and nothing in that change would
+look like it touched permissions. An audit found no other view affected.
+
+### Contact data, enforced rather than declared
+
+`compliance/types.ts` had listed harvested personal addresses among the sources
+that are never permitted. Nothing enforced it: a licensed provider returning a
+personal Gmail held against a company domain flowed through discovery,
+enrichment, verification and into a cold sequence unopposed.
+`contact-legality.ts` now runs before anything is written or charged for.
+Refused details are **not stored** — carrying one with a flag would leave a
+personal address in the database with one boolean between it and a send.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,668 tests, 0 failures** (1,531 + 137) |
+| `npm run test:e2e:meta` | 23 / 23 against real Postgres with real RLS |
+| `npm run test:e2e:routes` | 24 / 24 |
+| `npm run test:rls:new` | 12 / 12 |
+| `npm run audit:db` | 167 tables, 60 functions, all resolve |
+| `npx tsc --noEmit` | 0 errors |
+| `npm run lint` | clean |
+| `npm run build` | succeeds |
+
+Migrations `0081`–`0083` applied to the linked project and to local, after a
+`--check` dry run each. `META_WEBHOOK_VERIFY_TOKEN` added to `.env.example`;
+without it `/api/webhooks/meta` refuses to verify and the whole path is inert.
+
+### Deliberately not done
+
+**Automating the follow.** Meta publishes no API for a Page to follow a person,
+and the only way to do it is to drive a logged-in session — which breaches the
+Platform Terms and gets the customer's account restricted. There is no version
+of this that ships.
+
+**TPS/CTPS screening.** A live register and a paid lookup. `REVIEW` on a UK
+mobile is the honest output; the check belongs at the point of dialling, not in
+a module that would be claiming to have done it.
+
+**LinkedIn and TikTok private replies.** Neither platform has an equivalent.
+Both stay assisted, and the inbox says `recorded` rather than `live` for them,
+because a channel that cannot be read must not claim it can.
+
+---
+
+# Strictness, source disclosure, and the ICP change
+
+**Date:** 2026-09-08 · **Migrations:** `0080_company_registry_identity.sql`,
+`0084_sourcing_strictness.sql`
+
+## The gap all three close
+
+`policy/types.ts` has distinguished CORPORATE, SOLE_TRADER, PARTNERSHIP and
+INDIVIDUAL since the jurisdiction packs were written, because under PECR the
+corporate-subscriber exemption from consent covers incorporated bodies and LLPs
+and **not** sole traders. Nothing could produce the middle two values:
+`contact-legality` derives a subscriber type from the email domain, which can
+only say "a company domain" or "a consumer mailbox". A sole trader trading as
+"Northgate Roofing" from a matching domain was classified CORPORATE. The rule
+existed and was unenforceable.
+
+## What was built
+
+| Piece | What it does |
+|---|---|
+| `providers/companies-house.ts` | Free, official, `costRank 0`. A register match is what makes the corporate exemption assertable. A **miss yields UNKNOWN, never SOLE_TRADER** — trading names differ from registered ones, so a miss is an unanswered question, and the packs already route UNKNOWN to review |
+| `compliance/strictness.ts` | STRICT / BALANCED / OPEN. The pack decides what the law permits; this decides what to do with a record that is neither clearly permitted nor refused. Every rule narrows through `tighten()`, so "can only tighten, never loosen" is a property of the code rather than a claim about it |
+| `compliance/source-disclosure.ts` | The Article 14 line, generated from recorded provenance. Never hand-written, never model-written: a plausible sentence naming a source that was never consulted is a *fabricated* disclosure, which is worse than none |
+| `providers/website-contacts.ts` | AI as a **parser**, not an acquirer. Reads the company's own team page through the existing robots-respecting fetcher. Returns an address only if printed verbatim on the page and on that company's own domain |
+
+`dispatch.ts` now refuses a cold send with no disclosure, on the same reasoning
+as the existing refusal to send without an unsubscribe token: a cold email that
+cannot say where it got somebody's address is not lawful to send, and sending it
+anyway to keep a campaign moving is the wrong trade.
+
+## Why AI enrichment stops where it does
+
+Pattern-generating `first.last@domain` is what most "AI enrichment" sells. It is
+refused here, for two independent reasons: the datum was never *obtained*, so the
+honest Article 14 line is "we guessed it"; and a catch-all domain accepts
+anything, so the guess looks valid right up until it damages the sending
+reputation of every later campaign.
+
+## The ICP change, and why it belongs in this entry
+
+Marketing moved from UK home services to UK agencies, web studios, SaaS,
+ecommerce and professional services (CLAUDE.md resolved conflicts 5 and 6). The
+engine was always vertical-agnostic, so this was copy and config — but it is
+recorded here because it is what makes the compliance position work: those
+companies publish team pages (so self-enrichment is free and defensible) and are
+overwhelmingly incorporated (so the corporate exemption actually applies).
+
+Contact data narrowed at the same time: **business email only**. A sourced phone
+number is no longer collected at all, because ClientTurn emails cold prospects
+and texts only mobiles somebody submitted on a lead form. Holding a number for a
+purpose the product does not have is the data-minimisation failure this layer
+exists to prevent.
+
+## Defects found and fixed
+
+- **`assessPhone` could never refuse a 118 number.** The UK shape gate ran first
+  and 118 numbers do not start with `0`, so every one fell through to "not a UK
+  number — check the local rules", inviting somebody to dial a number charging
+  pounds a minute. The premium check now runs first.
+- **Duplicate migration numbers, twice** — two `0075`s and two `0081`s.
+  Renumbered to `0076` and `0083`.
+- **`admin/overview.ts` referenced two variables a half-finished refactor had
+  deleted.** Restored as bounded queries — the eight recent workspaces, and only
+  the subscription states that can raise an action — rather than reinstating the
+  20,000-row scans the rollup removed.
+- **Two AI task types missing from exhaustive maps**, caught by
+  `Record<TaskType, …>` rather than at runtime.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,668 tests, 0 failures** (1,531 + 137) |
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm run build` | succeeds |
+| `test:e2e:routes` / `:meta` / `:developer` / `:operations` / `:writes` | **109 tests, 0 failures**, real Postgres, real RLS |
+| `test:rls:all` + `test:rls:new` | **52 tests, 0 failures** |
+| Migrations | 0080, 0081, 0082, 0084 applied to `losieaikadkadtmezini`; schema verified present |
+
+## Known, and deliberately not hidden
+
+- **One unreproducible unit-test failure.** A single run reported 1,530/1,531;
+  three subsequent runs were clean and the failing case never named itself. Not
+  chased further, and recorded here rather than rounded down to "all green".
+- **Local Supabase migration history has pre-existing drift** — objects from
+  0070/0071 exist but the history does not record them, so `migration up --local`
+  fails. The two migrations from this lane were applied to local as additive DDL
+  instead. The remote project is correct; the local drift predates this work and
+  wants a `db reset` when no other lane is running against it.

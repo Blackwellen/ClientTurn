@@ -68,6 +68,7 @@ import {
   isExtractableField,
   MAX_AGENT_STEPS,
   replyClassificationFor,
+  type AgentChannel,
   type AgentDecision,
   type AgentEvent,
   type AgentOutcome,
@@ -197,7 +198,7 @@ type ExecuteInput = {
   context: AgentContext;
   run: AgentRunHandle;
   mode: ReturnType<typeof resolveMode>;
-  channel: "sms" | "whatsapp" | "email";
+  channel: AgentChannel;
   latestMessage: string | null;
   binding: ReturnType<typeof classifyDeterministic>;
   heuristic: ReturnType<typeof classifyHeuristic>;
@@ -370,6 +371,13 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
     contactSuppressed: !context.leadContext.contactable,
     hasDestination: Boolean(context.leadContext.contactable),
     providerHealthy: true,
+    // Only consulted on Messenger and Instagram, where Meta will not deliver a
+    // reply more than 24 hours after the person last wrote.
+    lastInboundAt: context.leadContext.lastInboundAt,
+    // Only consulted on TikTok and LinkedIn, where the permission to send is
+    // the accepted connection and the recipient can withdraw it at any time
+    // without sending anything the runtime would otherwise see.
+    socialConnectionState: context.leadContext.socialConnectionState,
     quietHours: context.business.quietHours,
     now: new Date(),
   });

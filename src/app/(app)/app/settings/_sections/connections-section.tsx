@@ -6,19 +6,13 @@ import { canStoreSecrets } from "@/lib/security/secret-box";
 import { ConnectionsSettings } from "@/components/settings/connections/connections-settings";
 import { EmailMailboxPanel } from "@/components/settings/connections/email-mailbox-panel";
 import { DiscoveryStatusCard } from "@/components/settings/connections/discovery-status";
-import { McpConnectionsPanel } from "@/components/settings/connections/mcp-connections-panel";
-import { listMcpConnections, listMcpPendingApprovals } from "@/lib/mcp/queries";
-import { MCP_SCOPES, SCOPE_DESCRIPTIONS } from "@/lib/mcp/tools";
 import { getStatusSummary } from "@/lib/status/service";
 
 export async function ConnectionsSection() {
   const workspace = await requireWorkspace();
   const canManage = hasRole(workspace.role, "admin");
 
-  // Assistant connections are admin-only to read as well as to change: the
-  // list names every outside system holding a key to this workspace, and how
-  // often each is being refused.
-  const [view, emailAccount, status, mcpConnections, mcpApprovals] = await Promise.all([
+  const [view, emailAccount, status] = await Promise.all([
     getIntegrationsView(workspace.businessId),
     // Settings only. `loadEmailAccount` never returns a password, so this is
     // safe to render into a client component.
@@ -28,8 +22,6 @@ export async function ConnectionsSection() {
     // Status note): a provider can be healthy platform-wide while this
     // workspace's mailbox is disconnected.
     getStatusSummary(),
-    canManage ? listMcpConnections() : Promise.resolve([]),
-    canManage ? listMcpPendingApprovals() : Promise.resolve([]),
   ]);
 
   const discoveryStatus =
@@ -52,18 +44,6 @@ export async function ConnectionsSection() {
         lastCheckedAt={view.lastCheckedAt}
         canManage={canManage}
       />
-
-      {canManage && (
-        <McpConnectionsPanel
-          connections={mcpConnections}
-          approvals={mcpApprovals}
-          scopeOptions={MCP_SCOPES.map((scope) => ({
-            scope,
-            label: SCOPE_DESCRIPTIONS[scope],
-          }))}
-          canManage={canManage}
-        />
-      )}
 
       <DiscoveryStatusCard status={discoveryStatus} />
     </div>

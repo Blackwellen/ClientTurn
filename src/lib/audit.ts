@@ -172,6 +172,7 @@ export type AuditAction =
   | "social_outreach.accepted"
   | "social_outreach.withdrawn"
   | "social_outreach.declined"
+  | "social_outreach.reply_recorded"
   | "prospect.research_summarised"
   | "prospect.exported"
   | "recurring_search.created"

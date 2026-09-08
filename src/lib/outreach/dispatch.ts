@@ -4,6 +4,11 @@ import { recordAudit, recordUsage } from "@/lib/audit";
 import { checkCapacity } from "@/lib/billing/v4-entitlements";
 import { evaluate } from "@/lib/policy/service";
 import { sendEmail, unsubscribeUrl } from "@/lib/email/smtp";
+import {
+  buildSourceDisclosure,
+  type Disclosure,
+} from "@/lib/compliance/source-disclosure";
+import { loadDataControls } from "@/lib/compliance/queries";
 import { normaliseEmail } from "@/lib/prospects/dedupe";
 import { assignVariant, recordVariantEvent } from "./variant-assignment";
 import { checkSuppression } from "@/lib/policy/suppression";
@@ -392,10 +397,29 @@ export async function dispatchCampaign(input: {
     const subject =
       renderTemplate(variant?.subject ?? step.subjectTemplate ?? "", values) ||
       campaign.name;
+    // Article 14: where the data did not come from the person themselves, they
+    // must be told what is held and **where it came from**, at the latest on
+    // first contact. Built from the provenance actually recorded against this
+    // prospect -- never hand-written and never model-written, because a
+    // plausible sentence naming a source that was never consulted is a
+    // fabricated disclosure, which is worse than none.
+    const disclosure = await sourceDisclosureFor(input.businessId, prospect.id);
+
+    // Refused rather than sent without it, on exactly the same reasoning as the
+    // missing unsubscribe token below: a cold email that cannot say where it
+    // got somebody's address is not lawful to send, and sending it anyway to
+    // keep a campaign moving is the wrong trade.
+    if (disclosure.blocked) {
+      await releaseCampaignSlot(input);
+      skipped += 1;
+      continue;
+    }
+
     const body = [
       renderTemplate(variant?.body ?? step.bodyTemplate, values),
       // Cold B2B email in the UK must identify the sender in the message.
       await senderSignature(input.businessId, sender.id),
+      disclosure.line,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -678,6 +702,38 @@ async function resolveBookingLink(businessId: string, campaignId: string): Promi
   if (!goal) return "";
   const url = goal.destination_config?.url;
   return typeof url === "string" && /^https:\/\//i.test(url) ? url : "";
+}
+
+/**
+ * The Article 14 line for one prospect, from what is actually recorded.
+ *
+ * Two reads rather than one: the provenance rows say where the data came from,
+ * and the workspace's data controls supply the controller's name and the
+ * privacy notice the line points at. Either being absent blocks the send —
+ * `buildSourceDisclosure` decides which, and says so in a sentence somebody can
+ * act on rather than returning a boolean.
+ */
+async function sourceDisclosureFor(
+  businessId: string,
+  prospectId: string,
+): Promise<Disclosure> {
+  const admin = createAdminClient();
+
+  const [{ data: sources }, controls] = await Promise.all([
+    admin
+      .from("prospect_data_sources")
+      .select("source_type")
+      .eq("business_id", businessId)
+      .eq("prospect_id", prospectId)
+      .limit(50),
+    loadDataControls(businessId),
+  ]);
+
+  return buildSourceDisclosure({
+    provenanceTypes: [...new Set((sources ?? []).map((row) => row.source_type))],
+    legalName: controls.legalName,
+    privacyPolicyUrl: controls.privacyPolicyUrl,
+  });
 }
 
 async function senderSignature(businessId: string, senderId: string): Promise<string> {

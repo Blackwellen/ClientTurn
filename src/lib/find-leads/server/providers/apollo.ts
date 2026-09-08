@@ -167,7 +167,6 @@ async function findContacts(input: {
         person.email && !person.email.includes("email_not_unlocked")
           ? person.email
           : null,
-      phone: null,
       linkedinUrl: person.linkedin_url ?? null,
       companyExternalId: person.organization?.id ?? null,
       companyDomain: person.organization?.primary_domain ?? null,

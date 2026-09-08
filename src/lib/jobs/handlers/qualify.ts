@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import {
   evaluateQualification,
   type EngineInput,
@@ -172,6 +173,21 @@ export async function applyQualification(
             : "qualification.review",
     });
   }
+
+  // Told to the customer's own systems as well as to ours. The event carries
+  // the outcome and the reasons, so a CRM can act on the decision without
+  // having to call back and ask what it was.
+  await emitWebhookEvent({
+    businessId: business.businessId,
+    type: "lead.qualified",
+    data: {
+      lead_id: lead.id,
+      result: output.result,
+      status,
+      reasons: output.reasons,
+      qualified_at: output.result === "QUALIFIED" ? now : null,
+    },
+  });
 
   return { output, questions };
 }

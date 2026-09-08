@@ -31,6 +31,13 @@ export type JobType =
   | "outreach.audience"
   | "outreach.tick"
   | "outreach.optimize"
+  | "social.tick"
+  // Fanned out by `social.tick`: one `social.advance` per workspace with due
+  // work, and one `social.execute` per action it decided to take. Split three
+  // ways so a workspace whose sending account is restricted, or one action that
+  // a platform refuses, cannot stall every other workspace's queue.
+  | "social.advance"
+  | "social.execute"
   | "affiliate.ledger";
 
 export type EnqueueOptions = {

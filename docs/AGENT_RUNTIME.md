@@ -222,6 +222,165 @@ immediately before dispatch, and it has the last word. `origin = "agent"`
 behaves like `"system"`: a lead having replied does not block the reply owed
 back to them, while opt-out, suppression and human takeover bind absolutely.
 
+## LinkedIn: a different gate, and a different arrival
+
+The agent runs on `linkedin` too, but it gets there by a route no other channel
+uses, and the difference is worth stating before the Meta section below —
+because the two look alike and their gates have nothing in common.
+
+**There is no reply window.** Meta's gate is time: 24 hours from the person's
+last message, and only they can reopen it. LinkedIn's gate is *acceptance of a
+connection request*, which never expires once granted. A LinkedIn thread that
+has been quiet for three months is still answerable; a Messenger thread quiet
+for 25 hours is not. Nothing in `withinSocialReplyWindow` applies here, and
+applying it would silently stop the agent answering conversations it may
+perfectly well answer.
+
+**The agent never opens the conversation.** Everything before the first reply —
+the connection request, the opening message, up to two follow-ups — is composed
+by the deterministic sequencer in `lib/outreach/social-sequence.ts` and never
+enters the agent runtime. That is a deliberate boundary, not an omission: cold
+outreach copy is the highest-risk text the product produces, and it is guarded
+by `checkComposedCopy` (no price, no promise, no availability, no invented
+familiarity, no uncited fact) with a template fallback that is always sendable.
+
+**The agent arrives with the lead.** A prospect who replies is promoted — the
+same `conversations` row gains a `lead_id`, so the whole social thread is
+already there — and `ingestSocialReply` enqueues the turn. From that point it is
+an ordinary lead conversation: same tools, same qualification, same booking
+path, same handover rules.
+
+**There is no send transport.** `messaging/registry.ts` refuses `linkedin`
+explicitly rather than falling through to the carrier. An agent reply on this
+channel is stored and performed from the social queue, or through a partner
+integration where a workspace has one. See `lib/outreach/social-partners.ts`.
+
+Length is the one ordinary thing: `CHANNEL_LIMITS.linkedin` is
+`{ preferred: 700, hard: 1900 }` — the hard figure is the platform's own
+ceiling, the preferred one is far below it because the message is read in a
+narrow chat pane and not in an inbox.
+
+## Social channels: Messenger and Instagram
+
+The agent runs on `messenger` and `instagram` exactly as it runs on SMS. Same
+turn, same tools, same guardrails, same deterministic qualification. Three
+things differ, and all three are consequences of one fact about Meta.
+
+**Meta lets a business answer someone who interacted with it, and nobody else.**
+There is no API for a Page to follow a person, and no way to message a stranger.
+But "interacted" is broader than "messaged", and the difference is what makes
+this channel work at all:
+
+| They did this | We may send | Within |
+|---|---|---|
+| Messaged the Page or account | Unlimited replies | 24 hours of their last message |
+| Commented on a post, reel or ad | **One** private reply | 7 days of the comment |
+| Mentioned the account in a story | **One** private reply | 7 days |
+| Nothing | Nothing | — |
+
+The private reply is the entry point. It is addressed to a **comment id**, not
+to a person — `recipient: { comment_id }` — so there is no way to express
+"message this user", only "answer this thing they said on our post". That is
+precisely why it is permitted, and it is why `engagement-ingest` records the
+comment's own id and timestamp: both are needed to send one.
+
+Three properties of the private reply that the code must respect exactly:
+
+* **One per comment, ever.** Not one per person, not one per day. A second
+  attempt against the same comment id is refused.
+* **Seven days from the comment, not from when we noticed it.** Meta clocks it
+  against the comment's creation timestamp, so a backlogged worker can miss the
+  window on a comment posted minutes ago in real time.
+* **It does not open the 24-hour window.** Only their answer does. Until then
+  the business has had its one turn.
+
+### 1. The two reply windows
+
+An automated reply is permitted for 24 hours after the person last wrote.
+`evaluateSendGate` enforces it (`SOCIAL_WINDOW_CLOSED`) and the constant is
+`SOCIAL_REPLY_WINDOW_HOURS`, asserted equal to the transport's
+`META_MESSAGING_WINDOW_HOURS` in `tests/meta-flows.test.ts`.
+
+Three properties are deliberate:
+
+* **It is a DENY, not a QUEUE.** Waiting cannot help — the window only ever
+  shuts further, and nothing this product does reopens it. Only the person can,
+  by writing again.
+* **Nothing the business sends extends it.** `withinSocialReplyWindow` takes
+  `lastInboundAt` and not the outbound timestamp, so the mistake is unavailable.
+* **It denies above the SUGGEST_ONLY branch.** Drafting an automated reply for a
+  person to rubber-stamp would be using the human-agent allowance to deliver
+  machine output, which misrepresents to Meta what the message is.
+
+A **person**, however, gets seven days, via Meta's human-agent tag — it exists so
+somebody who has to go and look something up is not locked out. So the inbox
+composer stays usable after the agent has stopped, with the difference stated
+plainly (`ReplyWindow.HUMAN_ONLY`), rather than being greyed out at 24 hours and
+having customers abandon threads they could still rescue. Two bounds, two legal
+bases, two separate functions — `withinMetaMessagingWindow` and
+`withinHumanAgentWindow`. A shared helper with a boolean flag is exactly how the
+automated path ends up borrowing the human one.
+
+### 2. The address belongs to the thread, not the lead
+
+`leadContact` returns **null** for a platform channel, on purpose. A page-scoped
+id has nowhere to live on `leads`, the same person can hold a Messenger thread
+and an Instagram one, and falling back to the phone number would send an SMS to
+somebody who only ever wrote on Instagram — or to a different person entirely.
+
+The address is `conversations.external_thread_id`, prefixed by platform
+(`meta_psid:` / `meta_igsid:`). `assembleContext` resolves it for social
+channels; `send-store.ts` re-reads it fresh at dispatch.
+
+Suppression is filed under `PolicyChannel.SOCIAL` against the `social` column,
+never coerced into `phone`. `normalisePhone("meta_igsid:17841…")` would return a
+plausible-looking E.164 string that matches nothing, so a suppression written
+that way would silently never fire again.
+
+### 3. Where a lead comes from
+
+A first inbound DM **creates a Lead**, because opening a conversation with a
+business is asking to be answered — the same act as submitting a lead form. A
+comment or a like is not, and `engagement-ingest` sends those to a human as
+Prospects instead.
+
+Where a Prospect already exists for that platform id — we found them, and the
+assisted queue followed and messaged them — the reply **promotes** it rather
+than creating a rival record, and the name we already knew travels with it.
+
+`resolveSocialThread` is idempotent on the thread address, which is what makes
+it safe under Meta's retry policy: a redelivered first message finds the
+conversation the first delivery created.
+
+### What is and is not autonomous
+
+**Autonomous on Meta.** Answering a DM, and sending the one private reply to a
+commenter. Both go out through Meta's own messaging API under permissions the
+customer granted, so no person is required at any point.
+
+**Not autonomous, anywhere.** Following an account. Meta publishes no API for a
+Page to follow a person, and doing it another way — driving a logged-in session —
+breaches the Platform Terms and gets the customer's account restricted. There is
+no version of this the product will ship.
+
+**Assisted on LinkedIn and TikTok.** Neither offers a private-reply equivalent,
+and neither exposes an inbox to read. The connection request, the follow and the
+opening message are composed and paced here and performed by a person
+(`ASSISTED` mode in `outreach/social-outreach.ts`); replies are recorded rather
+than synced. `PARTNER_API` mode exists for workspaces holding a compliant
+integration and takes the identical path through every check above.
+
+### Meta's own conduct rules for automation
+
+Two obligations the platform places on an automated conversation, both already
+met and both worth knowing about before changing the prompt:
+
+* **Disclose that it is automated.** Enforced in `validate.ts` — a reply that
+  denies being automated is rejected and re-drafted.
+* **Respond within 30 seconds.** This is why inbound DMs arrive by webhook and
+  the turn runs off the request path. The old polling sweep could not have met
+  it under any configuration.
+
 ## Memory
 
 Four layers, and no free-form long-term memory:

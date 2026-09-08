@@ -77,6 +77,25 @@ const schema = z.object({
     .default(null),
   retainInactiveLeadsDays: z.number().int().min(30).max(3650).nullable().default(null),
   retainRawEventsDays: z.number().int().min(1).max(365).nullable().default(null),
+
+  /* -------------------------------------------------------------- social */
+  // Both default to false rather than carrying the caller's value forward.
+  // A form that omits them is a form that did not ask, and the safe reading of
+  // "did not ask" is "not enabled" -- these two switches are the difference
+  // between a product that prepares work for a person and one that acts on a
+  // customer's own social account unattended.
+  socialAutonomousSending: z.boolean().default(false),
+  socialAutoPromoteOnReply: z.boolean().default(false),
+  // Bounds mirror the CHECK constraints added in 0072.
+  socialWithdrawAfterDays: z.number().int().min(3).max(90).nullable().default(21),
+  socialFollowUpGapHours: z.number().int().min(24).max(720).default(96),
+  socialMaxFollowUps: z.number().int().min(0).max(2).default(2),
+
+  /* ---------------------------------------------------------- strictness */
+  // BALANCED on an omitted field, matching the column default: a form that did
+  // not ask has not been told to loosen anything.
+  sourcingStrictness: z.enum(["STRICT", "BALANCED", "OPEN"]).default("BALANCED"),
+  requireRegistryMatch: z.boolean().default(false),
 });
 
 export async function saveDataControlsAction(
@@ -118,6 +137,13 @@ export async function saveDataControlsAction(
       retain_uncontacted_prospects_days: value.retainUncontactedProspectsDays,
       retain_inactive_leads_days: value.retainInactiveLeadsDays,
       retain_raw_events_days: value.retainRawEventsDays,
+      social_autonomous_sending: value.socialAutonomousSending,
+      social_auto_promote_on_reply: value.socialAutoPromoteOnReply,
+      social_withdraw_after_days: value.socialWithdrawAfterDays,
+      social_follow_up_gap_hours: value.socialFollowUpGapHours,
+      social_max_follow_ups: value.socialMaxFollowUps,
+      sourcing_strictness: value.sourcingStrictness,
+      require_registry_match: value.requireRegistryMatch,
       updated_by: workspace.userId,
     },
     { onConflict: "business_id" },
@@ -134,6 +160,16 @@ export async function saveDataControlsAction(
     metadata: {
       section: "data_controls",
       lawful_basis: value.marketingLawfulBasis,
+      // Loosening who may be contacted is the change most worth being able to
+      // date afterwards, so the mode is recorded on every save rather than only
+      // when it changes.
+      sourcing_strictness: value.sourcingStrictness,
+      require_registry_match: value.requireRegistryMatch,
+      // Recorded explicitly: turning on autonomous sending is the single most
+      // consequential switch in Settings, and "who turned it on and when" must
+      // be answerable from the audit log rather than inferred from a diff.
+      social_autonomous_sending: value.socialAutonomousSending,
+      social_auto_promote_on_reply: value.socialAutoPromoteOnReply,
       prospect_type: value.prospectType,
       allowed_sources: value.allowedSources,
       // The countries and the basis are the fields a later question would be

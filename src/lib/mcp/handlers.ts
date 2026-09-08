@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { evaluateAllChannels } from "@/lib/policy/service";
+import { findDuplicates } from "@/lib/leads/add-lead/duplicate-check";
+import { blockingDuplicates } from "@/lib/leads/add-lead/types";
 import { getOverview, rangeBounds, type AnalyticsRange } from "@/lib/analytics/v4-queries";
 import { isWarmRelationship, type RelationshipType } from "@/lib/policy/types";
 import { recordPermission } from "@/lib/policy/service";
@@ -134,6 +136,47 @@ export async function runReadOrWriteTool(
       const email = normaliseEmail(str(args.email));
       const phone = str(args.phone) ? normalisePhone(String(args.phone)) : null;
       if (!email && !phone) throw new Error("A lead needs an email address or a phone number.");
+
+      /*
+       * The same duplicate rule the Add Lead wizard applies, and the reason
+       * this tool is now idempotent.
+       *
+       * There was no idempotency key and no duplicate check, so a retried call
+       * -- which is the normal behaviour of every HTTP client and every agent
+       * runtime on a timeout -- created a second lead. Two rows for one person
+       * means two follow-up sequences, and the recipient gets messaged twice by
+       * a product whose entire promise is that it contacts people carefully.
+       *
+       * A client-supplied key would work, and this is better: an exact email or
+       * phone match already *is* the identity of the record, the wizard already
+       * treats it as blocking ("an exact email or phone match is the same
+       * person"), and using it here means a caller gets idempotency without
+       * having to know to ask for it. The existing lead is returned rather than
+       * an error, because a retry that says "already done, here it is" is what
+       * an idempotent create should do; a weaker match is not treated as the
+       * same person and still creates.
+       */
+      const existing = blockingDuplicates(
+        await findDuplicates(auth.businessId, {
+          email,
+          mobile: phone,
+          firstName: str(args.firstName),
+          lastName: str(args.lastName),
+          company: str(args.companyName),
+        }),
+      ).filter((match) => match.kind === "LEAD");
+
+      if (existing.length > 0) {
+        // Same shape as the create path, which already carried `created` --
+        // so a caller that reads it can tell a retry from a first attempt
+        // without parsing prose.
+        return {
+          leadId: existing[0].id,
+          created: false,
+          message:
+            "A lead with that email address or phone number already exists in this workspace, so nothing was created. Its id is returned.",
+        };
+      }
 
       const { data: lead, error } = await db
         .from("leads")

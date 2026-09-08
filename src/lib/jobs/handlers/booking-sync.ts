@@ -2,6 +2,7 @@ import "server-only";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { recordAudit } from "@/lib/audit";
 import { normalisePhone } from "@/lib/messaging/types";
 import { enqueueCrmPushes } from "@/lib/integrations/providers/crm-trigger";
@@ -191,6 +192,24 @@ export async function handleBookingSync(job: ClaimedJob) {
       leadId: lead.id,
       eventType: "booking.created",
       payload: { provider: payload.provider, bookingId },
+    });
+
+    // The booking id doubles as the event id, so a replayed provider webhook
+    // re-running this handler does not deliver the same booking twice to the
+    // customer's own systems.
+    await emitWebhookEvent({
+      businessId: payload.businessId,
+      type: "booking.created",
+      eventId: bookingId ?? undefined,
+      data: {
+        booking_id: bookingId,
+        lead_id: lead.id,
+        provider: payload.provider,
+        starts_at: payload.startsAt ?? null,
+        ends_at: payload.endsAt ?? null,
+        location: payload.location ?? null,
+        status: payload.status,
+      },
     });
   }
 

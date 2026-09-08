@@ -2064,3 +2064,140 @@
 .pub-register li > span:first-child {
   min-width: 0;
 }
+
+/* ---------------------------------------------------------------- code ---
+   The developer surfaces. A code sample on a marketing page is doing the same
+   job as a product screenshot — it is the evidence — so it gets the same care
+   as a card rather than being dropped in as a <pre> with a border.
+
+   Everything here resolves through the same `--pub-*` tokens as the rest of
+   the page, so the samples cannot drift out of the palette. */
+
+.pub-code {
+  position: relative;
+  border: 1px solid var(--pub-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--pub-bg-elevated), var(--pub-card));
+  overflow: hidden;
+}
+
+.pub-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  border-bottom: 1px solid var(--pub-border);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+}
+
+.pub-code pre {
+  margin: 0;
+  padding: 14px;
+  /* The sample scrolls inside its own box. A long curl line must never make
+     the whole page scroll sideways on a phone. */
+  overflow-x: auto;
+  font-family: var(--lr-font-mono);
+  font-size: 0.75rem;
+  line-height: 1.65;
+  color: var(--pub-text-secondary);
+  white-space: pre;
+  tab-size: 2;
+}
+
+.pub-code pre b {
+  font-weight: 500;
+  color: var(--pub-lime);
+}
+
+.pub-code pre i {
+  font-style: normal;
+  color: var(--pub-text-muted);
+}
+
+.pub-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--pub-border);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--pub-text-muted);
+  background: transparent;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.pub-code-copy:hover {
+  color: var(--pub-lime);
+  border-color: var(--pub-lime-border);
+}
+
+/* A reference table: endpoints, scopes, events. Reads as a specification, so
+   it is deliberately plainer than a card grid — a developer scanning for one
+   row should not have to read a paragraph per row. */
+.pub-ref {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.pub-ref th {
+  text-align: left;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--pub-border);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pub-text-muted);
+  white-space: nowrap;
+}
+
+.pub-ref td {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--lr-border-subtle);
+  color: var(--pub-text-secondary);
+  vertical-align: top;
+}
+
+.pub-ref th + th,
+.pub-ref td + td {
+  padding-left: 18px;
+}
+
+.pub-ref tr:last-child td {
+  border-bottom: 0;
+}
+
+.pub-ref code,
+.pub-inline-code {
+  font-family: var(--lr-font-mono);
+  font-size: 0.75rem;
+  color: var(--pub-text);
+  white-space: nowrap;
+}
+
+.pub-ref-method {
+  font-family: var(--lr-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pub-lime);
+}
+
+/* Wide reference tables scroll inside their own box rather than widening the
+   page — the same rule as the code samples. */
+.pub-ref-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pub-ref-scroll > table {
+  min-width: 520px;
+}

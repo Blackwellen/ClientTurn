@@ -18,6 +18,12 @@ import type {
 } from "@/lib/find-leads/server/providers/types";
 import { withinPlanLocations } from "@/lib/find-leads/server/locations";
 import type { UnitCosts } from "@/lib/find-leads/cost-model";
+import { assessContacts, lawfulBasisFor } from "@/lib/find-leads/contact-legality";
+import {
+  applyStrictness,
+  type SourcingStrictness,
+} from "@/lib/compliance/strictness";
+import { loadDataControls } from "@/lib/compliance/queries";
 import {
   cheapChecks,
   companyDedupeKey,
@@ -86,8 +92,30 @@ type RunContext = {
   target: number;
   minimumGrade: Grade;
   unhealthy: Set<string>;
+  /**
+   * How much doubt this workspace tolerates. Resolved once per run rather than
+   * per prospect: a setting changed mid-run should not make the first half of a
+   * batch stricter than the second.
+   */
+  strictness: { mode: SourcingStrictness; requireRegistryMatch: boolean };
   deadline: number;
 };
+
+/**
+ * The workspace's stated tolerance for doubt.
+ *
+ * Falls back to BALANCED rather than to the loosest option: a workspace with no
+ * row has not answered, and an unanswered question is not permission.
+ */
+async function loadStrictness(
+  businessId: string,
+): Promise<{ mode: SourcingStrictness; requireRegistryMatch: boolean }> {
+  const controls = await loadDataControls(businessId);
+  return {
+    mode: controls.sourcingStrictness,
+    requireRegistryMatch: controls.requireRegistryMatch,
+  };
+}
 
 /** Raised to unwind the stage loop when the run must stop cleanly. */
 class RunHalt extends Error {
@@ -157,6 +185,7 @@ export async function handleSourcingRun(job: ClaimedJob): Promise<void> {
     target: run.target_verified,
     minimumGrade: run.minimum_grade as Grade,
     unhealthy: await unhealthyProviders(),
+    strictness: await loadStrictness(businessId),
     deadline: Date.now() + TIME_BUDGET_MS,
   };
 
@@ -667,6 +696,31 @@ async function insertProspect(
   const admin = createAdminClient();
   const email = normaliseEmail(candidate.email);
 
+  // What kind of contact details are these, actually?
+  //
+  // `refreshProspectResearch` has assessed contacts through `contact-legality`
+  // since it was written; the sourcing run -- which produces far more records
+  // than a manual refresh ever will -- did not. A provider's domain-search
+  // returns whatever addresses it holds, and a personal Gmail was written to
+  // `prospects.email` looking exactly like a corporate mailbox. The consequence
+  // is not untidiness: a personal address makes the person an *individual*
+  // subscriber, where PECR's corporate exemption does not apply, and
+  // `policy/packs.ts` was applying that rule to an input nobody had derived.
+  //
+  // `hasProvenance` is true by construction: every record reaching this
+  // function came from a named provider through the router, and the
+  // `prospect_data_sources` row naming it is written by the verification stage.
+  // Email only, deliberately.
+  //
+  // A sourced telephone number is not collected at all. ClientTurn contacts a
+  // cold prospect by email, and sends SMS only to a mobile the person gave on a
+  // lead form themselves -- so a number a provider happened to return has no
+  // purpose here, and holding personal data for a purpose the product does not
+  // have is the data-minimisation failure this layer exists to prevent.
+  // `assessPhone` is still used, on the lead-form path, where the number
+  // arrives with the person's own act behind it.
+  const contacts = assessContacts({ email, phone: null }, true);
+
   const { data: prospect, error } = await admin
     .from("prospects")
     .insert({
@@ -675,9 +729,14 @@ async function insertProspect(
       first_name: candidate.firstName,
       last_name: candidate.lastName,
       role_title: candidate.roleTitle,
-      email,
-      phone_e164: candidate.phone,
+      // A refused detail is dropped rather than stored behind a flag. There is
+      // no lawful basis to hold it, so it is not held.
+      email: contacts.email,
+      phone_e164: contacts.phone,
       linkedin_url: candidate.linkedinUrl,
+      // Derived from the details rather than defaulted, which is what makes the
+      // jurisdiction pack's individual/corporate distinction mean anything.
+      subscriber_type: contacts.subscriberType,
       status: "DISCOVERED",
       source_run_id: context.runId,
       agent_id: context.agentId,
@@ -871,6 +930,17 @@ async function enrich(context: RunContext): Promise<StageSummary> {
           employee_count: record.employeeCount ?? company.employee_count,
           company_size: record.companySize,
           description: record.description,
+          // The register identity, where a register was actually consulted.
+          // This is what makes `SOLE_TRADER`/`PARTNERSHIP` reachable: without a
+          // match the packs' distinction between an incorporated body and a
+          // sole trader could never be applied to sourced data, because the
+          // email domain alone cannot tell them apart.
+          ...(record.registrationId
+            ? {
+                registration_id: record.registrationId,
+                subscriber_type: record.subscriberType ?? "UNKNOWN",
+              }
+            : {}),
           location_json: record.location as never,
         })
         .eq("id", company.id)
@@ -885,7 +955,15 @@ async function enrich(context: RunContext): Promise<StageSummary> {
         provider: outcome.provider ?? "unknown",
         source_type: "LICENSED_PROVIDER",
         confidence: 0.8,
-        policy_tags: ["B2B_ENRICHMENT"] as never,
+        // "Who supplied this" and "what were we permitted to do with it" are
+        // different questions, and only the first had an answer. The basis is
+        // recorded alongside the provider so a subject access request, or an
+        // audit of a campaign, can be answered from the row rather than from
+        // somebody's memory of which vendor's terms said what.
+        policy_tags: [
+          "B2B_ENRICHMENT",
+          `BASIS:${lawfulBasisFor(outcome.provider)}`,
+        ] as never,
       });
 
       enriched += 1;
@@ -1215,25 +1293,68 @@ async function classify(context: RunContext): Promise<StageSummary> {
 
     const emailDecision = byChannel.EMAIL;
 
+    // The workspace's own tolerance for doubt, applied on top of the pack.
+    //
+    // The pack answers what the law permits. This answers what to do with a
+    // record that is neither clearly permitted nor clearly refused -- the
+    // commonest case being a company the register could not confirm, where the
+    // corporate exemption may or may not apply. `applyStrictness` can only ever
+    // tighten the pack's decision, never loosen it.
+    const strict = applyStrictness({
+      mode: context.strictness.mode,
+      requireRegistryMatch: context.strictness.requireRegistryMatch,
+      registry:
+        company?.subscriber_type === "CORPORATE"
+          ? "CONFIRMED_CORPORATE"
+          : company?.subscriber_type === "PARTNERSHIP"
+            ? "CONFIRMED_PARTNERSHIP"
+            : "UNRESOLVED",
+      emailOnCompanyDomain: Boolean(
+        domain && company?.domain && domain === company.domain,
+      ),
+      hasEmail: Boolean(email),
+      // A name published on the company's own site, or somebody who engaged
+      // with the workspace directly. Anything else was inferred by a database.
+      fromFirstPartySource:
+        prospect.source_provider === "website_contacts" ||
+        prospect.source_provider === "companies_house" ||
+        (prospect.source_provider ?? "").endsWith("_engagement"),
+      packOutcome:
+        eligibility === "ELIGIBLE"
+          ? "ALLOWED"
+          : eligibility === "SUPPRESSED"
+            ? "BLOCKED"
+            : "REVIEW_REQUIRED",
+    });
+
+    const finalEligibility =
+      strict.outcome === "ALLOWED"
+        ? eligibility
+        : strict.outcome === "BLOCKED"
+          ? "SUPPRESSED"
+          : "REVIEW";
+
     await admin
       .from("prospects")
       .update({
-        status: eligibility === "ELIGIBLE" ? "VERIFIED" : "REVIEW",
-        outreach_eligibility: eligibility,
+        status: finalEligibility === "ELIGIBLE" ? "VERIFIED" : "REVIEW",
+        outreach_eligibility: finalEligibility,
         eligibility_reason:
-          eligibility === "ELIGIBLE" ? null : (emailDecision?.message ?? null),
+          finalEligibility === "ELIGIBLE"
+            ? null
+            : (strict.reason ?? emailDecision?.message ?? null),
       })
       .eq("id", prospect.id)
       .eq("business_id", context.businessId);
 
-    if (eligibility !== "ELIGIBLE") {
+    if (finalEligibility !== "ELIGIBLE") {
       reviewCount += 1;
       await admin.from("sourcing_run_results").insert({
         business_id: context.businessId,
         run_id: context.runId,
         prospect_id: prospect.id,
         outcome: "REVIEW_REQUIRED",
-        reason: emailDecision?.reasonCode ?? "Policy review",
+        reason: strict.reason ?? emailDecision?.reasonCode ?? "Policy review",
       });
     }
   }
@@ -1665,6 +1786,8 @@ type RunProspect = {
   verification_status: string;
   outreach_eligibility: string;
   eligibility_reason: string | null;
+  /** Which adapter produced this record. Drives the first-party test. */
+  source_provider: string | null;
   company: {
     id: string;
     name: string;
@@ -1672,6 +1795,8 @@ type RunProspect = {
     industry: string | null;
     employee_count: number | null;
     location_json: unknown;
+    /** The register's verdict, where one was obtained. */
+    subscriber_type: string | null;
   } | null;
 };
 
@@ -1683,7 +1808,7 @@ async function loadRunProspects(
   const { data } = await admin
     .from("prospects")
     .select(
-      "id, email, role_title, status, grade, score, verification_status, outreach_eligibility, eligibility_reason, company:prospect_companies(id, name, domain, industry, employee_count, location_json)",
+      "id, email, role_title, status, grade, score, verification_status, outreach_eligibility, eligibility_reason, source_provider, company:prospect_companies(id, name, domain, industry, employee_count, location_json, subscriber_type)",
     )
     .eq("business_id", context.businessId)
     .eq("source_run_id", context.runId)

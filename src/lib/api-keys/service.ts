@@ -6,7 +6,7 @@ import {
   isPlatformScope,
   type PlatformScope,
 } from "@/lib/platform/scopes";
-import type { ApiKeyEnvironment } from "./types";
+import { ipAllowed, type ApiKeyEnvironment } from "./types";
 
 /**
  * Workspace API keys: issuing, resolving and revoking.
@@ -233,56 +233,6 @@ export type ApiKeyRefusal =
 export type ApiKeyResolution =
   | { ok: true; context: ApiKeyContext }
   | { ok: false; reason: ApiKeyRefusal };
-
-/**
- * An IP matches the allowlist if it is listed exactly, or falls inside a listed
- * IPv4 CIDR block.
- *
- * IPv6 is exact-match only. A partly-correct IPv6 prefix comparison is worse
- * than none: it would silently admit addresses the customer believed were
- * excluded. Documented rather than approximated.
- */
-export function ipAllowed(ip: string, allowlist: string[]): boolean {
-  if (allowlist.length === 0) return true;
-  if (!ip || ip === "unknown") return false;
-
-  for (const entry of allowlist) {
-    const rule = entry.trim();
-    if (!rule) continue;
-    if (rule === ip) return true;
-
-    const [network, maskText] = rule.split("/");
-    if (maskText === undefined) continue;
-    if (network.includes(":") || ip.includes(":")) continue;
-
-    const bits = Number(maskText);
-    if (!Number.isInteger(bits) || bits < 0 || bits > 32) continue;
-
-    const left = ipv4ToInt(network);
-    const right = ipv4ToInt(ip);
-    if (left === null || right === null) continue;
-
-    // A /0 shifts by 32, which in JavaScript is a no-op rather than zero, so it
-    // is handled explicitly instead of producing a mask of all ones.
-    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-    if ((left & mask) === (right & mask)) return true;
-  }
-
-  return false;
-}
-
-function ipv4ToInt(value: string): number | null {
-  const octets = value.split(".");
-  if (octets.length !== 4) return null;
-  let result = 0;
-  for (const octet of octets) {
-    if (!/^\d{1,3}$/.test(octet)) return null;
-    const number = Number(octet);
-    if (number > 255) return null;
-    result = (result << 8) | number;
-  }
-  return result >>> 0;
-}
 
 /**
  * Resolves a presented key to its live context.

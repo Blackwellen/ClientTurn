@@ -250,3 +250,114 @@ describe("failure classification", () => {
     }
   });
 });
+
+/* ------------------------------------------------- what a caller may reach */
+
+describe("caller authority", () => {
+  /**
+   * An unattended agent is the caller with no human behind it: it cannot set
+   * `confirmed`, nobody reads its output before it acts, and it runs on a
+   * schedule. So the question for every write is not "is this reversible" but
+   * "would a person be surprised to find this had happened while they slept".
+   *
+   * Three kinds of authority it must never hold, each of which it did hold at
+   * some point and each of which is a different way of escaping supervision.
+   */
+  const AGENT_MUST_NOT_REACH = [
+    // Editing its own limits. An agent that can raise its own daily and monthly
+    // caps, or set its own autonomy to AUTO, is not running under a limit.
+    "agent.create",
+    "agent.configure",
+    "agent.start",
+    "agent.run_now",
+
+    // Editing its own supervision. These settings decide whether the assistant
+    // drafts replies or sends them, and whether a REVIEW result reaches a
+    // person — an agent writing here could switch off the review it exists
+    // under.
+    "ai_settings.update",
+
+    // Causing outbound contact. Sending, launching and resuming all put words
+    // in front of real people.
+    "message.send",
+    "campaign.launch",
+    "campaign.resume",
+
+    // Approving its own output. A sourcing agent's autonomy setting promises a
+    // person reviews what it found; an agent that could approve prospects would
+    // make REVIEW_ALL mean nothing.
+    "prospect.approve",
+
+    // Concealing breakage. Dismissing a failed event is a person saying "I have
+    // seen this"; an agent doing it silently clears the evidence.
+    "connector.dismiss_event",
+    "connector.replay_event",
+    "connector.disconnect",
+  ];
+
+  for (const name of AGENT_MUST_NOT_REACH) {
+    test(`an unattended agent cannot reach ${name}`, () => {
+      const operation = serviceOperation(name);
+      assert.ok(operation, `${name} is not in the catalogue`);
+      assert.equal(
+        callerAllowed(operation!, "AGENT"),
+        false,
+        `${name} is reachable by an autonomous agent`,
+      );
+    });
+  }
+
+  test("Copilot holds no authority to contact anyone", () => {
+    // Copilot is a chat assistant in the corner of the screen. It does not get
+    // to put words in the customer's name in front of a real person, whatever
+    // it is asked. Mirrors the rule in tests/copilot.test.ts from the other
+    // direction: there by tool name, here by declared caller.
+    for (const name of ["message.send", "campaign.launch", "campaign.resume"]) {
+      const operation = serviceOperation(name);
+      assert.ok(operation, `${name} is not in the catalogue`);
+      assert.equal(
+        callerAllowed(operation!, "COPILOT"),
+        false,
+        `${name} is reachable by Copilot`,
+      );
+    }
+  });
+
+  test("the safe direction is always reachable", () => {
+    // Pausing and stopping must never be gated or restricted. If an agent is
+    // misbehaving, the thing that stops it cannot be the thing waiting for an
+    // approval — that is when a person needs it most.
+    for (const name of ["agent.pause", "agent.stop", "campaign.pause"]) {
+      const operation = serviceOperation(name);
+      assert.ok(operation, `${name} is not in the catalogue`);
+      assert.equal(
+        requiresConfirmation(operation!.risk),
+        false,
+        `${name} must not need confirmation — it is how someone stops things`,
+      );
+      assert.equal(callerAllowed(operation!, "AGENT"), true, name);
+      assert.equal(callerAllowed(operation!, "MCP"), true, name);
+    }
+  });
+
+  test("anything that contacts a person needs that person's confirmation", () => {
+    // Derived rather than listed, so a new outbound operation is caught by
+    // existing rules instead of needing to be remembered.
+    for (const operation of ALL_OPERATIONS) {
+      const contactsSomeone = /^(message\.|campaign\.(launch|resume))/.test(
+        operation.name,
+      );
+      if (!contactsSomeone) continue;
+
+      assert.equal(
+        requiresConfirmation(operation.risk),
+        true,
+        `${operation.name} contacts people but is ${operation.risk}`,
+      );
+      assert.ok(
+        operation.effect,
+        `${operation.name} needs an effect: it is what a person is agreeing to`,
+      );
+    }
+  });
+});

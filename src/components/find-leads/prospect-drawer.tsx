@@ -56,6 +56,7 @@ import {
 import { confidenceBand, confidenceLabel, confidenceTone } from "@/lib/prospects/scoring-explain";
 import type { ProspectDetail } from "@/lib/prospects/queries";
 import { SocialOutreachPanel } from "./social/social-outreach-panel";
+import { PrivateReplyWindow } from "./social/private-reply-window";
 import { useFindLeadsParams } from "./use-find-leads-params";
 
 /**
@@ -105,7 +106,7 @@ export function ProspectDrawer({
       header={
         <div className="w-full border-b border-line px-5 pb-0 pt-4">
           <div className="flex items-start gap-3">
-            <Avatar name={name} size="xl" />
+            <Avatar name={name} src={prospect.avatarUrl} size="xl" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-[19px] font-semibold text-content">{name}</h2>
@@ -286,6 +287,15 @@ function SummaryView({ detail }: { detail: ProspectDetail }) {
       <ContactabilityCard detail={detail} />
       <VerificationCard detail={detail} />
       <CampaignAssignmentCard detail={detail} />
+
+      {/* The one deadline in the product that expires with no error. Placed
+          immediately above the outreach panel so somebody about to act on this
+          prospect sees how long they have before they act. */}
+      <PrivateReplyWindow
+        commentId={detail.prospect.socialCommentId}
+        commentedAt={detail.prospect.socialCommentedAt}
+        sentAt={detail.prospect.privateReplySentAt}
+      />
 
       <SocialOutreachPanel
         prospectId={detail.prospect.id}

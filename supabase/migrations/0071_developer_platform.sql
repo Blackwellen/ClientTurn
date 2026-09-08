@@ -307,3 +307,21 @@ $fn$;
 
 revoke all on function public.touch_api_key(uuid, text)
   from public, anon, authenticated;
+
+/* ------------------------------------------- MCP over a workspace API key */
+
+-- The MCP gateway now accepts a workspace API key as well as an OAuth-issued
+-- MCP token, because a real MCP client (Claude, Codex, Gemini) configures a
+-- static bearer header and cannot perform a refresh exchange -- an hour-long
+-- token meant the connection worked for an hour and then silently stopped.
+--
+-- The audit row has to be able to say which credential made the call. Without
+-- this column an API-key call would be recorded with no client at all, and
+-- "which of my credentials did this" is the first question anyone asks of an
+-- audit trail.
+alter table public.mcp_audit_logs
+  add column if not exists api_key_id uuid
+    references public.api_keys(id) on delete set null;
+
+create index if not exists mcp_audit_logs_api_key_idx
+  on public.mcp_audit_logs (api_key_id, created_at desc);

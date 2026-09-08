@@ -18,6 +18,8 @@ import {
 } from "../automation/scheduler.ts";
 import {
   CHANNEL_LIMITS,
+  SOCIAL_REPLY_WINDOW_HOURS,
+  isMetaAgentChannel,
   type AgentChannel,
   type AgentOperatingMode,
   type ConversationOwner,
@@ -135,6 +137,23 @@ export type SendGateSnapshot = {
   hasDestination: boolean;
   /** Provider connection for this channel is usable. */
   providerHealthy: boolean;
+  /**
+   * When the person last wrote. Only consulted on Messenger and Instagram,
+   * where it is what decides whether Meta will deliver a reply at all.
+   */
+  lastInboundAt: string | null;
+  /**
+   * The live `social_connection_states.state` for this prospect and platform,
+   * on the connect-gated channels. Null everywhere else, and null on a social
+   * channel means no row was found — which is itself a refusal, because the
+   * gate cannot be shown to have been passed.
+   *
+   * Read fresh for the turn rather than inferred from the conversation
+   * existing. A thread can exist and the permission behind it be gone: people
+   * unfollow, block, and delete accounts, and none of those events arrive as a
+   * message the runtime would otherwise notice.
+   */
+  socialConnectionState: string | null;
   quietHours: QuietHours;
   now: Date;
 };
@@ -148,7 +167,51 @@ export type SendGateResult =
 export type SendDenialCode =
   | "CONTACT_SUPPRESSED"
   | "NO_DESTINATION"
-  | "PROVIDER_UNHEALTHY";
+  | "PROVIDER_UNHEALTHY"
+  | "SOCIAL_WINDOW_CLOSED"
+  | "SOCIAL_NOT_CONNECTED";
+
+/**
+ * Whether Meta would still deliver a reply on this thread.
+ *
+ * `lastInboundAt` is when *they* last wrote. What the business has sent since
+ * is deliberately not a parameter: an outbound message does not extend the
+ * window, and a helper that accepted one would invite the mistake.
+ */
+export function withinSocialReplyWindow(
+  lastInboundAt: string | null,
+  now: Date,
+): boolean {
+  if (!lastInboundAt) return false;
+  const opened = new Date(lastInboundAt).getTime();
+  if (!Number.isFinite(opened)) return false;
+  return now.getTime() - opened < SOCIAL_REPLY_WINDOW_HOURS * 3600_000;
+}
+
+/**
+ * The channels whose permission is an accepted connection rather than a
+ * recent message.
+ *
+ * Deliberately not "every platform channel". Messenger and Instagram are gated
+ * by Meta's 24-hour reply window instead, and there is no connection to accept
+ * on them — a Page cannot follow a person. Applying this test there would deny
+ * every reply the platform was willing to deliver.
+ */
+function isConnectGatedChannel(channel: AgentChannel): boolean {
+  return channel === "tiktok" || channel === "linkedin";
+}
+
+/**
+ * Whether a recorded connection state still permits a message.
+ *
+ * Mirrors `canMessage` in `outreach/social-limits.ts`, restated here so this
+ * module stays pure and free of the outreach layer. The two are asserted
+ * equivalent in the test suite; a drift between them would let a turn decide to
+ * send something the outreach layer would refuse.
+ */
+function canMessageOn(state: string | null): boolean {
+  return state === "ACCEPTED" || state === "MESSAGED" || state === "REPLIED";
+}
 
 /**
  * May this turn actually put a message on the wire, and when? Re-evaluated
@@ -174,6 +237,49 @@ export function evaluateSendGate(snapshot: SendGateSnapshot): SendGateResult {
       decision: "DENY",
       code: "PROVIDER_UNHEALTHY",
       detail: `The ${snapshot.channel} connection is not healthy.`,
+    };
+  }
+
+  // Meta's reply window. A business may answer somebody who wrote to it, for
+  // 24 hours after they last did; outside that the platform refuses the send.
+  //
+  // It is a DENY rather than a QUEUE because waiting cannot help -- the window
+  // only ever gets further shut, and nothing this product does reopens it. Only
+  // the person can, by writing again. It sits above the SUGGEST_ONLY branch
+  // deliberately: drafting a reply for a human to send would be offering them a
+  // button that Meta will refuse too.
+  if (
+    isMetaAgentChannel(snapshot.channel) &&
+    !withinSocialReplyWindow(snapshot.lastInboundAt, snapshot.now)
+  ) {
+    return {
+      decision: "DENY",
+      code: "SOCIAL_WINDOW_CLOSED",
+      detail: `More than ${SOCIAL_REPLY_WINDOW_HOURS} hours have passed since they last messaged, so ${snapshot.channel} will not deliver a reply.`,
+    };
+  }
+
+  // The follow gate, re-checked at the moment of sending.
+  //
+  // On TikTok and LinkedIn the permission to message is not a property of the
+  // thread, it is a property of the relationship — and the recipient can end it
+  // at any time by unfollowing, withdrawing a connection or blocking the
+  // account. None of those arrive as an inbound message, so a runtime that
+  // trusted the conversation's existence would keep replying into a channel
+  // that had been closed to it, which is how an account gets reported.
+  //
+  // A DENY rather than a QUEUE, for the same reason as Meta's window: waiting
+  // does not help, because nothing this product does reopens it. And it sits
+  // above SUGGEST_ONLY because drafting a reply a person could not send either
+  // would just be offering them a broken button.
+  if (isConnectGatedChannel(snapshot.channel) && !canMessageOn(snapshot.socialConnectionState)) {
+    return {
+      decision: "DENY",
+      code: "SOCIAL_NOT_CONNECTED",
+      detail:
+        snapshot.socialConnectionState === null
+          ? `No accepted ${snapshot.channel} connection is recorded for this contact, so the platform will not deliver a message.`
+          : `This ${snapshot.channel} connection is ${snapshot.socialConnectionState.toLowerCase().replace(/_/g, " ")}, so a message cannot be delivered.`,
     };
   }
 

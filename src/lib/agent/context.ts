@@ -31,6 +31,7 @@ import { parseBusinessHours } from "@/lib/settings/types";
 import { resolveLifecycle } from "./lifecycle";
 import {
   VERBATIM_MESSAGE_WINDOW,
+  isPlatformAgentChannel,
   type AgentChannel,
   type ConversationOwner,
   type LifecycleState,
@@ -82,6 +83,13 @@ export type LeadContext = {
   contactable: boolean;
   lastInboundAt: string | null;
   lastOutboundAt: string | null;
+  /**
+   * The live `social_connection_states.state` on TikTok and LinkedIn, where the
+   * permission to send is the relationship rather than the thread. Null on
+   * every other channel, and null here means no accepted connection could be
+   * found — which the send gate treats as a refusal, not a default.
+   */
+  socialConnectionState: string | null;
 };
 
 export type ConversationTurn = {
@@ -95,6 +103,12 @@ export type ConversationContext = {
   conversationId: string | null;
   channel: AgentChannel;
   owner: ConversationOwner;
+  /**
+   * The platform address a reply on this thread goes to, prefixed by platform
+   * (`meta_psid:...`, `meta_igsid:...`). Null on SMS, WhatsApp and email, where
+   * the destination is a property of the lead rather than of the thread.
+   */
+  externalThreadId: string | null;
   recentMessages: ConversationTurn[];
   /** Compressed narrative of everything before `recentMessages`. */
   summary: string | null;
@@ -183,6 +197,7 @@ async function loadConversation(
       conversationId: null,
       channel,
       owner: "AI_ACTIVE",
+      externalThreadId: null,
       recentMessages: [],
       summary: null,
       totalMessages: 0,
@@ -193,7 +208,7 @@ async function loadConversation(
   const [conversation, messages, summary, count] = await Promise.all([
     admin
       .from("conversations")
-      .select("id, owner, current_question_id, channel")
+      .select("id, owner, current_question_id, channel, external_thread_id")
       .eq("id", conversationId)
       .eq("business_id", businessId)
       .maybeSingle(),
@@ -227,6 +242,7 @@ async function loadConversation(
     conversationId,
     channel: (conversation.data?.channel as AgentChannel) ?? channel,
     owner: (conversation.data?.owner as ConversationOwner) ?? "AI_ACTIVE",
+    externalThreadId: conversation.data?.external_thread_id ?? null,
     recentMessages: (messages.data ?? [])
       .slice()
       .reverse()
@@ -341,10 +357,39 @@ export async function assembleContext(input: {
   ]);
 
   const serviceName = services.find((service) => service.id === lead.service_id)?.name ?? null;
-  const contact = leadContact(lead, input.channel);
+
+  // Where a reply would go. On Messenger and Instagram the address belongs to
+  // the thread, not to the lead: the same person can hold a Messenger thread
+  // and an Instagram one, and `leads` has no column that could hold either.
+  // There is deliberately no fallback to the phone number -- texting somebody
+  // who wrote to you on Instagram is a different act, on a channel they never
+  // gave you.
+  const contact = isPlatformAgentChannel(input.channel)
+    ? conversation.externalThreadId
+    : leadContact(lead, input.channel);
+
   const contactable = contact
     ? !lead.opted_out && !(await isSuppressed(input.businessId, contact, input.channel))
     : false;
+
+  /**
+   * The live connection state behind a connect-gated channel.
+   *
+   * On TikTok and LinkedIn the permission to send is the relationship, not the
+   * thread, and the recipient can end it at any moment without sending anything
+   * the runtime would notice. So it is read fresh for the turn.
+   *
+   * Keyed through the prospect, because `social_connection_states` belongs to
+   * the prospect record rather than the lead — a lead is what a prospect
+   * becomes, and the connection was established before that happened. Null for
+   * every other channel, and null here is a refusal rather than a default: if
+   * the row cannot be found, the gate cannot be shown to have been passed.
+   */
+  const socialConnectionState = await loadSocialConnectionState(
+    input.businessId,
+    lead.id,
+    input.channel,
+  );
 
   const admin = createAdminClient();
   const { data: conversationTimes } = input.conversationId
@@ -402,6 +447,7 @@ export async function assembleContext(input: {
       contactable,
       lastInboundAt: conversationTimes?.last_inbound_at ?? null,
       lastOutboundAt: conversationTimes?.last_outbound_at ?? null,
+      socialConnectionState,
     },
     conversation,
     qualification,
@@ -535,4 +581,46 @@ export function publishedPriceStrings(context: AgentContext): string[] {
 /** Links the validator will accept in an outbound message. */
 export function allowedUrls(context: AgentContext): string[] {
   return [context.booking.bookingUrl].filter((url): url is string => Boolean(url));
+}
+
+/**
+ * The live social connection state for a lead, on the connect-gated channels.
+ *
+ * Returns null for every other channel, and null when no row exists — both of
+ * which `evaluateSendGate` reads as "not shown to be connected". That default
+ * is the safe one: on TikTok and LinkedIn a message without an accepted
+ * connection is refused by the platform anyway, so a missing row can only ever
+ * mean the send would fail.
+ *
+ * The join goes through `prospects.promoted_to_lead_id` because the connection
+ * was established while the record was still a prospect; becoming a lead does
+ * not move it.
+ */
+async function loadSocialConnectionState(
+  businessId: string,
+  leadId: string,
+  channel: AgentChannel,
+): Promise<string | null> {
+  if (channel !== "tiktok" && channel !== "linkedin") return null;
+
+  const admin = createAdminClient();
+
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("promoted_to_lead_id", leadId)
+    .maybeSingle();
+
+  if (!prospect) return null;
+
+  const { data } = await admin
+    .from("social_connection_states")
+    .select("state")
+    .eq("business_id", businessId)
+    .eq("prospect_id", prospect.id)
+    .eq("platform", channel.toUpperCase())
+    .maybeSingle();
+
+  return data?.state ?? null;
 }

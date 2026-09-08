@@ -8,7 +8,7 @@
  * something actually emits it.** A subscription checkbox for an event that is
  * never sent is worse than a missing feature — the customer builds against it,
  * waits, and concludes the product is broken. Every entry below has a real
- * emit site, named in `emittedBy`, and `tests/webhooks.test.ts` fails if one
+ * emit site, named in `emittedBy`, and `tests/developer-platform.test.ts` fails if one
  * loses it.
  */
 
@@ -50,7 +50,7 @@ export const WEBHOOK_EVENTS = [
     label: "Lead status changed",
     description: "A lead moved to a different status, by a person or by automation.",
     scope: "leads:read",
-    emittedBy: "lib/services/operations/lead.ts",
+    emittedBy: "lib/services/operations/leads.ts",
   },
   {
     type: "lead.handover_required",

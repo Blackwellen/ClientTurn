@@ -51,8 +51,8 @@ export function MarketingFooter() {
           <div className="max-w-xs">
             <Logo />
             <p className="mt-4 text-[13px] leading-relaxed text-content-muted">
-              Follow-up, qualification and booking for UK home-service
-              businesses running Meta lead ads.
+              Follow-up, qualification and booking for UK agencies,
+              software and ecommerce businesses.
             </p>
             <p className="mt-4 space-x-3 text-[13px] text-content-secondary">
               <a

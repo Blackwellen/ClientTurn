@@ -37,9 +37,24 @@ if (host !== "localhost" && host !== "127.0.0.1") {
   throw new Error("Refusing to mint a login link for a non-local origin.");
 }
 
-const url = readEnv(".env.local", "NEXT_PUBLIC_SUPABASE_URL");
-const key = readEnv(".env.local", "SUPABASE_SERVICE_ROLE_KEY");
-if (!url || !key) throw new Error("Supabase URL / service role key not found in .env.local");
+/**
+ * `.env.local` first, then `.env`.
+ *
+ * The two hold different halves of the configuration in this project -- the
+ * project ref is local, the URL and service-role key are not -- and reading
+ * only the first meant this script could never find a key that was present the
+ * whole time. Same precedence Next.js itself uses, so a value overridden
+ * locally still wins.
+ */
+function env(key) {
+  return readEnv(".env.local", key) ?? readEnv(".env", key);
+}
+
+const url = env("NEXT_PUBLIC_SUPABASE_URL");
+const key = env("SUPABASE_SERVICE_ROLE_KEY");
+if (!url || !key) {
+  throw new Error("Supabase URL / service role key not found in .env.local or .env");
+}
 
 const response = await fetch(`${url}/auth/v1/admin/generate_link`, {
   method: "POST",

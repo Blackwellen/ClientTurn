@@ -89,12 +89,21 @@ export async function getPeriodUsage(businessId: string, since: string | null) {
 }
 
 export class EntitlementError extends Error {
+  // Declared as a field rather than a constructor parameter property, matching
+  // `ServiceError`: the test runner strips types without transforming them, and
+  // a parameter property is a transform. Keeping this plain means the
+  // end-to-end tests exercise the file that ships rather than a compiled
+  // variant of it — and this module is on the path of every billable action, so
+  // it is exactly the one worth testing for real.
+  readonly code: "PLAN_LIMIT" | "FEATURE_LOCKED" | "SUBSCRIPTION_INACTIVE";
+
   constructor(
     message: string,
-    readonly code: "PLAN_LIMIT" | "FEATURE_LOCKED" | "SUBSCRIPTION_INACTIVE",
+    code: "PLAN_LIMIT" | "FEATURE_LOCKED" | "SUBSCRIPTION_INACTIVE",
   ) {
     super(message);
     this.name = "EntitlementError";
+    this.code = code;
   }
 }
 

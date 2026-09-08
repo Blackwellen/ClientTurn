@@ -46,6 +46,13 @@ export const loadDataControls = cache(
       retainUncontactedProspectsDays: data.retain_uncontacted_prospects_days,
       retainInactiveLeadsDays: data.retain_inactive_leads_days,
       retainRawEventsDays: data.retain_raw_events_days,
+      socialAutonomousSending: data.social_autonomous_sending ?? false,
+      socialAutoPromoteOnReply: data.social_auto_promote_on_reply ?? false,
+      socialWithdrawAfterDays: data.social_withdraw_after_days ?? 21,
+      socialFollowUpGapHours: data.social_follow_up_gap_hours ?? 96,
+      socialMaxFollowUps: data.social_max_follow_ups ?? 2,
+      sourcingStrictness: (data.sourcing_strictness ?? "BALANCED") as DataControls["sourcingStrictness"],
+      requireRegistryMatch: data.require_registry_match ?? false,
       updatedAt: data.updated_at,
     };
   },

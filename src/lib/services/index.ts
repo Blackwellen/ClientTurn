@@ -14,6 +14,8 @@ import "server-only";
  */
 
 import "./operations/leads";
+import "./operations/agents";
+import "./operations/workspace";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

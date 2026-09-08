@@ -38,10 +38,11 @@ export type EndpointUrlProblem =
 /**
  * Validates a target address.
  *
- * `https` is required in production. Plain `http` would send a customer's own
- * lead data across the internet in the clear, and the signature proves who sent
- * it — not that nobody read it. Localhost over http is allowed only outside
- * production, so a developer can point an endpoint at their own machine.
+ * `https` is required, with no exception for development. Plain `http` would
+ * send a customer's own lead data across the internet in the clear, and the
+ * signature proves who sent a request — not that nobody read it. A developer
+ * testing locally uses a tunnel, which is what they would need for any other
+ * webhook provider too.
  */
 export async function checkEndpointUrl(
   raw: string,
@@ -173,7 +174,16 @@ export async function updateEndpoint(input: {
   events?: string[];
   status?: "ACTIVE" | "PAUSED";
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const patch: Record<string, unknown> = {};
+  // Typed against the table rather than `Record<string, unknown>`, so a column
+  // renamed in a migration fails here at compile time instead of becoming an
+  // update that silently changes nothing.
+  const patch: {
+    description?: string | null;
+    events?: string[];
+    status?: "ACTIVE" | "PAUSED";
+    consecutive_failures?: number;
+    disabled_reason?: string | null;
+  } = {};
 
   if (input.description !== undefined) patch.description = input.description;
 

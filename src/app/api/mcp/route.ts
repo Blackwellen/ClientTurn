@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticate, callTool, listTools } from "@/lib/mcp/gateway";
+import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +18,14 @@ export const maxDuration = 60;
  * call re-resolves the token, re-reads the authorising user's live role, and is
  * audited. See `lib/mcp/gateway.ts`.
  */
+
+/**
+ * Protocol revisions this server implements. `initialize` echoes the client's
+ * version when we speak it and otherwise answers with our newest — which is
+ * what the specification asks for, and what stops a client from assuming a
+ * revision we do not actually support.
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 type JsonRpcRequest = {
   jsonrpc?: string;
@@ -51,7 +60,26 @@ export async function POST(request: Request) {
     return rpcError(null, -32700, "Parse error", 400);
   }
 
-  const auth = await authenticate(request.headers.get("authorization"));
+  const ip = clientIdentifier(request.headers);
+
+  // Bounded before the credential is looked up, so guessing a key costs an
+  // attacker rate-limit budget rather than a database query.
+  const guessLimit = await checkRateLimit("api:unauthenticated", ip);
+  if (!guessLimit.allowed) {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        id: body.id ?? null,
+        error: { code: -32029, message: "Too many requests." },
+      },
+      {
+        status: 429,
+        headers: { "retry-after": String(Math.max(1, guessLimit.retryAfterSeconds)) },
+      },
+    );
+  }
+
+  const auth = await authenticate(request.headers.get("authorization"), ip);
   if (!auth) {
     // 401 with the standard challenge, so a client knows to re-authorise
     // rather than treating this as a tool failure.
@@ -65,16 +93,47 @@ export async function POST(request: Request) {
     );
   }
 
+  // A resolved credential gets its own budget, so one workspace's runaway
+  // assistant cannot degrade anyone else's.
+  const callLimit = await checkRateLimit(
+    "api:key",
+    auth.apiKeyId ?? auth.clientId ?? auth.businessId,
+  );
+  if (!callLimit.allowed) {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        id: body.id ?? null,
+        error: { code: -32029, message: "Too many requests." },
+      },
+      {
+        status: 429,
+        headers: { "retry-after": String(Math.max(1, callLimit.retryAfterSeconds)) },
+      },
+    );
+  }
+
   switch (body.method) {
     case "initialize":
       return rpcResult(body.id, {
-        protocolVersion: "2024-11-05",
+        protocolVersion:
+          typeof body.params?.protocolVersion === "string" &&
+          SUPPORTED_PROTOCOL_VERSIONS.includes(body.params.protocolVersion)
+            ? body.params.protocolVersion
+            : SUPPORTED_PROTOCOL_VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "clientturn", version: "1.0.0" },
       });
 
     case "ping":
       return rpcResult(body.id, {});
+
+    // A notification carries no id and must not be answered with a result. A
+    // client that receives one for a notification it sent treats the stream as
+    // corrupt, which shows up as a connection that handshakes and then dies.
+    case "notifications/initialized":
+    case "notifications/cancelled":
+      return new NextResponse(null, { status: 202 });
 
     case "tools/list":
       return rpcResult(body.id, {
@@ -128,6 +187,7 @@ export async function GET() {
     transport: "http",
     protocol: "jsonrpc-2.0",
     methods: ["initialize", "ping", "tools/list", "tools/call"],
-    authentication: "Bearer token issued from Settings → Connections.",
+    authentication:
+      "Bearer credential from Settings → Developer. A workspace API key (ct_live_…) is the durable option; an MCP access token also works but expires after an hour.",
   });
 }

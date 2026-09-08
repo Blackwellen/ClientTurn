@@ -148,3 +148,32 @@ export const costRollupMonthlyPayload = z.object({
   /** YYYY-MM-01, UTC. Defaults to last calendar month when omitted. */
   billingPeriod: z.string().regex(/^\d{4}-\d{2}-01$/).optional(),
 });
+
+/* --------------------------------------------------------- social outreach */
+
+/**
+ * One workspace's due social rows.
+ *
+ * `businessId` is required rather than optional, unlike the maintenance
+ * payloads above. Those legitimately mean "every workspace" when omitted; this
+ * one never does, and an omitted id here would mean a bug had queued a job
+ * that silently did nothing.
+ */
+export const socialAdvancePayload = z.object({
+  businessId: uuid,
+});
+
+/**
+ * Perform one prepared social action against a partner API.
+ *
+ * Deliberately addresses the *prospect and platform* rather than the outbound
+ * message id. The message a retry should send is whichever is currently in
+ * DRAFT for that pair -- if the original was discarded because the prospect
+ * replied in the meantime, there is nothing to send, and a job keyed on the
+ * message id would happily send it anyway.
+ */
+export const socialExecutePayload = z.object({
+  businessId: uuid,
+  prospectId: uuid,
+  platform: z.enum(["LINKEDIN", "FACEBOOK", "INSTAGRAM", "TIKTOK"]),
+});

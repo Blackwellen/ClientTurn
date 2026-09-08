@@ -2,6 +2,7 @@ import "server-only";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { recordUsage } from "@/lib/audit";
 import {
   liftSuppressionForDestination,
@@ -13,11 +14,14 @@ import { createTwilioProvider } from "@/lib/messaging/twilio";
 import {
   isOptInKeyword,
   isOptOutKeyword,
+  isMetaChannel,
   normalisePhone,
   type Channel,
   type InboundMessage,
   type MessagingProvider,
 } from "@/lib/messaging/types";
+import { parseMetaInbound } from "@/lib/messaging/meta";
+import { resolveMetaBusinessId, resolveSocialThread } from "@/lib/social/meta-inbound";
 import { normaliseEmail } from "@/lib/email/account";
 import {
   conversationFor,
@@ -54,6 +58,9 @@ type StoredInbound = {
   form?: Record<string, string>;
   /** Set for provider "smtp": the already-parsed inbound email. */
   message?: InboundMessage;
+  /** Set for provider "meta": the raw webhook entry, as delivered. */
+  object?: string;
+  entry?: unknown;
 };
 
 function providerFor(name: string): MessagingProvider {
@@ -67,6 +74,14 @@ async function resolveBusinessId(
   hint: string | null,
 ): Promise<string | null> {
   if (hint) return hint;
+
+  // Meta addresses the recipient by Page or Instagram account id, which maps to
+  // exactly one connected integration. There is no sender-based fallback for
+  // social: a page-scoped id means nothing outside the Page that issued it, so
+  // there is nothing to fall back *to*.
+  if (isMetaChannel(message.channel)) {
+    return resolveMetaBusinessId(message);
+  }
 
   const admin = createAdminClient();
   const to = normalisePhone(message.to) ?? message.to;
@@ -407,7 +422,18 @@ export async function applyInboundMessage(
   const business = await loadBusinessContext(businessId);
   if (!business) return "unmatched";
 
-  const lead = await resolveLead(businessId, message);
+  // On a social channel the thread is the identity, and a first message from
+  // somebody unknown creates the lead rather than being discarded: opening a
+  // conversation with a business is asking to be answered, which is the same
+  // act as submitting a lead form. A comment or a like is not, and those go
+  // through `engagement-ingest` to a human instead.
+  const socialThread = isMetaChannel(message.channel)
+    ? await resolveSocialThread(message, businessId)
+    : null;
+
+  const lead = socialThread
+    ? await loadLead(socialThread.leadId)
+    : await resolveLead(businessId, message);
 
   // No lead, but possibly a cold prospect mid-campaign. Their reply has to be
   // acted on — it stops the sequence, and an opt-out in it has to suppress —
@@ -417,13 +443,21 @@ export async function applyInboundMessage(
   }
 
   const admin = createAdminClient();
-  const channel: Channel =
-    message.channel === "whatsapp"
-      ? "whatsapp"
-      : message.channel === "email"
-        ? "email"
-        : "sms";
-  const conversationId = await conversationFor(businessId, lead.id, channel);
+
+  // The channel the message actually arrived on. This used to collapse
+  // everything that was not WhatsApp or email into 'sms', which was harmless
+  // while those were the only inbound transports and is not any more: a
+  // Messenger reply filed as 'sms' would be answered by SMS, to a phone number
+  // belonging to a different person or to nobody.
+  const channel: Channel = message.channel;
+
+  // A social thread is found by its platform address, not by (lead, channel):
+  // the same lead can hold a Messenger thread and an Instagram one, and
+  // `conversationFor` would return whichever it found first.
+  const conversationId = socialThread
+    ? socialThread.conversationId
+    : await conversationFor(businessId, lead.id, channel);
+
   if (!conversationId) return "unmatched";
 
   const now = new Date().toISOString();
@@ -450,6 +484,23 @@ export async function applyInboundMessage(
 
   if (insertError?.code === "23505") return "duplicate";
   if (insertError || !storedMessage) throw insertError ?? new Error("Inbound message not stored.");
+
+  // Placed after the duplicate check, so a re-polled or replayed provider event
+  // does not deliver the same reply twice. The stored message id is the event
+  // id for the same reason.
+  await emitWebhookEvent({
+    businessId,
+    type: "message.received",
+    eventId: storedMessage.id,
+    data: {
+      message_id: storedMessage.id,
+      lead_id: lead.id,
+      conversation_id: conversationId,
+      channel,
+      body: message.body,
+      received_at: message.receivedAt || now,
+    },
+  });
 
   await admin
     .from("conversations")
@@ -724,14 +775,23 @@ export async function processInboundWebhookEvent(
   // Email arrives from the `email.poll` job, which has already parsed the
   // MIME message. There is no signed webhook body to re-parse, so the stored
   // payload is the message.
+  // Three shapes, because three providers deliver differently. Email arrives
+  // from the `email.poll` job, which has already parsed the MIME message, so
+  // there is no signed body to re-parse. Meta posts JSON. Twilio posts a form.
+  // Handing Meta's JSON to the form parser would silently yield no messages,
+  // which is the failure mode where a webhook looks healthy and never delivers.
   const messages: InboundMessage[] =
     event.provider === "smtp"
       ? stored.message
         ? [stored.message]
         : []
-      : await providerFor(event.provider).parseInbound(
-          new URLSearchParams(stored.form ?? {}).toString(),
-        );
+      : event.provider === "meta"
+        ? parseMetaInbound(
+            JSON.stringify({ object: stored.object, entry: stored.entry }),
+          )
+        : await providerFor(event.provider).parseInbound(
+            new URLSearchParams(stored.form ?? {}).toString(),
+          );
 
   if (messages.length === 0) {
     await admin

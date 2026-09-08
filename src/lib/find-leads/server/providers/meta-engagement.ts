@@ -193,6 +193,10 @@ async function fetchEngagement(input: {
         excerpt: excerptOf(comment.message),
         occurredAt: comment.created_time ?? null,
         sourceReference: comment.id ?? null,
+        // The address a private reply is sent to. Without it this person can be
+        // listed and never contacted, because Meta offers no other route to
+        // somebody who has only commented.
+        commentId: comment.id ?? null,
       });
     }
   }
@@ -243,6 +247,7 @@ async function fetchEngagement(input: {
             excerpt: excerptOf(comment.text),
             occurredAt: comment.timestamp ?? null,
             sourceReference: comment.id ?? media.id ?? null,
+            commentId: comment.id ?? null,
           });
         }
       }

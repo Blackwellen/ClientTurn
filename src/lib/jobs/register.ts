@@ -29,6 +29,8 @@ import { handleOutreachAudience } from "./handlers/outreach-audience";
 import { handleOutreachOptimize } from "./handlers/outreach-optimize";
 import { handleAppIngest } from "./handlers/app-ingest";
 import { handleAffiliateLedger } from "./handlers/affiliate-ledger";
+import { handleSocialTick, handleSocialAdvance } from "./handlers/social-tick";
+import { handleSocialExecute } from "./handlers/social-execute";
 import "@/lib/integrations/providers/google-ads";
 import "@/lib/integrations/providers/microsoft-ads";
 import "@/lib/integrations/providers/meta-lead-ads";
@@ -79,6 +81,9 @@ export function registerJobHandlers() {
   registerHandler("outreach.audience", handleOutreachAudience);
   registerHandler("outreach.optimize", handleOutreachOptimize);
   registerHandler("app.ingest", handleAppIngest);
+  registerHandler("social.tick", handleSocialTick);
+  registerHandler("social.advance", handleSocialAdvance);
+  registerHandler("social.execute", handleSocialExecute);
 }
 
 registerJobHandlers();

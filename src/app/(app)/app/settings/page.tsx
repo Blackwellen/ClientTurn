@@ -12,6 +12,7 @@ import { ConnectionsSection } from "./_sections/connections-section";
 import { TeamSection } from "./_sections/team-section";
 import { BillingSection } from "./_sections/billing-section";
 import { DataControlsSection } from "./_sections/data-controls-section";
+import { DeveloperSection } from "./_sections/developer-section";
 import { BusinessProfileSectionLoader } from "./_sections/business-profile-section";
 
 export const metadata: Metadata = { title: "Settings · Client Turn" };
@@ -35,7 +36,9 @@ export default async function SettingsPage({
     section === "team" ? (
       <SettingsTableSkeleton />
     ) : (
-      <SettingsFormSkeleton cards={section === "connections" ? 3 : 2} />
+      <SettingsFormSkeleton
+        cards={section === "connections" || section === "developer" ? 4 : 2}
+      />
     );
 
   return (
@@ -53,6 +56,7 @@ export default async function SettingsPage({
         {section === "connections" && <ConnectionsSection />}
         {section === "business-profile" && <BusinessProfileSectionLoader />}
         {section === "team" && <TeamSection />}
+        {section === "developer" && <DeveloperSection />}
         {section === "data-controls" && <DataControlsSection />}
         {section === "billing" && <BillingSection />}
       </React.Suspense>

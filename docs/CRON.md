@@ -80,12 +80,34 @@ never become an unauthenticated call.
 
 | Job | Schedule | Calls | Does |
 |---|---|---|---|
-| `clientturn-worker` | every 30s | `/api/cron/worker` | Claims and runs up to 25 due jobs; re-queues mailbox polls; reaps stalled jobs |
+| `clientturn-worker` | every 30s | `/api/cron/worker` | Claims and runs up to 25 due jobs; re-queues mailbox polls; queues the outreach and social sweeps; reaps stalled jobs |
 | `clientturn-daily` | 03:07 UTC | `/api/cron/daily` | Enqueues cost rollups, usage aggregation, retention cleanup (and the monthly rollup on the 1st) |
 | `clientturn-reap` | every 5m | *(in-database)* | Returns abandoned locked jobs to pending, even while the app is down |
 
 Overlapping worker invocations are safe: `claim_jobs` uses
 `FOR UPDATE SKIP LOCKED`, so two ticks never claim the same row.
+
+### The sweeps the worker queues
+
+Two jobs are not scheduled by pg_cron at all — the worker queues them itself,
+each on a five-minute idempotency bucket, so however often the worker ticks
+only one of each is ever pending:
+
+| Sweep | Queued as | Does |
+|---|---|---|
+| Outreach sequences | `outreach.tick` | Finds email sequence steps that are due across every workspace |
+| Social outreach | `social.tick` | Finds workspaces with due `social_connection_states` rows and fans out one `social.advance` job each |
+
+`social.advance` is what makes connect-then-message run unattended: it decides
+what is due for each prospect, withdraws invites that have gone unanswered,
+and composes the next message. It does **not** send anything on LinkedIn — see
+`src/lib/outreach/social-scheduler.ts` for why the send is performed by a
+person unless the workspace has a partner integration. `social.execute` is the
+only job that touches a platform, and it is queued only for accounts in
+`PARTNER_API` mode in a workspace that has opted into autonomous sending.
+
+Both sweeps are cheap when idle: each is a single partial-index query that
+queues nothing when nothing is due.
 
 ### If your pg_cron is older than 1.5
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { checkSuppression } from "@/lib/policy/suppression";
 import type { PolicyChannel } from "@/lib/policy/types";
 import { enqueue } from "@/lib/jobs/queue";
@@ -11,7 +12,7 @@ import {
   type QuietHours,
 } from "@/lib/automation/scheduler";
 import { normaliseEmail } from "@/lib/email/account";
-import { normalisePhone, type Channel } from "@/lib/messaging/types";
+import { isPlatformChannel, normalisePhone, type Channel } from "@/lib/messaging/types";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import { runTask } from "@/lib/ai/model-router";
@@ -289,10 +290,18 @@ export async function isSuppressed(
   contact: string,
   channel: Channel,
 ): Promise<boolean> {
-  const hit = await checkSuppression(businessId, policyChannelFor(channel), {
-    email: contact.includes("@") ? contact : null,
-    phone: contact.includes("@") ? null : contact,
-  });
+  // Which slot the address belongs in is decided by the channel, never by the
+  // shape of the string. A platform address like `meta_igsid:17841...` contains
+  // no "@" and would otherwise be filed as a phone number, where
+  // `normalisePhone` would rewrite it into a plausible-looking E.164 value that
+  // matches nothing -- a suppression lookup that silently always misses.
+  const destination = isPlatformChannel(channel)
+    ? { social: contact }
+    : contact.includes("@")
+      ? { email: contact }
+      : { phone: contact };
+
+  const hit = await checkSuppression(businessId, policyChannelFor(channel), destination);
   return hit !== null;
 }
 
@@ -300,6 +309,7 @@ export async function isSuppressed(
 function policyChannelFor(channel: Channel): PolicyChannel {
   if (channel === "email") return "EMAIL";
   if (channel === "whatsapp") return "WHATSAPP";
+  if (isPlatformChannel(channel)) return "SOCIAL";
   return "SMS";
 }
 
@@ -312,6 +322,13 @@ export function leadContact(
   channel: Channel = "sms",
 ): string | null {
   if (channel === "email") return normaliseEmail(lead.email);
+  // A social address is a property of the thread, not of the lead: the same
+  // person can hold a Messenger thread and an Instagram one, and neither is
+  // reachable from a column on `leads`. Callers resolve it from the
+  // conversation's `external_thread_id` and must not fall back to the phone
+  // number -- texting somebody who wrote to you on Instagram is a different
+  // act, on a channel they never gave you.
+  if (isPlatformChannel(channel)) return null;
   return (
     lead.phone_normalized ?? (lead.phone ? normalisePhone(lead.phone) : null)
   );
@@ -604,4 +621,19 @@ export async function flagForAttention(input: {
     { businessId: input.businessId, leadId: input.leadId, text: `Needs attention: ${input.title}` },
     { businessId: input.businessId },
   );
+
+  // The same fact, sent outward. This is the event most customers wire to a
+  // pager or a shared inbox, because it is the one that means a person has to
+  // do something.
+  await emitWebhookEvent({
+    businessId: input.businessId,
+    type: "lead.handover_required",
+    data: {
+      lead_id: input.leadId,
+      reason: input.reason,
+      title: input.title,
+      detail: input.body ?? null,
+      automation_stopped: Boolean(input.takeover),
+    },
+  });
 }

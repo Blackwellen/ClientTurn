@@ -9,7 +9,7 @@ import "./affiliates.css";
 export const metadata: Metadata = {
   title: "Affiliate Programme | ClientTurn",
   description:
-    "Earn commission introducing UK home-service businesses to ClientTurn. Free to join, simple tracking, real commission.",
+    "Earn commission introducing UK agencies, software and ecommerce businesses to ClientTurn. Free to join, simple tracking, real commission.",
 };
 
 export const dynamic = "force-dynamic";

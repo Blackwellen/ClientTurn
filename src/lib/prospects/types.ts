@@ -94,6 +94,26 @@ export type ProspectListRow = {
   lastActivity: ProspectActivity | null;
   created_at: string;
   promoted_to_lead_id: string | null;
+  /**
+   * The photo, where one may be shown at all.
+   *
+   * Resolved by `prospects/avatar.ts` rather than read straight from the
+   * column: the source has to be one we are permitted to display and the
+   * platform's link has to still be live. Null falls back to initials, which
+   * is the normal case and a finished design rather than a placeholder.
+   */
+  avatarUrl: string | null;
+  /** The platform a social prospect was found on. Null for everyone else. */
+  socialPlatform: string | null;
+  /**
+   * The comment we may answer, its timestamp, and whether the one permitted
+   * reply is spent. Together these are the only thing that says whether a
+   * commenter is still reachable — a window that expires silently, so it is
+   * carried everywhere a commenter is shown.
+   */
+  socialCommentId: string | null;
+  socialCommentedAt: string | null;
+  privateReplySentAt: string | null;
 };
 
 export type ScoreFactor = {

@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveAvatar } from "./avatar";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,7 +52,9 @@ const PROSPECT_COLUMNS = `
   id, first_name, last_name, role_title, role_classification, email, phone_e164,
   status, grade, score, verification_status, outreach_eligibility, eligibility_reason,
   campaign_id, source_provider, last_activity_at, last_contacted_at, replied_at,
-  approved_at, promoted_at, last_intent_at, created_at, promoted_to_lead_id`;
+  approved_at, promoted_at, last_intent_at, created_at, promoted_to_lead_id,
+  avatar_url, avatar_source, avatar_expires_at,
+  social_platform, social_comment_id, social_commented_at, private_reply_sent_at`;
 
 const COMPANY_COLUMNS = `id, name, domain, website_url, industry, company_size,
                          employee_count, location_json`;
@@ -68,6 +71,10 @@ const LIST_SELECT_INNER = `${PROSPECT_COLUMNS},
 
 type RawProspect = {
   id: string;
+  social_platform?: string | null;
+  social_comment_id?: string | null;
+  social_commented_at?: string | null;
+  private_reply_sent_at?: string | null;
   first_name: string | null;
   last_name: string | null;
   role_title: string | null;
@@ -83,6 +90,9 @@ type RawProspect = {
   campaign_id: string | null;
   source_provider: string | null;
   last_activity_at: string | null;
+  avatar_url: string | null;
+  avatar_source: string | null;
+  avatar_expires_at: string | null;
   last_contacted_at: string | null;
   replied_at: string | null;
   approved_at: string | null;
@@ -143,6 +153,23 @@ function toListRow(
     lastActivity: activity?.get(raw.id) ?? null,
     created_at: raw.created_at,
     promoted_to_lead_id: raw.promoted_to_lead_id,
+    // Resolved rather than passed through: the source must be one we are
+    // permitted to display and the platform's signed link must still be live.
+    // See `prospects/avatar.ts` for why a LinkedIn photo is never among them.
+    // Served through this application's own proxy, never the platform's CDN: a
+    // direct <img> would tell the platform, on every render, which of its users
+    // this business is looking at. `resolveAvatar` still decides *whether*
+    // there is an image to show; the route re-applies the same rule before it
+    // fetches anything.
+    avatarUrl: resolveAvatar(raw).url ? `/api/avatar/prospect/${raw.id}` : null,
+    // The private-reply window. Carried on the row rather than computed here,
+    // because the countdown has to be rendered against a `now` the caller
+    // supplies — reading the clock during a query would give a server render
+    // and its hydration two different answers.
+    socialPlatform: raw.social_platform ?? null,
+    socialCommentId: raw.social_comment_id ?? null,
+    socialCommentedAt: raw.social_commented_at ?? null,
+    privateReplySentAt: raw.private_reply_sent_at ?? null,
   };
 }
 
