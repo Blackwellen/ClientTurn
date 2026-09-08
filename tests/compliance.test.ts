@@ -1,6 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  POLICY_OUTCOMES,
+  decisionColumnFor,
+  type PolicyDecision,
+  type PolicyOutcome,
+  type PolicyReasonCode,
+} from "../src/lib/policy/types.ts";
+import {
   ALLOWED_SOURCE_KINDS,
   PROVENANCE_TO_SOURCE,
   sourceKindFor,
@@ -260,5 +267,109 @@ describe("mapping recorded provenance onto permitted sources", () => {
 
   test("a workspace permitting nothing permits nothing", () => {
     assert.equal(verdictForSources(["REGISTRY"], []), "NOT_PERMITTED");
+  });
+});
+
+/* ------------------------------------------------ the evidence trail --- */
+
+describe("a policy decision becomes evidence, not just state", () => {
+  /**
+   * `contactability_results` is upserted per (subject, channel, campaign type):
+   * it answers "can we email this person today?" and is overwritten every time
+   * it is asked. `compliance_decisions` is append-only: it answers "what did we
+   * decide, on what basis, under which policy version, at the moment we sent
+   * that message in March?" — which an upsert cannot answer, because answering
+   * it requires the row not to have been overwritten since.
+   *
+   * Nothing wrote the second table. `policy/service.ts` said in its own comment
+   * that the durable trail "lives in compliance_decisions", two admin surfaces
+   * read it, and one of those is the **review queue** — the items the engine
+   * could not decide alone. It could never receive an item, so a human-review
+   * workflow silently did nothing.
+   *
+   * `decisionColumnFor` is the bridge between the engine's seven outcomes and
+   * the five values a compliance officer sees in that queue. It is asserted
+   * here because the distinctions it makes are the ones a report turns on.
+   */
+  function decision(
+    outcome: PolicyOutcome,
+    reasonCode: PolicyReasonCode,
+  ): PolicyDecision {
+    return { outcome, reasonCode, message: "", policyVersion: "test" };
+  }
+
+  test("an allowed send is APPROVED", () => {
+    assert.equal(decisionColumnFor(decision("ALLOWED", "ALLOWED")), "APPROVED");
+  });
+
+  test("an opt-out is SUPPRESSED, not REJECTED", () => {
+    // Different facts, and only one of them is a decision about the
+    // recipient's wishes. A report that conflates them cannot answer "how many
+    // people did we decline to contact because they asked us not to" — which
+    // is the question a regulator asks first.
+    assert.equal(
+      decisionColumnFor(decision("BLOCKED", "BLOCKED_OPT_OUT")),
+      "SUPPRESSED",
+    );
+    assert.notEqual(
+      decisionColumnFor(decision("BLOCKED", "BLOCKED_OPT_OUT")),
+      "REJECTED",
+    );
+  });
+
+  test("a refusal on any other ground is REJECTED", () => {
+    for (const reason of [
+      "BLOCKED_NO_PERMISSION",
+      "BLOCKED_COUNTRY_POLICY",
+      "BLOCKED_SUBSCRIBER_TYPE",
+      "BLOCKED_INVALID_CONTACT",
+    ] as PolicyReasonCode[]) {
+      assert.equal(decisionColumnFor(decision("BLOCKED", reason)), "REJECTED", reason);
+    }
+  });
+
+  test("quiet hours is DEFERRED — the message is going, later", () => {
+    // Recording a quiet-hours hold as a refusal would report a workspace that
+    // respects the evening as one that keeps being blocked.
+    assert.equal(
+      decisionColumnFor(decision("BLOCKED", "BLOCKED_QUIET_HOURS")),
+      "DEFERRED",
+    );
+  });
+
+  test("every outcome needing a person is ESCALATED", () => {
+    // This is what fills the review queue. If any of these mapped elsewhere,
+    // the engine would stop and nobody would be told.
+    for (const outcome of [
+      "REVIEW_REQUIRED",
+      "REQUIRE_CONSENT",
+      "REQUIRE_PRIVACY_NOTICE",
+      "REQUIRE_TEMPLATE",
+      "REQUIRE_MANUAL_ACTION",
+    ] as PolicyOutcome[]) {
+      assert.equal(
+        decisionColumnFor(decision(outcome, "REVIEW_REQUIRED")),
+        "ESCALATED",
+        outcome,
+      );
+    }
+  });
+
+  test("every outcome the engine can produce maps to a permitted column", () => {
+    // The column carries a CHECK constraint. An unmapped outcome would be a
+    // 23514 at send time, on the write that exists to prove the send was lawful.
+    const permitted = new Set([
+      "APPROVED",
+      "REJECTED",
+      "SUPPRESSED",
+      "ESCALATED",
+      "DEFERRED",
+    ]);
+    for (const outcome of POLICY_OUTCOMES) {
+      assert.ok(
+        permitted.has(decisionColumnFor(decision(outcome, "REVIEW_REQUIRED"))),
+        `${outcome} maps outside the CHECK constraint`,
+      );
+    }
   });
 });

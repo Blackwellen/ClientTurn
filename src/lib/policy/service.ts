@@ -8,6 +8,7 @@ import { loadDataControls } from "@/lib/compliance/queries";
 import { verdictForSources } from "@/lib/compliance/types";
 import {
   POLICY_CHANNELS,
+  decisionColumnFor,
   type CampaignType,
   type ConsentStatus,
   type OutreachEligibility,
@@ -61,6 +62,21 @@ export type EvaluateOptions = {
   caps?: { withinDaily: boolean; withinMonthly: boolean; withinBudget: boolean };
   /** Persist the decision. Off for speculative checks in list rendering. */
   record?: boolean;
+  /**
+   * Append an evidence row to `compliance_decisions`.
+   *
+   * Separate from `record`, because the two tables answer different questions
+   * and are written at different rates. `contactability_results` is current
+   * state and is upserted, so refreshing it is cheap however often it happens.
+   * `compliance_decisions` is append-only: every write is permanent, and a
+   * caller that refreshes a whole permission grid would file seven "decisions"
+   * for one question nobody asked.
+   *
+   * On by default wherever `record` is, and turned off by `evaluateAllChannels`,
+   * which is a state refresh across every channel rather than a decision about
+   * any one of them.
+   */
+  evidence?: boolean;
   at?: Date;
 };
 
@@ -233,20 +249,35 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
   const decision = canSend(input);
 
   if (options.record !== false) {
-    await recordDecision(businessId, subject, channel, campaignType, input, decision);
+    await recordDecision(businessId, subject, channel, campaignType, input, decision, {
+      evidence: options.evidence ?? true,
+    });
   }
 
   return decision;
 }
 
 /**
- * Persists the decision and the inputs that produced it. Upserted per
- * (subject, channel, campaign type) so the current state is one row, while the
- * durable audit trail of *changes* lives in compliance_decisions and the
- * activity log.
+ * Persists the decision, twice, into two tables that answer different questions.
+ *
+ *   * `contactability_results` is **current state**, upserted per
+ *     (subject, channel, campaign type). "Can we email this person today?" One
+ *     row, overwritten each time it is asked.
+ *   * `compliance_decisions` is the **append-only evidence trail**. "What did we
+ *     decide, on what basis, under which policy version, at the moment we sent
+ *     that message in March?" An upsert cannot answer that, because answering it
+ *     requires the row not to have been overwritten since.
+ *
+ * The second write did not exist. This function's own comment claimed the
+ * durable trail "lives in compliance_decisions", and nothing in the codebase
+ * wrote a single row to it — while two admin surfaces read it: the per-version
+ * decision count, and the compliance **review queue**, whose items are supposed
+ * to be the evaluations the engine could not decide alone. That queue could
+ * never receive an item, so a human-review workflow silently did nothing.
  *
  * Never throws: a failure to record must not block a send that policy allowed,
- * nor allow one it refused.
+ * nor allow one it refused. Evidence is worth a great deal and it is not worth
+ * more than the decision itself being applied correctly.
  */
 async function recordDecision(
   businessId: string,
@@ -255,6 +286,7 @@ async function recordDecision(
   campaignType: CampaignType,
   input: PolicyInput,
   decision: PolicyDecision,
+  options: { evidence: boolean },
 ): Promise<void> {
   const admin = createAdminClient();
   await admin
@@ -296,6 +328,60 @@ async function recordDecision(
       () => undefined,
       () => undefined,
     );
+
+  if (!options.evidence) return;
+
+  // The evidence row. Insert, never upsert: a decision that has been made is a
+  // fact about a moment, and a second evaluation tomorrow is a second fact, not
+  // a correction of the first.
+  await admin
+    .from("compliance_decisions")
+    .insert({
+      business_id: businessId,
+      subject_type: subject.type,
+      subject_id: subject.id,
+      channel,
+      decision: decisionColumnFor(decision),
+      // The sentence written for a person, which is the point of a rationale
+      // column: a reader of the review queue needs to know why, not to look up
+      // a code.
+      rationale: decision.message,
+      policy_version: decision.policyVersion,
+      // Deliberately the same evidence the state row carries. Reconstructing a
+      // past decision means seeing the inputs, not just the verdict, and the
+      // two must not be able to disagree about what those inputs were.
+      evidence_json: {
+        campaign_type: campaignType,
+        country: input.country,
+        subscriber_type: input.subscriberType,
+        relationship_type: input.relationshipType,
+        reason_code: decision.reasonCode,
+        outcome: decision.outcome,
+        consent_status: input.consentStatus,
+        has_consent_evidence: input.hasConsentEvidence,
+        opted_out: input.optedOut,
+        suppression: input.suppression,
+        sender_health: input.senderHealth,
+        sender_available: input.senderAvailable,
+        within_caps: {
+          daily: input.withinDailyCap,
+          monthly: input.withinMonthlyCap,
+          budget: input.withinBudget,
+        },
+        requirements: decision.requirements ?? [],
+        pack: input.pack.name,
+        source_permitted: input.sourcePermitted,
+      } as never,
+      // Nobody pressed a button. This is the engine deciding, and saying so is
+      // what distinguishes it from an operator override in the same table.
+      decided_by: null,
+      decided_by_admin: false,
+      decided_at: new Date().toISOString(),
+    })
+    .then(
+      () => undefined,
+      () => undefined,
+    );
 }
 
 /**
@@ -321,6 +407,8 @@ export async function evaluateAllChannels(
         campaignType,
         permissionOnly: true,
         record: options.record ?? false,
+        // State refresh, not seven decisions. See `evidence` on EvaluateOptions.
+        evidence: false,
       }),
     ),
   );

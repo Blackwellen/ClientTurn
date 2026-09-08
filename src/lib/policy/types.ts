@@ -33,6 +33,23 @@ export type RelationshipType =
   | "REQUESTED_INFORMATION"
   | "EXPLICIT_MARKETING_CONSENT"
   | "EXISTING_BUSINESS_RELATIONSHIP"
+  /**
+   * They accepted a connection or follow request from the business.
+   *
+   * Given its own value rather than being folded into
+   * `EXISTING_BUSINESS_RELATIONSHIP`, which would be the convenient choice and
+   * the wrong one. Accepting a follow is a real affirmative act by the
+   * recipient — they were asked, and they said yes — but it is not the same as
+   * having traded with the business, and a record that claimed otherwise would
+   * misdescribe the evidence to anyone auditing it later.
+   *
+   * It counts as warm because the person chose to open the channel, which is
+   * exactly the "would they reasonably expect this contact" question the
+   * legitimate-interests balance turns on. It is deliberately not consent: an
+   * opt-out still binds, suppression still applies, and the subscriber-type
+   * rules are untouched.
+   */
+  | "ACCEPTED_SOCIAL_CONNECTION"
   | "FOUND_BY_US"
   | "IMPORTED"
   | "OTHER"
@@ -66,14 +83,26 @@ export type PolicyReasonCode =
   | "REVIEW_REQUIRED";
 
 /** V4 §91.2. */
-export type PolicyOutcome =
-  | "ALLOWED"
-  | "BLOCKED"
-  | "REVIEW_REQUIRED"
-  | "REQUIRE_CONSENT"
-  | "REQUIRE_PRIVACY_NOTICE"
-  | "REQUIRE_TEMPLATE"
-  | "REQUIRE_MANUAL_ACTION";
+/**
+ * Every verdict the engine can reach.
+ *
+ * A const array rather than a bare union, matching `POLICY_CHANNELS` above, so
+ * the set is enumerable at runtime. That is what lets a test walk every outcome
+ * and prove each one maps to a value `compliance_decisions.decision` permits —
+ * an unmapped outcome would otherwise be a CHECK violation at send time, on the
+ * write whose whole purpose is to prove the send was lawful.
+ */
+export const POLICY_OUTCOMES = [
+  "ALLOWED",
+  "BLOCKED",
+  "REVIEW_REQUIRED",
+  "REQUIRE_CONSENT",
+  "REQUIRE_PRIVACY_NOTICE",
+  "REQUIRE_TEMPLATE",
+  "REQUIRE_MANUAL_ACTION",
+] as const;
+
+export type PolicyOutcome = (typeof POLICY_OUTCOMES)[number];
 
 export type PolicyDecision = {
   outcome: PolicyOutcome;
@@ -226,6 +255,7 @@ const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   REQUESTED_INFORMATION: "Requested information",
   EXPLICIT_MARKETING_CONSENT: "Gave explicit marketing consent",
   EXISTING_BUSINESS_RELATIONSHIP: "Existing business relationship",
+  ACCEPTED_SOCIAL_CONNECTION: "Accepted your connection or follow",
   FOUND_BY_US: "We found this person or company",
   IMPORTED: "Imported from another system",
   OTHER: "Other",
@@ -247,6 +277,9 @@ const WARM_RELATIONSHIPS = new Set<RelationshipType>([
   "REQUESTED_INFORMATION",
   "EXPLICIT_MARKETING_CONSENT",
   "EXISTING_BUSINESS_RELATIONSHIP",
+  // They said yes to being connected. That is the person opening the door,
+  // which is the distinction this set exists to draw.
+  "ACCEPTED_SOCIAL_CONNECTION",
 ]);
 
 export function isWarmRelationship(value: RelationshipType): boolean {
@@ -256,4 +289,32 @@ export function isWarmRelationship(value: RelationshipType): boolean {
 /** "I found this person" is the one answer that must never produce a Lead. */
 export function isProspectRelationship(value: RelationshipType): boolean {
   return value === "FOUND_BY_US";
+}
+
+/**
+ * `PolicyOutcome` (seven values) to `compliance_decisions.decision` (five).
+ *
+ * Two vocabularies for one concept, and they are not redundant: the outcome
+ * says what the engine did, the decision column says what a compliance officer
+ * needs to see in a list. The mapping is stated once, here, rather than being
+ * inferred at each call site.
+ *
+ *   * A refusal because the person opted out is **SUPPRESSED**, not REJECTED.
+ *     They are different facts and only one of them is a decision about the
+ *     recipient's wishes -- a report that conflates them cannot answer "how many
+ *     people did we decline to contact because they asked us not to".
+ *   * Every "REQUIRE_*" outcome is **ESCALATED**: the engine has stopped and a
+ *     person must act. That is exactly what the review queue is for.
+ *   * A quiet-hours block is **DEFERRED**, not a refusal. The message is going;
+ *     it is going later.
+ */
+export function decisionColumnFor(
+  decision: PolicyDecision,
+): "APPROVED" | "REJECTED" | "SUPPRESSED" | "ESCALATED" | "DEFERRED" {
+  if (decision.outcome === "ALLOWED") return "APPROVED";
+  if (decision.reasonCode === "BLOCKED_QUIET_HOURS") return "DEFERRED";
+  if (decision.reasonCode === "BLOCKED_OPT_OUT") return "SUPPRESSED";
+  if (decision.outcome === "BLOCKED") return "REJECTED";
+  // REVIEW_REQUIRED and every REQUIRE_* variant.
+  return "ESCALATED";
 }
