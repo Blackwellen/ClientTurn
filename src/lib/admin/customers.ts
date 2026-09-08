@@ -197,19 +197,15 @@ export async function listCustomers(params: {
       .select("business_id, plan, status, lead_limit, current_period_start")
       .in("business_id", ids),
     supabase.from("integrations").select("business_id, status").in("business_id", ids),
-    supabase
-      .from("usage_counters")
-      .select("business_id, metric, quantity, period_start")
-      .in("business_id", ids)
-      .in("metric", ["lead_processed", "message_sent"])
-      .order("period_start", { ascending: false })
-      .limit(20000),
-    supabase
-      .from("audit_log")
-      .select("business_id, created_at")
-      .in("business_id", ids)
-      .order("created_at", { ascending: false })
-      .limit(20000),
+    // Both resolved in SQL to one row per workspace.
+    //
+    // The audit read is the one that was actually dangerous: it fetched up to
+    // 20,000 rows newest-first only to find the first sighting of each
+    // workspace, so a single busy workspace could fill the entire read and
+    // leave every other workspace on the page reading as dormant. An operator
+    // looking at that page would conclude the platform had gone quiet.
+    supabase.rpc("admin_customer_usage", { p_business_ids: ids }),
+    supabase.rpc("admin_customer_last_activity", { p_business_ids: ids }),
   ]);
 
   const subById = new Map((subs.data ?? []).map((row) => [row.business_id, row]));
@@ -221,27 +217,21 @@ export async function listCustomers(params: {
     healthById.set(row.business_id, list);
   }
 
-  const usageById = new Map<string, { leads: number; messages: number }>();
-  const seenCounter = new Set<string>();
-  for (const row of counters.data ?? []) {
-    // Rows arrive newest period first, so the first sighting per
-    // (workspace, metric) is the current period.
-    const key = `${row.business_id}:${row.metric}`;
-    if (seenCounter.has(key)) continue;
-    seenCounter.add(key);
-    const entry = usageById.get(row.business_id) ?? { leads: 0, messages: 0 };
-    if (row.metric === "lead_processed") entry.leads = Number(row.quantity ?? 0);
-    else entry.messages = Number(row.quantity ?? 0);
-    usageById.set(row.business_id, entry);
-  }
+  // Current period only: the function picks the newest period per
+  // (workspace, metric), which is what reading newest-first and keeping the
+  // first sighting was doing.
+  const usageById = new Map(
+    (counters.data ?? []).map((row) => [
+      row.business_id,
+      { leads: Number(row.leads), messages: Number(row.messages) },
+    ]),
+  );
 
-  const activityById = new Map<string, string>();
-  for (const row of activity.data ?? []) {
-    if (!row.business_id) continue;
-    if (!activityById.has(row.business_id)) {
-      activityById.set(row.business_id, row.created_at);
-    }
-  }
+  const activityById = new Map(
+    (activity.data ?? [])
+      .filter((row) => row.last_activity_at !== null)
+      .map((row) => [row.business_id, row.last_activity_at as string]),
+  );
 
   const enriched = candidates.map((candidate) => {
     const sub = subById.get(candidate.id);

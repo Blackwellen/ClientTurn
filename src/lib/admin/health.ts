@@ -80,13 +80,14 @@ export async function getSystemHealth(): Promise<SystemHealth> {
   const [providers, openJobs, recentRuns, integrationIssues, failedJobRows] =
     await Promise.all([
       getProviderHealth(supabase),
-      // Everything not yet finished, plus every failure. Completed jobs are
-      // excluded so this stays small no matter how much has been processed.
-      supabase
-        .from("jobs")
-        .select("type, state")
-        .in("state", ["pending", "running", "failed", "dead"])
-        .limit(20000),
+      // Counted in SQL, grouped by type and state. Completed jobs are still
+      // excluded, so this stays small no matter how much has been processed --
+      // but it is now a count rather than a capped fetch. The previous shape
+      // stopped at 20,000 unfinished jobs, and a genuine backlog is precisely
+      // the condition that exceeds that: queue depth would flatten out at the
+      // moment an operator most needed to see it climbing, and the incident
+      // would read as recovery.
+      supabase.rpc("admin_job_state_counts"),
       supabase
         .from("jobs")
         .select("type, completed_at")
@@ -124,12 +125,13 @@ export async function getSystemHealth(): Promise<SystemHealth> {
   }
 
   for (const row of openJobs.data ?? []) {
-    const key = typeToQueue.get(row.type);
+    const key = typeToQueue.get(row.job_type);
     if (!key) continue;
     const entry = tally.get(key)!;
-    if (row.state === "pending") entry.pending += 1;
-    else if (row.state === "running") entry.processing += 1;
-    else entry.failed += 1;
+    const jobs = Number(row.jobs);
+    if (row.state === "pending") entry.pending += jobs;
+    else if (row.state === "running") entry.processing += jobs;
+    else entry.failed += jobs;
   }
 
   const lastRunByQueue = new Map<string, string>();

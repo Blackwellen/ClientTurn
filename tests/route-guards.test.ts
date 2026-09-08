@@ -249,7 +249,7 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "auth/callback/route.ts": "public",
   "r/[slug]/route.ts": "public",
   "api/analytics/export/route.ts": "session",
-  "api/avatar/[conversationId]/route.ts": "session",
+  "api/avatar/[scope]/[id]/route.ts": "session",
   "api/apps/[id]/events/route.ts": "hmac",
   "api/cron/daily/route.ts": "cron-secret",
   "api/cron/worker/route.ts": "cron-secret",
@@ -342,19 +342,38 @@ describe("every API route declares how it authenticates", () => {
     );
   });
 
-  test("the avatar proxy will only fetch platform CDNs", () => {
+  test("the avatar proxy checks the host before it fetches", () => {
     // This route fetches a URL read out of a database column. Without a host
     // allow-list that column is an SSRF primitive: anything that can write a
-    // conversation row can make the server request an arbitrary internal
-    // address and stream the response back. The workspace check above is not
-    // enough on its own -- it establishes who is asking, not where the server
-    // is being sent.
-    const text = readFileSync(path.join(APP, "api/avatar/[conversationId]/route.ts"), "utf8");
-    assert.match(text, /allowedHost/, "the avatar proxy no longer restricts the upstream host");
-    assert.match(text, /url\.protocol !== "https:"/, "the avatar proxy no longer requires https");
-    for (const cdn of [".fbcdn.net", ".cdninstagram.com", ".licdn.com", ".tiktokcdn.com"]) {
-      assert.ok(text.includes(cdn), `${cdn} is no longer on the allow-list`);
-    }
+    // conversation or prospect row can make the server request an arbitrary
+    // internal address and stream the response back. The workspace check
+    // establishes who is asking; it says nothing about where the server is
+    // being sent.
+    //
+    // The specific hosts are deliberately not asserted -- they change as
+    // channels are added, and a test that pinned them would fail for a correct
+    // change. What is asserted is the property that does the security work:
+    // the URL is restricted to https, the host is tested against a list, and
+    // the test happens *before* the fetch. An allow-list consulted after the
+    // request has gone out protects nothing.
+    const file = ROUTES.find((route) => route.startsWith("api/avatar/"));
+    assert.ok(file, "the avatar proxy has moved or been deleted");
+
+    const text = readFileSync(path.join(APP, file), "utf8");
+    assert.match(
+      text,
+      /url\.protocol !== "https:"/,
+      "the avatar proxy no longer requires https",
+    );
+
+    const guard = text.search(/(is)?[Aa]llowedHost/);
+    const fetched = text.indexOf("await fetch(");
+    assert.ok(guard > -1, "the avatar proxy no longer restricts the upstream host");
+    assert.ok(fetched > -1, "the avatar proxy no longer fetches");
+    assert.ok(
+      guard < fetched,
+      "the host must be checked before the request is made",
+    );
   });
 
   test("the OAuth callback consumes its state before exchanging a code", () => {

@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { PLANS, planOrder, TRIAL_DAYS, ANNUAL_DISCOUNT_PERCENT } from "../src/lib/billing/plans.ts";
 import { SOURCING_ALLOWANCES } from "../src/lib/billing/sourcing-allowances.ts";
 import {
@@ -221,35 +222,92 @@ describe("integration availability is derived, never asserted", () => {
 /* -------------------------------------------------------------- routes --- */
 
 describe("public navigation only points at routes that exist", () => {
-  /** Routes under `src/app` that the public site is allowed to link to. */
-  const REAL_ROUTES = new Set([
-    "/",
-    "/how-it-works",
-    "/results",
-    "/pricing",
-    "/enterprise",
-    "/contact-sales",
-    "/product/find-leads",
-    "/product/lead-conversion",
-    "/privacy",
-    "/terms",
-    "/cookies",
-    "/sub-processors",
-    "/status",
-    "/login",
-    "/signup",
-    "/affiliates",
-    "/affiliates/login",
-    "/affiliates/signup",
-  ]);
+  /**
+   * Routes the public site is allowed to link to, read off the filesystem.
+   *
+   * This was a hand-written list, and a hand-written list of what exists is a
+   * second copy of the truth: it goes stale silently in both directions. It
+   * failed the day `/developers` shipped -- the page was real, the link was
+   * right, and the test said the link was broken. A list that cries wolf gets
+   * edited to stop crying rather than read, which is how it stops catching the
+   * dead link it exists for.
+   *
+   * Derived instead from `page.tsx` on disk. Next.js route groups -- the
+   * `(marketing)` bracket segments -- do not appear in the URL, so they are
+   * stripped. Dynamic segments are excluded: nothing in the static navigation
+   * should point at one, and a `[slug]` in this set would make every href
+   * match whatever it was pointed at.
+   *
+   * Only the unauthenticated trees are walked, which is the part of the
+   * original list that was doing real work. Walking all of `src/app` would
+   * accept a public footer link into `/app/leads` -- a real route, but one that
+   * bounces an evaluating visitor into a login screen from a page selling them
+   * the product.
+   */
+  const APP_DIR = path.join(process.cwd(), "src", "app");
+
+  const PUBLIC_TREES = [
+    { dir: "(marketing)", url: "" },
+    { dir: "(auth)", url: "" },
+    { dir: "status", url: "/status" },
+    // The partner front door, but never the portal behind it.
+    { dir: "affiliates", url: "/affiliates", skip: ["app"] },
+  ];
+
+  function publicRoutes(): Set<string> {
+    const found = new Set<string>();
+
+    function walk(dir: string, urlPath: string, skip: string[]) {
+      for (const entry of readdirSync(dir)) {
+        if (skip.includes(entry)) continue;
+        const full = path.join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          // A dynamic segment cannot be a static navigation target.
+          if (entry.startsWith("[")) continue;
+          // A route group is a folder for the developer, not a URL segment.
+          const next = entry.startsWith("(") ? urlPath : `${urlPath}/${entry}`;
+          walk(full, next, skip);
+        } else if (entry === "page.tsx") {
+          found.add(urlPath === "" ? "/" : urlPath);
+        }
+      }
+    }
+
+    for (const tree of PUBLIC_TREES) {
+      walk(path.join(APP_DIR, tree.dir), tree.url, tree.skip ?? []);
+    }
+    return found;
+  }
+
+  const ROUTES_ON_DISK = publicRoutes();
+
+  test("the derived route set found the public site", () => {
+    // A walk that silently found nothing would make every link "valid". The
+    // known-stable destinations are asserted so a refactor that moves the
+    // marketing tree fails here rather than turning this whole suite into a
+    // no-op that reports success.
+    for (const route of ["/", "/pricing", "/login", "/affiliates", "/status"]) {
+      assert.ok(ROUTES_ON_DISK.has(route), `${route} was not found on disk`);
+    }
+    assert.ok(
+      !ROUTES_ON_DISK.has("/affiliates/app"),
+      "the partner portal is behind a guard and is not a public destination",
+    );
+  });
+
+  /**
+   * Destinations that are real but are not a page in this application.
+   * Everything else must exist on disk.
+   */
+  const EXTERNAL_DESTINATIONS = new Set<string>([]);
 
   function assertResolvable(href: string, where: string) {
     if (href.startsWith("/#")) return; // homepage anchor
     if (href.startsWith("mailto:")) return;
     const path = href.split("?")[0].split("#")[0];
     assert.ok(
-      REAL_ROUTES.has(path),
-      `${where} links to ${href}, which is not a real route`,
+      ROUTES_ON_DISK.has(path) || EXTERNAL_DESTINATIONS.has(path),
+      `${where} links to ${href}, and no page.tsx renders it`,
     );
   }
 

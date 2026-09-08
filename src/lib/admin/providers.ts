@@ -416,16 +416,6 @@ export async function recordProbeResults(
   );
 }
 
-function percentile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
-  );
-  return sorted[index];
-}
-
 /**
  * Reads the stored probe series and derives what the tables show. With no
  * stored probes a provider reads as Unknown with em-dashes — never an
@@ -436,47 +426,43 @@ export async function getProviderHealth(
 ): Promise<PlatformProviderRow[]> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
-  const { data } = await supabase
-    .from("platform_provider_checks")
-    .select("provider, status, latency_ms, error_code, checked_at")
-    .gte("checked_at", since)
-    .order("checked_at", { ascending: false })
-    .limit(20000);
+  // Summarised in SQL, one row per provider that has been probed.
+  //
+  // This previously fetched up to 20,000 individual probes and derived uptime,
+  // p95 and the last incident in Node. With six monitored providers on a
+  // schedule, that cap silently shortens the window as probing gets denser --
+  // so "30-day uptime" quietly becomes "uptime over however long the most
+  // recent 20,000 probes happen to cover", with nothing on screen saying the
+  // period has changed.
+  const { data } = await supabase.rpc("admin_provider_check_summary", {
+    p_since: since,
+  });
 
-  const byProvider = new Map<string, typeof data>();
-  for (const row of data ?? []) {
-    const list = byProvider.get(row.provider) ?? [];
-    list!.push(row);
-    byProvider.set(row.provider, list);
-  }
+  const summaries = new Map((data ?? []).map((row) => [row.provider, row]));
 
   // Configuration is cheap to evaluate and does not need a network call, so a
   // never-probed provider can still say why it is not being monitored.
   const configured = await currentConfiguration();
 
   return MONITORED_PROVIDERS.map((provider) => {
-    const rows = byProvider.get(provider) ?? [];
-    const latest = rows[0];
-    const latencies = rows
-      .map((row) => row.latency_ms)
-      .filter((value): value is number => typeof value === "number");
-    const graded = rows.filter((row) => row.status !== "UNKNOWN");
-    const healthy = graded.filter((row) => row.status === "HEALTHY").length;
-    const incident = rows.find(
-      (row) => row.status === "DEGRADED" || row.status === "DOWN",
-    );
+    const summary = summaries.get(provider);
 
     return {
       provider,
       label: providerLabel(provider),
-      status: (latest?.status as PlatformProviderRow["status"]) ?? "UNKNOWN",
-      p95Ms: percentile(latencies, 95),
-      uptime30d: graded.length > 0 ? healthy / graded.length : null,
-      lastIncidentAt: incident?.checked_at ?? null,
-      lastCheckedAt: latest?.checked_at ?? null,
+      status: (summary?.latest_status as PlatformProviderRow["status"]) ?? "UNKNOWN",
+      p95Ms: summary?.p95_ms ?? null,
+      // Graded probes only. An UNKNOWN probe is one we could not judge, and
+      // counting it as a failure would report an outage that never happened.
+      uptime30d:
+        summary && Number(summary.graded) > 0
+          ? Number(summary.healthy) / Number(summary.graded)
+          : null,
+      lastIncidentAt: summary?.last_incident_at ?? null,
+      lastCheckedAt: summary?.latest_checked_at ?? null,
       configured: configured[provider],
       detail:
-        latest === undefined
+        summary === undefined
           ? configured[provider]
             ? "No probe recorded yet. Run Refresh now to collect one."
             : "Not monitored: the platform holds no credentials for this provider."

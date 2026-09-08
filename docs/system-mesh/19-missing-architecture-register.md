@@ -87,17 +87,17 @@ Flagged where the architecture will bite, not speculatively.
 | ~~S1~~ | ~~`analytics/v4-extras.ts` — nine queries with `.limit(50000)`~~ | **FIXED** — `0074`. `limit(50000)` now appears zero times in that file; trends, conversion goals, the provider waterfall and campaign promotions are all grouped in SQL | [24 · R22](24-remediation-log.md) |
 | ~~S2~~ | ~~`billing/v4-entitlements.getV4Usage`~~ | **FIXED** — `sum_usage_events`, a `security definer` SQL sum granted to `service_role` only | [24 · R22](24-remediation-log.md) |
 | ~~S3~~ | ~~`business-profile/queries.ts:82`~~ | **FIXED** — `prospect_counts_by_icp`, grouped in SQL | [24 · R22](24-remediation-log.md) |
-| **S4** | `admin/customers.ts`, `admin/overview.ts`, `admin/health.ts`, `admin/economics.ts`, `admin/providers.ts` | `.limit(20000)` scans across all workspaces | Platform-wide totals go wrong as the customer base grows |
+| ~~S4~~ | ~~`admin/customers.ts`, `admin/overview.ts`, `admin/health.ts`, `admin/economics.ts`, `admin/providers.ts`~~ | **FIXED AND DEPLOYED** — `0075`, six rollup functions. Queue depth no longer flattens during the backlog that causes it; provider uptime no longer silently shortens its own window; COGS is no longer under-reported in the flattering direction | [24 · R23](24-remediation-log.md) |
 | **S5** | `campaigns/queries.resolveAudience` | Audience resolution reads `filter_config` jsonb with no jsonb path index | Large lead tables |
 | **S6** | `jobs` claiming one row at a time | One round trip per job | Job throughput, not correctness. The comment explains the trade-off and it is currently the right one |
 
 **The pattern:** aggregation is done in JavaScript over a capped row fetch. Where a limit is
 reached, the answer is *wrong* rather than *slow*, and nothing tells anyone.
 
-**S1–S3 are now closed** (`0074`, [24 · R22](24-remediation-log.md)). **S4 remains**: the admin
-console's five `.limit(20000)` cross-workspace scans. They are platform-operator surfaces rather
-than customer-facing, so they were left for the stream that owns `lib/admin/`, but they fail the
-same way and the same technique applies. The codebase already
+**S1–S4 are now closed** — `0074` ([24 · R22](24-remediation-log.md)) for the customer surfaces
+and `0075` ([24 · R23](24-remediation-log.md)) for the operations console. The remaining entries,
+S5 and S6, are genuinely performance rather than correctness: S5 is a missing jsonb path index and
+S6 is a documented throughput trade-off in job claiming that is currently the right one. The codebase already
 knows the right technique — `{ count: "exact", head: true }` and the several purpose-built SQL
 rollup functions (`outreach_campaign_performance`, `reactivation_campaign_results`,
 `rollup_business_cost_daily`) — it just is not applied consistently.

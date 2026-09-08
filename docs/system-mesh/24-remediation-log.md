@@ -494,6 +494,81 @@ Five are `security invoker`, so RLS applies exactly as it did to the query each 
 path, and how much a workspace has consumed is not a figure a browser session should be able to
 ask the database for directly.
 
+### R23 · The same fix, applied to the operations console — S4
+
+`0074` closed the aggregation-in-JavaScript class on the customer surfaces.
+`0075_admin_rollups.sql` closes it on the admin ones, where the same seven
+capped reads scan *across every workspace* — so the cap arrives sooner than on
+any single tenant's data, and the number that goes wrong is the one an operator
+uses to decide whether the platform is healthy.
+
+Three of them fail in ways worth naming:
+
+| Read | What the cap does |
+|---|---|
+| `getSystemHealth` queue depth | Counted from at most 20,000 unfinished jobs. **A genuine backlog is exactly the condition that exceeds it** — queue depth stops rising at the moment it matters, and the incident reads as recovery |
+| `getProviderHealth` uptime and p95 | Derived from at most 20,000 probes. With six providers on a schedule, the cap silently *shortens the window* as probing gets denser: "30-day uptime" quietly becomes "uptime over however long 20,000 probes cover", with nothing on screen saying the period changed |
+| `getPlatformEconomics` provider spend | Summed from at most 20,000 `cost_events`. Under-reported COGS reads as **better** margin — the error runs in the flattering direction on the one number that page exists to report |
+| Customers → last activity | Read 20,000 audit rows newest-first only to find each workspace's first sighting. **One busy workspace could fill the entire read**, leaving every other workspace on the page reading as dormant |
+
+Six functions, applied and verified:
+`admin_customer_usage` · `admin_customer_last_activity` · `admin_stock_series` ·
+`admin_job_state_counts` · `admin_provider_spend` · `admin_provider_check_summary`,
+plus five covering indexes — the `jobs` one partial on open states, so it does
+not grow with volume processed.
+
+Two decisions worth recording:
+
+- **The series functions take the caller's bucket boundaries, not `date_trunc`.**
+  The admin ranges are anchored to `now` rather than to a clock boundary, so
+  rounding to the hour or the day would shift records across bucket edges by up
+  to an hour and quietly redraw the line. `width_bucket` over the caller's own
+  start and end is exact, and it is the technique `admin_event_series` (0024)
+  already used.
+- **`admin_stock_series` returns plan and interval, not a price.** The plan
+  catalogue lives in TypeScript. Pricing inside a migration would create a
+  second price list that silently disagrees with the first the moment either is
+  edited. The function counts; the caller prices.
+
+One deliberate behaviour change: `p95_ms` now uses `percentile_cont`, a
+continuous interpolation, where the application used a nearest-rank pick. On a
+dense probe series the two agree to within a millisecond and the interpolated
+figure is the standard one — but it is recorded here because a latency number
+that moves for no visible reason costs an operator an afternoon.
+
+Every function is `service_role`-only with no `anon` or `authenticated` grant,
+and the deployed argument names and return columns were checked against the
+hand-written types rather than assumed — a mismatch there fails at runtime, not
+at compile time.
+
+**Overview's panels were finished by the concurrent stream**, which picked up
+`admin_stock_series` and split the subscription read into "the eight on the
+recent list" and "the ones that can raise an action" — a better shape than the
+single scoped read I had written. Left as theirs.
+
+### R24 · Two tests taught the difference between stale and wrong
+
+Both found by the suite, both fixed at the rule rather than at the assertion:
+
+- **`public-pages.test.ts` kept a hand-written list of real routes.** It failed
+  the day `/developers` shipped: the page was real, the link was right, and the
+  test said the link was broken. A list that cries wolf gets edited to stop
+  crying rather than read — which is how it stops catching the dead link it
+  exists for. It now derives the route set from `page.tsx` on disk, walking only
+  the unauthenticated trees, so a public footer link into `/app/leads` still
+  fails. A guard test asserts the walk actually found the site, because a walk
+  that silently found nothing would make every link valid and report success.
+- **`route-guards.test.ts` pinned the avatar proxy's CDN allow-list.** The
+  concurrent stream legitimately changed it — gravatar in, LinkedIn out — and
+  a correct change failed the build. It now asserts the property that does the
+  security work instead: https required, host tested against a list, and the
+  test happening **before** the fetch. An allow-list consulted after the request
+  has gone out protects nothing.
+
+The same over-strictness was caught once before in this workstream (the adapter
+reachability test in R16). The pattern: assert the invariant, not the current
+value of a list that is supposed to grow.
+
 ## Deployment state
 
 Verified against the live database after each apply. **181 tables.**
@@ -510,6 +585,7 @@ Verified against the live database after each apply. **181 tables.**
 | `0066_data_controls` | table, RLS on, policy, `set_updated_at` trigger |
 | `0069_unify_suppression` | `lift_suppression_for_destination` present with `service_role`-only execute; deprecation comment on `contact_suppressions` |
 | `0074_analytics_rollups` | all six functions present, each smoke-executed against real workspace data; `sum_usage_events` is `definer` + `service_role`-only, the other five are `invoker` with no `anon` grant |
+| `0075_admin_rollups` | all six functions present and smoke-executed; `admin_stock_series` cross-checked against raw counts (2 active businesses, 2 paying, 0 trialing — reconciles exactly); every argument name and return column verified against the hand-written types; `service_role`-only throughout |
 
 `0062` was pre-flighted: every `metric` value in the live `usage_events` and `usage_counters` was
 checked against the widened CHECK first, because adding a CHECK to a populated table fails on the
@@ -586,3 +662,186 @@ Both agents' work is in the tree together and green. Nothing is committed — se
 |---|---|
 | Applying `0054_v4_expansion.sql` | Harness denied the write to the production database. Needs a permission rule or a human to run it |
 | Full `npm test` | `src/lib/copilot/types.ts` now imports `@/lib/services/registry`; Node's test runner cannot resolve the `@/` alias, so `tests/v4-expansion.test.ts` fails to load. Their file, mid-edit. The convention elsewhere in test-reachable modules is a relative `../services/registry.ts` import |
+
+---
+
+# The developer platform — API keys, webhooks, MCP
+
+**Date:** 2026-09-08 · **Migrations:** `0071_developer_platform.sql`, `0076_lead_notes_api_author.sql`
+
+## What was missing
+
+The MCP gateway could *authenticate* a token but the only way to mint one was a
+Next.js server action, and the token lasted an hour. No MCP client can call a
+server action, so a customer configured Claude with a bearer header, it worked
+for an hour, and then stopped for no visible reason. The product had a working
+MCP server that nobody could stay connected to.
+
+There was no public API and no outgoing webhooks at all. A customer who wanted
+to pull their own leads into a spreadsheet, or be told the moment a lead
+qualified, had no way to do either.
+
+## What was built
+
+| Surface | Where |
+|---|---|
+| Workspace API keys | `lib/api-keys/`, Settings → Developer |
+| Public REST API | `app/api/v1/*` on `lib/api/public.ts` |
+| Outgoing webhooks | `lib/webhooks/`, `jobs/handlers/webhook-dispatch.ts` |
+| MCP over an API key | `lib/mcp/gateway.ts` |
+
+One credential model serves all three. `lib/platform/scopes.ts` is now the only
+place a permission is declared, and `MCP_SCOPES` is a re-export of it rather
+than a second copy — the regression it prevents is a scope meaning one thing
+over HTTP and something wider over MCP.
+
+The public API calls the service layer for everything. No route reads the
+`leads` table, so the workspace scoping, the archived-lead exclusion and the
+audit trail all apply without any route remembering them.
+
+## Two bugs the live run found that review had not
+
+1. **`lead_notes.author_kind` had a check constraint enumerating caller kinds.**
+   Adding `API` to the service layer's `CallerKind` union made `lead.add_note`
+   succeed for every other caller and fail with a constraint violation for the
+   API, surfacing as an unexplained "that note could not be saved". Fixed in
+   `0075`. A check constraint enumerating a TypeScript union will drift the
+   moment the union gains a member, and nothing in the type system can see it.
+
+2. **A multi-step `PATCH` reported a partial change as a plain failure.** The
+   status change had already been applied when the note failed, and the caller
+   was told only "conflict" — leaving them unable to distinguish an untouched
+   lead from a half-changed one without re-reading it. The response now names
+   `failed_step` and `applied`.
+
+Both were found by driving real HTTP against a running server, not by review or
+by the unit tests, which is the argument for having done that.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,480 tests, 0 failures** (1,346 + 134) |
+| `npm run test:e2e:developer` | **27 tests, 0 failures**, real Postgres, real RLS |
+| `npx tsc --noEmit` | **no errors in any file this lane touched** |
+| Live HTTP — public API | `/api/v1`, `/me`, `/leads`, `/leads/{id}` GET + PATCH, all refusal paths |
+| Live HTTP — MCP | `initialize` (version negotiated), `notifications/initialized` → 202, `tools/list` (17 tools, scope-filtered to 4 for a read-only key), `tools/call` read and write |
+| Live HTTP — approval gate | `lead.archive` parked in `mcp_approvals`, lead **not** archived |
+| Live HTTPS — webhook delivery | Real POST to a public host, signed, answered 405, correctly treated as permanent and not retried |
+
+The remaining `tsc` errors in the tree are the parallel social/Meta lane's —
+`social-execute.ts`, `agent/`, `meta-lead-ads.ts`, `inbox/types.ts` — whose
+migration `0072` is not applied. None are in this lane's files.
+
+## Deliberately not done
+
+| Item | Why |
+|---|---|
+| `POST /api/v1/leads` | `lead.create` is absent from the service registry on purpose: creating a lead means deduplication, a contactability record and starting follow-up. A thinner version that skipped those would be worse than none. The endpoint returns a 400 saying so rather than a bare 405 |
+| Archive/restore over the API | `DESTRUCTIVE` requires a person's confirmation, which an API caller cannot supply. It is refused with `needs_confirmation` and the stated effect, which is the correct behaviour rather than a gap |
+| A second live signing secret during rotation | An overlap window means an endpoint whose secret leaked keeps accepting it for the length of the window. Rotation is an explicit act with an explicit consequence, stated in the dialog |
+| IPv6 CIDR in the key allowlist | A partly-correct prefix comparison would silently admit addresses the customer believed were excluded. IPv6 is exact-match only, and documented as such |
+
+---
+
+# LinkedIn end-to-end: the scheduler that never existed
+
+**Date:** 2026-09-08 · **Migration:** `0072_social_agent_flow.sql`
+
+## What was actually wrong
+
+`0067_social_outreach.sql` shipped a correct connect-then-message state
+machine, conservative per-platform caps counted from an append-only log, and an
+index whose comment reads *"the scheduler's due-work query"*. There was no
+scheduler. Nothing in the codebase advanced a social prospect without somebody
+clicking, so the channel could do connect-then-message but never did it
+unattended.
+
+Five gaps, in the order they broke the flow:
+
+| Gap | Consequence |
+|---|---|
+| No clock on `social_connection_states` | A state machine with no `next_action_at` cannot be swept, so every advance needed a click |
+| No `social.tick` job | Nothing queued the sweep even if it had existed |
+| `AgentChannel` had no `linkedin` | The conversation agent could not answer on the channel a social lead arrives on |
+| Nothing ingested a reply | `REPLIED` was a legal state nothing could reach — so no classification, no stop condition that fired, no promotion, no booking |
+| No step counter | *"At most two further messages"* in `lead-routes.ts` was prose, not a rule |
+
+## The decision worth arguing with
+
+**The agent does not run on prospects.** Qualification, bookings and the whole
+runtime hang off `leads`. The boundary sits at the reply: outbound messages
+before one are composed by the deterministic sequencer and never enter the
+agent runtime; the moment somebody replies they have stopped being someone we
+found and become someone who contacted us, which is the definition of a Lead.
+`conversations` has carried `prospect_id` with a nullable `lead_id` since 0029,
+so promotion attaches a lead to the thread that already exists rather than
+copying anything.
+
+Whether that promotion is automatic is a workspace choice
+(`social_auto_promote_on_reply`), defaulting to **off** so `lead-routes.ts`'s
+promise that promotion is a human decision stays true unless a workspace says
+otherwise.
+
+## What "runs 24/7" honestly means here
+
+There is no API that sends a connection request or a message from a personal
+LinkedIn account; the messaging APIs are approved-partner-only, and automating
+a personal account outside one is what gets the customer's account restricted.
+
+So the deciding, drafting, timing, cap arithmetic, contactability checks and
+stop conditions all run unattended around the clock, and a person performs the
+final click from a queue where the work is already done.
+`social_autonomous_sending` + an account in `PARTNER_API` mode moves that last
+step to `social.execute`, through identical checks.
+`lib/outreach/social-partners.ts` is the empty registry that makes plugging one
+in a one-file change, and says why it ships empty.
+
+## Corrections to my own earlier findings
+
+| I said | Actually |
+|---|---|
+| "No free-mail guardrail" | `sourcing-run.ts` already routed role mailboxes and consumer domains to REVIEW via `prospects/dedupe.ts`. What was missing was the *sourcing run* using `contact-legality` at all, and `subscriberType` never being `INDIVIDUAL` |
+| "`profile.ts` writes an unmapped `USER` provenance" | That write is on `business_memory_facts`, not `prospect_data_sources`. Every value that reaches the send gate is mapped |
+
+## Defects found and fixed on the way
+
+- **`contact-legality.assessPhone` could never refuse a 118 number.** The UK
+  shape gate ran first and 118 numbers do not start with `0`, so every one fell
+  through to "not a UK number — check the local rules", inviting somebody to
+  dial a number charging pounds a minute. The premium/unroutable check now runs
+  first.
+- **The copy guard let a bare guarantee through.** `we can guarantee` was
+  caught and `we guarantee` was not, because the pattern required a modal — the
+  wrong way round, since the barer claim is the stronger one.
+- **`messaging/registry.ts` would have sent LinkedIn through the SMS carrier.**
+  The channel fell through to `carrier.send`. It is now refused explicitly:
+  there is no transport, and a silent fall-through texts a stranger.
+- **Two migrations both numbered `0075`.** Renumbered to `0076`.
+- **LinkedIn lead-form fields were never mapped.** Answers come back keyed by
+  the form's own `questionId`, and the code guessed the email by looking for an
+  `@`. Leads arrived with no name and no phone, so the instant follow-up that is
+  the whole point of the lead-form route had nothing to send to. Form schemas
+  are now fetched and cached per process.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,568 tests, 0 failures** (1,434 + 134) |
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm run build` | succeeds |
+
+62 of those tests are new and cover the gate, the clock, the two-follow-up
+ceiling, reply-stops-everything, the copy guard's refusals, contact legality
+and the avatar policy.
+
+## Deliberately not done
+
+| Item | Why |
+|---|---|
+| A LinkedIn sender | No compliant API exists for a personal account. Shipping a headless-browser driver would put the customer's own account at risk to claim a feature |
+| Storing LinkedIn profile photos | Their terms forbid retaining member images outside the platform. `avatar_source: 'LINKEDIN'` is refused on read as well as write, so a row from an older build cannot become renderable |
+| Connect-then-message for LinkedIn lead-form leads | Lead Gen Forms return no profile URL, so a connection request cannot be targeted. Those leads are worked on the channel they gave, which already works |
+| Cold contact on a discovered mobile | A UK mobile is almost always a personal device and needs TPS screening this product does not perform. The number is recorded and not used |

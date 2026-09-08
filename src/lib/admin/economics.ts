@@ -131,13 +131,15 @@ export async function loadEconomics(period?: string): Promise<EconomicsData> {
       .eq("billing_period", billingPeriod),
     admin.from("businesses").select("id, name"),
     // Provider spend is aggregated from the raw ledger so a provider that has
-    // not yet been rolled into a margin snapshot still shows up.
-    admin
-      .from("cost_events")
-      .select("provider, category, total_cost, business_id")
-      .gte("occurred_at", periodStart.toISOString())
-      .lt("occurred_at", periodEnd.toISOString())
-      .limit(20000),
+    // not yet been rolled into a margin snapshot still shows up -- and summed
+    // in SQL, because a truncated read of a cost ledger under-reports COGS,
+    // and under-reported COGS reads as better margin. That is the single
+    // number this page exists to report, and the error runs in the flattering
+    // direction, so nothing about the page would look wrong.
+    admin.rpc("admin_provider_spend", {
+      p_from: periodStart.toISOString(),
+      p_to: periodEnd.toISOString(),
+    }),
     admin
       .from("economics_alerts")
       .select("id, business_id, alert_type, severity, title, detail, created_at")
@@ -189,28 +191,15 @@ export async function loadEconomics(period?: string): Promise<EconomicsData> {
   };
   for (const customer of customers) bandCounts[customer.marginState] += 1;
 
-  const providerMap = new Map<string, ProviderSpendRow & { tenants: Set<string> }>();
-  for (const row of costs.data ?? []) {
-    const key = `${row.provider}:${row.category ?? "UNCATEGORISED"}`;
-    const existing =
-      providerMap.get(key) ??
-      {
-        provider: row.provider,
-        category: row.category,
-        events: 0,
-        totalCost: 0,
-        businesses: 0,
-        tenants: new Set<string>(),
-      };
-    existing.events += 1;
-    existing.totalCost += num(row.total_cost);
-    if (row.business_id) existing.tenants.add(row.business_id);
-    providerMap.set(key, existing);
-  }
-
-  const providers: ProviderSpendRow[] = [...providerMap.values()]
-    .map(({ tenants, ...rest }) => ({ ...rest, businesses: tenants.size }))
-    .sort((a, b) => b.totalCost - a.totalCost);
+  // Already grouped, counted and ordered by the query. `businesses` is a
+  // distinct count of workspaces, which is what the Set here was for.
+  const providers: ProviderSpendRow[] = (costs.data ?? []).map((row) => ({
+    provider: row.provider,
+    category: row.category,
+    events: Number(row.events),
+    totalCost: num(row.total_cost),
+    businesses: Number(row.workspaces),
+  }));
 
   const revenue = customers.reduce((sum, c) => sum + c.totalRevenue, 0);
   const cogs = customers.reduce((sum, c) => sum + c.totalCogs, 0);

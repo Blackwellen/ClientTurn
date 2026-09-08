@@ -12776,6 +12776,61 @@ export type Database = {
       }
     }
     Functions: {
+      admin_customer_last_activity: {
+        Args: { p_business_ids: string[] }
+        Returns: {
+          business_id: string
+          last_activity_at: string | null
+        }[]
+      }
+      admin_customer_usage: {
+        Args: { p_business_ids: string[] }
+        Returns: {
+          business_id: string
+          leads: number
+          messages: number
+        }[]
+      }
+      admin_job_state_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          job_type: string
+          jobs: number
+          state: string
+        }[]
+      }
+      admin_provider_check_summary: {
+        Args: { p_since: string }
+        Returns: {
+          graded: number
+          healthy: number
+          last_incident_at: string | null
+          latest_checked_at: string | null
+          latest_status: string
+          p95_ms: number | null
+          provider: string
+        }[]
+      }
+      admin_provider_spend: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          category: string
+          events: number
+          provider: string
+          total_cost: number
+          workspaces: number
+        }[]
+      }
+      admin_stock_series: {
+        Args: { p_buckets: number; p_end: string; p_start: string }
+        Returns: {
+          billing_interval: string
+          bucket: number
+          entries: number
+          metric: string
+          plan: string
+        }[]
+      }
       admin_event_series: {
         Args: { p_buckets: number; p_end: string; p_start: string }
         Returns: {
