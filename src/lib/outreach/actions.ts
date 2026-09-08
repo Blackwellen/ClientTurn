@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { transition } from "./campaigns/lifecycle";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
@@ -155,108 +156,20 @@ export async function createSenderIdentityAction(
 
 /* ------------------------------------------------------------- campaign */
 
-const campaignSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  senderIdentityId: z.uuid(),
-  minimumGrade: z.enum(["A+", "A", "B", "C", "D"]),
-  dailyContactCap: z.number().int().min(1).max(500),
-  prospectsPerRun: z.number().int().min(1).max(200),
-  reviewBeforeOutreach: z.boolean(),
-  subject: z.string().trim().min(1).max(200),
-  body: z.string().trim().min(20).max(5000),
-});
-
-/**
- * Creates a campaign together with its first sequence step.
+/*
+ * `createCampaignAction` and its `campaignSchema` were removed here.
  *
- * They are created together because a campaign with no step cannot send, and a
- * half-configured campaign that looks ready is exactly how an accidental
- * launch happens. The campaign starts as DRAFT regardless — launching is a
- * separate, deliberate act.
+ * They were the second way to create a campaign. The wizard under
+ * `find-leads/campaigns/wizard/*` -> `outreach/campaign-actions.ts` is the
+ * first, and the only one anything calls: it persists a DRAFT with version
+ * snapshots, validates before launch, reserves budget, estimates the audience
+ * and holds A/B variants. This one did none of that and had no caller left --
+ * `CampaignBuilder` is now two entry points that link to the wizard.
+ *
+ * Deleted rather than left dead, because an unused second creator of the same
+ * row is not harmless: it is a working, discoverable, differently-validated
+ * path that the next person to need "create a campaign" will find and wire up.
  */
-export async function createCampaignAction(
-  input: unknown,
-): Promise<ActionResult<{ id: string }>> {
-  const parsed = campaignSchema.safeParse(input);
-  if (!parsed.success) {
-    return fail("Check the campaign details — a subject and a message are required.");
-  }
-
-  const access = await requireOutreachAdmin();
-  if (!access.ok) return access;
-
-  const admin = createAdminClient();
-
-  const { data: sender } = await admin
-    .from("sender_identities")
-    .select("id")
-    .eq("business_id", access.workspace.businessId)
-    .eq("id", parsed.data.senderIdentityId)
-    .maybeSingle();
-
-  if (!sender) return fail("That sending identity could not be found.");
-
-  const { data: campaign, error } = await admin
-    .from("outreach_campaigns")
-    .insert({
-      business_id: access.workspace.businessId,
-      name: parsed.data.name,
-      status: "DRAFT",
-      sender_identity_id: sender.id,
-      minimum_grade: parsed.data.minimumGrade,
-      review_before_outreach: parsed.data.reviewBeforeOutreach,
-      daily_contact_cap: parsed.data.dailyContactCap,
-      prospects_per_run: parsed.data.prospectsPerRun,
-      created_by: access.workspace.userId,
-    })
-    .select("id")
-    .single();
-
-  if (error || !campaign) return fail("That campaign could not be created.");
-
-  const { data: sequence } = await admin
-    .from("outreach_sequences")
-    .insert({
-      business_id: access.workspace.businessId,
-      campaign_id: campaign.id,
-      version: 1,
-      status: "PUBLISHED",
-      published_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (sequence) {
-    await admin.from("outreach_steps").insert({
-      business_id: access.workspace.businessId,
-      sequence_id: sequence.id,
-      position: 1,
-      delay_seconds: 0,
-      channel: "EMAIL",
-      subject_template: parsed.data.subject,
-      body_template: parsed.data.body,
-      enabled: true,
-    });
-
-    await admin
-      .from("outreach_campaigns")
-      .update({ active_sequence_id: sequence.id })
-      .eq("business_id", access.workspace.businessId)
-      .eq("id", campaign.id);
-  }
-
-  await recordAudit({
-    businessId: access.workspace.businessId,
-    actorUserId: access.workspace.userId,
-    action: "outreach_campaign.created",
-    entityType: "outreach_campaign",
-    entityId: campaign.id,
-    metadata: { name: parsed.data.name },
-  });
-
-  refresh();
-  return ok({ id: campaign.id });
-}
 
 /**
  * The launch gate.
@@ -360,6 +273,21 @@ export async function launchCampaignAction(
   return ok({ status: "ACTIVE" });
 }
 
+/**
+ * Pause or stop a campaign, from the list controls.
+ *
+ * Delegates to `transition()` rather than writing `status` itself. It used to
+ * write it directly, gated on `.in("status", ["ACTIVE","PAUSED","READY","DRAFT"])`
+ * -- a different rule from the one `campaign-state.ts` publishes, and a looser
+ * one. It permitted DRAFT -> PAUSED and READY -> PAUSED, both of which the
+ * transition table forbids, so a campaign could be put into a state the state
+ * machine says is unreachable and every reader downstream trusts is impossible.
+ *
+ * There is now one implementation of "what may follow what", and the second
+ * caller is a caller rather than a second copy of the rules. The signature is
+ * kept positional because `campaign-controls.tsx` calls it that way; the shape
+ * is not what was wrong with it.
+ */
 export async function setCampaignStatusAction(
   campaignId: unknown,
   status: unknown,
@@ -371,21 +299,17 @@ export async function setCampaignStatusAction(
   const access = await requireOutreachAdmin();
   if (!access.ok) return access;
 
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("outreach_campaigns")
-    .update({
-      status: next.data,
-      ...(next.data === "PAUSED"
-        ? { paused_at: new Date().toISOString() }
-        : { stopped_at: new Date().toISOString() }),
-    })
-    .eq("business_id", access.workspace.businessId)
-    .eq("id", id.data)
-    .in("status", ["ACTIVE", "PAUSED", "READY", "DRAFT"])
-    .select("id");
+  const result = await transition({
+    businessId: access.workspace.businessId,
+    campaignId: id.data,
+    to: next.data,
+    actorUserId: access.workspace.userId,
+  });
 
-  if (!data?.length) return fail("That campaign could not be updated.");
+  // The refusal is surfaced rather than flattened into a generic failure: "a
+  // draft cannot be paused" tells an operator what to do next, and "that
+  // campaign could not be updated" does not.
+  if (!result.ok) return fail(result.error);
 
   await recordAudit({
     businessId: access.workspace.businessId,
@@ -398,3 +322,4 @@ export async function setCampaignStatusAction(
   refresh();
   return ok(undefined);
 }
+

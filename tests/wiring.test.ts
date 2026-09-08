@@ -10,6 +10,7 @@ import {
 } from "../src/lib/inbox/types.ts";
 import { PROVIDERS } from "../src/lib/integrations/catalog.ts";
 import { PRIMARY_NAV, SECONDARY_NAV, titleForPath } from "../src/lib/app/nav.ts";
+import { canTransition } from "../src/lib/outreach/campaign-state.ts";
 
 /**
  * Wiring tests.
@@ -953,6 +954,75 @@ describe("the inbox composer and the inbox action agree", () => {
         false,
         `${channel} offers a composer on a conversation with no lead`,
       );
+    }
+  });
+});
+
+/* ------------------------------------ one campaign state machine --- */
+
+describe("a campaign's state changes go through one machine", () => {
+  /**
+   * `campaign-state.ts` publishes a TRANSITIONS table -- what may follow what --
+   * and `lifecycle.transition()` enforces it. A second action wrote
+   * `outreach_campaigns.status` directly instead, gated on its own list:
+   * `.in("status", ["ACTIVE","PAUSED","READY","DRAFT"])`.
+   *
+   * That list is looser than the table. It permitted DRAFT -> PAUSED and
+   * READY -> PAUSED, neither of which TRANSITIONS allows, so a campaign could
+   * be put into a state the machine says is unreachable -- and every reader
+   * downstream believes it is.
+   *
+   * These assertions are structural because the defect was structural: two
+   * places deciding one rule, where only one of them had read it.
+   */
+  const OUTREACH_ACTIONS = "src/lib/outreach/actions.ts";
+
+  test("the list controls' action delegates rather than writing status", () => {
+    const source = SOURCES.find((entry) => entry.file === OUTREACH_ACTIONS);
+    assert.ok(source, `${OUTREACH_ACTIONS} has moved`);
+
+    const start = source.text.indexOf("export async function setCampaignStatusAction");
+    assert.ok(start > -1, "setCampaignStatusAction is gone");
+    // To the next export, wherever it happens to sit in the file.
+    const after = source.text.indexOf("export async function", start + 30);
+    const body = source.text.slice(start, after > -1 ? after : undefined);
+
+    assert.match(body, /await transition\(/, "it no longer goes through the state machine");
+    assert.doesNotMatch(
+      body,
+      /\.from\("outreach_campaigns"\)[\s\S]{0,200}\.update\(/,
+      "it writes outreach_campaigns.status directly again, bypassing TRANSITIONS",
+    );
+  });
+
+  test("there is only one way to create a campaign", () => {
+    // `createCampaignAction` was the second, with different validation and no
+    // caller. An unused second creator of the same row is not harmless: it is a
+    // working, discoverable path the next person will find and wire up.
+    const source = SOURCES.find((entry) => entry.file === OUTREACH_ACTIONS);
+    assert.ok(source);
+    assert.doesNotMatch(
+      source.text,
+      /export async function createCampaignAction/,
+      "a second campaign creator has returned to outreach/actions.ts",
+    );
+  });
+
+  test("nothing pauses a draft", () => {
+    // The concrete impossible state the old list allowed, asserted against the
+    // published table rather than against either implementation.
+    assert.equal(canTransition("DRAFT", "PAUSED"), false);
+    assert.equal(canTransition("READY", "PAUSED"), false);
+    // And the transitions the controls actually need still work.
+    assert.equal(canTransition("ACTIVE", "PAUSED"), true);
+    assert.equal(canTransition("ACTIVE", "STOPPED"), true);
+    assert.equal(canTransition("PAUSED", "ACTIVE"), true);
+  });
+
+  test("a finished campaign is terminal", () => {
+    for (const to of ["ACTIVE", "PAUSED", "DRAFT", "READY"] as const) {
+      assert.equal(canTransition("COMPLETED", to), false, `COMPLETED -> ${to}`);
+      assert.equal(canTransition("STOPPED", to), false, `STOPPED -> ${to}`);
     }
   });
 });
