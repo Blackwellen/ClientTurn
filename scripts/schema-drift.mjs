@@ -234,6 +234,71 @@ const orphanLedger = [...recorded].filter(
   (v) => !onDisk.some((m) => m.version === v),
 );
 
+/* ------------------------------------------------- silently-empty reads */
+
+/**
+ * A table read through the *user's* session that has RLS enabled and no policy.
+ *
+ * This is the quietest failure in the system. The read does not error and does
+ * not warn — it returns zero rows, forever. The panel renders its empty state,
+ * and a workspace that has done plenty of work looks like one that has done
+ * none.
+ *
+ * RLS-on-with-no-policy is the right configuration for most of this schema:
+ * `jobs`, `webhook_events`, `integration_secrets`, `mcp_tokens` and the cost
+ * ledgers are server-only, and denying every browser role outright is stronger
+ * than trusting a policy to be written correctly. It is only wrong where the
+ * application actually reads the table with the caller's own session.
+ *
+ * Which client a call site uses is decided per *file*, and only where the file
+ * is unambiguous: it imports `@/lib/supabase/server` or `client` and never
+ * touches the admin client. A file that imports both is skipped rather than
+ * guessed at — a false positive here would train someone to ignore the report,
+ * which is worse than the gap it would have found.
+ */
+function silentlyEmptyReads(policylessTables) {
+  const suspects = [];
+  const srcRoot = path.join(ROOT, "src");
+
+  const files = [];
+  (function walk(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name)) files.push(full);
+    }
+  })(srcRoot);
+
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    const usesAdmin =
+      text.includes("supabase/admin") ||
+      text.includes("createAdminClient") ||
+      text.includes("adminRead");
+    const usesSession = /from "@\/lib\/supabase\/(server|client)"/.test(text);
+    if (usesAdmin || !usesSession) continue;
+
+    for (const table of policylessTables) {
+      if (text.includes(`.from("${table}")`)) {
+        suspects.push({
+          table,
+          file: path.relative(ROOT, file).split(path.sep).join("/"),
+        });
+      }
+    }
+  }
+  return suspects;
+}
+
+const policyless = await query(`
+  select c.relname as name
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity
+     and (select count(*) from pg_policy p where p.polrelid = c.oid) = 0
+`);
+const policylessNames = policyless.map((row) => row.name);
+const silent = silentlyEmptyReads(policylessNames);
+
 /* ------------------------------------------------------------------ report */
 
 const summary = {
@@ -241,6 +306,8 @@ const summary = {
   expectedTables: wanted.tables.size,
   expectedFunctions: wanted.functions.size,
   missing,
+  rlsEnabledWithoutPolicy: policylessNames.length,
+  silentlyEmptyReads: silent,
   ledger: {
     recorded: recorded.size,
     unrecorded: unrecorded.map((m) => m.file),
@@ -261,6 +328,20 @@ if (process.argv.includes("--json")) {
         `${String(gone.length).padStart(3)} missing  [${tick(gone.length === 0)}]`,
     );
     for (const row of gone) console.log(`      - ${row.name}  (${row.file})`);
+  }
+
+  console.log(
+    `\n  rls        ${String(policylessNames.length).padStart(4)} tables have RLS on and no policy  ` +
+      `${String(silent.length).padStart(3)} of them read with a user session  ` +
+      `[${tick(silent.length === 0)}]`,
+  );
+  if (silent.length > 0) {
+    console.log(
+      `      These reads return zero rows, silently, forever — no error and no\n` +
+        `      warning reaches anything. The panel renders its empty state and\n` +
+        `      looks like a workspace that has not done anything yet.`,
+    );
+    for (const row of silent) console.log(`      - ${row.table}  read by ${row.file}`);
   }
 
   console.log(
@@ -299,6 +380,7 @@ if (process.argv.includes("--json")) {
 }
 
 const drifted =
+  silent.length > 0 ||
   duplicateVersions.length > 0 ||
   missing.tables.length > 0 ||
   missing.functions.length > 0 ||

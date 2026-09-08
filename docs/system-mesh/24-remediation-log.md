@@ -645,6 +645,59 @@ Five filename tests in `wiring.test.ts` cover the class with no database and no 
 script covers the live schema and needs both. The duplicate-version test carries the `0077` case as
 its comment, because it shipped.
 
+### R26 · RLS enabled is not RLS working — three panels that could never fill
+
+`admin_rls_coverage()` reports **186 of 186** tables with RLS enabled, and R25 recorded that as the
+product's central security claim, verified. It is, and it is not the whole question.
+
+**47 of those 186 had RLS enabled and no policy at all.**
+
+For most of them that is not a gap, it is the strongest configuration available. `jobs`,
+`webhook_events`, `integration_secrets`, `mcp_tokens`, `ai_token_ledger`, `cost_events`,
+`usage_events` — server-only tables reached through the service-role client. RLS on with no policy
+denies every browser role outright, which is safer than trusting a policy to have been written
+correctly.
+
+It is wrong for a table the product reads through the **user's own session**. There the read does
+not fail. It returns zero rows, silently, forever — no error, no warning, nothing in a log. The
+panel renders its ordinary empty state and a workspace that has done plenty of work looks like one
+that has done none.
+
+Cross-referencing the 47 against every `.from()` call made from a file that uses
+`@/lib/supabase/server` and never the admin client found three:
+
+| Read | What the customer saw |
+|---|---|
+| `qualification/queries.ts:179` — `audit_log` where `action = 'qualification.published'` | Who last published the qualification rules, and when. **Permanently blank** |
+| `campaigns/reactivation-queries.ts:545` — the last 50 `audit_log` rows for a campaign | The campaign's activity history. **Permanently blank** |
+| `integrations/queries.ts:66` — `field_mappings` per integration object | The mapping count. **Permanently zero** |
+
+Neither table had *any* grant to `authenticated`, so a policy alone would not have been enough —
+the read would have failed on the privilege before RLS was consulted.
+
+`0079_read_policies_for_ui_tables.sql`, applied and verified:
+
+- **`audit_log` is granted at column granularity, not table granularity.** `metadata` and
+  `ip_address` are excluded. The two surfaces read six columns; `metadata` can carry the detail of
+  a billing change or a member removal, and `ip_address` is personal data about a colleague.
+  Granting a whole row to satisfy a query that wants six columns is a disclosure nobody asked for.
+  Verified afterwards: `audit_log` has **no table-wide privilege** for `authenticated`, and exactly
+  eight columns selectable.
+- **No insert, update or delete grant, and no policy for them.** The trail stays append-only from
+  the server: a session can read what happened in its own workspace and cannot write, alter or
+  erase a line of it. That property is the whole value of an audit log, and it is now enforced by
+  the absence of a grant rather than by application code remembering not to.
+- Nothing granted to `anon` on either table; verified as zero.
+
+**The check is now part of the tool.** `npm run schema:drift` cross-references policy-less tables
+against session-scoped readers on every run, and fails the run if any exist. It reports **0**, and
+45 remaining policy-less tables — all correctly server-only.
+
+Client attribution is decided per file and only where unambiguous: the file imports the session
+client and never touches the admin client. A file that uses both is skipped rather than guessed at.
+A false positive here would train somebody to ignore the report, which is worse than the gap it
+would have found.
+
 ## Deployment state
 
 Verified against the live database after each apply, and now verified in bulk by
@@ -662,6 +715,7 @@ all 186 tables have RLS enabled.
 | `0065_connector_event_failures` | table + function, RLS on, policy, `service_role`-only execute |
 | `0066_data_controls` | table, RLS on, policy, `set_updated_at` trigger |
 | `0069_unify_suppression` | `lift_suppression_for_destination` present with `service_role`-only execute; deprecation comment on `contact_suppressions` |
+| `0079_read_policies_for_ui_tables` | column-level grant on `audit_log` (8 columns, **not** `metadata` or `ip_address`), no table-wide privilege, one select policy each, no write grant, nothing to `anon` |
 | `0074_analytics_rollups` | all six functions present, each smoke-executed against real workspace data; `sum_usage_events` is `definer` + `service_role`-only, the other five are `invoker` with no `anon` grant |
 | `0075_admin_rollups` | all six functions present and smoke-executed; `admin_stock_series` cross-checked against raw counts (2 active businesses, 2 paying, 0 trialing — reconciles exactly); every argument name and return column verified against the hand-written types; `service_role`-only throughout |
 
@@ -843,3 +897,25 @@ until an assistant is spending a fifth of its context on tool descriptions.
   exist. Linked from the footer under Resources.
 * **Help → For developers** — four bundled articles, which also wires up
   `lib/support/help.ts`, until now an orphan module nothing imported.
+
+### Migrations in this lane
+
+| Migration | State |
+|---|---|
+| `0071_developer_platform` | Applied to the linked project and verified. `api_keys`, `api_request_logs`, `webhook_endpoints`, `webhook_deliveries`, `claim_webhook_deliveries()`, `touch_api_key()`, plus `mcp_audit_logs.api_key_id` |
+| `0076_lead_notes_api_author` | Applied and verified. Renumbered from `0075` after the concurrent stream claimed that number; the constraint is live and reads `'UI','COPILOT','AGENT','MCP','API','SYSTEM'` |
+
+Both were `--check`ed against the real schema inside a rolled-back transaction
+before being applied, and both were applied to the local Supabase as well so the
+end-to-end suite runs against the same shape.
+
+### Final verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **1,597 tests, 0 failures** (1,460 + 137) |
+| `npm run test:e2e:developer` | **27 tests, 0 failures**, real Postgres, real RLS |
+| `npx tsc --noEmit` | **0 errors**, whole tree |
+| `npm run lint` | clean |
+| `npm run build` | succeeds; `/developers`, `/api/v1/*` and `/api/mcp` all present in the route manifest |
+| Live HTTP | 42 tools listed and scope-filtered; reads, `agent.create`, and the full park → approve → queued loop for `message.send` |
