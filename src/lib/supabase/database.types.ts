@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -2994,6 +3014,7 @@ export type Database = {
           prospect_type: string
           registered_address: string | null
           registered_country: string | null
+          require_registry_match: boolean
           retain_inactive_leads_days: number | null
           retain_raw_events_days: number | null
           retain_uncontacted_prospects_days: number | null
@@ -3001,9 +3022,8 @@ export type Database = {
           social_autonomous_sending: boolean
           social_follow_up_gap_hours: number
           social_max_follow_ups: number
-          sourcing_strictness: string
-          require_registry_match: boolean
           social_withdraw_after_days: number | null
+          sourcing_strictness: string
           updated_at: string
           updated_by: string | null
         }
@@ -3022,6 +3042,7 @@ export type Database = {
           prospect_type?: string
           registered_address?: string | null
           registered_country?: string | null
+          require_registry_match?: boolean
           retain_inactive_leads_days?: number | null
           retain_raw_events_days?: number | null
           retain_uncontacted_prospects_days?: number | null
@@ -3029,9 +3050,8 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
-          sourcing_strictness?: string
-          require_registry_match?: boolean
           social_withdraw_after_days?: number | null
+          sourcing_strictness?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -3050,6 +3070,7 @@ export type Database = {
           prospect_type?: string
           registered_address?: string | null
           registered_country?: string | null
+          require_registry_match?: boolean
           retain_inactive_leads_days?: number | null
           retain_raw_events_days?: number | null
           retain_uncontacted_prospects_days?: number | null
@@ -3057,9 +3078,8 @@ export type Database = {
           social_autonomous_sending?: boolean
           social_follow_up_gap_hours?: number
           social_max_follow_ups?: number
-          sourcing_strictness?: string
-          require_registry_match?: boolean
           social_withdraw_after_days?: number | null
+          sourcing_strictness?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -13524,7 +13544,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+

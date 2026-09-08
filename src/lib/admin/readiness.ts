@@ -1,7 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { SERVICE_OPERATIONS } from "@/lib/services/registry";
-import { implementedOperations } from "@/lib/services/runtime";
+// Imported from the service layer's entry point, not from `runtime` directly.
+// Registration is a side effect of importing `services/index`, so reaching past
+// it would report every operation as unimplemented — which is exactly the false
+// alarm this page exists to avoid raising.
+import { SERVICE_OPERATIONS, implementedOperations } from "@/lib/services";
 import { MCP_SCOPES } from "@/lib/mcp/tools";
 import { serverEnv } from "@/lib/env";
 

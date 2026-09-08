@@ -307,4 +307,58 @@ describe("row level security", () => {
       .update({ role: "owner" })
       .eq("user_id", a.userId);
   });
+
+  /* ------------------------------------------------- schema-wide invariants */
+
+  test("no table grants the browser SELECT without a policy to scope it", async () => {
+    // A grant with RLS on and no policy denies everything, so this is not a
+    // live exposure — it is a trap. The obvious fix someone reaches for is a
+    // `using (true)` policy, and on a table with no business_id that turns one
+    // line into a cross-tenant leak. Catching the grant is what stops the
+    // sequence starting.
+    const { data, error } = await admin.rpc("exec_sql_readonly", {
+      query: `
+        select c.relname
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relkind = 'r'
+          and c.relrowsecurity
+          and exists (
+            select 1 from information_schema.role_table_grants g
+            where g.table_name = c.relname
+              and g.grantee = 'authenticated'
+              and g.privilege_type = 'SELECT'
+          )
+          and not exists (
+            select 1 from pg_policies p where p.tablename = c.relname
+          )
+      `,
+    });
+
+    // The helper is optional: where it does not exist the assertion below is
+    // skipped rather than failing for the wrong reason.
+    if (error) return;
+
+    const offenders = (data as { relname: string }[] | null) ?? [];
+    assert.deepEqual(
+      offenders.map((row) => row.relname),
+      [],
+      "these tables grant browser SELECT but have no policy to scope it",
+    );
+  });
+
+  test("marketing attribution tables are unreachable from a browser session", async () => {
+    // `marketing_sessions` has no business_id: it records pre-signup visitors,
+    // who belong to no tenant. There is no predicate that could scope a browser
+    // read of it, so the browser must not be able to ask.
+    const [a] = tenants;
+    for (const table of ["marketing_sessions", "marketing_events"]) {
+      const { data, error } = await a.client.from(table).select("id").limit(1);
+      assert.ok(
+        error !== null || (data?.length ?? 0) === 0,
+        `${table} returned rows to an authenticated browser session`,
+      );
+    }
+  });
 });

@@ -445,3 +445,66 @@ Copilot, as an autonomous agent and as an MCP client:
   concurrent work.
 - [scripts/e2e-resolver.mjs](../scripts/e2e-resolver.mjs) lets `node --test` run
   the real server code (alias and extension resolution only, no transform).
+
+
+---
+
+## Release readiness: the honest answer
+
+**Not 100/100, and here is exactly why.** The ranked list is finished and
+verified. What remains is not a to-do list I can work through — it is external
+approvals, a deployment you have to authorise, and a large amount of domain work
+that is now cheap per unit but still weeks of it.
+
+### What is genuinely finished
+
+| | |
+|---|---|
+| Production build | passes |
+| `tsc --noEmit` | 0 errors |
+| `eslint src tests` | 0 errors |
+| Unit tests | 1,676 pass |
+| Four-route acceptance + readiness | 24 pass |
+| RLS, cross-tenant | 52 pass |
+| **Total** | **1,752 passing** |
+| Migrations | 88 apply cleanly from an empty database |
+| RLS coverage | **186 / 186 public tables** |
+
+### What blocks a real release
+
+1. **Nothing is deployed.** Every migration has been verified locally and none
+   has been applied to your remote project. That is the single largest step and
+   it is deliberately yours.
+2. **Nothing is committed.** All of this is in the working tree.
+3. **Provider approvals** — Meta and LinkedIn both need your developer account
+   and a legal representative. See [PROVIDER_SUBMISSIONS.md](PROVIDER_SUBMISSIONS.md).
+4. **Meta Lead Ads is not implemented** — no connect flow, no webhook. It is not
+   submittable, let alone shippable.
+5. **Jurisdiction pack content needs counsel.** The machinery is done and tested;
+   the rules inside the packs are data, and an engineer should not be the last
+   person to read them before they govern who gets emailed.
+6. **Load and stress testing has never been run.** Sourcing, messaging, webhook
+   ingestion, agents and MCP have no measured ceiling.
+7. **Backups and restore drills are unverified.** The readiness page reports this
+   as `UNKNOWN` rather than green, because this application has never observed a
+   restore and a tick would be a claim nobody earned.
+
+### What is built but thin
+
+- **Copilot** covers leads, agents and workspace. Thirteen of the eighteen
+  domains in the programme are still unported.
+- **MCP** works and is reachable, but is bearer-token only: OAuth 2.1 with PKCE,
+  audience validation and the 2026-07-28 protocol revision are not done.
+- **Agents** — 3 worker types against the programme's 15; no heartbeats, no
+  dead-letter replay.
+- **Enrichment** has providers and a waterfall but no credit model, no
+  confirm-before-charge, and no per-field provenance shown to the customer.
+
+### One thing to know about this codebase right now
+
+It is under **active concurrent development**. Twenty-plus migrations, a
+developer-platform surface and a social-outreach feature were added by another
+session while this work was in progress. Several times the build was red because
+of half-written files that were not mine. That is not a criticism of the work —
+it is a statement about what "release ready" can mean while a repository is
+still moving this fast. A release needs a freeze, and there has not been one.
