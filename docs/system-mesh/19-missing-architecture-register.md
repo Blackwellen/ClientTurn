@@ -55,19 +55,19 @@ part of the audit's record.
 | **P2-1** | An event bus. `automation_events` has 16 emitters, 28 declared types and **zero readers** | Transactional outbox over the existing job queue — [15 · F](15-event-catalogue.md) |
 | **P2-2** | `correlation_id` / `causation_id` on jobs and events | "Why did this message go out?" cannot be traced across a five-job chain |
 | **P2-3** | One audit history | Three trails (`audit_log`, `mcp_audit_logs`, `copilot_actions`); which holds the answer depends on the door the change came through |
-| **P2-4** | A unique constraint on `leads (business_id, lower(email))` and `(business_id, phone_normalized)` | Duplicates are prevented only in application code, and MCP `create_lead` does not call it |
-| **P2-5** | Idempotency on the MCP `create_lead` tool | No client-supplied idempotency key; a retried call creates a second lead |
+| **P2-4** | *(narrowed)* A unique constraint on `leads` | **The MCP half is done** — `create_lead` now runs `findDuplicates` and returns the existing lead, so it is idempotent. The constraint itself is **deliberately not added**: eleven insert paths would turn a duplicate into a hard job failure, and it is a symptom of P0-4 rather than a separate fix |
+| ~~P2-5~~ | ~~Idempotency on MCP `create_lead`~~ | **DONE.** An exact email or phone match already *is* the record's identity, so the tool returns the existing lead with `created: false` rather than needing a client-supplied key |
 | ~~P2-6~~ | ~~Rate limiting on `/api/mcp`~~ | **DONE** by the concurrent stream — an unauthenticated guess limit and a post-authentication per-caller limit. Verified |
 | **P2-7** | The feedback loop. `search_feedback` and `campaign_learnings` are never written | The "Learn" quarter of the V4 thesis is open at both ends — [06 · F](06-prospect-lead-data-flow.md) |
 | **P2-8** | `business_learning_events` writers | Read at `business-profile/queries.ts:75` to power a panel that is permanently empty |
 | **P2-9** | `agent_tool_calls` and `agent_budgets` writers | Worker agents have narrative activity but no structured tool-call log and no per-agent spend ceiling |
-| **P2-10** | Fairness in `scheduleAgents()` | Claims at most 3 due agents per 30-second tick with no ordering. A starvation risk at a few hundred active agents |
-| **P2-11** | Cleanup of abandoned wizard artefacts | Orphan DRAFT campaigns, non-terminal `lead_imports`, services created by an abandoned Add Lead wizard — [14 · X2](14-wizard-state-audit.md) |
+| ~~P2-10~~ | ~~Fairness in `scheduleAgents()`~~ | **DONE.** Ordered longest-overdue first with a deterministic tie-break, so the maximum wait is bounded by the number of due agents rather than by physical row order |
+| ~~P2-11~~ | ~~Cleanup of abandoned wizard artefacts~~ | **DONE AND DEPLOYED** — `0088`, on the existing daily sweep. Conservative by construction: a draft is removed only if untouched since creation with no sequence and no recipients, and imports are moved to CANCELLED, never deleted | [24 · R31](24-remediation-log.md) |
 | **P2-12** | `campaigns.draft_state jsonb`, then a server draft for the Reactivation wizard | Its `sessionStorage` draft survives a refresh but not the tab. **Corrected** — see [14 · §3](14-wizard-state-audit.md); the column is required, not optional, because `WizardState` carries the analysed CSV |
-| **P2-13** | Compensation after a partial CRM push | `crm.push` can create the contact and fail on the deal, leaving partial state in the customer's CRM with nothing recording it |
+| ~~P2-13~~ | ~~Compensation after a partial CRM push~~ | **DONE AND DEPLOYED** — `0092`. The contact id now leaves with the failure, so a retry updates rather than creating a second contact; `partial` is a distinct state from `failed` | [24 · R32](24-remediation-log.md) |
 | **P2-14** | Booking provider adapters (Calendly, Google Calendar) | `booking.sync` is a registered job with no provider behind it |
-| **P2-15** | An admin reader for `workspace_app_events` | Connector events are received and stored, and no operator can see them |
-| **P2-16** | Real health probes beyond Twilio | For every other provider, HEALTHY means "we hold a token", not "the integration works" |
+| **P2-15** | *(premise stale)* An **admin** reader for `workspace_app_events` | The customer-facing reader exists (`connector-ops.ts`); only a platform-operator view is missing. Reading it found something worse, now fixed: `importedCount`, documented as "events accepted, ever", was counted from a 2,000-row fetch and plateaued there | [24 · R33](24-remediation-log.md) |
+| **P2-16** | *(narrowed)* Real health probes beyond Twilio | **The untrue part is fixed**: a token-presence check no longer stamps `last_success_at`, which the connection card renders as "Last sync" — the product was claiming a sync that never happened. HEALTHY still means "the credential is valid as far as we can tell", which is honest. Per-provider `verify` calls remain undone: `identify` is not one (Slack's makes no network call), and guessing eight endpoints would mark working integrations broken | [24 · R34](24-remediation-log.md) |
 
 ## P3 — improvement
 
@@ -99,7 +99,15 @@ Flagged where the architecture will bite, not speculatively.
 | **S5** | `campaigns/queries.resolveAudience` | Audience resolution reads `filter_config` jsonb with no jsonb path index | Large lead tables |
 | **S6** | `jobs` claiming one row at a time | One round trip per job | Job throughput, not correctness. The comment explains the trade-off and it is currently the right one |
 
-**The pattern:** aggregation is done in JavaScript over a capped row fetch. Where a limit is
+**This whole class is now closed.** `.limit(20000)` and `.limit(50000)` appear **zero** times in
+`src/`. Beyond S1–S4, the sweep in `0090`/`0091` caught five more: the daily cost rollup (which
+*persisted* an understated total to `business_cost_daily`, so every margin report downstream read
+it), the billing page's six-month history, follow-up performance, connector activity, and the
+**public status page** — whose 30-day uptime was computed over however long the most recent 20,000
+probes happened to cover, and whose "last working" could read *never* for a provider whose
+successes had fallen off the end of the fetch.
+
+**The original pattern:** aggregation is done in JavaScript over a capped row fetch. Where a limit is
 reached, the answer is *wrong* rather than *slow*, and nothing tells anyone.
 
 **S1–S4 are now closed** — `0074` ([24 · R22](24-remediation-log.md)) for the customer surfaces

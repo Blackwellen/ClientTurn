@@ -736,6 +736,54 @@ Three things were deliberately kept or changed rather than moved wholesale:
 validates against the task schema, so the second parser was a second definition of what a valid
 response is.
 
+### R31–R35 · The second pass: every P1, and the P2s that were defects
+
+The first pass closed the P0s. This one worked the P1 and P2 registers, verifying each entry
+against the code before acting on it — three had premises that were no longer true, and are
+recorded as rewritten rather than quietly struck.
+
+| Item | What was actually wrong |
+|---|---|
+| **P1-2** | Warm sends *did* pass through the policy service. The real gap: `compliance_decisions`, the append-only evidence trail, was written by **nothing**, while the admin **review queue** read it — so a human-review workflow could never receive an item, and "what did we decide, on what basis, in March" was unanswerable because `contactability_results` had overwritten itself |
+| **P1-4** | Two definitions of "can I reply here". The composer permitted Messenger and Instagram; the server permitted SMS and WhatsApp. The customer found out after typing |
+| **P1-9** | Creation had already collapsed to the wizard. The dangerous half remained: `setCampaignStatusAction` wrote `status` against a looser list than `TRANSITIONS`, permitting `DRAFT → PAUSED` — a state the machine says is unreachable and every reader believes is |
+| **P1-12** | A refused send was recorded as `FAILED`, so a workspace with a clean suppression list watched its delivery rate fall and was **billed** for messages compliance had declined to send |
+| **P1-13** | A policy pack could be published and archived from the console but only *created* by hand in the database |
+| **P2-5** | MCP `create_lead` had no idempotency and no dedupe, so a retry — the normal behaviour of every client on a timeout — created a second lead and a second follow-up sequence |
+| **P2-10** | `scheduleAgents` selected three due agents with no `ORDER BY`, so the same three ran every tick and a workspace could starve. Nothing would report it: those three look healthy, and a starved agent has no failure to log |
+| **P2-13** | A CRM push that created the contact and failed on the deal discarded the contact id, so each retry created **another** contact in the customer's CRM |
+| **P2-16** | A token-presence check stamped `last_success_at`, which the connection card renders as **"Last sync"**. The product told customers their CRM had synced when it had read a row from its own database |
+
+#### The grants nobody issued
+
+Not on any register, found while verifying `0083`. Supabase's default privileges grant ALL on new
+`public` objects to `anon` and `authenticated`, and a later `grant select` is **additive**, not a
+replacement. The schema held **49 grants to the unauthenticated role** and **TRUNCATE on 121
+tables**.
+
+RLS makes almost all of that harmless — and **not TRUNCATE, which RLS does not govern at all**. A
+role holding it can empty a table with RLS on, no policy, and no rows it may see. It was held on
+`usage_counters` (billing state), `leads`, `businesses` and `copilot_sessions`.
+
+`0086` revokes it: anon 49 → 0, `authenticated` TRUNCATE 121 → 0, INSERT and UPDATE surviving only
+where a matching policy exists. Default privileges are revoked too, so the next `create table` does
+not reintroduce it. `npm run schema:drift` now fails on either.
+
+#### The aggregation class, closed
+
+`.limit(20000)` and `.limit(50000)` appear **zero** times in `src/`. Five instances beyond S1–S4:
+
+- **`cost.rollup_daily` persisted the wrong number** — the only one of these that stored its error.
+  Every margin report reads `business_cost_daily`, so a busy day stayed understated until the
+  rollup was re-run.
+- The billing page's six-month history, built from up to 100,000 timestamps.
+- Follow-up performance — and while repointing it, it was counting BLOCKED as a send.
+- Connector `importedCount`, documented as "events accepted, ever", plateaued at 2,000.
+- The **public status page**: 30-day uptime computed over however long the most recent 20,000
+  probes covered, and a "last working" that could read *never* for a provider whose successes had
+  fallen off the end of the read. The one number here read by non-customers, during an incident,
+  to decide whether to trust the service.
+
 ## Deployment state
 
 Verified against the live database after each apply, and now verified in bulk by
