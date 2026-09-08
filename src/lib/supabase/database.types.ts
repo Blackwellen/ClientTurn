@@ -13130,6 +13130,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      connector_install_activity: {
+        Args: { p_business_id: string; p_install_ids: string[] }
+        Returns: {
+          imported_count: number
+          install_id: string
+          last_import_at: string | null
+          open_failures: number
+        }[]
+      }
       expire_abandoned_campaign_drafts: {
         Args: { p_older_than?: unknown }
         Returns: number

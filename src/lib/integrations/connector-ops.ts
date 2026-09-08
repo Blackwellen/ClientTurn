@@ -306,14 +306,19 @@ export async function loadConnectorActivity(
     });
   }
 
-  const [{ data: events }, { data: failures }] = await Promise.all([
-    db
-      .from("workspace_app_events")
-      .select("install_id, created_at")
-      .eq("business_id", businessId)
-      .in("install_id", installIds)
-      .order("created_at", { ascending: false })
-      .limit(2000),
+  const [{ data: totals }, { data: failures }] = await Promise.all([
+    // Counted in SQL. This used to fetch up to 2,000 event rows and increment
+    // a counter here, so `importedCount` -- documented as "events accepted,
+    // ever" -- plateaued at 2,000 and stayed there, on exactly the connectors
+    // busy enough for the number to matter.
+    db.rpc("connector_install_activity", {
+      p_business_id: businessId,
+      p_install_ids: installIds,
+    }),
+    // Still rows, because these are shown individually. The count no longer
+    // comes from here: 200 failures ordered by time can all belong to one
+    // install, which reported zero open failures for a second connector that
+    // was quietly failing.
     db
       .from("connector_event_failures")
       .select("id, install_id, reason, external_event_id, payload, created_at")
@@ -324,17 +329,17 @@ export async function loadConnectorActivity(
       .limit(200),
   ]);
 
-  for (const event of events ?? []) {
-    const entry = activity.get(event.install_id);
+  for (const row of totals ?? []) {
+    const entry = activity.get(row.install_id);
     if (!entry) continue;
-    entry.importedCount += 1;
-    if (!entry.lastImportAt) entry.lastImportAt = event.created_at;
+    entry.importedCount = Number(row.imported_count);
+    entry.lastImportAt = row.last_import_at;
+    entry.openFailures = Number(row.open_failures);
   }
 
   for (const failure of failures ?? []) {
     const entry = activity.get(failure.install_id);
     if (!entry) continue;
-    entry.openFailures += 1;
     if (entry.recentFailures.length < 5) {
       entry.recentFailures.push({
         id: failure.id,
