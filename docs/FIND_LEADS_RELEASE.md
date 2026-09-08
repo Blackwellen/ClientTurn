@@ -101,6 +101,36 @@ select * from public.cron_job_health;
 select count(*), sum((status_code = 200)::int) from net._http_response;
 ```
 
+### Queue health (production, verified)
+
+4,215 jobs processed, **zero dead, zero stuck, zero pending backlog**. A
+dead-letter pile is the usual first sign that a handler is throwing on a case
+nobody modelled; there isn't one.
+
+```sql
+select state, count(*) from jobs group by 1;
+```
+
+### HTTP security headers
+
+Verified emitting from a production server build:
+
+| Header | Value |
+|---|---|
+| `X-Frame-Options` | `DENY` |
+| `Content-Security-Policy` | `frame-ancestors 'none'` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=()` |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` |
+
+The referrer rule is the one that matters most here: `/app/leads?lead=<uuid>`
+and `/app/find-leads/runs/<uuid>` identify real records, and the browser default
+sends the full path to any third-party origin the page touches.
+
+There is deliberately **no `script-src` CSP** — see the reasoning in
+`next.config.ts`. That remains open work.
+
 ### Security posture (production, verified)
 
 | Check | Result |
