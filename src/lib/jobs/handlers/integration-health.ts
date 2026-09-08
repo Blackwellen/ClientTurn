@@ -12,12 +12,48 @@ type Probe = {
   status: "HEALTHY" | "DEGRADED" | "ACTION_REQUIRED";
   errorCode: string | null;
   errorMessage: string | null;
+  /**
+   * Did we actually reach the provider, or only look at what we hold?
+   *
+   * Only Twilio has a real probe. For every other connection "HEALTHY" means a
+   * token row exists and has not expired -- which is worth knowing and is not
+   * the same claim, and the difference used to be erased on write: any HEALTHY
+   * result stamped `last_success_at`, and the connection card renders that as
+   * **"Last sync"**. So the product told a customer their CRM had synced two
+   * minutes ago when it had read a row out of its own database.
+   *
+   * `lead_source.poll` sets the same column after a genuine poll, so the field
+   * does carry a true meaning elsewhere. That is exactly why it must not be
+   * written by a check that synced nothing.
+   */
+  verified: boolean;
 };
 
-const OK: Probe = { status: "HEALTHY", errorCode: null, errorMessage: null };
+/** The provider answered. */
+const VERIFIED_OK: Probe = {
+  status: "HEALTHY",
+  errorCode: null,
+  errorMessage: null,
+  verified: true,
+};
+
+/** We hold a usable credential. Nothing was asked of the provider. */
+const CREDENTIAL_OK: Probe = {
+  status: "HEALTHY",
+  errorCode: null,
+  errorMessage: null,
+  verified: false,
+};
 
 function actionRequired(code: string, message: string): Probe {
-  return { status: "ACTION_REQUIRED", errorCode: code, errorMessage: message };
+  return {
+    status: "ACTION_REQUIRED",
+    errorCode: code,
+    errorMessage: message,
+    // A refusal is itself evidence the provider was reached, but nothing
+    // succeeded, so there is no success to stamp either way.
+    verified: false,
+  };
 }
 
 async function probeTwilio(): Promise<Probe> {
@@ -38,7 +74,7 @@ async function probeTwilio(): Promise<Probe> {
         },
       },
     );
-    if (response.ok) return OK;
+    if (response.ok) return VERIFIED_OK;
     if (response.status === 401 || response.status === 403) {
       return actionRequired(
         String(response.status),
@@ -49,12 +85,14 @@ async function probeTwilio(): Promise<Probe> {
       status: "DEGRADED",
       errorCode: String(response.status),
       errorMessage: `Twilio responded with ${response.status}.`,
+      verified: false,
     };
   } catch (error) {
     return {
       status: "DEGRADED",
       errorCode: "network_error",
       errorMessage: error instanceof Error ? error.message : String(error),
+      verified: false,
     };
   }
 }
@@ -85,12 +123,19 @@ async function probeToken(integrationId: string): Promise<Probe> {
     );
   }
 
-  return OK;
+  // The credential is present and in date. Whether the provider would still
+  // accept it is a question this check does not ask -- there is no adapter
+  // method for a cheap authenticated call, and inventing an endpoint per
+  // provider would mark a working integration broken the moment one of the
+  // guesses was wrong.
+  return CREDENTIAL_OK;
 }
 
 function probeEmail(): Probe {
+  // An environment variable, not a provider. Reading it proves the deployment
+  // is configured, and nothing about whether the key still works.
   return serverEnv.resend.apiKey
-    ? OK
+    ? CREDENTIAL_OK
     : actionRequired("missing_api_key", "No email provider key is configured.");
 }
 
@@ -145,7 +190,10 @@ export async function runIntegrationHealthChecks(params: {
       .from("integrations")
       .update({
         status: result.status,
-        last_success_at: result.status === "HEALTHY" ? now : undefined,
+        // Only a probe that actually reached the provider may claim a success.
+        // The connection card renders this as "Last sync"; a token-presence
+        // check has synced nothing and must not write it.
+        last_success_at: result.status === "HEALTHY" && result.verified ? now : undefined,
         last_error_at: result.errorCode ? now : null,
         last_error_code: result.errorCode,
         last_error_message: result.errorMessage,
