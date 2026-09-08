@@ -1,18 +1,31 @@
 import * as React from "react";
-import { AlertCircle, Bot, User } from "lucide-react";
+import { AlertCircle, Bot, ShieldOff, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { dayGroupLabel, formatDateTime } from "@/lib/dates";
 import type { ConversationMessage } from "@/lib/leads/types";
+import { MESSAGE_STATUS } from "@/components/ui/badge";
 
-const DELIVERY_LABEL: Record<string, string> = {
-  QUEUED: "Queued",
+/**
+ * Provider-reported statuses that never reach `messages.status`.
+ *
+ * The workspace statuses live in `MESSAGE_STATUS` and are not restated here:
+ * one status map, per the project rules, and this thread previously carried a
+ * second copy that had already drifted -- it knew about `UNDELIVERED` and
+ * `SENDING`, which the badge map does not, and would not have known about
+ * `BLOCKED`, which it now does.
+ */
+const PROVIDER_LABEL: Record<string, string> = {
   SENDING: "Sending",
-  SENT: "Sent",
-  DELIVERED: "Delivered",
-  FAILED: "Failed",
   UNDELIVERED: "Not delivered",
-  RECEIVED: "Received",
 };
+
+function deliveryLabel(status: string): string {
+  return (
+    MESSAGE_STATUS[status as keyof typeof MESSAGE_STATUS]?.label ??
+    PROVIDER_LABEL[status] ??
+    status
+  );
+}
 
 function groupByDay(messages: ConversationMessage[]) {
   const groups: { day: string; items: ConversationMessage[] }[] = [];
@@ -54,8 +67,13 @@ export function ConversationThread({
           <ol className="space-y-2">
             {group.items.map((message) => {
               const outbound = message.direction === "outbound";
+              // A send the provider refused, which is a fault to investigate.
               const failed =
                 message.status === "FAILED" || message.status === "UNDELIVERED";
+              // A send *we* refused. Nothing is broken -- usually the recipient
+              // opted out -- so the reason is shown plainly rather than in the
+              // red used for a delivery fault.
+              const blocked = message.status === "BLOCKED";
 
               return (
                 <li
@@ -82,7 +100,7 @@ export function ConversationThread({
                       <span aria-hidden>·</span>
                       <span className="uppercase">{message.channel}</span>
                       <span aria-hidden>·</span>
-                      <span>{DELIVERY_LABEL[message.status] ?? message.status}</span>
+                      <span>{deliveryLabel(message.status)}</span>
                       {outbound && (
                         <>
                           <span aria-hidden>·</span>
@@ -103,14 +121,20 @@ export function ConversationThread({
                       )}
                     </div>
 
-                    {failed && message.error_message && (
+                    {(failed || blocked) && message.error_message && (
                       <p
                         className={cn(
                           "mt-1.5 flex items-start gap-1 rounded-md px-1.5 py-1 text-[11px]",
-                          "bg-danger-50 text-danger-700",
+                          blocked
+                            ? "bg-surface-sunken text-content-subtle"
+                            : "bg-danger-50 text-danger-700",
                         )}
                       >
-                        <AlertCircle className="mt-px size-3 shrink-0" aria-hidden />
+                        {blocked ? (
+                          <ShieldOff className="mt-px size-3 shrink-0" aria-hidden />
+                        ) : (
+                          <AlertCircle className="mt-px size-3 shrink-0" aria-hidden />
+                        )}
                         {message.error_message}
                       </p>
                     )}

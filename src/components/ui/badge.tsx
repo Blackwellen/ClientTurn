@@ -90,6 +90,11 @@ export const MESSAGE_STATUS = {
   SENT: { label: "Sent", tone: "info" },
   DELIVERED: { label: "Delivered", tone: "success" },
   FAILED: { label: "Failed", tone: "danger" },
+  // Not danger. Nothing is broken: policy refused the send, usually because the
+  // recipient opted out. Red would send somebody hunting an outage that does
+  // not exist, and a screen of red for correct behaviour teaches people to
+  // ignore the colour.
+  BLOCKED: { label: "Not sent", tone: "neutral" },
   RECEIVED: { label: "Received", tone: "accent" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 

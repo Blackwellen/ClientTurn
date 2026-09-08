@@ -6,6 +6,7 @@ import { recordUsage } from "@/lib/audit";
 import { nextPermittedSendTime, type StopReason } from "@/lib/automation/scheduler";
 import { evaluate } from "@/lib/policy/service";
 import type { CampaignType, PolicyChannel, PolicyReasonCode } from "@/lib/policy/types";
+import { isPlatformChannel } from "@/lib/messaging/types";
 import type { Channel, SendResult } from "@/lib/messaging/types";
 import type {
   OutboundMessageRecord,
@@ -64,13 +65,25 @@ async function messageEvent(
 }
 
 /**
- * The V3 messaging channel names are lower-case; the policy engine's vocabulary
- * is upper-case and includes SOCIAL, which follow-up never uses.
+ * The messaging channel names are lower-case; the policy engine's vocabulary is
+ * upper-case and groups every social platform under one `SOCIAL` rule.
+ *
+ * Declared as an exhaustive `Record<Channel, ...>` on purpose: adding a channel
+ * to `Channel` without deciding how policy treats it should fail the build, not
+ * produce an `undefined` that the engine would silently refuse with a
+ * misleading reason.
  */
 const POLICY_CHANNEL: Record<Channel, PolicyChannel> = {
   sms: "SMS",
   whatsapp: "WHATSAPP",
   email: "EMAIL",
+  // The packs draw the line at "a social platform", not at which one: the
+  // consent position for a LinkedIn message is the same as for an Instagram
+  // one, and splitting them would invite a pack that permits one by oversight.
+  messenger: "SOCIAL",
+  instagram: "SOCIAL",
+  linkedin: "SOCIAL",
+  tiktok: "SOCIAL",
 };
 
 /**
@@ -107,6 +120,30 @@ const CAMPAIGN_TYPE: Record<SendOrigin, CampaignType> = {
  * The Supabase-backed implementation of the shared outbound path. Every read
  * here is a fresh read: a job payload is never treated as current truth.
  */
+/**
+ * The platform address a social thread replies to.
+ *
+ * Read fresh from the conversation rather than carried on the message row: a
+ * thread's address is set once when the conversation is created and a message
+ * queued days earlier must not carry a stale copy of it.
+ */
+async function socialThreadAddress(
+  businessId: string,
+  conversationId: string | null,
+): Promise<string | null> {
+  if (!conversationId) return null;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("conversations")
+    .select("external_thread_id")
+    .eq("id", conversationId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  return data?.external_thread_id ?? null;
+}
+
 export function createSendStore(): SendStore & {
   conversationId(messageId: string): string | undefined;
 } {
@@ -131,7 +168,18 @@ export function createSendStore(): SendStore & {
 
       const channel = row.channel as Channel;
       const lead = await loadLead(row.lead_id);
-      const to = lead ? leadContact(lead, channel) : null;
+
+      // Where this message actually goes. On Messenger and Instagram the
+      // address is the thread's, not the lead's: `leadContact` returns null for
+      // those channels by design, because a lead row has nowhere to hold a
+      // page-scoped id and falling back to the phone number would send an SMS
+      // to somebody who only ever wrote on Instagram.
+      const to = isPlatformChannel(channel)
+        ? await socialThreadAddress(row.business_id, row.conversation_id)
+        : lead
+          ? leadContact(lead, channel)
+          : null;
+
       if (!to) return null;
 
       conversations.set(row.id, row.conversation_id);
@@ -214,6 +262,11 @@ export function createSendStore(): SendStore & {
           id: lead.id,
           email: lead.email,
           phone: lead.phone_normalized ?? lead.phone,
+          // A social thread's address is the platform-scoped id this message is
+          // going to, which is not held on the lead row. Without it the engine
+          // would see no destination and refuse every social send as an invalid
+          // contact.
+          social: isPlatformChannel(message.channel) ? message.to : null,
           optedOut: lead.opted_out,
           // Leads carry no country of their own; the recorded permission does,
           // and `evaluate` falls back to it. Absent both, the country-neutral
@@ -283,7 +336,13 @@ export function createSendStore(): SendStore & {
       await admin
         .from("messages")
         .update({
-          status: "FAILED",
+          // BLOCKED, not FAILED. We did not try and fail; we decided not to
+          // try. FAILED means the provider would not deliver it and somebody
+          // should look at the connection -- and every rate and usage
+          // denominator in the product counts FAILED as an attempt, so a
+          // workspace with a clean suppression list would watch its delivery
+          // rate fall for doing the right thing.
+          status: "BLOCKED",
           error_code: `policy:${gate.reasonCode}`,
           error_message: gate.message.slice(0, 500),
           failed_at: new Date().toISOString(),

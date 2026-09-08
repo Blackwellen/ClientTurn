@@ -798,3 +798,84 @@ describe("the migration set can be replayed onto an empty database", () => {
     );
   });
 });
+
+/* -------------------------------------------- a refused send is not a failure */
+
+describe("BLOCKED never counts as an attempt", () => {
+  /**
+   * `blockedByPolicy` used to write `status = 'FAILED'` with an
+   * `error_code` of `policy:<reason>`, so a message compliance correctly
+   * refused was indistinguishable from one the provider would not deliver.
+   *
+   * Three queries count `('SENT','DELIVERED','FAILED')` as "attempted" — two
+   * analytics and one billing. The consequence was perverse: a workspace with a
+   * clean suppression list watched its delivery rate fall, and was billed for
+   * messages it had declined to send.
+   *
+   * These assertions are on the source text of those denominators, because the
+   * bug was never in a function anyone could unit test — it was in the set of
+   * strings three separate queries happened to list.
+   */
+  const DENOMINATORS = [
+    "src/lib/analytics/v4-extras.ts",
+    "src/lib/analytics/v4-queries.ts",
+    "src/lib/billing/usage-service.ts",
+  ];
+
+  test("no attempt denominator includes BLOCKED", () => {
+    for (const file of DENOMINATORS) {
+      const source = SOURCES.find((entry) => entry.file === file);
+      assert.ok(source, `${file} has moved; this rule now guards nothing`);
+
+      for (const match of source.text.matchAll(/\.in\(\s*"status"\s*,\s*\[([^\]]*)\]/g)) {
+        const values = match[1];
+        if (!values.includes("SENT")) continue;
+        assert.ok(
+          !values.includes("BLOCKED"),
+          `${file} counts BLOCKED as an attempted send. A message policy ` +
+            `refused was never attempted: including it depresses every rate ` +
+            `and bills the customer for restraint.`,
+        );
+      }
+    }
+  });
+
+  test("the policy refusal writes BLOCKED, not FAILED", () => {
+    const source = SOURCES.find(
+      (entry) => entry.file === "src/lib/jobs/handlers/send-store.ts",
+    );
+    assert.ok(source, "send-store.ts has moved");
+
+    const blocked = source.text.indexOf("async blockedByPolicy");
+    assert.ok(blocked > -1, "blockedByPolicy is gone");
+    const body = source.text.slice(blocked, blocked + 900);
+    assert.match(body, /status: "BLOCKED"/, "a refused send is recorded as FAILED again");
+  });
+
+  test("the database permits the status the code writes", () => {
+    // An enum the application writes and the CHECK refuses is a 23514 at send
+    // time, which is how `promote_reviewed_prospect` was broken for months.
+    assert.match(
+      EFFECTIVE_SQL,
+      /messages_status_check[\s\S]{0,400}'BLOCKED'/,
+      "messages.status has no BLOCKED value in the migration set",
+    );
+  });
+
+  test("BLOCKED has a label, and it is not a red one", () => {
+    const badge = SOURCES.find((entry) => entry.file === "src/components/ui/badge.tsx");
+    assert.ok(badge, "badge.tsx has moved");
+    const map = badge.text.slice(
+      badge.text.indexOf("export const MESSAGE_STATUS"),
+      badge.text.indexOf("export const INTEGRATION_HEALTH"),
+    );
+    assert.match(map, /BLOCKED:/, "BLOCKED renders as its raw enum value");
+    // Nothing is broken when a send is blocked. A screen of red for correct
+    // behaviour teaches an operator to stop reading the colour.
+    assert.doesNotMatch(
+      map,
+      /BLOCKED: \{ label: "[^"]*", tone: "danger" \}/,
+      "BLOCKED is styled as a fault",
+    );
+  });
+});
