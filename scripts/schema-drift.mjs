@@ -290,6 +290,34 @@ function silentlyEmptyReads(policylessTables) {
   return suspects;
 }
 
+/**
+ * Privileges that row-level security does not cover.
+ *
+ * Supabase ships a default-privileges rule granting ALL on new objects in
+ * `public` to `anon` and `authenticated`, so `grant select ... to authenticated`
+ * reads like least privilege while being additive to a grant of everything.
+ * That is how this schema came to hold 49 grants to the unauthenticated role
+ * and TRUNCATE on 121 tables (0086).
+ *
+ * RLS makes almost all of it harmless -- and not TRUNCATE, which RLS does not
+ * govern at all. A role holding TRUNCATE can empty a table with RLS on, no
+ * policy, and no rows it may see.
+ *
+ * So this checks the two things RLS cannot: any grant at all to `anon`, and
+ * TRUNCATE to either browser role.
+ */
+const strayGrants = await query(`
+  select grantee, privilege_type, count(*)::int as tables
+    from information_schema.role_table_grants
+   where table_schema = 'public'
+     and (
+       grantee = 'anon'
+       or (grantee = 'authenticated' and privilege_type = 'TRUNCATE')
+     )
+   group by grantee, privilege_type
+   order by grantee, privilege_type
+`);
+
 const policyless = await query(`
   select c.relname as name
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -306,6 +334,7 @@ const summary = {
   expectedTables: wanted.tables.size,
   expectedFunctions: wanted.functions.size,
   missing,
+  strayGrants,
   rlsEnabledWithoutPolicy: policylessNames.length,
   silentlyEmptyReads: silent,
   ledger: {
@@ -328,6 +357,23 @@ if (process.argv.includes("--json")) {
         `${String(gone.length).padStart(3)} missing  [${tick(gone.length === 0)}]`,
     );
     for (const row of gone) console.log(`      - ${row.name}  (${row.file})`);
+  }
+
+  const strayTotal = strayGrants.reduce((sum, row) => sum + row.tables, 0);
+  console.log(
+    `\n  grants     ${String(strayTotal).padStart(4)} privileges RLS cannot gate  ` +
+      `[${tick(strayTotal === 0)}]`,
+  );
+  if (strayTotal > 0) {
+    console.log(
+      `      Supabase grants ALL on new objects in public to anon and\n` +
+        `      authenticated by default, and a later grant is additive rather\n` +
+        `      than a replacement. RLS covers most of it — but not TRUNCATE,\n` +
+        `      which it does not govern at all.`,
+    );
+    for (const row of strayGrants) {
+      console.log(`      - ${row.grantee}: ${row.privilege_type} on ${row.tables} table(s)`);
+    }
   }
 
   console.log(
@@ -380,6 +426,7 @@ if (process.argv.includes("--json")) {
 }
 
 const drifted =
+  strayGrants.length > 0 ||
   silent.length > 0 ||
   duplicateVersions.length > 0 ||
   missing.tables.length > 0 ||
