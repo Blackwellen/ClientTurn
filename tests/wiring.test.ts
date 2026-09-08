@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { SETTINGS_SECTIONS } from "../src/lib/settings/types.ts";
-import { INBOX_CHANNELS, CHANNEL_DEFINITIONS } from "../src/lib/inbox/types.ts";
+import {
+  INBOX_CHANNELS,
+  CHANNEL_DEFINITIONS,
+  canReplyOn,
+} from "../src/lib/inbox/types.ts";
 import { PROVIDERS } from "../src/lib/integrations/catalog.ts";
 import { PRIMARY_NAV, SECONDARY_NAV, titleForPath } from "../src/lib/app/nav.ts";
 
@@ -877,5 +881,78 @@ describe("BLOCKED never counts as an attempt", () => {
       /BLOCKED: \{ label: "[^"]*", tone: "danger" \}/,
       "BLOCKED is styled as a fault",
     );
+  });
+});
+
+/* ------------------------------------------- one reply gate, not two --- */
+
+describe("the inbox composer and the inbox action agree", () => {
+  /**
+   * `canReplyOn` decides whether the composer renders. `inboxAction` decides
+   * whether a reply is accepted. They were two separate channel lists, and they
+   * had drifted: the composer appeared on Messenger and Instagram while the
+   * server accepted SMS and WhatsApp only. The customer found out after typing.
+   *
+   * The rule is now that there is one definition and the server imports it.
+   * These assertions guard the shape of that arrangement rather than its
+   * current contents, so adding a channel stays a one-line change.
+   */
+  const ACTIONS = "src/lib/inbox/actions.ts";
+
+  test("the action imports the gate instead of restating it", () => {
+    const source = SOURCES.find((entry) => entry.file === ACTIONS);
+    assert.ok(source, `${ACTIONS} has moved`);
+    assert.match(
+      source.text,
+      /canReplyOn/,
+      "inbox/actions.ts no longer applies canReplyOn — the server gate has drifted from the composer",
+    );
+  });
+
+  test("the action holds no channel list of its own", () => {
+    const source = SOURCES.find((entry) => entry.file === ACTIONS);
+    assert.ok(source);
+    // The exact shape that was wrong before: an inline array of channel names
+    // used to decide whether a reply may be sent.
+    assert.doesNotMatch(
+      source.text,
+      /\[\s*"(sms|whatsapp|email|messenger|instagram)"[^\]]*\]\s*\.includes/,
+      "a second channel list has reappeared in the inbox action",
+    );
+  });
+
+  test("every replyable channel is one the send path can address", () => {
+    // `sendManualMessage` is what the action calls. A channel `canReplyOn`
+    // permits but that schema rejects would render a composer whose send fails
+    // validation — the same divergence in a different place.
+    const leadActions = SOURCES.find(
+      (entry) => entry.file === "src/lib/leads/actions.ts",
+    );
+    assert.ok(leadActions);
+
+    const schema = leadActions.text.slice(
+      leadActions.text.indexOf("const messageSchema"),
+      leadActions.text.indexOf("function fail("),
+    );
+
+    for (const channel of ["sms", "whatsapp", "email", "messenger", "instagram"]) {
+      if (!canReplyOn(channel, true)) continue;
+      assert.ok(
+        schema.includes(`"${channel}"`),
+        `canReplyOn permits ${channel} but sendManualMessage's schema rejects it`,
+      );
+    }
+  });
+
+  test("a prospect-only conversation is never replyable", () => {
+    // `send-core` loads a lead and refuses without one, so a composer on a
+    // prospect thread would produce a message that could not even be gated.
+    for (const channel of ["sms", "whatsapp", "email", "messenger", "instagram"]) {
+      assert.equal(
+        canReplyOn(channel, false),
+        false,
+        `${channel} offers a composer on a conversation with no lead`,
+      );
+    }
   });
 });

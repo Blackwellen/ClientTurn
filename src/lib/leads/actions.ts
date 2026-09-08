@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkSuppression } from "@/lib/policy/suppression";
+import { replyWindow } from "@/lib/inbox/types";
 import type { Database } from "@/lib/supabase/database.types";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
@@ -27,10 +28,28 @@ const statusSchema = z.object({
   status: z.enum(LEAD_STATUSES),
 });
 
+/**
+ * A manually-typed reply.
+ *
+ * The channel list is every channel `message.send` can actually address. That
+ * is not the same as every channel in the product: it is the set for which
+ * `send-store.load()` can resolve a destination -- `leadContact` for email and
+ * phone, `socialThreadAddress` for the platform-scoped ids that a lead row has
+ * nowhere to hold. A channel outside this list would queue a message the worker
+ * could not deliver, which fails silently in the background rather than in
+ * front of the person who typed it.
+ */
 const messageSchema = z.object({
   leadId: leadIdSchema,
-  channel: z.enum(["sms", "whatsapp"]),
+  channel: z.enum(["sms", "whatsapp", "email", "messenger", "instagram"]),
   body: z.string().trim().min(1).max(1200),
+  /**
+   * The thread being replied to. Required on the platform channels, where a
+   * lead can hold several threads and the destination lives on the
+   * conversation rather than on the lead.
+   */
+  conversationId: z.uuid().optional(),
+  subject: z.string().trim().max(200).optional(),
 });
 
 function fail(error: string): ActionResult {
@@ -47,7 +66,7 @@ async function loadLead(workspace: ActiveWorkspace, leadId: string) {
   const { data } = await admin
     .from("leads")
     .select(
-      "id, business_id, status, phone, phone_normalized, opted_out, automation_active, human_takeover, first_name, last_name",
+      "id, business_id, status, phone, phone_normalized, email, opted_out, automation_active, human_takeover, first_name, last_name",
     )
     .eq("id", leadId)
     .eq("business_id", workspace.businessId)
@@ -367,6 +386,8 @@ export async function sendManualMessage(input: {
   leadId: string;
   channel: string;
   body: string;
+  conversationId?: string;
+  subject?: string;
 }): Promise<ActionResult> {
   const parsed = messageSchema.safeParse(input);
   if (!parsed.success) return fail("Enter a message before sending.");
@@ -392,42 +413,107 @@ export async function sendManualMessage(input: {
   if (!lead) return fail("Lead not found.");
   if (lead.opted_out) return fail("This lead has opted out and cannot be messaged.");
 
-  const to = lead.phone_normalized ?? normalisePhone(lead.phone ?? "");
-  if (!to) return fail("This lead has no usable phone number.");
+  const channel = parsed.data.channel;
+  const social = channel === "messenger" || channel === "instagram";
 
   const admin = createAdminClient();
+
+  /*
+   * The thread first, because on the platform channels it is what carries the
+   * destination. A lead row has nowhere to hold a page-scoped recipient id, so
+   * `send-store` reads it from the conversation -- which means a social reply
+   * without a conversation is a message the worker cannot address.
+   */
+  let conversationId: string | null = null;
+
+  if (parsed.data.conversationId) {
+    const { data: thread } = await admin
+      .from("conversations")
+      .select("id, channel, lead_id, last_inbound_at")
+      .eq("id", parsed.data.conversationId)
+      .eq("business_id", workspace.businessId)
+      .maybeSingle();
+
+    if (!thread || thread.lead_id !== lead.id || thread.channel !== channel) {
+      return fail("That conversation could not be found.");
+    }
+
+    // Meta permits a business to answer somebody who wrote to it, for 24 hours
+    // after they last did. Accepting a reply after that would take a carefully
+    // typed message and silently never deliver it, which is worse than a
+    // disabled composer.
+    if (social) {
+      const window = replyWindow(channel, thread.last_inbound_at);
+      if (window.state !== "OPEN") {
+        return fail(
+          "The 24-hour reply window on this thread has closed, so a reply would not be delivered.",
+        );
+      }
+    }
+
+    conversationId = thread.id;
+  } else if (social) {
+    return fail("A social reply must be sent from its own conversation.");
+  }
+
+  /*
+   * The destination, resolved the same way `send-store.load()` will resolve it
+   * when the job runs. Checked here so the person who typed the message is told
+   * now, rather than the send failing quietly in a worker minutes later.
+   */
+  let to: string;
+  if (channel === "email") {
+    to = (lead.email ?? "").trim();
+    if (!to) return fail("This lead has no email address.");
+  } else if (social) {
+    // Addressed from the thread by the worker; there is nothing to check here
+    // beyond the thread existing, which is established above.
+    to = "";
+  } else {
+    to = lead.phone_normalized ?? normalisePhone(lead.phone ?? "") ?? "";
+    if (!to) return fail("This lead has no usable phone number.");
+  }
 
   // The one list, shared with the cold path. See 0069.
   const suppression = await checkSuppression(
     workspace.businessId,
-    parsed.data.channel === "whatsapp" ? "WHATSAPP" : "SMS",
-    { phone: to },
+    channel === "email"
+      ? "EMAIL"
+      : channel === "whatsapp"
+        ? "WHATSAPP"
+        : social
+          ? "SOCIAL"
+          : "SMS",
+    channel === "email" ? { email: to } : social ? {} : { phone: to },
   );
-  if (suppression) return fail("This number is suppressed and cannot be messaged.");
+  if (suppression) {
+    return fail("This contact is suppressed on that channel and cannot be messaged.");
+  }
 
-  let conversationId: string | null = null;
-  const { data: existing } = await admin
-    .from("conversations")
-    .select("id")
-    .eq("business_id", workspace.businessId)
-    .eq("lead_id", lead.id)
-    .eq("channel", parsed.data.channel)
-    .maybeSingle();
-
-  if (existing) {
-    conversationId = existing.id;
-  } else {
-    const { data: created, error: conversationError } = await admin
+  if (!conversationId) {
+    const { data: existing } = await admin
       .from("conversations")
-      .insert({
-        business_id: workspace.businessId,
-        lead_id: lead.id,
-        channel: parsed.data.channel,
-      })
       .select("id")
-      .single();
-    if (conversationError || !created) return fail("Could not open a conversation.");
-    conversationId = created.id;
+      .eq("business_id", workspace.businessId)
+      .eq("lead_id", lead.id)
+      .eq("channel", channel)
+      .maybeSingle();
+
+    if (existing) {
+      conversationId = existing.id;
+    } else {
+      const { data: created, error: conversationError } = await admin
+        .from("conversations")
+        .insert({
+          business_id: workspace.businessId,
+          lead_id: lead.id,
+          channel,
+        })
+        .select("id")
+        .single();
+      if (conversationError || !created) return fail("Could not open a conversation.");
+      conversationId = created.id;
+    }
   }
 
   const sendKey = crypto.randomUUID();
@@ -438,8 +524,10 @@ export async function sendManualMessage(input: {
       conversation_id: conversationId,
       lead_id: lead.id,
       direction: "outbound",
-      channel: parsed.data.channel,
+      channel,
       body: parsed.data.body,
+      // Email threads need one; every other channel has no concept of it.
+      subject: channel === "email" ? (parsed.data.subject ?? null) : null,
       status: "QUEUED",
       origin: "manual",
       send_key: sendKey,
@@ -461,7 +549,7 @@ export async function sendManualMessage(input: {
     action: "lead.message_queued",
     entityType: "message",
     entityId: message.id,
-    metadata: { lead_id: lead.id, channel: parsed.data.channel },
+    metadata: { lead_id: lead.id, channel },
   });
 
   refresh();
