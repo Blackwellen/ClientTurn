@@ -7,10 +7,17 @@ failure it causes, and where the fix belongs.
 
 ## P0 — production blockers
 
-**Five of six P0s are fixed**, and all seven of this workstream's migrations are deployed and
-verified. Only P0-4 — one implementation per business action — remains, and the concurrent stream
-is building `src/lib/services/` for exactly that. See
-[24 · Deployment state](24-remediation-log.md).
+**Five of six P0s are fixed.** Only P0-4 — one implementation per business action — remains, and
+the concurrent stream is building `src/lib/services/` for exactly that.
+
+**Every migration is deployed and verified**, and that is now a command rather than a claim:
+`npm run schema:drift` reports 186 tables, 83 functions and 336 indexes with zero missing, and a
+reconciled migration ledger. See [24 · R25](24-remediation-log.md).
+
+Entries below are re-verified against the code rather than carried forward. Where the concurrent
+stream has closed something, it is struck and marked; where an entry's *premise* has become false
+— P1-1 is the example — it is rewritten rather than quietly deleted, because the original claim is
+part of the audit's record.
 
 | # | Missing | Failure | Fix |
 |---|---|---|---|
@@ -26,11 +33,11 @@ is building `src/lib/services/` for exactly that. See
 
 | # | Missing | Failure | Fix |
 |---|---|---|---|
-| **P1-1** | Meta Lead Ads implementation | No OAuth adapter, no poller, no webhook — yet Meta is in the catalogue, the onboarding flow, the Dashboard health strip, the agent source list and the admin provider panel. Onboarding step 2 waits for a connection that cannot happen | [09 · I1](09-integration-mesh.md) |
+| **P1-1** | *(rewritten — the original premise is now false)* Meta self-serve connect | The audit said "no OAuth adapter, no poller, no webhook". **All three now exist**: the adapter registers, `registerLeadSourcePoller("meta")` is live, and `/api/webhooks/meta` verifies the signature and queues both lead forms and inbound messages. What remains is only the last mile — `connectPath` is still `null`, so a customer cannot connect Meta themselves and onboarding step 2 still waits. That is **deliberate**: the flow has never run against a real Meta app, and `public-pages.test.ts` asserts the null to keep the enterprise copy honest | [09 · I1](09-integration-mesh.md) |
 | **P1-2** | Warm sends passing through `ChannelPolicyService` | No `compliance_decisions` row for any SMS, WhatsApp, follow-up or reactivation message. `contact_permissions` is never read on the warm path | [11 · 1.2](11-compliance-permission-mesh.md) |
 | ~~P1-3~~ | ~~A consumer for `mcp_approvals`~~ | **DONE** by the concurrent stream — `mcp/provisioning.ts` reaches the `EXECUTED` state. Verified, not assumed | |
-| **P1-4** | Email reply from the Inbox, and reply on a prospect conversation | The primary cold channel is receive-only in the unified inbox. `canReplyOn()` requires SMS/WhatsApp **and** a lead | [07 · C](07-messaging-conversation-mesh.md) |
-| **P1-5** | Messenger / Instagram ingestion, or removal of the tabs | Three Inbox channels can never populate. `inbox_channels` and eight columns on `conversations`/`messages` are schema with no software | [07 · C](07-messaging-conversation-mesh.md) |
+| **P1-4** | Email reply from the Inbox, and reply on a prospect conversation | **Still open, and re-verified.** `canReplyOn()` now admits Messenger and Instagram but still excludes `email`, and still requires `hasLead` — so the primary cold channel stays receive-only and a prospect conversation cannot be answered before promotion | [07 · C](07-messaging-conversation-mesh.md) |
+| ~~P1-5~~ | ~~Messenger / Instagram ingestion, or removal of the tabs~~ | **DONE** by the concurrent stream. Six channels are `ingestion: "live"`; LinkedIn is the honest exception at `"recorded"` — it fills from the social outreach queue rather than from a sync, because no API lets an application read a member's inbox. Verified against `CHANNEL_DEFINITIONS`, not assumed | |
 | ~~P1-6~~ | ~~`variant_generation` in the prompt registry~~ | **DONE** — routed through `runTask`, so it carries a prompt version, passes the token gate before spending, writes `ai_runs` and a cost event, and is filed under `outreach` alongside the sends | [24 · R27](24-remediation-log.md) |
 | ~~P1-7~~ | ~~`getV4Usage` as a SQL `sum()`~~ | **DONE AND DEPLOYED** — `0074`. `sum_usage_events` sums in Postgres, and a failed read now throws rather than returning 0, because 0 is the permissive answer | [24 · R22](24-remediation-log.md) |
 | ~~P1-8~~ | ~~Correct settings deep links~~ | **DONE** — [24 · R4](24-remediation-log.md) | |
