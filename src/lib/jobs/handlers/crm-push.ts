@@ -4,7 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import type { ClaimedJob } from "@/lib/jobs/queue";
-import { getCrmPushAdapter, isCrmProvider } from "@/lib/integrations/providers/crm-registry";
+import {
+  CrmPartialPushError,
+  getCrmPushAdapter,
+  isCrmProvider,
+} from "@/lib/integrations/providers/crm-registry";
 
 export const crmPushPayload = z.object({
   leadId: z.uuid(),
@@ -82,12 +86,27 @@ export async function handleCrmPush(job: ClaimedJob) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Push failed.";
 
+    // A push is not one call. If the contact was created and the deal was not,
+    // that contact exists in the customer's CRM and its id has to be kept --
+    // otherwise the retry finds no prior contact and creates a second one, and
+    // the attempt after that a third.
+    const partial = error instanceof CrmPartialPushError ? error : null;
+
     await admin.from("crm_push_records").upsert(
       {
         business_id: job.business_id!,
         lead_id: lead.id,
         provider_type: payload.provider,
-        status: "failed",
+        // "partial" rather than "failed": something is in the customer's CRM,
+        // and an operator reading this row needs to know that before deciding
+        // whether to intervene by hand.
+        status: partial ? "partial" : "failed",
+        ...(partial
+          ? {
+              external_contact_id: partial.externalContactId,
+              external_deal_id: partial.externalDealId,
+            }
+          : {}),
         last_error: message,
       },
       { onConflict: "business_id,lead_id,provider_type" },
@@ -98,7 +117,13 @@ export async function handleCrmPush(job: ClaimedJob) {
       action: "crm.push_failed",
       entityType: "lead",
       entityId: lead.id,
-      metadata: { provider: payload.provider, error: message },
+      metadata: {
+        provider: payload.provider,
+        error: message,
+        // Named in the audit too, because "the contact is already there" is the
+        // single fact somebody cleaning up by hand needs first.
+        partial_contact_id: partial?.externalContactId ?? null,
+      },
     });
 
     throw error;

@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { registerCrmProvider, type CrmLeadInput } from "@/lib/integrations/providers/crm-registry";
+import { CrmPartialPushError, registerCrmProvider, type CrmLeadInput } from "@/lib/integrations/providers/crm-registry";
 
 /**
  * HubSpot — CRM push destination via a customer-pasted Private App token.
@@ -283,12 +283,25 @@ async function push(params: {
 
   let dealId: string | null = null;
   if (params.lead.services?.average_value != null) {
-    dealId = await upsertDeal(
-      token,
-      params.lead,
-      contactId,
-      existingRecord?.external_deal_id ?? null,
-    );
+    try {
+      dealId = await upsertDeal(
+        token,
+        params.lead,
+        contactId,
+        existingRecord?.external_deal_id ?? null,
+      );
+    } catch (error) {
+      // The contact exists in the customer's HubSpot whether or not the deal
+      // does. Throwing a plain error here discarded its id, so the retry read
+      // no prior contact and created a second one -- and the one after that a
+      // third. Handing the id to the caller is what makes this retryable
+      // instead of duplicating a person on every attempt.
+      throw new CrmPartialPushError(
+        error instanceof Error ? error.message : "The deal could not be created.",
+        { externalContactId: contactId },
+        { cause: error },
+      );
+    }
   }
 
   return { externalContactId: contactId, externalDealId: dealId };
