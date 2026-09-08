@@ -28,10 +28,10 @@ is building `src/lib/services/` for exactly that. See
 |---|---|---|---|
 | **P1-1** | Meta Lead Ads implementation | No OAuth adapter, no poller, no webhook — yet Meta is in the catalogue, the onboarding flow, the Dashboard health strip, the agent source list and the admin provider panel. Onboarding step 2 waits for a connection that cannot happen | [09 · I1](09-integration-mesh.md) |
 | **P1-2** | Warm sends passing through `ChannelPolicyService` | No `compliance_decisions` row for any SMS, WhatsApp, follow-up or reactivation message. `contact_permissions` is never read on the warm path | [11 · 1.2](11-compliance-permission-mesh.md) |
-| **P1-3** | A consumer for `mcp_approvals` | Four MCP tools correctly park instead of executing, and are then never approved or run. The caller is promised a review that cannot happen | [10 · M1](10-ai-copilot-mcp-mesh.md) |
+| ~~P1-3~~ | ~~A consumer for `mcp_approvals`~~ | **DONE** by the concurrent stream — `mcp/provisioning.ts` reaches the `EXECUTED` state. Verified, not assumed | |
 | **P1-4** | Email reply from the Inbox, and reply on a prospect conversation | The primary cold channel is receive-only in the unified inbox. `canReplyOn()` requires SMS/WhatsApp **and** a lead | [07 · C](07-messaging-conversation-mesh.md) |
 | **P1-5** | Messenger / Instagram ingestion, or removal of the tabs | Three Inbox channels can never populate. `inbox_channels` and eight columns on `conversations`/`messages` are schema with no software | [07 · C](07-messaging-conversation-mesh.md) |
-| **P1-6** | `variant_generation` in the prompt registry | AI spend with no prompt version, no token capacity check, no `ai_runs` row, no cost event. Invisible to the customer's meter and to margin reporting | [10 · A1](10-ai-copilot-mcp-mesh.md) |
+| ~~P1-6~~ | ~~`variant_generation` in the prompt registry~~ | **DONE** — routed through `runTask`, so it carries a prompt version, passes the token gate before spending, writes `ai_runs` and a cost event, and is filed under `outreach` alongside the sends | [24 · R27](24-remediation-log.md) |
 | ~~P1-7~~ | ~~`getV4Usage` as a SQL `sum()`~~ | **DONE AND DEPLOYED** — `0074`. `sum_usage_events` sums in Postgres, and a failed read now throws rather than returning 0, because 0 is the permissive answer | [24 · R22](24-remediation-log.md) |
 | ~~P1-8~~ | ~~Correct settings deep links~~ | **DONE** — [24 · R4](24-remediation-log.md) | |
 | **P1-9** | One acquisition-campaign UI | Two builders write the same table with different validation, and both render on the same page | [18 · D5](18-duplication-bloat-register.md) |
@@ -50,7 +50,7 @@ is building `src/lib/services/` for exactly that. See
 | **P2-3** | One audit history | Three trails (`audit_log`, `mcp_audit_logs`, `copilot_actions`); which holds the answer depends on the door the change came through |
 | **P2-4** | A unique constraint on `leads (business_id, lower(email))` and `(business_id, phone_normalized)` | Duplicates are prevented only in application code, and MCP `create_lead` does not call it |
 | **P2-5** | Idempotency on the MCP `create_lead` tool | No client-supplied idempotency key; a retried call creates a second lead |
-| **P2-6** | Rate limiting on `/api/mcp` | `security/rate-limit.ts` and `consume_rate_limit()` exist and are not applied there |
+| ~~P2-6~~ | ~~Rate limiting on `/api/mcp`~~ | **DONE** by the concurrent stream — an unauthenticated guess limit and a post-authentication per-caller limit. Verified |
 | **P2-7** | The feedback loop. `search_feedback` and `campaign_learnings` are never written | The "Learn" quarter of the V4 thesis is open at both ends — [06 · F](06-prospect-lead-data-flow.md) |
 | **P2-8** | `business_learning_events` writers | Read at `business-profile/queries.ts:75` to power a panel that is permanently empty |
 | **P2-9** | `agent_tool_calls` and `agent_budgets` writers | Worker agents have narrative activity but no structured tool-call log and no per-agent spend ceiling |

@@ -23,6 +23,19 @@ const TASK_FEATURE: Record<TaskType, UsageFeature> = {
   agent_decision: "agents",
   search_planning: "find_leads",
   research_summary: "find_leads",
+  // Both belong to Find Leads rather than to the inbox or the agent: they are
+  // spent working a Prospect through the connect-then-message sequence, before
+  // anybody has become a Lead. Filing them under "agents" would tell a customer
+  // their conversation agent had run up a bill it never touched.
+  social_reply_classification: "find_leads",
+  social_message: "find_leads",
+  // Reading a company's own team page. Find Leads for the same reason as the
+  // two above: it is prospecting spend, incurred before a Lead exists.
+  website_contacts: "find_leads",
+  // Cold campaign copy. `outreach`, matching the feature the cold email sends
+  // themselves record, so a workspace reading its usage sees the writing and
+  // the sending of a campaign in one place rather than as two unrelated lines.
+  variant_generation: "outreach",
   copilot_turn: "copilot",
 };
 

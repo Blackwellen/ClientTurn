@@ -698,6 +698,44 @@ client and never touches the admin client. A file that uses both is skipped rath
 A false positive here would train somebody to ignore the report, which is worse than the gap it
 would have found.
 
+### R27 · The last AI caller that went straight to the transport — P1-6
+
+`chat()` in `ai/azure-client.ts` is the transport. Everything that makes AI spend accountable lives
+one layer above it in `runTask()`: the prompt version stamped on the run, the per-workspace token
+gate checked *before* the call, the `ai_runs` row, and the cost event.
+
+`generateVariants` called `chat()` directly. So every cold email variant a customer generated was
+invisible to their usage meter **and** to margin reporting at the same time, and no `ai_runs` row
+existed to say which prompt produced a message that later went out under their name. It was the
+only caller left doing this.
+
+Routed through `runTask` as a new `variant_generation` task:
+
+| | |
+|---|---|
+| `schemas.ts` | `variant_generation` added to `TASK_TYPES`, with `variantGenerationSchema` — strict about shape, permissive about content, because every field is re-checked downstream anyway |
+| `prompts.ts` | the `SYSTEM` constant moved out of `variants.ts` into the registry, so the run carries a version |
+| `usage-meter.ts` | filed under `outreach`, matching the feature the cold email *sends* already record — a workspace reading its usage sees writing and sending a campaign as one line of spend, not two unrelated ones |
+| Tier | mini, by omission from `FAST_STRUCTURED_TASKS`. It is generation under a hard set of prohibitions, and the point is that three proposals differ in *angle* rather than in wording, which nano does not do reliably |
+
+Three things were deliberately kept or changed rather than moved wholesale:
+
+- **The merge-field list is now passed in the context, not baked into the prompt.** It was written
+  into the system prompt from `MERGE_FIELDS`, while `unknownMergeFields` enforced the same list
+  after the response. Two copies of one allow-list, in different files, is how a prompt comes to
+  offer a field the validator then rejects — silently dropping every variant.
+- **The prohibited-claims regex list stays.** The prompt states the prohibitions and the regex
+  enforces them. A prompt is guidance; the customer's legal exposure for an invented guarantee,
+  price or accreditation is not something to leave to guidance. A proposal that trips it is still
+  dropped rather than repaired, because a half-corrected guarantee is still a guarantee.
+- **`NO_TOKENS` is reported as a billing state, not a failure.** "This workspace has used its AI
+  allowance for the period" is the difference between a customer topping up and a customer filing
+  a bug.
+
+`parseResponse` — a hand-rolled JSON recovery that stripped code fences — was deleted. `runTask`
+validates against the task schema, so the second parser was a second definition of what a valid
+response is.
+
 ## Deployment state
 
 Verified against the live database after each apply, and now verified in bulk by

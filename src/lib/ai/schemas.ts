@@ -17,6 +17,18 @@ export const TASK_TYPES = [
   "agent_decision",
   "search_planning",
   "research_summary",
+  // Social outreach. Split in two deliberately: classifying a reply is a
+  // structured nano task, while composing the message a stranger reads under
+  // the customer's own name is generation and goes to mini.
+  "social_reply_classification",
+  "social_message",
+  // Extracting people from a company's own published pages. Structured-only,
+  // so it goes to nano: the model is a parser here, not an author.
+  "website_contacts",
+  // Cold email variants. Mini tier: it is generation work under a hard set of
+  // prohibitions, and the whole point is that the three proposals differ in
+  // angle rather than in wording, which nano does not do reliably.
+  "variant_generation",
   // Copilot's tool-calling turn. Unlike every other task here it has no fixed
   // response schema: a turn either asks for a tool or answers in prose, and the
   // loop in `copilot/loop.ts` — not a schema — decides which happened.
@@ -28,6 +40,8 @@ export type TaskType = (typeof TASK_TYPES)[number];
 export const FAST_STRUCTURED_TASKS = new Set<TaskType>([
   "intent_classification",
   "answer_extraction",
+  "social_reply_classification",
+  "website_contacts",
 ]);
 
 export const leadIntentSchema = z.object({
@@ -127,6 +141,100 @@ export const researchSummarySchema = z.object({
 });
 export type ResearchSummaryResult = z.infer<typeof researchSummarySchema>;
 
+/**
+ * How a reply on a social channel is read.
+ *
+ * A separate vocabulary from `leadIntentSchema` because the decisions it feeds
+ * are different ones. A cold LinkedIn reply is most often "not now" or "wrong
+ * person" -- neither of which exists in the lead intent set, and both of which
+ * must stop the sequence without suppressing the contact forever.
+ *
+ * `OPT_OUT` is the only classification with an irreversible consequence, so it
+ * is never trusted on its own: `classification.ts` runs its deterministic
+ * phrase check first and that check wins, in both directions.
+ */
+export const socialReplyClassificationSchema = z.object({
+  classification: z.enum([
+    "INTERESTED",
+    "QUESTION",
+    "OBJECTION",
+    "NOT_NOW",
+    "WRONG_PERSON",
+    "OPT_OUT",
+    "UNCLEAR",
+  ]),
+  confidence: z.number().min(0).max(1),
+  /** One short sentence, shown to the customer beside the reply. */
+  rationale: z.string().max(240),
+});
+export type SocialReplyClassification = z.infer<typeof socialReplyClassificationSchema>;
+
+/**
+ * A composed social message.
+ *
+ * `used_facts` is the citation guard from `research-policy.ts` applied to
+ * outbound copy: the composer is given a short list of facts it may reference
+ * and must say which it used. A message citing a fact that was never supplied
+ * is discarded rather than repaired -- exactly as an uncited research claim is
+ * -- because a personalised opener that invents a detail about someone'''s
+ * company is worse than a generic one.
+ */
+export const socialMessageSchema = z.object({
+  body: z.string().min(1).max(1900),
+  used_facts: z.array(z.string()).default([]),
+});
+export type SocialMessageResult = z.infer<typeof socialMessageSchema>;
+
+/**
+ * Cold email variants.
+ *
+ * Deliberately permissive about content and strict about shape. Every field is
+ * re-checked downstream against the merge-field allow-list and the prohibited
+ * claims list, and a proposal that fails either is dropped rather than
+ * repaired -- so this schema's job is only to guarantee the loop has three
+ * objects with three strings to examine, not to decide whether they are usable.
+ */
+export const variantGenerationSchema = z.object({
+  variants: z
+    .array(
+      z.object({
+        label: z.string().max(40).optional(),
+        subject: z.string(),
+        body: z.string(),
+      }),
+    )
+    .max(10),
+});
+
+/**
+ * People named on a company's own website.
+ *
+ * `email` is nullable and must be **verbatim from the page**. The prompt says
+ * so and `website-contacts.ts` enforces it by dropping anything that is not a
+ * well-formed address on the company's own domain -- because the failure this
+ * guards against is not a malformed string, it is a *plausible* one: a model
+ * that helpfully constructs `first.last@domain` produces a datum with no
+ * source, which cannot be disclosed under Article 14 and bounces against a
+ * catch-all domain.
+ */
+export const websiteContactsSchema = z.object({
+  people: z
+    .array(
+      z.object({
+        first_name: z.string().nullable().default(null),
+        last_name: z.string().nullable().default(null),
+        role_title: z.string().nullable().default(null),
+        /** Only if printed on the page. Never constructed. */
+        email: z.string().nullable().default(null),
+      }),
+    )
+    .max(25)
+    .default([]),
+});
+export type WebsiteContactsResult = z.infer<typeof websiteContactsSchema>;
+
+export type VariantGenerationResult = z.infer<typeof variantGenerationSchema>;
+
 export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   // Present so the map stays exhaustive. `copilot_turn` never reaches
   // `runTask`, which is the only thing that reads this — the tool loop calls
@@ -148,6 +256,10 @@ export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   // Mini tier: synthesising evidence into readable claims is generation work,
   // and the citation requirement needs a model that can follow it.
   research_summary: researchSummarySchema,
+  social_reply_classification: socialReplyClassificationSchema,
+  social_message: socialMessageSchema,
+  variant_generation: variantGenerationSchema,
+  website_contacts: websiteContactsSchema,
 };
 
 /**

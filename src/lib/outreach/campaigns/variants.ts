@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { chat, isAzureConfigured, AiUnavailableError } from "@/lib/ai/azure-client";
+import { isAzureConfigured } from "@/lib/ai/azure-client";
+import { runTask } from "@/lib/ai/model-router";
+import type { VariantGenerationResult } from "@/lib/ai/schemas";
 import { wrapUntrustedContent } from "@/lib/ai/safety";
 import {
   MAX_BODY_LENGTH,
@@ -60,18 +62,18 @@ const PROHIBITED = [
   /\bwithin \d+ (?:hours|days)\b/i,
 ];
 
-const SYSTEM = `You write short, plain cold B2B outreach emails for a UK home-services business.
-
-Rules you must follow exactly:
-- Use only these merge fields, written exactly like this: ${MERGE_FIELDS.map((f) => `{{${f}}}`).join(", ")}.
-- Never invent a price, a discount, a guarantee, a response time, an award, an accreditation or a customer name.
-- Never claim the recipient has used the business before.
-- Do not add a signature, a postal address or an unsubscribe line; those are appended automatically.
-- Keep each email under 140 words, in British English, and write like one person emailing another.
-- Vary the angle between variants. Do not simply reword the same sentence.
-
-Reply with JSON only, in this exact shape:
-{"variants":[{"label":"B","subject":"...","body":"..."}]}`;
+/**
+ * The prompt itself now lives in `ai/prompts.ts` under `variant_generation`,
+ * and the call goes through `runTask` rather than `chat`.
+ *
+ * That is the whole point of the change: `chat()` is the transport. Everything
+ * that makes AI spend accountable -- the prompt version stamped on the run, the
+ * per-workspace token gate checked *before* the call, the `ai_runs` row and the
+ * cost event -- lives in `runTask`, and a caller that goes straight to the
+ * transport gets none of it. This was the only such caller left, which meant
+ * every variant generated was invisible to the customer's usage meter and to
+ * margin reporting at the same time.
+ */
 
 export async function generateVariants(input: {
   businessId: string;
@@ -98,44 +100,44 @@ export async function generateVariants(input: {
 
   const context = await businessContext(input.businessId, input.draft);
 
-  let response: { content: string };
-  try {
-    response = await chat(
-      "mini",
-      [
-        { role: "system", content: SYSTEM },
-        {
-          role: "user",
-          // The customer's own copy is untrusted input to the model, not
-          // instructions to it: a campaign body containing "ignore previous
-          // instructions" must stay a campaign body.
-          content: [
-            `Business: ${context.businessName}`,
-            `Service being promoted: ${context.serviceName ?? "not specified"}`,
-            `Goal: ${input.draft.goal.conversionGoal ?? "not specified"}`,
-            `Audience: ${describeAudience(input.draft)}`,
-            `Write ${input.count} variant${input.count === 1 ? "" : "s"} of this email.`,
-            "",
-            "Existing subject:",
-            wrapUntrustedContent(input.step.subject || "(none yet)"),
-            "",
-            "Existing body:",
-            wrapUntrustedContent(input.step.body || "(none yet)"),
-          ].join("\n"),
-        },
-      ],
-      // Enough for three short emails and no more. A cold email that needs a
-      // bigger budget than this is already too long.
-      1200,
-    );
-  } catch (error) {
-    if (error instanceof AiUnavailableError) {
-      return { ok: false, error: "AI assistance is unavailable right now. Try again shortly." };
-    }
-    return { ok: false, error: "Those variants could not be generated." };
+  const result = await runTask<VariantGenerationResult>({
+    taskType: "variant_generation",
+    businessId: input.businessId,
+    maxOutputTokens: 1200,
+    // The customer's own copy is untrusted input to the model, not instructions
+    // to it: a campaign body containing "ignore previous instructions" must stay
+    // a campaign body.
+    context: [
+      `Business: ${context.businessName}`,
+      `Service being promoted: ${context.serviceName ?? "not specified"}`,
+      `Goal: ${input.draft.goal.conversionGoal ?? "not specified"}`,
+      `Audience: ${describeAudience(input.draft)}`,
+      // Supplied rather than baked into the prompt, so the list the model is
+      // told about and the list `unknownMergeFields` enforces are the same list.
+      `Merge fields you may use: ${MERGE_FIELDS.map((f) => `{{${f}}}`).join(", ")}`,
+      `Write ${input.count} variant${input.count === 1 ? "" : "s"} of this email.`,
+      "",
+      "Existing subject:",
+      wrapUntrustedContent(input.step.subject || "(none yet)"),
+      "",
+      "Existing body:",
+      wrapUntrustedContent(input.step.body || "(none yet)"),
+    ].join("\n"),
+  });
+
+  // `NO_TOKENS` is a billing state, not a failure. Saying so is the difference
+  // between a customer topping up and a customer filing a bug.
+  if (result.skippedReason === "NO_TOKENS") {
+    return {
+      ok: false,
+      error: "This workspace has used its AI allowance for the period.",
+    };
+  }
+  if (result.skippedReason === "AI_UNAVAILABLE" || result.data === null) {
+    return { ok: false, error: "AI assistance is unavailable right now. Try again shortly." };
   }
 
-  const parsed = parseResponse(response.content);
+  const parsed = result.data.variants;
   if (parsed.length === 0) {
     return { ok: false, error: "The generated variants could not be used. Try again." };
   }
@@ -182,23 +184,6 @@ function review(
     body,
     warnings,
   };
-}
-
-function parseResponse(
-  content: string,
-): { label?: string; subject?: string; body?: string }[] {
-  try {
-    // Models occasionally wrap JSON in a fence despite being told not to.
-    const json = content.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-    const parsed = JSON.parse(json) as { variants?: unknown };
-    if (!Array.isArray(parsed.variants)) return [];
-    return parsed.variants.filter(
-      (item): item is { label?: string; subject?: string; body?: string } =>
-        Boolean(item) && typeof item === "object",
-    );
-  } catch {
-    return [];
-  }
 }
 
 function describeAudience(draft: CampaignDraft): string {
