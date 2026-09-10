@@ -20,6 +20,18 @@
  * record that on the phone, run the matching clip here, and cut the two
  * together — or simply run this immediately after and submit both files.
  *
+ * ## What must be true before you record
+ *
+ * The clip has to show real data that really came from Meta. A workspace
+ * carrying seeded demo rows is worse than an empty one: filming forty invented
+ * leads tagged "Meta", with `@example.com` addresses, and submitting it as
+ * evidence that `leads_retrieval` works is presenting fabricated records as
+ * genuine. Meta rejects that, and rightly.
+ *
+ * So before each clip, make the thing actually happen — Meta's Lead Ads Testing
+ * Tool for a lead, a second account for a DM or a comment — and check the row
+ * you are about to film is the one that just arrived.
+ *
  * ## Signing in
  *
  * `--login` opens a browser and saves the session to `screencasts/.auth.json`.
@@ -29,15 +41,12 @@
  * sign-in form and closes the browser itself; without them it waits while you
  * sign in by hand. Either way the session comes through the front door.
  *
- * Deliberately not automated. `dev-login-link.mjs` mints an **implicit-flow**
- * magic link (`#access_token=…`) while this app's `/auth/callback` implements
- * **PKCE** and expects `?code=` — so a perfectly valid token comes back as
- * `?error=link_invalid`. PKCE cannot be driven from a script by design: the
- * code verifier only ever exists in the browser that started the flow.
- *
- * The alternative would be writing a session cookie straight into the context,
- * which is forging a login to record a video of a security boundary being
- * respected. Signing in once by hand is both simpler and honest.
+ * What it never does is write a session cookie straight into the context.
+ * `dev-login-link.mjs` is no help either — it mints an **implicit-flow** magic
+ * link (`#access_token=…`) while this app's `/auth/callback` implements
+ * **PKCE** and expects `?code=`, so a valid token comes back as
+ * `?error=link_invalid`. Forging a session to film a security boundary being
+ * respected would make the recording worthless.
  *
  * ## Why a fresh browser rather than yours
  *
@@ -51,13 +60,22 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs"
 import { join } from "node:path";
 import process from "node:process";
 import { chromium } from "playwright";
+import { CURSOR_SCRIPT } from "./lib-cursor.mjs";
 
 const OUT_DIR = join(process.cwd(), "screencasts");
 const AUTH_FILE = join(OUT_DIR, ".auth.json");
 const VIEWPORT = { width: 1440, height: 900 };
 
-/** Long enough for a reviewer to read the screen, short enough to hold attention. */
-const BEAT = 1800;
+/**
+ * The pause between beats.
+ *
+ * Generous on purpose. A reviewer is seeing this product for the first time and
+ * has to find the thing being demonstrated before they can judge it; a clip
+ * paced for somebody who already knows the UI is a clip that gets rewatched or
+ * rejected. Every clip runs well under Meta's two-minute ceiling even at this
+ * speed.
+ */
+const BEAT = 2600;
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -84,11 +102,31 @@ const CLIPS = [
     manualFirst: null,
     title: "Connecting a Facebook Page",
     async run(page, base) {
-      // The canonical URL, not `/app/settings/connections` — that one is a
-      // redirect stub, and recording the hop shows the reviewer a flash of the
-      // wrong page before the right one.
-      await visit(page, `${base}/app/settings?section=connections`, "Settings → Connections");
+      await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
+
+      // Navigate the way a customer does. A reviewer watching a URL change on
+      // its own learns nothing about whether the product works.
+      await clickNav(page, "Settings");
+      await settle(page);
+
+      const connections = await firstVisible(page, [
+        page.getByRole("link", { name: /Connections/i }),
+        page.getByRole("button", { name: /Connections/i }),
+        page.getByText("Connections", { exact: false }),
+      ]);
+      if (connections) await pointAndClick(page, connections, "Connections");
+      await settle(page);
+
+      // Connections opens on the sending mailbox, which is not what this clip
+      // is about — walk down to the Meta card and hold there.
+      await reveal(page, "Meta Lead Ads");
+
+      const test = page.getByRole("button", { name: /Test connection/i }).first();
+      if (await test.isVisible().catch(() => false)) {
+        await pointAndClick(page, test, "Test connection");
+        await settle(page);
+      }
     },
   },
   {
@@ -100,8 +138,11 @@ const CLIPS = [
       "From a second Facebook account, comment on one of your Page's posts. Wait ~10 seconds.",
     title: "A commenter becoming a prospect",
     async run(page, base) {
-      await visit(page, `${base}/app/find-leads`, "Find Leads");
+      await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
+      await clickNav(page, "Find Leads");
+      await settle(page);
+      await browseList(page);
     },
   },
   {
@@ -111,8 +152,12 @@ const CLIPS = [
       "From a second Facebook account, send your Page a message. Wait ~10 seconds.",
     title: "A Messenger conversation, and replying to it",
     async run(page, base) {
-      await visit(page, `${base}/app/inbox?channel=messenger`, "Inbox → Messenger");
+      await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
+      await clickNav(page, "Inbox");
+      await settle(page);
+      await openChannel(page, /Messenger/i);
+      await openFirstConversation(page);
     },
   },
   {
@@ -122,8 +167,12 @@ const CLIPS = [
       "From a second Instagram account, DM your professional account. Wait ~10 seconds.",
     title: "An Instagram conversation, and replying to it",
     async run(page, base) {
-      await visit(page, `${base}/app/inbox?channel=instagram`, "Inbox → Instagram");
+      await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
+      await clickNav(page, "Inbox");
+      await settle(page);
+      await openChannel(page, /Instagram/i);
+      await openFirstConversation(page);
     },
   },
   {
@@ -133,8 +182,11 @@ const CLIPS = [
       "Submit your own lead form using Meta's Lead Ads Testing Tool. Wait ~10 seconds.",
     title: "A lead form submission arriving",
     async run(page, base) {
-      await visit(page, `${base}/app/leads`, "Leads");
+      await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
+      await clickNav(page, "Leads");
+      await settle(page);
+      await browseList(page);
     },
   },
   {
@@ -146,9 +198,96 @@ const CLIPS = [
     async run(page, base) {
       await visit(page, `${base}/data-deletion`, "Data deletion");
       await settle(page);
+      await scrollThrough(page);
     },
   },
 ];
+
+/* --------------------------------------------------- shared clip movements */
+
+/** Clicks a primary sidebar destination by its label. */
+async function clickNav(page, label) {
+  const item = await firstVisible(page, [
+    page.getByRole("link", { name: new RegExp(`^${label}$`, "i") }),
+    page.getByRole("button", { name: new RegExp(`^${label}$`, "i") }),
+    page.getByText(label, { exact: true }),
+  ]);
+  if (!item) {
+    process.stdout.write(`    ! no "${label}" in the navigation
+`);
+    return false;
+  }
+  return pointAndClick(page, item, label);
+}
+
+/** Switches the Inbox to one channel, however that control is rendered. */
+async function openChannel(page, pattern) {
+  const tab = await firstVisible(page, [
+    page.getByRole("tab", { name: pattern }),
+    page.getByRole("button", { name: pattern }),
+    page.getByText(pattern),
+  ]);
+  if (!tab) {
+    process.stdout.write(`    ! no ${pattern} channel control on the Inbox
+`);
+    return false;
+  }
+  const clicked = await pointAndClick(page, tab, String(pattern));
+  await settle(page);
+  return clicked;
+}
+
+/**
+ * Opens the first conversation, and shows the composer.
+ *
+ * Nothing is typed and nothing is sent. A reviewer needs to see that a reply
+ * can be written; putting words into somebody's real inbox to prove it would
+ * be sending a stranger a message for the sake of a video.
+ */
+async function openFirstConversation(page) {
+  const row = page
+    .getByRole("listitem")
+    .or(page.locator('[data-conversation-id], [role="row"], li'))
+    .first();
+
+  if (!(await row.isVisible().catch(() => false))) {
+    process.stdout.write("    ! no conversation to open — record after a real message arrives\n");
+    return;
+  }
+  await pointAndClick(page, row, "the first conversation");
+  await settle(page);
+
+  const composer = await firstVisible(page, [
+    page.getByRole("textbox"),
+    page.locator("textarea"),
+  ]);
+  if (composer) {
+    await glideTo(page, composer).catch(() => {});
+    await page.waitForTimeout(BEAT);
+  }
+}
+
+/** Moves down a list so the reviewer sees it is real, then back to the top. */
+async function browseList(page) {
+  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2, { steps: 20 });
+  for (let i = 0; i < 5; i += 1) {
+    await page.mouse.wheel(0, 220);
+    await page.waitForTimeout(780);
+  }
+  await page.waitForTimeout(BEAT);
+  await page.mouse.wheel(0, -1100);
+  await page.waitForTimeout(BEAT);
+}
+
+/** A single unhurried pass down a public page. */
+async function scrollThrough(page) {
+  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2, { steps: 20 });
+  for (let i = 0; i < 6; i += 1) {
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(820);
+  }
+  await page.waitForTimeout(BEAT);
+}
 
 async function visit(page, url, label) {
   process.stdout.write(`    → ${label}\n`);
@@ -166,6 +305,71 @@ async function visit(page, url, label) {
 async function settle(page) {
   await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(BEAT);
+}
+
+/**
+ * Scrolls the named thing into shot and holds there.
+ *
+ * Several of these pages open on something other than the part the permission
+ * is about — Connections leads with the sending mailbox, for instance. Missing
+ * text is reported rather than thrown: a clip that is merely framed badly is
+ * still worth having, and a run that dies half way leaves you with fewer files
+ * than you started with.
+ */
+async function reveal(page, text) {
+  const target = page.getByText(text, { exact: false }).first();
+  try {
+    await target.scrollIntoViewIfNeeded({ timeout: 10_000 });
+    await page.waitForTimeout(BEAT);
+  } catch {
+    process.stdout.write(`    ! "${text}" not on the page — clip framed on the default view\n`);
+  }
+}
+
+/**
+ * Moves the pointer to the middle of a thing, unhurriedly.
+ *
+ * `steps` is what makes it readable: a single jump dispatches one event and the
+ * drawn cursor teleports, which looks like a cut. Thirty steps over a short
+ * distance is roughly the speed of a hand.
+ */
+async function glideTo(page, locator) {
+  await locator.scrollIntoViewIfNeeded({ timeout: 10_000 });
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("no bounding box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 45 });
+  await page.waitForTimeout(700);
+  return box;
+}
+
+/**
+ * Moves to something, pauses so the viewer's eye catches up, then clicks it.
+ *
+ * Returns whether it happened. Callers carry on either way: a clip missing one
+ * beat is still submittable, whereas a run that throws half way leaves you with
+ * fewer files than you started with.
+ */
+async function pointAndClick(page, locator, label) {
+  try {
+    await glideTo(page, locator);
+    await page.mouse.down();
+    await page.waitForTimeout(90);
+    await page.mouse.up();
+    process.stdout.write(`    · clicked ${label}\n`);
+    await page.waitForTimeout(BEAT);
+    return true;
+  } catch {
+    process.stdout.write(`    ! could not click ${label} — skipped\n`);
+    return false;
+  }
+}
+
+/** The first of several candidates that is actually on the page. */
+async function firstVisible(page, candidates) {
+  for (const locator of candidates) {
+    if (await locator.first().isVisible().catch(() => false)) return locator.first();
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------- run */
@@ -241,9 +445,18 @@ if (clips.length === 0) {
   process.exit(1);
 }
 
-// Old clips go; the saved session stays.
+// Clear only the clips about to be re-recorded, plus any stray unnamed video
+// Playwright left behind. This used to wipe the whole directory, which meant
+// `--only leads` silently deleted the five clips you had already recorded —
+// and you found out at submission time.
+const doomed = new Set(clips.map((clip) => `${clip.key}.webm`));
+const keep = new Set(CLIPS.map((clip) => `${clip.key}.webm`));
 for (const file of existsSync(OUT_DIR) ? readdirSync(OUT_DIR) : []) {
-  if (file !== ".auth.json") rmSync(join(OUT_DIR, file), { force: true });
+  if (file === ".auth.json") continue;
+  // Either it is being re-recorded, or it is not a clip at all (Playwright's
+  // own id-named leftovers). Anything else is a clip from an earlier run for a
+  // key not selected now, and it stays.
+  if (doomed.has(file) || !keep.has(file)) rmSync(join(OUT_DIR, file), { force: true });
 }
 mkdirSync(OUT_DIR, { recursive: true });
 
@@ -269,9 +482,15 @@ for (const clip of clips) {
     timezoneId: "Europe/London",
   });
 
+  await context.addInitScript(CURSOR_SCRIPT);
+
   const page = await context.newPage();
 
   try {
+    // Park the pointer somewhere sensible before the first move, so the opening
+    // frame is not a cursor sitting in the very corner.
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2);
+
     await clip.run(page, base);
 
     // A clip that quietly recorded the login screen is worse than one that

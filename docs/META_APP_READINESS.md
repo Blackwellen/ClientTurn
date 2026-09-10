@@ -7,6 +7,45 @@ Tested live against Meta's Graph API on 2026-09-08 with the credentials in
 
 ---
 
+## 0a. The connection works end to end — 2026-09-10
+
+The OAuth round trip has now been completed through the product itself, on
+production, not with a Graph API Explorer token:
+
+```
+Settings → Connections → Meta Lead Ads
+  Connected · Business account: Propvora · last successful sync: just now
+```
+
+Two defects had to be fixed to get there, and both were invisible from the
+dashboard:
+
+* **`connectPath` was null.** The card read "Not yet available — Client Turn
+  does not yet hold the provider credentials this connection needs", while
+  `META_APP_ID` and `META_APP_SECRET` had been set in production for days. The
+  null was a deliberate hold from when the adapter landed; it outlived its
+  reason.
+* **Every Connect button on the generic OAuth flow was a 404.** Provider
+  adapters register themselves on import, and only `lib/jobs/register.ts`
+  imported them. The connect and callback routes import
+  `providers/registry` directly, so on an HTTP request the map was empty and
+  the route answered `{"error":"Unknown provider."}`. This was never
+  Meta-specific — `google_ads`, `tiktok_ads` and the rest were dead the same
+  way. `providers/all.ts` now owns the list and both routes import it.
+
+Worth recording because of how it presented: the button rendered, the
+catalogue looked healthy, and the failure only appeared to somebody who
+clicked it.
+
+One thing to know about the domain. The app answers on both `clientturn.com`
+and `www.clientturn.com`, and they are **separate origins** — a session
+established on one does not travel to the other. `NEXT_PUBLIC_SITE_URL` is the
+apex, so the OAuth `redirect_uri` is the apex, and connecting while signed in
+on `www` returns to a login page with the token stranded. Sign in on the apex
+to connect. Making one of the two canonical would remove the trap.
+
+---
+
 ## 0. Configured and live — 2026-09-08
 
 The two hard blockers in §2 are **cleared**. Verified against the Graph API, not
