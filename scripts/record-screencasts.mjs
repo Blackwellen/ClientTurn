@@ -130,6 +130,9 @@ const CLIPS = [
       if (test) {
         await pointAndClick(page, test, "Test connection (Meta)");
         await settle(page);
+        // Hold on the result. A click with no visible outcome reads as a click
+        // that did nothing.
+        await page.waitForTimeout(BEAT * 2);
       } else {
         process.stdout.write("    ! no Test connection button on the Meta card\n");
       }
@@ -147,6 +150,16 @@ const CLIPS = [
       await visit(page, `${base}/app`, "Dashboard");
       await settle(page);
       await clickNav(page, "Find Leads");
+      await settle(page);
+
+      // The Social tab is where a commenter becomes a prospect. Landing on
+      // Discover and scrolling shows the wrong half of the feature.
+      const social = await firstVisible(page, [
+        page.getByRole("tab", { name: /^Social$/i }),
+        page.getByRole("button", { name: /^Social$/i }),
+        page.getByText("Social", { exact: true }),
+      ]);
+      if (social) await pointAndClick(page, social, "Social");
       await settle(page);
       await browseList(page);
     },
@@ -193,6 +206,16 @@ const CLIPS = [
       await clickNav(page, "Leads");
       await settle(page);
       await browseList(page);
+
+      // Open the lead. The list proves one arrived; the detail proves what
+      // arrived — the Meta source, the form fields, and what the product did
+      // with them. That is the part `leads_retrieval` is actually about.
+      const lead = page.getByText(/test lead|Created just now|minutes ago/i).first();
+      if (await lead.isVisible().catch(() => false)) {
+        await pointAndClick(page, lead, "the lead that just arrived");
+        await settle(page);
+        await scrollThrough(page);
+      }
     },
   },
   {
@@ -602,6 +625,7 @@ for (const clip of clips) {
   await context.addInitScript(CURSOR_SCRIPT);
 
   const page = await context.newPage();
+  const startedAt = Date.now();
 
   try {
     // Park the pointer somewhere sensible before the first move, so the opening
@@ -617,6 +641,18 @@ for (const clip of clips) {
     }
   } catch (error) {
     console.log(`    ! ${error.message.split("\n")[0]}`);
+  }
+
+  const seconds = Math.round((Date.now() - startedAt) / 100) / 10;
+  if (seconds < 15) {
+    process.stdout.write(`    ! only ${seconds}s — too short for a reviewer to follow
+`);
+  } else if (seconds > 45) {
+    process.stdout.write(`    ! ${seconds}s — longer than intended, trim a beat
+`);
+  } else {
+    process.stdout.write(`    ${seconds}s
+`);
   }
 
   await context.close(); // flushes the video file
