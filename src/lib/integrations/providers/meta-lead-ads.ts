@@ -106,6 +106,51 @@ function config(): OAuthConfig | null {
   };
 }
 
+/**
+ * Subscribes the connected Page to this app's webhooks.
+ *
+ * Two subscriptions are needed and only one of them is obvious. The app-level
+ * one — configured once in the dashboard — says *where* Page events go. This
+ * one says *whose* events to send, and without it Meta delivers nothing at all:
+ * no Messenger message, no Instagram DM, no comment, no lead. The webhook is
+ * configured, verified, and silent, which is the hardest kind of broken to
+ * notice because every check short of sending a real message passes.
+ *
+ * It has to use the **Page** access token, not the user's. A user token is
+ * refused here, and it fails in the shape that looks like a permissions problem
+ * rather than a wrong-credential one.
+ *
+ * The same trap is documented in `whatsapp-cloud.ts` for WhatsApp Business
+ * Accounts, where it was handled from the start. Pages went without it, so
+ * every Meta connection completed successfully and then received nothing.
+ *
+ * A failure is logged and swallowed: the connection is still worth keeping, and
+ * reconnecting re-runs this. What must not happen is an OAuth callback that
+ * throws after the token was granted.
+ */
+async function subscribePage(pageId: string, pageAccessToken: string): Promise<boolean> {
+  const fields = ["messages", "messaging_postbacks", "feed", "leadgen"].join(",");
+
+  try {
+    const response = await fetch(
+      `${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${fields}`,
+      { method: "POST", headers: { authorization: `Bearer ${pageAccessToken}` } },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.error(
+        `[meta] page ${pageId} not subscribed to webhooks: ${response.status} ${detail.slice(0, 200)}`,
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error(`[meta] page ${pageId} subscribe failed`, error);
+    return false;
+  }
+}
+
 registerOAuthProvider("meta", {
   getConfig: config,
   async identify(token: { accessToken: string }) {
@@ -134,7 +179,7 @@ registerOAuthProvider("meta", {
 
     try {
       const pagesResponse = await fetch(
-        `${GRAPH}/me/accounts?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(token.accessToken)}`,
+        `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(token.accessToken)}`,
         { cache: "no-store" },
       );
 
@@ -143,6 +188,7 @@ registerOAuthProvider("meta", {
           data?: {
             id?: string;
             name?: string;
+            access_token?: string;
             instagram_business_account?: { id?: string };
           }[];
         };
@@ -154,6 +200,10 @@ registerOAuthProvider("meta", {
         pageId = chosen?.id ?? null;
         pageName = chosen?.name ?? null;
         instagramUserId = chosen?.instagram_business_account?.id ?? null;
+
+        if (pageId && chosen?.access_token) {
+          await subscribePage(pageId, chosen.access_token);
+        }
       }
     } catch {
       // A failure here leaves `config` empty rather than throwing. The
