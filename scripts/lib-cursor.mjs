@@ -48,6 +48,11 @@ export const CURSOR_SCRIPT = `
         pointer-events: none; border: 3px solid #B7F34A; opacity: 0;
         background: rgba(183,243,74,.22);
       }
+      /* Smooth scrolling makes an element's box a moving target: the recorder
+         reads coordinates the instant a scroll is requested, and with easing
+         those are stale before the pointer arrives. Instant scrolling keeps
+         the drawn cursor and the real one in the same place. */
+      html, body, * { scroll-behavior: auto !important; }
       @keyframes __ct_pulse {
         0%   { opacity: .95; transform: scale(.25); }
         100% { opacity: 0;   transform: scale(1.15); }

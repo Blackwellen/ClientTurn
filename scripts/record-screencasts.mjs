@@ -122,10 +122,16 @@ const CLIPS = [
       // is about — walk down to the Meta card and hold there.
       await reveal(page, "Meta Lead Ads");
 
-      const test = page.getByRole("button", { name: /Test connection/i }).first();
-      if (await test.isVisible().catch(() => false)) {
-        await pointAndClick(page, test, "Test connection");
+      // Scoped to the Meta card on purpose. `.first()` here used to pick the
+      // sending-mailbox card's identical "Test connection" button, higher up
+      // the page — so the clip showed an IMAP check being run and captioned it
+      // as proof the Facebook connection works.
+      const test = await controlNearest(page, "Meta Lead Ads", /Test connection/i);
+      if (test) {
+        await pointAndClick(page, test, "Test connection (Meta)");
         await settle(page);
+      } else {
+        process.stdout.write("    ! no Test connection button on the Meta card\n");
       }
     },
   },
@@ -269,29 +275,36 @@ async function openFirstConversation(page) {
 
 /** Moves down a list so the reviewer sees it is real, then back to the top. */
 async function browseList(page) {
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2, { steps: 20 });
+  await moveMouse(page, VIEWPORT.width / 2, VIEWPORT.height / 2, 20);
   for (let i = 0; i < 5; i += 1) {
     await page.mouse.wheel(0, 220);
+    await resyncCursor(page);
     await page.waitForTimeout(780);
   }
   await page.waitForTimeout(BEAT);
   await page.mouse.wheel(0, -1100);
+  await resyncCursor(page);
   await page.waitForTimeout(BEAT);
 }
 
 /** A single unhurried pass down a public page. */
 async function scrollThrough(page) {
-  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2, { steps: 20 });
+  await moveMouse(page, VIEWPORT.width / 2, VIEWPORT.height / 2, 20);
   for (let i = 0; i < 6; i += 1) {
     await page.mouse.wheel(0, 200);
+    await resyncCursor(page);
     await page.waitForTimeout(820);
   }
   await page.waitForTimeout(BEAT);
 }
 
 async function visit(page, url, label) {
-  process.stdout.write(`    → ${label}\n`);
+  process.stdout.write(`    → ${label}
+`);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  // A fresh document means a fresh cursor, drawn at the middle of the viewport
+  // regardless of where the mouse actually is. Put it back.
+  await resyncCursor(page);
   await page.waitForTimeout(BEAT);
 }
 
@@ -327,23 +340,80 @@ async function reveal(page, text) {
 }
 
 /**
+ * Where the real (synthetic) mouse currently is.
+ *
+ * Playwright does not expose the pointer position, and the drawn cursor only
+ * learns about moves from `mousemove` events. Anything that changes the page
+ * without one — a navigation, which resets the injected cursor to the middle of
+ * a fresh document, or a wheel scroll, which fires no move at all — leaves the
+ * drawn pointer somewhere the mouse is not. That is what put the cursor in the
+ * wrong place: not a positioning bug, a *synchronisation* one.
+ *
+ * So the position is tracked here and replayed whenever the page may have
+ * dropped it.
+ */
+let mouseAt = { x: VIEWPORT.width / 2, y: VIEWPORT.height / 2 };
+
+async function moveMouse(page, x, y, steps = 45) {
+  await page.mouse.move(x, y, { steps });
+  mouseAt = { x, y };
+}
+
+/** Re-asserts the pointer after something that may have lost it. */
+async function resyncCursor(page) {
+  // A one-pixel round trip: enough to emit `mousemove` and put the drawn
+  // cursor back under the real one, too small to read as movement on video.
+  await page.mouse.move(mouseAt.x + 1, mouseAt.y, { steps: 1 });
+  await page.mouse.move(mouseAt.x, mouseAt.y, { steps: 1 });
+}
+
+/**
  * Moves the pointer to the middle of a thing, unhurriedly.
  *
+ * The box is read *after* the scroll has settled, not before. Reading it first
+ * was the other half of the wrong-cursor problem: `scrollIntoViewIfNeeded`
+ * returns before the scroll finishes, so the coordinates were stale by the time
+ * the mouse moved — the pointer glided to where the element used to be, and the
+ * click that followed landed on whatever had taken its place.
+ *
  * `steps` is what makes it readable: a single jump dispatches one event and the
- * drawn cursor teleports, which looks like a cut. Thirty steps over a short
- * distance is roughly the speed of a hand.
+ * drawn cursor teleports, which looks like a cut.
  */
 async function glideTo(page, locator) {
   await locator.scrollIntoViewIfNeeded({ timeout: 10_000 });
+  await settleScroll(page);
+
   const box = await locator.boundingBox();
   if (!box) throw new Error("no bounding box");
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 45 });
+
+  await moveMouse(page, box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(700);
   return box;
 }
 
+/** Waits for scrolling to actually stop before anybody reads a coordinate. */
+async function settleScroll(page) {
+  await page
+    .waitForFunction(
+      () => {
+        const y = window.scrollY;
+        if (window.__ctLastY === y) return true;
+        window.__ctLastY = y;
+        return false;
+      },
+      undefined,
+      { timeout: 5_000, polling: 120 },
+    )
+    .catch(() => {});
+}
+
 /**
  * Moves to something, pauses so the viewer's eye catches up, then clicks it.
+ *
+ * The box is checked again immediately before the click. If the page shifted
+ * under us — a banner loading, an image reflowing — the pointer is walked to
+ * the new position rather than clicking empty space, which is both a better
+ * recording and a click that actually hits.
  *
  * Returns whether it happened. Callers carry on either way: a clip missing one
  * beat is still submittable, whereas a run that throws half way leaves you with
@@ -351,17 +421,64 @@ async function glideTo(page, locator) {
  */
 async function pointAndClick(page, locator, label) {
   try {
-    await glideTo(page, locator);
+    const box = await glideTo(page, locator);
+
+    const now = await locator.boundingBox();
+    if (now && (Math.abs(now.x - box.x) > 2 || Math.abs(now.y - box.y) > 2)) {
+      await moveMouse(page, now.x + now.width / 2, now.y + now.height / 2, 12);
+      await page.waitForTimeout(320);
+    }
+
     await page.mouse.down();
     await page.waitForTimeout(90);
     await page.mouse.up();
-    process.stdout.write(`    · clicked ${label}\n`);
+    process.stdout.write(`    · clicked ${label}
+`);
     await page.waitForTimeout(BEAT);
     return true;
   } catch {
-    process.stdout.write(`    ! could not click ${label} — skipped\n`);
+    process.stdout.write(`    ! could not click ${label} — skipped
+`);
     return false;
   }
+}
+
+/**
+ * The control belonging to a particular card, chosen by position.
+ *
+ * Settings -> Connections renders one card per provider, each with the same
+ * button labels. A role-and-name lookup therefore matches every card at once,
+ * and `.first()` silently returns whichever happens to sit highest in the DOM
+ * — a different provider's button, clicked with confidence.
+ *
+ * Rather than depend on class names or DOM shape, this picks the nearest
+ * matching control *below* the card's heading, which is where a card's own
+ * buttons are. Returns null instead of guessing when nothing sits below it.
+ */
+async function controlNearest(page, cardText, name) {
+  const heading = page.getByText(cardText, { exact: false }).first();
+  if (!(await heading.isVisible().catch(() => false))) return null;
+
+  const anchor = await heading.boundingBox();
+  if (!anchor) return null;
+
+  const candidates = page.getByRole("button", { name });
+  const count = await candidates.count();
+
+  let best = null;
+  let bestGap = Infinity;
+  for (let i = 0; i < count; i += 1) {
+    const candidate = candidates.nth(i);
+    const box = await candidate.boundingBox().catch(() => null);
+    if (!box) continue;
+    const gap = box.y - anchor.y;
+    // Below the heading, and within a card's height of it.
+    if (gap >= -8 && gap < bestGap && gap < 400) {
+      best = candidate;
+      bestGap = gap;
+    }
+  }
+  return best;
 }
 
 /** The first of several candidates that is actually on the page. */
