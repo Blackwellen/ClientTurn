@@ -1,7 +1,8 @@
 /**
  * Records the ClientTurn half of each App Review screencast.
  *
- *   node scripts/record-screencasts.mjs --login        # once, sign in by hand
+ *   node scripts/record-screencasts.mjs --login        # once, sign in
+ *   CLIENTTURN_EMAIL=… CLIENTTURN_PASSWORD=… node scripts/record-screencasts.mjs --login
  *   node scripts/record-screencasts.mjs                 # then record every clip
  *   node scripts/record-screencasts.mjs --only inbox-messenger
  *   node scripts/record-screencasts.mjs --list
@@ -21,8 +22,12 @@
  *
  * ## Signing in
  *
- * `--login` opens a browser, waits while you sign in normally, and saves the
- * session to `screencasts/.auth.json`. Every later run reuses it. Do it once.
+ * `--login` opens a browser and saves the session to `screencasts/.auth.json`.
+ * Every later run reuses it. Do it once.
+ *
+ * With `CLIENTTURN_EMAIL` and `CLIENTTURN_PASSWORD` set it drives the app's own
+ * sign-in form and closes the browser itself; without them it waits while you
+ * sign in by hand. Either way the session comes through the front door.
  *
  * Deliberately not automated. `dev-login-link.mjs` mints an **implicit-flow**
  * magic link (`#access_token=…`) while this app's `/auth/callback` implements
@@ -79,7 +84,10 @@ const CLIPS = [
     manualFirst: null,
     title: "Connecting a Facebook Page",
     async run(page, base) {
-      await visit(page, `${base}/app/settings/connections`, "Settings → Connections");
+      // The canonical URL, not `/app/settings/connections` — that one is a
+      // redirect stub, and recording the hop shows the reviewer a flash of the
+      // wrong page before the right one.
+      await visit(page, `${base}/app/settings?section=connections`, "Settings → Connections");
       await settle(page);
     },
   },
@@ -185,11 +193,28 @@ if (has("login")) {
 
   await page.goto(`${base}/login`, { waitUntil: "domcontentloaded", timeout: 45_000 });
 
-  console.log(
-    `\nA browser is open at ${base}/login.\n` +
-      "Sign in as you normally would, then press Enter here.\n",
-  );
-  await new Promise((resolve) => process.stdin.once("data", resolve));
+  const email = process.env.CLIENTTURN_EMAIL;
+  const password = process.env.CLIENTTURN_PASSWORD;
+
+  if (email && password) {
+    await page.fill('input[type="email"]', email);
+    await page.fill('input[type="password"]', password);
+    await page.click('button:has-text("Sign in")');
+
+    // Staying on /login means the credentials were refused. Saving that session
+    // would produce six clips of a sign-in page — files that look fine in a
+    // listing and waste a submission — so fail here instead.
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
+      timeout: 45_000,
+    });
+    console.log(`Signed in as ${email}, landed on ${new URL(page.url()).pathname}`);
+  } else {
+    console.log(
+      `\nA browser is open at ${base}/login.\n` +
+        "Sign in as you normally would, then press Enter here.\n",
+    );
+    await new Promise((resolve) => process.stdin.once("data", resolve));
+  }
 
   await context.storageState({ path: AUTH_FILE });
   await browser.close();

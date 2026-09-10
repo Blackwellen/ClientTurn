@@ -200,13 +200,15 @@ describe("integration availability is derived, never asserted", () => {
     }
   });
 
-  test("Meta is still not self-serve, so the pages must not imply it is", () => {
-    // Guards the enterprise copy: Meta is the headline lead source but has no
-    // in-app connect flow yet. If that changes, this test should fail and the
-    // copy should be revisited.
+  test("Meta is self-serve, which is what the pages already promise", () => {
+    // Switched on 2026-09-10. This assertion used to require `null`, guarding
+    // against copy that implied a connect flow the product did not have. The
+    // marketing pages say "Connect Meta" and "the day you connect Meta", so the
+    // null was the half that was wrong — and the route has to exist, or the
+    // headline lead source has a button that goes nowhere.
     const meta = PROVIDERS.find((provider) => provider.id === "meta");
     assert.ok(meta);
-    assert.equal(meta.connectPath, null);
+    assert.equal(meta.connectPath, "/api/integrations/meta/connect");
   });
 
   test("providers without platform credentials use workspace tokens", () => {

@@ -123,6 +123,20 @@ the point.
 > shared inbox. We never message an account that has not engaged with the
 > business first.
 
+### `instagram_manage_comments`
+
+> ClientTurn receives comments left on the connected Instagram professional
+> account's own posts, so a business can see who engaged and reply once by
+> private message. The comment arrives on the subscribed webhook rather than
+> being fetched, and we read only comments on the connected account's own
+> media. We do not delete or hide anybody's comment.
+
+### `public_profile`
+
+> Granted automatically. ClientTurn uses the connecting person's name only to
+> label the connection in Settings → Connections, so a customer with several
+> Meta connections can tell which account authorised which.
+
 ### `leads_retrieval`
 
 > ClientTurn's core purpose is answering lead form submissions quickly, because

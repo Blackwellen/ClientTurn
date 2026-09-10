@@ -63,12 +63,15 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "meta",
     connection: "workspace",
-    // The OAuth adapter and lead-source poller now exist, but the flow has not
-    // been exercised against a real Meta app, and `public-pages.test.ts` ties
-    // this null to enterprise copy that says Meta is set up with help. Turning
-    // it on is the call of whoever verifies the round trip — not a side effect
-    // of the adapter landing.
-    connectPath: null,
+    // Switched on 2026-09-10, once the round trip had actually been exercised
+    // against the real Meta app (1079035381375736): every requested permission
+    // returns data on a live call, the webhook handshake and the `page`,
+    // `instagram` and `whatsapp_business_account` subscriptions are active, and
+    // the deauthorize and data-deletion callbacks answer. It stayed null until
+    // then deliberately — an adapter existing is not the same as a flow working,
+    // and a Connect button that 500s after the token is granted is worse than
+    // one that admits it is not ready.
+    connectPath: "/api/integrations/meta/connect",
     connectionMethod: "oauth",
     name: "Meta Lead Ads",
     category: "leads",
