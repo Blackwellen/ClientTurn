@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 
 /**
  * Partner account creation (V4 §29).
@@ -71,6 +72,17 @@ export async function signUpPartner(
   _previous: PartnerSignUpResult | null,
   formData: FormData,
 ): Promise<PartnerSignUpResult> {
+  // Closed alongside customer signup: a partner programme is only worth
+  // joining once there is a product to refer people to, and leaving this door
+  // open would be a second self-serve way to create an account.
+  if (!SELF_SERVE_SIGNUP_OPEN) {
+    return {
+      ok: false,
+      error:
+        "The partner programme is not open for applications yet. Get in touch and we will let you know when it is.",
+    };
+  }
+
   const parsed = schema.safeParse({
     firstName: str(formData, "firstName"),
     lastName: str(formData, "lastName"),

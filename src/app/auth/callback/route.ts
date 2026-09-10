@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { activatePendingInvites } from "@/lib/auth/invites";
+import { hasGrantedAccess } from "@/lib/auth/access";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 
 function safeNext(value: string | null): string | null {
   if (!value) return null;
@@ -54,6 +56,21 @@ export async function GET(request: NextRequest) {
   if (error || !data.user) {
     return NextResponse.redirect(
       `${origin}${doorFor(next)}?error=${encodeURIComponent("link_invalid")}`,
+    );
+  }
+
+  // "Continue with Google" is the one registration path that never passes
+  // through a server action, because the identity provider creates the account
+  // for us. While the product is invite-only that has to be closed here, or the
+  // shut front door is decorative: anyone with a Google account walks past it.
+  //
+  // The session is dropped rather than the account deleted. Someone who has
+  // just been turned away holds nothing worth cleaning up, and an auth callback
+  // is the wrong place to start deleting users.
+  if (!SELF_SERVE_SIGNUP_OPEN && !(await hasGrantedAccess(data.user.id))) {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(
+      `${origin}${doorFor(next)}?error=${encodeURIComponent("invite_only")}`,
     );
   }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -34,10 +35,13 @@ export default async function LoginPage({
         ? "Your email is confirmed. Sign in to continue."
         : undefined;
 
+  const errorCode = one(params.error);
   const problem =
-    one(params.error) === "link_invalid"
+    errorCode === "link_invalid"
       ? "That link is no longer valid. Sign in below, or request a new link."
-      : undefined;
+      : errorCode === "invite_only"
+        ? "That account is not on ClientTurn yet. Access is invite-only at the moment — ask your ClientTurn contact for an invitation."
+        : undefined;
 
   return (
     <AuthShell variant="login">
@@ -47,7 +51,12 @@ export default async function LoginPage({
           title="Welcome back"
           description="Sign in to your ClientTurn account and continue where you left off."
         />
-        <LoginForm redirectTo={redirectTo} notice={notice} problem={problem} />
+        <LoginForm
+          redirectTo={redirectTo}
+          notice={notice}
+          problem={problem}
+          signupOpen={SELF_SERVE_SIGNUP_OPEN}
+        />
       </AuthCard>
     </AuthShell>
   );

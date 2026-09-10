@@ -4,6 +4,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { getUser } from "@/lib/auth/session";
 import { getAffiliate } from "@/lib/affiliates/queries";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 import { AffiliateLoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -51,10 +52,13 @@ export default async function AffiliateLoginPage({
     redirect(affiliate ? redirectTo : "/affiliates");
   }
 
+  const errorCode = one(params.error);
   const problem =
-    one(params.error) === "link_invalid"
+    errorCode === "link_invalid"
       ? "That link is no longer valid. Sign in below, or request a new link."
-      : undefined;
+      : errorCode === "invite_only"
+        ? "That account is not on ClientTurn yet. The partner programme is not open for applications at the moment."
+        : undefined;
 
   const notice =
     one(params.reset) === "1"
@@ -73,6 +77,7 @@ export default async function AffiliateLoginPage({
           redirectTo={redirectTo}
           notice={notice}
           problem={problem}
+          signupOpen={SELF_SERVE_SIGNUP_OPEN}
         />
       </AuthCard>
     </AuthShell>

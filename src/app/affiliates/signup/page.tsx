@@ -4,6 +4,8 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { getUser } from "@/lib/auth/session";
 import { getAffiliate } from "@/lib/affiliates/queries";
+import { SignupClosed } from "@/components/auth/signup-closed";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 import { PartnerSignUpForm } from "./signup-form";
 
 export const metadata: Metadata = {
@@ -22,6 +24,24 @@ export default async function PartnerSignUpPage() {
   if (user) {
     const affiliate = await getAffiliate();
     redirect(affiliate ? "/affiliates/app" : "/affiliates/onboarding");
+  }
+
+  if (!SELF_SERVE_SIGNUP_OPEN) {
+    return (
+      <AuthShell variant="partner-signup">
+        <AuthCard>
+          <AuthCardHeader
+            eyebrow="Invite only"
+            title="Coming soon"
+            description="The ClientTurn partner programme is not open for applications yet. We are onboarding our first businesses by hand first."
+          />
+          <SignupClosed
+            signInHref="/affiliates/login"
+            signInLabel="Sign in to your partner account"
+          />
+        </AuthCard>
+      </AuthShell>
+    );
   }
 
   return (

@@ -14,15 +14,19 @@ import {
   TextField,
 } from "../_components/auth-form-parts";
 import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
+import { InviteOnlyNote } from "@/components/auth/signup-closed";
 
 export function LoginForm({
   redirectTo,
   notice,
   problem,
+  signupOpen,
 }: {
   redirectTo?: string;
   notice?: string;
   problem?: string;
+  /** Resolved on the server: the flag is not readable from a client bundle. */
+  signupOpen: boolean;
 }) {
   const router = useRouter();
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
@@ -103,12 +107,16 @@ export function LoginForm({
         next={redirectTo}
       />
 
-      <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
-        Don&apos;t have an account?{" "}
-        <Link href={signupHref} className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline">
-          Sign up
-        </Link>
-      </p>
+      {signupOpen ? (
+        <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
+          Don&apos;t have an account?{" "}
+          <Link href={signupHref} className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline">
+            Sign up
+          </Link>
+        </p>
+      ) : (
+        <InviteOnlyNote />
+      )}
     </form>
   );
 }

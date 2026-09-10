@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 import { AuthBrandPanel, isInternalVariant, type AuthVariant } from "./auth-brand-panel";
+import { SELF_SERVE_SIGNUP_OPEN } from "@/lib/auth/signup-mode";
 
 const SWITCH: Record<AuthVariant, { prompt: string; label: string; href: string }> = {
   signup: { prompt: "Already have an account?", label: "Sign in", href: "/login" },
@@ -15,6 +16,9 @@ const SWITCH: Record<AuthVariant, { prompt: string; label: string; href: string 
   admin: { prompt: "", label: "", href: "" },
 };
 
+/** Switch destinations that take a registration rather than a sign-in. */
+const CLOSED_WHILE_INVITE_ONLY = new Set(["/signup", "/affiliates/signup"]);
+
 export function AuthShell({
   variant,
   children,
@@ -24,11 +28,20 @@ export function AuthShell({
 }) {
   const sw = SWITCH[variant];
 
+  // While registration is closed, the header stops offering it. The signup
+  // routes still answer — they explain the position — but inviting someone to
+  // "Sign up" from the top of a sign-in page and then telling them they cannot
+  // is a worse door than no link at all.
+  const showSwitch =
+    !isInternalVariant(variant) &&
+    Boolean(sw.href) &&
+    (SELF_SERVE_SIGNUP_OPEN || !CLOSED_WHILE_INVITE_ONLY.has(sw.href));
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[1720px] flex-col px-5 pt-6 pb-8 sm:px-8 sm:pt-8 sm:pb-10 lg:px-16 lg:pt-10 lg:pb-12 xl:px-20">
       <header className="flex items-center justify-between gap-4">
         <Logo height={80} />
-        {!isInternalVariant(variant) && (
+        {showSwitch && (
         <div className="hidden items-center gap-3 sm:flex">
           <span className="text-[13.5px] text-[var(--auth-text-muted)]">{sw.prompt}</span>
           <Link

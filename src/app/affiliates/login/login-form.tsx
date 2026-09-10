@@ -27,10 +27,13 @@ export function AffiliateLoginForm({
   redirectTo,
   notice,
   problem,
+  signupOpen,
 }: {
   redirectTo: string;
   notice?: string;
   problem?: string;
+  /** Resolved on the server: the flag is not readable from a client bundle. */
+  signupOpen: boolean;
 }) {
   const router = useRouter();
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
@@ -108,15 +111,21 @@ export function AffiliateLoginForm({
           next={"/affiliates/app"}
       />
 
-      <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
-        Not a partner yet?{" "}
-        <Link
-          href="/affiliates"
-          className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
-        >
-          Apply to join
-        </Link>
-      </p>
+      {signupOpen ? (
+        <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
+          Not a partner yet?{" "}
+          <Link
+            href="/affiliates"
+            className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
+          >
+            Apply to join
+          </Link>
+        </p>
+      ) : (
+        <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
+          The partner programme is not open for applications yet.
+        </p>
+      )}
 
       <p className="text-center text-[13px] text-[var(--auth-text-muted)]">
         Looking for your own workspace?{" "}

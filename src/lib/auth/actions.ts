@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { attributeSignup } from "@/lib/affiliates/attribution";
 import { activatePendingInvites } from "./invites";
+import { INVITE_ONLY_ERROR, SELF_SERVE_SIGNUP_OPEN } from "./signup-mode";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import {
   attributionSchema,
@@ -134,6 +135,13 @@ export async function signUp(
   _prev: AuthResult | null,
   formData: FormData,
 ): Promise<AuthResult> {
+  // The real gate. Hiding the form only removes the button; this removes the
+  // endpoint, so a replayed action payload cannot provision a workspace while
+  // the product is invite-only.
+  if (!SELF_SERVE_SIGNUP_OPEN) {
+    return { ok: false, error: INVITE_ONLY_ERROR };
+  }
+
   const parsed = signUpSchema.safeParse({
     firstName: str(formData, "firstName"),
     lastName: str(formData, "lastName"),
