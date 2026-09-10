@@ -31,15 +31,10 @@ import { handleAppIngest } from "./handlers/app-ingest";
 import { handleAffiliateLedger } from "./handlers/affiliate-ledger";
 import { handleSocialTick, handleSocialAdvance } from "./handlers/social-tick";
 import { handleSocialExecute } from "./handlers/social-execute";
-import "@/lib/integrations/providers/google-ads";
-import "@/lib/integrations/providers/microsoft-ads";
-import "@/lib/integrations/providers/meta-lead-ads";
-import "@/lib/integrations/providers/whatsapp-cloud";
-import "@/lib/integrations/providers/tiktok-ads";
-import "@/lib/integrations/providers/linkedin-ads";
-import "@/lib/integrations/providers/slack";
-import "@/lib/integrations/providers/hubspot";
-import "@/lib/integrations/providers/zoho-crm";
+// The provider adapters, which register themselves on import. One list, in
+// `providers/all`, so a new adapter reaches the OAuth routes and the queue
+// together rather than only whichever one its author remembered.
+import "@/lib/integrations/providers/all";
 
 let registered = false;
 

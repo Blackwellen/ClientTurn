@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth/session";
 import { createOAuthState, buildAuthorizeUrl } from "@/lib/integrations/oauth";
 import { getOAuthProviderConfig, isOAuthProvider } from "@/lib/integrations/providers/registry";
+// Populates that registry. Without it every provider is "unknown" here.
+import "@/lib/integrations/providers/all";
 
 export const dynamic = "force-dynamic";
 

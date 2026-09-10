@@ -8,6 +8,9 @@ import {
   getOAuthProviderAdapter,
   isOAuthProvider,
 } from "@/lib/integrations/providers/registry";
+// Populates that registry. Without it the callback rejects the very connection
+// it just got a token for.
+import "@/lib/integrations/providers/all";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 
