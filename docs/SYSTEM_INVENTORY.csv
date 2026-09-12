@@ -12,7 +12,7 @@ Integration connector,LinkedIn Lead Gen Forms,linkedin_ads,Lead source,src/lib/i
 Integration connector,Slack,slack,Messaging / notify,src/lib/integrations/providers/slack.ts,Notification delivery
 Integration connector,HubSpot,hubspot,CRM,src/lib/integrations/providers/hubspot.ts,Token (private app) rather than OAuth
 Integration connector,Zoho CRM,zoho_crm,CRM,src/lib/integrations/providers/zoho-crm.ts,
-Integration connector,Salesforce,salesforce,CRM,src/lib/integrations/catalog.ts,
+Integration connector,Salesforce,salesforce,CRM,src/lib/integrations/providers/salesforce.ts,OAuth + Lead push adapter built; gated on SALESFORCE_CLIENT_ID/SECRET not yet provisioned
 Sourcing provider,Meta engagement,meta_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/meta-engagement.ts,Free / first-party audience
 Sourcing provider,LinkedIn engagement,linkedin_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/linkedin-engagement.ts,Free / first-party audience
 Sourcing provider,TikTok engagement,tiktok_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/tiktok-engagement.ts,Free / first-party audience

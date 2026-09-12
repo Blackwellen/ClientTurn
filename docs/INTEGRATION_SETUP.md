@@ -200,4 +200,12 @@ Until that is set, SMS cannot send and both Twilio rows on System → Health rea
 
 - **Azure OpenAI** — already configured; only used for the optional AI-assist layer, gated off by default per workspace.
 - **Reddit, Pinterest** — neither platform has a native lead-generation form product; nothing to integrate against.
-- **Salesforce, ZoomInfo** — no free tier; both require a paid plan/API add-on before any integration work is possible. Not built.
+- **ZoomInfo** — no free tier; requires a paid plan/API add-on before any integration work is possible. Not built.
+
+## Waiting on a Salesforce Connected App
+
+- **Salesforce** — the adapter is built (`src/lib/integrations/providers/salesforce.ts`): OAuth2 web server flow, Lead push/upsert by email, reactive token refresh on session expiry. Registered on the generic connect/callback routes exactly like Zoho CRM.
+- Remaining step is entirely yours to do in Salesforce, not a code task: create a **Connected App** in Setup → App Manager, enable OAuth settings, set the callback URL to `{NEXT_PUBLIC_SITE_URL}/api/integrations/salesforce/callback`, request the `api` and `refresh_token` OAuth scopes, then copy the Consumer Key/Secret into `SALESFORCE_CLIENT_ID`/`SALESFORCE_CLIENT_SECRET`.
+- Until those two env vars are set, the Settings → Connections card renders "Not yet available" and the Connect button stays disabled — `platformConfigured()` in `src/lib/integrations/queries.ts` checks `requiredEnv` against `process.env` before the card offers a connection at all, so there is no broken/half-live button in the meantime.
+- **Known limitation, by design, not yet solved:** the authorize/token endpoints are hardcoded to `login.salesforce.com`, which resolves Production and Developer Edition orgs but not Sandbox orgs (those live under `test.salesforce.com`). Same class of constraint as Zoho CRM's single-data-center limitation, documented in the adapter's header comment.
+- Per the project's own precedent with Meta (see the comment on the `meta` catalogue entry): the code being complete is not the same as the flow being live-tested. Once real credentials exist, connect one real Salesforce org and confirm a lead actually lands as a Salesforce Lead before calling this "native" in marketing copy — `lead-conversion-integrations.tsx` currently tags it `"assisted"` for exactly that reason.

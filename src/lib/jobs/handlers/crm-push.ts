@@ -12,7 +12,7 @@ import {
 
 export const crmPushPayload = z.object({
   leadId: z.uuid(),
-  provider: z.enum(["hubspot", "zoho_crm"]),
+  provider: z.enum(["hubspot", "zoho_crm", "salesforce"]),
 });
 
 /**

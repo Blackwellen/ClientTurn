@@ -5835,6 +5835,7 @@ export type Database = {
       integration_oauth_states: {
         Row: {
           business_id: string
+          code_verifier: string | null
           created_at: string
           expires_at: string
           provider_type: string
@@ -5844,6 +5845,7 @@ export type Database = {
         }
         Insert: {
           business_id: string
+          code_verifier?: string | null
           created_at?: string
           expires_at?: string
           provider_type: string
@@ -5853,6 +5855,7 @@ export type Database = {
         }
         Update: {
           business_id?: string
+          code_verifier?: string | null
           created_at?: string
           expires_at?: string
           provider_type?: string

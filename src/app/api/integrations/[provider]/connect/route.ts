@@ -36,8 +36,13 @@ export async function GET(
     );
   }
 
-  const state = await createOAuthState(provider, workspace.businessId, workspace.userId);
-  const authorizeUrl = buildAuthorizeUrl(provider, config, state);
+  const { state, codeVerifier } = await createOAuthState(
+    provider,
+    workspace.businessId,
+    workspace.userId,
+    config,
+  );
+  const authorizeUrl = buildAuthorizeUrl(provider, config, state, codeVerifier);
 
   return NextResponse.redirect(authorizeUrl);
 }

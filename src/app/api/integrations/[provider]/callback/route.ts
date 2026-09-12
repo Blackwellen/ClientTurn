@@ -55,7 +55,7 @@ export async function GET(
   }
 
   try {
-    const token = await exchangeCodeForToken(provider, config, code);
+    const token = await exchangeCodeForToken(provider, config, code, verified.codeVerifier);
     const identity = await adapter.identify(token);
 
     const { integrationId } = await storeConnection({

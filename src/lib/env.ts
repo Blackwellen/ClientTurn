@@ -193,6 +193,10 @@ export const serverEnv = {
     clientId: optional("ZOHO_CLIENT_ID"),
     clientSecret: optional("ZOHO_CLIENT_SECRET"),
   },
+  salesforce: {
+    clientId: optional("SALESFORCE_CLIENT_ID"),
+    clientSecret: optional("SALESFORCE_CLIENT_SECRET"),
+  },
   /**
    * Sourcing data providers (Find Leads). All optional: an absent key makes
    * that adapter report itself unconfigured, and the waterfall skips it. A run

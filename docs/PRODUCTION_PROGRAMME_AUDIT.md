@@ -184,7 +184,13 @@ another. Generic OAuth connect/callback routes exist at
 **Gaps — connect flows.** Only 6 of 14 have a `connectPath`: `google_ads`,
 `microsoft_ads`, `tiktok_ads`, `linkedin_ads`, `slack`, `zoho_crm`.
 **`connectPath: null`** — no connection flow at all — for **Meta Lead Ads,
-Twilio SMS, WhatsApp, Google Calendar, Calendly, HubSpot and Salesforce**.
+Twilio SMS, WhatsApp, Google Calendar, Calendly and HubSpot** (HubSpot is
+`connectPath: null` by design — it's a pasted-token connection, not a
+redirect flow). **Salesforce got a real `connectPath` and adapter on
+2026-09-10** (`providers/salesforce.ts`), but stays functionally gated the
+same way Meta's did before it went live: `platformConfigured()` keeps the
+Connect button disabled until real `SALESFORCE_CLIENT_ID`/`_SECRET` exist,
+and the flow has not been exercised against a live Salesforce org.
 
 **Gaps — webhooks.** Only three exist: `linkedin-ads`, `stripe`, `twilio`
 ([api/webhooks/](../src/app/api/webhooks/)). Missing: Meta lead webhook, Google
@@ -200,7 +206,8 @@ Ads lead-form webhook, Calendly signed webhooks, TikTok webhooks, HubSpot.
 | Calendly | OAuth 2.1 + signed webhook subscriptions |
 | Slack | Connect route exists; verify channel-scoped incoming-webhook vs `chat:write` |
 | Twilio / WhatsApp | Inbound webhook exists; account configuration UI and template approval do not |
-| HubSpot / Salesforce | OAuth + object mapping; `crm-registry.ts` and `hubspot.ts` exist as stubs |
+| HubSpot | Pasted-token connection; `hubspot.ts` is a working adapter, not a stub |
+| Salesforce | OAuth + Lead push built (`salesforce.ts`, 2026-09-10); waiting on a real Connected App's Client ID/Secret — see `docs/INTEGRATION_SETUP.md` |
 | Zoho | Connect route exists; sync depth unverified |
 | Microsoft Ads | **Put behind a capability flag.** A connect route exists; the supported production lead-retrieval interface is unconfirmed. Do not ship an "Available" button on marketing-page evidence alone. |
 

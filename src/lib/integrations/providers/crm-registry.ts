@@ -56,11 +56,14 @@ export class CrmPartialPushError extends Error {
 
 const registry = new Map<string, CrmAdapter>();
 
-export function registerCrmProvider(provider: "hubspot" | "zoho_crm", adapter: CrmAdapter) {
+export function registerCrmProvider(
+  provider: "hubspot" | "zoho_crm" | "salesforce",
+  adapter: CrmAdapter,
+) {
   registry.set(provider, adapter);
 }
 
-export function isCrmProvider(provider: string): provider is "hubspot" | "zoho_crm" {
+export function isCrmProvider(provider: string): provider is "hubspot" | "zoho_crm" | "salesforce" {
   return registry.has(provider);
 }
 

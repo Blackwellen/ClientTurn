@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueue } from "@/lib/jobs/queue";
 
-const CRM_PROVIDERS = ["hubspot", "zoho_crm"] as const;
+const CRM_PROVIDERS = ["hubspot", "zoho_crm", "salesforce"] as const;
 
 /**
  * Called at every point a lead reaches QUALIFIED, BOOKED or WON. Enqueues one

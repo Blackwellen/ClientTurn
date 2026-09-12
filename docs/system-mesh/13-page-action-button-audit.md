@@ -210,7 +210,7 @@ editors on the same page.
 |---|---|---|
 | `inboxAction("reply")` | SMS and WhatsApp on a lead conversation | Email, and any prospect conversation. See [07](07-messaging-conversation-mesh.md) |
 | Inbox channel tabs | SMS, WhatsApp, Email render | Messenger, Instagram, LinkedIn can never populate — no ingestion exists |
-| ~~Settings → Connections "Connect"~~ | **Correction:** this was wrongly listed as broken. Meta, Salesforce, Calendly and Google Calendar all carry `connectPath: null`, which `integrations/queries.ts:130` renders as a disabled "Not yet available" card. The behaviour is correct | — |
+| ~~Settings → Connections "Connect"~~ | **Correction:** this was wrongly listed as broken. Calendly and Google Calendar carry `connectPath: null`, which `integrations/queries.ts:130` renders as a disabled "Not yet available" card. Meta and Salesforce both now have a real `connectPath` and adapter; the same card still renders disabled for them today because `platformConfigured()` (same file) additionally requires their `requiredEnv` vars to be set, and neither has live credentials provisioned yet. The behaviour is correct either way | — |
 | Copilot action chips | 16 of 18 tools | `createSearchSession` and `startSourcingRun` have no `case` in `execute()` and return "That action is not available yet" — after the UI has offered a confirmation dialog |
 | MCP high-impact tools | Correctly park in `mcp_approvals` | Nothing reads that table, so they are never approved or executed |
 | `runTestLead` (onboarding) | Creates the test lead | `readTestLead` is polled; no timeout path if the job never runs |

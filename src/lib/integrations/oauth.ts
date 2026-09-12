@@ -1,5 +1,5 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
 import type { ProviderType } from "./catalog";
@@ -22,6 +22,17 @@ export type OAuthConfig = {
   scope: string;
   /** Extra authorize-URL params a provider needs (e.g. Google's access_type). */
   extraAuthorizeParams?: Record<string, string>;
+  /**
+   * Salesforce's Connected App / External Client App platform mandates PKCE
+   * on every authorization-code flow, with no per-app opt-out — the setting
+   * in Salesforce's own UI is checked and disabled, next to "To change this
+   * required setting, contact Support." When set, `createOAuthState` mints a
+   * code_verifier and stores it alongside the state row, `buildAuthorizeUrl`
+   * sends its S256 challenge, and `exchangeCodeForToken` sends the verifier
+   * back on token exchange. Every other provider leaves this unset and is
+   * unaffected — the column is simply null on their state rows.
+   */
+  usePkce?: boolean;
 };
 
 function redirectUri(provider: ProviderType): string {
@@ -32,8 +43,12 @@ export async function createOAuthState(
   provider: ProviderType,
   businessId: string,
   userId: string,
-): Promise<string> {
+  config?: OAuthConfig,
+): Promise<{ state: string; codeVerifier: string | null }> {
   const state = randomBytes(24).toString("base64url");
+  // RFC 7636 requires 43-128 characters from the unreserved URL-safe set;
+  // 32 random bytes base64url-encoded is 43 characters.
+  const codeVerifier = config?.usePkce ? randomBytes(32).toString("base64url") : null;
   const admin = createAdminClient();
 
   await admin.from("integration_oauth_states").insert({
@@ -41,15 +56,17 @@ export async function createOAuthState(
     provider_type: provider,
     business_id: businessId,
     user_id: userId,
+    code_verifier: codeVerifier,
   });
 
-  return state;
+  return { state, codeVerifier };
 }
 
 export function buildAuthorizeUrl(
   provider: ProviderType,
   config: OAuthConfig,
   state: string,
+  codeVerifier: string | null,
 ): string {
   const url = new URL(config.authorizeUrl);
   url.searchParams.set("client_id", config.clientId);
@@ -57,6 +74,11 @@ export function buildAuthorizeUrl(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", config.scope);
   url.searchParams.set("state", state);
+  if (config.usePkce && codeVerifier) {
+    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   for (const [key, value] of Object.entries(config.extraAuthorizeParams ?? {})) {
     url.searchParams.set(key, value);
   }
@@ -66,6 +88,7 @@ export function buildAuthorizeUrl(
 export type VerifiedState = {
   businessId: string;
   userId: string;
+  codeVerifier: string | null;
 };
 
 /**
@@ -85,11 +108,15 @@ export async function consumeOAuthState(
     .eq("state", state)
     .eq("provider_type", provider)
     .gt("expires_at", new Date().toISOString())
-    .select("business_id, user_id")
+    .select("business_id, user_id, code_verifier")
     .maybeSingle();
 
   if (error || !data) return null;
-  return { businessId: data.business_id, userId: data.user_id };
+  return {
+    businessId: data.business_id,
+    userId: data.user_id,
+    codeVerifier: data.code_verifier ?? null,
+  };
 }
 
 export type TokenResponse = {
@@ -103,6 +130,7 @@ export async function exchangeCodeForToken(
   provider: ProviderType,
   config: OAuthConfig,
   code: string,
+  codeVerifier: string | null,
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -111,6 +139,9 @@ export async function exchangeCodeForToken(
     client_id: config.clientId,
     client_secret: config.clientSecret,
   });
+  if (config.usePkce && codeVerifier) {
+    body.set("code_verifier", codeVerifier);
+  }
 
   const response = await fetch(config.tokenUrl, {
     method: "POST",

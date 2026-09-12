@@ -737,6 +737,7 @@
 .lcp-int-tag { font-size: 9.5px; font-weight: 600; letter-spacing: .02em; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
 .lcp-int-tag[data-kind="native"] { background: #16260d; color: #a7dd52; border: 1px solid #2c4415; }
 .lcp-int-tag[data-kind="bridge"] { background: #16202f; color: #93a1b4; border: 1px solid #2b3852; }
+.lcp-int-tag[data-kind="assisted"] { background: #2a2110; color: #ddb352; border: 1px solid #4a3a15; }
 .lcp-int-foot { margin-top: 26px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .lcp-int-foot p { font-size: 12.5px; color: var(--lcp-text-3); }
 

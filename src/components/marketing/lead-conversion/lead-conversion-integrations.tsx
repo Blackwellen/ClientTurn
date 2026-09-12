@@ -12,14 +12,20 @@ import {
  * A compact, truthful integration strip — not a copy of the home page
  * marketplace.
  *
- * "Direct" means ClientTurn holds the connection itself, as listed in
- * `src/lib/integrations/catalog.ts`. "Webhook connector" means the other system
- * posts to a signed inbound endpoint we host: ClientTurn never calls out to it
- * and cannot read or write anything in it. Every entry in
+ * "Direct" means ClientTurn holds the connection itself with a working
+ * self-serve OAuth flow, as listed in `src/lib/integrations/catalog.ts`
+ * (`connectPath` set). "Webhook connector" means the other system posts to a
+ * signed inbound endpoint we host: ClientTurn never calls out to it and
+ * cannot read or write anything in it. Every entry in
  * `src/lib/integrations/apps.ts` is that second kind, so listing Pipedrive or
  * Zapier as a native integration here would be a straightforward lie.
+ *
+ * "Team-assisted" is for catalog entries with `connectPath: null` — no
+ * self-serve Connect button exists yet, so the connection is made by hand.
+ * Labelling one of these "native"/"Direct" would overstate parity with the
+ * providers that actually have a working OAuth flow today.
  */
-type Item = { name: string; kind: "native" | "bridge" };
+type Item = { name: string; kind: "native" | "bridge" | "assisted" };
 
 const CATEGORIES: { icon: LucideIcon; title: string; items: Item[] }[] = [
   {
@@ -55,7 +61,7 @@ const CATEGORIES: { icon: LucideIcon; title: string; items: Item[] }[] = [
     title: "CRM & automation",
     items: [
       { name: "HubSpot", kind: "native" },
-      { name: "Salesforce", kind: "native" },
+      { name: "Salesforce", kind: "assisted" },
       { name: "Pipedrive", kind: "bridge" },
       { name: "Zapier", kind: "bridge" },
     ],
@@ -97,7 +103,11 @@ export function LeadConversionIntegrations() {
                   <li key={item.name}>
                     <b>{item.name}</b>
                     <span className="lcp-int-tag" data-kind={item.kind}>
-                      {item.kind === "native" ? "Direct" : "Webhook connector"}
+                      {item.kind === "native"
+                        ? "Direct"
+                        : item.kind === "assisted"
+                          ? "Team-assisted"
+                          : "Webhook connector"}
                     </span>
                   </li>
                 ))}
@@ -110,6 +120,8 @@ export function LeadConversionIntegrations() {
           <p>
             “Webhook connector” means the other system posts to a signed inbound
             endpoint — ClientTurn does not read or write in that account.
+            “Team-assisted” means there is no self-serve Connect button yet —
+            our team sets the connection up by hand.
           </p>
           <Link href="/#integrations" className="lcp-card-link">
             See all integrations

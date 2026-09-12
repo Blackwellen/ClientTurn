@@ -27,3 +27,4 @@ import "@/lib/integrations/providers/linkedin-ads";
 import "@/lib/integrations/providers/slack";
 import "@/lib/integrations/providers/hubspot";
 import "@/lib/integrations/providers/zoho-crm";
+import "@/lib/integrations/providers/salesforce";

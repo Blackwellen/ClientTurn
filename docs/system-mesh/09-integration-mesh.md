@@ -104,7 +104,7 @@ plus optionally `registerLeadSourcePoller(type, { poll })` or
 | Slack | ✅ | ✅ | — | — | Working (`notification.slack`) |
 | HubSpot | ✅ | — (pasted private-app token, deliberately) | — | ✅ | Working |
 | Zoho CRM | ✅ | ✅ | — | ✅ | Working |
-| **Salesforce** | ✅ | ❌ | — | ❌ | **Catalogue entry with no implementation.** `0023_salesforce_provider.sql` added the provider type; no adapter was ever registered |
+| Salesforce | ✅ | ✅ | — | ✅ | **Adapter built (2026-09-10), gated on credentials.** `registerOAuthProvider("salesforce")` + `registerCrmProvider("salesforce")` in `providers/salesforce.ts`, on the generic connect/callback routes exactly like Zoho CRM. `platformConfigured()` keeps the Connect button disabled until real `SALESFORCE_CLIENT_ID`/`SALESFORCE_CLIENT_SECRET` exist — see `docs/INTEGRATION_SETUP.md`. Not yet live-tested against a real org (no credentials provisioned), so marketing still tags it "assisted", not "native", per the same discipline documented on the `meta` catalogue entry |
 | **Meta** | ✅ | ❌ | — | — | No `registerOAuthProvider("meta")`. Meta Lead Ads is the *headline* lead source in the product spec |
 | Calendly | ✅ | ❌ | — | — | No adapter |
 | Google Calendar | ✅ | ❌ | — | — | No adapter |

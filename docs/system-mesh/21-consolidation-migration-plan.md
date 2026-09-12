@@ -243,8 +243,11 @@ Implement the Meta Lead Ads adapter (OAuth + webhook + poller), or remove Meta f
 the onboarding step, the Dashboard health strip and the agent source list. **Do one or the other**
 — the current state promises a connection the product cannot make.
 
-Derive the Connections "Connect" affordance from adapter registration rather than the catalogue,
-so Salesforce, Calendly and Google Calendar stop offering a button that lands on a JSON error.
+**Superseded (see 24-remediation-log.md):** an earlier draft of this line claimed Salesforce,
+Calendly and Google Calendar offered a "Connect" button that landed on a JSON error. Verified
+against `integrations/queries.ts:130` and `integration-card.tsx:225-253` — for any catalogue entry
+with `connectPath: null`, the button renders disabled with an "unavailable" reason, before any
+click reaches a route. There is no dead-end request. No action needed here.
 
 ---
 

@@ -304,7 +304,7 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "salesforce",
     connection: "workspace",
-    connectPath: null,
+    connectPath: "/api/integrations/salesforce/connect",
     connectionMethod: "oauth",
     name: "Salesforce",
     category: "crm",
