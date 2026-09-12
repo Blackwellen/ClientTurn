@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "screencast": {
+      "command": "npx",
+      "args": ["-y", "@tmhs/screencast-mcp"],
+      "env": {}
+    }
+  }
+}
