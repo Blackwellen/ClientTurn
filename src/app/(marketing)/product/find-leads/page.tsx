@@ -64,6 +64,13 @@ const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
     {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: siteUrl },
+        { "@type": "ListItem", position: 2, name: title, item: `${siteUrl}${path}` },
+      ],
+    },
+    {
       "@type": "SoftwareApplication",
       name: "ClientTurn Find Leads",
       applicationCategory: "BusinessApplication",

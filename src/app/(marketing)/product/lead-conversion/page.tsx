@@ -10,6 +10,45 @@ import "./lead-conversion.css";
 const title = "Lead conversion software for inbound enquiries";
 const description =
   "Respond to inbound leads faster, automate follow-up, qualify enquiries and route the right opportunities to booking or your team with ClientTurn.";
+const path = "/product/lead-conversion";
+const siteUrl = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://clientturn.com"
+).replace(/\/$/, "");
+
+/**
+ * Structured data. No aggregateRating and no offers price here — there is no
+ * approved review corpus for this product, and inventing one to win a rich
+ * snippet would be fabricated social proof the brand rules forbid.
+ */
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: siteUrl },
+        { "@type": "ListItem", position: 2, name: title, item: `${siteUrl}${path}` },
+      ],
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "ClientTurn Lead Conversion",
+      applicationCategory: "BusinessApplication",
+      applicationSubCategory: "Lead follow-up and qualification",
+      operatingSystem: "Web",
+      description,
+      url: `${siteUrl}${path}`,
+      featureList: [
+        "Instant follow-up on new Meta and Google leads",
+        "Deterministic qualification against configured rules",
+        "Multi-channel sequencing across SMS, WhatsApp and email",
+        "Automatic stop conditions and quiet-hours enforcement",
+        "Booking handover to Google Calendar or Calendly",
+        "Lead reactivation for past enquiries",
+      ],
+    },
+  ],
+};
 
 export const metadata: Metadata = {
   title,
@@ -45,6 +84,10 @@ export const metadata: Metadata = {
 export default function LeadConversionPage() {
   return (
     <div className="lcp">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <LeadConversionHero />
       <LeakSection />
       <CoreEngineSection />

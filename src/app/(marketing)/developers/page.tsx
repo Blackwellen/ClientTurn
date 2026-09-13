@@ -309,6 +309,15 @@ const structuredData = {
   publisher: { "@type": "Organization", name: "ClientTurn", url: siteUrl },
 };
 
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: siteUrl },
+    { "@type": "ListItem", position: 2, name: title, item: `${siteUrl}${path}` },
+  ],
+};
+
 export default function DevelopersPage() {
   return (
     <>
@@ -316,6 +325,10 @@ export default function DevelopersPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <FaqJsonLd items={FAQS} />
 

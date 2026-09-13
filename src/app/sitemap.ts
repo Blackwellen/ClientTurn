@@ -21,7 +21,9 @@ const routes: { path: string; priority: number; changeFrequency: MetadataRoute.S
   { path: "privacy", priority: 0.3, changeFrequency: "yearly" },
   { path: "terms", priority: 0.3, changeFrequency: "yearly" },
   { path: "cookies", priority: 0.2, changeFrequency: "yearly" },
-  { path: "data-deletion", priority: 0.2, changeFrequency: "yearly" },
+  // "data-deletion" is deliberately excluded: every URL there is a
+  // per-request confirmation-code lookup with robots noindex, not a page
+  // with canonical content to surface in search.
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

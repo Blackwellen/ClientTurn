@@ -60,6 +60,30 @@ const siteUrl = (
   process.env.NEXT_PUBLIC_SITE_URL || "https://clientturn.com"
 ).replace(/\/$/, "");
 
+/**
+ * Real self-serve plan prices from the plan catalogue, not invented numbers.
+ * No aggregateRating — there is no approved review corpus to cite.
+ */
+const productJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: "ClientTurn",
+  description,
+  url: `${siteUrl}${path}`,
+  brand: { "@type": "Brand", name: "ClientTurn" },
+  offers: [PLANS.starter, PLANS.growth, PLANS.pro]
+    .filter((plan) => plan.monthlyPrice !== null)
+    .map((plan) => ({
+      "@type": "Offer",
+      name: `ClientTurn ${plan.name}`,
+      price: plan.monthlyPrice,
+      priceCurrency: "GBP",
+      url: `${siteUrl}${path}`,
+      availability: "https://schema.org/InStock",
+      category: "SaaS subscription",
+    })),
+};
+
 export const metadata: Metadata = {
   title,
   description,
@@ -144,6 +168,10 @@ export default function PricingPage() {
     <>
       <ScrollProgress />
       <FaqJsonLd items={FAQS} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

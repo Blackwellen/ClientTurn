@@ -6,10 +6,50 @@ import { getAffiliateAccount, getPublicPolicy } from "@/lib/affiliates/portal";
 import { AffiliateLanding } from "@/components/affiliates/public/affiliate-landing";
 import "./affiliates.css";
 
+const affiliatesTitle = "Affiliate Programme";
+const affiliatesDescription =
+  "Earn commission introducing UK agencies, software and ecommerce businesses to ClientTurn. Free to join, simple tracking, real commission.";
+const affiliatesPath = "/affiliates";
+const affiliatesSiteUrl = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://clientturn.com"
+).replace(/\/$/, "");
+
+const affiliatesBreadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: affiliatesSiteUrl },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: affiliatesTitle,
+      item: `${affiliatesSiteUrl}${affiliatesPath}`,
+    },
+  ],
+};
+
 export const metadata: Metadata = {
-  title: "Affiliate Programme | ClientTurn",
-  description:
-    "Earn commission introducing UK agencies, software and ecommerce businesses to ClientTurn. Free to join, simple tracking, real commission.",
+  title: `${affiliatesTitle} | ClientTurn`,
+  description: affiliatesDescription,
+  keywords: [
+    "ClientTurn affiliate programme",
+    "lead management software affiliate",
+    "SaaS referral programme UK",
+  ],
+  alternates: { canonical: "/affiliates" },
+  openGraph: {
+    title: `${affiliatesTitle} · ClientTurn`,
+    description: affiliatesDescription,
+    url: "/affiliates",
+    siteName: "ClientTurn",
+    locale: "en_GB",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${affiliatesTitle} · ClientTurn`,
+    description: affiliatesDescription,
+  },
 };
 
 export const dynamic = "force-dynamic";
@@ -52,6 +92,10 @@ export default async function AffiliateProgrammePage() {
 
   return (
     <div className="afp">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(affiliatesBreadcrumbJsonLd) }}
+      />
       <AffiliateLanding
         policy={policy}
         ctaHref={ctaHref}

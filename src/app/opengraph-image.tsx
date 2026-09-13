@@ -31,7 +31,14 @@ export default async function Image() {
             "linear-gradient(135deg, #0B1020 0%, #0B1020 60%, #101830 100%)",
         }}
       >
-        <img src={logoSrc} width={640} height={213} style={{ objectFit: "contain" }} />
+        {/* eslint-disable-next-line @next/next/no-img-element -- rendered by Satori (next/og) at request time; next/image is not usable inside ImageResponse. */}
+        <img
+          src={logoSrc}
+          alt="ClientTurn"
+          width={640}
+          height={213}
+          style={{ objectFit: "contain" }}
+        />
         <div
           style={{
             marginTop: 40,

@@ -12,11 +12,27 @@ import {
 } from "@/components/status/status-parts";
 import { cn } from "@/lib/cn";
 
+const statusDescription =
+  "Real-time status and performance information for ClientTurn services and integrations.";
+
 export const metadata: Metadata = {
   title: "System Status",
-  description:
-    "Real-time status and performance information for ClientTurn services and integrations.",
+  description: statusDescription,
   robots: { index: true, follow: true },
+  alternates: { canonical: "/status" },
+  openGraph: {
+    title: "System Status · ClientTurn",
+    description: statusDescription,
+    url: "/status",
+    siteName: "ClientTurn",
+    locale: "en_GB",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "System Status · ClientTurn",
+    description: statusDescription,
+  },
 };
 
 // Revalidated rather than cached indefinitely: a status page that is a minute
