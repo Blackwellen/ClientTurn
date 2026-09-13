@@ -786,8 +786,14 @@ export async function processInboundWebhookEvent(
         ? [stored.message]
         : []
       : event.provider === "meta"
-        ? parseMetaInbound(
-            JSON.stringify({ object: stored.object, entry: stored.entry }),
+        ? // `webhook_events.payload` stores one entry per row (see the route
+          // handler's comment on why), but `parseMetaInbound` expects Meta's
+          // original envelope shape, where `entry` is always an array.
+          parseMetaInbound(
+            JSON.stringify({
+              object: stored.object,
+              entry: stored.entry ? [stored.entry] : [],
+            }),
           )
         : await providerFor(event.provider).parseInbound(
             new URLSearchParams(stored.form ?? {}).toString(),
