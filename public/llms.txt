@@ -1,0 +1,41 @@
+# ClientTurn
+
+> ClientTurn is instant lead follow-up, deterministic qualification and booking software for UK B2B companies — agencies, web development and design studios, SaaS, ecommerce and professional services. It replies to Meta and Google lead-form enquiries within moments, qualifies them against rules the business configures itself, and books the next step, so no enquiry goes cold waiting for a human to notice it.
+
+ClientTurn is built and operated by Blackwellen Limited (company number 16482166, registered in England and Wales). The product trades under the name ClientTurn; every contract is with Blackwellen Limited.
+
+Qualification and follow-up are 100% deterministic: the same configured rules and stop conditions always produce the same outcome. An optional AI layer may classify what an inbound reply means and suggest a value for a question the business has already configured — it never composes a quote, a promise, availability or a service commitment, and anything low-confidence or unmatched is handed to a person. Follow-up always respects opt-outs, quiet hours and per-contact attempt limits, re-checked immediately before every send.
+
+## What it does
+
+- Connects to Meta Lead Ads and Google lead forms and responds to new leads within seconds of submission.
+- Runs a configurable follow-up sequence across SMS, WhatsApp and email until the lead replies, books, or opts out.
+- Qualifies replies against rules and questions the business defines — deterministic, not a language model guessing.
+- Books the next step directly into Google Calendar or Calendly.
+- Sources and verifies new prospects for outbound (Companies House-verifiable UK businesses; email-only cold outreach — no purchased phone data), for teams that also want to build pipeline, not just respond to it.
+- Reactivates past enquiries that never converted, respecting opt-outs and lawful basis.
+- Reports on source, follow-up and reactivation performance in one dashboard, and full pipeline attribution from first touch to won.
+- Connects to HubSpot, Zoho and Salesforce, and accepts inbound leads from Pipedrive, folk and others via a signed webhook endpoint.
+
+## Docs
+
+- [How it works](https://clientturn.com/how-it-works): the full conversion system, from first signal to final action.
+- [Lead conversion](https://clientturn.com/product/lead-conversion): instant follow-up, qualification and routing for inbound enquiries.
+- [Find leads](https://clientturn.com/product/find-leads): sourcing, verifying and scoring new prospects for permitted outreach.
+- [Pricing](https://clientturn.com/pricing): Starter, Growth, Pro (self-serve) and Enterprise (custom).
+- [Results](https://clientturn.com/results): what ClientTurn measures — source attribution, acquisition and outreach performance, conversion rates.
+- [Enterprise](https://clientturn.com/enterprise): custom entitlements, workspace isolation, role-based access, audit logging.
+- [For developers](https://clientturn.com/developers): a scoped REST API, signed outgoing webhooks and an MCP endpoint for AI assistants.
+- [Sub-processors](https://clientturn.com/sub-processors): every third party ClientTurn uses, what it can see, and its transfer mechanism.
+- [FAQ](https://clientturn.com/faq.txt): plain-text answers to the most common pre-purchase questions.
+- [Privacy](https://clientturn.com/privacy) · [Terms](https://clientturn.com/terms)
+
+## Company
+
+- [About Blackwellen](https://clientturn.com/blackwellen.txt): the company behind ClientTurn and its other products.
+- Blackwellen also builds: [Propvora](https://clientturn.com/propvora.txt) (property/real-estate operations), [Caption Fox](https://clientturn.com/caption-fox.txt) (social captioning), [Orbas CRM](https://clientturn.com/orbas-crm.txt) (CRM), [Gala Dock](https://clientturn.com/gala-dock.txt) (events/booking) and [Measure Deck](https://clientturn.com/measure-deck.txt) (analytics/measurement).
+
+## Optional
+
+- [Contact sales](https://clientturn.com/contact-sales): for custom volume, integrations or Enterprise requirements.
+- [Affiliate programme](https://clientturn.com/affiliates): refer businesses to ClientTurn.

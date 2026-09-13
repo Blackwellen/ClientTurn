@@ -1,0 +1,25 @@
+# Measure Deck
+
+> Measure Deck is a commercial-management platform from Blackwellen Limited for UK construction quantity surveyors and commercial teams, covering change events, payment applications, cost/value reconciliation, drawings and final accounts.
+
+Built by Blackwellen Limited (company number 16482166, England and Wales) — the same company behind [ClientTurn](/llms.txt).
+
+Status: in active development and not yet released to production customers. Treat it as pre-release rather than a shipped, generally-available product.
+
+## What it does
+
+- Change-event tracking and payment applications.
+- Cost/value reconciliation (CVR).
+- Evidence, drawings and BIM handling.
+- Final accounts and commercial reporting.
+- Supplier and contact management, tasks and scheduling.
+- An AI copilot for commercial-management workflows.
+
+## Who it's for
+
+UK specialist subcontractors and SME main contractors, and the quantity surveyors and commercial managers who run their contracts under JCT, NEC3 and NEC4 forms.
+
+## Related
+
+- [Blackwellen](/blackwellen.txt) — the company behind Measure Deck and its sister products.
+- [ClientTurn](/llms.txt) — lead follow-up and qualification software from the same company.

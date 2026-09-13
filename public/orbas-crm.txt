@@ -1,0 +1,16 @@
+# Orbas CRM
+
+> Orbas CRM is a multi-app business operating suite from Blackwellen Limited, spanning CRM, accounting, operations, projects, people/HR, service, documents, analytics, compliance, charity and automations under one workspace, with a white-label client portal.
+
+Built by Blackwellen Limited (company number 16482166, England and Wales) — the same company behind [ClientTurn](/llms.txt).
+
+Status: in active development. The current build is broad and architecturally complete, but is still moving from UI scaffolding with representative sample data to fully wired live data — do not treat feature areas as independently verified in production yet.
+
+## Modules
+
+CRM, Accounting, Operations, Projects, People/HR, Service, Documents, Analytics, Compliance, Charity, Automations, and Connect, plus an onboarding wizard, an app-launcher workspace switcher and a platform-admin console.
+
+## Related
+
+- [Blackwellen](/blackwellen.txt) — the company behind Orbas CRM and its sister products.
+- [ClientTurn](/llms.txt) — lead follow-up and qualification software from the same company.

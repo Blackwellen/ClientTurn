@@ -1,0 +1,29 @@
+# Caption Fox
+
+> Caption Fox is a social-media management platform for brands, creators and agencies that combines AI content generation with campaign management — "run campaigns, not just posts."
+
+Built by Blackwellen Limited (company number 16482166, England and Wales) — the same company behind [ClientTurn](/llms.txt).
+
+## What it does (per its marketing site)
+
+- AI-generated captions, scripts, hooks and hashtags.
+- Drag-and-drop content calendar.
+- Twelve campaign types, including giveaways, contests and UGC programmes.
+- A user-generated-content workflow.
+- A unified social inbox with AI-drafted replies.
+- Multi-platform analytics across Instagram, X, LinkedIn, Facebook, TikTok, Pinterest and YouTube.
+
+## Who it's for
+
+Growing brands, content creators and marketing agencies managing multiple social channels.
+
+## Pricing (per its marketing site)
+
+- Free — 1 brand, 3 posts/month.
+- Pro — £59/month, 5 brands, unlimited posts.
+- Agency — £199/month, unlimited brands, white-label.
+
+## Related
+
+- [Blackwellen](/blackwellen.txt) — the company behind Caption Fox and its sister products.
+- [ClientTurn](/llms.txt) — lead follow-up and qualification software from the same company.

@@ -1,0 +1,24 @@
+# Gala Dock
+
+> Gala Dock is an event-delivery platform from Blackwellen Limited, built for event organisers to plan, run and staff events with a shared calendar, automations, client and supplier portals, and an offline event-day mode.
+
+Built by Blackwellen Limited (company number 16482166, England and Wales) — the same company behind [ClientTurn](/llms.txt).
+
+Status: in active development. The current release is a single-tenant B2B product for event organisers. A wider multi-sided marketplace connecting venues, suppliers and consumer ticket buyers with take-rate commissions is roadmapped for a later version and is not yet live.
+
+## What it does today (V1 scope)
+
+- A calendar hub combining event schedules with iCal sync.
+- An AI Copilot for planning and coordination tasks.
+- Automations ("Smart Rules") for repetitive event-organiser workflows.
+- Token-based client and supplier portals.
+- A progressive web app with offline mode for event-day use.
+
+## Who it's for
+
+Event organisers and planners running B2B event operations.
+
+## Related
+
+- [Blackwellen](/blackwellen.txt) — the company behind Gala Dock and its sister products.
+- [ClientTurn](/llms.txt) — lead follow-up and qualification software from the same company.

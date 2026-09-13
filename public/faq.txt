@@ -1,0 +1,41 @@
+# ClientTurn — Frequently Asked Questions
+
+Plain-text mirror of the FAQ on https://clientturn.com — kept in sync with the questions and answers actually shown to visitors, for search and AI systems that prefer plain text over rendered HTML.
+
+Q: Do I need a credit card to start?
+A: No. You can start with a 14-day free trial with no card. You can connect your sources, configure your messages and questions, and watch the whole flow run before you pay anything.
+
+Q: Can I scale as my business grows?
+A: Yes. You can move between Starter, Growth and Pro at any time from billing settings. There is no minimum term and no cancellation fee — a self-serve plan simply runs to the end of the period you have paid for.
+
+Q: What lead sources and integrations are supported?
+A: Ad platforms, messaging, calendar and CRM connections cover the tools most teams already run — Meta and Google lead forms, Twilio SMS and WhatsApp, Google Calendar and Calendly, HubSpot, Zoho and Salesforce. Systems like Pipedrive and Zapier can send contacts in through a signed inbound endpoint we host.
+
+Q: Is ClientTurn suitable for multiple locations or teams?
+A: Pro includes up to ten users with routing and handover for a sales team. Enterprise adds custom lead, user and messaging limits, a dedicated support contact, a data processing agreement and onboarding assistance.
+
+Q: How does ClientTurn use AI?
+A: Qualification is deterministic: your configured questions and rules make every decision, and the same answers always produce the same outcome. AI assists by classifying what an inbound message means and extracting a candidate answer to a question you already configured. It never quotes, never promises availability and never commits you to anything — low confidence or an unmatched value goes to a person.
+
+Q: What happens when someone replies?
+A: The follow-up sequence stops immediately and the conversation moves into qualification. Their answers are recorded against the lead, and anything the rules cannot match confidently is flagged for a person rather than guessed at.
+
+Q: Can I send from my own number?
+A: In most cases, yes. You can send from a number you already control through a supported messaging provider, or use a new dedicated number. Which options are open to you depends on your provider and on UK numbering rules, so we confirm it during setup.
+
+Q: Can people opt out, and is that enforced?
+A: Yes, and it is enforced rather than just recorded. Every outbound message carries an opt-out instruction, opt-out replies are honoured immediately, and the opt-out is re-checked right before every single send — including reactivation campaigns. Quiet hours and per-contact attempt limits apply as well.
+
+Q: Can I reactivate old leads?
+A: Yes, on the Growth plan and above. You can import or select past enquiries, filter out opt-outs and closed work, and run them through the same follow-up and qualification as new leads. You remain responsible for having a lawful basis to contact them.
+
+Q: Does it replace my sales team?
+A: No. It removes the delay and the admin so your team spends its time on people who are actually ready to talk. ClientTurn never quotes, never promises availability and never commits you to anything — anything outside your configured questions goes to a human.
+
+Q: Where is my data stored, and who can see it?
+A: Data is held in the EU/UK region and every tenant table is isolated at the database level, so one workspace can never read another's records. Every third party in the chain is named on our sub-processors page, and a data processing agreement is available on Enterprise.
+
+Q: What kind of support do you provide?
+A: Every plan includes email support. Pro adds priority support, and Enterprise adds a dedicated support contact and onboarding assistance.
+
+Full page with structured data: https://clientturn.com/#faq

@@ -1,0 +1,26 @@
+# ai.txt — AI usage policy for clientturn.com
+
+Operator: Blackwellen Limited, company number 16482166, registered in England and Wales.
+Contact: legal@clientturn.com
+
+## Permitted
+
+AI assistants, answer engines and LLM crawlers (including but not limited to GPTBot, ClaudeBot, Google-Extended, PerplexityBot and Bingbot/Copilot) may crawl, index, summarize, quote and cite the public marketing pages of this site — everything under clientturn.com that is not behind a login. Attribution back to https://clientturn.com is appreciated but not required for factual summaries or quotations.
+
+See /llms.txt for a structured, machine-readable summary of the product, its pages and related Blackwellen products, and /faq.txt for a plain-text FAQ.
+
+## Not permitted
+
+- Crawling, scraping or reproducing anything behind authentication: the /app, /admin and /affiliates/app areas, or any API response.
+- Using content from this site to represent ClientTurn as endorsing, partnering with, or reselling a third-party product it has not actually integrated with.
+- Presenting AI-generated pricing, features or claims about ClientTurn as authoritative where they contradict the current text of https://clientturn.com/pricing or this site's own pages — those pages are the source of truth, and pricing changes over time.
+
+## Data protection
+
+This site processes personal data under UK GDPR. It does not knowingly expose personal data belonging to identifiable individuals via its public marketing pages; any personal data an AI system encounters through this site's authenticated application is customer data belonging to Blackwellen Limited's customers and is out of scope for training or indexing.
+
+## Related
+
+- /llms.txt — ClientTurn overview and page map.
+- /blackwellen.txt — the company behind ClientTurn.
+- /robots.txt — crawler access rules (machine-enforced; this file states policy, robots.txt states the rules).

@@ -1,0 +1,33 @@
+# Propvora
+
+> Propvora is a UK property-operations platform for landlords, portfolio operators and letting agencies — one workspace for portfolio, money, work, compliance, planning, legal, accounting, contacts, calendar and messaging.
+
+Built by Blackwellen Limited (company number 16482166, England and Wales) — the same company behind [ClientTurn](/llms.txt). Live marketing site: propvora.com.
+
+Status: feature-complete for a UK V1 as of the current build, but not yet approved for general availability — treat as pre-launch.
+
+## What it does
+
+- Compliance deadline tracking: Gas Safety, EICR, EPC, HMO licences, Legionella, Fire safety, PAT, and Renters' Rights Act 2026 requirements.
+- Portfolio management: properties, units, tenancies, contacts and documents in one record set.
+- Work and maintenance scheduling on a unified calendar.
+- Money and accounting: income, expenses, invoices and arrears.
+- An AI Copilot that assists but is human-reviewed before any action executes.
+- Separate tenant, landlord and supplier portals.
+- Multi-user teams with Stripe billing and row-level-security-isolated multi-tenant data.
+
+## Who it's for
+
+UK landlords and portfolio operators, from individual landlords through growing letting-agency teams.
+
+## Pricing (propvora.com)
+
+- Starter — £29/month, 5 properties, 1 seat.
+- Operator — £79/month, 25 properties, 3 seats.
+- Scale — £169/month, 100 properties, 10 seats.
+- 7-day free trial on all plans.
+
+## Related
+
+- [Blackwellen](/blackwellen.txt) — the company behind Propvora and its sister products.
+- [ClientTurn](/llms.txt) — lead follow-up and qualification software from the same company.

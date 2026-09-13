@@ -1,0 +1,26 @@
+# Blackwellen Limited
+
+> Blackwellen Limited is a UK software company building vertical, operations-heavy SaaS products on a shared, audit-grade platform: role-based access, structured records, workflow automation, observability and an internal AI copilot as standard across the family.
+
+Registered in England and Wales, company number 16482166. Registered office: 61 Bridge Street, Kington, Herefordshire, HR5 3DJ, United Kingdom. Incorporated 29 May 2025.
+
+ClientTurn (this site, clientturn.com) is a trading name of Blackwellen Limited, not a separate legal entity — every contract formed through it is with Blackwellen Limited.
+
+## Products
+
+- **ClientTurn** (clientturn.com) — instant Meta/Google lead follow-up, deterministic qualification and booking for UK B2B companies. Live and in active development. See [llms.txt](/llms.txt) for detail.
+- **Propvora** (propvora.com) — UK property-operations software for landlords, portfolio operators and letting agencies: compliance deadline tracking, portfolio and tenancy records, maintenance scheduling, accounting, tenant/landlord/supplier portals and an AI copilot. Pre-launch: feature-complete for a UK V1 but not yet generally available. See [propvora.txt](/propvora.txt).
+- **Caption Fox** — social-media management for brands, creators and agencies: AI-generated captions and hooks, a content calendar, campaign management and a unified social inbox. See [caption-fox.txt](/caption-fox.txt).
+- **Orbas CRM** — a multi-app business operating suite spanning CRM, accounting, operations, projects, HR, service, documents, analytics, compliance and automations, with a white-label client portal. Broad in scope; still moving from UI scaffolding to fully wired data. See [orbas-crm.txt](/orbas-crm.txt).
+- **Gala Dock** — an event-delivery platform for event organisers: planning calendar, AI copilot, automations, client and supplier portals, and offline event-day mode. Currently a single-tenant B2B product for organisers; a wider marketplace for venues, suppliers and ticket buyers is roadmapped, not yet live. See [gala-dock.txt](/gala-dock.txt).
+- **Measure Deck** — commercial-management software for UK construction quantity surveyors and subcontractors: change events, payment applications, cost/value reconciliation, drawings and final accounts. In active development; not yet released to production customers. See [measure-deck.txt](/measure-deck.txt).
+
+## Why one company, six products
+
+Every product shares the same non-negotiables: tenant-isolated data (row-level security on every table), deterministic business rules with AI as an optional assist layer rather than the decision-maker, and UK-first compliance (Companies House verification, PECR, UK GDPR, sector-specific rules such as JCT/NEC for construction).
+
+## Contact
+
+- Support: support@clientturn.com
+- Legal / data protection: legal@clientturn.com
+- Companies House record: https://find-and-update.company-information.service.gov.uk/company/16482166
