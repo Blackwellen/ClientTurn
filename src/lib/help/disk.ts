@@ -12,6 +12,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { readBundledHelpIndex } from "./bundled.ts";
 import { HELP_CATEGORY_SLUGS } from "./categories.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import {
@@ -91,7 +92,9 @@ export function loadHelpIndex(): DiskIndex {
   if (memo && process.env.NODE_ENV === "production") return memo;
   // Existence checks are for authors and tests; at runtime a missing image is
   // rendered as a broken figure rather than dropping the whole article.
-  memo = readHelpDirectory(HELP_CONTENT_DIR, false);
+  memo = process.env.NODE_ENV === "production" || !existsSync(HELP_CONTENT_DIR)
+    ? readBundledHelpIndex()
+    : readHelpDirectory(HELP_CONTENT_DIR, false);
   const count = Object.keys(memo.problems).length;
   if (count > 0 && process.env.NODE_ENV !== "production") {
     console.warn(`[help] ${count} article file(s) have contract problems; run the help-center tests.`);

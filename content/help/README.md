@@ -1,5 +1,10 @@
 # Help-centre content contract
 
+`npm run build` generates `src/lib/help/content.generated.ts` from these files before
+compiling. Production reads this bundled copy so serverless search and article pages
+do not depend on the deployment's working directory. After editing articles, run
+`node scripts/generate-help-content.mjs` and commit the generated file too.
+
 Every help article in ClientTurn — on the public site at `/help`, inside the app at
 `/app/help`, in the support popout, and in search — is read from the markdown files in
 this folder. There is one copy of each article. This README is the contract for writing

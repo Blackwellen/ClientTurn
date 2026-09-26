@@ -2,6 +2,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { readBundledHelpIndex } from "../src/lib/help/bundled.ts";
 import { parseFrontmatter } from "../src/lib/help/frontmatter.ts";
 import {
   bodyImages,
@@ -30,6 +33,34 @@ import { scoreArticle, searchArticles, tokenize } from "../src/lib/help/search.t
  */
 
 const index = readHelpDirectory(path.join(process.cwd(), "content", "help"), true);
+
+describe("deployed help content", () => {
+  test("the production bundle contains exactly the same articles as the authoring directory", () => {
+    const bundled = readBundledHelpIndex();
+    assert.deepEqual(bundled.problems, {});
+    // Git may check Markdown out with CRLF on Windows.
+    const canonical = (articles: HelpArticle[]) => JSON.stringify(
+      [...articles].sort((a, b) => a.slug.localeCompare(b.slug)),
+    ).replace(/\\r\\n/g, "\\n");
+    assert.equal(canonical(bundled.articles), canonical(index.articles));
+  });
+
+  test("production search works when content/help is absent from the runtime directory", () => {
+    const diskUrl = pathToFileURL(path.resolve("src/lib/help/disk.ts")).href;
+    const searchUrl = pathToFileURL(path.resolve("src/lib/help/search.ts")).href;
+    const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { tmpdir } from 'node:os';
+      process.chdir(tmpdir());
+      const { loadHelpIndex } = await import(${JSON.stringify(diskUrl)});
+      const { searchArticles } = await import(${JSON.stringify(searchUrl)});
+      const articles = loadHelpIndex().articles;
+      console.log(JSON.stringify({ count: articles.length, hits: searchArticles(articles, 'hubspot').map(a => a.slug) }));
+    `], { env: { ...process.env, NODE_ENV: "production" }, encoding: "utf8" });
+    const result = JSON.parse(output);
+    assert.equal(result.count, index.articles.length);
+    assert.ok(result.hits.includes("connecting-hubspot"));
+  });
+});
 
 describe("every article on disk meets the contract", () => {
   test("there are articles to check", () => {

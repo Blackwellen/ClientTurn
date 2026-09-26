@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/generate-help-content.mjs",
     "dev": "next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=6144 next build",
     "start": "next start",
