@@ -10,8 +10,10 @@
 /docs
 /supabase
 /tests
-/scripts
+/scripts/*
+!/scripts/generate-help-content.mjs
 *.md
+!/content/help/**/*.md
 *.docx
 *.log
 *.tsbuildinfo
