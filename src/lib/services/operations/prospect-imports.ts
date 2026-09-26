@@ -72,13 +72,20 @@ defineOperation("prospect.import_linkedin_list", {
       );
     }
 
+    const rows = parsed.rows.map((row) => {
+      if (!row.companyDomain) {
+        throw new ServiceError("INVALID_INPUT", "Every row in this import needs a company domain. Add a company website column and try again.");
+      }
+      return { ...row, companyDomain: row.companyDomain };
+    });
+
     const admin = createAdminClient();
     const businessId = context.businessId;
 
     /* ---- companies: one per domain, created only where none exists ---- */
 
     const byDomain = new Map<string, { name: string; key: string }>();
-    for (const row of parsed.rows) {
+    for (const row of rows) {
       if (!byDomain.has(row.companyDomain)) {
         byDomain.set(row.companyDomain, {
           name: row.companyName ?? row.companyDomain,
@@ -156,7 +163,7 @@ defineOperation("prospect.import_linkedin_list", {
     }[] = [];
     let duplicates = 0;
 
-    for (const row of parsed.rows) {
+    for (const row of rows) {
       const companyId = companyIds.get(byDomain.get(row.companyDomain)!.key);
       if (!companyId) continue;
 

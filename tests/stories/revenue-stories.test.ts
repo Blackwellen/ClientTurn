@@ -211,7 +211,7 @@ describe("A. Meta Lead Ads: Northlight Growth (marketing agency, book a meeting)
   test("A2 poll (faked Graph) -> ingestLead CREATED, touch + provenance, first SMS", async () => {
     await check({ id: "A2", flow: "Meta poll -> ingest", scenario: "poll reads the lead via faked Graph", expected: "lead CREATED, one meta touch with campaign/ad, first follow-up SMS sent via faked Twilio" }, async () => {
       const before = H.jobLog.length;
-      await H.runJobs({ skip: ["lead_source.poll"] ? [] : [] });
+      await H.runJobs({ skip: [] });
       const failures = H.failedJobs(before);
       const { data: leads } = await admin.from("leads").select("*").eq("business_id", H.mustWorld().businessId).eq("email", person.email);
       assert.equal(leads?.length, 1, `lead not created; failures=${JSON.stringify(failures)}`);
