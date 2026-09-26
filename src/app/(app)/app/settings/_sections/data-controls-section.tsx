@@ -6,6 +6,11 @@ import {
   suppressionSummary,
 } from "@/lib/compliance/queries";
 import { DataControlsForm } from "@/components/settings/compliance/data-controls-form";
+import { PrivacyRequestsPanel } from "@/components/settings/compliance/privacy-requests-panel";
+import { RetentionPreviewCard } from "@/components/settings/compliance/retention-preview";
+import { listWorkspaceRequests } from "@/lib/data-rights/privacy-requests";
+import { retentionPreview } from "@/lib/data-rights/retention";
+import type { RetentionPreview, WorkspacePrivacyRequest } from "@/lib/data-rights/types";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -40,15 +45,41 @@ export async function DataControlsSection() {
   const workspace = await requireWorkspace();
   const canManage = hasRole(workspace.role, "admin");
 
-  const [controls, suppression, evidence] = await Promise.all([
+  const [controls, suppression, evidence, requests, retention] = await Promise.all([
     loadDataControls(workspace.businessId),
     suppressionSummary(workspace.businessId),
     complianceEvidence(workspace.businessId),
+    // Admin-only, and each fails on its own: a broken preview must not take
+    // the rest of the section down with it.
+    canManage
+      ? listWorkspaceRequests(workspace.businessId).then(
+          (rows): { rows: WorkspacePrivacyRequest[]; error: boolean } => ({ rows, error: false }),
+          () => ({ rows: [], error: true }),
+        )
+      : Promise.resolve({ rows: [] as WorkspacePrivacyRequest[], error: false }),
+    canManage
+      ? retentionPreview(workspace.businessId).then(
+          (value): { value: RetentionPreview | null; error: boolean } => ({ value, error: false }),
+          () => ({ value: null, error: true }),
+        )
+      : Promise.resolve({ value: null as RetentionPreview | null, error: false }),
   ]);
 
   return (
     <div className="space-y-4">
       <DataControlsForm initial={controls} canManage={canManage} />
+
+      <RetentionPreviewCard
+        preview={retention.value}
+        canManage={canManage}
+        loadError={retention.error}
+      />
+
+      <PrivacyRequestsPanel
+        requests={requests.rows}
+        canManage={canManage}
+        loadError={requests.error}
+      />
 
       {/* ----------------------------------------------------- suppression */}
       <section className="rounded-xl border border-line bg-surface p-4 shadow-xs">

@@ -23,8 +23,8 @@ import { cn } from "@/lib/cn";
 import {
   OPTIMIZATION_DIMENSIONS,
   formatCount,
-  formatMoneyMinor,
 } from "@/lib/outreach/campaign-draft";
+import { formatMoneyMinor } from "@/lib/outreach/types";
 import type { CampaignOverview } from "@/lib/outreach/campaigns/detail";
 import { CampaignControls } from "./controls";
 import { PerformanceChart } from "./performance-chart";
@@ -552,9 +552,12 @@ function ReplyBadge({ classification }: { classification: string | null }) {
 
   const map: Record<string, { label: string; tone: "success" | "info" | "danger" | "warning" | "neutral" }> = {
     POSITIVE_INTEREST: { label: "Positive", tone: "success" },
+    BOOKING_INTENT: { label: "Wants to book", tone: "success" },
     NEUTRAL_QUESTION: { label: "Question", tone: "info" },
     OBJECTION: { label: "Objection", tone: "warning" },
-    NOT_NOW: { label: "Not interested", tone: "danger" },
+    // A deferral, not a refusal (B14): "not now" invites a later follow-up.
+    NOT_NOW: { label: "Not now", tone: "warning" },
+    NOT_INTERESTED: { label: "Not interested", tone: "danger" },
     UNSUBSCRIBE: { label: "Unsubscribed", tone: "danger" },
     COMPLAINT: { label: "Complaint", tone: "danger" },
     HUMAN_REQUEST: { label: "Human request", tone: "warning" },

@@ -39,8 +39,13 @@ export function createEmailProvider(): MessagingProvider {
         // The stored body is the restricted markup the composer produced.
         // `sendEmail` sanitises it again and derives the plain-text part.
         html: request.body,
-        unsubscribeUrl: request.unsubscribeUrl,
+        // Only MARKETING mail carries the unsubscribe link and headers (§43);
+        // the send path already leaves it null on transactional mail, and this
+        // holds the line if a caller ever sets both.
+        unsubscribeUrl: request.messageClass === "TRANSACTIONAL" ? null : request.unsubscribeUrl,
         sendKey: request.sendKey,
+        // The sender identity controls From on warm mail too (§43).
+        senderIdentity: request.senderIdentity ?? null,
       });
 
       // The connection's health is a property of the mailbox, not of one

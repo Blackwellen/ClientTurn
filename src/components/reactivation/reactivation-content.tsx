@@ -84,7 +84,7 @@ export function ReactivationContent({
 
   if (total === 0) {
     return (
-      <div className="rounded-xl border border-line bg-surface shadow-xs">
+      <div className="rounded-xl border border-line bg-surface shadow-xs" data-tour="reactivation-campaigns">
         {filtered ? (
           <EmptyState
             icon={SearchX}
@@ -131,7 +131,7 @@ export function ReactivationContent({
 
   if (filters.view === "list") {
     return (
-      <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-xs">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-xs" data-tour="reactivation-campaigns">
         <CampaignTable
           campaigns={campaigns}
           canManage={canManage}
@@ -145,7 +145,7 @@ export function ReactivationContent({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1" data-tour="reactivation-campaigns">
       <CampaignCardGrid
         campaigns={campaigns}
         canManage={canManage}

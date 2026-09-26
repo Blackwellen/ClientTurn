@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -34,6 +35,13 @@ export type SenderHealth = {
   complaintRate: number;
   mailboxHealth: string;
   domainHealth: string;
+  /**
+   * The complaint monitor's verdict on this sender (§43, 0127): HEALTHY,
+   * WATCH (>= 0.1% over 7 days) or PAUSED (>= 0.3%). Optional so callers that
+   * build a sender by hand need not supply it.
+   */
+  complaintHealth?: string;
+  complaintReason?: string | null;
   /** Cold-outreach verdict. Kept as the bare `state`/`summary` because cold is
    *  where this service started and every existing caller means cold. */
   state: SenderHealthState;
@@ -87,6 +95,12 @@ export function healthState(
   if (sender.pausedUntil && Date.parse(sender.pausedUntil) > Date.now()) {
     return { state: "BLOCKED", summary: "Sending from this identity is paused." };
   }
+  if (sender.complaintHealth === "PAUSED") {
+    return {
+      state: "BLOCKED",
+      summary: "Paused: spam complaints reached 0.3% over the last 7 days.",
+    };
+  }
   if (sender.mailboxHealth === "PAUSED" || sender.domainHealth === "PAUSED") {
     return { state: "BLOCKED", summary: "Sending is paused for this domain." };
   }
@@ -110,6 +124,9 @@ export function healthState(
   if (sender.mailboxHealth === "WARNING" || sender.domainHealth === "WARNING") {
     return { state: "WARNING", summary: "Mailbox reputation needs watching." };
   }
+  if (sender.complaintHealth === "WATCH" || sender.complaintHealth === "WARNING") {
+    return { state: "WARNING", summary: "Spam complaints are above 0.1% over the last 7 days." };
+  }
 
   return { state: "HEALTHY", summary: "SPF, DKIM and DMARC are configured. Good sender reputation." };
 }
@@ -118,7 +135,7 @@ export function healthState(
 export async function loadSenderHealth(businessId: string): Promise<SenderHealth[]> {
   const admin = createAdminClient();
 
-  const [senders, domains, mailboxes] = await Promise.all([
+  const [senders, domains, mailboxes, complaintHealth] = await Promise.all([
     admin
       .from("sender_identities")
       .select(
@@ -141,7 +158,17 @@ export async function loadSenderHealth(businessId: string): Promise<SenderHealth
       .eq("business_id", businessId)
       .order("snapshot_date", { ascending: false })
       .limit(60),
+    // The complaint monitor's columns (0127) post-date the generated types.
+    (admin as unknown as SupabaseClient)
+      .from("sender_identities")
+      .select("id, health_state, health_reason")
+      .eq("business_id", businessId),
   ]);
+
+  const complaintById = new Map<string, { health_state: string | null; health_reason: string | null }>();
+  for (const row of (complaintHealth.data ?? []) as { id: string; health_state: string | null; health_reason: string | null }[]) {
+    complaintById.set(row.id, row);
+  }
 
   // Snapshots arrive newest-first, so the first row per key is today's.
   // NonNullable<...>[number], not a conditional: `typeof x extends U[] ? T : never`
@@ -195,6 +222,8 @@ export async function loadSenderHealth(businessId: string): Promise<SenderHealth
       ),
       mailboxHealth: mailboxSnapshot?.health_state ?? "HEALTHY",
       domainHealth: domainSnapshot?.health_state ?? "HEALTHY",
+      complaintHealth: complaintById.get(row.id)?.health_state ?? "HEALTHY",
+      complaintReason: complaintById.get(row.id)?.health_reason ?? null,
     };
 
     const warm = healthState(base, "WARM");

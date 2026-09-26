@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { recordUsage } from "@/lib/audit";
 import {
-  liftSuppressionForDestination,
+  liftOptOutForChannel,
   suppress,
 } from "@/lib/policy/suppression";
 import { getMessagingProvider } from "@/lib/messaging/registry";
@@ -14,6 +14,8 @@ import { createTwilioProvider } from "@/lib/messaging/twilio";
 import {
   isOptInKeyword,
   isOptOutKeyword,
+  optInChannelFor,
+  optOutScope,
   isMetaChannel,
   normalisePhone,
   type Channel,
@@ -23,6 +25,8 @@ import {
 import { parseMetaInbound } from "@/lib/messaging/meta";
 import { resolveMetaBusinessId, resolveSocialThread } from "@/lib/social/meta-inbound";
 import { normaliseEmail } from "@/lib/email/account";
+import { escapeIlike } from "@/lib/supabase/ilike";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import {
   conversationFor,
   flagForAttention,
@@ -40,8 +44,10 @@ import {
   applyQualification,
   matchAnswer,
   matchAnswerWithAi,
-  nextQuestion,
+  loadAdaptiveSelection,
+  loadQuestions,
   questionPrompt,
+  recordInferredAnswers,
   type QuestionRecord,
 } from "./qualify";
 import { parsePayload } from "./parse";
@@ -50,6 +56,11 @@ import { emitAutomationEvent } from "@/lib/automation/events";
 import { enqueueAgentTurn, inboundMessageEvent } from "@/lib/agent/events";
 import { isOptOutPhrase } from "@/lib/agent/classification";
 import { handleCampaignReply } from "@/lib/outreach/campaigns/replies";
+import {
+  deterministicReplyClassification,
+  interestForReplyClassification,
+} from "@/lib/inbox/interest";
+import type { MessageReplyClassification } from "@/lib/agent/types";
 
 const HANDOVER_REPLY = "Thanks. A member of the team will pick this up.";
 
@@ -126,7 +137,7 @@ async function resolveLead(
   if (message.channel === "email") {
     const from = normaliseEmail(message.from);
     if (!from) return null;
-    const { data } = await query.ilike("email", from).maybeSingle();
+    const { data } = await query.ilike("email", escapeIlike(from)).maybeSingle();
     return data ? loadLead(data.id) : null;
   }
 
@@ -139,45 +150,62 @@ async function recordOptOut(
   business: BusinessContext,
   lead: LeadRecord,
   contact: string,
+  scope: "ALL" | "SMS" | "WHATSAPP",
 ) {
   const admin = createAdminClient();
 
-  // Channel ALL, and now on the one list every send path reads. Someone who
-  // texts STOP has said "do not contact me" — not "not by SMS" — and before
-  // 0069 that intent stopped at the warm boundary while cold email carried on.
+  // On the one list every send path reads (0069), at the scope the person
+  // asked for (optOutScope in lib/messaging/types): a carrier STOP keyword on
+  // SMS or WhatsApp is about that channel, which is how the carrier itself
+  // treats it and what START later re-permits; "stop contacting me", or STOP
+  // anywhere else, is about everything.
   await suppress({
     businessId: business.businessId,
-    channel: "ALL",
+    channel: scope,
     reason: "OPT_OUT",
     source: "INBOUND_REPLY",
     phone: contact.includes("@") ? null : contact,
     email: contact.includes("@") ? contact : null,
   });
 
-  await admin
-    .from("leads")
-    .update({
-      opted_out: true,
-      automation_active: false,
-      needs_attention: false,
-      attention_reason: null,
-    })
-    .eq("id", lead.id)
-    .eq("business_id", business.businessId);
+  // `leads.opted_out` is derived from the list (0123): the suppression above
+  // sets it for an all-channel opt-out and leaves it alone for a channel one.
+  // Follow-up stops either way -- a STOP ends the unattended sequence -- and a
+  // failure throws so the job retries. Every write here is idempotent, and a
+  // retry resumes past the stored message (see `resume` in
+  // `applyInboundMessage`).
+  assertWrite(
+    await admin
+      .from("leads")
+      .update({
+        automation_active: false,
+        needs_attention: false,
+        attention_reason: null,
+      })
+      .eq("id", lead.id)
+      .eq("business_id", business.businessId),
+    "opt-out: lead update",
+    { businessId: business.businessId, leadId: lead.id },
+  );
 
   await stopAutomationRuns(business.businessId, lead.id, "opted_out");
 
-  await admin
-    .from("campaign_contacts")
-    .update({ state: "stopped", stopped_reason: "opted_out" })
-    .eq("business_id", business.businessId)
-    .eq("lead_id", lead.id)
-    .in("state", ["pending", "scheduled"]);
+  assertWrite(
+    await admin
+      .from("campaign_contacts")
+      .update({ state: "stopped", stopped_reason: "opted_out" })
+      .eq("business_id", business.businessId)
+      .eq("lead_id", lead.id)
+      .in("state", ["pending", "scheduled"]),
+    "opt-out: campaign contacts stop",
+    { businessId: business.businessId, leadId: lead.id },
+  );
 
   await emitAutomationEvent({
     businessId: business.businessId,
     leadId: lead.id,
     eventType: "lead.opted_out",
+    payload: { scope },
   });
 
   await queueNotification({
@@ -185,7 +213,10 @@ async function recordOptOut(
     type: "lead_attention",
     severity: "warning",
     title: "A lead opted out",
-    body: `${contact} will not receive any further messages.`,
+    body:
+      scope === "ALL"
+        ? `${contact} will not receive any further messages.`
+        : `${contact} will not receive any further ${scope === "SMS" ? "text" : "WhatsApp"} messages.`,
     entityType: "lead",
     entityId: lead.id,
     linkUrl: `/app/leads/${lead.id}`,
@@ -197,35 +228,19 @@ async function recordOptIn(
   business: BusinessContext,
   lead: LeadRecord,
   contact: string,
+  channel: "SMS" | "WHATSAPP",
 ) {
-  const admin = createAdminClient();
-  // The recipient reversing their own decision, which is the one case where
-  // lifting an OPT_OUT is right — `unsuppress()` refuses it precisely because
-  // a *workspace* may not do this.
-  await liftSuppressionForDestination(business.businessId, "SMS", {
-    phone: contact.includes("@") ? null : contact,
-    email: contact.includes("@") ? contact : null,
+  // The recipient reversing their own decision on the channel they texted
+  // from, which is the one case where lifting an OPT_OUT is right —
+  // `unsuppress()` refuses it precisely because a *workspace* may not do this.
+  // Only that channel's OPT_OUT goes (0111): a manual block, a bounce, an
+  // invalid number and every other channel's opt-out all stand. The lead's
+  // `opted_out` flag follows by itself (0123 derives it from the list), so it
+  // is not written here -- writing it is what used to leave START a no-op.
+  await liftOptOutForChannel(business.businessId, channel, {
+    phone: contact,
+    email: lead.email,
   });
-
-  await admin
-    .from("leads")
-    .update({ opted_out: false })
-    .eq("id", lead.id)
-    .eq("business_id", business.businessId);
-}
-
-async function answeredQuestionIds(businessId: string, leadId: string) {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("qualification_answers")
-    .select("question_id, answer_value")
-    .eq("business_id", businessId)
-    .eq("lead_id", leadId);
-  return new Set(
-    (data ?? [])
-      .filter((row) => row.answer_value !== null)
-      .map((row) => row.question_id),
-  );
 }
 
 async function askNext(
@@ -235,8 +250,14 @@ async function askNext(
   questions: QuestionRecord[],
   conversationId: string,
 ) {
-  const answered = await answeredQuestionIds(business.businessId, lead.id);
-  const question = nextQuestion(questions, answered, lead.service_id);
+  // Adaptive: the most useful unknown question, never one the lead's details
+  // or an earlier answer already settle (lib/qualification/next-question.ts).
+  const selection = await loadAdaptiveSelection({
+    businessId: business.businessId,
+    lead,
+    questions,
+  });
+  const question = selection.question;
 
   if (!question) {
     await flagForAttention({
@@ -251,10 +272,16 @@ async function askNext(
   }
 
   const admin = createAdminClient();
-  await admin
-    .from("conversations")
-    .update({ current_question_id: question.id })
-    .eq("id", conversationId);
+  // Written before the question is sent: a question whose id was not recorded
+  // cannot have its answer matched to it.
+  assertWrite(
+    await admin
+      .from("conversations")
+      .update({ current_question_id: question.id })
+      .eq("id", conversationId),
+    "qualification: set current question",
+    { businessId: business.businessId, leadId: lead.id, conversationId },
+  );
 
   const basePrompt = questionPrompt(question);
   // Numbered picks in matchAnswer() rely on option order/wording surviving
@@ -330,7 +357,7 @@ async function applyProspectReply(
     .from("prospects")
     .select("id, campaign_id, conversation_id")
     .eq("business_id", businessId)
-    .ilike("email", from)
+    .ilike("email", escapeIlike(from))
     .is("promoted_to_lead_id", null)
     .order("last_contacted_at", { ascending: false, nullsFirst: false })
     .limit(1)
@@ -344,7 +371,7 @@ async function applyProspectReply(
   // whole exchange across rather than starting a second conversation.
   let conversationId = prospect.conversation_id;
   if (!conversationId) {
-    const { data: created } = await admin
+    const createdResult = await admin
       .from("conversations")
       .insert({
         business_id: businessId,
@@ -354,13 +381,24 @@ async function applyProspectReply(
       })
       .select("id")
       .single();
-    conversationId = created?.id ?? null;
+    // A failed insert used to fall through to "unmatched", discarding the
+    // prospect's reply (and any opt-out in it). Nothing has been stored yet,
+    // so throwing lets the queue retry from a clean start.
+    assertWrite(createdResult, "prospect reply: create conversation", {
+      businessId,
+      prospectId: prospect.id,
+    });
+    conversationId = createdResult.data?.id ?? null;
     if (conversationId) {
-      await admin
-        .from("prospects")
-        .update({ conversation_id: conversationId })
-        .eq("business_id", businessId)
-        .eq("id", prospect.id);
+      logWriteError(
+        await admin
+          .from("prospects")
+          .update({ conversation_id: conversationId })
+          .eq("business_id", businessId)
+          .eq("id", prospect.id),
+        "prospect reply: link conversation",
+        { businessId, prospectId: prospect.id, conversationId },
+      );
     }
   }
 
@@ -392,10 +430,23 @@ async function applyProspectReply(
     throw insertError ?? new Error("Inbound prospect message not stored.");
   }
 
-  await admin
-    .from("conversations")
-    .update({ last_inbound_at: now, last_message_at: now })
-    .eq("id", conversationId);
+  logWriteError(
+    await admin
+      .from("conversations")
+      .update({ last_inbound_at: now, last_message_at: now })
+      .eq("id", conversationId),
+    "prospect reply: conversation timestamps",
+    { businessId, prospectId: prospect.id, conversationId },
+  );
+
+  // The same deterministic classifier handleCampaignReply uses, so the thread's
+  // verdict and the message's classification agree.
+  await recordReplyInterest(
+    businessId,
+    conversationId,
+    deterministicReplyClassification(message.body),
+    { prospectId: prospect.id },
+  );
 
   // A prospect with no campaign still gets their reply recorded, but there is
   // no sequence to stop and no campaign rule to apply.
@@ -412,9 +463,53 @@ async function applyProspectReply(
   return "applied";
 }
 
+/**
+ * Carries a reply's classification onto its thread as `conversations.interest`,
+ * which the inbox's "Interested" view filters on. Display state: a failure is
+ * logged, never thrown, so it cannot hold up an opt-out or the reply itself.
+ */
+async function recordReplyInterest(
+  businessId: string,
+  conversationId: string,
+  classification: MessageReplyClassification,
+  context: Record<string, unknown>,
+) {
+  const interest = interestForReplyClassification(classification);
+  if (!interest) return;
+  logWriteError(
+    await createAdminClient()
+      .from("conversations")
+      .update({ interest })
+      .eq("business_id", businessId)
+      .eq("id", conversationId),
+    "inbound: conversation interest",
+    { businessId, conversationId, ...context },
+  );
+}
+
+/**
+ * Whether a reply-sourced answer was recorded for this lead at or after `since`
+ * — i.e. a previous attempt at this message (or a later message) already
+ * recorded its answer.
+ */
+async function replyAnsweredSince(businessId: string, leadId: string, since: string) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("qualification_answers")
+    .select("question_id")
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .eq("source", "reply")
+    .gte("answered_at", since)
+    .limit(1);
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
 export async function applyInboundMessage(
   message: InboundMessage,
   businessHint: string | null,
+  options: { resume?: boolean } = {},
 ): Promise<"applied" | "duplicate" | "unmatched"> {
   const businessId = await resolveBusinessId(message, businessHint);
   if (!businessId) return "unmatched";
@@ -482,8 +577,37 @@ export async function applyInboundMessage(
     .select("id")
     .single();
 
-  if (insertError?.code === "23505") return "duplicate";
-  if (insertError || !storedMessage) throw insertError ?? new Error("Inbound message not stored.");
+  // `resume` is a retry of a webhook event whose previous attempt stored this
+  // message and then failed part-way (a write below throws rather than being
+  // silently lost). Returning "duplicate" there would make the retry a no-op
+  // and drop the opt-out or qualification write that failed, so the retry
+  // carries on from the stored row instead. Every step below is idempotent:
+  // updates set fixed values, outbound messages carry send keys, the agent turn
+  // is keyed by the message id and notifications by dedupe keys.
+  // The one step that is not naturally idempotent is recording the reply as the
+  // answer to the conversation's *current* question: if the previous attempt
+  // recorded it and moved on to the next question, re-recording would file it
+  // against the wrong one. `resumedReceivedAt` guards that below.
+  let storedMessageId: string;
+  let resumedReceivedAt: string | null = null;
+  if (insertError?.code === "23505") {
+    if (!options.resume) return "duplicate";
+    const { data: existing, error: existingError } = await admin
+      .from("messages")
+      .select("id, received_at")
+      .eq("business_id", businessId)
+      .eq("provider", message.provider)
+      .eq("provider_message_id", message.providerMessageId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) return "duplicate";
+    storedMessageId = existing.id;
+    resumedReceivedAt = existing.received_at ?? message.receivedAt ?? now;
+  } else if (insertError || !storedMessage) {
+    throw insertError ?? new Error("Inbound message not stored.");
+  } else {
+    storedMessageId = storedMessage.id;
+  }
 
   // Placed after the duplicate check, so a re-polled or replayed provider event
   // does not deliver the same reply twice. The stored message id is the event
@@ -491,9 +615,9 @@ export async function applyInboundMessage(
   await emitWebhookEvent({
     businessId,
     type: "message.received",
-    eventId: storedMessage.id,
+    eventId: storedMessageId,
     data: {
-      message_id: storedMessage.id,
+      message_id: storedMessageId,
       lead_id: lead.id,
       conversation_id: conversationId,
       channel,
@@ -502,26 +626,38 @@ export async function applyInboundMessage(
     },
   });
 
-  await admin
-    .from("conversations")
-    .update({ last_inbound_at: now, last_message_at: now })
-    .eq("id", conversationId);
+  // Timestamps and the RESPONDED status are display state; a failure is
+  // logged rather than thrown so it cannot hold up the opt-out check below.
+  logWriteError(
+    await admin
+      .from("conversations")
+      .update({ last_inbound_at: now, last_message_at: now })
+      .eq("id", conversationId),
+    "inbound: conversation timestamps",
+    { businessId, leadId: lead.id, conversationId },
+  );
 
   const terminal = ["QUALIFIED", "BOOKED", "WON", "LOST"];
-  await admin
-    .from("leads")
-    .update({
-      first_replied_at: lead.first_replied_at ?? now,
-      last_contact_at: now,
-      status: terminal.includes(lead.status) ? lead.status : "RESPONDED",
-    })
-    .eq("id", lead.id)
-    .eq("business_id", businessId);
+  logWriteError(
+    await admin
+      .from("leads")
+      .update({
+        first_replied_at: lead.first_replied_at ?? now,
+        last_contact_at: now,
+        status: terminal.includes(lead.status) ? lead.status : "RESPONDED",
+      })
+      .eq("id", lead.id)
+      .eq("business_id", businessId),
+    "inbound: lead reply status",
+    { businessId, leadId: lead.id },
+  );
 
   await recordUsage({
     businessId,
     metric: "message_received",
     source: `message:${message.providerMessageId}`,
+    // Keyed by the stored message so a resumed retry is not counted twice.
+    operationId: `message_received:${storedMessageId}`,
     metadata: { channel },
   });
 
@@ -529,7 +665,10 @@ export async function applyInboundMessage(
 
   // A reply always ends the unattended sequence.
   await stopAutomationRuns(businessId, lead.id, "replied");
-  await admin
+  // A contact left "scheduled" after replying would be sent the next
+  // reactivation step, so this failure matters. It is asserted only after the
+  // opt-out check, though: an opt-out must never wait on it.
+  const repliedContacts = await admin
     .from("campaign_contacts")
     .update({ state: "replied", replied_at: now })
     .eq("business_id", businessId)
@@ -543,14 +682,37 @@ export async function applyInboundMessage(
   // message me", "take me off your list"). Neither consults a model, and both
   // apply whether or not the agent is enabled.
   if (isOptOutKeyword(message.body) || isOptOutPhrase(message.body)) {
-    await recordOptOut(business, lead, contact);
+    await recordOptOut(
+      business,
+      lead,
+      contact,
+      optOutScope(channel, message.body),
+    );
+    await recordReplyInterest(businessId, conversationId, "UNSUBSCRIBE", { leadId: lead.id });
     return "applied";
   }
 
-  if (isOptInKeyword(message.body)) {
-    await recordOptIn(business, lead, contact);
+  assertWrite(repliedContacts, "inbound: mark campaign contacts replied", {
+    businessId,
+    leadId: lead.id,
+  });
+
+  // START is honoured only where it is a carrier keyword. On email or a DM it
+  // falls through and is handled as an ordinary reply.
+  const optInChannel = optInChannelFor(channel);
+  if (optInChannel && isOptInKeyword(message.body)) {
+    await recordOptIn(business, lead, contact, optInChannel);
     return "applied";
   }
+
+  // Deterministic, so the Interested view works with the assistant off (the
+  // default). With it on, its own record_reply_classification refines this.
+  await recordReplyInterest(
+    businessId,
+    conversationId,
+    deterministicReplyClassification(message.body),
+    { leadId: lead.id },
+  );
 
   if (lead.human_takeover) {
     await queueNotification({
@@ -562,6 +724,7 @@ export async function applyInboundMessage(
       entityType: "lead",
       entityId: lead.id,
       linkUrl: `/app/leads/${lead.id}`,
+      dedupeKey: `takeover_reply:${storedMessageId}`,
     });
     await emitAutomationEvent({
       businessId,
@@ -600,7 +763,7 @@ export async function applyInboundMessage(
         conversationId,
         channel,
         provider: message.provider,
-        messageId: storedMessage.id,
+        messageId: storedMessageId,
         body: message.body,
         receivedAt: message.receivedAt || now,
         fromReactivation: Boolean(campaignContact),
@@ -618,7 +781,11 @@ export async function applyInboundMessage(
   const current = await loadLead(lead.id);
   if (!current) return "applied";
 
-  if (conversation?.current_question_id) {
+  const answerAlreadyRecorded = resumedReceivedAt
+    ? await replyAnsweredSince(businessId, current.id, resumedReceivedAt)
+    : false;
+
+  if (conversation?.current_question_id && !answerAlreadyRecorded) {
     const { data: questionRow } = await admin
       .from("qualification_questions")
       .select("id, question_text, response_type, required, service_id, position")
@@ -662,29 +829,50 @@ export async function applyInboundMessage(
         if (aiMatched) matched = aiMatched;
       }
 
-      await admin.from("qualification_answers").upsert(
-        {
-          business_id: businessId,
-          lead_id: current.id,
-          question_id: question.id,
-          answer_value: matched.value,
-          answer_text: matched.text,
-          source: "reply",
-          answered_at: now,
-        },
-        { onConflict: "lead_id,question_id" },
+      assertWrite(
+        await admin.from("qualification_answers").upsert(
+          {
+            business_id: businessId,
+            lead_id: current.id,
+            question_id: question.id,
+            answer_value: matched.value,
+            answer_text: matched.text,
+            source: "reply",
+            answered_at: now,
+          },
+          { onConflict: "lead_id,question_id" },
+        ),
+        "qualification: record reply answer",
+        { businessId, leadId: current.id, questionId: question.id },
       );
     }
   }
 
   const refreshed = (await loadLead(current.id)) ?? current;
+
+  // Answers the lead's own details already give (a postcode on the form, the
+  // service they picked) are recorded as inferred answers before the engine
+  // runs, so it judges them like any other answer and they are never asked.
+  const inferredSelection = await loadAdaptiveSelection({
+    businessId,
+    lead: refreshed,
+    questions: await loadQuestions(businessId),
+  });
+  await recordInferredAnswers(businessId, refreshed.id, inferredSelection.inferred);
+
   const { output, questions } = await applyQualification(business, refreshed);
 
   if (output.result === "QUALIFIED") {
-    await admin
-      .from("conversations")
-      .update({ current_question_id: null })
-      .eq("id", conversationId);
+    // A current question left set would match the next reply against it and
+    // overwrite a recorded answer.
+    assertWrite(
+      await admin
+        .from("conversations")
+        .update({ current_question_id: null })
+        .eq("id", conversationId),
+      "qualification: clear current question",
+      { businessId, leadId: refreshed.id, conversationId },
+    );
 
     const values = await mergeValues(business, refreshed);
 
@@ -723,10 +911,14 @@ export async function applyInboundMessage(
   }
 
   if (output.result === "NOT_QUALIFIED") {
-    await admin
-      .from("conversations")
-      .update({ current_question_id: null, state: "closed" })
-      .eq("id", conversationId);
+    assertWrite(
+      await admin
+        .from("conversations")
+        .update({ current_question_id: null, state: "closed" })
+        .eq("id", conversationId),
+      "qualification: close not-qualified conversation",
+      { businessId, leadId: refreshed.id, conversationId },
+    );
     await stopAutomationRuns(businessId, refreshed.id, "not_qualified");
     return "applied";
   }
@@ -765,10 +957,18 @@ export async function processInboundWebhookEvent(
   }
   if (event.status === "processed") return "duplicate";
 
-  await admin
-    .from("webhook_events")
-    .update({ status: "processing" })
-    .eq("id", event.id);
+  // Still "processing" when read means a previous attempt started and did not
+  // finish (it threw), so this run resumes past messages it already stored.
+  const resume = event.status === "processing";
+
+  logWriteError(
+    await admin
+      .from("webhook_events")
+      .update({ status: "processing" })
+      .eq("id", event.id),
+    "inbound webhook: mark processing",
+    { businessId: event.business_id, webhookEventId: event.id },
+  );
 
   const stored = (event.payload ?? {}) as StoredInbound;
 
@@ -800,32 +1000,40 @@ export async function processInboundWebhookEvent(
           );
 
   if (messages.length === 0) {
-    await admin
-      .from("webhook_events")
-      .update({
-        status: "ignored",
-        last_error: "No inbound message in payload.",
-        processed_at: new Date().toISOString(),
-      })
-      .eq("id", event.id);
+    logWriteError(
+      await admin
+        .from("webhook_events")
+        .update({
+          status: "ignored",
+          last_error: "No inbound message in payload.",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", event.id),
+      "inbound webhook: mark ignored",
+      { businessId: event.business_id, webhookEventId: event.id },
+    );
     return "ignored";
   }
 
   let unmatched = 0;
   for (const message of messages) {
-    const result = await applyInboundMessage(message, event.business_id);
+    const result = await applyInboundMessage(message, event.business_id, { resume });
     if (result === "unmatched") unmatched += 1;
   }
 
-  await admin
-    .from("webhook_events")
-    .update({
-      status: unmatched === messages.length ? "ignored" : "processed",
-      last_error:
-        unmatched > 0 ? "Could not match a lead for this number." : null,
-      processed_at: new Date().toISOString(),
-    })
-    .eq("id", event.id);
+  logWriteError(
+    await admin
+      .from("webhook_events")
+      .update({
+        status: unmatched === messages.length ? "ignored" : "processed",
+        last_error:
+          unmatched > 0 ? "Could not match a lead for this number." : null,
+        processed_at: new Date().toISOString(),
+      })
+      .eq("id", event.id),
+    "inbound webhook: mark processed",
+    { businessId: event.business_id, webhookEventId: event.id },
+  );
 
   return unmatched === messages.length ? "ignored" : "processed";
 }

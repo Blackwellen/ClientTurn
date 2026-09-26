@@ -2,8 +2,23 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { providerJson, unconfigured } from "./http";
 import {
+  isRecognisedRegistryType,
+  subscriberTypeForRegistryEntry,
+} from "@/lib/policy/subscriber-classification";
+import {
+  filingCategoriesFor,
+  registerSignals,
+  type ChFiling,
+  type ChOfficer,
+  type ChProfile,
+  type RegisterWants,
+} from "../../companies-house-signals";
+import {
   providerFailure,
   type CompanyCandidate,
+  type IntentCompany,
+  type IntentResult,
+  type IntentWants,
   type ProviderResponse,
   type SourcingProvider,
 } from "./types";
@@ -60,35 +75,8 @@ function key(): string | undefined {
   return serverEnv.sourcing.companiesHouseApiKey;
 }
 
-/**
- * Company types that are incorporated bodies or LLPs.
- *
- * These are the ones PECR's corporate-subscriber exemption covers. Everything
- * else on the register -- and the register does list some unincorporated forms
- * -- is deliberately absent, so an unrecognised type yields UNKNOWN rather than
- * being waved through as corporate.
- */
-const CORPORATE_TYPES = new Set([
-  "ltd",
-  "plc",
-  "llp",
-  "private-limited-guarant-nsc",
-  "private-limited-guarant-nsc-limited-exemption",
-  "private-unlimited",
-  "private-unlimited-nsc",
-  "old-public-company",
-  "private-limited-shares-section-30-exemption",
-  "northern-ireland",
-  "northern-ireland-other",
-  "scottish-partnership",
-  "limited-partnership",
-  "royal-charter",
-  "industrial-and-provident-society",
-  "registered-society-non-jurisdictional",
-  "community-interest-company",
-  "charitable-incorporated-organisation",
-  "scottish-charitable-incorporated-organisation",
-]);
+// Which register types are corporate subscribers lives in
+// `policy/subscriber-classification.ts`, so the rule is stated once and tested.
 
 /** What a register lookup concluded about one trading name. */
 export type RegistryVerdict = {
@@ -165,7 +153,7 @@ export async function lookupCompany(name: string): Promise<RegistryVerdict> {
   const type = (match.company_type ?? "").toLowerCase();
   const status = match.company_status ?? null;
 
-  if (!CORPORATE_TYPES.has(type)) {
+  if (!isRecognisedRegistryType(type)) {
     return {
       ...UNRESOLVED,
       companyNumber: match.company_number,
@@ -191,9 +179,7 @@ export async function lookupCompany(name: string): Promise<RegistryVerdict> {
   }
 
   return {
-    subscriberType: type === "limited-partnership" || type === "scottish-partnership"
-      ? "PARTNERSHIP"
-      : "CORPORATE",
+    subscriberType: subscriberTypeForRegistryEntry(type, match.company_number),
     companyNumber: match.company_number,
     registeredName: match.title ?? null,
     status,
@@ -251,13 +237,153 @@ async function enrichCompanies(input: {
   };
 }
 
+/* ------------------------------------------------------------- intent */
+
+const API = "https://api.company-information.service.gov.uk";
+
+function authHeaders(apiKey: string): Record<string, string> {
+  // HTTP Basic with the key as the username and an empty password.
+  return { Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}` };
+}
+
+/**
+ * Register events as buying signals: share allotments (FUNDING), director
+ * appointments (JOB_CHANGE), incorporation (NEW_COMPANY) and registered-office
+ * changes (EXPANSION). What each means, and what is deliberately not kept, is
+ * in `companies-house-signals.ts`.
+ *
+ * Only companies enrichment already matched to a company number are checked:
+ * a signal on the wrong company is worse than none, and the name match that
+ * produced the number is the conservative one above.
+ *
+ * At most three calls per company, and only the ones the plan asked for. The
+ * register's published limit is 600 requests per five minutes per key; a
+ * batch of 25 companies stays well inside it, and a 429 comes back as
+ * PROVIDER_RATE_LIMIT through `providerJson`, which the router backs off on.
+ */
+async function fetchIntent(input: {
+  domains: string[];
+  freshnessDays: number;
+  wants?: IntentWants;
+  companies?: IntentCompany[];
+}): Promise<ProviderResponse<IntentResult>> {
+  const apiKey = key();
+  if (!apiKey) return unconfigured<IntentResult>();
+
+  const kinds = new Set(input.wants?.kinds ?? []);
+  const wants: RegisterWants = {
+    funding: kinds.has("FUNDING"),
+    leadership: kinds.has("JOB_CHANGE"),
+    incorporation: kinds.has("NEW_COMPANY"),
+    officeMove: kinds.has("EXPANSION"),
+  };
+  const empty = { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
+  if (!wants.funding && !wants.leadership && !wants.incorporation && !wants.officeMove) return empty;
+
+  const wanted = new Set(input.domains);
+  const targets = (input.companies ?? []).filter(
+    (company): company is IntentCompany & { registrationId: string } =>
+      wanted.has(company.domain) && Boolean(company.registrationId),
+  );
+  if (targets.length === 0) return empty;
+
+  const started = Date.now();
+  const now = new Date();
+  const headers = authHeaders(apiKey);
+  const records: IntentResult[] = [];
+  const categories = filingCategoriesFor(wants);
+
+  for (const company of targets) {
+    const number = encodeURIComponent(company.registrationId);
+
+    let profile: ChProfile | null = null;
+    if (wants.incorporation || wants.leadership) {
+      // The profile's creation date also tells a founding board from a change.
+      const result = await providerJson<ChProfile>({ url: `${API}/company/${number}`, headers });
+      if (!result.ok && result.code === "PROVIDER_RATE_LIMIT") {
+        return providerFailure<IntentResult>(result.code, Date.now() - started);
+      }
+      if (result.ok) profile = result.data;
+    }
+
+    let officers: ChOfficer[] = [];
+    if (wants.leadership) {
+      const result = await providerJson<{ items?: ChOfficer[] }>({
+        url: `${API}/company/${number}/officers?items_per_page=50&order_by=appointed_on`,
+        headers,
+      });
+      if (!result.ok && result.code === "PROVIDER_RATE_LIMIT") {
+        return providerFailure<IntentResult>(result.code, Date.now() - started);
+      }
+      // Only the role and the dates are read. Names are never copied out of
+      // the response, so they cannot reach storage.
+      if (result.ok) {
+        officers = (result.data.items ?? []).map((item) => ({
+          officer_role: item.officer_role,
+          appointed_on: item.appointed_on,
+          resigned_on: item.resigned_on,
+        }));
+      }
+    }
+
+    let filings: ChFiling[] = [];
+    if (categories.length > 0) {
+      const result = await providerJson<{ items?: ChFiling[] }>({
+        url: `${API}/company/${number}/filing-history?items_per_page=50&category=${categories.join(",")}`,
+        headers,
+      });
+      if (!result.ok && result.code === "PROVIDER_RATE_LIMIT") {
+        return providerFailure<IntentResult>(result.code, Date.now() - started);
+      }
+      if (result.ok) filings = result.data.items ?? [];
+    }
+
+    for (const signal of registerSignals({
+      companyNumber: company.registrationId,
+      profile,
+      officers,
+      filings,
+      wants,
+      now,
+      freshnessDays: input.freshnessDays,
+    })) {
+      records.push({
+        category: null,
+        domain: company.domain,
+        observedAt: signal.observedAt,
+        strength: signal.strength,
+        sourceUrl: signal.reference,
+        evidence: {
+          kind: signal.kind,
+          source: "Companies House",
+          reference: signal.reference,
+          observedAt: signal.observedAt,
+          snippet: signal.snippet,
+        },
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    records,
+    costMinor: 0,
+    cursor: null,
+    latencyMs: Date.now() - started,
+    errorCode: null,
+  };
+}
+
 export const companiesHouseProvider: SourcingProvider = {
   key: "companies_house",
   displayName: "Companies House",
-  capabilities: ["COMPANY_ENRICHMENT"],
+  // INTENT as well: dated register events are the free, official source for
+  // the FUNDING and JOB_CHANGE signal kinds.
+  capabilities: ["COMPANY_ENRICHMENT", "INTENT"],
   // Free and official, so it runs before anything metered.
   costRank: 0,
   freeOfCharge: true,
   configured: () => Boolean(key()),
   enrichCompanies,
+  fetchIntent,
 };

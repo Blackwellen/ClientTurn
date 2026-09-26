@@ -73,7 +73,7 @@ export function WizardProgress({
   );
 }
 
-/** Compact mobile equivalent: "Step X of 5" plus a filled progress bar. */
+/** Compact mobile equivalent: "Step X of N" plus a filled progress bar. */
 export function WizardProgressMobile({ current }: { current: OnboardingStep }) {
   const index = stepIndex(current);
   const total = STEP_NAV.length;

@@ -38,12 +38,12 @@ import {
   revokeEntitlement,
 } from "@/lib/admin/billing-actions";
 import {
-  formatDate,
   formatMoney,
   formatMoneyPrecise,
   formatNumber,
   formatPercent,
 } from "@/lib/admin/format";
+import { formatDate } from "@/lib/dates";
 import {
   BILLING_VIEWS,
   BILLING_VIEW_LABEL,

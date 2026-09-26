@@ -154,6 +154,11 @@ describe("a STOP suppresses subsequent sends", () => {
       async load() {
         return { ...record, status: "QUEUED" };
       },
+      // load() always reports QUEUED, so every attempt wins its claim.
+      async claim() {
+        return true;
+      },
+      async reconcileInFlight() {},
       async snapshot(message) {
         return {
           ...BASE_SNAPSHOT,

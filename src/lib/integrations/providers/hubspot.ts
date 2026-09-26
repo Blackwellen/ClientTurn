@@ -1,7 +1,16 @@
 import "server-only";
+import { HUBSPOT_SCOPE_HELP } from "@/lib/integrations/connector-copy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { CrmPartialPushError, registerCrmProvider, type CrmLeadInput } from "@/lib/integrations/providers/crm-registry";
+import {
+  CrmPartialPushError,
+  registerCrmProvider,
+  type CrmEraseResult,
+  type CrmLeadInput,
+  type CrmNoteInput,
+} from "@/lib/integrations/providers/crm-registry";
+import { hubspotDealStage } from "@/lib/opportunities/stages";
+import type { CrmPullPage, CrmPulledRecord } from "@/lib/integrations/crm-pull/plan";
 
 /**
  * HubSpot — CRM push destination via a customer-pasted Private App token.
@@ -15,8 +24,12 @@ import { CrmPartialPushError, registerCrmProvider, type CrmLeadInput } from "@/l
  *   POST /crm/v3/objects/contacts/search. Required scopes: crm.objects.contacts.read
  *   and crm.objects.contacts.write.)
  * - Deals + associations: https://developers.hubspot.com/docs/api/crm/deals
- *   (POST /crm/v3/objects/deals; HubSpot-defined association type id 4 = contact -> deal.
- *   Required scopes: crm.objects.deals.read / crm.objects.deals.write.)
+ *   (POST /crm/v3/objects/deals; HubSpot-defined association type id 3 = deal -> contact,
+ *   confirmed live against GET /crm/v4/associations/deals/contacts/labels, which returns
+ *   only { typeId: 3, fromObjectTypeId: "0-3", toObjectTypeId: "0-1" }. Id 4 is the reverse
+ *   direction (contact -> deal) and is rejected when creating a deal with this association
+ *   shape ("invalid from object type 0-3 ... expected 0-1"). Required scopes:
+ *   crm.objects.deals.read / crm.objects.deals.write.)
  *
  * HubSpot's batch "upsert" endpoint (crm/v3/objects/contacts/batch/upsert) has
  * long-standing, publicly reported bugs around missing properties on newly
@@ -90,7 +103,7 @@ export async function connectHubspot(
     return {
       ok: false,
       error:
-        "That token does not have permission to read/write contacts. Add the crm.objects.contacts and crm.objects.deals scopes to the private app and try again.",
+        HUBSPOT_SCOPE_HELP,
     };
   }
 
@@ -171,6 +184,8 @@ function contactProperties(lead: CrmLeadInput): Record<string, string> {
   if (lead.email) properties.email = lead.email;
   if (lead.phone) properties.phone = lead.phone;
   if (lead.postcode) properties.zip = lead.postcode;
+  // HubSpot's standard contact property. Optional there, so only when known.
+  if (lead.company_name?.trim()) properties.company = lead.company_name.trim();
   return properties;
 }
 
@@ -220,38 +235,89 @@ async function upsertContact(
   return String(created.json.id);
 }
 
+/**
+ * Deal properties from the opportunity (decision Q3), falling back to the
+ * service's average value for a lead pushed before it had one.
+ *
+ * Stage: `pipeline: "default"` plus one of HubSpot's default-pipeline stage
+ * ids (stages.ts `hubspotDealStage`) -- closedwon / closedlost once the
+ * opportunity is closed, with the reason in HubSpot's standard
+ * `closed_won_reason` / `closed_lost_reason` properties.
+ */
+function dealProperties(lead: CrmLeadInput, withStage: boolean): Record<string, string> {
+  const opportunity = lead.opportunity ?? null;
+  const person = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "New lead";
+  const properties: Record<string, string> = {
+    dealname: opportunity?.name ?? `${person} - ${lead.services?.name ?? "Client Turn"}`,
+  };
+  const amount = opportunity?.value ?? lead.services?.average_value ?? null;
+  if (amount != null) properties.amount = String(amount);
+  if (opportunity?.currency) properties.deal_currency_code = opportunity.currency;
+
+  if (withStage && opportunity) {
+    properties.pipeline = "default";
+    properties.dealstage = hubspotDealStage(opportunity.stage, opportunity.outcome);
+    if (opportunity.closedAt) properties.closedate = opportunity.closedAt;
+    if (opportunity.outcome === "WON" && opportunity.outcomeReason) {
+      properties.closed_won_reason = opportunity.outcomeReason.slice(0, 500);
+    }
+    if (opportunity.outcome === "LOST" && opportunity.outcomeReason) {
+      properties.closed_lost_reason = opportunity.outcomeReason.slice(0, 500);
+    }
+  }
+  return properties;
+}
+
+/**
+ * A portal that renamed or removed the default pipeline's stages, or turned
+ * off multi-currency, rejects those properties with a 400 naming them. The
+ * deal itself is still worth writing, so the call is repeated once without
+ * the stage fields rather than failing the whole push.
+ */
+function rejectedStageProperties(result: { status: number; json: Record<string, unknown> }): boolean {
+  if (result.status !== 400) return false;
+  const text = JSON.stringify(result.json).toLowerCase();
+  return /dealstage|pipeline|closed_(won|lost)_reason|deal_currency_code|closedate/.test(text);
+}
+
 async function upsertDeal(
   token: string,
   lead: CrmLeadInput,
   contactId: string,
   previousDealId: string | null,
 ): Promise<string> {
-  const amount = lead.services?.average_value;
-  const properties: Record<string, string> = {
-    dealname: `${[lead.first_name, lead.last_name].filter(Boolean).join(" ") || "New lead"} - ${lead.services?.name ?? "Client Turn"}`,
-  };
-  if (amount != null) properties.amount = String(amount);
-
   if (previousDealId) {
-    const updated = await hubspotFetch(token, `/crm/v3/objects/deals/${previousDealId}`, {
+    let updated = await hubspotFetch(token, `/crm/v3/objects/deals/${previousDealId}`, {
       method: "PATCH",
-      body: { properties },
+      body: { properties: dealProperties(lead, true) },
     });
+    if (!updated.ok && rejectedStageProperties(updated)) {
+      updated = await hubspotFetch(token, `/crm/v3/objects/deals/${previousDealId}`, {
+        method: "PATCH",
+        body: { properties: dealProperties(lead, false) },
+      });
+    }
     if (updated.ok) return previousDealId;
   }
 
-  const created = await hubspotFetch(token, "/crm/v3/objects/deals", {
-    method: "POST",
-    body: {
-      properties,
-      associations: [
-        {
-          to: { id: contactId },
-          types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 4 }],
-        },
-      ],
-    },
-  });
+  const create = (withStage: boolean) =>
+    hubspotFetch(token, "/crm/v3/objects/deals", {
+      method: "POST",
+      body: {
+        properties: dealProperties(lead, withStage),
+        associations: [
+          {
+            to: { id: contactId },
+            // Deal -> contact, not contact -> deal (id 4). Confirmed live against
+            // GET /crm/v4/associations/deals/contacts/labels -- see header comment.
+            types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 3 }],
+          },
+        ],
+      },
+    });
+
+  let created = await create(true);
+  if (!created.ok && rejectedStageProperties(created)) created = await create(false);
   if (!created.ok) {
     throw new Error(
       `HubSpot rejected the deal (status ${created.status}): ${JSON.stringify(created.json)}`,
@@ -263,6 +329,7 @@ async function upsertDeal(
 async function push(params: {
   integrationId: string;
   lead: CrmLeadInput;
+  linkedExternalId?: string | null;
 }): Promise<{ externalContactId: string; externalDealId?: string | null }> {
   const token = await getStoredToken(params.integrationId);
 
@@ -278,11 +345,14 @@ async function push(params: {
   const contactId = await upsertContact(
     token,
     params.lead,
-    existingRecord?.external_contact_id ?? null,
+    // A contact pulled from HubSpot is updated in place, not re-created.
+    existingRecord?.external_contact_id ?? params.linkedExternalId ?? null,
   );
 
   let dealId: string | null = null;
-  if (params.lead.services?.average_value != null) {
+  // A deal once the lead has an opportunity (decision Q3) or, as before, a
+  // service with a value to put on one.
+  if (params.lead.opportunity || params.lead.services?.average_value != null) {
     try {
       dealId = await upsertDeal(
         token,
@@ -307,4 +377,172 @@ async function push(params: {
   return { externalContactId: contactId, externalDealId: dealId };
 }
 
-registerCrmProvider("hubspot", { push });
+/**
+ * Erasure uses HubSpot's GDPR delete, which removes the contact permanently
+ * (not to the recycle bin) and blocks the address from being re-created by
+ * form submissions. The deal, whose name can carry the person's name, is
+ * archived. Scope: crm.objects.contacts.write, already required for push.
+ */
+async function erase(params: {
+  integrationId: string;
+  externalContactId: string;
+  externalDealId: string | null;
+}): Promise<CrmEraseResult> {
+  const token = await getStoredToken(params.integrationId);
+
+  const contact = await hubspotFetch(token, "/crm/v3/objects/contacts/gdpr-delete", {
+    method: "POST",
+    body: { objectId: params.externalContactId },
+  });
+  if (contact.status === 404) {
+    return { outcome: "NOT_FOUND", detail: "HubSpot has no contact with the recorded id." };
+  }
+  if (!contact.ok) {
+    throw new Error(`HubSpot refused the GDPR delete (status ${contact.status}).`);
+  }
+
+  if (params.externalDealId) {
+    // Best effort: the contact, which holds the personal data, is already gone.
+    await hubspotFetch(token, `/crm/v3/objects/deals/${params.externalDealId}`, {
+      method: "DELETE",
+    }).catch(() => null);
+  }
+
+  return {
+    outcome: "DELETED",
+    detail: params.externalDealId
+      ? "Contact permanently deleted in HubSpot (GDPR delete); the linked deal was archived."
+      : "Contact permanently deleted in HubSpot (GDPR delete).",
+  };
+}
+
+/**
+ * The handoff brief as a HubSpot note on the contact (Phase 3.4).
+ * POST /crm/v3/objects/notes with `hs_note_body` and `hs_timestamp`,
+ * associated note -> contact with HubSpot-defined association type 202.
+ * Notes are covered by the contact scopes the push already requires.
+ */
+async function pushNote(params: CrmNoteInput): Promise<{ externalNoteId: string }> {
+  const token = await getStoredToken(params.integrationId);
+  const created = await hubspotFetch(token, "/crm/v3/objects/notes", {
+    method: "POST",
+    body: {
+      properties: {
+        hs_timestamp: new Date().toISOString(),
+        hs_note_body: params.body.slice(0, 60_000),
+      },
+      associations: [
+        {
+          to: { id: params.externalContactId },
+          types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 202 }],
+        },
+      ],
+    },
+  });
+  if (!created.ok) {
+    throw new Error(`HubSpot rejected the note (status ${created.status}).`);
+  }
+  return { externalNoteId: String(created.json.id) };
+}
+
+/**
+ * The opt-in inbound sync (brief §29). One page of contacts modified at or
+ * after `since`, oldest first, through the CRM search API:
+ * POST /crm/v3/objects/contacts/search, filter `lastmodifieddate GTE`, sorted
+ * ascending, paged with `after`. Scope: crm.objects.contacts.read (already
+ * required for push).
+ *
+ * The owner's email comes from GET /crm/v3/owners, which needs
+ * crm.objects.owners.read. A token without it still pulls -- the owner is just
+ * left unmapped rather than failing the page.
+ */
+const PULL_PROPERTIES = [
+  "firstname",
+  "lastname",
+  "email",
+  "phone",
+  "mobilephone",
+  "company",
+  "jobtitle",
+  "zip",
+  "createdate",
+  "lastmodifieddate",
+  "hubspot_owner_id",
+];
+
+async function ownerEmails(token: string): Promise<Map<string, string>> {
+  const owners = new Map<string, string>();
+  const result = await hubspotFetch(token, "/crm/v3/owners/?limit=500", { method: "GET" }).catch(
+    () => null,
+  );
+  if (!result?.ok) return owners;
+  for (const owner of (result.json.results as Array<{ id?: string; email?: string }> | undefined) ?? []) {
+    if (owner.id && owner.email) owners.set(String(owner.id), owner.email);
+  }
+  return owners;
+}
+
+async function pull(params: {
+  integrationId: string;
+  since: string;
+  pageToken: string | null;
+  pageSize: number;
+}): Promise<CrmPullPage> {
+  const token = await getStoredToken(params.integrationId);
+
+  const result = await hubspotFetch(token, "/crm/v3/objects/contacts/search", {
+    method: "POST",
+    body: {
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "lastmodifieddate",
+              operator: "GTE",
+              value: String(Date.parse(params.since)),
+            },
+          ],
+        },
+      ],
+      sorts: [{ propertyName: "lastmodifieddate", direction: "ASCENDING" }],
+      properties: PULL_PROPERTIES,
+      limit: Math.min(Math.max(params.pageSize, 1), 100),
+      ...(params.pageToken ? { after: params.pageToken } : {}),
+    },
+  });
+
+  if (result.status === 429) return { records: [], nextPageToken: null, rateLimited: true };
+  if (!result.ok) {
+    throw new Error(`HubSpot refused the contact search (status ${result.status}).`);
+  }
+
+  const rows =
+    (result.json.results as Array<{ id: string; properties?: Record<string, string | null> }> | undefined) ??
+    [];
+  const owners = rows.some((row) => row.properties?.hubspot_owner_id)
+    ? await ownerEmails(token)
+    : new Map<string, string>();
+
+  const records: CrmPulledRecord[] = rows.map((row) => {
+    const p = row.properties ?? {};
+    return {
+      externalId: String(row.id),
+      objectType: "contact",
+      firstName: p.firstname ?? null,
+      lastName: p.lastname ?? null,
+      email: p.email ?? null,
+      phone: p.mobilephone || p.phone || null,
+      companyName: p.company ?? null,
+      roleTitle: p.jobtitle ?? null,
+      postcode: p.zip ?? null,
+      createdAt: p.createdate ?? null,
+      modifiedAt: p.lastmodifieddate ?? "",
+      ownerEmail: p.hubspot_owner_id ? (owners.get(String(p.hubspot_owner_id)) ?? null) : null,
+    };
+  });
+
+  const paging = result.json.paging as { next?: { after?: string } } | undefined;
+  return { records, nextPageToken: paging?.next?.after ?? null };
+}
+
+registerCrmProvider("hubspot", { push, erase, pushNote, pull });

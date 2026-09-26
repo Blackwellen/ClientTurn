@@ -1,8 +1,33 @@
 import "server-only";
+import {
+  REFERRAL_EVIDENCE_MESSAGE,
+  referralEvidenceSufficient,
+} from "@/lib/policy/types";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
+import { ingestLead } from "@/lib/ingest/service";
+import { closeLeadOpportunity, OpportunityCloseError } from "@/lib/opportunities/service";
+import { enqueue } from "@/lib/jobs/queue";
+import { logWriteError } from "@/lib/supabase/write-result";
+import { orIlike } from "@/lib/supabase/ilike";
+import { manualRescoreTrigger } from "@/lib/leads/detail-page";
+import { resumeFollowUpBlock } from "@/lib/leads/resume-rule";
+import { recordPermission } from "@/lib/policy/service";
+import {
+  hasWhatsAppOptIn,
+  MAX_OPT_IN_DETAIL,
+  optInProblem,
+  WHATSAPP_OPT_IN_SOURCES,
+  withWhatsAppScope,
+} from "@/lib/leads/whatsapp-opt-in";
 import { defineOperation, ServiceError } from "../runtime";
+import {
+  CLOSED_LEAD_STATUSES,
+  leadStatusTransition,
+  OVERRIDE_REASON_MIN,
+  overridePermitted,
+} from "@/lib/leads/status-transitions";
 import type { HandlerInput, HandlerOutcome } from "../runtime";
 
 /**
@@ -163,9 +188,37 @@ defineOperation("lead.get", {
   schema: z.object({ leadId: z.string().uuid() }),
   async run({ args, context }: HandlerInput<{ leadId: string }>) {
     const lead = await loadLeadOrFail(context.businessId, args.leadId);
-    return { data: { lead }, entityId: lead.id };
+
+    // The registry promises "its recent activity", and the operation returned
+    // the lead alone. The last 20 messages, newest first, bodies trimmed: the
+    // conversation is what a caller asking about one lead almost always needs
+    // next.
+    const admin = createAdminClient();
+    const { data: messages, error } = await admin
+      .from("messages")
+      .select("id, direction, channel, status, body, created_at, sent_at")
+      .eq("business_id", context.businessId)
+      .eq("lead_id", lead.id)
+      .order("created_at", { ascending: false })
+      .limit(RECENT_ACTIVITY_LIMIT);
+    if (error) throw new ServiceError("UNAVAILABLE", "The lead's recent activity could not be read.");
+
+    const recentActivity = (messages ?? []).map((message) => ({
+      type: "message" as const,
+      id: message.id,
+      direction: message.direction,
+      channel: message.channel,
+      status: message.status,
+      body: message.body.length > 500 ? `${message.body.slice(0, 497)}...` : message.body,
+      at: message.sent_at ?? message.created_at,
+    }));
+
+    return { data: { lead, recent_activity: recentActivity }, entityId: lead.id };
   },
 });
+
+/** How much of a lead's history `lead.get` returns. */
+const RECENT_ACTIVITY_LIMIT = 20;
 
 /* ----------------------------------------------------------------- search */
 
@@ -203,16 +256,11 @@ defineOperation("lead.search", {
     }
 
     if (args.query) {
-      // Escaped before interpolation: a comma or a parenthesis in the search
-      // term would otherwise be read as PostgREST filter syntax rather than as
-      // text somebody typed.
-      const term = args.query.replace(/[%,()\\]/g, "");
-      if (term) {
-        query = query.or(
-          `first_name.ilike.%${term}%,last_name.ilike.%${term}%,` +
-            `email.ilike.%${term}%,phone.ilike.%${term}%`,
-        );
-      }
+      // Quoted and LIKE-escaped by `orIlike`: a comma or a parenthesis in the
+      // search term would otherwise be read as PostgREST filter syntax rather
+      // than as text somebody typed.
+      const or = orIlike(["first_name", "last_name", "email", "phone"], args.query);
+      if (or) query = query.or(or);
     }
 
     const { data } = await query;
@@ -343,12 +391,37 @@ defineOperation("lead.set_status", {
   schema: z.object({
     leadId: z.string().uuid(),
     status: z.enum(LEAD_STATUSES),
+    /** Why a lead was won or lost; recorded on its opportunity (decision Q3). */
+    reason: z.string().trim().min(1).max(500).optional(),
+    /**
+     * Admin override for a transition the state machine refuses (§51), e.g.
+     * reopening a WON lead. Owner/admin, from the app only, with a reason;
+     * the override and its reason are written into the audit row.
+     */
+    overrideReason: z.string().trim().min(OVERRIDE_REASON_MIN).max(500).optional(),
   }),
   async run({
     args,
     context,
-  }: HandlerInput<{ leadId: string; status: (typeof LEAD_STATUSES)[number] }>) {
+  }: HandlerInput<{
+    leadId: string;
+    status: (typeof LEAD_STATUSES)[number];
+    reason?: string;
+    overrideReason?: string;
+  }>) {
     const before = await loadLeadOrFail(context.businessId, args.leadId);
+
+    // The state machine (leads/status-transitions.ts). A refused move is a
+    // CONFLICT with the reason, unless an admin overrides it with a reason.
+    const verdict = leadStatusTransition(before.status, args.status);
+    let override: { from: string; to: string; reason: string } | null = null;
+    if (!verdict.allowed) {
+      if (!args.overrideReason) throw new ServiceError("CONFLICT", verdict.reason);
+      if (!overridePermitted({ role: context.role, caller: context.caller, reason: args.overrideReason })) {
+        throw new ServiceError("FORBIDDEN_ROLE", "Only an owner or admin can override a status rule, from the app, with a reason.");
+      }
+      override = { from: before.status, to: args.status, reason: args.overrideReason };
+    }
 
     if (before.status === args.status) {
       // Not an error, and not a write. Reporting it as a change would put a
@@ -373,8 +446,33 @@ defineOperation("lead.set_status", {
     if (args.status === "WON" && !before.won_at) patch.won_at = now;
     if (args.status === "LOST" && !before.lost_at) patch.lost_at = now;
 
-    const after = await patchLead(context.businessId, args.leadId, patch);
+    // WON and LOST live on the opportunity; the lead's status is its
+    // projection (decision Q3). Both move in one transaction through
+    // close_opportunity, so they cannot disagree whoever set them.
+    let after: LeadRow;
+    if (args.status === "WON" || args.status === "LOST") {
+      try {
+        await closeLeadOpportunity({
+          businessId: context.businessId,
+          leadId: args.leadId,
+          outcome: args.status,
+          reason: args.reason ?? `Marked ${args.status.toLowerCase()} from the lead's status.`,
+        });
+      } catch (error) {
+        if (error instanceof OpportunityCloseError) {
+          throw new ServiceError(error.code, error.message);
+        }
+        throw error;
+      }
+      after = await loadLeadOrFail(context.businessId, args.leadId);
+    } else {
+      after = await patchLead(context.businessId, args.leadId, patch);
+    }
     const outcome = changed(before, after);
+    if (override) {
+      // Carried in `after`, which the runtime writes into the audit row.
+      outcome.after = { ...(outcome.after ?? {}), transition_override: override };
+    }
 
     // A terminal status stops the sequence at the guard, not here — see
     // `automation/scheduler.ts`. Saying so is the caller's job, so the warning
@@ -384,6 +482,17 @@ defineOperation("lead.set_status", {
         {
           code: "follow_up_stopped",
           message: `Follow-up stops for a lead marked ${args.status.toLowerCase()}.`,
+        },
+      ];
+    }
+    if (override) {
+      outcome.warnings = [
+        ...(outcome.warnings ?? []),
+        {
+          code: "transition_overridden",
+          message: CLOSED_LEAD_STATUSES.includes(override.from as "WON")
+            ? "Status rule overridden. The lead's closed opportunity stays closed; open a new one if the deal is live again."
+            : "Status rule overridden and recorded in the audit log.",
         },
       ];
     }
@@ -468,6 +577,74 @@ defineOperation("lead.flag_attention", {
   },
 });
 
+/* ------------------------------------------------- record_whatsapp_opt_in */
+
+const whatsappOptInSchema = z.object({
+  leadId: z.string().uuid(),
+  optedInOn: z.string().trim().max(10),
+  source: z.enum(WHATSAPP_OPT_IN_SOURCES),
+  detail: z.string().trim().max(MAX_OPT_IN_DETAIL).optional(),
+});
+
+defineOperation("lead.record_whatsapp_opt_in", {
+  schema: whatsappOptInSchema,
+  async run({ args, context }: HandlerInput<z.infer<typeof whatsappOptInSchema>>) {
+    const lead = await loadLeadOrFail(context.businessId, args.leadId);
+    const problem = optInProblem(args);
+    if (problem) throw new ServiceError("INVALID_INPUT", problem);
+    // WhatsApp only ever goes to a mobile the person gave us themselves.
+    if (!lead.phone) {
+      throw new ServiceError("CONFLICT", "This lead has no mobile number, so there is nothing to opt in to WhatsApp.");
+    }
+
+    const admin = createAdminClient();
+    const { data: existing, error } = await admin
+      .from("contact_permissions")
+      .select("id, consent_scope")
+      .eq("business_id", context.businessId)
+      .eq("subject_type", "LEAD")
+      .eq("subject_id", lead.id)
+      .maybeSingle();
+    if (error) throw new ServiceError("UNAVAILABLE", "The permission record could not be read.");
+
+    const already = hasWhatsAppOptIn(existing?.consent_scope);
+    if (existing && !already) {
+      const { error: updateError } = await admin
+        .from("contact_permissions")
+        .update({ consent_scope: withWhatsAppScope(existing.consent_scope) })
+        .eq("id", existing.id)
+        .eq("business_id", context.businessId);
+      if (updateError) throw new ServiceError("CONFLICT", "The opt-in could not be saved.");
+    } else if (!existing) {
+      // A lead with no permission record: the opt-in is the only fact known.
+      await recordPermission({
+        businessId: context.businessId,
+        subject: { type: "LEAD", id: lead.id },
+        relationshipType: "UNKNOWN",
+        consentSource: `whatsapp_opt_in:${args.source.toLowerCase()}`,
+        email: lead.email,
+        phone: lead.phone,
+        recordedBy: context.userId,
+        consentScope: ["WHATSAPP"],
+      });
+    }
+
+    // Recorded even when the scope already held WhatsApp: a later, evidenced
+    // opt-in is still worth having in the trail.
+    return {
+      data: { leadId: lead.id, whatsappOptIn: true, alreadyRecorded: already },
+      entityId: lead.id,
+      before: { whatsapp_opt_in: already },
+      after: {
+        whatsapp_opt_in: true,
+        opted_in_on: args.optedInOn,
+        source: args.source,
+        detail: args.detail || null,
+      },
+    } satisfies HandlerOutcome<{ leadId: string; whatsappOptIn: boolean; alreadyRecorded: boolean }>;
+  },
+});
+
 /* ---------------------------------------------------------------- archive */
 
 defineOperation("lead.archive", {
@@ -531,5 +708,291 @@ defineOperation("lead.restore", {
         },
       ],
     };
+  },
+});
+
+/* ---------------------------------------------------------------- rescore */
+
+/**
+ * Queues the deterministic scorer for this lead now. The trigger is unique per
+ * request (`manual:<userId>:<ms>`), so a deliberate re-score is never mistaken
+ * for a repeat of an earlier one, while the job's own idempotency key keeps a
+ * retried enqueue of *this* request to one score.
+ */
+defineOperation("lead.rescore", {
+  schema: z.object({ leadId: z.string().uuid() }),
+  async run({ args, context }: HandlerInput<{ leadId: string }>) {
+    const lead = await loadLeadOrFail(context.businessId, args.leadId);
+    if (lead.archived_at) {
+      throw new ServiceError("CONFLICT", "That lead is archived. Restore it before re-scoring.");
+    }
+    const triggerEvent = manualRescoreTrigger(context.userId);
+    let jobId: string | null;
+    try {
+      jobId = await enqueue(
+        "lead.score",
+        { leadId: lead.id, triggerEvent },
+        {
+          businessId: context.businessId,
+          priority: 40,
+          idempotencyKey: `lead.score:${lead.id}:${triggerEvent}`,
+        },
+      );
+    } catch {
+      throw new ServiceError("UNAVAILABLE", "The re-score could not be queued.");
+    }
+    return {
+      data: { queued: true, jobId, triggerEvent },
+      entityId: lead.id,
+      after: { rescore_requested: triggerEvent },
+      warnings: [
+        {
+          code: "rescore_queued",
+          message: "The lead is being re-scored. The new score appears in a few seconds.",
+        },
+      ],
+    };
+  },
+});
+
+/* --------------------------------------------------------------- takeover */
+
+defineOperation("lead.takeover", {
+  schema: z.object({ leadId: z.string().uuid() }),
+  async run({ args, context }: HandlerInput<{ leadId: string }>) {
+    const before = await loadLeadOrFail(context.businessId, args.leadId);
+    if (before.human_takeover && !before.automation_active) {
+      return {
+        data: { lead: before, unchanged: true },
+        entityId: before.id,
+        warnings: [{ code: "no_change", message: "This conversation is already with a person." }],
+      };
+    }
+
+    const after = await patchLead(context.businessId, args.leadId, {
+      human_takeover: true,
+      automation_active: false,
+      needs_attention: true,
+      attention_reason: "human_requested",
+    });
+
+    // Stop the running sequence too. The scheduler's guard would refuse the
+    // next step anyway, but a STOPPED run is what the timeline and the stop
+    // reason report read.
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("automation_runs")
+      .update({
+        state: "STOPPED",
+        stopped_at: new Date().toISOString(),
+        stopped_reason: "human_takeover",
+      })
+      .eq("lead_id", before.id)
+      .eq("business_id", context.businessId)
+      .eq("state", "ACTIVE");
+    logWriteError({ error }, "lead.takeover: stop automation runs", {
+      businessId: context.businessId,
+      leadId: before.id,
+    });
+
+    return {
+      ...changed(before, after),
+      warnings: [
+        {
+          code: "follow_up_stopped",
+          message: "Automated follow-up has stopped. Nothing more is sent until someone resumes it.",
+        },
+      ],
+    };
+  },
+});
+
+/* ------------------------------------------------------ resume_follow_up */
+
+defineOperation("lead.resume_follow_up", {
+  schema: z.object({ leadId: z.string().uuid() }),
+  async run({ args, context }: HandlerInput<{ leadId: string }>) {
+    const before = await loadLeadOrFail(context.businessId, args.leadId);
+
+    // The one rule, shared with the lead page and drawer (resume-rule.ts).
+    const block = resumeFollowUpBlock({
+      status: before.status,
+      optedOut: before.opted_out,
+      archived: Boolean(before.archived_at),
+    });
+    if (block) throw new ServiceError(block.serviceCode, block.message);
+
+    const after = await patchLead(context.businessId, args.leadId, {
+      human_takeover: false,
+      automation_active: true,
+      needs_attention: false,
+      attention_reason: null,
+    });
+
+    // The next step is re-checked against stop conditions, suppression and
+    // quiet hours by the scheduler before anything is sent.
+    try {
+      await enqueue("automation.advance", { leadId: before.id }, { businessId: context.businessId });
+    } catch {
+      throw new ServiceError("UNAVAILABLE", "Follow-up could not be restarted. Try again.");
+    }
+
+    return {
+      ...changed(before, after),
+      warnings: [
+        {
+          code: "follow_up_resumed",
+          message: "Automated follow-up is running again. Each message is re-checked before it is sent.",
+        },
+      ],
+    };
+  },
+});
+
+/* ------------------------------------------------------------ lead.create */
+
+/**
+ * The public API's lead create (`POST /api/v1/leads`), which is ingestLead().
+ *
+ * The relationship must be stated and must be warm: a contact the caller
+ * merely found is a prospect, never a lead, exactly as in the wizard and over
+ * MCP. The outcome is the ingest contract (CREATED, MERGED, DUPLICATE,
+ * SUPPRESSED, INVALID, REVIEW, REJECTED), returned as data rather than
+ * flattened into success or failure, so a caller can act on each.
+ */
+const createLeadSchema = z.object({
+  first_name: z.string().trim().max(120).optional(),
+  last_name: z.string().trim().max(120).optional(),
+  email: z.string().trim().max(320).optional(),
+  phone: z.string().trim().max(60).optional(),
+  company_name: z.string().trim().max(200).optional(),
+  role_title: z.string().trim().max(200).optional(),
+  postcode: z.string().trim().max(20).optional(),
+  relationship: z.enum([
+    "THEY_CONTACTED_US",
+    "EXISTING_CUSTOMER",
+    "REFERRAL",
+    "REQUESTED_INFORMATION",
+    "EXPLICIT_MARKETING_CONSENT",
+    "EXISTING_BUSINESS_RELATIONSHIP",
+  ]),
+  source: z
+    .object({
+      type: z.enum(["WEB_FORM", "API", "CRM", "CONNECTOR"]).default("API"),
+      provider: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^[a-z0-9_.-]{1,60}$/)
+        .default("api"),
+      record_id: z.string().trim().min(1).max(300).optional(),
+      form_id: z.string().trim().max(300).optional(),
+      form_name: z.string().trim().max(300).optional(),
+      campaign_id: z.string().trim().max(300).optional(),
+      campaign_name: z.string().trim().max(300).optional(),
+      utm_source: z.string().trim().max(200).optional(),
+      utm_medium: z.string().trim().max(200).optional(),
+      utm_campaign: z.string().trim().max(200).optional(),
+      utm_term: z.string().trim().max(200).optional(),
+      utm_content: z.string().trim().max(200).optional(),
+      gclid: z.string().trim().max(300).optional(),
+      fbclid: z.string().trim().max(300).optional(),
+      referrer: z.string().trim().max(2000).optional(),
+      landing_url: z.string().trim().max(2000).optional(),
+      submitted_at: z.string().trim().max(60).optional(),
+    })
+    .default({ type: "API", provider: "api" }),
+  answers: z.record(z.string().trim().min(1).max(200), z.string().max(2000)).optional(),
+  consent: z
+    .object({
+      marketing: z.boolean().optional(),
+      whatsapp: z.boolean().optional(),
+      evidence: z.string().trim().max(2000).optional(),
+    })
+    .optional(),
+  service_id: z.uuid().optional(),
+});
+
+type CreateLeadArgs = z.infer<typeof createLeadSchema>;
+
+defineOperation("lead.create", {
+  schema: createLeadSchema,
+  async run({ args, context }: HandlerInput<CreateLeadArgs>) {
+    const s = args.source;
+
+    // The same referral rule as the wizard, the import and MCP.
+    if (args.relationship === "REFERRAL" && !referralEvidenceSufficient(args.consent?.evidence)) {
+      throw new ServiceError("INVALID_INPUT", `${REFERRAL_EVIDENCE_MESSAGE} Send it as consent.evidence.`);
+    }
+
+    const result = await ingestLead(
+      {
+        businessId: context.businessId,
+        idempotencyKey: context.idempotencyKey,
+        source: {
+          type: s.type,
+          provider: s.provider,
+          providerRecordId: s.record_id,
+          formId: s.form_id,
+          formName: s.form_name,
+          campaignId: s.campaign_id,
+          campaignName: s.campaign_name,
+          utm: {
+            source: s.utm_source,
+            medium: s.utm_medium,
+            campaign: s.utm_campaign,
+            term: s.utm_term,
+            content: s.utm_content,
+          },
+          gclid: s.gclid,
+          fbclid: s.fbclid,
+          referrer: s.referrer,
+          landingUrl: s.landing_url,
+          submittedAt: s.submitted_at,
+          caller: { type: "API_KEY", id: context.userId ?? undefined },
+        },
+        person: {
+          firstName: args.first_name,
+          lastName: args.last_name,
+          email: args.email,
+          phone: args.phone,
+          companyName: args.company_name,
+          roleTitle: args.role_title,
+          postcode: args.postcode,
+        },
+        answers: args.answers,
+        consent: args.consent,
+        relationship: args.relationship,
+        serviceId: args.service_id,
+      },
+      {
+        // A suppressed contact is refused, not recorded: the caller is
+        // creating a record, and 409 REJECTED ("nothing stored") is the honest
+        // answer. An ad form's enquiry is still recorded -- that path is the
+        // pollers', not this one.
+        onSuppressed: "REFUSE",
+        // Never auto-started from the API: a person chooses to message.
+        insertExtras: {
+          automation_active: false,
+          created_by_user_id: context.userId,
+        },
+        permission: { recordedBy: context.userId, source: `api:${s.provider}` },
+      },
+    );
+
+    const data = {
+      outcome: result.outcome,
+      lead_id: result.leadId,
+      touch_id: result.touchId,
+      matched_by: result.matchedBy,
+      reasons: result.reasons,
+      ...(result.originalOutcome ? { original_outcome: result.originalOutcome } : {}),
+    };
+
+    return {
+      data,
+      entityId: result.leadId,
+      after: { outcome: result.outcome, matched_by: result.matchedBy },
+    } satisfies HandlerOutcome<typeof data>;
   },
 });

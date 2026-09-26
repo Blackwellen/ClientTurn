@@ -13,7 +13,7 @@ import {
   SubmitButton,
   TextField,
 } from "@/app/(auth)/_components/auth-form-parts";
-import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
+import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
 /**
  * Partner sign-in.
@@ -27,13 +27,10 @@ export function AffiliateLoginForm({
   redirectTo,
   notice,
   problem,
-  signupOpen,
 }: {
   redirectTo: string;
   notice?: string;
   problem?: string;
-  /** Resolved on the server: the flag is not readable from a client bundle. */
-  signupOpen: boolean;
 }) {
   const router = useRouter();
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
@@ -104,28 +101,18 @@ export function AffiliateLoginForm({
         Sign in to partner portal
       </SubmitButton>
 
-      <AuthDivider />
+      <GoogleSignInButton redirectTo={redirectTo} audience="affiliate" variant="signin" />
 
-      <GoogleAuthButton
-        label={"Sign in with Google"}
-          next={"/affiliates/app"}
-      />
+      <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
+        Not a partner yet?{" "}
+        <Link
+          href="/affiliates"
+          className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
+        >
+          Apply to join
+        </Link>
+      </p>
 
-      {signupOpen ? (
-        <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
-          Not a partner yet?{" "}
-          <Link
-            href="/affiliates"
-            className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
-          >
-            Apply to join
-          </Link>
-        </p>
-      ) : (
-        <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
-          The partner programme is not open for applications yet.
-        </p>
-      )}
 
       <p className="text-center text-[13px] text-[var(--auth-text-muted)]">
         Looking for your own workspace?{" "}

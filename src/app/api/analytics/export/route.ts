@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { csvCell } from "@/lib/csv";
 import { getActiveWorkspace, hasRole } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -40,13 +41,6 @@ export const dynamic = "force-dynamic";
  */
 
 const RANGES: AnalyticsRange[] = ["7d", "30d", "90d", "12m"];
-
-/** Guards against a leading =, +, - or @ being executed by a spreadsheet. */
-function csvCell(value: string | number | null | undefined) {
-  const text = value === null || value === undefined ? "" : String(value);
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
 
 function percent(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined) return "";

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   BarChart3,
@@ -33,6 +34,10 @@ import {
   type BreakdownDimension,
 } from "@/lib/campaigns/reactivation-audience";
 import type { WizardState } from "./state";
+import {
+  reactivationLimitProblem,
+  type ReactivationAllowance,
+} from "@/lib/campaigns/reactivation-limit";
 import { CsvImportPanel } from "./csv-import";
 import {
   BigFigure,
@@ -493,7 +498,7 @@ export function AudienceStep({
                     })
                   }
                 >
-                  <option value="">Not booked</option>
+                  <option value="">Any status</option>
                   {LEAD_STATUSES.map((status) => (
                     <option key={status} value={status}>
                       {leadStatusLabel(status)}
@@ -709,6 +714,9 @@ export function AudienceStep({
               contacts. The newest matching leads are used.
             </p>
           )}
+          {preview?.allowance && (
+            <PlanAllowanceNote allowance={preview.allowance} eligible={preview.eligible} />
+          )}
         </div>
       </div>
 
@@ -835,5 +843,40 @@ export function AudienceStep({
         </RailCard>
       </div>
     </div>
+  );
+}
+
+/**
+ * The plan's reactivation allowance under the estimate: what is left this
+ * billing period, or the plan-limit-reached state when this audience is more
+ * than that. The server refuses the launch in the same case.
+ */
+function PlanAllowanceNote({
+  allowance,
+  eligible,
+}: {
+  allowance: ReactivationAllowance;
+  eligible: number;
+}) {
+  const problem = reactivationLimitProblem(allowance, eligible);
+  if (problem) {
+    return (
+      <div role="alert" className="border-danger-100 bg-danger-50 mt-2 rounded-lg border px-3 py-2.5">
+        <p className="text-danger-700 text-[12.5px] font-semibold">Plan limit reached</p>
+        <p className="text-content-secondary mt-0.5 text-[12px]">{problem}</p>
+        <Link
+          href="/app/settings?section=billing"
+          className="text-content-accent mt-1 inline-block text-[12px] font-medium underline-offset-4 hover:underline"
+        >
+          Compare plans
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <p className="text-content-muted mt-2 text-[12px]">
+      {formatCount(allowance.remaining)} of your {formatCount(allowance.limit)} reactivation
+      contacts are left this billing period.
+    </p>
   );
 }

@@ -1,4 +1,5 @@
 import { getAffiliateAccount, listPortalPayouts } from "@/lib/affiliates/portal";
+import { csvCell } from "@/lib/csv";
 import { formatMinor } from "@/lib/affiliates/types";
 import { PAYOUT_STATUS_LABEL } from "@/lib/affiliates/types";
 
@@ -15,7 +16,7 @@ export async function GET() {
 
   const lines = [
     ["Payout ID", "Period", "Amount", "Status", "Method", "Date"]
-      .map(escape)
+      .map(csvCell)
       .join(","),
   ];
 
@@ -29,7 +30,7 @@ export async function GET() {
         payout.method ?? "",
         (payout.paidAt ?? payout.scheduledAt ?? payout.createdAt).slice(0, 10),
       ]
-        .map(escape)
+        .map(csvCell)
         .join(","),
     );
   }
@@ -41,9 +42,4 @@ export async function GET() {
       "cache-control": "no-store",
     },
   });
-}
-
-function escape(value: string): string {
-  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safe.replace(/"/g, '""')}"`;
 }

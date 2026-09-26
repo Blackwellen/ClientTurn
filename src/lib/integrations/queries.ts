@@ -1,9 +1,10 @@
 import "server-only";
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
-  NOT_AVAILABLE_REASON,
   PROVIDERS,
+  workspaceProviderBlock,
   type IntegrationObjectRecord,
   type IntegrationRecord,
   type ProviderBlock,
@@ -26,7 +27,7 @@ export type IntegrationsView = {
  * provider is only offerable once the platform has been configured for it.
  * Reading process.env here keeps the answer honest without a code change.
  */
-function platformConfigured(provider: ProviderType) {
+export function platformConfigured(provider: ProviderType) {
   const definition = PROVIDERS.find((row) => row.id === provider);
   if (!definition) return false;
   // A `|`-separated entry means "any of these names will do", which is how a
@@ -102,16 +103,27 @@ export async function getIntegrationsView(
     const configured = platformConfigured(definition.id);
 
     if (definition.connection === "platform") {
+      // A platform provider still answers to plan gating -- twilio_whatsapp
+      // is platform-run (one shared Twilio account) but Growth-plan-only, and
+      // reaching this branch must not silently skip that check the way it did
+      // before this was added.
+      const planBlock: ProviderBlock =
+        definition.requiresFeature === "whatsapp" && !entitlements.whatsappEnabled
+          ? { kind: "plan", reason: `WhatsApp is included on the ${unlockPlanLabel("whatsapp")} and above.` }
+          : null;
+
       return {
         definition,
         integration,
-        block: configured
-          ? null
-          : {
-              kind: "unavailable",
-              reason:
-                "Client Turn has not finished configuring this service, so nothing is being sent through it yet.",
-            },
+        block:
+          planBlock ??
+          (configured
+            ? null
+            : {
+                kind: "unavailable",
+                reason:
+                  "Client Turn has not finished configuring this service, so nothing is being sent through it yet.",
+              }),
         connected: configured && integration?.status !== "DISCONNECTED",
         status: configured
           ? (integration?.status ?? "HEALTHY")
@@ -125,10 +137,10 @@ export async function getIntegrationsView(
     if (definition.requiresFeature === "whatsapp" && !entitlements.whatsappEnabled) {
       block = {
         kind: "plan",
-        reason: "WhatsApp is included on the Growth plan and above.",
+        reason: `WhatsApp is included on the ${unlockPlanLabel("whatsapp")} and above.`,
       };
-    } else if (!connected && (!configured || !definition.connectPath)) {
-      block = { kind: "unavailable", reason: NOT_AVAILABLE_REASON };
+    } else {
+      block = workspaceProviderBlock(definition, { configured, connected });
     }
 
     return {

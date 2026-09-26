@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { escapeIlike } from "@/lib/supabase/ilike";
 import {
   companyKey,
   normaliseCompany,
@@ -101,7 +102,7 @@ export async function findDuplicates(
         .from("leads")
         .select(leadSelect)
         .eq("business_id", businessId)
-        .ilike("email", email)
+        .ilike("email", escapeIlike(email))
         .limit(5)
         .then((r) => ({ data: (r.data ?? []) as LeadRow[] })),
     );
@@ -123,7 +124,7 @@ export async function findDuplicates(
         .from("leads")
         .select(leadSelect)
         .eq("business_id", businessId)
-        .ilike("company_name", company)
+        .ilike("company_name", escapeIlike(company))
         .limit(10)
         .then((r) => ({ data: (r.data ?? []) as LeadRow[] })),
     );

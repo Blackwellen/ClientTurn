@@ -5,7 +5,16 @@ import { revalidatePath } from "next/cache";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { isOnboardingStep, nextStep, type OnboardingStep } from "./steps";
+import {
+  defaultQualifyQuestions,
+  isOnboardingStep,
+  nextStep,
+  stepIndex,
+  type OnboardingStep,
+} from "./steps";
+import { extractSitePrefill, normaliseWebsite, type SitePrefill } from "./prefill";
+import { validateWorkspaceName } from "@/lib/auth/workspace-name";
+import { safeFetchText } from "@/lib/security/safe-fetch";
 import { ensureDefaultAutomations, getActivationChecks } from "./provision";
 import {
   createTestLead,
@@ -74,6 +83,19 @@ async function currentSettings(businessId: string) {
   return data;
 }
 
+/* ------------------------------------------------------ copilot step --- */
+
+/**
+ * The guided first-Copilot step (Phase 8.3) saves nothing of its own: the
+ * question the person asks goes through Copilot's own action, with its own
+ * permission checks and audit. Continuing only moves the wizard on.
+ */
+export async function advanceCopilotStep(): Promise<OnboardingResult> {
+  const workspace = await workspaceOrFail();
+  if (!workspace) return fail("You do not have permission to set this up.");
+  return advance(workspace, "copilot");
+}
+
 /* ------------------------------------------------------------- step 1 --- */
 
 const dayHoursSchema = z.object({
@@ -83,7 +105,14 @@ const dayHoursSchema = z.object({
 });
 
 const businessStepSchema = z.object({
-  name: z.string().trim().min(2).max(120),
+  // Named by hand, here, by every owner (8.29). The placeholder a new
+  // workspace is created with is refused, as is a blank or one-letter name.
+  name: z
+    .string()
+    .trim()
+    .min(2)
+    .max(120)
+    .refine((value) => validateWorkspaceName(value).ok, "Name your workspace."),
   industry: z.string().trim().max(80),
   website: z.string().trim().max(200),
   phone: z.string().trim().max(30),
@@ -111,7 +140,10 @@ export async function saveBusinessStep(
   input: BusinessStepInput,
 ): Promise<OnboardingResult> {
   const parsed = businessStepSchema.safeParse(input);
-  if (!parsed.success) return fail("Check your business details and try again.");
+  if (!parsed.success) {
+    const naming = validateWorkspaceName(input?.name);
+    return fail(naming.ok ? "Check your business details and try again." : naming.error);
+  }
 
   const workspace = await workspaceOrFail();
   if (!workspace) return fail("You do not have permission to set this up.");
@@ -519,4 +551,157 @@ export async function goToStep(step: string): Promise<OnboardingResult> {
 
   revalidatePath("/onboarding");
   return { ok: true, nextStep: step };
+}
+
+/* ------------------------------------------------ prefill from website --- */
+
+export type PrefillResult =
+  | {
+      ok: true;
+      website: string;
+      prefill: SitePrefill;
+      /** The Companies House match for the site's name, when there is an exact one. */
+      registry: { registeredName: string; companyNumber: string; status: string | null } | null;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Reads the owner's own home page once and returns what it plainly says, for
+ * the business step to offer (Phase 8.29). Nothing is saved here: every value
+ * comes back as a suggestion the owner can change before Continue.
+ *
+ * Two existing pieces are reused rather than rebuilt: `safeFetchText` (the
+ * SSRF-safe fetch the website analysis worker uses), and the Companies House
+ * lookup the compliance layer uses, to show the registered name beside the
+ * site's. The full website analysis that feeds the Business Profile is also
+ * queued, so it is ready by the time the owner opens Find Leads.
+ */
+export async function prefillFromWebsite(raw: unknown): Promise<PrefillResult> {
+  const website = typeof raw === "string" ? normaliseWebsite(raw) : null;
+  if (!website) return { ok: false, error: "Enter your website address, like acme.co.uk." };
+
+  const workspace = await workspaceOrFail();
+  if (!workspace) return { ok: false, error: "You do not have permission to set this up." };
+
+  const page = await safeFetchText(website);
+  if (!page.ok) {
+    return {
+      ok: false,
+      error:
+        page.code === "TIMEOUT"
+          ? "Your website took too long to answer. Fill the details in yourself, or try again."
+          : "We could not read that website. Check the address, or fill the details in yourself.",
+    };
+  }
+
+  const prefill = extractSitePrefill(page.body);
+
+  let registry: { registeredName: string; companyNumber: string; status: string | null } | null = null;
+  if (prefill.siteName) {
+    try {
+      const { lookupCompany } = await import("@/lib/find-leads/server/providers/companies-house");
+      const verdict = await lookupCompany(prefill.siteName);
+      if (verdict.companyNumber && verdict.registeredName) {
+        registry = {
+          registeredName: verdict.registeredName,
+          companyNumber: verdict.companyNumber,
+          status: verdict.status,
+        };
+      }
+    } catch {
+      // The register is a nice-to-have here, never a blocker.
+    }
+  }
+
+  try {
+    const { startAnalysis } = await import("@/lib/find-leads/server/analysis");
+    await startAnalysis({ businessId: workspace.businessId, userId: workspace.userId, websiteUrl: website });
+  } catch {
+    // Best effort: the analysis can be started again from Settings.
+  }
+
+  return { ok: true, website, prefill, registry };
+}
+
+/* ------------------------------------------------- skip to go live --- */
+
+/**
+ * "Skip to go live" (Phase 8.29): applies the recommended setup for anything
+ * not configured yet and moves the wizard to its last step.
+ *
+ * Nothing is bypassed. The follow-up sequence is the same one onboarding has
+ * always seeded (`ensureDefaultAutomations`); the qualification questions go
+ * through `saveQualifyBookStep`, so they pass the same validation and role
+ * checks as if typed in. Anything the owner already set up is left alone, and
+ * activation still re-checks everything in `completeOnboarding`.
+ */
+export async function applyRecommendedSetup(): Promise<OnboardingResult> {
+  const workspace = await workspaceOrFail();
+  if (!workspace) return fail("You do not have permission to set this up.");
+
+  const admin = createAdminClient();
+  const { data: business } = await admin
+    .from("businesses")
+    .select("name, onboarding_step, status")
+    .eq("id", workspace.businessId)
+    .maybeSingle();
+  if (!business || business.status !== "onboarding") return fail("Setup is already finished.");
+  if (!validateWorkspaceName(business.name).ok) return fail("Name your workspace first.");
+
+  try {
+    await ensureDefaultAutomations(workspace.businessId, workspace.userId);
+  } catch {
+    return fail("Could not set up your follow-up sequence. Try again.");
+  }
+
+  const [{ count: questionCount }, { data: services }, settings] = await Promise.all([
+    admin
+      .from("qualification_questions")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", workspace.businessId)
+      .eq("active", true),
+    admin
+      .from("services")
+      .select("name")
+      .eq("business_id", workspace.businessId)
+      .eq("active", true)
+      .order("position"),
+    admin
+      .from("business_settings")
+      .select("booking_mode, booking_url")
+      .eq("business_id", workspace.businessId)
+      .maybeSingle(),
+  ]);
+
+  if ((questionCount ?? 0) === 0) {
+    const mode = (settings.data?.booking_mode as "calendly" | "google_calendar" | "handover" | null) ?? "handover";
+    const url = settings.data?.booking_url ?? "";
+    const saved = await saveQualifyBookStep({
+      questions: defaultQualifyQuestions((services ?? []).map((row) => row.name)).map((question) => ({
+        questionText: question.questionText,
+        responseType: question.responseType,
+        required: question.required,
+        options: question.options.map((option) => ({ label: option, value: option })),
+        rule: question.rule,
+      })),
+      deletedQuestionIds: [],
+      // A calendar mode with no link would fail activation; handing over to a
+      // person always works and is changed later in Settings.
+      bookingMode: mode !== "handover" && !url ? "handover" : mode,
+      bookingUrl: url,
+    });
+    if (!saved.ok) return saved;
+  }
+
+  // Forward only: a stale tab cannot rewind a later step.
+  if (stepIndex(business.onboarding_step ?? "") < stepIndex("test_go_live")) {
+    await admin
+      .from("businesses")
+      .update({ onboarding_step: "test_go_live" })
+      .eq("id", workspace.businessId)
+      .eq("status", "onboarding");
+  }
+
+  revalidatePath("/onboarding");
+  return { ok: true, nextStep: "test_go_live" };
 }

@@ -133,6 +133,63 @@ export async function recordSocialAcceptance(
   return { recorded: true, reason: null };
 }
 
+/**
+ * An individual who accepted our connection and then *engaged* -- replied with
+ * interest or a question -- has started a conversation about our services.
+ * That moves them from "conversation only" to THEY_CONTACTED_US, which the
+ * policy engine treats as a basis for marketing to an individual subscriber
+ * (docs/revenue-engine/00 §6.1).
+ *
+ * Only an upgrade from ACCEPTED_SOCIAL_CONNECTION, FOUND_BY_US or no record: a
+ * stronger basis is kept, and withdrawn consent is never reopened. The caller
+ * decides which replies count; "not now" or an objection does not.
+ */
+export async function recordSocialEngagement(input: {
+  businessId: string;
+  prospectId: string;
+  platform: SocialPlatform;
+  receivedAt: string;
+}): Promise<void> {
+  const admin = createAdminClient();
+  const { data: existing, error: readError } = await admin
+    .from("contact_permissions")
+    .select("id, relationship_type, consent_status")
+    .eq("business_id", input.businessId)
+    .eq("subject_type", "PROSPECT")
+    .eq("subject_id", input.prospectId)
+    .maybeSingle();
+  if (readError) throw readError;
+
+  const detail = `Replied to this workspace on ${platformLabel(input.platform)} at ${input.receivedAt}.`;
+
+  if (!existing) {
+    const { error } = await admin.from("contact_permissions").insert({
+      business_id: input.businessId,
+      subject_type: "PROSPECT",
+      subject_id: input.prospectId,
+      relationship_type: "THEY_CONTACTED_US",
+      relationship_detail: detail,
+      consent_status: "UNKNOWN",
+      subscriber_type: "UNKNOWN",
+    });
+    if (error && error.code !== "23505") throw error;
+    return;
+  }
+
+  if (existing.consent_status === "WITHDRAWN") return;
+  if (
+    !["ACCEPTED_SOCIAL_CONNECTION", "FOUND_BY_US", "UNKNOWN"].includes(existing.relationship_type)
+  ) {
+    return;
+  }
+
+  const { error } = await admin
+    .from("contact_permissions")
+    .update({ relationship_type: "THEY_CONTACTED_US", relationship_detail: detail })
+    .eq("id", existing.id);
+  if (error) throw error;
+}
+
 function platformLabel(platform: SocialPlatform): string {
   switch (platform) {
     case "LINKEDIN":

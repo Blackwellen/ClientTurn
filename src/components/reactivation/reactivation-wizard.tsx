@@ -12,6 +12,10 @@ import {
   type AudienceFilter,
   type AudiencePreview,
 } from "@/lib/campaigns/types";
+import type {
+  CampaignTemplateOption,
+  ChannelReadiness,
+} from "@/lib/campaigns/reactivation-channels";
 import {
   WizardProgress,
   WIZARD_STEPS,
@@ -53,17 +57,25 @@ export function ReactivationWizard({
   options,
   defaultChannel,
   whatsappEnabled,
-  emailEnabled,
-  providerConnected,
+  providers,
+  whatsappTemplates,
+  optOutWording,
+  aiPersonalizeAvailable,
   quietHours,
 }: {
   businessName: string;
   options: FilterOptions;
   defaultChannel: WizardChannel;
+  /** WhatsApp is included on the workspace's plan. */
   whatsappEnabled: boolean;
-  /** True when this workspace has its own mailbox connected and healthy. */
-  emailEnabled: boolean;
-  providerConnected: boolean;
+  /** Which channels have a usable connection (SMS number, WhatsApp, mailbox). */
+  providers: ChannelReadiness;
+  /** Approved WhatsApp templates on the sender this workspace uses. */
+  whatsappTemplates: CampaignTemplateOption[];
+  /** The workspace's opt-out line, appended to every SMS and WhatsApp. */
+  optOutWording: string;
+  /** AI assist is on for this workspace and included on its plan. */
+  aiPersonalizeAvailable: boolean;
   quietHours: QuietHours;
 }) {
   const router = useRouter();
@@ -119,6 +131,7 @@ export function ReactivationWizard({
 
   const [showErrors, setShowErrors] = React.useState(false);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
+  const [confirmLaunch, setConfirmLaunch] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [launchError, setLaunchError] = React.useState<string | null>(null);
   const [estimateAtReview, setEstimateAtReview] = React.useState<number | null>(
@@ -146,7 +159,9 @@ export function ReactivationWizard({
   /* ------------------------------------------------ audience estimate --- */
 
   const filters = state.audienceFilters;
-  const filterKey = JSON.stringify(filters);
+  // The estimate depends on the channel too: an email campaign counts the
+  // leads with an email address, a texting one the leads with a mobile.
+  const filterKey = JSON.stringify({ filters, channel: state.channel });
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -154,7 +169,11 @@ export function ReactivationWizard({
     const id = ++requestId.current;
 
     const handle = window.setTimeout(async () => {
-      const result = await previewAudience(JSON.parse(filterKey));
+      const request = JSON.parse(filterKey) as {
+        filters: AudienceFilter;
+        channel: WizardChannel;
+      };
+      const result = await previewAudience(request.filters, request.channel);
       // A later keystroke has already fired: discard this stale answer.
       if (id !== requestId.current) return;
 
@@ -208,14 +227,18 @@ export function ReactivationWizard({
   const eligible = preview?.eligible ?? 0;
   const audienceReady = !previewLoading && preview !== null;
 
+  const providerConnected = providers[state.channel];
+
   const audienceIssues = validateAudienceStep(state, {
     eligible,
     audienceReady,
     csvBusy,
+    allowance: preview?.allowance ?? null,
   });
   const messageIssues = validateMessageStep(state, {
     providerConnected,
     now,
+    whatsappTemplates,
   });
 
   const stepIssues = [audienceIssues, messageIssues, { fields: {}, valid: true }][
@@ -280,7 +303,13 @@ export function ReactivationWizard({
 
   /* ---------------------------------------------------------- launch --- */
 
+  function requestLaunch() {
+    if (!canLaunch || submitting) return;
+    setConfirmLaunch(true);
+  }
+
   async function launch() {
+    setConfirmLaunch(false);
     if (!canLaunch || submitting) return;
     setSubmitting(true);
     setLaunchError(null);
@@ -311,7 +340,16 @@ export function ReactivationWizard({
           sendMode: state.sendMode,
           scheduledAt: scheduled ? scheduled.toISOString() : undefined,
           sendRatePerMinute: 20,
-          aiPersonalize: false,
+          // Off unless chosen, never on email, and only offered when AI
+          // assist is on for the workspace (re-checked at send time).
+          aiPersonalize:
+            aiPersonalizeAvailable && state.channel !== "email" && state.aiPersonalize,
+          whatsappTemplateId:
+            state.channel === "whatsapp" && state.whatsappTemplateId
+              ? state.whatsappTemplateId
+              : undefined,
+          whatsappTemplateVariables:
+            state.channel === "whatsapp" ? state.whatsappTemplateVariables : undefined,
         },
         true,
       );
@@ -363,28 +401,45 @@ export function ReactivationWizard({
       : null;
 
   const channels: ChannelOption[] = [
-    { value: "sms", label: "SMS", available: true },
+    {
+      value: "sms",
+      label: "SMS",
+      available: providers.sms,
+      reason: providers.sms
+        ? undefined
+        : "connect an SMS number in Settings → Connections first",
+    },
     {
       value: "whatsapp",
       label: "WhatsApp",
-      available: whatsappEnabled,
-      reason: whatsappEnabled ? undefined : "not included on your current plan",
+      available: whatsappEnabled && providers.whatsapp && whatsappTemplates.length > 0,
+      reason: !whatsappEnabled
+        ? "not included on your current plan"
+        : !providers.whatsapp
+          ? "connect WhatsApp in Settings → Connections first"
+          : whatsappTemplates.length === 0
+            ? "needs an approved WhatsApp template first. Reactivation messages reach people outside WhatsApp's 24-hour window, where only approved templates are delivered. Sync your templates in Settings → Connections."
+            : undefined,
     },
     {
       value: "email",
       label: "Email",
-      available: emailEnabled,
-      reason: emailEnabled
+      available: providers.email,
+      reason: providers.email
         ? undefined
         : "connect your mailbox in Settings → Connections first",
     },
   ];
+
+  const suppressedTotal =
+    !previewLoading && preview ? preview.suppressedTotal : null;
 
   const checklistDone = launchChecklist(state, {
     eligible,
     providerConnected,
     messageValid,
     timingValid,
+    suppressedTotal,
   }).every((item) => item.done);
 
   return (
@@ -435,6 +490,9 @@ export function ReactivationWizard({
           quietHours={quietHours}
           channels={channels}
           fieldErrors={fieldErrors}
+          whatsappTemplates={whatsappTemplates}
+          optOutWording={optOutWording}
+          aiPersonalizeAvailable={aiPersonalizeAvailable}
         />
       )}
 
@@ -450,6 +508,11 @@ export function ReactivationWizard({
           messageValid={messageValid}
           timingValid={timingValid}
           revalidationNotice={revalidationNotice}
+          optOutWording={optOutWording}
+          whatsappTemplates={whatsappTemplates}
+          aiPersonalize={
+            aiPersonalizeAvailable && state.channel !== "email" && state.aiPersonalize
+          }
         />
       )}
 
@@ -480,7 +543,7 @@ export function ReactivationWizard({
             ) : (
               <Button
                 variant="success"
-                onClick={launch}
+                onClick={requestLaunch}
                 loading={submitting}
                 disabled={!canLaunch || !checklistDone}
                 title={
@@ -496,6 +559,25 @@ export function ReactivationWizard({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmLaunch}
+        title="Launch this campaign?"
+        scope={`${eligible.toLocaleString("en-GB")} eligible contact${
+          eligible === 1 ? "" : "s"
+        } will be contacted by ${
+          state.channel === "email" ? "email" : state.channel === "whatsapp" ? "WhatsApp" : "SMS"
+        }${state.followUpEnabled ? ", plus one follow-up for anyone who has not replied" : ""}.`}
+        consequence={
+          state.sendMode === "schedule"
+            ? "Sending starts at the scheduled time, inside your send window. Opt-outs, suppressions and quiet hours are re-checked before every message."
+            : "Sending starts in the next permitted window. Opt-outs, suppressions and quiet hours are re-checked before every message."
+        }
+        confirmLabel="Launch campaign"
+        cancelLabel="Not yet"
+        onConfirm={launch}
+        onClose={() => setConfirmLaunch(false)}
+      />
 
       <ConfirmDialog
         open={confirmCancel}

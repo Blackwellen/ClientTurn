@@ -37,6 +37,7 @@ import {
   TRIAL_STATE_TONE,
 } from "@/lib/affiliates/programme";
 import type { PortalReferral, ReferralPage } from "@/lib/affiliates/portal";
+import { Select } from "@/components/ui/form";
 
 /**
  * The referrals table (V4 §32).
@@ -98,14 +99,14 @@ export function ReferralsView({
               className="h-9 w-[180px] rounded-[9px] border border-line bg-surface pl-8 pr-3 text-[13px] text-content placeholder:text-content-subtle"
             />
           </div>
-          <select
+          <Select
             value={status}
             onChange={(event) => {
               setStatus(event.target.value);
               apply({ status: event.target.value, page: 1 });
             }}
             aria-label="Filter by status"
-            className="h-9 rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content"
+            className="h-9 rounded-[9px] text-[13px]"
           >
             <option value="all">All statuses</option>
             <option value="SIGNED_UP">Signed up</option>
@@ -113,7 +114,7 @@ export function ReferralsView({
             <option value="PAID">Paying</option>
             <option value="CHURNED">Churned</option>
             <option value="REFUNDED">Refunded</option>
-          </select>
+          </Select>
           <a
             href="/affiliates/app/referrals/export"
             className="inline-flex h-9 items-center gap-1.5 rounded-[9px] border border-line bg-surface px-3 text-[12.5px] font-medium text-content hover:bg-surface-hover"

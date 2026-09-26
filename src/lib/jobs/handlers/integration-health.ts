@@ -8,7 +8,15 @@ import {
   twilioConfigProblems,
   twilioCredentials,
 } from "@/lib/messaging/twilio";
+import { getLiveAccessToken } from "@/lib/integrations/oauth";
+import { getOAuthProviderConfig } from "@/lib/integrations/providers/registry";
+// Populates that registry. Without it `probeSlack` below sees no config for a
+// provider that is, in fact, configured -- the same class of bug `all.ts`
+// documents: a registry populated by import side effects is only as complete
+// as its least careful importer.
+import "@/lib/integrations/providers/all";
 import { loadBusinessContext, queueNotification } from "./shared";
+import { metaTokenRenewal } from "@/lib/integrations/catalog";
 import { parsePayload } from "./parse";
 import { integrationHealthPayload } from "./payloads";
 
@@ -126,7 +134,7 @@ async function probeTwilio(): Promise<Probe> {
   }
 }
 
-async function probeToken(integrationId: string): Promise<Probe> {
+async function probeToken(integrationId: string, providerType = ""): Promise<Probe> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("integration_secrets")
@@ -152,12 +160,84 @@ async function probeToken(integrationId: string): Promise<Probe> {
     );
   }
 
+  // Meta issues no refresh token: its ~60-day token is renewed only by the
+  // person reconnecting. Flagged from ten days out so the card, and the
+  // notification below, say so while there is still time.
+  if (providerType === "meta") {
+    const renewal = metaTokenRenewal(data.token_expires_at ?? null);
+    if (renewal?.expired) {
+      return actionRequired("token_expired", "Meta access has expired. Reconnect Meta to keep receiving leads.");
+    }
+    if (renewal?.warn) {
+      return {
+        status: "DEGRADED",
+        errorCode: "token_expiring",
+        errorMessage: `Meta access expires in ${renewal.daysLeft} day${renewal.daysLeft === 1 ? "" : "s"}. Reconnect Meta to renew it; Meta does not renew it automatically.`,
+        verified: false,
+      };
+    }
+  }
+
   // The credential is present and in date. Whether the provider would still
   // accept it is a question this check does not ask -- there is no adapter
   // method for a cheap authenticated call, and inventing an endpoint per
   // provider would mark a working integration broken the moment one of the
   // guesses was wrong.
   return CREDENTIAL_OK;
+}
+
+/**
+ * `auth.test` needs no scope beyond a valid token, so it is safe to call for
+ * every workspace regardless of what else the bot can do -- unlike, say,
+ * `conversations.info`, which would need a scope this integration never
+ * requests and would misreport a perfectly healthy token as broken.
+ */
+async function probeSlack(integrationId: string): Promise<Probe> {
+  const config = getOAuthProviderConfig("slack");
+  if (!config) {
+    return actionRequired(
+      "provider_not_configured",
+      "Slack credentials are not configured on this platform.",
+    );
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getLiveAccessToken(integrationId, config);
+  } catch {
+    return actionRequired("missing_token", "This connection has no stored access token. Reconnect it.");
+  }
+
+  try {
+    const response = await fetch("https://slack.com/api/auth.test", {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const json = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+    };
+
+    if (json.ok) return VERIFIED_OK;
+
+    if (json.error === "invalid_auth" || json.error === "token_revoked" || json.error === "account_inactive") {
+      return actionRequired(json.error, "Slack rejected the stored credentials. Reconnect it.");
+    }
+
+    return {
+      status: "DEGRADED",
+      errorCode: json.error ?? String(response.status),
+      errorMessage: `Slack responded with ${json.error ?? response.status}.`,
+      verified: false,
+    };
+  } catch (error) {
+    return {
+      status: "DEGRADED",
+      errorCode: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      verified: false,
+    };
+  }
 }
 
 function probeEmail(): Probe {
@@ -173,7 +253,8 @@ async function probe(providerType: string, integrationId: string): Promise<Probe
     return probeTwilio();
   }
   if (providerType === "email") return probeEmail();
-  return probeToken(integrationId);
+  if (providerType === "slack") return probeSlack(integrationId);
+  return probeToken(integrationId, providerType);
 }
 
 export type HealthCheckOutcome = {
@@ -239,6 +320,25 @@ export async function runIntegrationHealthChecks(params: {
     const becameBroken =
       result.status === "ACTION_REQUIRED" &&
       integration.status !== "ACTION_REQUIRED";
+
+    // Not broken yet, but will be: one warning per expiry date.
+    if (
+      params.notify &&
+      result.errorCode === "token_expiring" &&
+      business.notify.integrationFailure
+    ) {
+      await queueNotification({
+        businessId: params.businessId,
+        type: "integration_failure",
+        severity: "warning",
+        title: "Reconnect Meta to keep leads arriving",
+        body: result.errorMessage ?? undefined,
+        entityType: "integration",
+        entityId: integration.id,
+        linkUrl: "/app/settings?section=connections",
+        dedupeKey: `meta_token_expiring:${integration.id}:${new Date().toISOString().slice(0, 7)}`,
+      });
+    }
 
     if (params.notify && becameBroken && business.notify.integrationFailure) {
       await queueNotification({

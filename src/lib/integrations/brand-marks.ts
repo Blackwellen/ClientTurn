@@ -15,7 +15,6 @@ const BRAND_FILE: Record<ProviderType, string> = {
   // svgl carries no Google Ads mark, so the parent Google "G" stands in: it is
   // accurate rather than approximated, and the card names the product.
   google_ads: "google",
-  microsoft_ads: "microsoft",
   tiktok_ads: "tiktok",
   linkedin_ads: "linkedin",
   twilio_sms: "twilio",

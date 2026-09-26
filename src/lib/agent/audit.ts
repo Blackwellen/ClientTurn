@@ -49,6 +49,12 @@ export type AgentRunHandle = {
   startedAt: number;
   /** Incremented by recordAction so step indices are stable and ordered. */
   step: number;
+  /**
+   * The turn's strategy record (strategy.ts): method, reason, motion, stage,
+   * next question. Written into decision_json.strategy by every closeRun, so
+   * the choice is on the run whichever branch the turn ends in.
+   */
+  strategy?: Record<string, unknown>;
 };
 
 /**
@@ -150,7 +156,9 @@ export async function closeRun(
         qualification_after: input.qualificationAfter ?? null,
         step_count: handle.step,
         error_code: input.errorCode ?? null,
-        decision_json: (input.decision ?? {}) as never,
+        decision_json: (handle.strategy
+          ? { ...(input.decision ?? {}), strategy: handle.strategy }
+          : (input.decision ?? {})) as never,
         duration_ms: Date.now() - handle.startedAt,
         completed_at: new Date().toISOString(),
       })
@@ -233,30 +241,59 @@ export async function recordExtractions(
   );
 }
 
-/** Records model usage onto the run so cost is attributable per conversation. */
-export async function recordUsage(
-  handle: AgentRunHandle,
-  usage: {
-    modelProvider: string;
-    modelName: string;
-    inputTokens: number;
-    outputTokens: number;
-    estimatedCostUsd: number;
-  },
+export type AgentRunUsage = {
+  modelProvider: string;
+  modelName: string;
+  /** prompt_tokens, cached prefix included -- what the allowance is debited. */
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+};
+
+/**
+ * Adds one model call's usage to an agent run, so cost is attributable per
+ * conversation. Additive, not an overwrite: a turn can make several calls
+ * (decision, summary) and each contributes its share. The increment happens
+ * in SQL (`add_agent_run_usage`, migration 0116) so two calls settling at once
+ * cannot lose each other's numbers.
+ *
+ * Called by `runTask` whenever it is given an `agentRunId`. Best-effort.
+ */
+export async function addAgentRunUsage(
+  businessId: string,
+  agentRunId: string,
+  usage: AgentRunUsage,
 ): Promise<void> {
   const admin = createAdminClient();
-  await swallow(
-    admin
-      .from("conversation_agent_runs")
-      .update({
-        model_provider: usage.modelProvider,
-        model_name: usage.modelName,
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-        estimated_cost_usd: usage.estimatedCostUsd,
-      })
-      .eq("id", handle.id),
-  );
+  // 0116 post-dates the generated types; cast at this one call, bound so
+  // `this.rest` still resolves.
+  const rpc = (admin.rpc as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ error: { message: string } | null }>).bind(admin);
+
+  try {
+    const { error } = await rpc("add_agent_run_usage", {
+      target_run_id: agentRunId,
+      target_business_id: businessId,
+      add_input_tokens: Math.max(Math.floor(usage.inputTokens), 0),
+      add_output_tokens: Math.max(Math.floor(usage.outputTokens), 0),
+      add_cost_usd: Math.max(usage.estimatedCostUsd, 0),
+      source_model_provider: usage.modelProvider,
+      source_model_name: usage.modelName,
+    });
+    if (error) console.error("[agent-audit] add_agent_run_usage failed", error.message);
+  } catch {
+    // An audit line is worth strictly less than the turn it describes.
+  }
+}
+
+/** Handle form of `addAgentRunUsage`, for code holding an AgentRunHandle. */
+export async function recordUsage(
+  handle: AgentRunHandle,
+  usage: AgentRunUsage,
+): Promise<void> {
+  await addAgentRunUsage(handle.businessId, handle.id, usage);
 }
 
 /**

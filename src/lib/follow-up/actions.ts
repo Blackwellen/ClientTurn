@@ -8,7 +8,12 @@ import { recordAudit } from "@/lib/audit";
 import { assertEntitlement, EntitlementError } from "@/lib/billing/entitlements";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { getMessagingProvider } from "@/lib/messaging/registry";
-import { normalisePhone } from "@/lib/messaging/types";
+import { checkSuppression } from "@/lib/policy/suppression";
+import {
+  isPermittedTestRecipient,
+  normaliseTestDestination,
+  TEST_RECIPIENT_ERROR,
+} from "./test-send-recipients";
 import { ProviderNotConfiguredError } from "@/lib/messaging/types";
 import { findUnknownMergeFields, renderTemplate } from "@/lib/automation/scheduler";
 import { TIMEZONES } from "@/lib/settings/types";
@@ -116,8 +121,54 @@ export async function sendFollowUpTest(
     );
   }
 
-  const to = normalisePhone(parsed.data.to);
-  if (!to) return fail("Enter a valid phone number.");
+  const channel = parsed.data.channel;
+  const to = normaliseTestDestination(channel, parsed.data.to);
+  if (!to) {
+    return fail(channel === "email" ? "Enter a valid email address." : "Enter a valid phone number.");
+  }
+
+  // A test reaches the workspace itself, never an arbitrary number. See
+  // `test-send-recipients.ts` for why and for what counts.
+  const supabase = createAdminClient();
+  const [{ data: business, error: businessError }, { data: members, error: membersError }] =
+    await Promise.all([
+      supabase.from("businesses").select("phone").eq("id", workspace.businessId).maybeSingle(),
+      supabase
+        .from("business_members")
+        .select("user_id")
+        .eq("business_id", workspace.businessId)
+        .eq("status", "active"),
+    ]);
+  if (businessError || membersError) return fail("Could not check the test recipient. Try again.");
+
+  const memberIds = (members ?? []).map((member) => member.user_id);
+  const { data: profiles, error: profilesError } = memberIds.length
+    ? await supabase.from("profiles").select("phone, email").in("id", memberIds)
+    : { data: [], error: null };
+  if (profilesError) return fail("Could not check the test recipient. Try again.");
+
+  if (
+    !isPermittedTestRecipient(channel, to, {
+      businessPhone: business?.phone ?? null,
+      members: profiles ?? [],
+    })
+  ) {
+    return fail(TEST_RECIPIENT_ERROR);
+  }
+
+  // The same suppression list every other send honours. A lookup failure is a
+  // refusal, never a pass.
+  try {
+    const suppressed = await checkSuppression(
+      workspace.businessId,
+      channel === "email" ? "EMAIL" : channel === "whatsapp" ? "WHATSAPP" : "SMS",
+      channel === "email" ? { email: to } : { phone: to },
+    );
+    if (suppressed) return fail("That contact is suppressed on this channel and cannot be messaged.");
+  } catch (error) {
+    console.error("[follow-up] suppression check failed", error);
+    return fail("Could not check the suppression list. Try again shortly.");
+  }
 
   const context = await getTestSendContext(workspace.businessId);
   const body = renderTemplate(parsed.data.body, {
@@ -136,7 +187,7 @@ export async function sendFollowUpTest(
       businessId: workspace.businessId,
       to,
       body,
-      channel: parsed.data.channel,
+      channel,
       // Distinct per attempt: a test is meant to be repeatable, but the key
       // still stops a double-click from sending twice within the same second.
       sendKey: `test:${workspace.businessId}:${Math.floor(Date.now() / 1000)}`,

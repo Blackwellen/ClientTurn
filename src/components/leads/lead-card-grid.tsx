@@ -13,10 +13,15 @@ export function LeadCardGrid({
   rows,
   assigneeNames,
   onOpen,
+  selected,
+  onSelectedChange,
 }: {
   rows: LeadListRow[];
   assigneeNames: Map<string, string>;
   onOpen: (row: LeadListRow) => void;
+  /** Card view selects for the same bulk bar as the table. */
+  selected?: Set<string>;
+  onSelectedChange?: (next: Set<string>) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 min-[1280px]:grid-cols-3 min-[1440px]:grid-cols-4">
@@ -30,6 +35,17 @@ export function LeadCardGrid({
               : null
           }
           onOpen={() => onOpen(row)}
+          selected={selected ? selected.has(row.id) : undefined}
+          onToggleSelect={
+            selected && onSelectedChange
+              ? () => {
+                  const next = new Set(selected);
+                  if (next.has(row.id)) next.delete(row.id);
+                  else next.add(row.id);
+                  onSelectedChange(next);
+                }
+              : undefined
+          }
         />
       ))}
     </div>

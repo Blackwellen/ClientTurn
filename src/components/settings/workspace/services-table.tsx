@@ -81,6 +81,8 @@ export function ServicesTable({
         service.averageValue === null ? "" : String(service.averageValue),
       active,
     });
+    // Pricing is left untouched by a plain active toggle (omitted fields are
+    // not written).
     setToggling(null);
 
     if (result.ok) {

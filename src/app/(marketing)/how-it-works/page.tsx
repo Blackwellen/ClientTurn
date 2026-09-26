@@ -531,7 +531,7 @@ export default function HowItWorksPage() {
                 </>
               }
               body="Start with your own leads and your own rules. Connect a source, configure your questions and watch the whole path run before you pay anything."
-              assurances={["Quick setup", "No card required", "Cancel anytime"]}
+              assurances={["Quick setup", "Nothing charged for 14 days", "Cancel anytime"]}
               actions={
                 <>
                   <PrimaryCta placement="how_it_works_final" size="lg">

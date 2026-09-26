@@ -22,6 +22,7 @@ import {
   type SourceStatus,
 } from "@/lib/agents/types";
 import { saveAgent } from "@/lib/agents/actions";
+import { Select } from "@/components/ui/form";
 
 /**
  * The Agent setup wizard.
@@ -60,8 +61,6 @@ export function AgentWizard({
     "GOOGLE_PLACES",
     "WEBSITE",
   ]);
-  const [enrichEmail, setEnrichEmail] = React.useState(true);
-  const [enrichPhone, setEnrichPhone] = React.useState(false);
   const [autonomy, setAutonomy] = React.useState<Autonomy>("REVIEW_ALL");
   const [cadence, setCadence] = React.useState<Cadence>("DAILY");
   const [dailyCap, setDailyCap] = React.useState(25);
@@ -69,6 +68,9 @@ export function AgentWizard({
 
   const definition = AGENT_TYPE_DEFINITIONS[type];
   const availableSources = sourcesForType(type);
+  // Only sourcing reads sources. Booking and re-engagement work the leads
+  // already in the workspace, whichever way they arrived.
+  const usesSources = type === "SOURCING" || type === "COMBINED";
 
   function toggleSource(key: SourceKey) {
     setSources((current) =>
@@ -77,7 +79,7 @@ export function AgentWizard({
   }
 
   function validate(current: number): string {
-    if (current === 1 && sources.length === 0) {
+    if (current === 1 && usesSources && sources.length === 0) {
       return "Choose at least one source, or the agent has nowhere to look.";
     }
     if (current === 2) {
@@ -111,9 +113,7 @@ export function AgentWizard({
           cadence,
           dailyCap,
           monthlyCap,
-          sources,
-          enrichEmail,
-          enrichPhone,
+          sources: usesSources ? sources : [],
           autonomy,
         });
         if (result.error) setError(result.error);
@@ -192,9 +192,14 @@ export function AgentWizard({
 
       {step === 1 && (
         <Panel
-          title="Where should it look?"
-          description="ClientTurn only uses official APIs, licensed data and accounts you own. A source that needs connecting is marked below."
+          title={usesSources ? "Where should it look?" : "What it works on"}
+          description={
+            usesSources
+              ? "The agent runs your approved Find Leads plan using only the sources you switch on here. Public ad libraries and engagement on your own social accounts are used when your plan and connections allow."
+              : "This agent works on the leads already in your workspace, however they arrived — lead forms, imports, your CRM or your website. It has no sources to choose."
+          }
         >
+          {usesSources && (
           <fieldset className="space-y-2">
             <legend className="sr-only">Sources</legend>
             {availableSources.map((source) => {
@@ -244,14 +249,15 @@ export function AgentWizard({
               );
             })}
           </fieldset>
+          )}
 
-          {(type === "SOURCING" || type === "COMBINED") && (
+          {usesSources && (
             <div className="mt-5 space-y-3 border-t border-line-subtle pt-4">
               <Field label="Approved search plan" hint="Targeting follows this plan. Leave blank to save a draft.">
-                <select
+                <Select
                   value={strategyId}
                   onChange={(event) => setStrategyId(event.target.value)}
-                  className={SELECT_CLASS}
+                  
                 >
                   <option value="">No plan yet — save as draft</option>
                   {plans.map((plan) => (
@@ -259,7 +265,7 @@ export function AgentWizard({
                       {plan.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <Link
                   href="/app/find-leads"
                   className="mt-1.5 inline-block text-[11.5px] text-content-accent underline-offset-4 hover:underline"
@@ -268,18 +274,10 @@ export function AgentWizard({
                 </Link>
               </Field>
 
-              <Toggle
-                label="Find a work email address"
-                hint="Discovered addresses are verified before they are used."
-                checked={enrichEmail}
-                onChange={setEnrichEmail}
-              />
-              <Toggle
-                label="Find a business phone number"
-                hint="Finding a number does not grant permission to call or text it. Every message is still checked against consent and channel rules."
-                checked={enrichPhone}
-                onChange={setEnrichPhone}
-              />
+              <p className="text-[11.5px] text-content-muted">
+                The agent finds and verifies a work email address for each prospect. It never
+                collects phone numbers.
+              </p>
             </div>
           )}
         </Panel>
@@ -296,7 +294,7 @@ export function AgentWizard({
                 value={name}
                 maxLength={80}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. South coast roofing prospects"
+                placeholder="e.g. London design agencies"
                 className={INPUT_CLASS}
               />
             </Field>
@@ -312,17 +310,17 @@ export function AgentWizard({
             </Field>
 
             <Field label="Approval">
-              <select
+              <Select
                 value={autonomy}
                 onChange={(event) => setAutonomy(event.target.value as Autonomy)}
-                className={SELECT_CLASS}
+                
               >
                 {(["REVIEW_ALL", "REVIEW_NEW", "AUTO"] as Autonomy[]).map((value) => (
                   <option key={value} value={value}>
                     {autonomyLabel(value)}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="mt-1.5 block text-[11.5px] text-content-muted">
                 {autonomyDescription(autonomy)}
               </span>
@@ -330,17 +328,17 @@ export function AgentWizard({
 
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Schedule">
-                <select
+                <Select
                   value={cadence}
                   onChange={(event) => setCadence(event.target.value as Cadence)}
-                  className={SELECT_CLASS}
+                  
                 >
                   {(["MANUAL", "HOURLY", "DAILY", "WEEKLY"] as Cadence[]).map((value) => (
                     <option key={value} value={value}>
                       {cadenceLabel(value)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
 
               <Field label="Daily limit">
@@ -397,19 +395,14 @@ export function AgentWizard({
             <Summary
               label="Sources"
               value={
-                sources.length
-                  ? sources.map((key) => SOURCE_DEFINITIONS[key]?.label ?? key).join(", ")
-                  : "None"
+                !usesSources
+                  ? "Leads already in your workspace"
+                  : sources.length
+                    ? sources.map((key) => SOURCE_DEFINITIONS[key]?.label ?? key).join(", ")
+                    : "None"
               }
             />
-            <Summary
-              label="Enrichment"
-              value={
-                [enrichEmail && "email", enrichPhone && "phone"]
-                  .filter(Boolean)
-                  .join(" + ") || "None"
-              }
-            />
+            {usesSources && <Summary label="Contact details" value="Verified work email only" />}
           </dl>
 
           <p className="mt-4 flex gap-3 rounded-lg border border-line bg-surface-sunken/50 p-3.5 text-[12.5px] text-content-secondary">
@@ -456,7 +449,6 @@ export function AgentWizard({
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-[13px] text-content focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent";
-const SELECT_CLASS = `${INPUT_CLASS} h-9 py-0`;
 
 function Panel({
   title,
@@ -496,33 +488,6 @@ function Field({
         : children}
       {hint && <p className="mt-1 text-[11.5px] text-content-muted">{hint}</p>}
     </div>
-  );
-}
-
-function Toggle({
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-start gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-[var(--color-accent-600)]"
-      />
-      <span className="min-w-0">
-        <span className="block text-[13px] font-medium text-content">{label}</span>
-        <span className="mt-0.5 block text-[11.5px] text-content-muted">{hint}</span>
-      </span>
-    </label>
   );
 }
 

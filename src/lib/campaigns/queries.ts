@@ -2,6 +2,10 @@ import "server-only";
 import { suppressedDestinations } from "@/lib/policy/suppression";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { allowancesFor } from "@/lib/billing/plans";
+import { reactivationAllowance, type ReactivationAllowance } from "./reactivation-limit";
 import type { Database } from "@/lib/supabase/database.types";
 import { leadDisplayName } from "@/lib/leads/types";
 import { normaliseEmail } from "@/lib/email/account";
@@ -86,6 +90,36 @@ function sourceLabel(lead: AudienceLeadRow): string | null {
  * estimate and the count used at launch come from the same code path — a
  * stored audience is never trusted.
  */
+/** Leads an import's touches point at whose own `source_id` is a different one. */
+const MAX_TOUCHED_IN_FILTER = 300;
+
+async function touchedLeadIds(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  sourceId: string,
+): Promise<string[]> {
+  // lead_touches is outside the generated types until they are regenerated.
+  const client = supabase as unknown as SupabaseClient;
+  const { data, error } = await client
+    .from("lead_touches")
+    .select("lead_id, leads!inner(source_id)")
+    .eq("business_id", businessId)
+    .eq("lead_source_id", sourceId)
+    .neq("leads.source_id", sourceId)
+    .limit(MAX_TOUCHED_IN_FILTER + 1);
+  if (error) {
+    // The audience still resolves from source_id alone; a matched existing
+    // customer is left out rather than the whole audience failing.
+    console.error("[audience] touched-lead lookup failed", { businessId, sourceId, message: error.message });
+    return [];
+  }
+  const ids = [...new Set(((data ?? []) as { lead_id: string }[]).map((row) => row.lead_id))];
+  if (ids.length > MAX_TOUCHED_IN_FILTER) {
+    console.warn("[audience] more matched leads than the filter carries", { businessId, sourceId });
+  }
+  return ids.slice(0, MAX_TOUCHED_IN_FILTER);
+}
+
 export async function resolveAudience(
   businessId: string,
   filter: AudienceFilter,
@@ -113,7 +147,18 @@ export async function resolveAudience(
   // Every filter below is applied by the database, not in JavaScript, so a
   // large workspace never ships its whole lead table to the app server.
   if (filter.serviceId) query = query.eq("service_id", filter.serviceId);
-  if (filter.sourceId) query = query.eq("source_id", filter.sourceId);
+  if (filter.sourceId) {
+    // A lead belongs to an import either because the import created it
+    // (`source_id`) or because the import matched a lead that already existed
+    // and touched it (ingestLead, 0123). The second set is small -- existing
+    // customers found again in a file -- and is bounded here so the filter
+    // stays one URL-sized query.
+    const touched = await touchedLeadIds(supabase, businessId, filter.sourceId);
+    query =
+      touched.length > 0
+        ? query.or(`source_id.eq.${filter.sourceId},id.in.(${touched.join(",")})`)
+        : query.eq("source_id", filter.sourceId);
+  }
   if (filter.statuses.length > 0) query = query.in("status", filter.statuses);
   if (filter.createdAfter) {
     query = query.gte("created_at", `${filter.createdAfter}T00:00:00.000Z`);
@@ -460,4 +505,25 @@ export async function listImports(businessId: string) {
     .order("created_at", { ascending: false })
     .limit(10);
   return data ?? [];
+}
+
+/* ------------------------------------------------- reactivation allowance */
+
+/**
+ * The workspace's reactivation contact allowance this billing period: the
+ * plan's limit and the contacts already added to any campaign since the
+ * period began. Service role, because the expand job has no session; always
+ * scoped to `businessId`. A failed read throws: it must never read as "none
+ * used", which would lift the limit.
+ */
+export async function loadReactivationAllowance(businessId: string): Promise<ReactivationAllowance> {
+  const entitlements = await getEntitlements(businessId);
+  const since = entitlements.periodStart ?? new Date(Date.now() - 30 * 864e5).toISOString();
+  const { count, error } = await createAdminClient()
+    .from("campaign_contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .gte("created_at", since);
+  if (error) throw new Error(`Could not count reactivation contacts: ${error.message}`);
+  return reactivationAllowance(allowancesFor(entitlements.plan).reactivationContactLimit, count ?? 0);
 }

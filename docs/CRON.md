@@ -172,3 +172,36 @@ by hand instead:
 ```bash
 curl "http://localhost:3000/api/cron/worker?secret=$CRON_SECRET"
 ```
+
+## Revenue-engine jobs (added 2026-09, migrations 0110–0126)
+
+All three schedules were verified live on 2026-09-26:
+
+- **`clientturn-worker`**: every 30 seconds. 239 of 239 runs in the last 2 hours succeeded; all 60 HTTP calls in the last 30 minutes returned 200.
+- **`clientturn-reap`**: every 5 minutes, all succeeded.
+- **`clientturn-daily`**: 03:07 UTC, succeeded every day.
+- **Vault:** both secrets are present.
+
+New job types, all registered in `src/lib/jobs/register.ts`:
+
+| Job | Producer |
+|---|---|
+| `event.dispatch` | SQL `emit_domain_event()` triggers (0123) and `emitDomainEvent()` — the outbox fan-out |
+| `lead.score` | `lead.process`, the event dispatcher (re-score triggers), `lead.rescore` |
+| `ingest.webhook` | `/api/webhooks/google-ads` |
+| `handoff.brief` | `requestHumanHandover` |
+| `domain.health_check`, `email.sender_health`, `whatsapp.template_sync`, `retention.cleanup`, `billing.daily` (failed-payment retries, once a day for up to 30 days; overage invoice items) | `/api/cron/daily` |
+
+**Deploy dependency.** pg_cron calls the *deployed* app. Until the revenue-engine code is
+deployed, any `event.dispatch` job that a new SQL trigger enqueues is picked up by a worker
+with no handler for it, and dies with "No handler registered". Nothing is lost:
+
+- the triggers never fail the write that caused them;
+- the event itself stays in `domain_events`.
+
+After deploying, re-queue those jobs:
+
+```sql
+update public.jobs set state = 'pending', attempts = 0, run_at = now(), last_error = null
+ where type = 'event.dispatch' and state = 'dead';
+```

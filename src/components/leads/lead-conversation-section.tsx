@@ -10,6 +10,18 @@ import type { LeadDrawerActions, RunAction } from "./lead-drawer-actions";
 import { ConversationThread } from "./conversation-thread";
 
 /**
+ * One id per composed message, so pressing Send twice on the same draft (or
+ * retrying it after a dropped response) is recognised exactly by the server's
+ * duplicate check. Undefined where `randomUUID` is unavailable (an insecure
+ * origin); the server then falls back to its time-bucketed content key.
+ */
+function newComposeNonce(): string | undefined {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : undefined;
+}
+
+/**
  * One lead, one thread, one composer. There is deliberately no way to send
  * from here to more than the lead in front of you — bulk messaging is not a
  * capability this product exposes from the inbox.
@@ -37,6 +49,14 @@ export function LeadConversationSection({
 }) {
   const { lead, messages } = detail;
   const [draft, setDraft] = React.useState("");
+  // Tied to the draft: kept across retries of the same text, replaced when the
+  // text changes or the message is sent.
+  const nonceRef = React.useRef<string | undefined>(undefined);
+  if (nonceRef.current === undefined) nonceRef.current = newComposeNonce();
+  // The same text on another channel, or to another lead, is another message.
+  React.useEffect(() => {
+    nonceRef.current = newComposeNonce();
+  }, [channel, lead.id]);
   const endRef = React.useRef<HTMLDivElement>(null);
 
   // Land on the newest message, the way any conversation view should open.
@@ -60,10 +80,18 @@ export function LeadConversationSection({
     const ok = await run(
       "send",
       () =>
-        actions.sendManualMessage({ leadId: lead.id, channel, body: draft }),
+        actions.sendManualMessage({
+          leadId: lead.id,
+          channel,
+          body: draft,
+          clientNonce: nonceRef.current,
+        }),
       "Message queued.",
     );
-    if (ok) setDraft("");
+    if (ok) {
+      setDraft("");
+      nonceRef.current = newComposeNonce();
+    }
   };
 
   return (
@@ -111,7 +139,10 @@ export function LeadConversationSection({
               aria-label="Message"
               placeholder={`Write a ${channel === "sms" ? "text" : "WhatsApp"} message…`}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                nonceRef.current = newComposeNonce();
+              }}
               onKeyDown={(event) => {
                 // Enter alone inserts a newline; the deliberate gesture sends.
                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {

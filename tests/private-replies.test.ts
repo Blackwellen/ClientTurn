@@ -158,7 +158,7 @@ describe("what a private reply says", () => {
     }
   });
 
-  test("it uses their name and the business's own words", () => {
+  test("it uses their name and does not pitch the business", () => {
     const body = renderSocialTemplate({
       kind: "PRIVATE_REPLY",
       platform: "FACEBOOK",
@@ -167,8 +167,10 @@ describe("what a private reply says", () => {
     });
 
     assert.match(body, /Marcus/);
-    assert.match(body, /Thames Plumbing/);
-    assert.match(body, /boiler servicing/);
+    // A comment is public engagement, not a request to be marketed to by DM
+    // (docs/revenue-engine/00 §6.1): the reply must not promote the business.
+    assert.doesNotMatch(body, /Thames Plumbing/);
+    assert.doesNotMatch(body, /boiler servicing/);
     // No unresolved placeholders left behind.
     assert.doesNotMatch(body, /\{\{/);
   });

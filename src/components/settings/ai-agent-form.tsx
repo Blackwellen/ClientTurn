@@ -6,23 +6,31 @@ import { Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { FormField } from "@/components/ui/form";
+import { FormField, Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { saveAiBehaviour } from "@/lib/ai-settings/actions";
 import {
   AGENT_CHANNEL_OPTIONS,
   AGENT_MODE_OPTIONS,
+  AI_ASSIST_FIELD_COPY,
+  AI_REPLY_LENGTH_OPTIONS,
   AI_TONE_OPTIONS,
+  agentChannelAvailable,
+  agentSettingsProblem,
   type AgentChannelValue,
   type AiBehaviourSettings,
 } from "@/lib/ai-settings/types";
 
 /**
  * The whole customer-facing surface of the conversation agent: whether it
- * runs, how, and on which channels. Four controls, by design — model choice,
- * prompts, step budgets and confidence thresholds are platform concerns and
- * are never exposed here.
+ * runs, how, and on which channels — plus the three assist-layer switches the
+ * runtime reads (reply length, AI rewording, AI answer interpretation). Model
+ * choice, prompts, step budgets and confidence thresholds are platform
+ * concerns and are never exposed here.
+ *
+ * This is the only editor for the assistant's mode: Settings -> AI & selling
+ * shows it read-only and links here.
  *
  * The form deliberately makes the safe option the obvious one: a workspace
  * that has never touched this sees Off, and "Suggest replies" sits between
@@ -50,6 +58,11 @@ export function AiAgentForm({
   const [mode, setMode] = React.useState(settings.agentMode);
   const [channels, setChannels] = React.useState<AgentChannelValue[]>(settings.agentChannels);
   const [tone, setTone] = React.useState(settings.tone);
+  const [replyLength, setReplyLength] = React.useState(settings.replyLength);
+  const [allowAiReply, setAllowAiReply] = React.useState(settings.allowAiReply);
+  const [allowAiInterpretation, setAllowAiInterpretation] = React.useState(
+    settings.allowAiInterpretation,
+  );
   const [handoverOnReview, setHandoverOnReview] = React.useState(
     settings.agentHandoverOnReview,
   );
@@ -65,9 +78,7 @@ export function AiAgentForm({
   const locked = readOnly || !aiAssistAllowed;
 
   function channelAvailable(value: AgentChannelValue) {
-    if (value === "whatsapp") return whatsappEnabled;
-    if (value === "email") return emailConnected;
-    return true;
+    return agentChannelAvailable(value, { whatsappEnabled, emailConnected });
   }
 
   function toggleChannel(value: AgentChannelValue) {
@@ -84,8 +95,9 @@ export function AiAgentForm({
 
     // Caught here so the message is useful, but the server re-checks it: an
     // agent with no channel would silently never run.
-    if (enabled && mode !== "OFF" && channels.length === 0) {
-      setError("Choose at least one channel for the assistant to work on.");
+    const problem = agentSettingsProblem({ enabled, agentMode: mode, agentChannels: channels });
+    if (problem) {
+      setError(problem);
       return;
     }
 
@@ -94,6 +106,9 @@ export function AiAgentForm({
       ...settings,
       enabled,
       tone,
+      replyLength,
+      allowAiReply,
+      allowAiInterpretation,
       agentMode: mode,
       agentChannels: channels,
       agentHandoverOnReview: handoverOnReview,
@@ -103,7 +118,11 @@ export function AiAgentForm({
     setSaving(false);
 
     if (result.ok) {
-      toast({ variant: "success", title: "AI assistant settings saved" });
+      toast({
+        variant: "success",
+        title: "AI assistant settings saved",
+        description: result.warning,
+      });
       router.refresh();
     } else {
       setError(result.error);
@@ -113,7 +132,7 @@ export function AiAgentForm({
   const activeMode = AGENT_MODE_OPTIONS.find((option) => option.value === mode);
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form id="ai-assistant" onSubmit={onSubmit} className="scroll-mt-24 space-y-4">
       <Card>
         <CardHeader>
           <SectionHeader
@@ -245,9 +264,9 @@ export function AiAgentForm({
             htmlFor="agent-tone"
             hint="How the assistant sounds. It stays concise on SMS and WhatsApp either way."
           >
-            <select
+            <Select
               id="agent-tone"
-              className="border-line bg-surface w-full rounded-lg border px-3 py-2 text-sm"
+              
               value={tone}
               disabled={locked || !enabled}
               onChange={(event) =>
@@ -259,8 +278,65 @@ export function AiAgentForm({
                   {option[0].toUpperCase() + option.slice(1)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
+
+          <FormField
+            label={AI_ASSIST_FIELD_COPY.replyLength.label}
+            htmlFor="agent-reply-length"
+            hint={AI_ASSIST_FIELD_COPY.replyLength.hint}
+          >
+            <Select
+              id="agent-reply-length"
+              value={replyLength}
+              disabled={locked || !enabled}
+              onChange={(event) =>
+                setReplyLength(event.target.value as AiBehaviourSettings["replyLength"])
+              }
+            >
+              {AI_REPLY_LENGTH_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {AI_ASSIST_FIELD_COPY.replyLength.options[option]}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          <fieldset className="space-y-2" disabled={locked || !enabled}>
+            <legend className="mb-1 text-sm font-medium">AI help with your automatic messages</legend>
+            <label className="border-line hover:bg-surface-hover flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowAiReply}
+                onChange={(event) => setAllowAiReply(event.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium">
+                  {AI_ASSIST_FIELD_COPY.allowAiReply.label}
+                </span>
+                <span className="text-muted block text-sm">
+                  {AI_ASSIST_FIELD_COPY.allowAiReply.hint}
+                </span>
+              </span>
+            </label>
+            <label className="border-line hover:bg-surface-hover flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowAiInterpretation}
+                onChange={(event) => setAllowAiInterpretation(event.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium">
+                  {AI_ASSIST_FIELD_COPY.allowAiInterpretation.label}
+                </span>
+                <span className="text-muted block text-sm">
+                  {AI_ASSIST_FIELD_COPY.allowAiInterpretation.hint}
+                </span>
+              </span>
+            </label>
+          </fieldset>
 
           <FormField
             label="Extra handover rule"
@@ -271,7 +347,7 @@ export function AiAgentForm({
               id="agent-handover"
               rows={2}
               maxLength={300}
-              className="border-line bg-surface w-full rounded-lg border px-3 py-2 text-sm"
+              
               value={handoverInstruction}
               disabled={locked || !enabled || mode === "OFF"}
               onChange={(event) => setHandoverInstruction(event.target.value)}

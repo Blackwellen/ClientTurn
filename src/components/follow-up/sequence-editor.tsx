@@ -1,5 +1,6 @@
 "use client";
 
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import * as React from "react";
 import {
   ArrowDown,
@@ -176,7 +177,7 @@ export function SequenceEditor({
               }`
             : ""
         }
-        consequence="The step is removed from your draft. Nothing changes for leads until you press Update sequence."
+        consequence="The step is removed from your draft. Nothing changes for leads until you press Publish changes."
         confirmLabel="Remove step"
       />
     </>
@@ -372,7 +373,7 @@ function SequenceRow({
             />
             <Select
               id={`${rowId}-channel`}
-              className="h-9 pr-6 pl-7 text-[12.5px]"
+              className="h-9 pr-2 pl-7 text-[12.5px]"
               value={step.channel}
               disabled={!canEdit}
               onChange={(event) =>
@@ -387,7 +388,7 @@ function SequenceRow({
                 >
                   {CHANNEL_LABEL[channel]}
                   {channel === "whatsapp" && !whatsappEnabled
-                    ? " — Growth plan"
+                    ? ` — ${unlockPlanLabel("whatsapp")}`
                     : ""}
                 </option>
               ))}

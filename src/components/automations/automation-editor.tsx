@@ -1,5 +1,6 @@
 "use client";
 
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import * as React from "react";
 import {
   ArrowDown,
@@ -397,7 +398,7 @@ export function AutomationEditor({
                             >
                               {CHANNEL_LABEL[channel]}
                               {channel === "whatsapp" && !whatsappEnabled
-                                ? " (Growth plan)"
+                                ? ` (${unlockPlanLabel("whatsapp")})`
                                 : ""}
                             </option>
                           ))}

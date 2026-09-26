@@ -147,6 +147,7 @@ const RESOURCES_MENU: MegaColumn[] = [
   {
     heading: "Get answers",
     links: [
+      { label: "Help centre", href: "/help", description: "Step-by-step guides for every part of ClientTurn." },
       { label: "FAQ", href: ANCHORS.faq, description: "The questions people ask before starting." },
       { label: "Results", href: "/results", description: "What ClientTurn measures, end to end." },
       { label: "Contact sales", href: "/contact-sales", description: "Talk to us about a larger rollout." },
@@ -204,6 +205,7 @@ export const FOOTER_RESOURCES: NavLink[] = [
   { label: "How it works", href: "/how-it-works" },
   { label: "Results", href: "/results" },
   { label: "For developers", href: "/developers" },
+  { label: "Help centre", href: "/help" },
   { label: "FAQ", href: ANCHORS.faq },
   { label: "System status", href: "/status" },
 ];
@@ -227,4 +229,5 @@ export const FOOTER_LEGAL: NavLink[] = [
   { label: "Terms", href: "/terms" },
   { label: "Cookie policy", href: "/cookies" },
   { label: "Sub-processors", href: "/sub-processors" },
+  { label: "Privacy request", href: "/privacy-request" },
 ];

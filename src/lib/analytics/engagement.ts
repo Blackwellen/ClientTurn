@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { POSITIVE_MESSAGE_REPLY_CLASSIFICATIONS } from "@/lib/agent/types";
 // The arithmetic lives in the pure module beside the registry; this file is
 // only the shell that counts the inputs.
 import type { EngagementTotals } from "./v4-metrics";
@@ -247,7 +248,7 @@ async function positiveReplyCount(
     .eq("business_id", businessId)
     .eq("direction", "inbound")
     .not(options.subject, "is", null)
-    .in("reply_classification", ["POSITIVE_INTEREST", "NEUTRAL_QUESTION"])
+    .in("reply_classification", [...POSITIVE_MESSAGE_REPLY_CLASSIFICATIONS])
     .gte("created_at", window.from)
     .lt("created_at", window.to);
 

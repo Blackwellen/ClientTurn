@@ -82,8 +82,10 @@ export const DEFAULT_SOCIAL_LIMITS: Record<
     FREE: {
       dailyConnects: 15,
       weeklyConnects: 100,
-      // The restriction most people meet first.
-      monthlyNotes: 5,
+      // The restriction most people meet first. LinkedIn Help a563153: Free
+      // members get personalised notes on 3 invitations a month (evidence
+      // register §3). It was 5 here, which ran two notes past the platform.
+      monthlyNotes: 3,
       dailyMessages: 25,
       monthlyInMail: 0,
     },
@@ -352,4 +354,57 @@ export function marketingGateApplies(input: {
 }): boolean {
   if (input.action === "MESSAGE") return true;
   return input.carriesNote;
+}
+
+/**
+ * Which action "I have sent this" records for a composed draft.
+ *
+ * An invitation note travels *with* a connection request, so sending it is the
+ * invite -- recording it as a message is refused (a message needs an accepted
+ * connection) and left the note stuck in the queue.
+ */
+export function recordActionForDraft(kind: string): "INVITE" | "MESSAGE" {
+  return kind === "INVITE_NOTE" ? "INVITE" : "MESSAGE";
+}
+
+/* --------------------------------------------------------- account tiers */
+
+/** What each subscription is called, and what it changes, for the account form. */
+export const SOCIAL_ACCOUNT_TIER_OPTIONS: {
+  value: SocialAccountTier;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "FREE",
+    label: "LinkedIn Free",
+    hint: "Personal notes on 3 invitations a month, no InMail.",
+  },
+  {
+    value: "PREMIUM",
+    label: "LinkedIn Premium",
+    hint: "Unlimited invitation notes and a small monthly InMail allowance.",
+  },
+  {
+    value: "SALES_NAVIGATOR",
+    label: "LinkedIn Sales Navigator",
+    hint: "50 InMails a month, rolling over to 150.",
+  },
+  {
+    value: "RECRUITER",
+    label: "LinkedIn Recruiter",
+    hint: "Recruiter InMail allowance.",
+  },
+  {
+    value: "BUSINESS_PAGE",
+    label: "Business account",
+    hint: "The business profile or Page your team sends from.",
+  },
+];
+
+/** The subscriptions that exist on a platform, most common first. */
+export function tiersForPlatform(platform: SocialPlatform): SocialAccountTier[] {
+  return (Object.keys(DEFAULT_SOCIAL_LIMITS[platform]) as SocialAccountTier[]).sort(
+    (a, b) => SOCIAL_ACCOUNT_TIERS.indexOf(a) - SOCIAL_ACCOUNT_TIERS.indexOf(b),
+  );
 }

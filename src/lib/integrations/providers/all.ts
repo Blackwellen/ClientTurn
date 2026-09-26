@@ -19,7 +19,6 @@
  * rather than remembering nine lines.
  */
 import "@/lib/integrations/providers/google-ads";
-import "@/lib/integrations/providers/microsoft-ads";
 import "@/lib/integrations/providers/meta-lead-ads";
 import "@/lib/integrations/providers/whatsapp-cloud";
 import "@/lib/integrations/providers/tiktok-ads";
@@ -28,3 +27,5 @@ import "@/lib/integrations/providers/slack";
 import "@/lib/integrations/providers/hubspot";
 import "@/lib/integrations/providers/zoho-crm";
 import "@/lib/integrations/providers/salesforce";
+import "@/lib/integrations/providers/calendly";
+import "@/lib/integrations/providers/google-calendar";

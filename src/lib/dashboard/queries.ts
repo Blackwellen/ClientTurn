@@ -4,6 +4,8 @@ import type { ResolvedRange } from "@/lib/dates";
 import { leadDisplayName, sourceLabel } from "@/lib/leads/types";
 import type { LeadListRow, LeadSourceRef } from "@/lib/leads/types";
 import { getBookingDestination } from "@/lib/bookings/queries";
+import { platformConfigured } from "@/lib/integrations/queries";
+import { rate } from "@/lib/analytics/v4-metrics";
 import {
   attentionKindForReason,
   attentionLabel,
@@ -54,6 +56,9 @@ type MessageRow = {
 function summarise(rows: CohortRow[]): PeriodCounts {
   const leads = rows.length;
   const booked = rows.filter((row) => row.booked_at).length;
+  // The metric registry's rule: an empty denominator has no rate (null, shown
+  // as "—"), never 0%.
+  const booking = rate(booked, leads);
   return {
     leads,
     contacted: rows.filter((row) => row.first_contacted_at).length,
@@ -65,7 +70,7 @@ function summarise(rows: CohortRow[]): PeriodCounts {
     // the KPI value, its sparkline series and its delta ("0.8 pts") all share
     // that unit, and `formatPercent` renders it. It is a self-consistent module
     // convention, not the cross-surface divergence the rate rule exists to stop.
-    bookingRate: leads === 0 ? 0 : (booked / leads) * 100,
+    bookingRate: booking === null ? null : booking * 100,
   };
 }
 
@@ -140,8 +145,9 @@ function buildSeries(rows: CohortRow[], range: ResolvedRange): DashboardSeries {
   for (let index = 0; index < points; index += 1) {
     const leads = series.leads[index];
     // percentage-points: the sparkline series shares the KPI's unit.
-    series.bookingRate[index] =
-      leads === 0 ? 0 : (series.booked[index] / leads) * 100;
+    // A sparkline point is shape, not a figure anyone reads: an empty bucket
+    // draws at the baseline. The KPI value itself is null on an empty period.
+    series.bookingRate[index] = (rate(series.booked[index], leads) ?? 0) * 100;
   }
 
   return series;
@@ -462,7 +468,7 @@ export async function getDashboardData(
       replies: 0,
       qualified: 0,
       booked: 0,
-      conversionRate: 0,
+      conversionRate: null,
     };
     existing.leads += 1;
     if (row.first_replied_at) existing.replies += 1;
@@ -473,8 +479,8 @@ export async function getDashboardData(
   for (const entry of sourceMap.values()) {
     // percentage-points: the source-performance card renders this with
     // `formatPercent`, in the same unit as the rest of the Dashboard.
-    entry.conversionRate =
-      entry.leads === 0 ? 0 : (entry.booked / entry.leads) * 100;
+    const conversion = rate(entry.booked, entry.leads);
+    entry.conversionRate = conversion === null ? null : conversion * 100;
   }
 
   const attentionRows = (attentionResult.data ??
@@ -523,6 +529,20 @@ export async function getDashboardData(
 
 const MESSAGING_PROVIDERS = ["twilio_sms", "twilio_whatsapp", "whatsapp_cloud"];
 
+// Meta was the only lead-form ad source when this widget was first written,
+// so the health strip hardcoded it by name. Google Ads, TikTok and LinkedIn
+// lead-form sources have since shipped, and a workspace running any of those
+// without Meta saw a permanent "Not connected" here regardless of its real
+// lead source being perfectly healthy.
+const LEAD_SOURCE_PROVIDERS = ["meta", "google_ads", "tiktok_ads", "linkedin_ads"];
+
+const LEAD_SOURCE_LABEL: Record<string, string> = {
+  meta: "Meta",
+  google_ads: "Google Ads",
+  tiktok_ads: "TikTok",
+  linkedin_ads: "LinkedIn",
+};
+
 const MESSAGING_CHANNEL_LABEL: Record<string, string> = {
   twilio_sms: "SMS",
   twilio_whatsapp: "WhatsApp",
@@ -532,8 +552,9 @@ const MESSAGING_CHANNEL_LABEL: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   HEALTHY: "Connected",
   TESTING: "Test mode",
-  DEGRADED: "Degraded",
-  ACTION_REQUIRED: "Action required",
+  // Same words as the Connections cards and INTEGRATION_HEALTH.
+  DEGRADED: "Needs attention",
+  ACTION_REQUIRED: "Reconnect required",
   DISCONNECTED: "Not connected",
 };
 
@@ -600,7 +621,7 @@ export async function getHealthStripData(
         .from("integrations")
         .select("id, provider_type, status")
         .eq("business_id", businessId)
-        .in("provider_type", ["meta", ...MESSAGING_PROVIDERS]),
+        .in("provider_type", [...LEAD_SOURCE_PROVIDERS, ...MESSAGING_PROVIDERS]),
       supabase
         .from("integration_objects")
         .select("object_type")
@@ -613,6 +634,15 @@ export async function getHealthStripData(
 
   const integrations = integrationsResult.data ?? [];
   const meta = integrations.find((row) => row.provider_type === "meta");
+  const leadSourceRows = integrations.filter((row) =>
+    LEAD_SOURCE_PROVIDERS.includes(row.provider_type),
+  );
+  // Meta gets top billing when it's connected, since only it has the
+  // pages/forms detail below; otherwise whichever lead source connected
+  // first is as good a "primary" as any -- the detail line lists every
+  // healthy one regardless.
+  const primaryLeadSource =
+    leadSourceRows.find((row) => row.provider_type === "meta") ?? leadSourceRows[0];
   const messagingRows = integrations.filter((row) =>
     MESSAGING_PROVIDERS.includes(row.provider_type),
   );
@@ -622,38 +652,68 @@ export async function getHealthStripData(
   const pages = objects.filter((row) => row.object_type === "meta_page").length;
   const forms = objects.filter((row) => row.object_type === "meta_form").length;
 
-  // Every secondary line states what is actually configured, never a guess.
-  const channels = [
+  const leadSourceNames = [
     ...new Set(
-      messagingRows
+      leadSourceRows
         .filter((row) => toStripStatus(row.status) !== "error")
-        .map((row) => MESSAGING_CHANNEL_LABEL[row.provider_type])
+        .map((row) => LEAD_SOURCE_LABEL[row.provider_type])
         .filter(Boolean),
     ),
   ];
 
+  // Twilio SMS/WhatsApp are platform-run (one shared account for every
+  // workspace, see catalog.ts's `connection: "platform"` on those entries) --
+  // there is no per-workspace `integrations` row to find for them, ever. This
+  // widget used to look for one anyway, so a fully working, "Healthy" Twilio
+  // connection (visible on the Connections page) still reported "No sending
+  // channel configured" here. `platformConfigured` is the same check that
+  // page uses to decide the same fact.
+  const platformChannels: string[] = [];
+  if (platformConfigured("twilio_sms")) platformChannels.push("SMS");
+  if (platformConfigured("twilio_whatsapp")) platformChannels.push("WhatsApp");
+
+  // Every secondary line states what is actually configured, never a guess.
+  const channels = [
+    ...new Set([
+      ...platformChannels,
+      ...messagingRows
+        .filter((row) => toStripStatus(row.status) !== "error")
+        .map((row) => MESSAGING_CHANNEL_LABEL[row.provider_type])
+        .filter(Boolean),
+    ]),
+  ];
+  const messagingHealthy = channels.length > 0;
+
   return [
     {
-      key: "meta",
-      label: "Meta connection",
-      status: meta ? toStripStatus(meta.status) : "error",
-      statusLabel: meta
-        ? (STATUS_LABEL[meta.status] ?? meta.status)
+      key: "lead_source",
+      label: "Lead source",
+      status: primaryLeadSource ? toStripStatus(primaryLeadSource.status) : "error",
+      statusLabel: primaryLeadSource
+        ? (STATUS_LABEL[primaryLeadSource.status] ?? primaryLeadSource.status)
         : "Not connected",
       detail: meta
         ? pages + forms === 0
           ? "No pages or forms selected"
           : `${countLabel(pages, "page")} · ${countLabel(forms, "form")}`
-        : "Connect Meta to receive lead ads",
+        : leadSourceNames.length > 0
+          ? leadSourceNames.join(" · ")
+          : "Connect a lead source to receive leads",
       href: "/app/settings?section=connections",
     },
     {
       key: "messaging",
       label: "Messaging",
-      status: messaging ? toStripStatus(messaging.status) : "error",
+      status: messaging
+        ? toStripStatus(messaging.status)
+        : messagingHealthy
+          ? "healthy"
+          : "error",
       statusLabel: messaging
         ? (STATUS_LABEL[messaging.status] ?? messaging.status)
-        : "Not connected",
+        : messagingHealthy
+          ? "Connected"
+          : "Not connected",
       detail:
         channels.length > 0
           ? channels.join(" · ")

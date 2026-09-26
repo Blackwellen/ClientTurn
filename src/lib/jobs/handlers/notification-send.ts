@@ -14,7 +14,82 @@ type Resolved = {
   title: string;
   body: string | null;
   linkUrl: string | null;
+  /** Overrides `serverEnv.resend.from` for this kind only. */
+  from?: string;
+  /**
+   * Renders a branded HTML alternative for this kind, given the absolute
+   * link the plain-text body also carries. Kinds without one send as
+   * plain text, same as before.
+   */
+  html?: (link: string) => string;
 };
+
+const ZAPIER_INVITE_URL =
+  "https://zapier.com/developer/public-invite/246145/e2dca89db7e75b1920ba68ac73c4dbfb/";
+
+/**
+ * A minimal, table-based HTML shell in the ClientTurn palette (midnight
+ * #0B1020, lime #B7F34A, cloud #F7F9FC — see CLAUDE.md).
+ *
+ * Table layout and inline styles only: email clients strip <style> tags and
+ * ignore flexbox/grid, so anything else renders inconsistently across
+ * Outlook, Gmail and Apple Mail.
+ */
+function brandedEmailHtml(input: {
+  heading: string;
+  paragraphs: string[];
+  ctaLabel: string;
+  ctaUrl: string;
+  secondaryLabel?: string;
+  secondaryUrl?: string;
+}) {
+  const paragraphHtml = input.paragraphs
+    .map(
+      (p) =>
+        `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#0B1020;">${p}</p>`,
+    )
+    .join("");
+
+  const secondary = input.secondaryUrl
+    ? `<p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#5b6472;">
+         <a href="${input.secondaryUrl}" style="color:#5b6472;">${input.secondaryLabel}</a>
+       </p>`
+    : "";
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background-color:#F7F9FC;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F7F9FC;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;max-width:480px;width:100%;">
+            <tr>
+              <td style="background-color:#0B1020;padding:24px 32px;">
+                <img src="${serverEnv.siteUrl}/white_background_logo.png" alt="Client Turn" height="28" style="display:block;height:28px;width:auto;border:0;" />
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#0B1020;">${input.heading}</h1>
+                ${paragraphHtml}
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;">
+                  <tr>
+                    <td style="border-radius:8px;background-color:#B7F34A;">
+                      <a href="${input.ctaUrl}" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#0B1020;text-decoration:none;">${input.ctaLabel}</a>
+                    </td>
+                  </tr>
+                </table>
+                ${secondary}
+              </td>
+            </tr>
+          </table>
+          <p style="margin:24px 0 0;font-size:12px;color:#9aa3b2;">Client Turn · ${serverEnv.siteUrl.replace(/^https?:\/\//, "")}</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
 
 const KINDS: Record<string, Resolved> = {
   onboarding_resend: {
@@ -22,6 +97,28 @@ const KINDS: Record<string, Resolved> = {
     title: "Finish setting up your Client Turn workspace",
     body: "Your workspace is ready. Complete setup to start following up on new leads.",
     linkUrl: "/onboarding",
+  },
+  developer_integrations_invite: {
+    type: "billing",
+    title: "Connect Client Turn to 6,000+ apps with Zapier",
+    body:
+      "Now that you're up and running, you can wire Client Turn into the rest of your " +
+      "stack — post new leads to Slack, log them to a spreadsheet, or look up and update " +
+      "a lead from any other app.\n\n" +
+      `Connect Client Turn on Zapier: ${ZAPIER_INVITE_URL}`,
+    linkUrl: "/app/settings/connections",
+    from: "Client Turn <admin@clientturn.com>",
+    html: () =>
+      brandedEmailHtml({
+        heading: "Connect Client Turn to 6,000+ apps",
+        paragraphs: [
+          "Now that you're up and running, you can wire Client Turn into the rest of your stack — post new leads to Slack, log them to a spreadsheet, or look up and update a lead from any other app.",
+        ],
+        ctaLabel: "Connect on Zapier",
+        ctaUrl: ZAPIER_INVITE_URL,
+        secondaryLabel: "Or manage your connections in Client Turn",
+        secondaryUrl: `${serverEnv.siteUrl}/app/settings/connections`,
+      }),
   },
 };
 
@@ -88,7 +185,13 @@ async function recipients(businessId: string, userId: string | null) {
   return data ?? [];
 }
 
-async function sendEmail(to: string, subject: string, text: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  from?: string,
+  html?: string,
+) {
   const key = serverEnv.resend.apiKey;
   if (!key) return;
 
@@ -99,15 +202,22 @@ async function sendEmail(to: string, subject: string, text: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: serverEnv.resend.from,
+      from: from ?? serverEnv.resend.from,
       to: [to],
       subject,
       text,
+      ...(html ? { html } : {}),
     }),
   });
 
-  if (!response.ok && response.status >= 500) {
-    throw new Error(`Resend responded with ${response.status}.`);
+  if (!response.ok) {
+    if (response.status >= 500) {
+      throw new Error(`Resend responded with ${response.status}.`);
+    }
+    const detail = await response.text().catch(() => "");
+    console.error(
+      `[notification-send] Resend rejected a send with ${response.status}: ${detail.slice(0, 500)}`,
+    );
   }
 }
 
@@ -151,9 +261,10 @@ export async function handleNotificationSend(job: ClaimedJob) {
     ? `${serverEnv.siteUrl}${resolved.linkUrl}`
     : serverEnv.siteUrl;
   const text = `${resolved.body ?? resolved.title}\n\n${link}`;
+  const html = resolved.html?.(link);
 
   for (const person of people) {
     if (!person.email) continue;
-    await sendEmail(person.email, resolved.title, text);
+    await sendEmail(person.email, resolved.title, text, resolved.from, html);
   }
 }

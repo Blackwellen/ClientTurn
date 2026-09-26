@@ -874,18 +874,53 @@ export async function approveProspectAction(
 }
 
 /**
+ * The relationship types a reviewer may assert when promoting a prospect that
+ * has no recorded reply (a connector push, a manual add, an import). Mirrors
+ * the Add Lead wizard's card set (`RELATIONSHIP_CHOICES` in
+ * leads/add-lead/types.ts) plus `IMPORTED`, minus the two values that would
+ * be a lie or a no-op here: `FOUND_BY_US` (the promotion routine already
+ * refuses this — it's the one answer that must never describe a Lead) and
+ * `EXPLICIT_MARKETING_CONSENT` (that claim needs the evidence field the add-
+ * lead wizard captures; this action has nowhere to record it, so asserting it
+ * here would be an unevidenced compliance claim).
+ */
+export const PROMOTION_RELATIONSHIP_CHOICES = [
+  "THEY_CONTACTED_US",
+  "EXISTING_CUSTOMER",
+  "REFERRAL",
+  "REQUESTED_INFORMATION",
+  "EXISTING_BUSINESS_RELATIONSHIP",
+  "IMPORTED",
+  "OTHER",
+] as const;
+
+export type PromotionRelationshipChoice = (typeof PROMOTION_RELATIONSHIP_CHOICES)[number];
+
+/**
  * Prospect → Lead promotion (V4 §11.19).
  *
  * A cold sourced record becomes a Lead only when a person says the
  * relationship has changed. Provenance travels with it: the run, the session,
  * the score and the eligibility history all stay attached, so a promoted lead
  * can still answer "where did this come from".
+ *
+ * `relationshipType` is optional and only meaningful for a prospect with no
+ * recorded reply — the database routine ignores it and always records
+ * `THEY_CONTACTED_US` when a reply exists, because that is an observed fact,
+ * not something this action gets to override.
  */
 export async function promoteProspectToLeadAction(
   prospectId: unknown,
+  relationshipType?: unknown,
 ): Promise<ActionResult<{ leadId: string }>> {
   const id = z.uuid().safeParse(prospectId);
   if (!id.success) return fail("That prospect could not be found.");
+
+  const relationship = z
+    .enum(PROMOTION_RELATIONSHIP_CHOICES)
+    .optional()
+    .safeParse(relationshipType);
+  if (!relationship.success) return fail("Choose a valid relationship type.");
 
   const access = await requireFindLeadsAdmin();
   if (!access.ok) return access;
@@ -912,6 +947,7 @@ export async function promoteProspectToLeadAction(
     p_business_id: access.workspace.businessId,
     p_prospect_id: id.data,
     p_user_id: access.workspace.userId,
+    p_relationship_type: relationship.data ?? undefined,
   });
 
   if (error || !leadId) {
@@ -953,6 +989,7 @@ export async function promoteProspectToLeadAction(
       sourceRunId: prospect.source_run_id,
       score: prospect.score,
       grade: prospect.grade,
+      relationshipType: relationship.data ?? null,
     },
   });
 

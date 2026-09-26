@@ -1,6 +1,11 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DEFAULT_AI_BEHAVIOUR, type AiBehaviourSettings } from "./types";
+import {
+  DEFAULT_AI_BEHAVIOUR,
+  EMAIL_MAILBOX_PROVIDER_TYPE,
+  isMailboxUsable,
+  type AiBehaviourSettings,
+} from "./types";
 
 export async function getAiBehaviour(businessId: string): Promise<AiBehaviourSettings> {
   const supabase = createAdminClient();
@@ -58,8 +63,8 @@ export async function isEmailChannelConnected(businessId: string): Promise<boole
     .from("integrations")
     .select("status")
     .eq("business_id", businessId)
-    .eq("provider_type", "smtp_mailbox")
+    .eq("provider_type", EMAIL_MAILBOX_PROVIDER_TYPE)
     .maybeSingle();
 
-  return Boolean(data) && data?.status !== "DISCONNECTED" && data?.status !== "ACTION_REQUIRED";
+  return isMailboxUsable(data);
 }

@@ -16,6 +16,14 @@ import "server-only";
 import "./operations/leads";
 import "./operations/agents";
 import "./operations/workspace";
+import "./operations/data-rights";
+import "./operations/opportunities";
+import "./operations/revenue";
+import "./operations/channels";
+import "./operations/selling";
+import "./operations/experiments";
+import "./operations/team";
+import "./operations/prospect-imports";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

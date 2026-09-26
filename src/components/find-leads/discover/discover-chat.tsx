@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  Bed,
+  Briefcase,
   Building2,
   CheckCircle2,
   Sparkles,
@@ -36,31 +36,31 @@ const PROMPTS: {
 }[] = [
   {
     icon: Building2,
-    title: "Find property managers",
-    subtitle: "in Bournemouth",
+    title: "Find growing agencies",
+    subtitle: "in Manchester",
     prompt:
-      "Find property managers within 40 miles of Bournemouth who manage multiple properties and may need a commercial roofing contractor.",
+      "Find digital marketing agencies within 30 miles of Manchester with 10 to 50 staff that have been hiring in the last six months.",
   },
   {
     icon: Building2,
-    title: "Look for commercial buildings",
-    subtitle: "with flat roofs",
+    title: "Look for SaaS companies",
+    subtitle: "post Series A",
     prompt:
-      "Find commercial buildings with flat roofs in Dorset and Hampshire where the owner or facilities manager may need roof maintenance.",
+      "Find UK B2B SaaS companies with 20 to 200 employees that raised funding in the last year and sell to mid-market businesses.",
   },
   {
     icon: Users,
-    title: "Find facilities managers",
-    subtitle: "in Hampshire",
+    title: "Find ecommerce brands",
+    subtitle: "on Shopify",
     prompt:
-      "Find facilities managers at companies in Hampshire responsible for building maintenance and repairs.",
+      "Find UK ecommerce brands selling direct to consumers online with an in-house marketing team, and the head of ecommerce or marketing at each.",
   },
   {
-    icon: Bed,
-    title: "Show me hotels",
-    subtitle: "in South England",
+    icon: Briefcase,
+    title: "Show me professional services",
+    subtitle: "in London",
     prompt:
-      "Find hotels and hospitality businesses across South England that own their buildings and may need roofing work.",
+      "Find accountancy and law firms in London with 10 to 100 staff, and the managing partner or operations director at each.",
   },
 ];
 

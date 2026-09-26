@@ -206,6 +206,8 @@ export type DataControls = {
   socialAutoPromoteOnReply: boolean;
   /** Days a pending invite may sit before withdrawal. Null disables it. */
   socialWithdrawAfterDays: number | null;
+  /** Days before an unanswered invite hands the prospect to email. Null disables it. */
+  socialSkipToEmailAfterDays: number | null;
   socialFollowUpGapHours: number;
   socialMaxFollowUps: number;
 
@@ -244,7 +246,9 @@ export const EMPTY_DATA_CONTROLS: DataControls = {
   // `outreach/social-sequence.ts`.
   socialAutonomousSending: false,
   socialAutoPromoteOnReply: false,
-  socialWithdrawAfterDays: 21,
+  // The column defaults (0093): 30 and 7.
+  socialWithdrawAfterDays: 30,
+  socialSkipToEmailAfterDays: 7,
   socialFollowUpGapHours: 96,
   socialMaxFollowUps: 2,
   // The behaviour the product had before the setting existed, now named.

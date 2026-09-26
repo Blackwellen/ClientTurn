@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
-import { STEP_META, type OnboardingStep } from "@/lib/onboarding/steps";
+import { ONBOARDING_STEPS, STEP_META, type OnboardingStep } from "@/lib/onboarding/steps";
 import { OButton } from "./ui";
 import { WizardProgress, WizardProgressMobile } from "./wizard-progress";
 
@@ -35,7 +35,7 @@ function HandwrittenNote({ step }: { step: OnboardingStep }) {
           "You're almost there!"
         ) : (
           <>
-            5 simple steps
+            {ONBOARDING_STEPS.length} simple steps
             <br />
             to more business.
           </>
@@ -91,7 +91,7 @@ export function OnboardingShell({
       >
         <div className="mb-5">
           <p className="text-[12.5px] font-medium tracking-wide text-[#7a8698] uppercase">
-            Step {meta.number} of 5
+            Step {meta.number} of {ONBOARDING_STEPS.length}
           </p>
           <h2 className="mt-1 text-[26px] font-bold tracking-[-0.01em] text-[#f8fafc] sm:text-[32px]">
             {meta.title}

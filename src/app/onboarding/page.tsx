@@ -9,6 +9,8 @@ import { activatePendingInvites } from "@/lib/auth/invites";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { onboardingIncomplete } from "@/lib/app/health";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { needsCheckout } from "@/lib/billing/lifecycle";
 import { isOnboardingStep, type OnboardingStep } from "@/lib/onboarding/steps";
 import { getActivationChecks } from "@/lib/onboarding/provision";
 import { getTestLeadOutcome } from "@/lib/onboarding/test-lead";
@@ -52,9 +54,13 @@ export default async function OnboardingPage() {
   }
   if (!onboardingIncomplete(workspace)) redirect("/app");
 
+  // Card and terms before setup (8.10): onboarding follows a confirmed trial.
+  const entitlements = await getEntitlements(workspace.businessId);
+  if (needsCheckout(entitlements.state)) redirect("/start-trial");
+
   const step: OnboardingStep = isOnboardingStep(workspace.onboardingStep)
     ? workspace.onboardingStep
-    : "business";
+    : "copilot";
 
   return <Wizard workspace={workspace} step={step} />;
 }

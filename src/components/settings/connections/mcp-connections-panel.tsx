@@ -37,23 +37,24 @@ import type { McpConnection, McpPendingApproval } from "@/lib/mcp/queries";
 
 type ScopeOption = { scope: string; label: string };
 
+type IssuedKey = { name: string; apiKey: string };
+
 export function McpConnectionsPanel({
   connections,
   approvals,
   scopeOptions,
   canManage,
+  serverUrl,
 }: {
   connections: McpConnection[];
   approvals: McpPendingApproval[];
   scopeOptions: ScopeOption[];
   canManage: boolean;
+  /** The MCP endpoint an assistant is pointed at. */
+  serverUrl: string;
 }) {
   const [creating, setCreating] = React.useState(false);
-  const [issued, setIssued] = React.useState<null | {
-    name: string;
-    oauthClientId: string;
-    clientSecret: string;
-  }>(null);
+  const [issued, setIssued] = React.useState<IssuedKey | null>(null);
 
   return (
     <section
@@ -119,7 +120,9 @@ export function McpConnectionsPanel({
         />
       )}
 
-      {issued && <SecretDialog issued={issued} onClose={() => setIssued(null)} />}
+      {issued && (
+        <SecretDialog issued={issued} serverUrl={serverUrl} onClose={() => setIssued(null)} />
+      )}
     </section>
   );
 }
@@ -133,7 +136,7 @@ function ConnectionRow({
 }: {
   connection: McpConnection;
   canManage: boolean;
-  onIssued: (value: { name: string; oauthClientId: string; clientSecret: string }) => void;
+  onIssued: (value: IssuedKey) => void;
 }) {
   const [pending, setPending] = React.useState<null | "token" | "revoke">(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -150,11 +153,7 @@ function ConnectionRow({
       setError(result.error);
       return;
     }
-    onIssued({
-      name: connection.name,
-      oauthClientId: connection.oauthClientId,
-      clientSecret: result.data.accessToken,
-    });
+    onIssued({ name: connection.name, apiKey: result.data.apiKey });
   }
 
   async function revoke() {
@@ -241,7 +240,7 @@ function ConnectionRow({
               onClick={issueToken}
             >
               <KeyRound aria-hidden className="size-3.5" />
-              New key
+              {connection.activeTokens === 0 ? "Issue key" : "Replace key"}
             </Button>
             <Button
               size="xs"
@@ -261,7 +260,7 @@ function ConnectionRow({
         open={confirmRevoke}
         onClose={() => setConfirmRevoke(false)}
         title={`Revoke ${connection.name}?`}
-        description="Every key this connection holds stops working immediately. The assistant using it will lose access straight away, and this cannot be undone — you would need to create a new connection and reconfigure it."
+        description="This connection's key stops working immediately. The assistant using it will lose access straight away, and this cannot be undone — you would need to create a new connection and reconfigure it."
         size="sm"
         footer={
           <>
@@ -370,11 +369,7 @@ function CreateConnectionDialog({
 }: {
   scopeOptions: ScopeOption[];
   onClose: () => void;
-  onCreated: (value: {
-    name: string;
-    oauthClientId: string;
-    clientSecret: string;
-  }) => void;
+  onCreated: (value: IssuedKey) => void;
 }) {
   const [name, setName] = React.useState("");
   // Nothing is pre-selected. A default set of permissions is a decision made on
@@ -400,11 +395,15 @@ function CreateConnectionDialog({
       setError(result.error);
       return;
     }
-    onCreated({
-      name,
-      oauthClientId: result.data.oauthClientId,
-      clientSecret: result.data.clientSecret,
-    });
+    if (!result.data.apiKey) {
+      // The connection exists; only the key failed. "Issue key" on its row
+      // issues one, so say that rather than pretend it worked.
+      setError(
+        "The connection was created but its key could not be issued. Use Issue key on the connection to issue one.",
+      );
+      return;
+    }
+    onCreated({ name, apiKey: result.data.apiKey });
   }
 
   return (
@@ -481,18 +480,35 @@ function CreateConnectionDialog({
 
 function SecretDialog({
   issued,
+  serverUrl,
   onClose,
 }: {
-  issued: { name: string; oauthClientId: string; clientSecret: string };
+  issued: IssuedKey;
+  serverUrl: string;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = React.useState<null | "key" | "config">(null);
 
-  async function copy() {
+  // The shape Claude Desktop, Cursor and most MCP clients accept for a remote
+  // server with a static header. The key is the bearer token, as is.
+  const config = JSON.stringify(
+    {
+      mcpServers: {
+        clientturn: {
+          url: serverUrl,
+          headers: { Authorization: `Bearer ${issued.apiKey}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  async function copy(what: "key" | "config") {
     try {
-      await navigator.clipboard.writeText(issued.clientSecret);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(what === "key" ? issued.apiKey : config);
+      setCopied(what);
+      window.setTimeout(() => setCopied(null), 2000);
     } catch {
       // Clipboard access can be refused by the browser. The value is on screen
       // and selectable, so there is nothing to recover from.
@@ -504,39 +520,57 @@ function SecretDialog({
       open
       onClose={onClose}
       title="Copy this key now"
-      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again — if you lose it, issue a new one."
+      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again — if you lose it, replace the key on the connection."
       footer={<Button onClick={onClose}>I have copied it</Button>}
     >
       <div className="space-y-3">
         <div>
           <span className="text-[12px] font-medium text-content-secondary">
-            Client ID
+            MCP server URL
           </span>
           <code className="mt-1 block overflow-x-auto rounded-md border border-line bg-surface-sunken px-2.5 py-2 font-mono text-[11.5px] text-content">
-            {issued.oauthClientId}
+            {serverUrl}
           </code>
         </div>
 
         <div>
-          <span className="text-[12px] font-medium text-content-secondary">Key</span>
+          <span className="text-[12px] font-medium text-content-secondary">
+            Key (sent as <span className="font-mono">Authorization: Bearer</span>)
+          </span>
           <div className="mt-1 flex items-start gap-1.5">
             <code className="block flex-1 overflow-x-auto rounded-md border border-line bg-surface-sunken px-2.5 py-2 font-mono text-[11.5px] text-content">
-              {issued.clientSecret}
+              {issued.apiKey}
             </code>
-            <Button size="sm" variant="secondary" onClick={copy}>
-              {copied ? (
+            <Button size="sm" variant="secondary" onClick={() => copy("key")}>
+              {copied === "key" ? (
                 <Check aria-hidden className="size-3.5" />
               ) : (
                 <Copy aria-hidden className="size-3.5" />
               )}
-              {copied ? "Copied" : "Copy"}
+              {copied === "key" ? "Copied" : "Copy"}
             </Button>
           </div>
         </div>
 
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] font-medium text-content-secondary">
+              Client configuration
+            </span>
+            <Button size="xs" variant="ghost" onClick={() => copy("config")}>
+              {copied === "config" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="mt-1 overflow-x-auto rounded-md border border-line bg-surface-sunken px-2.5 py-2 font-mono text-[11px] leading-relaxed text-content">
+            {config}
+          </pre>
+        </div>
+
         <p className="text-[12px] text-content-muted">
-          Treat this like a password. Anyone holding it can act on this workspace
-          with the permissions you granted, until you revoke the connection.
+          Treat this like a password. It does not expire on its own: anyone
+          holding it can act on this workspace with the permissions you granted
+          until you replace the key or revoke the connection. It also appears
+          under API keys, where it can be revoked too.
         </p>
       </div>
     </Modal>

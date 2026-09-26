@@ -12,6 +12,8 @@ import { serviceOperation, runOperation } from "@/lib/services";
 import { handlerSchema } from "@/lib/services/runtime";
 import { toolInputSchema } from "@/lib/services/json-schema";
 import { operationsForCaller } from "@/lib/services/registry";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { boundKeyAllowed } from "./connection-key";
 
 /**
  * The MCP gateway (V4 §88).
@@ -78,10 +80,28 @@ export async function authenticate(
     const resolution = await authenticateApiKey(token, requestIp);
     if (!resolution.ok) return null;
 
+    // A key issued from an assistant connection is bound to it. The call is
+    // attributed to that connection, and refused if the connection has been
+    // suspended or revoked -- even if revoking its key row was missed.
+    const binding = await boundConnection(resolution.context.keyId, resolution.context.keyName);
+    if (!boundKeyAllowed(binding.status)) return null;
+
     await touchApiKey(resolution.context.keyId, requestIp);
 
+    if (binding.clientId) {
+      const db = createAdminClient();
+      await db
+        .from("mcp_clients")
+        .update({ last_used_at: new Date().toISOString() })
+        .eq("id", binding.clientId)
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    }
+
     return {
-      clientId: null,
+      clientId: binding.clientId,
       apiKeyId: resolution.context.keyId,
       businessId: resolution.context.businessId,
       userId: resolution.context.userId,
@@ -135,6 +155,46 @@ export async function authenticate(
     userRole: membership.role,
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
   };
+}
+
+/**
+ * The connection a key was issued for, if any. `status` is undefined for an
+ * unbound key, the connection's status for a bound one, and null when the
+ * binding points at a connection that no longer exists.
+ */
+async function boundConnection(
+  keyId: string,
+  keyName: string,
+): Promise<{ clientId: string | null; status: string | null | undefined }> {
+  const db = createAdminClient();
+
+  let clientId: string | null = null;
+  const { data, error } = await db
+    .from("api_keys")
+    .select("mcp_client_id" as never)
+    .eq("id", keyId)
+    .maybeSingle();
+  if (!error) {
+    clientId = (data as { mcp_client_id: string | null } | null)?.mcp_client_id ?? null;
+  } else if (!isSchemaLag(error)) {
+    // Could not tell whether the key is bound. Refuse rather than guess.
+    return { clientId: null, status: null };
+  }
+
+  // Keys issued before 0133 carry the binding in their name.
+  if (!clientId) {
+    const tagged = /\[mcp:([0-9a-f-]{36})\]$/i.exec(keyName);
+    clientId = tagged ? tagged[1] : null;
+  }
+  if (!clientId) return { clientId: null, status: undefined };
+
+  const { data: client, error: clientError } = await db
+    .from("mcp_clients")
+    .select("status")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (clientError) return { clientId, status: null };
+  return { clientId, status: client?.status ?? null };
 }
 
 /**

@@ -62,6 +62,7 @@ function input(overrides: Partial<PolicyInput> = {}): PolicyInput {
     withinMonthlyCap: true,
     withinBudget: true,
     localTime: { hour: 10, minute: 0 },
+    withinWhatsAppWindow: false,
     pack: UK_PACK,
     ...overrides,
   };
@@ -237,17 +238,35 @@ test("quiet hours apply to SMS but not to email", () => {
 
 /* -------------------------------------------------------------- WhatsApp */
 
-test("WhatsApp requires an approved template even when permitted", () => {
+test("WhatsApp outside the service window requires an approved template", () => {
   const result = canSend(
     input({
       campaignType: "WARM",
       channel: "WHATSAPP",
       destination: "+447700900000",
       relationshipType: "EXISTING_CUSTOMER",
+      withinWhatsAppWindow: false,
+      // Meta requires an explicit WhatsApp opt-in to start a conversation;
+      // without one the engine asks for consent first (tested separately).
+      whatsAppOptIn: true,
     }),
   );
   assert.equal(result.outcome, "REQUIRE_TEMPLATE");
   assert.ok(result.requirements?.includes("APPROVED_TEMPLATE"));
+});
+
+test("WhatsApp inside the service window sends free text like any other channel", () => {
+  const result = canSend(
+    input({
+      campaignType: "WARM",
+      channel: "WHATSAPP",
+      destination: "+447700900000",
+      relationshipType: "EXISTING_CUSTOMER",
+      withinWhatsAppWindow: true,
+    }),
+  );
+  assert.equal(result.outcome, "ALLOWED");
+  assert.ok(!result.requirements?.includes("APPROVED_TEMPLATE"));
 });
 
 /* ---------------------------------------------------- fail-closed packs */

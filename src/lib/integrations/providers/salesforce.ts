@@ -1,4 +1,5 @@
 import "server-only";
+import { crmCompanyField } from "@/lib/integrations/crm-pull/plan";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -7,7 +8,24 @@ import {
   type TokenResponse,
 } from "@/lib/integrations/oauth";
 import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
-import { registerCrmProvider, type CrmLeadInput } from "@/lib/integrations/providers/crm-registry";
+import {
+  CrmPartialPushError,
+  registerCrmProvider,
+  type CrmEraseResult,
+  type CrmLeadInput,
+  type CrmNoteInput,
+  type CrmOpportunity,
+} from "@/lib/integrations/providers/crm-registry";
+import {
+  salesforceCloseDate,
+  salesforceStageName,
+  type SalesforceStage,
+} from "@/lib/opportunities/stages";
+import {
+  soqlDateTime,
+  type CrmPullPage,
+  type CrmPulledRecord,
+} from "@/lib/integrations/crm-pull/plan";
 
 /**
  * Salesforce — CRM push destination via OAuth2 (Lead object, REST API).
@@ -27,13 +45,13 @@ import { registerCrmProvider, type CrmLeadInput } from "@/lib/integrations/provi
  * sandboxes would need a second registered Connected App and a picker in the
  * connect UI, deferred until a customer actually needs it.
  *
- * KNOWN LIMITATION — no Opportunity push: unlike HubSpot's Deal object,
- * Salesforce Opportunities require a `StageName` value drawn from each org's
- * own customized sales-stage picklist. There is no value we could guess that
- * is safe across every customer's org — an unrecognized StageName fails the
- * whole create. Deal-equivalent context (service, average value) is folded
- * into the Lead's Description field instead, the same choice already made
- * for Zoho CRM here for the same reason.
+ * Opportunity push (Phase 3.3, decision Q3): Salesforce Opportunities require a
+ * `StageName` from each org's own customised picklist, so nothing is guessed --
+ * the org's active `OpportunityStage` rows are read and the value chosen from
+ * them (stages.ts `salesforceStageName`: first won stage for WON, first
+ * closed-not-won for LOST, positional/label match for open stages). An org
+ * with no matching stage fails the Opportunity write only; the Lead is kept.
+ * Service context is still folded into the Lead's Description as before.
  *
  * Salesforce access tokens carry no fixed `expires_in` in the token response
  * (session lifetime is governed by the org's session-timeout policy, not a
@@ -166,7 +184,7 @@ async function sfFetch(
   path: string,
   init: { method: string; body?: unknown },
 ): Promise<{ ok: boolean; status: number; json: unknown }> {
-  let { accessToken, refreshToken, instanceUrl } = await getStoredCredential(integrationId);
+  const { accessToken, refreshToken, instanceUrl } = await getStoredCredential(integrationId);
 
   const call = (token: string) =>
     fetch(`${instanceUrl}${path}`, {
@@ -218,13 +236,10 @@ async function findLeadIdByEmail(
 function leadFields(lead: CrmLeadInput): Record<string, string> {
   const fields: Record<string, string> = {
     LastName: lead.last_name || lead.first_name || "Unknown",
-    // Mandatory on the standard Lead object. There is no reliable source for
-    // a real company name at this point in the funnel (B2B leads name their
-    // own company on the qualification form, which this adapter does not
-    // currently receive), so a fixed placeholder is used rather than leaving
-    // the create call failing on a missing-required-field error for every
-    // single lead.
-    Company: "Client Turn lead",
+    // Mandatory on the standard Lead object: the lead's own company, or an
+    // explicit "Not provided" (never a made-up value) so the create does not
+    // fail on a missing required field.
+    Company: crmCompanyField(lead.company_name),
     LeadSource: "Client Turn",
   };
   if (lead.first_name) fields.FirstName = lead.first_name;
@@ -237,47 +252,33 @@ function leadFields(lead: CrmLeadInput): Record<string, string> {
   return fields;
 }
 
-async function push(params: {
-  integrationId: string;
-  lead: CrmLeadInput;
-}): Promise<{ externalContactId: string; externalDealId?: string | null }> {
-  const oauthConfig = config();
-  if (!oauthConfig) {
-    throw new Error("Salesforce is not configured on this platform.");
-  }
-
-  const admin = createAdminClient();
-  const { data: existingRecord } = await admin
-    .from("crm_push_records")
-    .select("external_contact_id")
-    .eq("business_id", params.lead.business_id)
-    .eq("lead_id", params.lead.id)
-    .eq("provider_type", "salesforce")
-    .maybeSingle();
-
-  const fields = leadFields(params.lead);
+async function upsertLead(
+  integrationId: string,
+  oauthConfig: OAuthConfig,
+  lead: CrmLeadInput,
+  previousId: string | null,
+): Promise<string> {
+  const fields = leadFields(lead);
 
   const existingId =
-    existingRecord?.external_contact_id ??
-    (params.lead.email
-      ? await findLeadIdByEmail(params.integrationId, oauthConfig, params.lead.email)
-      : null);
+    previousId ??
+    (lead.email ? await findLeadIdByEmail(integrationId, oauthConfig, lead.email) : null);
 
   if (existingId) {
     const updated = await sfFetch(
-      params.integrationId,
+      integrationId,
       oauthConfig,
       `/services/data/${API_VERSION}/sobjects/Lead/${existingId}`,
       { method: "PATCH", body: fields },
     );
-    if (updated.ok) return { externalContactId: existingId };
+    if (updated.ok) return existingId;
     // The previously recorded Lead may have been deleted or converted in
     // Salesforce since; fall through and create a new one rather than
     // failing the push outright.
   }
 
   const created = await sfFetch(
-    params.integrationId,
+    integrationId,
     oauthConfig,
     `/services/data/${API_VERSION}/sobjects/Lead`,
     { method: "POST", body: fields },
@@ -291,8 +292,324 @@ async function push(params: {
     );
   }
 
-  return { externalContactId: json.id };
+  return json.id;
+}
+
+/**
+ * The org's own active sales stages. StageName is a per-org picklist, so the
+ * value is chosen from these (stages.ts `salesforceStageName`), never guessed.
+ * `ApiName` is the picklist value StageName accepts; `MasterLabel` is the
+ * fallback for an org whose API name is unavailable.
+ */
+async function loadOpportunityStages(
+  integrationId: string,
+  oauthConfig: OAuthConfig,
+): Promise<SalesforceStage[]> {
+  const soql =
+    "SELECT ApiName, MasterLabel, IsClosed, IsWon, SortOrder FROM OpportunityStage WHERE IsActive = true";
+  const result = await sfFetch(
+    integrationId,
+    oauthConfig,
+    `/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`,
+    { method: "GET" },
+  );
+  if (!result.ok) {
+    throw new Error(`Salesforce refused the stage list (status ${result.status}).`);
+  }
+  const records =
+    (
+      result.json as {
+        records?: {
+          ApiName?: string | null;
+          MasterLabel: string;
+          IsClosed: boolean;
+          IsWon: boolean;
+          SortOrder: number | null;
+        }[];
+      }
+    ).records ?? [];
+  return records.map((record) => ({
+    label: record.ApiName || record.MasterLabel,
+    isClosed: record.IsClosed,
+    isWon: record.IsWon,
+    sortOrder: record.SortOrder ?? 0,
+  }));
+}
+
+/**
+ * Opportunity create/update (decision Q3), replacing the documented gap.
+ *
+ * A standard Opportunity cannot reference a Lead, so the record is linked by
+ * the id ClientTurn keeps (`crm_push_records.external_deal_id`) and says in
+ * its Description which lead it came from. Its Name deliberately carries no
+ * personal name: the data-rights erase path removes the Lead, and an
+ * Opportunity named after the person would outlive it.
+ */
+async function upsertOpportunity(
+  integrationId: string,
+  oauthConfig: OAuthConfig,
+  lead: CrmLeadInput,
+  opportunity: CrmOpportunity,
+  salesforceLeadId: string,
+  previousId: string | null,
+): Promise<string> {
+  const stageName = salesforceStageName(
+    opportunity.stage,
+    opportunity.outcome,
+    await loadOpportunityStages(integrationId, oauthConfig),
+  );
+  if (!stageName) {
+    throw new Error("The Salesforce org has no active stage that matches this opportunity.");
+  }
+
+  const fields: Record<string, unknown> = {
+    Name: `ClientTurn - ${lead.services?.name ?? "opportunity"}`.slice(0, 120),
+    StageName: stageName,
+    CloseDate: salesforceCloseDate(opportunity),
+    LeadSource: "Client Turn",
+    Description: [
+      `ClientTurn lead ${lead.id} (Salesforce Lead ${salesforceLeadId}).`,
+      opportunity.outcome !== "OPEN" && opportunity.outcomeReason
+        ? `Closed ${opportunity.outcome.toLowerCase()}: ${opportunity.outcomeReason}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 32_000),
+  };
+  if (opportunity.value != null) fields.Amount = opportunity.value;
+
+  if (previousId) {
+    const updated = await sfFetch(
+      integrationId,
+      oauthConfig,
+      `/services/data/${API_VERSION}/sobjects/Opportunity/${previousId}`,
+      { method: "PATCH", body: fields },
+    );
+    if (updated.ok) return previousId;
+  }
+
+  const created = await sfFetch(
+    integrationId,
+    oauthConfig,
+    `/services/data/${API_VERSION}/sobjects/Opportunity`,
+    { method: "POST", body: fields },
+  );
+  const json = created.json as { id?: string; success?: boolean };
+  if (!created.ok || !json.success || !json.id) {
+    throw new Error(
+      `Salesforce rejected the opportunity (status ${created.status}): ${JSON.stringify(json)}`,
+    );
+  }
+  return json.id;
+}
+
+async function push(params: {
+  integrationId: string;
+  lead: CrmLeadInput;
+  linkedExternalId?: string | null;
+}): Promise<{ externalContactId: string; externalDealId?: string | null }> {
+  const oauthConfig = config();
+  if (!oauthConfig) {
+    throw new Error("Salesforce is not configured on this platform.");
+  }
+
+  const admin = createAdminClient();
+  const { data: existingRecord } = await admin
+    .from("crm_push_records")
+    .select("external_contact_id, external_deal_id")
+    .eq("business_id", params.lead.business_id)
+    .eq("lead_id", params.lead.id)
+    .eq("provider_type", "salesforce")
+    .maybeSingle();
+
+  const leadId = await upsertLead(
+    params.integrationId,
+    oauthConfig,
+    params.lead,
+    // A Lead pulled from Salesforce is updated in place, not re-created.
+    existingRecord?.external_contact_id ?? params.linkedExternalId ?? null,
+  );
+
+  if (!params.lead.opportunity) return { externalContactId: leadId };
+
+  try {
+    const opportunityId = await upsertOpportunity(
+      params.integrationId,
+      oauthConfig,
+      params.lead,
+      params.lead.opportunity,
+      leadId,
+      existingRecord?.external_deal_id ?? null,
+    );
+    return { externalContactId: leadId, externalDealId: opportunityId };
+  } catch (error) {
+    // The Lead exists in the org whether or not the Opportunity does; keep its
+    // id so the retry updates it instead of creating a duplicate.
+    throw new CrmPartialPushError(
+      error instanceof Error ? error.message : "The opportunity could not be written.",
+      { externalContactId: leadId, externalDealId: existingRecord?.external_deal_id ?? null },
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * The handoff brief as a Task on the Lead (Phase 3.4). A Task is the one
+ * activity every org has with `WhoId` pointing at a Lead; Status is left to
+ * the org's default because its picklist is customisable too.
+ */
+async function pushNote(params: CrmNoteInput): Promise<{ externalNoteId: string }> {
+  const oauthConfig = config();
+  if (!oauthConfig) throw new Error("Salesforce is not configured on this platform.");
+  const created = await sfFetch(
+    params.integrationId,
+    oauthConfig,
+    `/services/data/${API_VERSION}/sobjects/Task`,
+    {
+      method: "POST",
+      body: {
+        WhoId: params.externalContactId,
+        Subject: "ClientTurn handoff brief",
+        Description: params.body.slice(0, 32_000),
+        ActivityDate: new Date().toISOString().slice(0, 10),
+      },
+    },
+  );
+  const json = created.json as { id?: string };
+  if (!created.ok || !json.id) {
+    throw new Error(`Salesforce rejected the note (status ${created.status}).`);
+  }
+  return { externalNoteId: json.id };
 }
 
 registerOAuthProvider("salesforce", { getConfig: config, identify });
-registerCrmProvider("salesforce", { push });
+/**
+ * Salesforce's REST delete moves the Lead to the Recycle Bin, from which it is
+ * purged after 15 days (or sooner if the org empties it). Reported as that,
+ * never as "deleted".
+ */
+async function erase(params: {
+  integrationId: string;
+  externalContactId: string;
+  externalDealId?: string | null;
+}): Promise<CrmEraseResult> {
+  const oauthConfig = config();
+  if (!oauthConfig) {
+    throw new Error("Salesforce is not configured on this platform.");
+  }
+  const result = await sfFetch(
+    params.integrationId,
+    oauthConfig,
+    `/services/data/${API_VERSION}/sobjects/Lead/${params.externalContactId}`,
+    { method: "DELETE" },
+  );
+  if (result.status !== 404 && !result.ok) {
+    throw new Error(`Salesforce refused the delete (status ${result.status}).`);
+  }
+  const lead =
+    result.status === 404
+      ? "Salesforce has no Lead with the recorded id."
+      : "Lead moved to the Salesforce Recycle Bin, which purges it after 15 days unless restored.";
+
+  // The Opportunity ClientTurn created for this lead (upsertOpportunity). Its
+  // Description names the lead it came from, so it goes too. A failure here is
+  // reported with the id rather than thrown: the Lead is already gone.
+  let deal = "";
+  if (params.externalDealId) {
+    const opp = await sfFetch(
+      params.integrationId,
+      oauthConfig,
+      `/services/data/${API_VERSION}/sobjects/Opportunity/${params.externalDealId}`,
+      { method: "DELETE" },
+    ).catch(() => null);
+    deal =
+      opp && opp.ok
+        ? " The Opportunity ClientTurn created was moved to the Recycle Bin too."
+        : opp && opp.status === 404
+          ? " The Opportunity ClientTurn created no longer exists."
+          : ` The Opportunity ClientTurn created (${params.externalDealId}) could not be removed; delete it in Salesforce by hand.`;
+  }
+
+  return {
+    outcome: result.status === 404 ? "NOT_FOUND" : "RECYCLED",
+    detail: `${lead}${deal}`,
+  };
+}
+
+/**
+ * The opt-in inbound sync (brief §29): unconverted Leads modified at or after
+ * `since`, oldest first, by SOQL. `Owner.Email` resolves through the
+ * polymorphic Owner (a queue owner has no email and maps to nobody). Paging
+ * follows `nextRecordsUrl`. The API quota is per org per day, so a 403
+ * REQUEST_LIMIT_EXCEEDED (or a 429) stops the run and keeps the cursor.
+ */
+type SalesforcePullRow = {
+  Id: string;
+  FirstName?: string | null;
+  LastName?: string | null;
+  Email?: string | null;
+  Phone?: string | null;
+  MobilePhone?: string | null;
+  Company?: string | null;
+  Title?: string | null;
+  PostalCode?: string | null;
+  CreatedDate?: string | null;
+  LastModifiedDate?: string | null;
+  Owner?: { Email?: string | null } | null;
+};
+
+async function pull(params: {
+  integrationId: string;
+  since: string;
+  pageToken: string | null;
+  pageSize: number;
+}): Promise<CrmPullPage> {
+  const oauthConfig = config();
+  if (!oauthConfig) {
+    throw new Error("Salesforce is not configured on this platform.");
+  }
+
+  const limit = Math.min(Math.max(params.pageSize, 1), 200);
+  const soql =
+    "SELECT Id, FirstName, LastName, Email, Phone, MobilePhone, Company, Title, PostalCode, " +
+    "CreatedDate, LastModifiedDate, Owner.Email FROM Lead " +
+    `WHERE IsConverted = false AND LastModifiedDate >= ${soqlDateTime(params.since)} ` +
+    `ORDER BY LastModifiedDate ASC, Id ASC LIMIT ${limit}`;
+
+  // A continuation is Salesforce's own relative URL; only ever one of ours.
+  const path =
+    params.pageToken && params.pageToken.startsWith(`/services/data/${API_VERSION}/query/`)
+      ? params.pageToken
+      : `/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`;
+
+  const result = await sfFetch(params.integrationId, oauthConfig, path, { method: "GET" });
+
+  const limited =
+    result.status === 429 ||
+    (result.status === 403 && JSON.stringify(result.json).includes("REQUEST_LIMIT_EXCEEDED"));
+  if (limited) return { records: [], nextPageToken: null, rateLimited: true };
+  if (!result.ok) {
+    throw new Error(`Salesforce refused the Lead query (status ${result.status}).`);
+  }
+
+  const json = result.json as { records?: SalesforcePullRow[]; nextRecordsUrl?: string | null };
+  const records: CrmPulledRecord[] = (json.records ?? []).map((row) => ({
+    externalId: row.Id,
+    objectType: "lead",
+    firstName: row.FirstName ?? null,
+    lastName: row.LastName ?? null,
+    email: row.Email ?? null,
+    phone: row.MobilePhone || row.Phone || null,
+    companyName: row.Company ?? null,
+    roleTitle: row.Title ?? null,
+    postcode: row.PostalCode ?? null,
+    createdAt: row.CreatedDate ?? null,
+    modifiedAt: row.LastModifiedDate ?? "",
+    ownerEmail: row.Owner?.Email ?? null,
+  }));
+
+  return { records, nextPageToken: json.nextRecordsUrl ?? null };
+}
+
+registerCrmProvider("salesforce", { push, erase, pushNote, pull });

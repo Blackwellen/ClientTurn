@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   evaluateSend,
   performSend,
+  SENDING_STATUS,
   shouldRetrySend,
   isPermanentOutcome,
   type OutboundMessageRecord,
@@ -268,6 +269,8 @@ type Calls = {
   rescheduled: Date[];
   metered: number;
   policyChecks: number;
+  claims: number;
+  reconciled: number;
 };
 
 function fakeStore(
@@ -284,6 +287,8 @@ function fakeStore(
     rescheduled: [],
     metered: 0,
     policyChecks: 0,
+    claims: 0,
+    reconciled: 0,
   };
 
   return {
@@ -291,6 +296,17 @@ function fakeStore(
     record,
     async load() {
       return { ...record };
+    },
+    // Mirrors the real store's conditional update: only a QUEUED row can be
+    // claimed, and the claim moves it to SENDING before the carrier is called.
+    async claim() {
+      if (record.status !== "QUEUED") return false;
+      record.status = SENDING_STATUS;
+      calls.claims += 1;
+      return true;
+    },
+    async reconcileInFlight() {
+      calls.reconciled += 1;
     },
     async snapshot() {
       return guard;
@@ -310,7 +326,9 @@ function fakeStore(
     },
     async markFailed(_message, _result, terminal) {
       calls.markedFailed.push({ terminal });
+      // A retryable failure releases the claim so the next attempt can send.
       if (terminal) record.status = "FAILED";
+      else if (record.status === SENDING_STATUS) record.status = "QUEUED";
     },
     async abort(_message, reason) {
       record.status = "FAILED";

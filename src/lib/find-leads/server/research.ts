@@ -6,6 +6,8 @@ import { loadUnitCosts } from "./budget";
 import { providersFor, unhealthyProviders } from "./providers/registry";
 import type { CompanyCandidate } from "./providers/types";
 import { assessEmail, assessPhone, lawfulBasisFor } from "../contact-legality";
+import { originForProvider, type EmailOrigin } from "../email-origin";
+import { recordEmailOrigin } from "./email-origin-store";
 import {
   RESEARCH_COOLDOWN_HOURS,
   RESEARCH_DAILY_WORKSPACE_LIMIT,
@@ -629,7 +631,7 @@ export async function enrichProspectContact(
     }
 
     const finder = finders[0];
-    let match: { email: string | null; phone: string | null } | null = null;
+    let match: { email: string | null; phone: string | null; origin: EmailOrigin | null } | null = null;
 
     try {
       const response = await finder.findContacts!({
@@ -658,7 +660,9 @@ export async function enrichProspectContact(
           (row) => surname && (row.lastName ?? "").trim().toLowerCase() === surname,
         ) ?? null;
 
-      match = candidate ? { email: candidate.email ?? null, phone: candidate.phone ?? null } : null;
+      match = candidate
+        ? { email: candidate.email ?? null, phone: candidate.phone ?? null, origin: candidate.emailOrigin ?? null }
+        : null;
     } catch {
       return fail("FAILED", "PROVIDER_ERROR", "The discovery provider could not be reached.");
     }
@@ -719,6 +723,15 @@ export async function enrichProspectContact(
       })
       .eq("business_id", businessId)
       .eq("id", prospectId);
+
+    // §26: a guessed address is recorded as such; cold dispatch refuses it
+    // until it is verified.
+    await recordEmailOrigin({
+      table: "prospects",
+      businessId,
+      id: prospectId,
+      origin: match.origin ?? originForProvider(finder.key),
+    });
 
     await admin.from("prospect_data_sources").insert({
       business_id: businessId,

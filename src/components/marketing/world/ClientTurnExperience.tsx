@@ -28,7 +28,7 @@ function WorldCopy({ progress, index, staticMode = false, mobile = false }: { pr
     <h1>Turn leads<br />into booked<br /><span>paying clients.</span></h1>
     <p>Instant replies. Smart qualification.<br />More bookings. More revenue.</p>
     <CtaLink placement="hero_primary" size="lg">Start Converting <ArrowRight size={19} aria-hidden /></CtaLink>
-    <small>14-day free trial <span>·</span> No card required</small>
+    <small>14-day free trial <span>·</span> Nothing charged for 14 days</small>
   </motion.div>;
   const stage = STORY_STAGES[index - 1];
   return <motion.div className="world-copy" data-zone={index} data-side={index === 6 ? "center" : stage.side} style={staticMode ? undefined : { opacity, y, visibility: inert }}>

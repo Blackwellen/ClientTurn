@@ -35,6 +35,12 @@ export type SignalSourceDefinition = {
   mechanism: string;
   /** True when it needs something connected before it can run. */
   requiresConnection: boolean;
+  /**
+   * Set when the product has no way to collect this source at all. Kept in
+   * the vocabulary so categories saved with it still render, but never
+   * offered for a new category or monitor.
+   */
+  unavailable?: string;
 };
 
 /**
@@ -90,9 +96,13 @@ export const SIGNAL_SOURCES: Record<SignalSourceKey, SignalSourceDefinition> = {
   FIRST_PARTY_WEB: {
     key: "FIRST_PARTY_WEB",
     label: "Your own website",
-    description: "Visits and form activity on your site — the strongest signal you can get.",
-    mechanism: "Your ClientTurn tracking snippet",
+    description: "Visits to your own site. Not available: ClientTurn does not track visitors.",
+    // There is no ClientTurn tracking snippet, pixel or visitor tracking, and
+    // building one would need PECR cookie consent on the customer's own site.
+    // Nothing produces this source, so it is never offered.
+    mechanism: "Not available",
     requiresConnection: true,
+    unavailable: "ClientTurn does not track visitors to your website, so this signal cannot be collected.",
   },
   CRM_ACTIVITY: {
     key: "CRM_ACTIVITY",
@@ -178,13 +188,6 @@ export const CATEGORY_TEMPLATES: {
     name: "Engaged with your ads",
     description: "Someone from the company interacted with your Meta, LinkedIn or TikTok campaigns.",
     signalTypes: ["AD_ENGAGEMENT"],
-    freshnessDays: 30,
-    scoreImpact: 15,
-  },
-  {
-    name: "Visited your website",
-    description: "Someone from the company looked at your site.",
-    signalTypes: ["FIRST_PARTY_WEB"],
     freshnessDays: 30,
     scoreImpact: 15,
   },

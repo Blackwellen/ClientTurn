@@ -22,7 +22,6 @@ export const ADMIN_PROVIDER_ALIAS: Record<string, ProviderType> = {
   calendly: "calendly",
   google_calendar: "google_calendar",
   google_ads: "google_ads",
-  microsoft_ads: "microsoft_ads",
   tiktok_ads: "tiktok_ads",
   linkedin_ads: "linkedin_ads",
   hubspot: "hubspot",

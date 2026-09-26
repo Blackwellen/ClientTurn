@@ -16,7 +16,7 @@ import {
   SubmitButton,
   TextField,
 } from "@/app/(auth)/_components/auth-form-parts";
-import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
+import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
 /**
  * Partner account creation.
@@ -136,11 +136,7 @@ export function PartnerSignUpForm() {
         Create partner account
       </SubmitButton>
 
-      <AuthDivider />
-
-      <GoogleAuthButton
-        label={"Sign up with Google"}
-      />
+      <GoogleSignInButton audience="affiliate" variant="signup" />
 
       <p className="text-center text-[13px] leading-relaxed text-[var(--auth-text-subtle)]">
         Creating an account does not start a subscription. You will be asked a

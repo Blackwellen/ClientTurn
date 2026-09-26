@@ -22,8 +22,11 @@ export type PeriodCounts = {
   booked: number;
   /** Of those, the ones whose status reached WON. Never inferred from a booking. */
   won: number;
-  /** bookings ÷ leads received in the window, as a percentage. */
-  bookingRate: number;
+  /**
+   * bookings ÷ leads received in the window, as a percentage. Null when no
+   * leads arrived: the metric registry's `rate()` rule, rendered as "—".
+   */
+  bookingRate: number | null;
 };
 
 /* ------------------------------------------------------------- sparklines */
@@ -57,8 +60,8 @@ export type SourceSnapshotRow = {
   replies: number;
   qualified: number;
   booked: number;
-  /** booked ÷ leads for this source, as a percentage. */
-  conversionRate: number;
+  /** booked ÷ leads for this source, as a percentage. Null on no leads. */
+  conversionRate: number | null;
 };
 
 /* ------------------------------------------------------------- attention */
@@ -77,7 +80,7 @@ export type AttentionKind =
   | "out_of_area"
   | "review"
   | "no_response"
-  | "meta"
+  | "lead_source"
   | "messaging"
   | "booking"
   | "followup"
@@ -155,7 +158,7 @@ export function sortAttention(items: AttentionItem[]): AttentionItem[] {
 export type HealthStripStatus = "healthy" | "warning" | "error";
 
 export type HealthStripItem = {
-  key: "meta" | "messaging" | "booking" | "followup";
+  key: "lead_source" | "messaging" | "booking" | "followup";
   label: string;
   status: HealthStripStatus;
   /** Pill text: "Connected", "Published", "Action required", "Not connected". */
@@ -166,7 +169,7 @@ export type HealthStripItem = {
 };
 
 const SYSTEM_ATTENTION_TITLES: Record<HealthStripItem["key"], string> = {
-  meta: "Meta connection needs attention",
+  lead_source: "Lead source needs attention",
   messaging: "Messaging needs attention",
   booking: "Booking destination missing",
   followup: "Follow-up is not published",

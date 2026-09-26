@@ -13,10 +13,29 @@ import {
 import "@/lib/integrations/providers/all";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
+import {
+  OAUTH_RETURN_COOKIE,
+  oauthLandingPath,
+  safeOAuthReturnPath,
+} from "@/lib/integrations/catalog";
 
 export const dynamic = "force-dynamic";
 
-const FAILURE_REDIRECT = "/app/settings?section=connections&connect=failed";
+/**
+ * Where to land, and the outcome for the landing page to announce. The return
+ * cookie (set by the connect route when the flow began in onboarding) is read
+ * once and cleared on every exit.
+ */
+function land(request: NextRequest, provider: string, ok: boolean): NextResponse {
+  const returnPath = safeOAuthReturnPath(request.cookies.get(OAUTH_RETURN_COOKIE)?.value);
+  const response = NextResponse.redirect(
+    `${request.nextUrl.origin}${oauthLandingPath({ returnPath, provider, ok })}`,
+  );
+  if (request.cookies.get(OAUTH_RETURN_COOKIE)) {
+    response.cookies.set(OAUTH_RETURN_COOKIE, "", { path: "/api/integrations", maxAge: 0 });
+  }
+  return response;
+}
 
 /**
  * Shared OAuth callback for every provider on the generic flow. No provider
@@ -29,10 +48,10 @@ export async function GET(
   { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
 
   if (!isOAuthProvider(provider)) {
-    return NextResponse.redirect(`${origin}${FAILURE_REDIRECT}`);
+    return land(request, provider, false);
   }
 
   const errorParam = searchParams.get("error");
@@ -40,18 +59,18 @@ export async function GET(
   const state = searchParams.get("state");
 
   if (errorParam || !code || !state) {
-    return NextResponse.redirect(`${origin}${FAILURE_REDIRECT}`);
+    return land(request, provider, false);
   }
 
   const verified = await consumeOAuthState(provider, state);
   if (!verified) {
-    return NextResponse.redirect(`${origin}${FAILURE_REDIRECT}`);
+    return land(request, provider, false);
   }
 
   const adapter = getOAuthProviderAdapter(provider);
-  const config = adapter?.getConfig();
+  const config = adapter?.getConfig({ searchParams });
   if (!adapter || !config) {
-    return NextResponse.redirect(`${origin}${FAILURE_REDIRECT}`);
+    return land(request, provider, false);
   }
 
   try {
@@ -68,6 +87,15 @@ export async function GET(
       scopes: identity.scopes,
       token,
     });
+
+    if (adapter.afterConnect) {
+      await adapter.afterConnect({
+        integrationId,
+        businessId: verified.businessId,
+        token,
+        searchParams,
+      });
+    }
 
     await recordAudit({
       businessId: verified.businessId,
@@ -87,7 +115,7 @@ export async function GET(
       { businessId: verified.businessId, idempotencyKey: `poll-init:${integrationId}` },
     );
 
-    return NextResponse.redirect(`${origin}/app/settings?section=connections&connected=${provider}`);
+    return land(request, provider, true);
   } catch (error) {
     await recordAudit({
       businessId: verified.businessId,
@@ -99,6 +127,6 @@ export async function GET(
         error: error instanceof Error ? error.message : "unknown",
       },
     });
-    return NextResponse.redirect(`${origin}${FAILURE_REDIRECT}`);
+    return land(request, provider, false);
   }
 }

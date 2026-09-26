@@ -99,7 +99,25 @@ describe("advertised sourcing allowances match the seeded entitlements", () => {
     ["emailSends", "email_sent"],
   ] as const;
 
-  for (const plan of ["trial", "starter", "growth", "pro", "enterprise"] as const) {
+  test("trial: sourcing and cold email are disabled, so every allowance is 0", () => {
+    // The trial seeds dormant soft limits, but the capability flags are 0,
+    // so the honest figure is 0 ("Not included in trial"), not the soft limit.
+    assert.equal(seeded("trial", "sourcing_enabled"), 0);
+    assert.equal(seeded("trial", "cold_email_enabled"), 0);
+    assert.equal(SOURCING_ALLOWANCES.trial.sourcingIncluded, false);
+    assert.equal(SOURCING_ALLOWANCES.trial.coldEmailIncluded, false);
+    for (const [field] of CHECKS) {
+      assert.equal(SOURCING_ALLOWANCES.trial[field], 0, field);
+    }
+  });
+
+  for (const plan of ["starter", "growth", "pro", "enterprise"] as const) {
+    test(`${plan} includes sourcing and cold email, as seeded`, () => {
+      assert.ok(seeded(plan, "sourcing_enabled") > 0);
+      assert.ok(seeded(plan, "cold_email_enabled") > 0);
+      assert.equal(SOURCING_ALLOWANCES[plan].sourcingIncluded, true);
+      assert.equal(SOURCING_ALLOWANCES[plan].coldEmailIncluded, true);
+    });
     for (const [field, metric] of CHECKS) {
       test(`${plan} ${metric}`, () => {
         assert.equal(

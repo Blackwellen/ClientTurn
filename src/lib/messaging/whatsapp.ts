@@ -162,9 +162,26 @@ export type WhatsAppTemplate = {
  * Free text when `template` is absent — permitted only inside the 24-hour
  * window, which the caller has already established. A template otherwise.
  */
-export async function sendWhatsApp(
-  request: SendRequest & { template?: WhatsAppTemplate },
-): Promise<SendResult> {
+export async function sendWhatsApp(request: SendRequest): Promise<SendResult> {
+  // A registry template (brief §45) chosen at send time. Only a template from
+  // this workspace's own WhatsApp Business Account can be sent here.
+  const registryTemplate = request.template ?? null;
+  if (registryTemplate && registryTemplate.provider !== "meta") {
+    return {
+      ok: false,
+      errorCode: "template_wrong_transport",
+      errorMessage: "A Twilio template cannot be sent through the WhatsApp Cloud API.",
+      permanent: true,
+    };
+  }
+  const template: WhatsAppTemplate | null = registryTemplate
+    ? {
+        name: registryTemplate.name,
+        language: registryTemplate.language,
+        parameters: registryTemplate.parameters,
+      }
+    : null;
+
   const to = toWhatsAppNumber(request.to);
   if (!to) {
     return {
@@ -185,21 +202,21 @@ export async function sendWhatsApp(
     };
   }
 
-  const body = request.template
+  const body = template
     ? {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to,
         type: "template",
         template: {
-          name: request.template.name,
-          language: { code: request.template.language },
-          ...(request.template.parameters?.length
+          name: template.name,
+          language: { code: template.language },
+          ...(template.parameters?.length
             ? {
                 components: [
                   {
                     type: "body",
-                    parameters: request.template.parameters.map((text) => ({
+                    parameters: template.parameters.map((text) => ({
                       type: "text",
                       text,
                     })),
@@ -309,4 +326,49 @@ export async function approvedTemplates(
     // direction — it stops a send rather than attempting an unapproved one.
     return [];
   }
+}
+
+/**
+ * Every template on the workspace's WhatsApp Business Account, whatever its
+ * status, with its components -- the input to the registry sync (§45). Null
+ * when the workspace has no Cloud API number connected; throws when Meta
+ * refuses, so a sync never mistakes an outage for "no templates".
+ */
+export async function fetchMetaTemplates(businessId: string): Promise<
+  | {
+      id?: string;
+      name?: string;
+      language?: string;
+      status?: string;
+      category?: string;
+      components?: { type?: string; text?: string }[];
+    }[]
+  | null
+> {
+  const account = await whatsAppSendingAccount(businessId);
+  if (!account?.wabaId) return null;
+
+  const out: {
+    id?: string;
+    name?: string;
+    language?: string;
+    status?: string;
+    category?: string;
+    components?: { type?: string; text?: string }[];
+  }[] = [];
+  let url: string | null =
+    `${GRAPH}/${account.wabaId}/message_templates?fields=id,name,language,status,category,components&limit=100`;
+  for (let page = 0; url && page < 10; page += 1) {
+    const response: Response = await fetch(url, {
+      headers: { authorization: `Bearer ${account.accessToken}` },
+    });
+    if (!response.ok) throw new Error(`WhatsApp templates could not be read (status ${response.status}).`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      data?: typeof out;
+      paging?: { next?: string };
+    };
+    out.push(...(payload.data ?? []));
+    url = payload.paging?.next ?? null;
+  }
+  return out;
 }

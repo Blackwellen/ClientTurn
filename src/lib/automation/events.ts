@@ -1,46 +1,15 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { AutomationEventType } from "./event-types";
 
 /**
- * The event catalog (§19). Not every listed event is emitted yet — only the
- * ones wired into a handler below actually fire. This is an observability
- * trail, not a source of truth: nothing reads automation_events to make a
- * decision, so a dropped event never breaks the pipeline.
+ * The event catalog (§19) lives in ./event-types so tests can hold it to the
+ * `automation_events` CHECK. Not every listed event is emitted yet. This is an
+ * observability trail, not a source of truth: nothing reads automation_events
+ * to make a decision, so a dropped event never breaks the pipeline -- but a
+ * dropped event is always logged, never silent.
  */
-export type AutomationEventType =
-  | "lead.created"
-  | "lead.updated"
-  | "lead.replied"
-  | "lead.opted_out"
-  | "lead.human_takeover"
-  | "message.queued"
-  | "message.sent"
-  | "message.delivered"
-  | "message.failed"
-  | "message.received"
-  | "automation.started"
-  | "automation.step_due"
-  | "automation.step_completed"
-  // A step whose channel is not permitted for this lead and has no fallback.
-  // Recorded rather than silently retried, because the resolution is a human
-  // decision (V4 §19.6).
-  | "automation.step_blocked"
-  | "automation.stopped"
-  | "automation.failed"
-  | "qualification.answer_received"
-  | "qualification.updated"
-  | "qualification.qualified"
-  | "qualification.review"
-  | "qualification.not_qualified"
-  | "booking.link_sent"
-  | "booking.created"
-  | "booking.cancelled"
-  | "booking.completed"
-  | "campaign.created"
-  | "campaign.scheduled"
-  | "campaign.started"
-  | "campaign.contact_due"
-  | "campaign.completed";
+export type { AutomationEventType } from "./event-types";
 
 export type EmitAutomationEventInput = {
   businessId: string;
@@ -57,13 +26,25 @@ export type EmitAutomationEventInput = {
 export async function emitAutomationEvent(input: EmitAutomationEventInput): Promise<void> {
   try {
     const supabase = createAdminClient();
-    await supabase.from("automation_events").insert({
+    // The client returns a rejected insert (e.g. a CHECK violation) as
+    // `{ error }` rather than throwing, so the catch below alone never sees it.
+    const { error } = await supabase.from("automation_events").insert({
       business_id: input.businessId,
       lead_id: input.leadId ?? null,
       automation_run_id: input.automationRunId ?? null,
       event_type: input.eventType,
       payload: (input.payload ?? {}) as never,
     });
+    if (error) {
+      console.error("emitAutomationEvent insert rejected", {
+        eventType: input.eventType,
+        businessId: input.businessId,
+        leadId: input.leadId ?? null,
+        automationRunId: input.automationRunId ?? null,
+        code: error.code,
+        message: error.message,
+      });
+    }
   } catch (error) {
     console.error("emitAutomationEvent failed", input.eventType, error);
   }

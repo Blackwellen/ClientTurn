@@ -307,6 +307,14 @@ export function describeMailError(error: unknown): {
     };
   }
 
+  if (code === "stls_unsupported" || text.includes("does not support starttls")) {
+    return {
+      code: "tls_unavailable",
+      message: raw.slice(0, 300),
+      permanent: true,
+    };
+  }
+
   if (text.includes("certificate") || text.includes("self signed")) {
     return {
       code: "tls_error",

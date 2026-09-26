@@ -463,6 +463,8 @@ describe("launch checklist", () => {
     providerConnected: true,
     messageValid: true,
     timingValid: true,
+    // The suppression item is ticked only once the server has computed it.
+    suppressedTotal: 0,
   };
 
   test("every item passes for a complete campaign", () => {

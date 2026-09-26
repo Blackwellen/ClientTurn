@@ -11,6 +11,7 @@ import {
 } from "@/lib/onboarding/steps";
 import {
   advanceConnectLeadsStep,
+  advanceCopilotStep,
   completeOnboarding,
   goToStep,
   readTestLead,
@@ -28,6 +29,7 @@ import type { TestLeadOutcome } from "@/lib/onboarding/test-lead";
 import { OnboardingShell, WizardFooterActions } from "./onboarding-shell";
 import type { StepActions } from "./step-types";
 import { BusinessStep, type BusinessInitial } from "./steps/business-step";
+import { CopilotStep } from "./steps/copilot-step";
 import { ConnectLeadsStep } from "./steps/connect-leads-step";
 import { FollowUpStep, type FollowUpInitial } from "./steps/follow-up-step";
 import { QualifyBookStep, type QualifyBookInitial } from "./steps/qualify-book-step";
@@ -120,6 +122,14 @@ export function OnboardingWizard({
   return (
     <>
       <OnboardingShell step={step} completedThrough={index} onJump={jump}>
+        {step === "copilot" && (
+          <CopilotStep
+            onContinue={() => handleContinue(() => advanceCopilotStep())}
+            onSaveExit={() => handleSaveExit(() => advanceCopilotStep())}
+            onRegisterActions={setActions}
+          />
+        )}
+
         {step === "business" && (
           <BusinessStep
             initial={initial.business}

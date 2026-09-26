@@ -12,15 +12,17 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
-import { OBadge, OButton, OField, OPanel, OSectionTitle, OSelect } from "../ui";
+import { OBadge, OButton, OPanel, OSectionTitle } from "../ui";
 import type { StepActions } from "../step-types";
 import { checkMetaConnection } from "@/lib/onboarding/actions";
+
+const META_CONNECT_HREF = "/api/integrations/meta/connect?return=/onboarding";
 
 const WHAT_HAPPENS_NEXT = [
   {
     icon: Zap,
     title: "Sync new leads automatically",
-    body: "We'll pull new Facebook leads in real-time as they come in.",
+    body: "New Facebook and Instagram form leads arrive within seconds of being submitted.",
   },
   {
     icon: Wand2,
@@ -30,12 +32,12 @@ const WHAT_HAPPENS_NEXT = [
   {
     icon: Database,
     title: "Use your form data",
-    body: "We'll capture available fields and map them to your ClientTurn lead fields.",
+    body: "Every answer on the form is captured and mapped automatically. Nothing to set up.",
   },
   {
     icon: ShieldCheck,
     title: "Keep your data safe",
-    body: "We use secure, read-only access. You can disconnect at any time.",
+    body: "Access tokens are held server-side only. You can disconnect at any time.",
   },
 ];
 
@@ -85,6 +87,9 @@ export function ConnectLeadsStep({
   }, []);
 
   const connected = status === "HEALTHY" || status === "DEGRADED" || status === "ACTION_REQUIRED";
+  // A reason is only set when the platform cannot offer Meta (credentials not
+  // configured, or not on the plan). Null with a status means it can.
+  const available = status !== null && !reason;
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.9fr_1fr]">
@@ -115,14 +120,24 @@ export function ConnectLeadsStep({
                     <p className="text-[13.5px] font-medium text-[#f0f3f8]">Meta</p>
                     <p className="text-[12px] text-[#8c98ab]">Connect your Facebook account</p>
                   </div>
-                  <OButton
-                    disabled
-                    className="ml-1"
-                    title={reason ?? "Meta connection is not available on this environment yet."}
-                  >
-                    Connect Meta
-                    <ExternalLink className="size-3.5" aria-hidden />
-                  </OButton>
+                  {connected ? (
+                    <OBadge tone="success">Connected</OBadge>
+                  ) : available ? (
+                    // A full navigation, not a fetch: the connect route mints
+                    // the OAuth state server-side and redirects to Meta, and
+                    // `return=/onboarding` brings the person back here.
+                    <a
+                      href={META_CONNECT_HREF}
+                      className="ml-1 inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-[var(--auth-lime)] px-3.5 text-[13px] font-semibold text-[#0b1020] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--auth-lime)]"
+                    >
+                      Connect Meta
+                      <ExternalLink className="size-3.5" aria-hidden />
+                    </a>
+                  ) : (
+                    <OButton disabled className="ml-1" title={reason ?? undefined}>
+                      Not available yet
+                    </OButton>
+                  )}
                 </div>
 
                 <ul className="space-y-1.5 lg:shrink-0">
@@ -142,85 +157,22 @@ export function ConnectLeadsStep({
           </div>
         </OPanel>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <OPanel className="bg-[#0c151d] p-4">
-            <div className="flex items-start gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#586675] text-[13px] font-semibold text-[#c1cad6]">
-                2
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[15px] font-semibold text-[#f8fafc]">Select a Facebook page</h3>
-                <p className="mt-0.5 text-[13px] text-[#96a1b3]">
-                  Choose the page you want to receive leads from.
-                </p>
-                <OField className="mt-3">
-                  <OSelect disabled defaultValue="">
-                    <option value="">Connect Meta to choose a page</option>
-                  </OSelect>
-                </OField>
-              </div>
-            </div>
-          </OPanel>
-
-          <OPanel className="bg-[#0c151d] p-4">
-            <div className="flex items-start gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#586675] text-[13px] font-semibold text-[#c1cad6]">
-                3
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[15px] font-semibold text-[#f8fafc]">Select lead forms</h3>
-                <p className="mt-0.5 text-[13px] text-[#96a1b3]">
-                  Choose one or more lead forms to sync.
-                </p>
-                <p className="mt-3 rounded-[7px] border border-dashed border-[rgba(150,170,190,0.3)] px-3 py-3 text-[12.5px] text-[#697488]">
-                  No lead forms yet — connect Meta first.
-                </p>
-              </div>
-            </div>
-          </OPanel>
-        </div>
-
         <OPanel className="bg-[#0c151d] p-4">
           <div className="flex items-start gap-3">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#586675] text-[13px] font-semibold text-[#c1cad6]">
-              4
+              2
             </span>
             <div className="min-w-0 flex-1">
-              <h3 className="text-[15px] font-semibold text-[#f8fafc]">Map lead fields</h3>
-              <p className="mt-0.5 text-[13px] text-[#96a1b3]">
-                Map your Facebook form fields to ClientTurn fields. Required fields are marked.
+              <h3 className="text-[15px] font-semibold text-[#f8fafc]">
+                Pages, forms and fields are set up for you
+              </h3>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-[#96a1b3]">
+                There is nothing to map. ClientTurn picks the Page you manage (preferring
+                one linked to Instagram), finds every lead form on it, and maps each
+                answer automatically: name, email and phone go to the lead, and every
+                other question is kept as an answer on the lead. To use a different Page,
+                choose it later in Settings &rarr; Connections &rarr; Meta Lead Ads.
               </p>
-              <div className="mt-3 overflow-x-auto rounded-[7px] border border-[rgba(150,170,190,0.2)]">
-                <table className="w-full min-w-[420px] text-left text-[12.5px]">
-                  <thead>
-                    <tr className="border-b border-[rgba(150,170,190,0.2)] text-[#7a8698]">
-                      <th className="px-3 py-2 font-medium">ClientTurn field</th>
-                      <th className="px-3 py-2 font-medium">Facebook form field</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      ["Full name", true],
-                      ["Phone number", true],
-                      ["Email address", false],
-                      ["Form ID", false],
-                      ["Lead source", false],
-                    ].map(([label, required]) => (
-                      <tr key={label as string} className="border-b border-[rgba(150,170,190,0.1)] last:border-0">
-                        <td className="px-3 py-2 text-[#dbe1ea]">
-                          {label}
-                          {required ? <span className="text-[var(--auth-lime)]"> *</span> : null}
-                        </td>
-                        <td className="px-3 py-2 text-[#697488]">—</td>
-                        <td className="px-3 py-2">
-                          <OBadge tone="neutral">Awaiting connection</OBadge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         </OPanel>
@@ -229,7 +181,7 @@ export function ConnectLeadsStep({
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex items-start gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#586675] text-[13px] font-semibold text-[#c1cad6]">
-                5
+                3
               </span>
               <div>
                 <h3 className="text-[15px] font-semibold text-[#f8fafc]">Verify connection</h3>

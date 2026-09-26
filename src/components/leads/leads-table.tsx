@@ -81,22 +81,23 @@ export function LeadsTable({
   assigneeNames: Map<string, string>;
   filters: LeadFilters;
   selected: Set<string>;
-  onSelectedChange: (next: Set<string>) => void;
+  /** Absent for a role with no bulk action to take: no checkboxes render. */
+  onSelectedChange?: (next: Set<string>) => void;
   onOpen: (row: LeadListRow) => void;
 }) {
   const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
   const someSelected = rows.some((row) => selected.has(row.id));
 
   const toggleAll = () => {
-    if (allSelected) onSelectedChange(new Set());
-    else onSelectedChange(new Set(rows.map((row) => row.id)));
+    if (allSelected) onSelectedChange?.(new Set());
+    else onSelectedChange?.(new Set(rows.map((row) => row.id)));
   };
 
   const toggleOne = (id: string) => {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    onSelectedChange(next);
+    onSelectedChange?.(next);
   };
 
   return (
@@ -105,6 +106,7 @@ export function LeadsTable({
         <thead>
           <tr className="border-b border-line bg-surface-sunken/50 text-[12px] font-semibold text-content-secondary">
             <th scope="col" className="w-11 px-4 py-0">
+              {onSelectedChange ? (
               <Checkbox
                 checked={allSelected}
                 ref={(node) => {
@@ -113,6 +115,9 @@ export function LeadsTable({
                 onChange={toggleAll}
                 aria-label="Select all leads on this page"
               />
+              ) : (
+                <span className="sr-only">Selection</span>
+              )}
             </th>
             <th scope="col" className="px-3 py-0 font-semibold">
               <span className="inline-flex h-9 items-center">Lead</span>
@@ -171,13 +176,15 @@ export function LeadsTable({
                 )}
               >
                 <td className="px-4 py-1.5 align-middle">
-                  <span onClick={(event) => event.stopPropagation()}>
-                    <Checkbox
-                      checked={selected.has(row.id)}
-                      onChange={() => toggleOne(row.id)}
-                      aria-label={`Select ${name}`}
-                    />
-                  </span>
+                  {onSelectedChange && (
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <Checkbox
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleOne(row.id)}
+                        aria-label={`Select ${name}`}
+                      />
+                    </span>
+                  )}
                 </td>
 
                 {/* identity — name over contact details, two dense lines */}

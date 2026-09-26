@@ -5,11 +5,19 @@ import { z } from "zod";
 import { requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient as UntypedClient } from "@supabase/supabase-js";
 import { recordAudit } from "@/lib/audit";
+import { parseCalendlyEventType } from "@/lib/bookings/calendly-event-type";
 import { serverEnv } from "@/lib/env";
 import { stripe, priceIdFor } from "@/lib/billing/stripe";
 import { getEntitlements } from "@/lib/billing/entitlements";
-import { PLANS, type PlanId } from "@/lib/billing/plans";
+import { PLANS, unlockPlanLabel, type PlanId } from "@/lib/billing/plans";
+import {
+  cancelPendingPlanChange,
+  changeSubscriptionPlan,
+  createSubscriptionCheckout,
+} from "@/lib/billing/checkout";
+import { resolvePlanInterval } from "@/lib/billing/plan-change";
 import {
   assertUploadAllowed,
   createUploadUrl,
@@ -17,7 +25,16 @@ import {
   objectKey,
 } from "@/lib/storage/r2";
 import { passwordSchema } from "@/lib/validation/auth";
-import { BOOKING_MODES, DAYS, INDUSTRIES, TIMEZONES } from "./types";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import {
+  BOOKING_MODES,
+  DAYS,
+  PRICING_VISIBILITY_OPTIONS,
+  TIMEZONES,
+  isAcceptedIndustry,
+  normalisePublicPrice,
+  type PricingVisibility,
+} from "./types";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 export type UrlResult = { ok: true; url: string } | { ok: false; error: string };
@@ -100,8 +117,7 @@ export async function updateBusinessProfile(input: {
     return fail(parsed.error.issues[0]?.message ?? "Check the details you entered.");
   }
   if (
-    parsed.data.industry &&
-    !(INDUSTRIES as readonly string[]).includes(parsed.data.industry)
+    !isAcceptedIndustry(parsed.data.industry)
   ) {
     return fail("Choose an industry from the list.");
   }
@@ -223,210 +239,6 @@ export async function removeBusinessLogo(): Promise<ActionResult> {
   return { ok: true };
 }
 
-/* --------------------------------------------------------------- team tab */
-
-const inviteSchema = z.object({
-  email: z.string().trim().toLowerCase().max(254).pipe(z.email("Enter a valid email address")),
-  role: z.enum(["admin", "member", "viewer"]),
-});
-
-export async function inviteMember(input: {
-  email: string;
-  role: string;
-}): Promise<ActionResult> {
-  const parsed = inviteSchema.safeParse(input);
-  if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check the invitation details.");
-  }
-
-  const guard = await requireSettingsAdmin();
-  if (!guard.ok) return fail(guard.error);
-  const { workspace } = guard;
-
-  const admin = createAdminClient();
-  const entitlements = await getEntitlements(workspace.businessId);
-
-  if (!entitlements.active) {
-    return fail("This workspace does not have an active subscription.");
-  }
-
-  const { count } = await admin
-    .from("business_members")
-    .select("id", { count: "exact", head: true })
-    .eq("business_id", workspace.businessId)
-    .in("status", ["active", "invited"]);
-
-  if ((count ?? 0) >= entitlements.userLimit) {
-    return fail(
-      `Your plan includes ${entitlements.userLimit} ${entitlements.userLimit === 1 ? "user" : "users"}. Upgrade to invite more people.`,
-    );
-  }
-
-  const { data: existingProfile } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("email", parsed.data.email)
-    .maybeSingle();
-
-  let userId = existingProfile?.id ?? null;
-
-  if (userId) {
-    const { data: membership } = await admin
-      .from("business_members")
-      .select("id, status")
-      .eq("business_id", workspace.businessId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (membership && membership.status !== "removed") {
-      return fail("That person is already part of this workspace.");
-    }
-  } else {
-    const { data: invited, error: inviteError } =
-      await admin.auth.admin.inviteUserByEmail(parsed.data.email, {
-        redirectTo: `${serverEnv.siteUrl}/login`,
-      });
-
-    if (inviteError || !invited?.user) {
-      return fail(
-        "Could not send that invitation. Check the email address and try again.",
-      );
-    }
-
-    userId = invited.user.id;
-    await admin
-      .from("profiles")
-      .upsert({ id: userId, email: parsed.data.email }, { onConflict: "id" });
-  }
-
-  const { error } = await admin.from("business_members").upsert(
-    {
-      business_id: workspace.businessId,
-      user_id: userId,
-      role: parsed.data.role,
-      status: "invited",
-      invited_email: parsed.data.email,
-      invited_at: new Date().toISOString(),
-    },
-    { onConflict: "business_id,user_id" },
-  );
-
-  if (error) return fail("Could not add that person to the workspace.");
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: "member.invited",
-    entityType: "business_member",
-    metadata: { email: parsed.data.email, role: parsed.data.role },
-  });
-
-  refresh("/app/settings");
-  return { ok: true };
-}
-
-const roleChangeSchema = z.object({
-  membershipId: z.uuid(),
-  role: z.enum(["admin", "member", "viewer"]),
-});
-
-export async function changeMemberRole(input: {
-  membershipId: string;
-  role: string;
-}): Promise<ActionResult> {
-  const parsed = roleChangeSchema.safeParse(input);
-  if (!parsed.success) return fail("That role change is not valid.");
-
-  const guard = await requireSettingsAdmin();
-  if (!guard.ok) return fail(guard.error);
-  const { workspace } = guard;
-
-  const admin = createAdminClient();
-  const { data: member } = await admin
-    .from("business_members")
-    .select("id, user_id, role")
-    .eq("id", parsed.data.membershipId)
-    .eq("business_id", workspace.businessId)
-    .maybeSingle();
-
-  if (!member) return fail("That person is not part of this workspace.");
-  if (member.role === "owner") {
-    return fail("The owner's role cannot be changed here.");
-  }
-  if (member.user_id === workspace.userId) {
-    return fail("You cannot change your own role.");
-  }
-
-  const { error } = await admin
-    .from("business_members")
-    .update({ role: parsed.data.role })
-    .eq("id", member.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return fail("Could not update that role.");
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: "member.role_changed",
-    entityType: "business_member",
-    entityId: member.id,
-    metadata: { from: member.role, to: parsed.data.role },
-  });
-
-  refresh("/app/settings");
-  return { ok: true };
-}
-
-export async function removeMember(membershipId: string): Promise<ActionResult> {
-  const parsed = z.uuid().safeParse(membershipId);
-  if (!parsed.success) return fail("That person could not be removed.");
-
-  const guard = await requireSettingsAdmin();
-  if (!guard.ok) return fail(guard.error);
-  const { workspace } = guard;
-
-  const admin = createAdminClient();
-  const { data: member } = await admin
-    .from("business_members")
-    .select("id, user_id, role")
-    .eq("id", parsed.data)
-    .eq("business_id", workspace.businessId)
-    .maybeSingle();
-
-  if (!member) return fail("That person is not part of this workspace.");
-  if (member.role === "owner") return fail("The owner cannot be removed.");
-  if (member.user_id === workspace.userId) {
-    return fail("You cannot remove yourself from the workspace.");
-  }
-
-  const { error } = await admin
-    .from("business_members")
-    .update({ status: "removed" })
-    .eq("id", member.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return fail("Could not remove that person.");
-
-  await admin
-    .from("leads")
-    .update({ assigned_user_id: null })
-    .eq("business_id", workspace.businessId)
-    .eq("assigned_user_id", member.user_id);
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: "member.removed",
-    entityType: "business_member",
-    entityId: member.id,
-    metadata: { role: member.role },
-  });
-
-  refresh("/app/settings");
-  return { ok: true };
-}
-
 /* ----------------------------------------------------------- services tab */
 
 const serviceSchema = z.object({
@@ -447,6 +259,10 @@ const serviceSchema = z.object({
       "Enter an average job value between 0 and 1,000,000",
     ),
   active: z.boolean(),
+  pricingVisibility: z
+    .enum(PRICING_VISIBILITY_OPTIONS.map((option) => option.value) as [PricingVisibility, ...PricingVisibility[]])
+    .optional(),
+  publicPriceText: z.string().max(200).nullish(),
 });
 
 export async function saveService(input: {
@@ -455,10 +271,24 @@ export async function saveService(input: {
   description: string;
   averageValue: string;
   active: boolean;
+  /** Omitted by callers that do not edit pricing (onboarding): left as is. */
+  pricingVisibility?: PricingVisibility;
+  publicPriceText?: string | null;
 }): Promise<ActionResult> {
   const parsed = serviceSchema.safeParse(input);
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "Check the service details.");
+  }
+
+  let pricing: { pricing_visibility: PricingVisibility; public_price_text: string | null } | null =
+    null;
+  if (parsed.data.pricingVisibility) {
+    const price = normalisePublicPrice({
+      visibility: parsed.data.pricingVisibility,
+      text: parsed.data.publicPriceText,
+    });
+    if (!price.ok) return fail(price.error);
+    pricing = { pricing_visibility: parsed.data.pricingVisibility, public_price_text: price.text };
   }
 
   const guard = await requireSettingsAdmin();
@@ -471,6 +301,7 @@ export async function saveService(input: {
     description: parsed.data.description,
     average_value: parsed.data.averageValue,
     active: parsed.data.active,
+    ...(pricing ?? {}),
   };
 
   if (parsed.data.id) {
@@ -617,7 +448,7 @@ export async function updateMessagingSettings(input: {
       parsed.data.fallbackChannel === "whatsapp") &&
     !entitlements.whatsappEnabled
   ) {
-    return fail("WhatsApp is available on the Growth plan and above.");
+    return fail(`WhatsApp is available on the ${unlockPlanLabel("whatsapp")} and above.`);
   }
 
   const hours: Record<string, { open: boolean; start: string; end: string }> = {};
@@ -712,6 +543,51 @@ export async function updateSlackChannel(input: {
   return { ok: true };
 }
 
+const slackPreferencesSchema = z.object({
+  newLead: z.boolean(),
+  handover: z.boolean(),
+  booking: z.boolean(),
+  warmProspect: z.boolean(),
+  digest: z.boolean(),
+});
+
+export async function updateSlackNotificationPreferences(
+  input: z.infer<typeof slackPreferencesSchema>,
+): Promise<ActionResult> {
+  const parsed = slackPreferencesSchema.safeParse(input);
+  if (!parsed.success) return fail("Check the Slack alert settings and try again.");
+
+  const guard = await requireSettingsAdmin();
+  if (!guard.ok) return fail(guard.error);
+  const { workspace } = guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("business_settings").upsert(
+    {
+      business_id: workspace.businessId,
+      slack_notify_new_lead: parsed.data.newLead,
+      slack_notify_handover: parsed.data.handover,
+      slack_notify_booking: parsed.data.booking,
+      slack_notify_warm_prospect: parsed.data.warmProspect,
+      slack_digest_enabled: parsed.data.digest,
+    },
+    { onConflict: "business_id" },
+  );
+
+  if (error) return fail("Could not save the Slack alert settings.");
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "workspace.settings_updated",
+    entityType: "business_settings",
+    metadata: { section: "slack_notifications" },
+  });
+
+  refresh("/app/settings");
+  return { ok: true };
+}
+
 /* ------------------------------------------------------------ booking tab */
 
 const bookingSchema = z.object({
@@ -734,11 +610,18 @@ export async function updateBookingSettings(input: {
   bookingUrl: string;
   appointmentDurationMinutes: number;
   bookingBufferMinutes: number;
+  /** Omitted: left as it is. Blank: cleared. */
+  calendlyEventType?: string;
 }): Promise<ActionResult> {
   const parsed = bookingSchema.safeParse(input);
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "Check your booking settings.");
   }
+  const eventType =
+    typeof input.calendlyEventType === "string"
+      ? parseCalendlyEventType(input.calendlyEventType.slice(0, 300))
+      : null;
+  if (eventType && !eventType.ok) return fail(eventType.error);
   if (!BOOKING_MODES.some((mode) => mode.value === parsed.data.bookingMode)) {
     return fail("Choose a booking method from the list.");
   }
@@ -777,12 +660,40 @@ export async function updateBookingSettings(input: {
 
   if (error) return fail("Could not save your booking settings.");
 
+  // The Calendly event type lives on the connection's config, beside what the
+  // connection itself stored; only that one key is written.
+  if (eventType?.ok) {
+    const { data: calendly, error: calendlyError } = await admin
+      .from("integrations")
+      .select("id, config")
+      .eq("business_id", workspace.businessId)
+      .eq("provider_type", "calendly");
+    if (calendlyError) return fail("Could not save the Calendly event type.");
+    if (!calendly?.length && eventType.uri) {
+      return fail("Connect Calendly in Connections before choosing an event type.");
+    }
+    for (const row of calendly ?? []) {
+      const config = (row.config ?? {}) as Record<string, unknown>;
+      if ((config.event_type_uri ?? null) === eventType.uri) continue;
+      const { error: configError } = await admin
+        .from("integrations")
+        .update({ config: { ...config, event_type_uri: eventType.uri } as never })
+        .eq("id", row.id)
+        .eq("business_id", workspace.businessId);
+      if (configError) return fail("Could not save the Calendly event type.");
+    }
+  }
+
   await recordAudit({
     businessId: workspace.businessId,
     actorUserId: workspace.userId,
     action: "workspace.settings_updated",
     entityType: "business_settings",
-    metadata: { section: "booking", mode: parsed.data.bookingMode },
+    metadata: {
+      section: "booking",
+      mode: parsed.data.bookingMode,
+      ...(eventType?.ok ? { calendly_event_type_uri: eventType.uri } : {}),
+    },
   });
 
   refresh("/app/settings");
@@ -832,12 +743,14 @@ export async function openBillingPortal(): Promise<UrlResult> {
 
 const checkoutSchema = z.object({
   plan: z.enum(["starter", "growth", "pro"]),
-  interval: z.enum(["month", "year"]),
+  // Optional: a live subscription always keeps its own interval (an annual
+  // customer upgrades on annual prices), so the caller need not know it.
+  interval: z.enum(["month", "year"]).optional(),
 });
 
 export async function startPlanCheckout(input: {
   plan: string;
-  interval: string;
+  interval?: string;
 }): Promise<UrlResult> {
   const parsed = checkoutSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a plan to continue." };
@@ -846,50 +759,51 @@ export async function startPlanCheckout(input: {
   if (!guard.ok) return { ok: false, error: guard.error };
   const { workspace } = guard;
 
-  const priceId = priceIdFor(parsed.data.plan as PlanId, parsed.data.interval);
-  if (!priceId) {
+  const plan = parsed.data.plan;
+
+  // A live subscription changes in place: upgrades now (prorated), downgrades
+  // at the period end (terms 6.3). Opening a second Checkout here used to
+  // create a second, parallel subscription.
+  const change = await changeSubscriptionPlan(workspace, plan);
+  if (change.ok) {
+    refresh("/app/settings");
+    const outcome = change.mode === "scheduled" ? "scheduled" : "changed";
+    return { ok: true, url: `/app/settings?section=billing&plan=${outcome}` };
+  }
+  if (!change.noLiveSubscription) return { ok: false, error: change.error };
+
+  // No live subscription (never started, or ended): the caller's interval,
+  // else the one this workspace last had, else monthly.
+  const { data: previous, error: previousError } = await createAdminClient()
+    .from("subscriptions")
+    .select("billing_interval")
+    .eq("business_id", workspace.businessId)
+    .maybeSingle();
+  if (previousError) return { ok: false, error: "Could not read your billing details. Try again." };
+  const interval = resolvePlanInterval({
+    requested: parsed.data.interval,
+    storedInterval: previous?.billing_interval ?? null,
+  });
+
+  if (!priceIdFor(plan as PlanId, interval)) {
     return {
       ok: false,
-      error: `${PLANS[parsed.data.plan].name} is not available for self-serve checkout yet. Contact support and we will set it up.`,
+      error: `${PLANS[plan].name} is not available for self-serve checkout yet. Contact support and we will set it up.`,
     };
   }
 
-  const admin = createAdminClient();
-  const [{ data: subscription }, { data: profile }] = await Promise.all([
-    admin
-      .from("subscriptions")
-      .select("stripe_customer_id")
-      .eq("business_id", workspace.businessId)
-      .maybeSingle(),
-    admin
-      .from("profiles")
-      .select("email")
-      .eq("id", workspace.userId)
-      .maybeSingle(),
-  ]);
+  // A new Checkout, carrying a trial only if this workspace has not had one.
+  return createSubscriptionCheckout(workspace, plan, interval);
+}
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
-      customer: subscription?.stripe_customer_id ?? undefined,
-      customer_email: subscription?.stripe_customer_id
-        ? undefined
-        : (profile?.email ?? undefined),
-      client_reference_id: workspace.businessId,
-      subscription_data: { metadata: { business_id: workspace.businessId } },
-      metadata: { business_id: workspace.businessId },
-      success_url: `${serverEnv.siteUrl}/app/settings?section=billing&checkout=success`,
-      cancel_url: `${serverEnv.siteUrl}/app/settings?section=billing&checkout=cancelled`,
-    });
-
-    if (!session.url) {
-      return { ok: false, error: "Could not start checkout. Try again." };
-    }
-    return { ok: true, url: session.url };
-  } catch {
-    return { ok: false, error: "Could not start checkout. Try again." };
-  }
+/** Drops a downgrade scheduled for the period end; the current plan renews. */
+export async function cancelScheduledPlanChange(): Promise<ActionResult> {
+  const guard = await requireOwner();
+  if (!guard.ok) return fail(guard.error);
+  const result = await cancelPendingPlanChange(guard.workspace);
+  if (!result.ok) return fail(result.error);
+  refresh("/app/settings");
+  return { ok: true };
 }
 
 /* ------------------------------------------------------------ danger zone */
@@ -1177,7 +1091,6 @@ const PROVIDER_TYPES = [
   "calendly",
   "email",
   "google_ads",
-  "microsoft_ads",
   "tiktok_ads",
   "linkedin_ads",
   "slack",
@@ -1205,6 +1118,14 @@ export async function connectProviderToken(
   const guard = await requireSettingsAdmin();
   if (!guard.ok) return fail(guard.error);
   const { workspace } = guard;
+
+  // Every attempt makes an authenticated call to the provider's API, so a
+  // bad-token retry loop is bounded here rather than left to HubSpot's own
+  // rate limit.
+  const limit = await checkRateLimit("integration:connect_token", workspace.businessId);
+  if (!limit.allowed) {
+    return fail("Too many connection attempts. Try again in a few minutes.");
+  }
 
   if (parsed.data === "hubspot") {
     const { connectHubspot } = await import("@/lib/integrations/providers/hubspot");
@@ -1241,6 +1162,10 @@ export async function disconnectIntegration(
       external_account_id: null,
       display_name: null,
       scopes: [],
+      // Cleared, not carried forward — a reconnect (possibly to a different
+      // external account entirely) must not silently inherit a stale Page id,
+      // phone number id or Slack channel id from the connection just severed.
+      config: {},
       last_error_code: null,
       last_error_message: null,
     })
@@ -1249,7 +1174,36 @@ export async function disconnectIntegration(
 
   if (error) return fail("Could not disconnect that provider.");
 
+  if (parsed.data === "calendly") {
+    // Best-effort: a customer must always be able to disconnect a provider
+    // from their own workspace even when the provider's own API is
+    // unreachable, so a failed revoke is logged and never blocks the rest of
+    // this function.
+    try {
+      const { revokeCalendlyWebhook } = await import(
+        "@/lib/integrations/providers/calendly"
+      );
+      await revokeCalendlyWebhook(integration.id);
+    } catch (revokeError) {
+      console.error("Could not revoke the Calendly webhook subscription.", revokeError);
+    }
+  }
+
   await admin.from("integration_secrets").delete().eq("integration_id", integration.id);
+
+  // The optional CRM pull is switched off with the connection. Left "enabled",
+  // the Settings toggle kept claiming an import that could no longer run, and
+  // a reconnect -- possibly to a different CRM account -- would have silently
+  // resumed pulling from wherever the cursor last stood.
+  if (parsed.data === "hubspot" || parsed.data === "zoho_crm" || parsed.data === "salesforce") {
+    const { error: pullError } = await (admin as unknown as UntypedClient)
+      .from("crm_pull_settings")
+      .update({ enabled: false })
+      .eq("integration_id", integration.id)
+      .eq("business_id", workspace.businessId);
+    if (pullError) console.error("Could not switch off CRM pull on disconnect.", pullError.message);
+  }
+
   await admin
     .from("integration_objects")
     .update({ enabled: false })
@@ -1330,8 +1284,7 @@ export async function saveWorkspaceSettings(input: {
     return fail(parsed.error.issues[0]?.message ?? "Check the details you entered.");
   }
   if (
-    parsed.data.industry &&
-    !(INDUSTRIES as readonly string[]).includes(parsed.data.industry)
+    !isAcceptedIndustry(parsed.data.industry)
   ) {
     return fail("Choose an industry from the list.");
   }

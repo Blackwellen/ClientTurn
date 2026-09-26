@@ -3,7 +3,11 @@ import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { hashToken } from "./gateway";
+import { approverAuthority } from "./guards";
 import { MCP_SCOPES, type McpScope } from "./tools";
+import { createApiKey, revokeApiKey } from "@/lib/api-keys/service";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { mcpKeyName, mcpKeyTag } from "./connection-key";
 
 /**
  * Issuing and revoking MCP connections (Programme §1).
@@ -53,8 +57,12 @@ function generateSecret(prefix: string): string {
 export type CreatedClient = {
   clientId: string;
   oauthClientId: string;
-  /** Shown once. Never stored, never recoverable. */
-  clientSecret: string;
+  /**
+   * The workspace API key the assistant uses as its bearer token. Shown once;
+   * only its digest is stored. Null only if the key could not be issued, in
+   * which case the connection exists and "New key" can issue one.
+   */
+  apiKey: string | null;
   scopes: McpScope[];
 };
 
@@ -86,7 +94,7 @@ export async function createClient(input: {
   const oauthClientId = generateSecret("ct_client");
   const clientSecret = generateSecret("ct_secret");
 
-  const { data: client } = await db
+  const { data: client, error: clientError } = await db
     .from("mcp_clients")
     .insert({
       business_id: input.businessId,
@@ -101,12 +109,12 @@ export async function createClient(input: {
     .select("id")
     .single();
 
-  if (!client) return null;
+  if (clientError || !client) return null;
 
   // Scopes are rows rather than an array column so each grant carries who
   // granted it and when, and so revoking one is a dated fact rather than an
   // edit that erases the previous state.
-  await db.from("mcp_scopes").insert(
+  const { error: scopeError } = await db.from("mcp_scopes").insert(
     scopes.map((scope) => ({
       business_id: input.businessId,
       client_id: client.id,
@@ -114,6 +122,12 @@ export async function createClient(input: {
       granted_by: input.userId,
     })),
   );
+  if (scopeError) {
+    // A connection with no recorded grants can do nothing. Take it down rather
+    // than leave a live-looking row behind.
+    await db.from("mcp_clients").delete().eq("id", client.id);
+    return null;
+  }
 
   await recordAudit({
     businessId: input.businessId,
@@ -124,12 +138,116 @@ export async function createClient(input: {
     metadata: { name: input.name, scopes, kind: "mcp" },
   });
 
+  const issued = await issueConnectionKey({
+    businessId: input.businessId,
+    clientId: client.id,
+    userId: input.userId,
+  });
+
   return {
     clientId: client.id,
     oauthClientId,
-    clientSecret,
+    apiKey: issued?.key ?? null,
     scopes,
   };
+}
+
+/* ------------------------------------------------------- connection keys */
+
+/**
+ * Issues the connection's bearer credential: a workspace API key carrying
+ * exactly the connection's live grants, bound to it. Any earlier key bound to
+ * the same connection is revoked first, so "New key" is a rotation and a
+ * connection never has two working keys.
+ */
+export async function issueConnectionKey(input: {
+  businessId: string;
+  clientId: string;
+  userId: string;
+}): Promise<{ key: string; keyId: string } | null> {
+  const db = createAdminClient();
+
+  const { data: client, error: clientError } = await db
+    .from("mcp_clients")
+    .select("id, name, status")
+    .eq("id", input.clientId)
+    .eq("business_id", input.businessId)
+    .maybeSingle();
+  if (clientError || !client || client.status !== "ACTIVE") return null;
+
+  const { data: grants, error: grantError } = await db
+    .from("mcp_scopes")
+    .select("scope")
+    .eq("client_id", input.clientId)
+    .is("revoked_at", null);
+  if (grantError) return null;
+  const scopes = (grants ?? []).map((row) => row.scope);
+  if (scopes.length === 0) return null;
+
+  await revokeConnectionKeys({ ...input });
+
+  const created = await createApiKey({
+    businessId: input.businessId,
+    userId: input.userId,
+    createdBy: input.userId,
+    name: mcpKeyName(client.name, client.id),
+    environment: "live",
+    scopes,
+  });
+  if (!created) return null;
+
+  const { error: bindError } = await db
+    .from("api_keys")
+    .update({ mcp_client_id: input.clientId } as never)
+    .eq("id", created.id)
+    .eq("business_id", input.businessId);
+  // Before 0133 the column does not exist; the name tag carries the binding.
+  if (bindError && !isSchemaLag(bindError)) {
+    console.error("[mcp] could not bind key to connection", bindError.message);
+  }
+
+  return { key: created.key, keyId: created.id };
+}
+
+/** Revokes every live API key bound to a connection. Returns how many. */
+async function revokeConnectionKeys(input: {
+  businessId: string;
+  clientId: string;
+  userId: string;
+}): Promise<number> {
+  const db = createAdminClient();
+
+  let ids: string[] = [];
+  const bound = await db
+    .from("api_keys")
+    .select("id")
+    .eq("business_id", input.businessId)
+    .eq("mcp_client_id" as never, input.clientId)
+    .is("revoked_at", null);
+  if (bound.error && !isSchemaLag(bound.error)) {
+    throw new Error(`Could not read the connection's keys: ${bound.error.message}`);
+  }
+  ids = ((bound.data ?? []) as { id: string }[]).map((row) => row.id);
+
+  // The name tag, for keys issued before 0133 was applied.
+  const tagged = await db
+    .from("api_keys")
+    .select("id")
+    .eq("business_id", input.businessId)
+    .like("name", `%${mcpKeyTag(input.clientId)}`)
+    .is("revoked_at", null);
+  if (tagged.error) {
+    throw new Error(`Could not read the connection's keys: ${tagged.error.message}`);
+  }
+  ids = [...new Set([...ids, ...(tagged.data ?? []).map((row) => row.id)])];
+
+  let revoked = 0;
+  for (const keyId of ids) {
+    if (await revokeApiKey({ businessId: input.businessId, keyId, userId: input.userId })) {
+      revoked += 1;
+    }
+  }
+  return revoked;
 }
 
 /* ------------------------------------------------------------------ tokens */
@@ -300,6 +418,12 @@ export async function revokeClient(input: {
     .eq("client_id", input.clientId)
     .is("revoked_at", null);
 
+  // The bearer key the assistant actually holds. The gateway also refuses a
+  // key whose connection is revoked, so this is belt and braces -- but a key
+  // row that still reads "active" after its connection was revoked would be a
+  // fair finding in a security review.
+  await revokeConnectionKeys(input);
+
   await recordAudit({
     businessId: input.businessId,
     actorUserId: input.userId,
@@ -332,6 +456,24 @@ export async function executeApproval(input: {
 }): Promise<{ ok: boolean; message: string }> {
   const db = createAdminClient();
   const now = new Date().toISOString();
+
+  // The approval runs on the *approver's* authority, so that authority is
+  // settled first — before the request is claimed, so a refused approver
+  // leaves it PENDING for someone who may act. Membership `status` is part of
+  // it: a suspended or removed member keeps their `role` column, and reading
+  // the role alone would let someone who has been locked out still carry out
+  // a high-impact action. No membership is a refusal, not a viewer.
+  const { data: membership } = await db
+    .from("business_members")
+    .select("role, status")
+    .eq("business_id", input.businessId)
+    .eq("user_id", input.userId)
+    .maybeSingle();
+
+  const authority = approverAuthority(membership ?? null);
+  if (!authority.ok) {
+    return { ok: false, message: authority.message };
+  }
 
   const { data: claimed } = await db
     .from("mcp_approvals")
@@ -367,22 +509,15 @@ export async function executeApproval(input: {
     return { ok: false, message: "That action is no longer available." };
   }
 
-  // Run on the *approver's* authority, not the requester's. They are the person
-  // who saw what was being asked for and agreed to it.
-  const { data: membership } = await db
-    .from("business_members")
-    .select("role")
-    .eq("business_id", input.businessId)
-    .eq("user_id", input.userId)
-    .maybeSingle();
-
+  // Run on the *approver's* authority (checked above), not the requester's.
+  // They are the person who saw what was being asked for and agreed to it.
   const result = await runOperation(
     claimed.tool_name,
     claimed.arguments_json ?? {},
     {
       businessId: input.businessId,
       userId: input.userId,
-      role: (membership?.role ?? "viewer") as "owner" | "admin" | "member" | "viewer",
+      role: authority.role,
       caller: "MCP",
       confirmed: true,
       correlationId: input.approvalId,

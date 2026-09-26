@@ -9,6 +9,8 @@ import { assertCapability } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
 import { createRun } from "./server/runs";
 import { parsePlan } from "./plan";
+import { signalAvailability, type SignalKind } from "./signals";
+import { liveSignalFeeds } from "./server/signals";
 import type { ActionResult } from "./actions";
 
 /**
@@ -108,7 +110,7 @@ export async function launchSignalAction(
   const admin = createAdminClient();
   const { data: signal } = await admin
     .from("sourcing_signals")
-    .select("id, name, active, search_strategy_id, session_id")
+    .select("id, name, kind, active, search_strategy_id, session_id")
     .eq("business_id", access.workspace.businessId)
     .eq("id", parsed.data)
     .maybeSingle();
@@ -117,6 +119,10 @@ export async function launchSignalAction(
   if (!signal.active) {
     return fail("This signal is paused. Resume it before running it.");
   }
+  // Enforced here, not only by the disabled button: a signal with no
+  // configured source would spend a run and find nothing.
+  const availability = signalAvailability(signal.kind as SignalKind, new Set(liveSignalFeeds()));
+  if (!availability.available) return fail(availability.needs ?? "This signal has no source set up.");
   if (!signal.search_strategy_id) {
     return fail(
       "This signal has no approved search behind it yet, so there is nothing to run.",

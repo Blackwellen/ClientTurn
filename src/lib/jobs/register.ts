@@ -1,6 +1,7 @@
 import "server-only";
 import { registerHandler } from "./registry";
 import { handleLeadProcess } from "./handlers/lead-process";
+import { handleLeadScore } from "./handlers/lead-score";
 import { handleMessageSend } from "./handlers/message-send";
 import { handleMessageProcessInbound } from "./handlers/message-inbound";
 import { handleEmailPoll } from "./handlers/email-poll";
@@ -18,6 +19,8 @@ import { handleCostRollupDaily, handleCostRollupMonthly } from "./handlers/cost-
 import { handleLeadSourcePoll } from "./handlers/lead-source-poll";
 import { handleCrmPush } from "./handlers/crm-push";
 import { handleNotificationSlack } from "./handlers/notification-slack";
+import { handleSlackDigest } from "./handlers/slack-digest";
+import { handleSlackInteraction } from "./handlers/slack-interaction";
 import { handleMaintenanceExpiry } from "./handlers/maintenance";
 import { handleAgentRun } from "./handlers/agent-run";
 import { handleSourcingRun } from "./handlers/sourcing-run";
@@ -31,6 +34,14 @@ import { handleAppIngest } from "./handlers/app-ingest";
 import { handleAffiliateLedger } from "./handlers/affiliate-ledger";
 import { handleSocialTick, handleSocialAdvance } from "./handlers/social-tick";
 import { handleSocialExecute } from "./handlers/social-execute";
+import { handleIngestWebhook } from "./handlers/ingest-webhook";
+import { handleEventDispatch } from "@/lib/events/outbox";
+import { handleHandoffBrief } from "./handlers/handoff-brief";
+import { handleDomainHealthCheck } from "./handlers/domain-health";
+import { handleCrmPull } from "./handlers/crm-pull";
+import { handleSenderHealth } from "./handlers/sender-health";
+import { handleWhatsAppTemplateSync } from "./handlers/whatsapp-template-sync";
+import { handleBillingDaily } from "./handlers/billing-daily";
 // The provider adapters, which register themselves on import. One list, in
 // `providers/all`, so a new adapter reaches the OAuth routes and the queue
 // together rather than only whichever one its author remembered.
@@ -49,6 +60,13 @@ export function registerJobHandlers() {
 
   registerHandler("affiliate.ledger", handleAffiliateLedger);
   registerHandler("lead.process", handleLeadProcess);
+  registerHandler("handoff.brief", handleHandoffBrief);
+  registerHandler("domain.health_check", handleDomainHealthCheck);
+  registerHandler("crm.pull", handleCrmPull);
+  registerHandler("email.sender_health", handleSenderHealth);
+  registerHandler("whatsapp.template_sync", handleWhatsAppTemplateSync);
+  registerHandler("billing.daily", handleBillingDaily);
+  registerHandler("lead.score", handleLeadScore);
   registerHandler("message.send", handleMessageSend);
   registerHandler("message.process_inbound", handleMessageProcessInbound);
   registerHandler("email.poll", handleEmailPoll);
@@ -67,6 +85,8 @@ export function registerJobHandlers() {
   registerHandler("lead_source.poll", handleLeadSourcePoll);
   registerHandler("crm.push", handleCrmPush);
   registerHandler("notification.slack", handleNotificationSlack);
+  registerHandler("notification.slack_digest", handleSlackDigest);
+  registerHandler("slack.interaction", handleSlackInteraction);
   registerHandler("maintenance.expiry", handleMaintenanceExpiry);
   registerHandler("agent.run", handleAgentRun);
   registerHandler("sourcing.run", handleSourcingRun);
@@ -80,6 +100,8 @@ export function registerJobHandlers() {
   registerHandler("social.tick", handleSocialTick);
   registerHandler("social.advance", handleSocialAdvance);
   registerHandler("social.execute", handleSocialExecute);
+  registerHandler("event.dispatch", handleEventDispatch);
+  registerHandler("ingest.webhook", handleIngestWebhook);
 }
 
 registerJobHandlers();

@@ -62,6 +62,7 @@ function readRuleSet(value: unknown): ChannelRuleSet {
     requirePostalFooter: readBool(raw.require_postal_footer),
     requireUnsubscribe: readBool(raw.require_unsubscribe),
     requirePrivacyNotice: readBool(raw.require_privacy_notice),
+    individualSubscriberTypes: readSubscribers(raw.individual_subscriber_types),
   };
 }
 
@@ -91,6 +92,8 @@ export const FAIL_CLOSED_PACK: CompliancePolicyPack = {
     allowedChannels: ["EMAIL"],
     requireRelationship: true,
     requireUnsubscribe: true,
+    // Everything that is not a demonstrable corporate subscriber.
+    individualSubscriberTypes: ["SOLE_TRADER", "PARTNERSHIP", "INDIVIDUAL", "UNKNOWN"],
   },
   quietHours: { start: "20:00", end: "08:00", channels: ["SMS", "WHATSAPP"] },
 };
@@ -120,6 +123,29 @@ export const loadActivePacks = cache(async (): Promise<CompliancePolicyPack[]> =
     };
   });
 });
+
+/**
+ * The country every workspace operates from. ClientTurn serves UK businesses
+ * only (CLAUDE.md, resolved conflict 5) and `businesses` has no country column,
+ * so this is the workspace-level jurisdiction for "which channels can this
+ * workspace offer at all". Per-recipient evaluation still narrows it.
+ */
+export const WORKSPACE_COUNTRY = "GB";
+
+/**
+ * The country a phone number itself proves. Only country codes with a pack of
+ * their own and no ambiguity are mapped: +44 is the UK. +1 is shared by the US,
+ * Canada and the Caribbean, so it proves nothing and stays null (Default pack).
+ * Without this, a lead whose only location evidence is a +44 mobile fell to the
+ * Default pack, whose warm rules (0110) exclude SMS and WhatsApp -- so warm
+ * follow-up by text was refused for every UK ad-form lead.
+ */
+export function countryFromPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const compact = phone.replace(/[\s()-]/g, "");
+  if (compact.startsWith("+44") || compact.startsWith("0044")) return "GB";
+  return null;
+}
 
 /**
  * Resolves the pack governing a country. Falls back to the pack whose

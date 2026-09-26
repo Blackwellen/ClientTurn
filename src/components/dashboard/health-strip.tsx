@@ -14,7 +14,7 @@ import type { HealthStripItem, HealthStripStatus } from "@/lib/dashboard/types";
 // Lucide dropped brand marks, and shipping Meta's own logo is a licensing
 // question — a neutral advertising glyph carries the meaning without either.
 const ICONS = {
-  meta: Megaphone,
+  lead_source: Megaphone,
   messaging: MessageSquare,
   booking: CalendarClock,
   followup: Rocket,
@@ -40,7 +40,7 @@ const PILL: Record<HealthStripStatus, "success" | "warning" | "danger"> = {
  */
 export function HealthStrip({ items }: { items: HealthStripItem[] }) {
   return (
-    <div className="border-line bg-line grid grid-cols-1 gap-px overflow-hidden rounded-xl border sm:grid-cols-2 xl:grid-cols-4">
+    <div data-tour="dashboard-health" className="border-line bg-line grid grid-cols-1 gap-px overflow-hidden rounded-xl border sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => {
         const Icon = ICONS[item.key];
         return (

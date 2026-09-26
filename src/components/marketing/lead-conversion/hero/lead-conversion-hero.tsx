@@ -71,7 +71,7 @@ const SIGNALS = [
 
 const ASSURANCES = [
   `${TRIAL_DAYS}-day free trial`,
-  "No card required",
+  "Nothing charged during the trial",
   "Quick setup",
 ] as const;
 

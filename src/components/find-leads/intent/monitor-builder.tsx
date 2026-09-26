@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { monitorTypeLabel, type IntentCategoryRow } from "@/lib/intent/types";
 import { createIntentMonitor } from "@/lib/intent/actions";
+import { Select } from "@/components/ui/form";
 
 /**
  * Create a monitor: a category, somewhere to look, and how often.
@@ -66,17 +67,17 @@ export function MonitorBuilder({
 
       <div className="mt-3 space-y-3">
         <Field label="Watch for">
-          <select
+          <Select
             value={categoryId}
             onChange={(event) => setCategoryId(event.target.value)}
-            className={cn(INPUT, "h-9 py-0")}
+            
           >
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <fieldset>
@@ -84,7 +85,9 @@ export function MonitorBuilder({
             Across
           </legend>
           <div className="flex flex-wrap gap-1.5">
-            {(["ICP", "NAMED_COMPANIES", "FIRST_PARTY"] as const).map((value) => (
+            {/* FIRST_PARTY stays in the stored vocabulary for existing monitors,
+                but is not offered: nothing tracks visitors to a customer's site. */}
+            {(["ICP", "NAMED_COMPANIES"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -159,8 +162,8 @@ export function MonitorBuilder({
 
         {monitorType === "FIRST_PARTY" && (
           <p className="rounded-md border border-line bg-surface p-3 text-[12px] text-content-muted">
-            Watches your own website for visits from companies matching your profiles. This
-            needs the ClientTurn tracking snippet installed, in Settings → Connections.
+            Watching your own website for visitors is not available: ClientTurn does not
+            track visitors to your site. Choose profiles or named companies instead.
           </p>
         )}
 
@@ -168,18 +171,18 @@ export function MonitorBuilder({
           label="How often"
           hint="Each run costs against your monitor allowance. Weekly is enough for most signals; daily is for tenders and site visits."
         >
-          <select
+          <Select
             value={cadence}
             onChange={(event) =>
               setCadence(event.target.value as typeof cadence)
             }
-            className={cn(INPUT, "h-9 py-0")}
+            
           >
             <option value="DAILY">Every day</option>
             <option value="WEEKLY">Every week</option>
             <option value="FORTNIGHTLY">Every fortnight</option>
             <option value="MONTHLY">Every month</option>
-          </select>
+          </Select>
         </Field>
       </div>
 

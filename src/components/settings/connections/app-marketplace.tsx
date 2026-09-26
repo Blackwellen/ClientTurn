@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import * as React from "react";
 import { ArrowUpRight, Check, Copy, Webhook, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -227,6 +228,15 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
             </button>
           </div>
 
+          {chosen.setupNote && (
+            <p
+              role="note"
+              className="rounded-lg border border-warning-100 bg-warning-50 p-3 text-xs text-warning-800"
+            >
+              {chosen.setupNote}
+            </p>
+          )}
+
           {current && (
             <div className="space-y-2 rounded-lg border border-line bg-surface p-3">
               <p className="text-sm font-medium">Your endpoint URL</p>
@@ -389,9 +399,12 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
             Contacts arrive in Find Leads for review. Setting up a connection
             does not start outreach, and imported contacts stay subject to
             suppression and contactability rules.{" "}
-            <a href="/app/help#app-installs" className="text-content-accent underline">
+            <Link
+              href="/app/help/integrations/connecting-pipedrive-and-other-crms"
+              className="text-content-accent underline"
+            >
               Payload format and signing instructions
-            </a>
+            </Link>
           </p>
 
           <div className="flex flex-wrap gap-2">

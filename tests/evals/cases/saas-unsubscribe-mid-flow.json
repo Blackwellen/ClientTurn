@@ -1,0 +1,39 @@
+{
+  "id": "saas-unsubscribe-mid-flow",
+  "scenario": "§92 unsubscribe mid-flow",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Which tool are you using for this today?"
+    },
+    {
+      "role": "lead",
+      "text": "Actually please unsubscribe me. What was the price again?"
+    }
+  ],
+  "expectations": {
+    "deterministic": {
+      "intent": "UNSUBSCRIBE",
+      "binding": true
+    },
+    "toolGates": [
+      {
+        "tool": "apply_suppression",
+        "riskLevel": "HIGH",
+        "confidence": 1,
+        "requirements": {
+          "requiresRecognisedOptOut": true
+        },
+        "allowed": true
+      }
+    ],
+    "live": {
+      "mustNotContain": [
+        "price",
+        "£"
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {
   ALLOCATION_CHANNELS,
   DEFAULT_ALLOCATION,
   effectiveDailyCap,
+  planDailyCaps,
   estimateSends,
   type Allocation,
   type AllocationChannel,
@@ -129,13 +130,7 @@ export async function getUsageOverview(
 
   const monthlyAllowance = v4.allowances.email_sent.hardLimit || 0;
 
-  const planCaps: DailyCaps = {
-    // A sensible daily fraction of the monthly allowance, floored so a small
-    // plan is not effectively unable to send on any single day.
-    email: Math.max(50, Math.round(monthlyAllowance / 20)),
-    sms: Math.max(20, Math.round(monthlyAllowance / 80)),
-    whatsapp: Math.max(20, Math.round(monthlyAllowance / 80)),
-  };
+  const planCaps: DailyCaps = planDailyCaps(monthlyAllowance);
 
   const dailyCaps = {} as DailyCaps;
   const effectiveCaps = {} as DailyCaps;

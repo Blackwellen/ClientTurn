@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
 import { ChannelReality } from "./channel-reality";
 import { AutopilotToggle } from "./autopilot-toggle";
+import { InMailPanel, MarkInMailSentButton } from "./inmail-panel";
+import type { InMailPanelData } from "@/lib/outreach/inmail-queries";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { shortAgo } from "@/lib/prospects/activity";
@@ -30,8 +32,10 @@ import type {
 } from "@/lib/outreach/social-outreach";
 import {
   recordSocialReplyAction,
+  sendSocialInviteAction,
   sendSocialMessageAction,
 } from "@/lib/outreach/social-actions";
+import { recordActionForDraft } from "@/lib/outreach/social-limits";
 
 /**
  * The social work queue (V4 §16, social channels).
@@ -53,6 +57,7 @@ export function SocialQueueView({
   funnel,
   autopilot,
   signals,
+  inmail,
 }: {
   queue: SocialQueue;
   canManage: boolean;
@@ -64,6 +69,8 @@ export function SocialQueueView({
   autopilot?: boolean;
   /** The signals feeding this agent. */
   signals?: React.ReactNode;
+  /** LinkedIn InMail credits; `null` data with `error` when the read failed. */
+  inmail?: { data: InMailPanelData | null; error: boolean };
 }) {
   const {
     accounts,
@@ -84,10 +91,10 @@ export function SocialQueueView({
           action={
             canManage ? (
               <Link
-                href="/app/settings?section=connections"
+                href="/app/settings?section=connections#social-accounts"
                 className="text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
               >
-                Connect an account
+                Add a sending account
               </Link>
             ) : undefined
           }
@@ -108,6 +115,7 @@ export function SocialQueueView({
   const hasPartnerAccount = accounts.some(
     (account) => account.sendMode === "PARTNER_API" && account.status === "ACTIVE",
   );
+  const hasLinkedIn = accounts.some((account) => account.platform === "LINKEDIN");
 
   return (
     <div className="space-y-4">
@@ -175,6 +183,10 @@ export function SocialQueueView({
         ))}
       </div>
 
+      {hasLinkedIn && inmail && (
+        <InMailPanel data={inmail.data} loadError={inmail.error} canManage={canManage} />
+      )}
+
       {staleInvites.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-100 bg-warning-50 px-4 py-3">
           <p className="flex items-center gap-2 text-[12.5px] text-warning-700">
@@ -221,6 +233,8 @@ export function SocialQueueView({
         rows={readyToMessage}
         empty="Nobody is waiting on a message."
         tone="success"
+        canManage={canManage}
+        hasInMail={Boolean(inmail?.data?.hasInMail)}
       />
 
       <QueueSection
@@ -230,6 +244,8 @@ export function SocialQueueView({
         rows={readyToInvite}
         empty="No approved prospects with a social profile yet."
         tone="accent"
+        canManage={canManage}
+        hasInMail={Boolean(inmail?.data?.hasInMail)}
       />
 
       <QueueSection
@@ -240,6 +256,8 @@ export function SocialQueueView({
         empty="No invites are outstanding."
         tone="neutral"
         showPending
+        canManage={canManage}
+        hasInMail={Boolean(inmail?.data?.hasInMail)}
       />
     </div>
   );
@@ -276,12 +294,23 @@ function DraftRow({ draft, canManage }: { draft: SocialDraft; canManage: boolean
   function markSent() {
     setError(null);
     startTransition(async () => {
-      const result = await sendSocialMessageAction({
-        prospectId: draft.prospectId,
-        platform: draft.platform,
-        accountId: draft.accountId,
-        messageBody: draft.body,
-      });
+      // An invitation note is sent with the connection request, so it is the
+      // invite that is recorded -- the message action refuses anything before
+      // the connection is accepted.
+      const result =
+        recordActionForDraft(draft.kind) === "INVITE"
+          ? await sendSocialInviteAction({
+              prospectId: draft.prospectId,
+              platform: draft.platform,
+              accountId: draft.accountId,
+              noteBody: draft.body,
+            })
+          : await sendSocialMessageAction({
+              prospectId: draft.prospectId,
+              platform: draft.platform,
+              accountId: draft.accountId,
+              messageBody: draft.body,
+            });
       if (!result.ok) setError(result.error);
     });
   }
@@ -447,6 +476,8 @@ function QueueSection({
   empty,
   tone,
   showPending,
+  canManage,
+  hasInMail = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
@@ -455,6 +486,10 @@ function QueueSection({
   empty: string;
   tone: "success" | "accent" | "neutral";
   showPending?: boolean;
+  /** Offers "Mark InMail sent" on LinkedIn rows. */
+  canManage?: boolean;
+  /** False when the LinkedIn subscription has no InMail (Free). */
+  hasInMail?: boolean;
 }) {
   return (
     <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
@@ -538,6 +573,10 @@ function QueueSection({
                   >
                     <ExternalLink className="size-3.5" aria-hidden />
                   </a>
+                )}
+                {/* Hidden where the subscription has no InMail (LinkedIn Free). */}
+                {canManage && row.platform === "LINKEDIN" && hasInMail && (
+                  <MarkInMailSentButton prospectId={row.prospectId} />
                 )}
                 <Button size="sm" variant="secondary" asChild>
                   <Link href={`/app/find-leads?view=prospects&prospect=${row.prospectId}`}>

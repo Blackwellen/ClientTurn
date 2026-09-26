@@ -137,7 +137,8 @@ async function countByRadius(
   // `outreach_audience_geo_count` ships with 0060, which post-dates the last
   // `database.types.ts` generation, so the generated RPC union does not name it
   // yet. Cast at this one call rather than widening the client everywhere.
-  const rpc = admin.rpc as unknown as (
+  // Bound: supabase-js `rpc` reads `this.rest`, so a detached reference throws.
+  const rpc = admin.rpc.bind(admin) as unknown as (
     name: string,
     args: Record<string, unknown>,
   ) => Promise<{ data: { grade: string; prospect_count: number }[] | null; error: unknown }>;

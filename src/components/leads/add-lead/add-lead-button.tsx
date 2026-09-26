@@ -57,6 +57,7 @@ export function AddLeadButton({
 
       <Button
         ref={triggerRef}
+        data-tour="leads-add"
         onClick={() => {
           if (!canCreate) {
             toast({

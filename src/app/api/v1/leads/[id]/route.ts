@@ -30,7 +30,7 @@ export const GET = withApiKey<RouteContext>(
   async (_request, context, route) => {
     const id = await leadId(route);
 
-    const result = await runOperation<{ lead: unknown }>(
+    const result = await runOperation<{ lead: unknown; recent_activity: unknown[] }>(
       "lead.get",
       { leadId: id },
       {
@@ -43,7 +43,12 @@ export const GET = withApiKey<RouteContext>(
     );
 
     if (!result.success) throw serviceFailureToApiError(result);
-    return apiSuccess({ data: result.data.lead });
+    // `data` stays the lead itself, as before; the last 20 messages sit
+    // beside it so existing callers are unaffected.
+    return apiSuccess({
+      data: result.data.lead,
+      recent_activity: result.data.recent_activity ?? [],
+    });
   },
 );
 

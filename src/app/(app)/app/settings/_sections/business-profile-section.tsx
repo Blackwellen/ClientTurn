@@ -1,7 +1,9 @@
 import * as React from "react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { loadBusinessProfile } from "@/lib/business-profile/queries";
+import { loadCommercialAuthoritySettings } from "@/lib/commercial/queries";
 import { BusinessProfileSection } from "@/components/settings/business-profile/business-profile-section";
+import { DirectCloseEditor } from "@/components/settings/business-profile/direct-close-editor";
 
 /**
  * Server half of Settings → Business Profile.
@@ -11,9 +13,17 @@ import { BusinessProfileSection } from "@/components/settings/business-profile/b
  */
 export async function BusinessProfileSectionLoader() {
   const workspace = await requireWorkspace();
-  const data = await loadBusinessProfile(workspace.businessId);
+  const [data, authority] = await Promise.all([
+    loadBusinessProfile(workspace.businessId),
+    loadCommercialAuthoritySettings(workspace.businessId),
+  ]);
+  const canManage = hasRole(workspace.role, "admin");
 
   return (
-    <BusinessProfileSection data={data} canManage={hasRole(workspace.role, "admin")} />
+    <div className="space-y-5">
+      <BusinessProfileSection data={data} canManage={canManage} />
+      {/* Selling: direct close (decision Q2). Owner/admin edit; the server re-checks. */}
+      <DirectCloseEditor authority={authority} canEdit={canManage} />
+    </div>
   );
 }

@@ -212,13 +212,13 @@ export function OutreachStep({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select
+                    <Select
                       aria-label="Sender identity"
                       value={outreach.senderIdentityId ?? ""}
                       onChange={(event) =>
                         setOutreach({ senderIdentityId: event.target.value || null })
                       }
-                      className="min-w-0 max-w-full truncate bg-transparent text-[13px] font-medium text-content focus:outline-none"
+                      className="h-7 w-auto min-w-0 max-w-full border-transparent bg-transparent pl-1 pr-1.5 text-[13px] font-medium shadow-none hover:border-line"
                     >
                       <option value="">Choose a sender</option>
                       {senders.map((row) => (
@@ -226,7 +226,7 @@ export function OutreachStep({
                           {row.email}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     {sender && (
                       <Badge
                         tone={

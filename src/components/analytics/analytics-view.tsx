@@ -46,11 +46,15 @@ import { AnalyticsCard, FunnelCard, SourceDonut } from "./cards";
  * unexplained.
  */
 
-const VIEWS: { value: ViewKey; label: string }[] = [
+/** "sources" is page-level: its data is the per-source funnels, not a V4 view. */
+type TabKey = ViewKey | "sources";
+
+const VIEWS: { value: TabKey; label: string }[] = [
   { value: "overview", label: "Overview" },
   { value: "acquisition", label: "Acquisition" },
   { value: "outreach", label: "Outreach" },
   { value: "conversion", label: "Conversion" },
+  { value: "sources", label: "Source funnels" },
 ];
 
 const RANGES: { value: AnalyticsRange; label: string }[] = [
@@ -71,7 +75,10 @@ export function AnalyticsView({
   senderHealth,
   insights,
   canExport,
+  sources,
 }: {
+  /** Rendered in place of the V4 view when the Source funnels tab is open. */
+  sources?: React.ReactNode;
   data: AnalyticsData;
   range: AnalyticsRange;
   trends: TrendPoint[];
@@ -98,6 +105,7 @@ export function AnalyticsView({
 
   const active =
     data.overview ?? data.acquisition ?? data.outreach ?? data.conversion ?? null;
+  const current: TabKey = sources ? "sources" : data.view;
 
   const exportHref = `/api/analytics/export?view=${data.view}&range=${range}`;
 
@@ -108,7 +116,7 @@ export function AnalyticsView({
         description="Track performance across your entire acquisition, outreach and conversion journey."
         size="lg"
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour="analytics-range">
             <div className="relative">
               <Calendar
                 aria-hidden
@@ -128,7 +136,7 @@ export function AnalyticsView({
               </Select>
             </div>
 
-            {canExport && (
+            {canExport && !sources && (
               <a
                 href={exportHref}
                 className={cn(
@@ -146,6 +154,7 @@ export function AnalyticsView({
       />
 
       <nav
+        data-tour="analytics-views"
         aria-label="Analytics views"
         className="flex items-center gap-1 overflow-x-auto border-b border-line"
       >
@@ -153,13 +162,13 @@ export function AnalyticsView({
           <button
             key={item.value}
             type="button"
-            aria-current={data.view === item.value ? "page" : undefined}
+            aria-current={current === item.value ? "page" : undefined}
             onClick={() => navigate("view", item.value)}
             className={cn(
               "-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[13.5px] font-medium",
               "transition-colors duration-[var(--lr-duration-fast)]",
               "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-accent",
-              data.view === item.value
+              current === item.value
                 ? "border-success-600 text-content"
                 : "border-transparent text-content-muted hover:text-content",
             )}
@@ -169,7 +178,9 @@ export function AnalyticsView({
         ))}
       </nav>
 
-      {!active ? (
+      {sources ? (
+        sources
+      ) : !active ? (
         <EmptyState
           title="Nothing to show yet"
           description="This view has no data for the selected period."
@@ -259,7 +270,7 @@ function funnelDescription(view: ViewKey): string {
 
 function MetricGrid({ metrics }: { metrics: MetricValue[] }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" data-tour="analytics-metrics">
       {metrics.map((value) => (
         <MetricCard key={value.key} value={value} />
       ))}

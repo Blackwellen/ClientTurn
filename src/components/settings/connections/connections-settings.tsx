@@ -11,6 +11,8 @@ import {
   summariseConnections,
   type IntegrationCategory,
   type ProviderCardModel,
+  type ProviderExtras,
+  type ProviderType,
 } from "@/lib/integrations/catalog";
 import { ConnectionCard } from "./connection-card";
 import { AppMarketplace } from "./app-marketplace";
@@ -40,10 +42,12 @@ export function ConnectionsSettings({
   cards,
   lastCheckedAt,
   canManage,
+  extras = {},
 }: {
   cards: ProviderCardModel[];
   lastCheckedAt: string | null;
   canManage: boolean;
+  extras?: Partial<Record<ProviderType, ProviderExtras>>;
 }) {
   const [setup, setSetup] = React.useState<ProviderCardModel | null>(null);
 
@@ -117,6 +121,7 @@ export function ConnectionsSettings({
                         model={card}
                         canManage={canManage}
                         onOpenSetup={setSetup}
+                        tokenExpiresAt={extras[card.definition.id]?.meta?.tokenExpiresAt ?? null}
                       />
                     ))}
                   </ConnectionGroup>
@@ -138,6 +143,8 @@ export function ConnectionsSettings({
         <ConnectionSetupDrawer
           key={setup.definition.id}
           model={setup}
+          extras={extras[setup.definition.id]}
+          canManage={canManage}
           onClose={() => setSetup(null)}
         />
       )}

@@ -27,11 +27,11 @@ import {
   conversionGoalMeta,
   estimateResults,
   formatCount,
-  formatMoneyMinor,
   successEventLabel,
   type CampaignDraft,
   type WizardStepKey,
 } from "@/lib/outreach/campaign-draft";
+import { formatMoneyMinor } from "@/lib/outreach/types";
 import type { LaunchCheck } from "@/lib/outreach/campaign-validation";
 import type { CampaignWizardOptions } from "@/lib/outreach/campaigns/audience";
 import type { SenderHealth } from "@/lib/outreach/campaigns/sender";

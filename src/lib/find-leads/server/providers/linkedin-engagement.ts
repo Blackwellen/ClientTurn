@@ -1,5 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { serverEnv } from "@/lib/env";
+
+function linkedinCommunityApproved(): boolean {
+  return serverEnv.linkedinAds.communityManagementApproved === "true";
+}
 import { providerJson, unconfigured } from "./http";
 import {
   providerFailure,
@@ -91,12 +96,13 @@ function excerptOf(text: string | undefined | null): string | null {
   return trimmed.length > 280 ? `${trimmed.slice(0, 277)}…` : trimmed;
 }
 
-/** `urn:li:person:ABC123` → a profile URL. LinkedIn's own public form. */
-function profileUrlFor(actorUrn: string | undefined): string | null {
-  if (!actorUrn) return null;
-  const id = actorUrn.split(":").pop();
-  return id ? `https://www.linkedin.com/in/${id}` : null;
-}
+/*
+ * No profile URL is built from the actor URN. `urn:li:person:<id>` carries an
+ * opaque member id, not the vanity name a /in/ URL needs, so
+ * `linkedin.com/in/<id>` was a link to nobody -- a fabricated URL presented as
+ * the person's profile. The URN is kept (in `externalId`) and the profile URL
+ * stays null until a sanctioned lookup provides one.
+ */
 
 async function fetchEngagement(input: {
   businessId: string;
@@ -167,7 +173,7 @@ async function fetchEngagement(input: {
         // is what makes the person findable.
         displayName: null,
         companyName: null,
-        profileUrl: profileUrlFor(actor),
+        profileUrl: null,
         excerpt: excerptOf(comment.message?.text),
         occurredAt: occurredMs ? new Date(occurredMs).toISOString() : null,
         sourceReference: comment.id ?? post.id,
@@ -201,6 +207,9 @@ export const linkedinEngagementProvider: SourcingProvider = {
   costRank: 1,
   // Your own page, your own token. LinkedIn bills the page, not the read.
   freeOfCharge: true,
-  configured: () => true,
+  // Off until LinkedIn approves this app for the Community Management API:
+  // without it the posts and socialActions reads are refused, and asking for
+  // `r_organization_social` would make LinkedIn reject the whole connect.
+  configured: () => linkedinCommunityApproved(),
   fetchEngagement,
 };

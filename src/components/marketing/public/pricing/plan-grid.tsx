@@ -144,8 +144,8 @@ export function PlanGrid() {
       </div>
 
       <p className="pub-small mt-8 text-center">
-        All plans include a {TRIAL_DAYS}-day free trial. No card required to
-        start. Prices exclude VAT.
+        All plans include a {TRIAL_DAYS}-day free trial. A card is required to
+        start; nothing is charged until the trial ends. Prices exclude VAT.
       </p>
     </>
   );

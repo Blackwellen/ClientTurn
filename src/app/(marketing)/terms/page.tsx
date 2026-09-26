@@ -4,7 +4,7 @@ import { COMPANY } from "@/lib/marketing/company";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
 
 const description =
-  "The contract between Blackwellen Limited and the business using ClientTurn: subscriptions, the 14-day free trial, fees and VAT, refunds and cancellation, messaging compliance, liability and termination. Governed by the law of England and Wales.";
+  "The contract between Blackwellen Limited and the business using ClientTurn: subscriptions, the 14-day free trial (card required, nothing charged until it ends), fees and VAT, refunds and cancellation, messaging compliance, liability and termination. Governed by the law of England and Wales.";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -213,14 +213,17 @@ const SECTIONS: LegalSection[] = [
       <>
         <p>
           <strong>5.1</strong> New Workspaces receive a free trial of{" "}
-          <strong>{TRIAL_DAYS} days</strong>, beginning on the day the Workspace
-          is created.
+          <strong>{TRIAL_DAYS} days</strong>, beginning when you choose a Plan and
+          add a payment card at checkout.
         </p>
         <p>
-          <strong>5.2</strong> No payment card is required to start the trial. We
-          will not take any payment during the trial, and the trial does not
-          convert automatically into a paid subscription. A paid subscription
-          begins only when you actively choose a Plan and complete checkout.
+          <strong>5.2</strong> A valid payment card is required to start the
+          trial. Our payment processor, Stripe, checks the card when you add it,
+          but we take no payment during the trial. Unless you cancel before the
+          trial ends, the trial converts into a paid subscription to the Plan you
+          chose and the first payment is taken on the day it ends. We email you at
+          least three days before. By accepting these Terms at checkout you
+          authorise that payment and the recurring payments under clause 10.
         </p>
         <p>
           <strong>5.3</strong> Trial Workspaces carry reduced limits, and some
@@ -234,7 +237,8 @@ const SECTIONS: LegalSection[] = [
           13.
         </p>
         <p>
-          <strong>5.5</strong> At the end of the trial, sending stops and the
+          <strong>5.5</strong> If you cancel during the trial, or the first
+          payment cannot be collected under clause 7.6, sending stops and the
           Workspace becomes read-only. Your Customer Data remains available for
           export for 30 days, after which it is deleted in line with the{" "}
           <a href="/privacy">Privacy Policy</a>. You may subscribe at any point
@@ -333,9 +337,13 @@ const SECTIONS: LegalSection[] = [
         </p>
         <p>
           <strong>7.6 Failed payment.</strong> If a payment fails we will notify
-          you and retry over a period of not less than seven days. If the payment
-          remains outstanding we may suspend the Service under clause 22.2. We
-          will restore the Service promptly once payment is received.
+          you and retry it once a day for up to 30 days, stopping as soon as it
+          succeeds. For the first three days the Service continues as normal.
+          From the third day, sending and AI features are paused until payment is
+          received; your data is kept and new leads are still captured. If the
+          payment is still outstanding after 30 days of retries, the subscription
+          is cancelled and the Workspace becomes read-only, and clause 22.2 may
+          apply. We restore the Service promptly once payment is received.
         </p>
         <p>
           <strong>7.7 Late payment (business customers).</strong> Where you are

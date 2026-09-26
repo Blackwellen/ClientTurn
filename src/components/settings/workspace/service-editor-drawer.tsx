@@ -4,7 +4,13 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { FormField, Input, Switch, Textarea } from "@/components/ui/form";
-import type { ServiceRow } from "@/lib/settings/types";
+import { Select } from "@/components/ui/select";
+import {
+  PRICING_VISIBILITY_OPTIONS,
+  isPublicPricing,
+  type PricingVisibility,
+  type ServiceRow,
+} from "@/lib/settings/types";
 
 export type ServiceDraft = {
   id?: string;
@@ -12,6 +18,8 @@ export type ServiceDraft = {
   description: string;
   averageValue: string;
   active: boolean;
+  pricingVisibility: PricingVisibility;
+  publicPriceText: string;
 };
 
 export function toDraft(service: ServiceRow): ServiceDraft {
@@ -21,6 +29,8 @@ export function toDraft(service: ServiceRow): ServiceDraft {
     description: service.description ?? "",
     averageValue: service.averageValue === null ? "" : String(service.averageValue),
     active: service.active,
+    pricingVisibility: service.pricingVisibility,
+    publicPriceText: service.publicPriceText ?? "",
   };
 }
 
@@ -29,6 +39,8 @@ export const EMPTY_SERVICE: ServiceDraft = {
   description: "",
   averageValue: "",
   active: true,
+  pricingVisibility: "QUOTE_REQUIRED",
+  publicPriceText: "",
 };
 
 /**
@@ -123,6 +135,53 @@ export function ServiceEditorDrawer({
               }
             />
           </FormField>
+
+          <FormField
+            label="What leads may be told about price"
+            htmlFor="service-pricing"
+            hint={
+              PRICING_VISIBILITY_OPTIONS.find(
+                (option) => option.value === draft.pricingVisibility,
+              )?.description
+            }
+          >
+            <Select
+              id="service-pricing"
+              value={draft.pricingVisibility}
+              onChange={(event) =>
+                onChange({
+                  ...draft,
+                  pricingVisibility: event.target.value as PricingVisibility,
+                })
+              }
+            >
+              {PRICING_VISIBILITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {isPublicPricing(draft.pricingVisibility) && (
+            <FormField
+              label="Published price"
+              htmlFor="service-public-price"
+              required
+              hint="Sent to leads word for word, e.g. in the offer card. Only this text is ever sent: the average value above never is."
+            >
+              <Input
+                id="service-public-price"
+                required
+                maxLength={120}
+                placeholder={draft.pricingVisibility === "PUBLIC_FROM" ? "From £1,500" : "£2,400 fixed"}
+                value={draft.publicPriceText}
+                onChange={(event) =>
+                  onChange({ ...draft, publicPriceText: event.target.value })
+                }
+              />
+            </FormField>
+          )}
 
           <div className="flex items-start justify-between gap-4 rounded-lg border border-line px-3.5 py-3">
             <div className="min-w-0">

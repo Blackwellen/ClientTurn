@@ -6,7 +6,12 @@ import {
   classifyDeterministic,
   classifyHeuristic,
 } from "@/lib/agent/classification";
-import { replyClassificationFor, type LeadIntent } from "@/lib/agent/types";
+import {
+  replyClassificationFor,
+  toMessageReplyClassification,
+  type LeadIntent,
+  type MessageReplyClassification,
+} from "@/lib/agent/types";
 import { replyActionFor, type ReplyAction, type ReplyRuleKey } from "../campaign-draft";
 import { recordCampaignEvent } from "./lifecycle";
 
@@ -48,30 +53,35 @@ export function ruleKeyFor(intent: LeadIntent): ReplyRuleKey {
   }
 }
 
-/** The `messages.reply_classification` value for a classified reply. */
-export function messageClassificationFor(intent: LeadIntent): string {
-  const bucket = replyClassificationFor(intent);
-  switch (bucket) {
-    case "POSITIVE":
-    case "BOOKING_INTENT":
-      return "POSITIVE_INTEREST";
-    case "QUESTION":
-      return "NEUTRAL_QUESTION";
-    case "OBJECTION":
-      return "OBJECTION";
-    case "NOT_INTERESTED":
-      return "NOT_NOW";
-    case "UNSUBSCRIBE":
-      return "UNSUBSCRIBE";
-    case "COMPLAINT":
-      return "COMPLAINT";
-    case "HUMAN_REQUEST":
-      return "HUMAN_REQUEST";
-    case "WRONG_NUMBER":
-      return "WRONG_PERSON";
-    default:
-      return "UNKNOWN";
-  }
+/**
+ * The `messages.reply_classification` value for a classified reply. The
+ * mapping lives once, in `toMessageReplyClassification` (B14): a refusal is
+ * stored as NOT_INTERESTED and a booking request as BOOKING_INTENT, never
+ * folded into NOT_NOW / POSITIVE_INTEREST.
+ */
+export function messageClassificationFor(intent: LeadIntent): MessageReplyClassification {
+  return toMessageReplyClassification(replyClassificationFor(intent));
+}
+
+/**
+ * A failed write on the reply path is logged rather than thrown. The caller
+ * has already stored the inbound message, so a retry would be deduplicated
+ * and this reply would never be processed at all; a partial application that
+ * says so loudly is the lesser failure.
+ */
+function reportWriteFailure(
+  step: string,
+  input: { businessId: string; campaignId: string; prospectId: string; messageId: string },
+  error: { code?: string; message?: string },
+) {
+  console.error(`campaign reply: ${step} failed`, {
+    businessId: input.businessId,
+    campaignId: input.campaignId,
+    prospectId: input.prospectId,
+    messageId: input.messageId,
+    code: error.code,
+    message: error.message,
+  });
 }
 
 export type ReplyOutcome = {
@@ -118,7 +128,7 @@ export async function handleCampaignReply(input: {
     (campaign.reply_rules_json ?? {}) as Record<string, string>,
   );
 
-  await admin
+  const { error: classifyError } = await admin
     .from("messages")
     .update({
       reply_classification: messageClassificationFor(intent),
@@ -126,11 +136,12 @@ export async function handleCampaignReply(input: {
     })
     .eq("business_id", input.businessId)
     .eq("id", input.messageId);
+  if (classifyError) reportWriteFailure("classification write", input, classifyError);
 
   // A reply always stops the sequence, whatever it said. Continuing to send
   // scheduled follow-ups to someone who has answered is the single most
   // common way cold outreach becomes spam.
-  const { data: stopped } = await admin
+  const { data: stopped, error: stopError } = await admin
     .from("outreach_recipient_runs")
     .update({
       status: "REPLIED",
@@ -143,8 +154,11 @@ export async function handleCampaignReply(input: {
     .eq("prospect_id", input.prospectId)
     .in("status", ["PENDING", "SCHEDULED", "ACTIVE"])
     .select("id");
+  // The one write here whose failure means we keep emailing someone who has
+  // answered -- it must never be silent.
+  if (stopError) reportWriteFailure("sequence stop", input, stopError);
 
-  await admin
+  const { error: prospectError } = await admin
     .from("prospects")
     .update({
       status: "REPLIED",
@@ -154,6 +168,7 @@ export async function handleCampaignReply(input: {
     .eq("business_id", input.businessId)
     .eq("id", input.prospectId)
     .neq("status", "CONVERTED");
+  if (prospectError) reportWriteFailure("prospect status", input, prospectError);
 
   let suppressed = false;
   if (action === "AUTO_SUPPRESS") {
@@ -305,7 +320,7 @@ async function suppressProspect(
     source: "REPLY",
   });
 
-  await admin
+  const { error } = await admin
     .from("prospects")
     .update({
       status: reason === "OPT_OUT" ? "UNSUBSCRIBED" : "DISQUALIFIED",
@@ -317,6 +332,18 @@ async function suppressProspect(
     })
     .eq("business_id", businessId)
     .eq("id", prospectId);
+
+  // The address is already on the suppression list, which is what stops
+  // sending; this row is the prospect's display state. Report it, and still
+  // return true because the suppression itself held.
+  if (error) {
+    console.error("campaign reply: prospect suppression status write failed", {
+      businessId,
+      prospectId,
+      code: error.code,
+      message: error.message,
+    });
+  }
 
   return true;
 }

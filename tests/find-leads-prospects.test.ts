@@ -151,7 +151,8 @@ test("a search term cannot inject additional PostgREST predicates", () => {
   // The separator is what matters. PostgREST splits an `or` on commas, so the
   // term must contribute none: the injected text may survive as *content*
   // inside an ilike pattern, but it cannot become a predicate of its own.
-  const clauses = String(or.args[0]).split(",");
+  // Split the way PostgREST does: a comma inside a double-quoted value is text.
+  const clauses = String(or.args[0]).match(/(?:[^,"]|"(?:\\.|[^"\\])*")+/g) ?? [];
   assert.equal(clauses.length, 4, "exactly the four search columns, and no more");
   for (const clause of clauses) {
     assert.match(

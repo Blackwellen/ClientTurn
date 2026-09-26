@@ -181,18 +181,27 @@ async function attemptDelivery(delivery: DeliveryRow): Promise<void> {
 
     // 4xx means the request itself is wrong, and repeating it will not fix it.
     // 408 (timeout) and 429 (rate limited) are the two that explicitly ask to
-    // be repeated, so they retry like a 5xx.
+    // be repeated, so they retry like a 5xx. A 3xx is never followed (redirect:
+    // "manual", so the SSRF check is never skipped for a hop we didn't
+    // validate) and is always a misconfiguration on the endpoint's side, so it
+    // fails fast rather than retrying for ~22.6 hours before saying so.
+    const isRedirect = response.status >= 300 && response.status < 400;
     const permanent =
-      response.status >= 400 &&
-      response.status < 500 &&
-      response.status !== 408 &&
-      response.status !== 429;
+      isRedirect ||
+      (response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408 &&
+        response.status !== 429);
 
-    await fail(
-      delivery,
-      `The endpoint answered ${response.status} after ${latency}ms.`,
-      { permanent, responseStatus: response.status, responseBody: text },
-    );
+    const message = isRedirect
+      ? `The endpoint answered with a redirect (${response.status}) after ${latency}ms. Redirects are not followed — point the webhook URL directly at the final address.`
+      : `The endpoint answered ${response.status} after ${latency}ms.`;
+
+    await fail(delivery, message, {
+      permanent,
+      responseStatus: response.status,
+      responseBody: text,
+    });
     await markEndpointFailure(endpoint.id, `HTTP ${response.status}`);
   } catch (error) {
     const aborted = error instanceof Error && error.name === "AbortError";

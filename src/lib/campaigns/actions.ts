@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ingestLead } from "@/lib/ingest/service";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { assertEntitlement, EntitlementError } from "@/lib/billing/entitlements";
@@ -13,7 +14,10 @@ import {
   assertUploadAllowed,
   objectKey,
 } from "@/lib/storage/r2";
-import { resolveAudience } from "./queries";
+import { loadReactivationAllowance, resolveAudience } from "./queries";
+import { reactivationLimitProblem } from "./reactivation-limit";
+import { loadTemplate, whatsAppTransportFor } from "@/lib/messaging/template-registry";
+import { checkCampaignTemplate } from "./reactivation-channels";
 import { parseCsv, toPreview, validateImport, MAX_IMPORT_ROWS } from "./csv";
 import {
   canPerform,
@@ -24,6 +28,7 @@ import {
   audienceFilterSchema,
   campaignDraftSchema,
   findUnknownMergeFields,
+  IMPORT_CONTACT_REQUIRED_MESSAGE,
   importMappingSchema,
   MAX_CAMPAIGN_AUDIENCE,
   type ActionResult,
@@ -92,22 +97,46 @@ async function quietHoursFor(businessId: string, timezone: string) {
   };
 }
 
+/**
+ * The plan-limit-reached message for adding `adding` contacts, or null when
+ * they fit. A failed allowance read refuses: it must not lift the limit.
+ */
+async function reactivationLimitFor(businessId: string, adding: number): Promise<string | null> {
+  try {
+    return reactivationLimitProblem(await loadReactivationAllowance(businessId), adding);
+  } catch {
+    return "Could not check your reactivation allowance. Try again.";
+  }
+}
+
 /* --------------------------------------------------------- audience --- */
 
+const channelSchema = z.enum(["sms", "whatsapp", "email"]).default("sms");
+
+/**
+ * The estimate is resolved for the channel the campaign will use: an email
+ * campaign counts the leads with an email address and the email suppression
+ * list, not the ones with a mobile number.
+ */
 export async function previewAudience(
   input: unknown,
+  channel?: unknown,
 ): Promise<ActionResult<AudiencePreview>> {
   const parsed = audienceFilterSchema.safeParse(input);
   if (!parsed.success) return fail("Those audience filters are not valid.");
+  const parsedChannel = channelSchema.safeParse(channel ?? undefined);
+  if (!parsedChannel.success) return fail("That channel is not valid.");
 
   const access = await requireCampaignAccess();
   if (!access.ok) return fail(access.error);
 
-  const { preview } = await resolveAudience(
-    access.workspace.businessId,
-    parsed.data,
-  );
-  return ok(preview);
+  const [{ preview }, allowance] = await Promise.all([
+    resolveAudience(access.workspace.businessId, parsed.data, parsedChannel.data),
+    // Shown beside the estimate; a failed read shows nothing rather than a
+    // made-up allowance. Launch re-checks it either way.
+    loadReactivationAllowance(access.workspace.businessId).catch(() => null),
+  ]);
+  return ok({ ...preview, allowance });
 }
 
 /* --------------------------------------------------------- campaigns --- */
@@ -147,12 +176,45 @@ export async function createCampaign(
     }
   }
 
-  if (draft.aiPersonalize) {
+  // Personalisation rewrites plain text; an email body is formatted markup and
+  // is never rewritten, so the flag is not stored on an email campaign.
+  const aiPersonalize = draft.aiPersonalize && draft.channel !== "email";
+
+  if (aiPersonalize) {
     try {
       await assertEntitlement(workspace.businessId, "ai_assist");
     } catch (error) {
       if (error instanceof EntitlementError) return fail(error.message);
       return fail("AI personalization is unavailable right now.");
+    }
+  }
+
+  // WhatsApp outside the 24-hour window takes only an approved template, so
+  // the campaign's template is checked now against the registry, and again by
+  // the send path at send time.
+  let whatsappTemplate: { id: string; variables: Record<string, string> } | null = null;
+  if (draft.channel === "whatsapp") {
+    if (!draft.whatsappTemplateId) {
+      return fail("A WhatsApp campaign needs an approved WhatsApp template.");
+    }
+    try {
+      const [template, transport] = await Promise.all([
+        loadTemplate(draft.whatsappTemplateId),
+        whatsAppTransportFor(workspace.businessId),
+      ]);
+      const check = checkCampaignTemplate({
+        template,
+        businessId: workspace.businessId,
+        transport,
+        variableMap: draft.whatsappTemplateVariables,
+      });
+      if (!check.ok) return fail(check.message);
+      whatsappTemplate = {
+        id: draft.whatsappTemplateId,
+        variables: draft.whatsappTemplateVariables ?? {},
+      };
+    } catch {
+      return fail("WhatsApp templates could not be checked right now. Try again shortly.");
     }
   }
 
@@ -169,6 +231,12 @@ export async function createCampaign(
     return fail(
       `A single campaign is capped at ${MAX_CAMPAIGN_AUDIENCE.toLocaleString("en-GB")} contacts.`,
     );
+  }
+  // Plan limit reached: refused before a draft is saved, so nothing is left
+  // behind that launch would refuse again.
+  if (launch) {
+    const limit = await reactivationLimitFor(workspace.businessId, eligibleLeadIds.length);
+    if (limit) return fail(limit);
   }
 
   const quiet = await quietHoursFor(workspace.businessId, workspace.timezone);
@@ -216,8 +284,15 @@ export async function createCampaign(
       suppression_summary: suppressionSummary as never,
       send_rate_per_minute: draft.sendRatePerMinute,
       scheduled_at: scheduledAt.toISOString(),
-      ai_personalize: draft.aiPersonalize,
+      ai_personalize: aiPersonalize,
       estimated_audience_size: eligibleLeadIds.length,
+      // 0132 columns, not yet in the generated types.
+      ...((whatsappTemplate
+        ? {
+            whatsapp_template_id: whatsappTemplate.id,
+            whatsapp_template_variables: whatsappTemplate.variables,
+          }
+        : {}) as Record<string, never>),
       timezone: workspace.timezone,
       created_by: workspace.userId,
       updated_by: workspace.userId,
@@ -262,7 +337,7 @@ export async function launchCampaign(
   const admin = createAdminClient();
   const { data: campaign } = await admin
     .from("campaigns")
-    .select("id, status, scheduled_at")
+    .select("id, status, scheduled_at, estimated_audience_size")
     .eq("id", parsed.data)
     .eq("business_id", workspace.businessId)
     .maybeSingle();
@@ -271,6 +346,21 @@ export async function launchCampaign(
   if (campaign.status !== "DRAFT" && campaign.status !== "PAUSED") {
     return fail("This campaign has already been launched.");
   }
+
+  // Contacts already in this campaign were counted when they were added; only
+  // the rest of the estimated audience is new against the allowance. The
+  // expand job re-checks against the audience it actually resolves.
+  const { count: existing, error: existingError } = await admin
+    .from("campaign_contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", workspace.businessId)
+    .eq("campaign_id", campaign.id);
+  if (existingError) return fail("Could not check your reactivation allowance. Try again.");
+  const limit = await reactivationLimitFor(
+    workspace.businessId,
+    Math.max(0, (campaign.estimated_audience_size ?? 0) - (existing ?? 0)),
+  );
+  if (limit) return fail(limit);
 
   const scheduled =
     campaign.scheduled_at && new Date(campaign.scheduled_at) > new Date();
@@ -470,6 +560,16 @@ export async function duplicateCampaign(
       message_template: source.message_template,
       followup_template: source.followup_template,
       followup_delay_seconds: source.followup_delay_seconds,
+      // An email campaign cannot send without its subject lines.
+      subject_template: source.subject_template,
+      followup_subject_template: source.followup_subject_template,
+      // 0132 columns (absent from the generated types): the WhatsApp template.
+      ...(("whatsapp_template_id" in source
+        ? {
+            whatsapp_template_id: (source as Record<string, unknown>).whatsapp_template_id,
+            whatsapp_template_variables: (source as Record<string, unknown>).whatsapp_template_variables,
+          }
+        : {}) as Record<string, never>),
       filter_config: source.filter_config,
       send_rate_per_minute: source.send_rate_per_minute,
       send_window_start: source.send_window_start,
@@ -688,7 +788,7 @@ export async function previewImportFile(
   input: unknown,
 ): Promise<ActionResult<ImportPreview>> {
   const parsed = previewSchema.safeParse(input);
-  if (!parsed.success) return fail("Map the mobile number column to continue.");
+  if (!parsed.success) return fail(IMPORT_CONTACT_REQUIRED_MESSAGE);
 
   const access = await requireCampaignAccess();
   if (!access.ok) return fail(access.error);
@@ -767,11 +867,16 @@ export async function confirmImportFile(
     .select("id")
     .single();
 
+  // One source row per file. `form_id` carries the import id because 0114
+  // made (provider, page, form, campaign, ad set, ad) unique with NULLS NOT
+  // DISTINCT: without it every CSV file after the first collided with the
+  // first file's row and was imported with no source at all.
   const { data: source } = await admin
     .from("lead_sources")
     .insert({
       business_id: workspace.businessId,
       provider: "csv",
+      form_id: importRow?.id ?? null,
       source_name: parsed.data.filename,
       raw_metadata: { import_id: importRow?.id ?? null } as never,
     })
@@ -787,35 +892,73 @@ export async function confirmImportFile(
     (services ?? []).map((service) => [service.name.toLowerCase(), service.id]),
   );
 
+  // Every row through the one intake path (design 03 §1), so a customer who
+  // is already a lead is matched and touched rather than duplicated -- the
+  // old batch upsert keyed on (import, phone) created a second lead for them,
+  // and a second follow-up history. The touch records this file's source, and
+  // the audience filter reads touches as well as leads.source_id
+  // (campaigns/queries.ts), so a matched customer still joins the campaign.
+  // Rows run a few at a time: sequential would be one round trip per query
+  // per row for up to MAX_IMPORT_ROWS rows.
   let imported = 0;
-  const batchSize = 250;
+  let failedRows = 0;
+  const importKey = importRow?.id ?? "unknown";
+  const concurrency = 8;
 
-  for (let index = 0; index < result.rows.length; index += batchSize) {
-    const batch = result.rows.slice(index, index + batchSize).map((row) => ({
-      business_id: workspace.businessId,
-      first_name: row.firstName,
-      last_name: row.lastName,
-      phone: row.phone,
-      phone_normalized: row.phoneNormalized,
-      email: row.email,
-      postcode: row.postcode,
-      service_id: row.service
-        ? (serviceByName.get(row.service.toLowerCase()) ?? null)
-        : null,
-      source_id: source?.id ?? null,
-      status: "NEW",
-      // Imported history must never trigger the new-lead follow-up sequence.
-      automation_active: false,
-      is_test: false,
-      external_id: `import:${importRow?.id ?? "unknown"}:${row.phoneNormalized}`,
-    }));
+  for (let index = 0; index < result.rows.length; index += concurrency) {
+    const slice = result.rows.slice(index, index + concurrency);
+    const outcomes = await Promise.allSettled(
+      slice.map((row) =>
+        ingestLead(
+          {
+            businessId: workspace.businessId,
+            source: {
+              type: "CSV",
+              provider: "csv",
+              providerRecordId: `${importKey}:${row.phoneNormalized ?? row.email}`,
+              caller: { type: "USER", id: workspace.userId },
+            },
+            person: {
+              firstName: row.firstName ?? undefined,
+              lastName: row.lastName ?? undefined,
+              phone: row.phone ?? undefined,
+              email: row.email ?? undefined,
+              postcode: row.postcode ?? undefined,
+            },
+            // A list of past contacts uploaded by the workspace: imported, not
+            // "they contacted us". The reactivation policy reads it as such.
+            relationship: "IMPORTED",
+            serviceId: row.service
+              ? (serviceByName.get(row.service.toLowerCase()) ?? undefined)
+              : undefined,
+          },
+          {
+            insertExtras: {
+              source_id: source?.id ?? null,
+              // Imported history must never trigger the new-lead follow-up sequence.
+              automation_active: false,
+              is_test: false,
+            },
+            leadSourceId: source?.id ?? null,
+            permission: { source: "REACTIVATION_IMPORT", recordedBy: workspace.userId },
+            process: { mode: "RECORD_ONLY" },
+          },
+        ),
+      ),
+    );
 
-    const { data: inserted } = await admin
-      .from("leads")
-      .upsert(batch, { onConflict: "business_id,external_id" })
-      .select("id");
+    for (const outcome of outcomes) {
+      if (outcome.status === "fulfilled" && outcome.value.leadId) imported += 1;
+      else failedRows += 1;
+    }
+  }
 
-    imported += inserted?.length ?? 0;
+  if (failedRows > 0) {
+    console.error("[reactivation import] rows not imported", {
+      businessId: workspace.businessId,
+      importId: importRow?.id ?? null,
+      failedRows,
+    });
   }
 
   if (importRow) {

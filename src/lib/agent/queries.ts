@@ -27,6 +27,7 @@ import type {
   AgentRunRow,
   ConversationAgentState,
   HandoffRow,
+  HandoffLeadBriefView,
   HandoffStatus,
   HandoffSummaryView,
 } from "./views";
@@ -69,6 +70,73 @@ function readSummary(value: unknown): HandoffSummaryView {
     unresolvedIssue: typeof raw.unresolvedIssue === "string" ? raw.unresolvedIssue : null,
     sentiment: typeof raw.sentiment === "string" ? raw.sentiment : null,
     summary: typeof raw.summary === "string" ? raw.summary : null,
+    quickBrief: readQuickBrief(raw.quickBrief),
+    leadBrief: readLeadBrief(raw.leadBrief),
+  };
+}
+
+function readQuickBrief(value: unknown): HandoffSummaryView["quickBrief"] {
+  const raw = value as { text?: unknown; source?: unknown } | null | undefined;
+  if (!raw || typeof raw.text !== "string" || !raw.text.trim()) return null;
+  return { text: raw.text, source: raw.source === "model" ? "model" : "deterministic" };
+}
+
+const str = (value: unknown): string | null => (typeof value === "string" ? value : null);
+const list = (value: unknown): Record<string, unknown>[] =>
+  Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null) : [];
+
+/**
+ * Tolerant reader for `summary_json.leadBrief` (written by the handoff.brief
+ * job). A malformed or older shape degrades field by field, never throws.
+ */
+function readLeadBrief(value: unknown): HandoffLeadBriefView | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const score = raw.score as Record<string, unknown> | null | undefined;
+  const approach = raw.approach as Record<string, unknown> | null | undefined;
+  const meeting = raw.meeting as Record<string, unknown> | null | undefined;
+  return {
+    score:
+      score && typeof score.total === "number" && typeof score.grade === "string"
+        ? { total: score.total, grade: score.grade, why: str(score.why) ?? "" }
+        : null,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === "string").slice(0, 12) : [],
+    answers: list(raw.answers)
+      .filter((a) => typeof a.question === "string" && typeof a.value === "string")
+      .slice(0, 12)
+      .map((a) => ({
+        question: a.question as string,
+        value: a.value as string,
+        known: a.known !== false,
+        evidence: str((a.evidence as Record<string, unknown> | null | undefined)?.text),
+      })),
+    objections: list(raw.objections)
+      .filter((o) => typeof o.key === "string")
+      .slice(0, 5)
+      .map((o) => ({
+        key: o.key as string,
+        evidence: str((o.evidence as Record<string, unknown> | null | undefined)?.text) ?? "",
+      })),
+    promises: list(raw.promises)
+      .map((p) => str(p.text))
+      .filter((p): p is string => Boolean(p))
+      .slice(0, 5),
+    nextStep: str(raw.nextStep),
+    approach:
+      approach && typeof approach.method === "string"
+        ? {
+            method: approach.method,
+            closeTarget: str(approach.closeTarget) ?? "",
+            reason: str(approach.reason) ?? "",
+          }
+        : null,
+    unanswered: Array.isArray(raw.unanswered)
+      ? raw.unanswered.filter((q): q is string => typeof q === "string").slice(0, 10)
+      : [],
+    meeting:
+      meeting && typeof meeting.status === "string"
+        ? { startsAt: str(meeting.startsAt), status: meeting.status }
+        : null,
   };
 }
 

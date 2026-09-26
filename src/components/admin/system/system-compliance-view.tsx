@@ -30,7 +30,8 @@ import {
   updatePrivacyRequest,
 } from "@/lib/admin/compliance-actions";
 import { NewPolicyVersionDialog } from "./new-policy-version-dialog";
-import { formatDate, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatNumber } from "@/lib/admin/format";
+import { formatDate, formatRelative } from "@/lib/dates";
 import {
   POLICY_CHANNEL_LABEL,
   POLICY_STANCE_LABEL,
@@ -407,7 +408,7 @@ export function SystemComplianceView({
                         </Badge>
                       </td>
                       <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-                        {formatRelative(item.createdAt)}
+                        {formatRelative(item.createdAt, { style: "ago" })}
                       </td>
                     </tr>
                   ))}
@@ -543,7 +544,7 @@ export function SystemComplianceView({
                       {PRIVACY_REQUEST_TYPE_LABEL[request.type]} · {request.subject}
                     </span>
                     <span className="block truncate text-[11.5px] text-content-subtle">
-                      Received {formatRelative(request.receivedAt)}
+                      Received {formatRelative(request.receivedAt, { style: "ago" })}
                       {request.overdue ? " · overdue" : ""}
                     </span>
                   </span>
@@ -613,7 +614,7 @@ export function SystemComplianceView({
                 {data.auditRows.map((row) => (
                   <tr key={row.id} className="hover:bg-surface-hover">
                     <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.at)}
+                      {formatRelative(row.at, { style: "ago" })}
                     </td>
                     <td className="px-4 py-2.5 text-[12.5px] text-content">{row.event}</td>
                     <td className="px-4 py-2.5 text-[12px] text-content-secondary">

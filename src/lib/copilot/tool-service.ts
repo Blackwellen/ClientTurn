@@ -1,6 +1,5 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { getV4Analytics, rangeBounds } from "@/lib/analytics/v4-queries";
@@ -16,6 +15,7 @@ import { saveFact } from "@/lib/business-profile/actions";
 import { createSupportTicket } from "@/lib/support/actions";
 import { runOperation, serviceOperation } from "@/lib/services";
 import { copilotTool, roleAllows, type ToolDeclaration } from "./types";
+import { parseLegacyArgs } from "./legacy-schemas";
 
 /**
  * CopilotToolService — the boundary between what a model asks for and what the
@@ -294,10 +294,14 @@ async function execute(
     return delegate(context, tool, args, confirmed);
   }
 
+  // Legacy tools validate against their declared schema before anything runs,
+  // whether the call came from the model or from the Actions tab.
+  const parsed = parseLegacyArgs(tool.name, args);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  args = parsed.args;
+
   switch (tool.name) {
     /* ---------------------------------------------------------- reads */
-    case "getProspects":
-      return getProspects(context, args);
     case "getCampaign":
       return getCampaign(context, args);
     case "getCampaignPerformance":
@@ -314,10 +318,10 @@ async function execute(
       return attentionItems(context);
 
     /* --------------------------------------------------------- writes */
+    // No resume: resuming restarts bulk sending, which the service registry
+    // withholds from COPILOT (`campaign.resume`). Pausing is the safe direction.
     case "pauseCampaign":
-      return campaignState(context, args, "PAUSED");
-    case "resumeCampaign":
-      return campaignState(context, args, "ACTIVE");
+      return pauseCampaign(args);
     case "updateCampaignPriority":
       return campaignPriority(args);
     case "createCampaignDraft":
@@ -334,27 +338,8 @@ async function execute(
 
 /* ------------------------------------------------------------------ reads */
 
-async function getProspects(context: ToolContext, args: Record<string, unknown>) {
-  const limit = z.number().int().min(1).max(50).catch(20).parse(args.limit ?? 20);
-  const admin = createAdminClient();
-
-  const { data } = await admin
-    .from("prospects")
-    .select("id, full_name, role_title, grade, score, status, verification_status, created_at")
-    .eq("business_id", context.businessId)
-    .eq("is_test", false)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  return {
-    ok: true as const,
-    summary: `${data?.length ?? 0} prospects`,
-    data: data ?? [],
-  };
-}
-
 async function getCampaign(context: ToolContext, args: Record<string, unknown>) {
-  const id = z.uuid().parse(args.id);
+  const id = String(args.id);
   const admin = createAdminClient();
 
   const { data } = await admin
@@ -378,11 +363,10 @@ async function campaignPerformance(context: ToolContext) {
 }
 
 async function analytics(context: ToolContext, args: Record<string, unknown>) {
-  const view = z
-    .enum(["overview", "acquisition", "outreach", "conversion"])
-    .catch("overview")
-    .parse(args.view ?? "overview");
-  const range = z.enum(["7d", "30d", "90d", "12m"]).catch("30d").parse(args.range ?? "30d");
+  const view =
+    (args.view as "overview" | "acquisition" | "outreach" | "conversion" | undefined) ??
+    "overview";
+  const range = (args.range as "7d" | "30d" | "90d" | "12m" | undefined) ?? "30d";
 
   // The canonical analytics service, so Copilot quotes the same numbers the
   // Analytics page shows rather than deriving its own.
@@ -438,30 +422,23 @@ async function attentionItems(context: ToolContext) {
 /* ----------------------------------------------------------------- writes */
 
 /**
- * Campaign state changes go through `setCampaignStateAction`, which owns the
- * campaign state machine. Copilot cannot move a campaign into a state the UI
- * would refuse, because it is asking the same function.
+ * Pausing an outreach campaign goes through `setCampaignStateAction`, which
+ * owns the outreach campaign state machine. (The registry's `campaign.pause`
+ * acts on reactivation campaigns, a different table, so it does not cover
+ * this.) Only the PAUSED direction exists here.
  */
-async function campaignState(
-  context: ToolContext,
-  args: Record<string, unknown>,
-  status: "PAUSED" | "ACTIVE",
-) {
-  const id = z.uuid().parse(args.id ?? args.campaignId);
-  const result = await setCampaignStateAction({ campaignId: id, status });
+async function pauseCampaign(args: Record<string, unknown>) {
+  const id = String(args.id);
+  const result = await setCampaignStateAction({ campaignId: id, status: "PAUSED" });
 
   return result.ok
-    ? {
-        ok: true as const,
-        summary: status === "PAUSED" ? "Campaign paused" : "Campaign resumed",
-        data: { id, status },
-      }
+    ? { ok: true as const, summary: "Campaign paused", data: { id, status: "PAUSED" } }
     : { ok: false as const, error: result.error };
 }
 
 async function campaignPriority(args: Record<string, unknown>) {
-  const id = z.uuid().parse(args.id ?? args.campaignId);
-  const priority = z.number().int().min(1).max(10).parse(args.priority);
+  const id = String(args.id);
+  const priority = args.priority;
   const result = await setCampaignPriorityAction({ campaignId: id, priority });
 
   return result.ok

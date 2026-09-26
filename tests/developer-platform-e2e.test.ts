@@ -470,6 +470,59 @@ describe("MCP over a workspace API key", () => {
   });
 });
 
+/* ------------------------------------------ MCP connection (Settings UI) */
+
+describe("an assistant connection's key works through the gateway", () => {
+  test("New connection returns a key the gateway accepts, attributed to the connection", async () => {
+    const { createClient: createMcpClient } = await import("../src/lib/mcp/provisioning.ts");
+    const created = await createMcpClient({
+      businessId: world.businessId,
+      userId: world.adminUserId,
+      name: "Claude e2e",
+      scopes: ["leads:read"],
+    });
+    assert.ok(created, "the connection was not created");
+    assert.ok(created.apiKey, "the connection issued no key");
+    assert.ok(created.apiKey.startsWith("ct_live_"), "the connection key is not an API key");
+
+    const { authenticate, listTools } = await import("../src/lib/mcp/gateway.ts");
+    const auth = await authenticate(`Bearer ${created.apiKey}`, "203.0.113.9");
+    assert.ok(auth, "the gateway refused the key the connection dialog shows");
+    assert.equal(auth.businessId, world.businessId);
+    assert.equal(auth.clientId, created.clientId, "the call is not attributed to its connection");
+    assert.deepEqual(auth.scopes, ["leads:read"]);
+    assert.ok(listTools(auth).every((tool) => tool.scope === "leads:read"));
+  });
+
+  test("replacing the key revokes the old one; revoking the connection revokes the key", async () => {
+    const provisioning = await import("../src/lib/mcp/provisioning.ts");
+    const created = await provisioning.createClient({
+      businessId: world.businessId,
+      userId: world.adminUserId,
+      name: "Codex e2e",
+      scopes: ["leads:read"],
+    });
+    assert.ok(created?.apiKey);
+    const { authenticate } = await import("../src/lib/mcp/gateway.ts");
+
+    const replaced = await provisioning.issueConnectionKey({
+      businessId: world.businessId,
+      clientId: created.clientId,
+      userId: world.adminUserId,
+    });
+    assert.ok(replaced);
+    assert.equal(await authenticate(`Bearer ${created.apiKey}`, "203.0.113.9"), null);
+    assert.ok(await authenticate(`Bearer ${replaced.key}`, "203.0.113.9"));
+
+    await provisioning.revokeClient({
+      businessId: world.businessId,
+      clientId: created.clientId,
+      userId: world.adminUserId,
+    });
+    assert.equal(await authenticate(`Bearer ${replaced.key}`, "203.0.113.9"), null);
+  });
+});
+
 /* -------------------------------------------------------------- webhooks */
 
 describe("webhooks end to end", () => {

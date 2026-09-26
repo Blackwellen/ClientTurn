@@ -51,7 +51,7 @@ export * from "./types";
 const PROSPECT_COLUMNS = `
   id, first_name, last_name, role_title, role_classification, email, phone_e164,
   status, grade, score, verification_status, outreach_eligibility, eligibility_reason,
-  campaign_id, source_provider, last_activity_at, last_contacted_at, replied_at,
+  campaign_id, source_provider, source_run_id, last_activity_at, last_contacted_at, replied_at,
   approved_at, promoted_at, last_intent_at, created_at, promoted_to_lead_id,
   avatar_url, avatar_source, avatar_expires_at,
   social_platform, social_comment_id, social_commented_at, private_reply_sent_at`;
@@ -89,6 +89,8 @@ type RawProspect = {
   eligibility_reason: string | null;
   campaign_id: string | null;
   source_provider: string | null;
+  /** Set on a sourced (cold) prospect; decides whether it may be promoted. */
+  source_run_id: string | null;
   last_activity_at: string | null;
   avatar_url: string | null;
   avatar_source: string | null;
@@ -149,6 +151,8 @@ function toListRow(
     campaignName: raw.campaign_id ? (campaigns.get(raw.campaign_id) ?? null) : null,
     intent: intent.get(raw.id) ?? null,
     source_provider: raw.source_provider,
+    source_run_id: raw.source_run_id ?? null,
+    replied_at: raw.replied_at,
     last_activity_at: raw.last_activity_at,
     lastActivity: activity?.get(raw.id) ?? null,
     created_at: raw.created_at,

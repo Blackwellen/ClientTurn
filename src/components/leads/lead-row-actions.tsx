@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ExternalLink, Hand, SquarePen, UserPlus } from "lucide-react";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
+import { HANDOVER_COPY } from "@/lib/leads/resume-rule";
 import { useLeadParams } from "./use-lead-params";
 
 /**
@@ -47,7 +48,7 @@ export function LeadRowActions({
           Change status
         </DropdownItem>
         <DropdownItem onSelect={() => focus("takeover")} icon={Hand}>
-          Human takeover
+          {HANDOVER_COPY.takeOver}
         </DropdownItem>
       </DropdownMenu>
     </div>

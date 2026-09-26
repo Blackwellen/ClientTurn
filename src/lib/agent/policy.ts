@@ -17,6 +17,12 @@ import {
   type QuietHours,
 } from "../automation/scheduler.ts";
 import {
+  countSmsSegments,
+  normaliseForSms,
+  SMS_MAX_SEGMENTS,
+  SMS_PREFERRED_SEGMENTS,
+} from "../messaging/sms-segments.ts";
+import {
   CHANNEL_LIMITS,
   SOCIAL_REPLY_WINDOW_HOURS,
   isMetaAgentChannel,
@@ -414,6 +420,19 @@ export function evaluateLength(
   channel: AgentChannel,
 ): { verdict: "OK" | "COMPRESS" | "REJECT"; limit: number } {
   const limits = CHANNEL_LIMITS[channel];
+  // SMS is priced and split by segment, not character: one emoji switches the
+  // whole message to UCS-2 and a 200-character reply becomes four segments.
+  // Judged on what would actually be sent (smart punctuation normalised).
+  if (channel === "sms") {
+    const { segments } = countSmsSegments(normaliseForSms(body));
+    if (segments > SMS_MAX_SEGMENTS || body.length > limits.hard) {
+      return { verdict: "REJECT", limit: limits.hard };
+    }
+    if (segments > SMS_PREFERRED_SEGMENTS || body.length > limits.preferred) {
+      return { verdict: "COMPRESS", limit: limits.preferred };
+    }
+    return { verdict: "OK", limit: limits.preferred };
+  }
   if (body.length > limits.hard) return { verdict: "REJECT", limit: limits.hard };
   if (body.length > limits.preferred) return { verdict: "COMPRESS", limit: limits.preferred };
   return { verdict: "OK", limit: limits.preferred };

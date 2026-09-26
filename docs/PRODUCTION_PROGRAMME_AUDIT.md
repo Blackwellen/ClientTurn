@@ -174,23 +174,31 @@ idempotency key. **Agent ticks already call the policy engine**
 ## §4 — Managed integration layer · **PARTIAL**
 
 **Built.** A well-modelled catalogue
-([catalog.ts](../src/lib/integrations/catalog.ts)) with 14 providers, a `platform`
+([catalog.ts](../src/lib/integrations/catalog.ts)) with 15 providers, a `platform`
 vs `workspace` distinction, `requiredEnv` declarations, `requiresFeature` plan
 gates, honest `disconnectConsequence` copy, and a single derived status function
 so a provider can never render "Connect" in one place and "Not yet available" in
 another. Generic OAuth connect/callback routes exist at
 [api/integrations/](../src/app/api/integrations/).
 
-**Gaps — connect flows.** Only 6 of 14 have a `connectPath`: `google_ads`,
-`microsoft_ads`, `tiktok_ads`, `linkedin_ads`, `slack`, `zoho_crm`.
-**`connectPath: null`** — no connection flow at all — for **Meta Lead Ads,
-Twilio SMS, WhatsApp, Google Calendar, Calendly and HubSpot** (HubSpot is
-`connectPath: null` by design — it's a pasted-token connection, not a
-redirect flow). **Salesforce got a real `connectPath` and adapter on
-2026-09-10** (`providers/salesforce.ts`), but stays functionally gated the
-same way Meta's did before it went live: `platformConfigured()` keeps the
-Connect button disabled until real `SALESFORCE_CLIENT_ID`/`_SECRET` exist,
-and the flow has not been exercised against a live Salesforce org.
+**Gaps — connect flows.** 9 of 15 have a `connectPath`: `meta`, `calendly`,
+`google_ads`, `microsoft_ads`, `tiktok_ads`, `linkedin_ads`, `slack`,
+`zoho_crm`, `salesforce`. **`connectPath: null`** — no redirect flow at all —
+for **Twilio SMS, WhatsApp (both variants), Google Calendar and Resend
+email**; still true for all of them, and each is functionally gated behind
+its own `requiredEnv` until the platform holds real credentials. **HubSpot is
+`connectPath: null` by design**, not a gap — it's a pasted-token connection
+(the customer generates their own Service Key inside HubSpot and pastes it;
+no redirect exists or is needed). **Zoho CRM** got a real `connectPath` and
+adapter, and was live-tested end-to-end 2026-09-12/13 against a real Zoho API
+Console client and CRM trial org — see `docs/INTEGRATION_SETUP.md`; two real
+bugs (a missing `UPDATE` OAuth scope
+that silently duplicated leads on every re-sync, and a fail-closed per-DC
+secret fallback) were found and fixed during that test. **Salesforce** has had
+a real `connectPath` and adapter since 2026-09-10 (`providers/salesforce.ts`)
+and real `SALESFORCE_CLIENT_ID`/`_SECRET` now exist on the platform, but the
+flow has not been exercised against a live Salesforce org the way Zoho CRM
+and HubSpot have — treat it as built-but-unverified until that happens.
 
 **Gaps — webhooks.** Only three exist: `linkedin-ads`, `stripe`, `twilio`
 ([api/webhooks/](../src/app/api/webhooks/)). Missing: Meta lead webhook, Google
@@ -206,9 +214,9 @@ Ads lead-form webhook, Calendly signed webhooks, TikTok webhooks, HubSpot.
 | Calendly | OAuth 2.1 + signed webhook subscriptions |
 | Slack | Connect route exists; verify channel-scoped incoming-webhook vs `chat:write` |
 | Twilio / WhatsApp | Inbound webhook exists; account configuration UI and template approval do not |
-| HubSpot | Pasted-token connection; `hubspot.ts` is a working adapter, not a stub |
-| Salesforce | OAuth + Lead push built (`salesforce.ts`, 2026-09-10); waiting on a real Connected App's Client ID/Secret — see `docs/INTEGRATION_SETUP.md` |
-| Zoho | Connect route exists; sync depth unverified |
+| HubSpot | Pasted-token connection; `hubspot.ts` is a working adapter, live-tested 2026-09-12 (found and fixed a wrong deal-association type id — every deal push was silently failing before the fix) |
+| Salesforce | OAuth + Lead push built (`salesforce.ts`, 2026-09-10); real `SALESFORCE_CLIENT_ID`/`_SECRET` now on the platform, but not yet exercised against a live Salesforce org |
+| Zoho CRM | OAuth + Lead push built and live-tested end-to-end 2026-09-12/13 (real API Console client, real CRM trial org); fixed a missing `UPDATE` scope that silently duplicated leads on re-sync, and a per-DC secret fallback gap (uk/ae/sg/sa) |
 | Microsoft Ads | **Put behind a capability flag.** A connect route exists; the supported production lead-retrieval interface is unconfirmed. Do not ship an "Available" button on marketing-page evidence alone. |
 
 **Effort:** 30–40 days, plus provider approval waits. Meta and LinkedIn are the
@@ -218,9 +226,24 @@ long poles and should start immediately regardless of build order.
 
 ## §5 — Inbound connectors · **PARTIAL**
 
-**Built.** All 11 connectors are registered
-([apps.ts](../src/lib/integrations/apps.ts)): Pipedrive, Instantly, Clay, folk,
-Smartlead, Breakcold, webhooks, Zapier, HeyReach, SmartReach, Attio. Ingest lands
+**Built.** All 3 connectors are registered
+([apps.ts](../src/lib/integrations/apps.ts)): Pipedrive, webhooks, Zapier —
+live-tested 2026-09-12 (Pipedrive confirmed working end-to-end against a real
+account; a real payload-shape gap was found and documented as a `setupNote`
+rather than a code bug, since Pipedrive's own webhook nests every field and
+sends email/phone as arrays). Instantly, Clay, Smartlead, HeyReach and
+SmartReach were removed from the catalogue (2026-09-12) — cold-outreach/
+enrichment tools outside the ICP's actual need, and their inbound phone field
+could not be distinguished from an enrichment-sourced number, which Resolved
+Conflict 6 forbids persisting. folk was also removed (2026-09-12) — not
+needed, and live-testing found its own native webhook can't satisfy this
+endpoint anyway (thin event envelope with no contact fields, would need a
+Zapier/Make intermediary to be usable at all). Breakcold was removed too
+(2026-09-12) — low expected usage; can be re-added on customer request. Attio
+was added then removed the same day (2026-09-13) — a deliberate scope call:
+Pipedrive, Zapier and the generic webhook already cover the inbound-bridge
+need, and Zoho CRM, HubSpot and Salesforce cover CRM, so a fourth CRM bridge
+target added little for the added surface. Ingest lands
 at [api/apps/](../src/app/api/apps/) with `workspace_app_installs` /
 `workspace_app_events`, and migration
 [0059](../supabase/migrations/0059_connector_credential_model.sql) defines the

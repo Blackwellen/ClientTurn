@@ -22,22 +22,37 @@ import type {
   SendResult,
 } from "../messaging/types.ts";
 import type { PolicyReasonCode } from "../policy/types.ts";
+import type { OutboundTemplate } from "../messaging/whatsapp-templates.ts";
+import type { EmailMessageClass } from "../email/sender-health.ts";
 
 // "agent" behaves like "system" in the guard: a lead having replied does
 // not block the reply owed back to them, while opt-out, suppression and a
 // human takeover still bind absolutely.
+//
+// "agent_handover" is the one agent message that is *about* the takeover: the
+// short acknowledgement ("someone from the team will pick this up") sent in
+// the same turn that hands the conversation to a person. The takeover is set
+// first, so if this origin were bound by it the lead would never be told. It
+// is exempt from the takeover and the paused flag only; opt-out, suppression,
+// a closed lead status, channel health and quiet hours all still bind.
 export type SendOrigin =
   | "automation"
   | "manual"
   | "campaign"
   | "system"
-  | "agent";
+  | "agent"
+  | "agent_handover";
 
 export type SendGuardSnapshot = {
   lead: LeadState;
   channel: ChannelState;
   quietHours: QuietHours;
   origin: SendOrigin;
+  /**
+   * A `booking_reminder` automation step (Phase 3.1): exempt from the BOOKED
+   * and replied stop conditions only. Honoured for `automation` origin alone.
+   */
+  bookingReminder?: boolean;
 };
 
 export type SendDecision =
@@ -57,9 +72,46 @@ export type SendDecision =
  * `defer` is the quiet-hours case and reschedules; `block` is terminal.
  */
 export type PolicyGate =
-  | { action: "allow" }
+  /**
+   * `template`: WhatsApp outside the 24-hour window, sent as this approved
+   * template instead of the free-text body. Never free text outside the window.
+   */
+  | { action: "allow"; template?: OutboundTemplate }
   | { action: "block"; reasonCode: PolicyReasonCode; message: string }
   | { action: "defer"; at: Date; reasonCode: PolicyReasonCode };
+
+/**
+ * The opted-out input to the guard (design 03 §5).
+ *
+ * Opt-out is per channel now: a carrier STOP suppresses SMS (or WhatsApp) and
+ * nothing else, and `leads.opted_out` is derived from the list -- true only for
+ * an all-channel opt-out (0123). So for a lead with an email or phone the
+ * binding check is the channel's own suppression lookup (`channelState`,
+ * which also sees ALL-channel rows), and the lead-wide flag is not consulted:
+ * consulting it is what kept START from re-permitting SMS.
+ *
+ * The flag still binds wherever the channel lookup cannot see the opt-out: a
+ * social DM goes to a platform address that an email or phone opt-out row
+ * does not name, and a lead with no address on this channel has nothing for
+ * the lookup to match. There an all-channel opt-out must still stop the send.
+ */
+export function guardOptedOut(
+  lead: {
+    opted_out: boolean;
+    email?: string | null;
+    phone?: string | null;
+    phone_normalized?: string | null;
+  },
+  channel: Channel,
+): boolean {
+  const covered =
+    channel === "email"
+      ? Boolean(lead.email?.trim())
+      : channel === "sms" || channel === "whatsapp"
+        ? Boolean(lead.phone_normalized?.trim() || lead.phone?.trim())
+        : false;
+  return covered ? false : lead.opted_out;
+}
 
 /**
  * A reply stops an automation sequence, but it must not stop the reply we owe
@@ -81,6 +133,25 @@ function guardedLead(snapshot: SendGuardSnapshot): LeadState {
 
   if (origin === "automation") return lead;
 
+  // A reactivation campaign is its own explicit decision to message, made by
+  // the person who launched it. `automation_active` governs the *follow-up
+  // sequence*, and imported leads are created with it off precisely so an
+  // import alone never starts messaging -- so it must not silently abort every
+  // campaign send to an imported list as "paused". Opt-out, suppression,
+  // takeover, won/lost and channel health all still bind.
+  if (origin === "campaign") {
+    return { ...lead, hasReplied: false, automationActive: true };
+  }
+
+  if (origin === "agent_handover") {
+    return {
+      ...lead,
+      hasReplied: false,
+      humanTakeover: false,
+      automationActive: true,
+    };
+  }
+
   return { ...lead, hasReplied: false };
 }
 
@@ -88,7 +159,9 @@ export function evaluateSend(
   snapshot: SendGuardSnapshot,
   at: Date = new Date(),
 ): SendDecision {
-  const stop = evaluateStopConditions(guardedLead(snapshot), snapshot.channel);
+  const stop = evaluateStopConditions(guardedLead(snapshot), snapshot.channel, {
+    bookingReminder: snapshot.origin === "automation" && snapshot.bookingReminder === true,
+  });
   if (stop) return { action: "abort", reason: stop };
 
   if (isWithinQuietHours(at, snapshot.quietHours)) {
@@ -114,12 +187,49 @@ export type OutboundMessageRecord = {
   /** Email only; null on every other channel. */
   subject?: string | null;
   unsubscribeUrl?: string | null;
+  /** Email only: TRANSACTIONAL or MARKETING (§43). */
+  messageClass?: EmailMessageClass | null;
+  /** Email only: the sender identity the From address is taken from (§43). */
+  senderIdentity?: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+    replyTo?: string | null;
+  } | null;
+  /**
+   * WhatsApp only: set by the policy gate when the window has closed and an
+   * approved template was chosen (§45). Never set on the way in.
+   */
+  template?: OutboundTemplate | null;
+  /** The template the step named and its variables, as queued. */
+  queuedTemplate?: { templateId: string; variables: Record<string, string> | null } | null;
 };
 
 export type SendFailure = Extract<SendResult, { ok: false }>;
 
+/**
+ * The in-flight status. A row moves QUEUED -> SENDING in one conditional
+ * update immediately before the carrier is called, and only the caller whose
+ * update matched may call it. A row found in SENDING later is a send whose
+ * outcome we do not know, and it is never dispatched again automatically.
+ */
+export const SENDING_STATUS = "SENDING";
+
 export interface SendStore {
   load(messageId: string): Promise<OutboundMessageRecord | null>;
+  /**
+   * Atomically claims the row for dispatch: `update ... set status='SENDING'
+   * where id = ? and status = 'QUEUED'`. True only for the caller whose update
+   * matched a row; false means someone else already claimed or settled it.
+   * Without it two workers can both reach the carrier.
+   */
+  claim(message: OutboundMessageRecord): Promise<boolean>;
+  /**
+   * A row found in SENDING: a previous attempt claimed it and never recorded
+   * an outcome, so the carrier may or may not have accepted it. Implementors
+   * must not resend. They record it and route it to a person to confirm.
+   */
+  reconcileInFlight(message: OutboundMessageRecord): Promise<void>;
   snapshot(message: OutboundMessageRecord): Promise<SendGuardSnapshot | null>;
   /**
    * The contactability decision for this exact message, taken now. Implementors
@@ -165,12 +275,17 @@ export type SendOutcome =
   | { outcome: "blocked"; reasonCode: PolicyReasonCode; message: string }
   | { outcome: "rescheduled"; at: Date }
   | { outcome: "already_processed"; status: string }
+  /** Found in SENDING: possibly sent. Never retried; a person confirms it. */
+  | { outcome: "unconfirmed" }
   | { outcome: "missing" };
 
 /**
- * Idempotency rule: only a message row still in QUEUED is ever dispatched. A
- * retry after a partial failure finds SENT and stops, so the same `send_key`
- * can never reach the carrier twice.
+ * Idempotency rule: only a message row still in QUEUED is ever dispatched, and
+ * only by the one caller that atomically moves it to SENDING. A retry after a
+ * partial failure finds SENT and stops; a retry after a crash between the
+ * carrier accepting the message and `markSent` finds SENDING and reconciles
+ * rather than sending again. So the same `send_key` can never reach the
+ * carrier twice from this path.
  */
 export async function performSend(input: {
   store: SendStore;
@@ -185,6 +300,10 @@ export async function performSend(input: {
 
   const message = await store.load(messageId);
   if (!message) return { outcome: "missing" };
+  if (message.status === SENDING_STATUS) {
+    await store.reconcileInFlight?.(message);
+    return { outcome: "unconfirmed" };
+  }
   if (message.status !== "QUEUED") {
     return { outcome: "already_processed", status: message.status };
   }
@@ -226,24 +345,44 @@ export async function performSend(input: {
     return { outcome: "rescheduled", at: gate.at };
   }
 
+  // The template the gate chose, if any, travels with the message from here:
+  // the carrier sends it, and markSent records its category for cost (§45).
+  // Only WhatsApp may carry one; anything else would be a gate bug, refused.
+  const outbound: OutboundMessageRecord =
+    gate.template && message.channel === "whatsapp" ? { ...message, template: gate.template } : message;
+
+  // The claim is the last step before the carrier, after every read that can
+  // still refuse, so a refused message never passes through SENDING. Losing
+  // the claim means a concurrent job (a stale-lock release, a reschedule's
+  // second job, a double-approved draft) got there first.
+  if (store.claim) {
+    const claimed = await store.claim(outbound);
+    if (!claimed) {
+      return { outcome: "already_processed", status: SENDING_STATUS };
+    }
+  }
+
   const result = await provider.send({
-    businessId: message.businessId,
-    to: message.to,
-    body: message.body,
-    sendKey: message.sendKey,
-    channel: message.channel,
-    subject: message.subject ?? null,
-    unsubscribeUrl: message.unsubscribeUrl ?? null,
+    businessId: outbound.businessId,
+    to: outbound.to,
+    body: outbound.body,
+    sendKey: outbound.sendKey,
+    channel: outbound.channel,
+    subject: outbound.subject ?? null,
+    unsubscribeUrl: outbound.unsubscribeUrl ?? null,
+    template: outbound.template ?? null,
+    senderIdentity: outbound.senderIdentity ?? null,
+    messageClass: outbound.messageClass ?? null,
   });
 
   if (result.ok) {
-    await store.markSent(message, result);
-    await store.meter(message);
+    await store.markSent(outbound, result);
+    await store.meter(outbound);
     return { outcome: "sent", providerMessageId: result.providerMessageId };
   }
 
   await store.markFailed(
-    message,
+    outbound,
     result,
     result.permanent || Boolean(input.finalAttempt),
   );
@@ -262,9 +401,58 @@ export function shouldRetrySend(outcome: SendOutcome): boolean {
 
 export function isPermanentOutcome(outcome: SendOutcome): boolean {
   if (outcome.outcome === "missing") return true;
+  // Possibly delivered. Retrying is exactly the duplicate this state prevents.
+  if (outcome.outcome === "unconfirmed") return true;
   // A policy refusal is settled, not transient. Retrying it would re-ask a
   // question already answered and re-record the same denial.
   if (outcome.outcome === "blocked") return true;
   if (outcome.outcome === "failed") return outcome.permanent;
   return false;
+}
+
+/* ------------------------------------------------------ manual send key --- */
+
+/** FNV-1a, 32-bit. Not a security hash: a stable fingerprint for dedupe only. */
+function fnv1a(input: string, seed: number): string {
+  let hash = seed >>> 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+export const MANUAL_SEND_BUCKET_MS = 60_000;
+
+/**
+ * The send keys a manual send may collide with, newest first.
+ *
+ * A person pressing Send twice must produce one message. With a client nonce
+ * (one per composed draft) the key is exact. Without one, the key is the
+ * content -- lead, channel, subject, body -- in a one-minute bucket, and the
+ * previous bucket's key is returned too so a double-click that straddles the
+ * minute boundary is still caught. The cost is that sending the identical
+ * text to the same lead twice within about a minute is treated as one send,
+ * which is the intended reading of that action.
+ */
+export function manualSendKeys(input: {
+  leadId: string;
+  channel: string;
+  body: string;
+  subject?: string | null;
+  nonce?: string | null;
+  at?: Date;
+}): { key: string; candidates: string[] } {
+  const nonce = input.nonce?.trim();
+  if (nonce) {
+    const key = `manual:${input.leadId}:n:${nonce}`;
+    return { key, candidates: [key] };
+  }
+
+  const content = `${input.channel}\u0000${input.subject?.trim() ?? ""}\u0000${input.body.trim()}`;
+  const fingerprint = `${fnv1a(content, 0x811c9dc5)}${fnv1a(content, 0x9747b28c)}`;
+  const bucket = Math.floor((input.at ?? new Date()).getTime() / MANUAL_SEND_BUCKET_MS);
+  const keyFor = (b: number) => `manual:${input.leadId}:${fingerprint}:${b}`;
+
+  return { key: keyFor(bucket), candidates: [keyFor(bucket), keyFor(bucket - 1)] };
 }

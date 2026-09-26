@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/feedback";
 import { WorkspaceSettings } from "@/components/settings/workspace/workspace-settings";
 import { MessagingForm } from "@/components/settings/messaging-form";
 import { BookingForm } from "@/components/settings/booking-form";
+import { MeetingTypesSection } from "@/components/settings/meeting-types/meeting-types-section";
 import { AiAgentForm } from "@/components/settings/ai-agent-form";
 import { DangerZone } from "@/components/settings/danger-zone";
 import { ReadOnlyNotice } from "@/components/settings/notices";
@@ -61,6 +62,11 @@ export async function WorkspaceSection() {
         timezone={workspace.timezone}
       />
       <BookingForm settings={booking} readOnly={readOnly} />
+      {/* Meeting types and rep routing (§57), under the appointment shape they
+          vary. Loaded on its own so a slow read never holds the form up. */}
+      <React.Suspense fallback={null}>
+        <MeetingTypesSection />
+      </React.Suspense>
       {/* The AI assistant sits with the other "how this workspace behaves"
           controls rather than getting a nav entry of its own — the V3 IA caps
           the customer app at five destinations. */}

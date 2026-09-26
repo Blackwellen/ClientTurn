@@ -7,6 +7,7 @@ import { Bot, Check, Pencil, Send, UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatRelative } from "@/lib/dates";
+import { HANDOVER_COPY } from "@/lib/leads/resume-rule";
 import {
   acknowledgeHandoff,
   cancelHandoff,
@@ -23,6 +24,7 @@ import {
   OWNER_TONE,
   type AgentActionResult,
   type ConversationAgentState,
+  type HandoffLeadBriefView,
 } from "@/lib/agent/views";
 
 /**
@@ -101,7 +103,8 @@ export function AgentPanel({
           {canManage && state.owner === "AI_ACTIVE" && (
             <PanelButton
               icon={UserRound}
-              label="Take over"
+              label={HANDOVER_COPY.takeOver}
+              help={HANDOVER_COPY.takeOverHelp}
               disabled={anyBusy}
               busy={busy("takeover")}
               onClick={() =>
@@ -114,7 +117,8 @@ export function AgentPanel({
           {canManage && (state.owner === "HUMAN_ACTIVE" || state.owner === "HANDED_OVER") && (
             <PanelButton
               icon={Bot}
-              label="Hand back to assistant"
+              label={HANDOVER_COPY.handBack}
+              help={HANDOVER_COPY.handBackHelp}
               disabled={anyBusy}
               busy={busy("return")}
               onClick={() =>
@@ -182,11 +186,24 @@ function HandoverCard({
         </span>
       </div>
 
-      {handoff.summary.summary && (
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
-          {handoff.summary.summary}
-        </p>
+      {handoff.summary.quickBrief ? (
+        <div className="mt-2 rounded-md border border-line bg-surface p-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-content-muted">
+            30-second brief
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-content">
+            {handoff.summary.quickBrief.text}
+          </p>
+        </div>
+      ) : (
+        handoff.summary.summary && (
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
+            {handoff.summary.summary}
+          </p>
+        )
       )}
+
+      {handoff.summary.leadBrief && <LeadBriefDetails brief={handoff.summary.leadBrief} />}
 
       {handoff.summary.keyAnswers.length > 0 && (
         <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
@@ -264,6 +281,55 @@ function HandoverCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The deterministic Lead Brief (Phase 3.4), collapsed by default so the card
+ * stays scannable. Every line is a stored fact; evidence lines are the lead's
+ * own words.
+ */
+function LeadBriefDetails({ brief }: { brief: HandoffLeadBriefView }) {
+  const label = (text: string) => text.toLowerCase().replace(/_/g, " ");
+  return (
+    <details className="mt-2 text-[11.5px]">
+      <summary className="cursor-pointer font-medium text-content">Lead brief</summary>
+      <div className="mt-1.5 space-y-1.5 text-content-muted">
+        {brief.score && (
+          <p>
+            <span className="font-medium text-content">Score {brief.score.total}</span> (grade{" "}
+            {brief.score.grade}). {brief.score.why}
+          </p>
+        )}
+        {brief.tags.length > 0 && <p>Tags: {brief.tags.map(label).join(", ")}</p>}
+        {brief.answers.length > 0 && (
+          <ul className="space-y-0.5">
+            {brief.answers.map((answer) => (
+              <li key={answer.question}>
+                <span className="text-content">{answer.question}:</span> {answer.value}
+                {!answer.known && <span className="italic"> (inferred)</span>}
+                {answer.evidence && <span className="block pl-2 italic">“{answer.evidence}”</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {brief.objections.length > 0 && (
+          <p>
+            Raised: {brief.objections.map((objection) => label(objection.key)).join(", ")}
+          </p>
+        )}
+        {brief.promises.length > 0 && <p>Promised: {brief.promises.join(" · ")}</p>}
+        {brief.unanswered.length > 0 && <p>Still unknown: {brief.unanswered.join("; ")}</p>}
+        {brief.meeting && (
+          <p>
+            Meeting: {brief.meeting.status}
+            {brief.meeting.startsAt ? `, ${formatRelative(brief.meeting.startsAt)}` : ""}
+          </p>
+        )}
+        {brief.nextStep && <p className="text-content">Next step: {brief.nextStep}</p>}
+        {brief.approach && <p>Approach: {brief.approach.reason}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -369,12 +435,15 @@ function DraftCard({
 function PanelButton({
   icon: Icon,
   label,
+  help,
   disabled,
   busy,
   onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  /** What the button does, as its tooltip. */
+  help?: string;
   disabled: boolean;
   busy: boolean;
   onClick: () => void;
@@ -384,6 +453,7 @@ function PanelButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      title={help}
       className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <Icon className="size-3.5" />

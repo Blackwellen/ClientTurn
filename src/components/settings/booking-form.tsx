@@ -29,6 +29,7 @@ export function BookingForm({
     String(settings.appointmentDurationMinutes),
   );
   const [buffer, setBuffer] = React.useState(String(settings.bookingBufferMinutes));
+  const [eventType, setEventType] = React.useState(settings.calendlyEventTypeUri ?? "");
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
 
@@ -48,6 +49,8 @@ export function BookingForm({
       bookingUrl: url,
       appointmentDurationMinutes: Number(duration),
       bookingBufferMinutes: Number(buffer),
+      // Only sent when Calendly is connected; otherwise it is left as it is.
+      ...(settings.calendlyConnected ? { calendlyEventType: eventType } : {}),
     });
     setSaving(false);
 
@@ -111,6 +114,25 @@ export function BookingForm({
               );
             })}
           </fieldset>
+
+          {mode === "calendly" && settings.calendlyConnected && (
+            <FormField
+              label="Calendly event type"
+              htmlFor="calendly-event-type"
+              className="mt-4"
+              hint="The event type the assistant offers times from. Open it in Calendly and paste the page address (calendly.com/event_types/…). Without one, the assistant sends your booking link or hands over to a person."
+            >
+              <Input
+                id="calendly-event-type"
+                type="url"
+                inputMode="url"
+                placeholder="https://calendly.com/event_types/…"
+                value={eventType}
+                disabled={readOnly}
+                onChange={(event) => setEventType(event.target.value)}
+              />
+            </FormField>
+          )}
 
           <Link
             href="/app/settings?section=connections"

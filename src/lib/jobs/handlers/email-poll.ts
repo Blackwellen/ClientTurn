@@ -2,7 +2,8 @@ import "server-only";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { enqueue } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { suppress } from "@/lib/policy/suppression";
+import { recordComplaint, suppress } from "@/lib/policy/suppression";
+import { complaintRecipient, isComplaintReport } from "@/lib/email/feedback-report";
 import { fetchInboundEmail } from "@/lib/email/inbound";
 import {
   loadEmailCredentials,
@@ -10,6 +11,7 @@ import {
   saveInboundCursor,
 } from "@/lib/email/store";
 import { normaliseEmail } from "@/lib/email/account";
+import { escapeIlike } from "@/lib/supabase/ilike";
 import { parsePayload } from "./parse";
 import { emailPollPayload } from "./payloads";
 
@@ -110,6 +112,27 @@ export async function handleEmailPoll(job: ClaimedJob) {
     const from = message.from;
     if (!from) continue;
 
+    // A spam complaint (ARF `Feedback-Type: abuse`) forwarded by a feedback
+    // loop. The complainant is the original recipient named in the report,
+    // never the report's sender; with no recipient to name, nothing is
+    // suppressed rather than the wrong address.
+    //
+    // Read from the report's own MIME part: the `Feedback-Type` and
+    // `Original-Rcpt-To` fields live in `message/feedback-report`, which never
+    // reaches `message.text`.
+    if (isComplaintReport(message)) {
+      const complainant = complaintRecipient(message);
+      if (complainant) {
+        await recordComplaint({
+          businessId,
+          email: complainant,
+          source: "EMAIL_POLL_ARF",
+          sourceReference: String(message.uid),
+        });
+      }
+      continue;
+    }
+
     // Bounces and complaints are suppression events, never replies: treating
     // a mailer-daemon as a lead reply would stop the follow-up for the wrong
     // reason and pollute the conversation.
@@ -130,11 +153,13 @@ export async function handleEmailPoll(job: ClaimedJob) {
       continue;
     }
 
+    const fromPattern = escapeIlike(from);
+
     const { data: lead } = await admin
       .from("leads")
       .select("id")
       .eq("business_id", businessId)
-      .ilike("email", from)
+      .ilike("email", fromPattern)
       .limit(1)
       .maybeSingle();
 
@@ -149,7 +174,7 @@ export async function handleEmailPoll(job: ClaimedJob) {
           .from("prospects")
           .select("id")
           .eq("business_id", businessId)
-          .ilike("email", from)
+          .ilike("email", fromPattern)
           .is("promoted_to_lead_id", null)
           .limit(1)
           .maybeSingle();

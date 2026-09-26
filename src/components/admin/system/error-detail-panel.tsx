@@ -7,7 +7,8 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
 import { IconTile, SeverityBadge } from "@/components/admin/ui";
-import { formatDateTime, formatRelative, formatNumber } from "@/lib/admin/format";
+import { formatNumber } from "@/lib/admin/format";
+import { formatDateTime, formatRelative } from "@/lib/dates";
 import {
   ERROR_SEVERITY_TONE,
   ERROR_STATUSES,
@@ -128,15 +129,15 @@ export function ErrorDetailPanel({
           </Row>
           <Row label="Area">{error.area}</Row>
           <Row label="First seen">
-            {formatDateTime(error.firstSeen)}
+            {formatDateTime(error.firstSeen, { year: true })}
             <span className="block text-[11.5px] text-content-muted">
-              ({formatRelative(error.firstSeen)})
+              ({formatRelative(error.firstSeen, { style: "ago" })})
             </span>
           </Row>
           <Row label="Latest seen">
-            {formatDateTime(error.lastSeen)}
+            {formatDateTime(error.lastSeen, { year: true })}
             <span className="block text-[11.5px] text-content-muted">
-              ({formatRelative(error.lastSeen)})
+              ({formatRelative(error.lastSeen, { style: "ago" })})
             </span>
           </Row>
           <Row label="Occurrences">
@@ -152,7 +153,7 @@ export function ErrorDetailPanel({
               {ERROR_STATUS_LABEL[error.status]}
               {error.resolvedAt && (
                 <span className="text-content-muted">
-                  · {formatRelative(error.resolvedAt)}
+                  · {formatRelative(error.resolvedAt, { style: "ago" })}
                 </span>
               )}
             </span>

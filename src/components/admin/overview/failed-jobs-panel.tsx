@@ -2,7 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ChevronRight, CircleAlert } from "lucide-react";
 import { Panel, PanelEmpty, PanelLink } from "@/components/admin/ui";
-import { formatRelative } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import type { FailedJobRow } from "@/lib/admin/types";
 
 export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
@@ -69,7 +69,7 @@ export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
                     <span className="block truncate">{row.error}</span>
                   </td>
                   <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                    {formatRelative(row.occurredAt)}
+                    {formatRelative(row.occurredAt, { style: "ago" })}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <ChevronRight className="inline size-4 text-content-subtle" aria-hidden />

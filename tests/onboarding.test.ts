@@ -7,6 +7,8 @@ import {
   previousStep,
   stepIndex,
   isOnboardingStep,
+  STEP_NAV,
+  FIRST_COPILOT_PROMPTS,
   type OnboardingStep,
 } from "../src/lib/onboarding/steps.ts";
 import { NEW_LEAD_SEQUENCE } from "../src/lib/automation/defaults.ts";
@@ -44,6 +46,34 @@ describe("onboarding steps", () => {
     }
     assert.equal(step, "test_go_live");
     assert.equal(seen.size, ONBOARDING_STEPS.length);
+  });
+
+  test("setup opens with the guided first-Copilot step (Phase 8.3)", () => {
+    assert.equal(ONBOARDING_STEPS[0], "copilot");
+    assert.equal(nextStep("copilot"), "business");
+    assert.equal(previousStep("business"), "copilot");
+    assert.equal(STEP_META.copilot.number, 1);
+  });
+
+  test("step numbers and the progress nav follow the step order", () => {
+    ONBOARDING_STEPS.forEach((step, index) => {
+      assert.equal(STEP_META[step].number, index + 1, step);
+      assert.equal(STEP_NAV[index]?.step, step);
+    });
+  });
+
+  test("the first Copilot prompts are questions, never instructions to change something", () => {
+    assert.ok(FIRST_COPILOT_PROMPTS.includes("What should I set up first?"));
+    for (const prompt of FIRST_COPILOT_PROMPTS) {
+      assert.ok(prompt.endsWith("?"), prompt);
+      assert.doesNotMatch(prompt, /^(send|delete|pause|launch|start|archive|create)/i);
+    }
+  });
+
+  test("new workspaces start at the Copilot step", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/lib/auth/provision.ts", "utf8");
+    assert.match(source, /onboarding_step: "copilot"/);
   });
 
   test("an unknown step falls back to the first rather than throwing", () => {

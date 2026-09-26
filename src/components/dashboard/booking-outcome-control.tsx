@@ -2,12 +2,23 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarX, Check, MoreHorizontal, UserX } from "lucide-react";
+import { CalendarCheck, CalendarX, Check, MoreHorizontal, UserX } from "lucide-react";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
 import { IconButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { updateBookingStatus } from "@/lib/bookings/actions";
 import { BOOKING_STATUS_LABEL } from "@/lib/bookings/types";
+import {
+  staffBookingActions,
+  type StaffBookingTarget,
+} from "@/lib/bookings/staff-actions";
+
+const ICONS: Record<StaffBookingTarget, typeof Check> = {
+  scheduled: CalendarCheck,
+  completed: Check,
+  no_show: UserX,
+  cancelled: CalendarX,
+};
 
 /**
  * Recording what actually happened at an appointment.
@@ -25,37 +36,53 @@ import { BOOKING_STATUS_LABEL } from "@/lib/bookings/types";
  *
  * `relative z-10` because the row it sits in has a stretched link over it; the
  * provider link beside it does the same.
+ *
+ * A `pending` booking (a time the lead requested that no calendar confirmed,
+ * B10) is offered "Confirm time" and "Decline" instead: confirming is the
+ * moment the lead becomes BOOKED, and nothing else may do it.
  */
 export function BookingOutcomeControl({
   bookingId,
   leadName,
+  status = "scheduled",
 }: {
   bookingId: string;
   leadName: string;
+  status?: string;
 }) {
+  const isRequest = status === "pending";
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = React.useTransition();
 
-  function record(status: "completed" | "no_show" | "cancelled") {
+  function record(to: StaffBookingTarget) {
     startTransition(async () => {
-      const result = await updateBookingStatus({ bookingId, status });
+      const result = await updateBookingStatus({ bookingId, status: to });
 
       if (!result.ok) {
         toast({ variant: "error", title: result.error });
         return;
       }
 
-      toast({
-        variant: "success",
-        title: `Marked ${BOOKING_STATUS_LABEL[status].toLowerCase()}`,
-        // A no-show or cancellation flags the lead for attention, which is the
-        // part the operator would otherwise have to remember to do by hand.
-        description:
-          status === "completed"
-            ? undefined
-            : `${leadName} is back in Needs attention.`,
-      });
+      if (isRequest) {
+        toast({
+          variant: "success",
+          title: to === "scheduled" ? "Time confirmed" : "Requested time declined",
+          description:
+            to === "scheduled"
+              ? `${leadName} is now booked. Let them know the time is confirmed.`
+              : `${leadName} is back in Needs attention.`,
+        });
+      } else {
+        toast({
+          variant: "success",
+          title: `Marked ${BOOKING_STATUS_LABEL[to].toLowerCase()}`,
+          // A no-show or cancellation flags the lead for attention, which is the
+          // part the operator would otherwise have to remember to do by hand.
+          description:
+            to === "completed" ? undefined : `${leadName} is back in Needs attention.`,
+        });
+      }
       router.refresh();
     });
   }
@@ -68,21 +95,26 @@ export function BookingOutcomeControl({
             variant="ghost"
             size="sm"
             disabled={pending}
-            label={`Record the outcome of ${leadName}'s appointment`}
+            label={
+              isRequest
+                ? `Confirm or decline ${leadName}'s requested time`
+                : `Record the outcome of ${leadName}'s appointment`
+            }
           >
             <MoreHorizontal className="size-4" />
           </IconButton>
         }
       >
-        <DropdownItem icon={Check} onSelect={() => record("completed")}>
-          It went ahead
-        </DropdownItem>
-        <DropdownItem icon={UserX} onSelect={() => record("no_show")}>
-          They did not turn up
-        </DropdownItem>
-        <DropdownItem icon={CalendarX} destructive onSelect={() => record("cancelled")}>
-          It was cancelled
-        </DropdownItem>
+        {staffBookingActions(status).map((action) => (
+          <DropdownItem
+            key={action.to}
+            icon={ICONS[action.to]}
+            destructive={action.destructive}
+            onSelect={() => record(action.to)}
+          >
+            {action.label}
+          </DropdownItem>
+        ))}
       </DropdownMenu>
     </span>
   );

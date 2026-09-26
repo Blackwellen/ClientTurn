@@ -173,6 +173,37 @@ export const PLATFORM_DAILY_CEILING: DailyCaps = {
 };
 
 /**
+ * The plan's own daily ceiling per channel: a sensible daily fraction of the
+ * monthly communication allowance, floored so a small plan is not effectively
+ * unable to send on any single day. One definition, shared by the Billing view,
+ * the save action and the send-time gate.
+ */
+export function planDailyCaps(monthlyAllowance: number): DailyCaps {
+  return {
+    email: Math.max(50, Math.round(monthlyAllowance / 20)),
+    sms: Math.max(20, Math.round(monthlyAllowance / 80)),
+    whatsapp: Math.max(20, Math.round(monthlyAllowance / 80)),
+  };
+}
+
+/**
+ * The daily cap the send gate enforces for one channel. A cap the workspace
+ * set (already clamped when saved) applies as stored; with none set, only the
+ * platform ceiling applies -- a default pacing limit nobody chose would
+ * quietly hold back first replies to new leads.
+ */
+export function enforcedDailyCap(
+  channel: AllocationChannel,
+  stored: Partial<Record<AllocationChannel, number>> | null | undefined,
+): number {
+  const requested = stored?.[channel];
+  if (typeof requested === "number" && Number.isFinite(requested)) {
+    return Math.max(0, Math.min(Math.round(requested), PLATFORM_DAILY_CEILING[channel]));
+  }
+  return PLATFORM_DAILY_CEILING[channel];
+}
+
+/**
  * The cap that actually applies.
  *
  * A customer may lower a cap but never raise it beyond the effective ceiling,

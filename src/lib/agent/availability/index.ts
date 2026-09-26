@@ -22,12 +22,13 @@ import "server-only";
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { serverEnv } from "@/lib/env";
-import { getLiveAccessToken, type OAuthConfig } from "@/lib/integrations/oauth";
+import { getLiveAccessToken } from "@/lib/integrations/oauth";
+import { googleCalendarConfig } from "@/lib/integrations/providers/google-calendar";
 import {
   filterByDate,
   filterByDayPart,
   generateCandidateSlots,
+  isSlotStillFree,
   pickOfferedSlots,
   subtractBusy,
   type BusyInterval,
@@ -57,14 +58,6 @@ export type AvailabilityRequest = {
   /** How many options to offer. */
   limit?: number;
   now?: Date;
-};
-
-const GOOGLE_CONFIG: OAuthConfig = {
-  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-  tokenUrl: "https://oauth2.googleapis.com/token",
-  clientId: serverEnv.google.clientId ?? "",
-  clientSecret: serverEnv.google.clientSecret ?? "",
-  scope: "https://www.googleapis.com/auth/calendar",
 };
 
 const PROVIDER_TIMEOUT_MS = 8000;
@@ -106,9 +99,14 @@ async function googleBusyIntervals(
   from: Date,
   to: Date,
 ): Promise<{ ok: true; busy: BusyInterval[] } | { ok: false; detail: string }> {
+  const config = googleCalendarConfig();
+  if (!config) {
+    return { ok: false, detail: "Google Calendar is not configured on this environment." };
+  }
+
   let token: string;
   try {
-    token = await getLiveAccessToken(integrationId, GOOGLE_CONFIG);
+    token = await getLiveAccessToken(integrationId, config);
   } catch (error) {
     return {
       ok: false,
@@ -228,7 +226,28 @@ type CalendarConnection = {
 async function loadCalendarConnection(
   businessId: string,
   bookingMode: string,
+  /** A meeting type's own calendar (§57). Wins over the booking mode's. */
+  integrationId?: string | null,
 ): Promise<CalendarConnection | null> {
+  if (integrationId) {
+    const { data } = await createAdminClient()
+      .from("integrations")
+      .select("id, provider_type, config, status")
+      .eq("business_id", businessId)
+      .eq("id", integrationId)
+      .maybeSingle();
+    if (data && (data.provider_type === "google_calendar" || data.provider_type === "calendly")) {
+      return {
+        provider: data.provider_type,
+        integrationId: data.id,
+        config: (data.config ?? {}) as Record<string, unknown>,
+        status: data.status,
+      };
+    }
+    // A meeting type pointing at a calendar that is gone falls back to the
+    // workspace's own, rather than to "no availability".
+  }
+
   if (bookingMode !== "google_calendar" && bookingMode !== "calendly") return null;
 
   const { data } = await createAdminClient()
@@ -253,6 +272,8 @@ export type AvailabilityContext = {
   businessHours: WeekHours;
   appointmentDurationMinutes: number;
   bookingBufferMinutes: number;
+  /** The lead's meeting type's calendar (§57); null = the booking mode's. */
+  calendarIntegrationId?: string | null;
 };
 
 /**
@@ -268,7 +289,11 @@ export async function getAvailability(
   const from = now;
   const to = new Date(now.getTime() + 14 * 24 * 60 * 60_000);
 
-  const connection = await loadCalendarConnection(request.businessId, context.bookingMode);
+  const connection = await loadCalendarConnection(
+    request.businessId,
+    context.bookingMode,
+    context.calendarIntegrationId ?? null,
+  );
 
   if (!connection) {
     return {
@@ -383,4 +408,82 @@ export async function availabilityIsQueryable(
       connection.status !== "DISCONNECTED" &&
       connection.status !== "ACTION_REQUIRED",
   );
+}
+
+// ---------------------------------------------------------------- re-check
+
+export type SlotRecheckResult =
+  | { ok: true; free: boolean; integrationId: string; calendarId: string }
+  | { ok: false; code: AvailabilityFailureCode; detail: string };
+
+/**
+ * The booking-time re-check (B10). A slot offered on an earlier turn may have
+ * been taken since -- by the business's own diary, or by another lead. Asked
+ * immediately before the Google event is written, over just the slot plus its
+ * buffer, so a slot is only booked if the calendar still says it is free.
+ *
+ * Google only: Calendly books on its own side and ClientTurn never writes a
+ * Calendly booking. A provider that cannot answer is a typed failure, never
+ * "free".
+ */
+export async function recheckGoogleSlot(input: {
+  businessId: string;
+  slot: { startsAt: string; endsAt: string };
+  bufferMinutes: number;
+  /**
+   * The lead's meeting type's calendar (§57), the same one availability was
+   * read from. Only a Google connection can be re-checked and written to here;
+   * a meeting type on Calendly (or a calendar that is gone) falls back to the
+   * workspace's own Google connection.
+   */
+  calendarIntegrationId?: string | null;
+}): Promise<SlotRecheckResult> {
+  let connection = await loadCalendarConnection(
+    input.businessId,
+    "google_calendar",
+    input.calendarIntegrationId ?? null,
+  );
+  if (connection && connection.provider !== "google_calendar") {
+    connection = await loadCalendarConnection(input.businessId, "google_calendar");
+  }
+  if (!connection) {
+    return { ok: false, code: "NOT_CONFIGURED", detail: "No Google Calendar is connected." };
+  }
+  if (connection.status === "DISCONNECTED" || connection.status === "ACTION_REQUIRED") {
+    return {
+      ok: false,
+      code: "PROVIDER_UNAVAILABLE",
+      detail: "The google_calendar connection needs attention.",
+    };
+  }
+
+  const calendarIds = Array.isArray(connection.config.calendar_ids)
+    ? (connection.config.calendar_ids as unknown[]).filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      )
+    : [];
+  const readFrom = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+  const start = Date.parse(input.slot.startsAt);
+  const end = Date.parse(input.slot.endsAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return { ok: false, code: "PROVIDER_ERROR", detail: "The slot has no valid time." };
+  }
+  const buffer = input.bufferMinutes * 60_000;
+
+  const busy = await googleBusyIntervals(
+    connection.integrationId,
+    readFrom,
+    new Date(start - buffer),
+    new Date(end + buffer),
+  );
+  if (!busy.ok) return { ok: false, code: "PROVIDER_ERROR", detail: busy.detail };
+
+  return {
+    ok: true,
+    free: isSlotStillFree(input.slot, busy.busy, input.bufferMinutes),
+    integrationId: connection.integrationId,
+    // The event is written to the first selected calendar, or the primary.
+    calendarId: readFrom[0],
+  };
 }

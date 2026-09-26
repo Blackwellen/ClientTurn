@@ -48,7 +48,9 @@ export const loadDataControls = cache(
       retainRawEventsDays: data.retain_raw_events_days,
       socialAutonomousSending: data.social_autonomous_sending ?? false,
       socialAutoPromoteOnReply: data.social_auto_promote_on_reply ?? false,
-      socialWithdrawAfterDays: data.social_withdraw_after_days ?? 21,
+      // Null is "never", and is kept as null -- it was coerced back to 21.
+      socialWithdrawAfterDays: data.social_withdraw_after_days,
+      socialSkipToEmailAfterDays: data.social_skip_to_email_after_days,
       socialFollowUpGapHours: data.social_follow_up_gap_hours ?? 96,
       socialMaxFollowUps: data.social_max_follow_ups ?? 2,
       sourcingStrictness: (data.sourcing_strictness ?? "BALANCED") as DataControls["sourcingStrictness"],

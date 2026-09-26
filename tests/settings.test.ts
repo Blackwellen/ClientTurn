@@ -22,6 +22,7 @@ import {
   connectionActions,
   providerAvailability,
   summariseConnections,
+  workspaceProviderBlock,
   type ProviderCardModel,
   type ProviderType,
 } from "../src/lib/integrations/catalog.ts";
@@ -51,6 +52,7 @@ describe("settings sections", () => {
         "workspace",
         "connections",
         "business-profile",
+        "ai-selling",
         "team",
         "developer",
         "data-controls",
@@ -146,7 +148,6 @@ describe("provider catalogue", () => {
     const expected: ProviderType[] = [
       "meta",
       "google_ads",
-      "microsoft_ads",
       "tiktok_ads",
       "linkedin_ads",
       "twilio_sms",
@@ -241,6 +242,49 @@ describe("connection availability", () => {
       assert.ok(meta.label.length > 0, `${state} has no label`);
       assert.ok(meta.tone.length > 0, `${state} has no tone`);
     }
+  });
+});
+
+describe("workspaceProviderBlock", () => {
+  // Regression for a real bug (confirmed live 2026-09-13): HubSpot has
+  // `connectionMethod: "token"` and `requiredEnv: []`, so it should always be
+  // connectable, but `connectPath: null` (it's a pasted-token dialog, not a
+  // redirect) was being required regardless of connection method — every
+  // token provider rendered "Not yet available" with a disabled button no
+  // matter how `requiredEnv` evaluated.
+  test("a token provider with no required env is connectable despite connectPath: null", () => {
+    const hubspot = PROVIDERS.find((p) => p.id === "hubspot")!;
+    assert.equal(hubspot.connectionMethod, "token");
+    assert.equal(hubspot.connectPath, null);
+    assert.deepEqual(hubspot.requiredEnv, []);
+
+    const block = workspaceProviderBlock(hubspot, { configured: true, connected: false });
+    assert.equal(block, null);
+  });
+
+  test("an oauth provider with no connectPath is genuinely not yet available", () => {
+    const meta = PROVIDERS.find((p) => p.id === "meta")!;
+    assert.equal(meta.connectionMethod, "oauth");
+
+    const block = workspaceProviderBlock(
+      { ...meta, connectPath: null },
+      { configured: true, connected: false },
+    );
+    assert.equal(block?.kind, "unavailable");
+  });
+
+  test("any unconnected provider without its platform credentials is unavailable", () => {
+    const block = workspaceProviderBlock(
+      PROVIDERS.find((p) => p.id === "zoho_crm")!,
+      { configured: false, connected: false },
+    );
+    assert.equal(block?.kind, "unavailable");
+  });
+
+  test("a connected provider is never blocked, regardless of connectPath", () => {
+    const hubspot = PROVIDERS.find((p) => p.id === "hubspot")!;
+    const block = workspaceProviderBlock(hubspot, { configured: true, connected: true });
+    assert.equal(block, null);
   });
 });
 

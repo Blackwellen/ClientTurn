@@ -1,6 +1,7 @@
 import { Target } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
+import { qualificationOutcomeLabel } from "@/lib/qualification/outcome-labels";
 import type { QualificationResult } from "@/lib/qualification/engine";
 import {
   QUALIFICATION_STAT_META,
@@ -96,7 +97,7 @@ export function QualificationOverview({
                       row.status === "NOT_QUALIFIED" && "text-danger-700",
                     )}
                   >
-                    {row.status}
+                    {qualificationOutcomeLabel(row.status)}
                   </span>{" "}
                   → {row.detail}
                 </span>

@@ -209,10 +209,15 @@ async function probeCalendly(): Promise<ProbeResult> {
    *
    * `CALENDLY_API_KEY` is a personal token for the platform's own Calendly
    * account. It cannot connect a *customer's* calendar — that needs the OAuth
-   * app (`CALENDLY_CLIENT_ID`/`SECRET`), which is not provisioned yet; see
-   * docs/INTEGRATION_SETUP.md. For monitoring, though, the personal token is
-   * the better instrument: it turns this into a real authenticated call
-   * rather than a bare reachability ping.
+   * app (`CALENDLY_CLIENT_ID`/`SECRET`), which now has a working adapter
+   * (`src/lib/integrations/providers/calendly.ts`) and webhook route
+   * (`src/app/api/webhooks/calendly/route.ts`); see
+   * docs/INTEGRATION_SETUP.md for what still needs setting per deployment.
+   * For monitoring, though, the personal token is the better instrument: it
+   * turns this into a real authenticated call rather than a bare
+   * reachability ping. The two remain deliberately separate concerns — this
+   * probe reports whether Calendly's API is up at all, never whether any one
+   * workspace's own connection is healthy (that is `integrations.status`).
    */
   const apiKey = process.env.CALENDLY_API_KEY;
   const hasOauthApp = Boolean(

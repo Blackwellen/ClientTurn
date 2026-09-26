@@ -3,12 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, Search, Sparkles } from "lucide-react";
+import { Bell, Compass, Menu, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { INTEGRATION_HEALTH } from "@/components/ui/badge";
 import { titleForPath } from "@/lib/app/nav";
+import { sectionTourForPath } from "@/lib/tour/model";
+import { requestSectionTour } from "@/lib/tour/events";
 import { CommandPalette } from "./command-palette";
 import {
   NotificationTray,
@@ -49,6 +51,9 @@ export function TopBar({
   const [trayOpen, setTrayOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const unread = notifications.filter((row) => !row.read_at).length;
+  // Every primary page has a short tour of its own (Phase 8.29); the button
+  // only appears on a page that has one.
+  const pageTour = sectionTourForPath(pathname);
   const health = INTEGRATION_HEALTH[
     integrationStatus as keyof typeof INTEGRATION_HEALTH
   ] ?? { label: integrationStatus };
@@ -74,6 +79,7 @@ export function TopBar({
         size="sm"
         label="Open navigation"
         className="lg:hidden"
+        data-tour="open-nav"
         onClick={onOpenNav}
       >
         <Menu className="size-4" />
@@ -134,12 +140,31 @@ export function TopBar({
           </Link>
         </Tooltip>
 
+        {pageTour && (
+          <Tooltip content={`A short tour of ${pageTour.label}`}>
+            <button
+              type="button"
+              onClick={() => requestSectionTour(pageTour.section)}
+              aria-label={`Tour this page: ${pageTour.label}`}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3",
+                "text-[12px] font-semibold text-content transition-colors duration-[var(--lr-duration-fast)]",
+                "hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
+              )}
+            >
+              <Compass className="size-4 shrink-0" aria-hidden />
+              <span className="hidden xl:inline">Tour this page</span>
+            </button>
+          </Tooltip>
+        )}
+
         {/* Copilot sits beside the notification bell rather than in a menu:
             it is a destination people reach for constantly, and a shortcut
             buried two clicks deep is one nobody uses. */}
         <button
           type="button"
           onClick={onToggleCopilot}
+          data-tour="copilot-button"
           aria-expanded={copilotOpen}
           aria-controls="clientturn-copilot"
           className={cn(

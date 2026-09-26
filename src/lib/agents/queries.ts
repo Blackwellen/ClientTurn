@@ -36,7 +36,7 @@ export * from "./types";
 const AGENT_SELECT = `
   id, name, description, agent_type, status, status_reason, autonomy, cadence,
   minimum_grade, enrich_email, enrich_phone, verify_email, auto_promote_to_leads,
-  icp_profile_id, conversion_goal_id, campaign_id, service_id,
+  icp_profile_id, conversion_goal_id, campaign_id, service_id, search_strategy_id,
   daily_prospect_cap, monthly_prospect_cap,
   next_run_at, last_run_at, last_run_status,
   total_prospects, total_leads, total_conversions, pending_review_count,
@@ -61,6 +61,7 @@ type RawAgent = {
   conversion_goal_id: string | null;
   campaign_id: string | null;
   service_id: string | null;
+  search_strategy_id: string | null;
   daily_prospect_cap: number;
   monthly_prospect_cap: number;
   next_run_at: string | null;
@@ -174,6 +175,7 @@ export type AgentDetail = {
     conversionGoalId: string | null;
     campaignId: string | null;
     serviceId: string | null;
+    searchStrategyId: string | null;
     dailyProspectCap: number;
     monthlyProspectCap: number;
     lastRunStatus: string | null;
@@ -187,7 +189,11 @@ export async function getAgent(
 ): Promise<AgentDetail | null> {
   const supabase = await createClient();
 
-  const [{ data: raw }, { data: sourceRows }, { data: summaries }] = await Promise.all([
+  const [
+    { data: raw, error: agentError },
+    { data: sourceRows, error: sourceError },
+    { data: summaries, error: summaryError },
+  ] = await Promise.all([
     supabase
       .from("agents")
       .select(AGENT_SELECT)
@@ -202,6 +208,9 @@ export async function getAgent(
     supabase.rpc("agent_summaries", { p_business_id: businessId }),
   ]);
 
+  if (agentError || sourceError || summaryError) {
+    throw new Error("The agent could not be loaded. Please retry.");
+  }
   if (!raw) return null;
   const agent = raw as unknown as RawAgent;
 
@@ -238,6 +247,7 @@ export async function getAgent(
       conversionGoalId: agent.conversion_goal_id,
       campaignId: agent.campaign_id,
       serviceId: agent.service_id,
+      searchStrategyId: agent.search_strategy_id,
       dailyProspectCap: agent.daily_prospect_cap,
       monthlyProspectCap: agent.monthly_prospect_cap,
       lastRunStatus: agent.last_run_status,

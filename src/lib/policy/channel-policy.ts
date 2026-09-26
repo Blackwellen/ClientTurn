@@ -60,10 +60,15 @@ function requirementsFor(rules: ChannelRuleSet): PolicyRequirement[] {
   return out;
 }
 
-/** WhatsApp needs an approved template for business-initiated conversations,
- *  whatever the relationship. */
-function templateRequired(channel: PolicyChannel): boolean {
-  return channel === "WHATSAPP";
+/**
+ * WhatsApp needs an approved template only once the 24-hour customer-service
+ * window has closed. Inside it, free text is exactly as permitted as SMS —
+ * requiring a template unconditionally would refuse (or, worse, silently
+ * misclassify) the ordinary in-conversation replies that make up most of this
+ * channel's traffic.
+ */
+function templateRequired(channel: PolicyChannel, withinWhatsAppWindow: boolean): boolean {
+  return channel === "WHATSAPP" && !withinWhatsAppWindow;
 }
 
 function minutesOfDay(time: { hour: number; minute: number }): number {
@@ -113,6 +118,41 @@ function subscriberVerdict(
     return rules.allowedSubscriberTypes.includes(subscriberType) ? "ALLOW" : "REVIEW";
   }
   return "ALLOW";
+}
+
+/**
+ * What the record permits when the recipient is an individual subscriber.
+ *
+ *   * MARKETING — they started it (contacted us, asked for information), they
+ *     are a customer or were in a negotiation (the soft opt-in), or there is
+ *     evidenced consent. The unsubscribe requirement still applies.
+ *   * CONVERSATION_ONLY — they accepted our connection or follow. That is a
+ *     real act by them and opens a conversation, but it is not consent to
+ *     marketing. A reply from them upgrades the relationship to
+ *     THEY_CONTACTED_US, which unlocks MARKETING.
+ *   * NONE — referral, import, "other", found by us, unknown. Consent first.
+ *
+ * Exported so the UI and the compose step can explain the same verdict.
+ */
+export function individualMarketingBasis(
+  input: Pick<PolicyInput, "relationshipType" | "consentStatus" | "hasConsentEvidence">,
+): "MARKETING" | "CONVERSATION_ONLY" | "NONE" {
+  if (input.consentStatus === "GRANTED" && input.hasConsentEvidence) return "MARKETING";
+
+  switch (input.relationshipType) {
+    case "THEY_CONTACTED_US":
+    case "REQUESTED_INFORMATION":
+    case "EXISTING_CUSTOMER":
+    case "EXISTING_BUSINESS_RELATIONSHIP":
+      return "MARKETING";
+    case "EXPLICIT_MARKETING_CONSENT":
+      // A claimed consent with no evidence is not one we can demonstrate.
+      return input.hasConsentEvidence ? "MARKETING" : "NONE";
+    case "ACCEPTED_SOCIAL_CONNECTION":
+      return "CONVERSATION_ONLY";
+    default:
+      return "NONE";
+  }
 }
 
 /**
@@ -202,7 +242,7 @@ export function canSend(input: PolicyInput): PolicyDecision {
     return decide(input, "BLOCKED", "BLOCKED_SUBSCRIBER_TYPE");
   }
   if (verdict === "REVIEW") {
-    return decide(input, "REVIEW_REQUIRED", "REVIEW_REQUIRED", {
+    return decide(input, "REVIEW_REQUIRED", "REVIEW_SUBSCRIBER_TYPE", {
       message:
         input.subscriberType === "UNKNOWN"
           ? "We could not confirm whether this is a business or an individual, so it needs a human decision."
@@ -233,6 +273,46 @@ export function canSend(input: PolicyInput): PolicyDecision {
         requirements: ["HUMAN_REVIEW"],
       });
     }
+  }
+
+  /* 5a. Individual subscribers (docs/revenue-engine/00 §6.1). A relationship
+   *     is not automatically a basis for *marketing* to a sole trader or a
+   *     private person: PECR needs consent or a soft opt-in, and the ICO
+   *     treats social DMs as electronic mail. Transactional traffic is not
+   *     marketing and is untouched. */
+
+  const extraRequirements: PolicyRequirement[] = [];
+
+  if (
+    input.campaignType !== "TRANSACTIONAL" &&
+    rules.individualSubscriberTypes?.includes(input.subscriberType)
+  ) {
+    const basis = individualMarketingBasis(input);
+    if (basis === "NONE") {
+      return decide(input, "REQUIRE_CONSENT", "BLOCKED_NO_PERMISSION", {
+        message:
+          "This person is treated as an individual subscriber, and nothing on record permits marketing to them. They need to have contacted you, be a customer, or have given consent.",
+        requirements: ["HUMAN_REVIEW"],
+      });
+    }
+    if (basis === "CONVERSATION_ONLY") extraRequirements.push("NON_PROMOTIONAL_ONLY");
+  }
+
+  /* 5b. WhatsApp opt-in. Meta requires an explicit opt-in before a business
+   *     starts a conversation. Inside the 24-hour window the person has just
+   *     messaged the business, which is the conversation they started. */
+
+  if (
+    input.channel === "WHATSAPP" &&
+    input.campaignType !== "TRANSACTIONAL" &&
+    !input.withinWhatsAppWindow &&
+    !input.whatsAppOptIn
+  ) {
+    return decide(input, "REQUIRE_CONSENT", "BLOCKED_NO_PERMISSION", {
+      message:
+        "WhatsApp needs an explicit opt-in naming your business before you can start a conversation. A phone number on its own is not one.",
+      requirements: ["HUMAN_REVIEW"],
+    });
   }
 
   /* 6. Whether we can physically and safely send. Sender health is a platform
@@ -278,10 +358,11 @@ export function canSend(input: PolicyInput): PolicyDecision {
 
   /* 9. Allowed — but possibly with obligations attached. */
 
-  const requirements = requirementsFor(rules);
-  if (templateRequired(input.channel)) {
+  const requirements = [...requirementsFor(rules), ...extraRequirements];
+  if (templateRequired(input.channel, input.withinWhatsAppWindow)) {
     return decide(input, "REQUIRE_TEMPLATE", "ALLOWED", {
-      message: "Allowed using an approved WhatsApp template.",
+      message:
+        "The 24-hour WhatsApp service window has closed; only an approved template can be sent.",
       requirements: [...requirements, "APPROVED_TEMPLATE"],
     });
   }

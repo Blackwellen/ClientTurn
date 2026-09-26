@@ -2,7 +2,13 @@ import "server-only";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canPerform, isFinal } from "@/lib/campaigns/reactivation-types";
+import { reactivationLimitProblem } from "@/lib/campaigns/reactivation-limit";
 import type { CampaignStatus } from "@/lib/campaigns/types";
+import { BOOKING_STATUSES } from "@/lib/bookings/types";
+import { staffStatusChange } from "@/lib/bookings/confirmation";
+import { bookLeadOnConfirmation } from "@/lib/bookings/book-lead";
+import { refreshBookingReminder } from "@/lib/bookings/reminders";
+import { orIlike } from "@/lib/supabase/ilike";
 import { defineOperation, ServiceError, type HandlerInput } from "../runtime";
 
 /**
@@ -90,7 +96,8 @@ defineOperation("connector.list", {
 
     if (args.status) query = query.eq("status", args.status);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
     const rows = (data ?? []) as ConnectorRow[];
 
     return {
@@ -275,15 +282,13 @@ defineOperation("connector.disconnect", {
 const BOOKING_FIELDS =
   "id, lead_id, service_id, provider, starts_at, ends_at, location, status, notes, booking_url, reschedule_url, created_at";
 
-/**
- * Exactly the values `bookings.status` permits.
- *
- * `rescheduled` is deliberately absent: it is not one of them, and a caller
- * offered it would have had the write rejected by the database. A rescheduled
- * appointment arrives from the provider as a new `starts_at` on the same
- * booking, which the booking sync handles.
+/*
+ * Booking statuses come from `@/lib/bookings/types`, the one list of the values
+ * `bookings.status` permits (including B10's `pending`). `rescheduled` is
+ * deliberately not one of them: a rescheduled appointment arrives from the
+ * provider as a new `starts_at` on the same booking, which the booking sync
+ * handles.
  */
-const BOOKING_STATUSES = ["scheduled", "completed", "cancelled", "no_show"] as const;
 
 defineOperation("booking.list", {
   schema: z.object({
@@ -308,7 +313,8 @@ defineOperation("booking.list", {
     if (args.to) query = query.lte("starts_at", args.to);
     if (args.status) query = query.eq("status", args.status);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
     return {
       data: { bookings: data ?? [], count: data?.length ?? 0 },
       entityId: null,
@@ -363,6 +369,15 @@ defineOperation("booking.set_status", {
       throw new ServiceError("NOT_FOUND", "That appointment could not be found.");
     }
 
+    // The same rule the dashboard applies (B10, decision Q1): a `pending`
+    // request can only be confirmed (`scheduled`) or declined (`cancelled`),
+    // and nothing moves back to `pending`.
+    const change =
+      before.status === args.status ? null : staffStatusChange(before.status, args.status);
+    if (change && !change.ok) {
+      throw new ServiceError("INVALID_INPUT", change.error);
+    }
+
     if (before.status === args.status) {
       return {
         data: { booking: before, unchanged: true },
@@ -385,6 +400,34 @@ defineOperation("booking.set_status", {
       throw new ServiceError("CONFLICT", "That appointment could not be updated.");
     }
 
+    // Confirming a requested time is the moment the lead becomes BOOKED --
+    // exactly as it is from the dashboard.
+    const bookedLead = Boolean(change?.ok && change.bookLead);
+    if (bookedLead) {
+      const booked = await bookLeadOnConfirmation({
+        businessId: context.businessId,
+        bookingId: before.id,
+        leadId: before.lead_id,
+        revertTo: before.status,
+      });
+      if (!booked) {
+        throw new ServiceError(
+          "CONFLICT",
+          "The lead could not be marked as booked, so the appointment was left awaiting confirmation.",
+        );
+      }
+    }
+
+    // A meeting that is no longer scheduled has nothing to be reminded about.
+    if (args.status !== "scheduled") {
+      await refreshBookingReminder({
+        businessId: context.businessId,
+        leadId: before.lead_id,
+        bookingId: before.id,
+        change: `status:${args.status}`,
+      });
+    }
+
     return {
       // `unchanged` is present on both branches rather than only on the early
       // return, so a caller can read one field instead of inferring from its
@@ -393,15 +436,18 @@ defineOperation("booking.set_status", {
       entityId: after.id,
       before: { status: before.status },
       after: { status: after.status },
-      // The lead's own status is not touched here. Marking an appointment as a
-      // no-show is a fact about the appointment; deciding what that means for
-      // the lead is the customer's rule, not ours to infer.
-      warnings: [
-        {
-          code: "lead_unchanged",
-          message: "The lead's status is unchanged. Set it separately if it should move.",
-        },
-      ],
+      // Apart from confirming a requested time (above), the lead's own status
+      // is not touched here. Marking an appointment as a no-show is a fact
+      // about the appointment; deciding what that means for the lead is the
+      // customer's rule, not ours to infer.
+      warnings: bookedLead
+        ? [{ code: "lead_booked", message: "The requested time is confirmed and the lead is now booked." }]
+        : [
+            {
+              code: "lead_unchanged",
+              message: "The lead's status is unchanged. Set it separately if it should move.",
+            },
+          ],
     };
   },
 });
@@ -427,7 +473,8 @@ defineOperation("campaign.list", {
 
     if (args.status) query = query.eq("status", args.status);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
     return {
       data: { campaigns: data ?? [], count: data?.length ?? 0 },
       entityId: null,
@@ -579,6 +626,86 @@ campaignLifecycle("campaign.pause");
 campaignLifecycle("campaign.resume");
 campaignLifecycle("campaign.launch");
 
+/**
+ * Adds one lead to a reactivation campaign's audience (the Leads list's bulk
+ * "Add to reactivation campaign").
+ *
+ * Adding is not sending. The row is written `pending`; nothing leaves the
+ * building until the campaign is launched or resumed, both of which are
+ * BULK_EXTERNAL and confirmed by a person, and the send loop re-checks
+ * suppression, consent and quiet hours before every message. So this is a
+ * reversible write, and it refuses rather than queues where sending would be
+ * implied: a RUNNING campaign has already expanded its audience, and a
+ * finished one never will.
+ */
+defineOperation("campaign.add_lead", {
+  schema: z.object({ campaignId: z.string().uuid(), leadId: z.string().uuid() }),
+  async run({ args, context }: HandlerInput<{ campaignId: string; leadId: string }>) {
+    const campaign = await loadCampaignOrFail(context.businessId, args.campaignId);
+    const status = campaign.status as CampaignStatus;
+    if (status !== "DRAFT" && status !== "SCHEDULED" && status !== "PAUSED") {
+      throw new ServiceError(
+        "CONFLICT",
+        status === "RUNNING"
+          ? "That campaign is already sending. Pause it before adding people."
+          : "That campaign has finished, so no one can be added to it.",
+      );
+    }
+
+    const db = createAdminClient();
+    const { data: lead, error: leadError } = await db
+      .from("leads")
+      .select("id, archived_at, opted_out, phone")
+      .eq("id", args.leadId)
+      .eq("business_id", context.businessId)
+      .maybeSingle();
+    if (leadError) throw new Error(leadError.message);
+    if (!lead) throw new ServiceError("NOT_FOUND", "That lead could not be found.");
+    if (lead.archived_at) throw new ServiceError("CONFLICT", "archived");
+    if (lead.opted_out) throw new ServiceError("POLICY_BLOCKED", "opted out");
+    // Reactivation sends by SMS or WhatsApp, only ever to a number the person
+    // submitted themselves; a lead without one cannot be reached by it.
+    if (!lead.phone) throw new ServiceError("POLICY_BLOCKED", "no mobile number");
+
+    const { data: existing, error: existingError } = await db
+      .from("campaign_contacts")
+      .select("id")
+      .eq("business_id", context.businessId)
+      .eq("campaign_id", campaign.id)
+      .eq("lead_id", lead.id)
+      .maybeSingle();
+    if (existingError) throw new Error(existingError.message);
+    if (existing) {
+      return {
+        data: { added: false, unchanged: true as boolean, campaignId: campaign.id },
+        entityId: campaign.id,
+      };
+    }
+
+    // One more contact against the plan's reactivation allowance.
+    const { loadReactivationAllowance } = await import("@/lib/campaigns/queries");
+    const limitProblem = reactivationLimitProblem(
+      await loadReactivationAllowance(context.businessId),
+      1,
+    );
+    if (limitProblem) throw new ServiceError("PLAN_LIMIT", limitProblem);
+
+    const { error } = await db.from("campaign_contacts").insert({
+      business_id: context.businessId,
+      campaign_id: campaign.id,
+      lead_id: lead.id,
+      state: "pending",
+    });
+    if (error) throw new Error(error.message);
+
+    return {
+      data: { added: true, unchanged: false, campaignId: campaign.id },
+      entityId: campaign.id,
+      after: { lead_id: lead.id, state: "pending" },
+    };
+  },
+});
+
 /* -------------------------------------------------------------- prospects */
 
 const PROSPECT_FIELDS =
@@ -607,16 +734,11 @@ defineOperation("prospect.search", {
     if (args.grade) query = query.eq("grade", args.grade);
 
     if (args.query) {
-      // Escaped before interpolation: a comma or a parenthesis in the search
-      // term would otherwise be read as PostgREST filter syntax rather than as
-      // text somebody typed.
-      const term = args.query.replace(/[%,()\\]/g, "");
-      if (term) {
-        query = query.or(
-          `first_name.ilike.%${term}%,last_name.ilike.%${term}%,` +
-            `email.ilike.%${term}%,role_title.ilike.%${term}%`,
-        );
-      }
+      // Quoted and LIKE-escaped by `orIlike`: a comma or a parenthesis in the
+      // search term would otherwise be read as PostgREST filter syntax rather
+      // than as text somebody typed.
+      const or = orIlike(["first_name", "last_name", "email", "role_title"], args.query);
+      if (or) query = query.or(or);
     }
 
     const { data } = await query;

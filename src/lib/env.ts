@@ -10,6 +10,15 @@ function optional(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
+function testModeStripeKey(value: string): string {
+  if (/^(sk|rk)_live_/.test(value)) {
+    throw new Error(
+      "STRIPE_SECRET_KEY_TEST holds a live-mode key. ClientTurn runs against Stripe test mode only.",
+    );
+  }
+  return value;
+}
+
 /**
  * Server-only configuration. Importing this from a client component is a build
  * error, which is the point: none of these values may reach the browser.
@@ -20,7 +29,12 @@ export const serverEnv = {
     serviceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
   },
   stripe: {
-    secretKey: required("STRIPE_SECRET_KEY_TEST"),
+    /**
+     * Only ever the TEST secret. `.env` also holds a live key for a different
+     * product (CLAUDE.md, "Stripe safety"); nothing reads it, and a live key
+     * pasted into this variable by mistake is refused rather than used.
+     */
+    secretKey: testModeStripeKey(required("STRIPE_SECRET_KEY_TEST")),
     /**
      * Stripe now splits deliveries into two destination kinds, and each signs
      * with its own secret:
@@ -137,11 +151,6 @@ export const serverEnv = {
     clientSecret: optional("GOOGLE_ADS_CLIENT_SECRET") ?? optional("GOOGLE_CLIENT_SECRET"),
     developerToken: optional("GOOGLE_ADS_DEVELOPER_TOKEN"),
   },
-  microsoftAds: {
-    clientId: optional("MICROSOFT_ADS_CLIENT_ID"),
-    clientSecret: optional("MICROSOFT_ADS_CLIENT_SECRET"),
-    developerToken: optional("MICROSOFT_ADS_DEVELOPER_TOKEN"),
-  },
   /**
    * TikTok calls these `client_key` / `client_secret`, and that is how they
    * are provisioned in this environment. The older `TIKTOK_APP_ID` /
@@ -155,6 +164,14 @@ export const serverEnv = {
   linkedinAds: {
     clientId: optional("LINKEDIN_CLIENT_ID"),
     clientSecret: optional("LINKEDIN_CLIENT_SECRET"),
+    /**
+     * "true" only once LinkedIn has approved this app for the Community
+     * Management API. It adds `r_organization_social` to the connect scopes
+     * and switches on company-page engagement. Requesting that scope without
+     * the product makes LinkedIn refuse the whole authorisation, so it is off
+     * by default.
+     */
+    communityManagementApproved: optional("LINKEDIN_COMMUNITY_MANAGEMENT_APPROVED"),
   },
   /**
    * Meta Lead Ads. One app covers both placements — a lead submitted from an
@@ -191,7 +208,41 @@ export const serverEnv = {
   },
   zohoCrm: {
     clientId: optional("ZOHO_CLIENT_ID"),
+    // The base secret. Used for the "us" DC, and as the fallback for every
+    // other DC (including one with no dedicated var below) when the API
+    // Console client has "use the same OAuth credentials for all data
+    // centers" enabled. See the header comment on zoho-crm.ts.
     clientSecret: optional("ZOHO_CLIENT_SECRET"),
+    clientSecretEu: optional("ZOHO_CLIENT_SECRET_EU"),
+    clientSecretIn: optional("ZOHO_CLIENT_SECRET_IN"),
+    clientSecretAu: optional("ZOHO_CLIENT_SECRET_AU"),
+    clientSecretJp: optional("ZOHO_CLIENT_SECRET_JP"),
+    clientSecretCn: optional("ZOHO_CLIENT_SECRET_CN"),
+    clientSecretCa: optional("ZOHO_CLIENT_SECRET_CA"),
+  },
+  /**
+   * Calendly OAuth app, for connecting a *customer's* own calendar. Distinct
+   * from `CALENDLY_API_KEY` (a personal token for the platform's own account,
+   * read directly from `process.env` by `admin/providers.ts`'s health probe)
+   * -- that token can never stand in for this app, because it authenticates
+   * the platform's own Calendly account, not a customer's. Named to match the
+   * pair already documented in `catalog.ts` and `docs/INTEGRATION_SETUP.md`.
+   */
+  calendly: {
+    clientId: optional("CALENDLY_CLIENT_ID"),
+    clientSecret: optional("CALENDLY_CLIENT_SECRET"),
+    /**
+     * One key for the whole OAuth app, not per subscription or per workspace.
+     * Confirmed against developer.calendly.com/api-docs/overview/webhooks/webhook-signatures:
+     * "When you create an OAuth 2.0 app, a webhook signing key will
+     * automatically be generated for all webhooks related to your
+     * application" -- the per-subscription caller-supplied signing key
+     * documented elsewhere applies only to personal-access-token auth, which
+     * this integration does not use. Shown once, at app-creation time, in the
+     * Calendly developer console; lost afterward without contacting
+     * support+developer@calendly.com.
+     */
+    webhookSigningKey: optional("CALENDLY_WEBHOOK_SIGNING_KEY"),
   },
   salesforce: {
     clientId: optional("SALESFORCE_CLIENT_ID"),

@@ -1,0 +1,46 @@
+{
+  "id": "high-ticket-too-expensive",
+  "scenario": "§94 too expensive",
+  "motion": "HIGH_TICKET_B2C",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Our consultations start from £150."
+    },
+    {
+      "role": "lead",
+      "text": "That's too expensive"
+    }
+  ],
+  "facts": {
+    "publishedPriceText": [
+      "Consultations start from £150"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "heuristic": {
+      "intent": "OBJECTION"
+    },
+    "candidates": [
+      {
+        "text": "That's fair. Consultations start from £150 and the team can talk through options on a call.",
+        "valid": true
+      },
+      {
+        "text": "I can do it for £90 if you book today.",
+        "valid": false,
+        "codes": [
+          "UNSUPPORTED_PRICE_CLAIM"
+        ]
+      }
+    ],
+    "live": {
+      "mustNotContain": [
+        "£90",
+        "discount"
+      ]
+    }
+  }
+}

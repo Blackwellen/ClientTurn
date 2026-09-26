@@ -1,0 +1,312 @@
+import "server-only";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { SALES_MOTIONS, type SalesMotion } from "@/lib/sales-library/types";
+import {
+  DEFAULT_SELLING_PREFERENCES,
+  EDITABLE_BUDGET_SCOPES,
+  parseSellingPreferences,
+  phrasesFromAvoid,
+  type EditableBudgetScope,
+  type LiaRow,
+  type SalesSettingsView,
+  type SellingPreferences,
+  defaultScoringWeights,
+  parseScoringWeights,
+} from "./ai-selling";
+import type { DimensionWeights } from "@/lib/sales-library/types";
+import { logWriteError } from "@/lib/supabase/write-result";
+
+/**
+ * Reads behind Settings -> AI & selling and the `sales_settings.get`
+ * operation. Service-role, and hard-scoped to the business id the caller
+ * resolved from the session: `ai_budgets` platform rows, `industry_codes` and
+ * `workspace_sales_overrides` writes are server-side only.
+ *
+ * A failed read throws. The section shows an error state rather than a form
+ * pre-filled with defaults that would silently overwrite real settings on save.
+ */
+
+export const SIC_SYSTEM = "uk_sic_2026";
+
+export async function loadSalesSettings(businessId: string): Promise<SalesSettingsView> {
+  const db = createAdminClient();
+  const [profile, override] = await Promise.all([
+    db
+      .from("business_profiles")
+      .select(
+        "primary_industry_system, primary_industry_code, archetype_key, classification_source, sales_motions, library_version, outreach_tone, outreach_value_proposition, outreach_key_messages, outreach_proof_points, outreach_call_to_action, outreach_claim_restrictions, outreach_avoid",
+      )
+      .eq("business_id", businessId)
+      .maybeSingle(),
+    db
+      .from("workspace_sales_overrides")
+      .select("payload")
+      .eq("business_id", businessId)
+      .eq("kind", "ARCHETYPE_SETTINGS")
+      .eq("key", "*")
+      .maybeSingle(),
+  ]);
+  if (profile.error) throw new Error(`business_profiles read: ${profile.error.message}`);
+  if (override.error) throw new Error(`workspace_sales_overrides read: ${override.error.message}`);
+
+  const row = profile.data;
+  let primaryIndustry: SalesSettingsView["primaryIndustry"] = null;
+  if (row?.primary_industry_system && row.primary_industry_code) {
+    const { data, error } = await db
+      .from("industry_codes")
+      .select("title")
+      .eq("system", row.primary_industry_system)
+      .eq("code", row.primary_industry_code)
+      .maybeSingle();
+    if (error) throw new Error(`industry_codes read: ${error.message}`);
+    primaryIndustry = {
+      system: row.primary_industry_system,
+      code: row.primary_industry_code,
+      title: data?.title ?? null,
+    };
+  }
+
+  return {
+    primaryIndustry,
+    archetypeKey: row?.archetype_key ?? null,
+    classificationSource: row?.classification_source ?? null,
+    salesMotions: (row?.sales_motions ?? []).filter((value): value is SalesMotion =>
+      (SALES_MOTIONS as readonly string[]).includes(value),
+    ),
+    preferences: override.data ? parseSellingPreferences(override.data.payload) : { ...DEFAULT_SELLING_PREFERENCES },
+    brand: {
+      tone: row?.outreach_tone ?? "",
+      valueProposition: row?.outreach_value_proposition ?? "",
+      keyMessages: row?.outreach_key_messages ?? "",
+      proofPoints: row?.outreach_proof_points ?? "",
+      callToAction: row?.outreach_call_to_action ?? "",
+      claimRestrictions: row?.outreach_claim_restrictions ?? "",
+      forbiddenPhrases: phrasesFromAvoid(row?.outreach_avoid),
+    },
+    libraryVersion: row?.library_version ?? null,
+  };
+}
+
+/**
+ * The stored selling preferences, for the runtime paths that act on them
+ * (qualification depth, preferred methods, risk tolerance, research depth,
+ * example messages). Unlike `loadSalesSettings` this never throws: a failed
+ * read is logged and the defaults apply, which is exactly the behaviour a
+ * workspace that never saved the section gets.
+ */
+export async function loadSellingPreferencesOrDefault(businessId: string): Promise<SellingPreferences> {
+  try {
+    const result = await createAdminClient()
+      .from("workspace_sales_overrides")
+      .select("payload")
+      .eq("business_id", businessId)
+      .eq("kind", "ARCHETYPE_SETTINGS")
+      .eq("key", "*")
+      .maybeSingle();
+    logWriteError(result, "workspace_sales_overrides.preferences read", { businessId });
+    return result.data ? parseSellingPreferences(result.data.payload) : { ...DEFAULT_SELLING_PREFERENCES };
+  } catch (error) {
+    console.error("[selling-preferences] read threw; defaults apply", { businessId, error });
+    return { ...DEFAULT_SELLING_PREFERENCES };
+  }
+}
+
+/** Settings -> AI & selling -> Scoring weights: the override and the library default. */
+export type ScoringWeightsView = {
+  current: DimensionWeights;
+  defaults: DimensionWeights;
+  overridden: boolean;
+};
+
+export async function loadScoringWeightsView(
+  businessId: string,
+  archetypeKey: string | null,
+  motion: SalesMotion | null,
+): Promise<ScoringWeightsView> {
+  const { data, error } = await createAdminClient()
+    .from("workspace_sales_overrides")
+    .select("payload")
+    .eq("business_id", businessId)
+    .eq("kind", "SCORING_WEIGHTS")
+    .eq("key", "*")
+    .maybeSingle();
+  if (error) throw new Error(`workspace_sales_overrides read: ${error.message}`);
+  const defaults = defaultScoringWeights(archetypeKey, motion);
+  const stored = data ? parseScoringWeights(data.payload) : null;
+  return { current: stored ?? defaults, defaults, overridden: stored !== null };
+}
+
+/* ----------------------------------------------------------------- budgets */
+
+export type BudgetRowView = {
+  scope: EditableBudgetScope;
+  /** The workspace's own ceiling, in pence; null = none set (default applies). */
+  workspaceMinor: number | null;
+  /** The platform default for this scope, in pence; null = no default. */
+  platformMinor: number | null;
+};
+
+export type BudgetView = {
+  rows: BudgetRowView[];
+  plan: { key: string; minor: number | null };
+  emergencyMinor: number | null;
+};
+
+export async function loadBudgetView(businessId: string, planKey: string): Promise<BudgetView> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("ai_budgets")
+    .select("scope, business_id, plan_key, ceiling_minor, enabled")
+    .or(`business_id.is.null,business_id.eq.${businessId}`)
+    .in("scope", [...EDITABLE_BUDGET_SCOPES, "PLAN", "EMERGENCY"]);
+  if (error) throw new Error(`ai_budgets read: ${error.message}`);
+
+  const rows = (data ?? []).filter((row) => row.enabled);
+  const platform = (scope: string, plan?: string) =>
+    rows.find((row) => row.business_id === null && row.scope === scope && (plan === undefined || row.plan_key === plan))
+      ?.ceiling_minor ?? null;
+  const own = (scope: string) =>
+    rows.find((row) => row.business_id === businessId && row.scope === scope)?.ceiling_minor ?? null;
+
+  return {
+    rows: EDITABLE_BUDGET_SCOPES.map((scope) => ({
+      scope,
+      workspaceMinor: own(scope),
+      platformMinor: platform(scope),
+    })),
+    plan: { key: planKey, minor: platform("PLAN", planKey) },
+    emergencyMinor: platform("EMERGENCY"),
+  };
+}
+
+/** The platform default per editable scope, for the budget operation's checks. */
+export async function platformBudgetDefaults(): Promise<Partial<Record<EditableBudgetScope, number | null>>> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("ai_budgets")
+    .select("scope, ceiling_minor")
+    .is("business_id", null)
+    .eq("enabled", true)
+    .in("scope", [...EDITABLE_BUDGET_SCOPES]);
+  if (error) throw new Error(`ai_budgets defaults read: ${error.message}`);
+  const out: Partial<Record<EditableBudgetScope, number | null>> = {};
+  for (const row of data ?? []) {
+    out[row.scope as EditableBudgetScope] = row.ceiling_minor;
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------- LIA */
+
+export async function listLias(businessId: string): Promise<LiaRow[]> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("legitimate_interest_assessments")
+    .select("id, purpose, necessity, balancing, safeguards, channels, status, reviewed_at, next_review_at")
+    .eq("business_id", businessId)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(`legitimate_interest_assessments read: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    purpose: row.purpose,
+    necessity: row.necessity,
+    balancing: row.balancing,
+    safeguards: row.safeguards,
+    channels: row.channels,
+    status: row.status,
+    reviewedAt: row.reviewed_at,
+    nextReviewAt: row.next_review_at,
+  }));
+}
+
+/* ------------------------------------------------------------ send limits */
+
+export type SenderLimitRow = {
+  id: string;
+  email: string;
+  domain: string | null;
+  status: string;
+  dailySendCap: number;
+  /** Sent today, or 0 when the counter belongs to an earlier day. */
+  sentToday: number;
+  pausedUntil: string | null;
+  /** Paused now (pausedUntil is still ahead). */
+  paused: boolean;
+};
+
+export type DomainHealthRow = {
+  domain: string;
+  spf: string;
+  dkim: string;
+  dmarc: string;
+  dmarcPolicy: string | null;
+  healthState: string;
+  bounceRate: number;
+  complaintRate: number;
+  snapshotDate: string;
+};
+
+export type SenderHealth = { senders: SenderLimitRow[]; domains: DomainHealthRow[] };
+
+/**
+ * Sending identities with their daily caps, and the latest DNS/deliverability
+ * snapshot per sending domain (domain_health_snapshots, written daily by the
+ * domain-health job). A domain with no snapshot is simply absent: the UI says
+ * "not checked yet" rather than inventing a pass.
+ */
+export async function loadSenderHealth(businessId: string, now: Date = new Date()): Promise<SenderHealth> {
+  const db = createAdminClient();
+  const [senders, snapshots] = await Promise.all([
+    db
+      .from("sender_identities")
+      .select("id, email, domain, status, daily_send_cap, sent_today, sent_today_on, paused_until, active")
+      .eq("business_id", businessId)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(50),
+    db
+      .from("domain_health_snapshots")
+      .select(
+        "domain, spf_state, dkim_state, dmarc_state, dmarc_policy, health_state, bounce_rate, complaint_rate, snapshot_date",
+      )
+      .eq("business_id", businessId)
+      .order("snapshot_date", { ascending: false })
+      .limit(200),
+  ]);
+  if (senders.error) throw new Error(`sender_identities read: ${senders.error.message}`);
+  if (snapshots.error) throw new Error(`domain_health_snapshots read: ${snapshots.error.message}`);
+
+  const today = now.toISOString().slice(0, 10);
+  const latest = new Map<string, DomainHealthRow>();
+  for (const row of snapshots.data ?? []) {
+    if (latest.has(row.domain)) continue;
+    latest.set(row.domain, {
+      domain: row.domain,
+      spf: row.spf_state,
+      dkim: row.dkim_state,
+      dmarc: row.dmarc_state,
+      dmarcPolicy: row.dmarc_policy,
+      healthState: row.health_state,
+      bounceRate: Number(row.bounce_rate) || 0,
+      complaintRate: Number(row.complaint_rate) || 0,
+      snapshotDate: row.snapshot_date,
+    });
+  }
+
+  return {
+    senders: (senders.data ?? [])
+      .filter((row) => row.active)
+      .map((row) => ({
+        id: row.id,
+        email: row.email,
+        domain: row.domain,
+        status: row.status,
+        dailySendCap: row.daily_send_cap,
+        sentToday: row.sent_today_on === today ? row.sent_today : 0,
+        pausedUntil: row.paused_until,
+        paused: row.paused_until !== null && Date.parse(row.paused_until) > now.getTime(),
+      })),
+    domains: [...latest.values()],
+  };
+}

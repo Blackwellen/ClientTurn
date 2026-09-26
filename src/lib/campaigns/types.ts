@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { htmlToPlainText, sanitizeEmailHtml } from "../email/rich-text.ts";
 import { LEAD_STATUSES } from "../leads/filters.ts";
+import type { ReactivationAllowance } from "./reactivation-limit.ts";
 import {
   findUnknownMergeFields,
   renderTemplate,
@@ -145,6 +146,14 @@ const campaignDraftShape = z.object({
   scheduledAt: z.string().trim().max(40).optional(),
   sendRatePerMinute: z.coerce.number().int().min(1).max(60).default(20),
   aiPersonalize: z.boolean().default(false),
+  /**
+   * WhatsApp only: the approved template sent once the 24-hour window has
+   * closed, and which merge field fills each of its variables.
+   */
+  whatsappTemplateId: z.uuid().optional(),
+  whatsappTemplateVariables: z
+    .record(z.string().min(1).max(40), z.string().min(1).max(60))
+    .optional(),
 });
 
 /**
@@ -183,6 +192,16 @@ export const campaignDraftSchema = campaignDraftShape
         message: `Keep the ${field === "message" ? "message" : "follow-up"} under ${limit} characters.`,
       });
     }
+  }
+
+  // Reactivation reaches people outside the 24-hour window, where WhatsApp
+  // delivers nothing but an approved template.
+  if (value.channel === "whatsapp" && !value.whatsappTemplateId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["whatsappTemplateId"],
+      message: "A WhatsApp campaign needs an approved WhatsApp template.",
+    });
   }
 
   if (value.channel === "email") {
@@ -372,6 +391,8 @@ export type AudiencePreview = {
   excludedSample: (AudienceSampleRow & { reason: string })[];
   cappedAt: number | null;
   truncated: boolean;
+  /** The plan's reactivation allowance this billing period, when it could be read. */
+  allowance?: ReactivationAllowance | null;
 };
 
 export const EMPTY_AUDIENCE_PREVIEW: AudiencePreview = {
@@ -434,7 +455,11 @@ export type CampaignDetail = {
 export const IMPORT_FIELDS = [
   { key: "first_name", label: "First name", required: false },
   { key: "last_name", label: "Last name", required: false },
-  { key: "phone", label: "Mobile number", required: true },
+  // Neither contact column is required on its own: the list needs a mobile
+  // number or an email (or both). SMS and WhatsApp campaigns reach the rows
+  // with a mobile, email campaigns the rows with an email; a row with only
+  // the other is counted as "no usable contact" for that campaign.
+  { key: "phone", label: "Mobile number", required: false },
   { key: "email", label: "Email", required: false },
   { key: "service", label: "Service", required: false },
   { key: "postcode", label: "Postcode", required: false },
@@ -442,14 +467,27 @@ export const IMPORT_FIELDS = [
 
 export type ImportFieldKey = (typeof IMPORT_FIELDS)[number]["key"];
 
-export const importMappingSchema = z.object({
-  first_name: z.string().max(120).optional(),
-  last_name: z.string().max(120).optional(),
-  phone: z.string().min(1).max(120),
-  email: z.string().max(120).optional(),
-  service: z.string().max(120).optional(),
-  postcode: z.string().max(120).optional(),
-});
+export const IMPORT_CONTACT_REQUIRED_MESSAGE =
+  "Map a mobile number or an email column to continue.";
+
+export const importMappingSchema = z
+  .object({
+    first_name: z.string().max(120).optional(),
+    last_name: z.string().max(120).optional(),
+    phone: z.string().max(120).optional(),
+    email: z.string().max(120).optional(),
+    service: z.string().max(120).optional(),
+    postcode: z.string().max(120).optional(),
+  })
+  .refine((mapping) => Boolean(mapping.phone?.trim() || mapping.email?.trim()), {
+    message: IMPORT_CONTACT_REQUIRED_MESSAGE,
+    path: ["phone"],
+  });
+
+/** True when a column mapping names at least one way to contact each row. */
+export function importMappingHasContact(mapping: Record<string, string | undefined>): boolean {
+  return Boolean(mapping.phone?.trim() || mapping.email?.trim());
+}
 
 export type ImportMapping = z.infer<typeof importMappingSchema>;
 

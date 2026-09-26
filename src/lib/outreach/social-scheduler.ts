@@ -1,15 +1,21 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import {
   dueForPrivateReply,
   sendOnePrivateReply,
 } from "@/lib/social/private-replies";
 import { enqueue } from "@/lib/jobs/queue";
+import { queueNotification } from "@/lib/jobs/handlers/shared";
+import { enrolSocialFallbackInEmail } from "./social-fallback";
 import { evaluate } from "@/lib/policy/service";
 import { composeSocialMessage } from "./social-composer";
+import { loadSocialDisclosurePlan } from "./social-disclosure";
+import { maxCharsFor } from "./social-copy";
+import { appendDisclosure } from "@/lib/compliance/source-disclosure";
 import {
-  DEFAULT_SEQUENCE_SETTINGS,
   MAX_SEQUENCE_ATTEMPTS,
+  sequenceSettingsFromRow,
   decideSocialSequence,
   nextActionAtFor,
   nextActionFor,
@@ -133,18 +139,8 @@ async function loadSettings(businessId: string): Promise<SocialSequenceSettings 
     .maybeSingle();
 
   return {
-    withdrawAfterDays:
-      data?.social_withdraw_after_days ?? DEFAULT_SEQUENCE_SETTINGS.withdrawAfterDays,
-    skipToEmailAfterDays:
-      data?.social_skip_to_email_after_days ??
-      DEFAULT_SEQUENCE_SETTINGS.skipToEmailAfterDays,
-    followUpGapHours:
-      data?.social_follow_up_gap_hours ?? DEFAULT_SEQUENCE_SETTINGS.followUpGapHours,
-    maxFollowUps: data?.social_max_follow_ups ?? DEFAULT_SEQUENCE_SETTINGS.maxFollowUps,
-    warmBeforeInvite:
-      data?.social_warm_before_invite ?? DEFAULT_SEQUENCE_SETTINGS.warmBeforeInvite,
-    warmDelayHours:
-      data?.social_warm_delay_hours ?? DEFAULT_SEQUENCE_SETTINGS.warmDelayHours,
+    // Blank means never: a saved null is kept (sequenceSettingsFromRow).
+    ...sequenceSettingsFromRow(data ?? null),
     autonomous: Boolean(data?.social_autonomous_sending),
   };
 }
@@ -247,6 +243,22 @@ export async function advanceSocialWorkspace(
   // silently.
   outcome.privateReplies = await advancePrivateReplies(businessId);
 
+  // ClientTurn marking an invite withdrawn changes nothing on LinkedIn. In
+  // ASSISTED mode a person has to withdraw it there too, or it keeps counting
+  // against the account's outstanding invitations -- so they are told, once a
+  // day, how many are waiting.
+  if (outcome.withdrawn > 0 && !settings.autonomous) {
+    await queueNotification({
+      businessId,
+      type: "lead_attention",
+      severity: "info",
+      title: `Withdraw ${outcome.withdrawn} LinkedIn invitation${outcome.withdrawn === 1 ? "" : "s"}`,
+      body: "ClientTurn stopped waiting on these unanswered invitations. Withdraw them in LinkedIn (My Network, Manage, Sent) so they stop using your account's allowance.",
+      linkUrl: "/app/find-leads?view=social",
+      dedupeKey: `social-withdraw:${businessId}:${new Date().toISOString().slice(0, 10)}`,
+    });
+  }
+
   return outcome;
 }
 
@@ -305,7 +317,7 @@ async function recordFailure(businessId: string, row: DueRow): Promise<void> {
   const attempts = row.attempts + 1;
   const parked = attempts >= MAX_SEQUENCE_ATTEMPTS;
 
-  await admin
+  const failureUpdate = await admin
     .from("social_connection_states")
     .update({
       attempts,
@@ -321,6 +333,12 @@ async function recordFailure(businessId: string, row: DueRow): Promise<void> {
     })
     .eq("business_id", businessId)
     .eq("id", row.id);
+  logWriteError(failureUpdate, "social: record failed attempt", {
+    businessId,
+    stateId: row.id,
+    prospectId: row.prospect_id,
+    attempts,
+  });
 }
 
 /* ------------------------------------------------------------- one prospect */
@@ -399,14 +417,18 @@ async function advanceOne(context: AdvanceContext): Promise<AdvanceResult> {
       return halt(businessId, row, decision.reason);
 
     case "WAIT":
-      await admin
-        .from("social_connection_states")
-        .update({
-          next_action_at: nextActionAtFor(decision, now)?.toISOString() ?? null,
-          attempts: 0,
-        })
-        .eq("business_id", businessId)
-        .eq("id", row.id);
+      logWriteError(
+        await admin
+          .from("social_connection_states")
+          .update({
+            next_action_at: nextActionAtFor(decision, now)?.toISOString() ?? null,
+            attempts: 0,
+          })
+          .eq("business_id", businessId)
+          .eq("id", row.id),
+        "social: schedule wait",
+        { businessId, stateId: row.id, prospectId: row.prospect_id },
+      );
       return "waiting";
 
     case "WITHDRAW":
@@ -430,22 +452,35 @@ async function halt(
   reason: string,
 ): Promise<AdvanceResult> {
   const admin = createAdminClient();
+  const context = { businessId, stateId: row.id, prospectId: row.prospect_id };
 
-  await admin
-    .from("social_connection_states")
-    .update({ next_action_at: null, next_action: null, halted_reason: reason })
-    .eq("business_id", businessId)
-    .eq("id", row.id);
+  // A failure leaves the row due, and the next sweep halts it again.
+  logWriteError(
+    await admin
+      .from("social_connection_states")
+      .update({ next_action_at: null, next_action: null, halted_reason: reason })
+      .eq("business_id", businessId)
+      .eq("id", row.id),
+    "social: halt sequence",
+    context,
+  );
 
   // A halt while a message is still composed means that message must not be
   // sent. This is the branch that stops a follow-up reaching somebody who
   // replied an hour ago, and it is the single most important write in the file.
-  await admin
-    .from("social_outbound_messages")
-    .update({ status: "DISCARDED", discarded_reason: reason })
-    .eq("business_id", businessId)
-    .eq("prospect_id", row.prospect_id)
-    .eq("status", "DRAFT");
+  // So a failure throws: the sweep's per-row catch records the attempt and the
+  // next sweep halts (and discards) again, rather than "halted" being reported
+  // over a draft that is still sendable.
+  assertWrite(
+    await admin
+      .from("social_outbound_messages")
+      .update({ status: "DISCARDED", discarded_reason: reason })
+      .eq("business_id", businessId)
+      .eq("prospect_id", row.prospect_id)
+      .eq("status", "DRAFT"),
+    "social: discard pending drafts on halt",
+    context,
+  );
 
   return "halted";
 }
@@ -466,28 +501,38 @@ async function withdraw(
   // is recorded either way: the allowance it frees is counted from our log, and
   // an invite we have stopped chasing must not keep occupying the queue merely
   // because nobody has performed the click yet.
-  await admin
-    .from("social_connection_states")
-    .update({
-      state: "WITHDRAWN",
-      withdrawn_at: new Date().toISOString(),
-      next_action_at: null,
-      next_action: null,
-      halted_reason: decision.reason,
-    })
-    .eq("business_id", businessId)
-    .eq("id", row.id);
+  // Thrown before the action is logged: a row left due would be withdrawn
+  // (and logged against the allowance) again on the next sweep.
+  assertWrite(
+    await admin
+      .from("social_connection_states")
+      .update({
+        state: "WITHDRAWN",
+        withdrawn_at: new Date().toISOString(),
+        next_action_at: null,
+        next_action: null,
+        halted_reason: decision.reason,
+      })
+      .eq("business_id", businessId)
+      .eq("id", row.id),
+    "social: withdraw invite",
+    { businessId, stateId: row.id, prospectId: row.prospect_id },
+  );
 
   if (account) {
-    await admin.from("social_action_log").insert({
-      business_id: businessId,
-      account_id: account.id,
-      prospect_id: row.prospect_id,
-      platform,
-      action: "WITHDRAW",
-      performed_by: account.sendMode,
-      actor_user_id: null,
-    });
+    logWriteError(
+      await admin.from("social_action_log").insert({
+        business_id: businessId,
+        account_id: account.id,
+        prospect_id: row.prospect_id,
+        platform,
+        action: "WITHDRAW",
+        performed_by: account.sendMode,
+        actor_user_id: null,
+      }),
+      "social: log withdraw action",
+      { businessId, prospectId: row.prospect_id, accountId: account.id },
+    );
   }
 
   return "withdrawn";
@@ -524,32 +569,41 @@ async function visitProfile(context: AdvanceContext): Promise<AdvanceResult> {
     (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
   );
 
-  await admin
-    .from("social_connection_states")
-    .update({
-      warmed_at: now.toISOString(),
-      next_action: "INVITE",
-      // The invite becomes due once the delay has passed, not immediately.
-      next_action_at: new Date(
-        now.getTime() + context.settings.warmDelayHours * 3_600_000,
-      ).toISOString(),
-      attempts: 0,
-    })
-    .eq("business_id", businessId)
-    .eq("id", row.id);
+  // Thrown before the visit is logged, for the same reason as `withdraw`.
+  assertWrite(
+    await admin
+      .from("social_connection_states")
+      .update({
+        warmed_at: now.toISOString(),
+        next_action: "INVITE",
+        // The invite becomes due once the delay has passed, not immediately.
+        next_action_at: new Date(
+          now.getTime() + context.settings.warmDelayHours * 3_600_000,
+        ).toISOString(),
+        attempts: 0,
+      })
+      .eq("business_id", businessId)
+      .eq("id", row.id),
+    "social: record profile visit",
+    { businessId, stateId: row.id, prospectId: row.prospect_id },
+  );
 
   // Logged like any other action: LinkedIn rate-limits profile views too, and a
   // limit counted from anything other than what happened is not a limit.
   if (account) {
-    await admin.from("social_action_log").insert({
-      business_id: businessId,
-      account_id: account.id,
-      prospect_id: row.prospect_id,
-      platform,
-      action: "VISIT",
-      performed_by: account.sendMode,
-      actor_user_id: null,
-    });
+    logWriteError(
+      await admin.from("social_action_log").insert({
+        business_id: businessId,
+        account_id: account.id,
+        prospect_id: row.prospect_id,
+        platform,
+        action: "VISIT",
+        performed_by: account.sendMode,
+        actor_user_id: null,
+      }),
+      "social: log visit action",
+      { businessId, prospectId: row.prospect_id, accountId: account.id },
+    );
   }
 
   return "visited";
@@ -563,7 +617,7 @@ async function fallBackToEmail(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  await admin
+  const fallbackUpdate = await admin
     .from("social_connection_states")
     .update({
       email_fallback_at: now,
@@ -579,15 +633,30 @@ async function fallBackToEmail(
     })
     .eq("business_id", businessId)
     .eq("id", row.id);
+  // Scheduling only: a row left due falls back again next sweep, harmlessly.
+  logWriteError(fallbackUpdate, "social: fall back to email", {
+    businessId,
+    stateId: row.id,
+    prospectId: row.prospect_id,
+  });
 
   // Eligible for the email path. The dispatcher decides whether it may
   // actually send -- this only says LinkedIn is no longer the thing being
   // waited on.
-  await admin
-    .from("prospects")
-    .update({ last_activity_at: now })
-    .eq("business_id", businessId)
-    .eq("id", row.prospect_id);
+  logWriteError(
+    await admin
+      .from("prospects")
+      .update({ last_activity_at: now })
+      .eq("business_id", businessId)
+      .eq("id", row.prospect_id),
+    "social: touch prospect activity",
+    { businessId, prospectId: row.prospect_id },
+  );
+
+  // Phase 3.5: actually enrol -- make the prospect's next email step due, or
+  // record and surface that there is none. The dispatcher still decides
+  // whether that email may be sent.
+  await enrolSocialFallbackInEmail(businessId, row.prospect_id, decision.reason);
 
   return "handedToEmail";
 }
@@ -612,14 +681,18 @@ async function compose(
   if (plan.action === "WAIT") {
     // Out of allowance, almost always. Try again after the cap window turns
     // over rather than burning the next sweep on the same refusal.
-    await admin
-      .from("social_connection_states")
-      .update({
-        next_action_at: new Date(Date.now() + 6 * 3600_000).toISOString(),
-        halted_reason: null,
-      })
-      .eq("business_id", businessId)
-      .eq("id", row.id);
+    logWriteError(
+      await admin
+        .from("social_connection_states")
+        .update({
+          next_action_at: new Date(Date.now() + 6 * 3600_000).toISOString(),
+          halted_reason: null,
+        })
+        .eq("business_id", businessId)
+        .eq("id", row.id),
+      "social: defer for allowance",
+      { businessId, stateId: row.id, prospectId: row.prospect_id },
+    );
     return "waiting";
   }
 
@@ -688,21 +761,40 @@ async function compose(
     action: isInvite ? "INVITE" : "MESSAGE",
     carriesNote,
   });
-  const coldChannelOnly =
-    verdict.outcome === "BLOCKED" && verdict.reasonCode === "BLOCKED_COLD_CHANNEL";
+  /**
+   * What a contentless request is exempt from, and nothing more: the channel
+   * not carrying cold marketing, and the recipient's subscriber type. A sole
+   * trader may lawfully be asked to connect -- the request says nothing -- even
+   * though they may not be sent cold marketing (docs/revenue-engine/00 §6.1).
+   * Suppression, opt-out, withdrawn consent and an unpermitted or unknown
+   * source still refuse it.
+   */
+  const contentlessExempt =
+    (verdict.outcome === "BLOCKED" &&
+      (verdict.reasonCode === "BLOCKED_COLD_CHANNEL" ||
+        verdict.reasonCode === "BLOCKED_SUBSCRIBER_TYPE")) ||
+    (verdict.outcome === "REVIEW_REQUIRED" && verdict.reasonCode === "REVIEW_SUBSCRIBER_TYPE");
 
-  const permitted =
-    verdict.outcome === "ALLOWED" ||
-    verdict.outcome === "REVIEW_REQUIRED" ||
-    (contentlessRequest && coldChannelOnly);
+  // Anything carrying content needs ALLOWED. REVIEW_REQUIRED used to be let
+  // through to compose (defect B2): a draft for a person who has not been
+  // classified is a draft nobody may lawfully send, so it waits for the review.
+  const permitted = verdict.outcome === "ALLOWED" || (contentlessRequest && contentlessExempt);
 
-  // REVIEW_REQUIRED is not a refusal, but it is not a licence to act
-  // unattended either: the message is still composed and queued for a person,
-  // and only the autonomous path is stopped. Anything else non-ALLOWED halts.
   if (!permitted) {
     return halt(businessId, row, verdict.message);
   }
-  const needsReview = verdict.outcome === "REVIEW_REQUIRED";
+
+  // An individual subscriber who accepted our connection may be spoken to but
+  // not marketed to until they reply (§6.1). One opener; nothing further until
+  // they answer -- a reply upgrades the relationship and lifts this.
+  const conversationOnly = verdict.requirements?.includes("NON_PROMOTIONAL_ONLY") ?? false;
+  if (conversationOnly && !isInvite && decision.kind !== "OPENER") {
+    return halt(
+      businessId,
+      row,
+      "Waiting for them to reply. They accepted your connection but have not asked to hear about your services, so no further message is sent until they answer.",
+    );
+  }
 
   const account = context.accounts.find(
     (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
@@ -746,6 +838,34 @@ async function compose(
     return performBareInvite(context, account, worthSaying);
   }
 
+  // Article 14(3)(b): a first message to somebody whose details did not come
+  // from them carries where they came from and where to read more. Built from
+  // recorded provenance only. When it is owed and cannot be built -- no privacy
+  // notice, nothing recorded -- the message is held rather than sent without
+  // it, exactly as the cold email path holds its first step, and retried once
+  // the gap is fixed.
+  const limit = maxCharsFor(kind);
+  const disclosure = await loadSocialDisclosurePlan({
+    businessId,
+    prospectId: row.prospect_id,
+    maxLength: kind === "INVITE_NOTE" ? Math.floor(limit / 2) : limit,
+  });
+  if (disclosure.kind === "PARK") {
+    logWriteError(
+      await admin
+        .from("social_connection_states")
+        .update({
+          next_action_at: new Date(Date.now() + 6 * 3600_000).toISOString(),
+          halted_reason: disclosure.gap,
+        })
+        .eq("business_id", businessId)
+        .eq("id", row.id),
+      "social: hold for source disclosure",
+      { businessId, stateId: row.id, prospectId: row.prospect_id },
+    );
+    return "waiting";
+  }
+
   const composed = await composeSocialMessage({
     businessId,
     prospectId: row.prospect_id,
@@ -755,6 +875,7 @@ async function compose(
     // Stable across retries: the same prospect at the same step is the same
     // message, and a retried job must not be billed for it twice.
     idempotencyKey: `social:${row.prospect_id}:${platform}:${kind}:${step}`,
+    nonPromotional: conversationOnly,
   });
 
   if (!composed) {
@@ -765,6 +886,11 @@ async function compose(
     );
   }
 
+  const body =
+    disclosure.kind === "APPEND"
+      ? appendDisclosure(composed.body, disclosure.line, limit)
+      : composed.body;
+
   const { error } = await admin.from("social_outbound_messages").insert({
     business_id: businessId,
     prospect_id: row.prospect_id,
@@ -772,7 +898,7 @@ async function compose(
     platform,
     kind,
     sequence_step: step,
-    body: composed.body,
+    body,
     status: "DRAFT",
     composed_by: composed.composedBy,
     model_ref: composed.modelRef,
@@ -784,7 +910,9 @@ async function compose(
   // the outcome the index exists to produce. Not an error.
   if (error && error.code !== "23505") throw error;
 
-  await admin
+  // Scheduling only: a row left due finds the pending draft next sweep and
+  // waits, so a failure is logged rather than thrown.
+  const composedUpdate = await admin
     .from("social_connection_states")
     .update({
       next_action: nextActionFor(decision),
@@ -797,14 +925,18 @@ async function compose(
     })
     .eq("business_id", businessId)
     .eq("id", row.id);
+  logWriteError(composedUpdate, "social: schedule after compose", {
+    businessId,
+    stateId: row.id,
+    prospectId: row.prospect_id,
+  });
 
   // Autonomous workspaces with a partner integration have the send performed
   // for them. Everyone else has it performed by a person from the queue, which
   // is why nothing further happens here.
   if (
     context.settings.autonomous &&
-    account.sendMode === "PARTNER_API" &&
-    !needsReview
+    account.sendMode === "PARTNER_API"
   ) {
     await enqueue(
       "social.execute",
@@ -841,7 +973,7 @@ async function performBareInvite(
   // unattended. An ASSISTED account has the invite waiting in its queue, where
   // `loadSocialQueue` already lists it.
   if (!(context.settings.autonomous && account.sendMode === "PARTNER_API")) {
-    await admin
+    const waitingUpdate = await admin
       .from("social_connection_states")
       .update({
         next_action: "INVITE",
@@ -855,6 +987,11 @@ async function performBareInvite(
       })
       .eq("business_id", businessId)
       .eq("id", row.id);
+    logWriteError(waitingUpdate, "social: queue bare invite", {
+      businessId,
+      stateId: row.id,
+      prospectId: row.prospect_id,
+    });
     return "waiting";
   }
 
@@ -871,11 +1008,15 @@ async function performBareInvite(
 
   if (!recorded.ok) return halt(businessId, row, recorded.error);
 
-  await admin
-    .from("social_connection_states")
-    .update({ next_action: null, next_action_at: null, attempts: 0 })
-    .eq("business_id", businessId)
-    .eq("id", row.id);
+  logWriteError(
+    await admin
+      .from("social_connection_states")
+      .update({ next_action: null, next_action_at: null, attempts: 0 })
+      .eq("business_id", businessId)
+      .eq("id", row.id),
+    "social: clear after bare invite",
+    { businessId, stateId: row.id, prospectId: row.prospect_id },
+  );
 
   return "composed";
 }

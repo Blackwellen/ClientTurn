@@ -17,6 +17,7 @@ import { PRIMARY_NAV } from "@/lib/app/nav";
 import { TopBar } from "./top-bar";
 import { SupportPopout } from "@/components/support/support-popout";
 import { CopilotDrawer } from "@/components/copilot/copilot-drawer";
+import { ProductTour } from "@/components/tour/product-tour";
 import { AccountPreferencesDialog } from "./account-preferences-dialog";
 import type { NotificationRow } from "./notification-tray";
 
@@ -203,6 +204,8 @@ export function AppShell({
       {/* Mounted only while open so it always loads current values. */}
       <CopilotDrawer open={copilotOpen} onClose={() => setCopilotOpen(false)} />
       <SupportPopout />
+      {/* First-use tour (Phase 8.4): starts itself once, replayable from Help. */}
+      <ProductTour />
       {accountOpen && (
         <AccountPreferencesDialog open onClose={() => setAccountOpen(false)} />
       )}

@@ -365,7 +365,7 @@ export function UsagePanel({
                   <p className="mt-0.5 text-[12px] leading-[1.45] text-content-muted">
                     {usage.overageEnabled
                       ? `Up to £${(usage.overageCapMinor / 100).toLocaleString("en-GB")} of additional spend may be charged this month.`
-                      : "You will be notified when you reach 90% of any allowance. No additional charges will be made."}
+                      : "A banner warns you when a messaging allowance reaches 80% and again when it is used up, and you are notified when AI tokens reach 80% and 95%. At a limit that activity stops; no additional charges are made."}
                   </p>
                 </div>
               </div>

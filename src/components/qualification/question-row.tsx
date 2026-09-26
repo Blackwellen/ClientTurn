@@ -7,7 +7,6 @@ import {
   Clock,
   Copy,
   GitBranch,
-  GripVertical,
   List,
   MapPin,
   MoreVertical,
@@ -115,12 +114,6 @@ export function QuestionRow({
       )}
     >
       <div className="flex items-start gap-2.5">
-        <span
-          aria-hidden
-          className="text-content-subtle hidden shrink-0 pt-2 sm:block"
-        >
-          <GripVertical className="size-4" />
-        </span>
         <span
           aria-hidden
           className="bg-surface-sunken border-line text-content lr-tabular mt-1 flex size-7 shrink-0 items-center justify-center rounded-md border text-[12px] font-semibold"

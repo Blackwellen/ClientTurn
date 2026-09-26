@@ -197,7 +197,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: "Can you integrate with our CRM?",
-    a: "HubSpot and Zoho CRM can be connected in the app today. Salesforce is supported but does not yet have a self-serve connection screen, so it is connected with our team. Anything outside that list is a technical discovery conversation rather than a switch we can flip — we will tell you what is realistic before you commit to anything.",
+    a: "HubSpot and Zoho CRM can be connected in the app today. Salesforce support is built and rolling out; until we've verified it end-to-end with a live org, we connect it with our team rather than hand you an unproven button. Anything outside that list is a technical discovery conversation rather than a switch we can flip — we will tell you what is realistic before you commit to anything.",
   },
   {
     q: "Do you offer a data processing agreement?",

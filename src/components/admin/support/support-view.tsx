@@ -15,7 +15,8 @@ import { Panel, PanelEmpty } from "@/components/admin/ui";
 import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { cn } from "@/lib/cn";
-import { formatRelative, titleise } from "@/lib/admin/format";
+import { titleise } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import {
   QUEUE_LABELS,
   SUPPORT_QUEUES,
@@ -253,7 +254,7 @@ function TicketListItem({
             </Badge>
           )}
           <span className="text-[11.5px] text-content-subtle">
-            {titleise(ticket.category)} · {formatRelative(ticket.updatedAt)}
+            {titleise(ticket.category)} · {formatRelative(ticket.updatedAt, { style: "ago" })}
           </span>
         </div>
       </button>
@@ -304,7 +305,7 @@ function TicketThread({
       <Panel
         icon={MessageSquare}
         title={ticket.subject}
-        description={`${ticket.reference ?? "No reference"} · ${titleise(ticket.category)} · opened ${formatRelative(ticket.createdAt)}`}
+        description={`${ticket.reference ?? "No reference"} · ${titleise(ticket.category)} · opened ${formatRelative(ticket.createdAt, { style: "ago" })}`}
         action={
           <div className="flex items-center gap-1.5">
             {!ticket.assignedAdminId && (
@@ -392,7 +393,7 @@ function TicketThread({
                     ? (message.authorName ?? "Customer")
                     : (message.authorName ?? "ClientTurn support")}
                   {" · "}
-                  {formatRelative(message.createdAt)}
+                  {formatRelative(message.createdAt, { style: "ago" })}
                   {message.channel === "EMAIL" && " · by email"}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-[13px] text-content">
@@ -474,7 +475,7 @@ function TicketThread({
               <li key={note.id} className="px-4 py-3 sm:px-5">
                 <div className="flex items-center gap-2">
                   <span className="text-[11.5px] text-content-subtle">
-                    {formatRelative(note.createdAt)}
+                    {formatRelative(note.createdAt, { style: "ago" })}
                   </span>
                   {note.isAiDraft && (
                     <Badge tone="purple" dense>

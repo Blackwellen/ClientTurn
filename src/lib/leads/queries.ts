@@ -19,6 +19,7 @@ import type {
   TimelineEvent,
   WorkspaceMember,
 } from "./types";
+import { orIlike } from "@/lib/supabase/ilike";
 
 export * from "./types";
 
@@ -187,22 +188,13 @@ function applyAdvancedFilters(
   }
 
   if (filters.q) {
-    // PostgREST `or` is comma-delimited, so those characters are stripped
-    // rather than escaped — the search term is a filter, not a query language.
-    const term = filters.q.replace(/[%,()]/g, " ").trim();
-    if (term) {
-      const like = `%${term}%`;
-      next = next.or(
-        [
-          `first_name.ilike.${like}`,
-          `last_name.ilike.${like}`,
-          `phone.ilike.${like}`,
-          `phone_normalized.ilike.${like}`,
-          `email.ilike.${like}`,
-          `postcode.ilike.${like}`,
-        ].join(","),
-      );
-    }
+    // Quoted and LIKE-escaped by `orIlike`, so `,` `(` `)` `%` `_` in the term
+    // are matched as text rather than read as filter syntax or wildcards.
+    const or = orIlike(
+      ["first_name", "last_name", "phone", "phone_normalized", "email", "postcode"],
+      filters.q,
+    );
+    if (or) next = next.or(or);
   }
 
   return next;

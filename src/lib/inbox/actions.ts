@@ -11,6 +11,8 @@ const schema = z.object({
   id: z.uuid(),
   action: z.enum(["read", "archive", "restore", "reply"]),
   body: z.string().trim().max(1200).optional(),
+  /** One per composed reply, from the composer; makes the duplicate check exact. */
+  clientNonce: z.string().trim().min(8).max(80).optional(),
 });
 
 /**
@@ -59,6 +61,7 @@ export async function inboxAction(input: unknown) {
       body: parsed.data.body ?? "",
       conversationId: conversation.id,
       subject: conversation.subject ?? undefined,
+      clientNonce: parsed.data.clientNonce,
     });
     if (!result.ok) return { error: result.error };
   } else {

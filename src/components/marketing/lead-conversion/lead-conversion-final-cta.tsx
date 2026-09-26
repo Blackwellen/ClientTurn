@@ -47,7 +47,7 @@ export function LeadConversionFinalCta() {
               </Link>
             </div>
             <p className="lcp-final-note">
-              {TRIAL_DAYS}-day free trial · No card required
+              {TRIAL_DAYS}-day free trial · Nothing charged until it ends
             </p>
           </div>
 

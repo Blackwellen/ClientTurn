@@ -2,6 +2,13 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { providerJson, unconfigured } from "./http";
+import { isEmailOrigin } from "../../email-origin";
+import {
+  emptyLinkedinFilters,
+  matchesIngestedLead,
+  snapFilterParams,
+  type LinkedinFilters,
+} from "../../linkedin-filters";
 import {
   providerFailure,
   type CompanyCandidate,
@@ -98,12 +105,15 @@ async function searchCompanies(
     return { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
   }
 
+  const filters = window.plan.linkedin ?? emptyLinkedinFilters();
   const params = new URLSearchParams({
     q: "search",
-    keywords: industries.slice(0, 3).join(" "),
+    keywords: filters.keywords || industries.slice(0, 3).join(" "),
     count: String(Math.min(Math.max(window.limit, 1), 50)),
     start: window.cursor ?? "0",
   });
+  // Unverified parameter names: see `snapFilterParams`.
+  for (const [name, value] of snapFilterParams(filters, "ACCOUNT")) params.append(name, value);
 
   const response = await providerJson<SnapAccountSearch>({
     url: `https://api.linkedin.com/v2/salesApiAccountSearch?${params.toString()}`,
@@ -164,46 +174,66 @@ async function searchCompanies(
  * Used when there is no partner token, and it does not care whether the export
  * came from Sales Navigator or a standard account — both land in the same
  * table with a `surface` recorded on each row. The rows were put there by the
- * customer exporting their own list, so this is a read of our own table rather
- * than a call to LinkedIn: it costs nothing and cannot fail with an auth error.
+ * customer importing their own export (`prospect.import_linkedin_list`), so
+ * this is a read of our own table rather than a call to LinkedIn: it costs
+ * nothing and cannot fail with an auth error.
+ *
+ * The domain filter is in SQL, through the inner join, so the limit applies to
+ * rows that can match. It used to be applied after an unfiltered limit, which
+ * meant a workspace with a large import could miss every match for a batch.
+ * The plan's title and seniority filters are applied here too: an export is
+ * the customer's own selection, but the plan is what this run was asked for.
  */
 async function readIngestedList(
   businessId: string,
   domains: string[],
   limit: number,
+  filters: LinkedinFilters,
 ): Promise<ContactCandidate[]> {
   if (domains.length === 0) return [];
 
+  const wanted = [...new Set(domains.map((domain) => domain.toLowerCase()))];
   const admin = createAdminClient();
   const { data } = await admin
     .from("prospect_data_sources")
-    .select("value_json, company_id, prospect_companies ( domain )")
+    .select("value_json, company_id, prospect_companies!inner ( domain )")
     .eq("business_id", businessId)
     .eq("provider", "linkedin_sales_navigator")
     .eq("field_name", "linkedin_lead")
-    .limit(limit);
+    .in("prospect_companies.domain", wanted)
+    .order("obtained_at", { ascending: false })
+    // Headroom for the title filter below, which cannot be expressed in SQL
+    // against the JSON blob without a scan per term.
+    .limit(Math.min(1000, Math.max(limit, 1) * 4));
 
-  const wanted = new Set(domains.map((domain) => domain.toLowerCase()));
+  const wantedSet = new Set(wanted);
   const records: ContactCandidate[] = [];
 
   for (const row of data ?? []) {
+    if (records.length >= limit) break;
     const blob = (row.value_json ?? {}) as Record<string, unknown>;
     const company = row.prospect_companies as unknown as { domain: string | null } | null;
     const domain = company?.domain?.toLowerCase() ?? null;
-    if (!domain || !wanted.has(domain)) continue;
+    if (!domain || !wantedSet.has(domain)) continue;
 
     const first = typeof blob.firstName === "string" ? blob.firstName : null;
     const last = typeof blob.lastName === "string" ? blob.lastName : null;
     if (!first && !last) continue;
 
+    const roleTitle = typeof blob.roleTitle === "string" ? blob.roleTitle : null;
+    if (!matchesIngestedLead({ roleTitle }, filters)) continue;
+
+    // An address is present only when the customer's own file carried one.
+    // Never from LinkedIn; kept with the origin recorded at import.
+    const email = typeof blob.email === "string" ? blob.email : null;
+
     records.push({
       externalId: typeof blob.entityUrn === "string" ? blob.entityUrn : null,
       firstName: first,
       lastName: last,
-      roleTitle: typeof blob.roleTitle === "string" ? blob.roleTitle : null,
-      // Never from LinkedIn. The waterfall's licensed providers resolve the
-      // address from the profile URL below.
-      email: null,
+      roleTitle,
+      email,
+      emailOrigin: email && isEmailOrigin(blob.emailOrigin) ? blob.emailOrigin : undefined,
       linkedinUrl: typeof blob.publicProfileUrl === "string" ? blob.publicProfileUrl : null,
       companyExternalId: null,
       companyDomain: domain,
@@ -218,8 +248,10 @@ async function findContacts(input: {
   roles: string[];
   limit: number;
   businessId?: string;
+  linkedin?: LinkedinFilters;
 }): Promise<ProviderResponse<ContactCandidate>> {
   const token = snapToken();
+  const filters = input.linkedin ?? emptyLinkedinFilters();
   const domains = input.companies
     .map((company) => company.domain)
     .filter((domain): domain is string => Boolean(domain));
@@ -227,15 +259,17 @@ async function findContacts(input: {
   if (!token) {
     // No partner contract: fall back to what the customer ingested themselves.
     if (!input.businessId) return unconfigured<ContactCandidate>();
-    const records = await readIngestedList(input.businessId, domains, input.limit);
+    const records = await readIngestedList(input.businessId, domains, input.limit, filters);
     return { ok: true, records, costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
   }
 
   const params = new URLSearchParams({
     q: "search",
-    keywords: input.roles.slice(0, 3).join(" "),
+    keywords: filters.keywords || input.roles.slice(0, 3).join(" "),
     count: String(Math.min(Math.max(input.limit, 1), 50)),
   });
+  // Unverified parameter names: see `snapFilterParams`.
+  for (const [name, value] of snapFilterParams(filters, "LEAD")) params.append(name, value);
 
   const response = await providerJson<SnapLeadSearch>({
     url: `https://api.linkedin.com/v2/salesApiLeadSearch?${params.toString()}`,

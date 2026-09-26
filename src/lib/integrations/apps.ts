@@ -4,7 +4,7 @@
  * Read this before adding an entry: every connector here is the *same*
  * transport — a signed inbound HTTP endpoint that ClientTurn hosts and the
  * other system posts contacts to. ClientTurn never calls out to Pipedrive or
- * Attio, holds no OAuth grant, and cannot read or write anything in them. The
+ * Zapier, holds no OAuth grant, and cannot read or write anything in them. The
  * catalogue exists to name the systems people actually send from, not to
  * imply an integration that does not exist, which is why every entry carries
  * `kind: "inbound_webhook"` and the UI says so on every card.
@@ -186,6 +186,16 @@ export type Connector = {
   /** The only transport this product offers today. See the module note. */
   readonly kind: "inbound_webhook";
   readonly authMethods: readonly AuthMethod[];
+  /**
+   * What this specific sender needs beyond "paste the URL", verified live
+   * against the real product rather than assumed from its marketing copy.
+   * Most connectors need nothing here — a generic webhook action that lets
+   * someone set arbitrary fields and headers just works. This exists for the
+   * ones that don't: a sender whose native payload doesn't match our schema
+   * (nested fields, arrays where we expect strings) or whose native auth
+   * doesn't cover every method we offer.
+   */
+  readonly setupNote?: string;
 };
 
 /** Every connector supports the same set today; declared per entry so a
@@ -199,17 +209,45 @@ const ALL_AUTH: readonly AuthMethod[] = [
 ];
 
 export const INSTALLABLE_APPS: readonly Connector[] = [
-  { id: "pipedrive", name: "Pipedrive", domain: "pipedrive.com", category: "CRM", description: "Post selected CRM contacts into prospect review.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "instantly", name: "Instantly", domain: "instantly.ai", category: "Outreach", description: "Post selected outreach contacts into ClientTurn.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "clay", name: "Clay", domain: "clay.com", category: "Data", description: "Post enriched contacts from a Clay workflow.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "folk", name: "folk", domain: "folk.app", category: "CRM", description: "Post selected contacts from your relationship workspace.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "smartlead", name: "Smartlead", domain: "smartlead.ai", category: "Outreach", description: "Post outreach contacts into a shared review queue.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "breakcold", name: "Breakcold", domain: "breakcold.com", category: "CRM", description: "Post contacts from your relationship workflow.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "webhooks", name: "Custom webhook", domain: null, category: "Automation", description: "Post signed contact events from your own systems.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "zapier", name: "Zapier", domain: "zapier.com", category: "Automation", description: "Map contacts from a Zap into the inbound endpoint.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "heyreach", name: "HeyReach", domain: "heyreach.io", category: "Outreach", description: "Post selected contacts from your automation workflow.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "smartreach", name: "SmartReach", domain: "smartreach.io", category: "Outreach", description: "Post selected campaign contacts into ClientTurn.", kind: "inbound_webhook", authMethods: ALL_AUTH },
-  { id: "attio", name: "Attio", domain: "attio.com", category: "CRM", description: "Post selected records from your Attio workspace.", kind: "inbound_webhook", authMethods: ALL_AUTH },
+  {
+    id: "pipedrive",
+    name: "Pipedrive",
+    domain: "pipedrive.com",
+    category: "CRM",
+    description: "Post selected CRM contacts into prospect review.",
+    kind: "inbound_webhook",
+    authMethods: ALL_AUTH,
+    setupNote:
+      "Pipedrive's own webhook payload nests every field and sends email/phone as arrays " +
+      "(e.g. data.emails[0].value), not the flat fields this endpoint expects — confirmed live, " +
+      "it is rejected outright rather than partially accepted. Use Pipedrive's Automations builder " +
+      "(Advanced plan or above) and its \"raw JSON\" request body to remap each field to this " +
+      "payload's shape before sending. Its native webhook credential field supports Basic " +
+      "authentication end-to-end; for Bearer or an API-key header, put the value in that same field.",
+  },
+  {
+    id: "webhooks",
+    name: "Custom webhook",
+    domain: null,
+    category: "Automation",
+    description: "Post signed contact events from your own systems.",
+    kind: "inbound_webhook",
+    authMethods: ALL_AUTH,
+  },
+  {
+    id: "zapier",
+    name: "Zapier",
+    domain: "zapier.com",
+    category: "Automation",
+    description: "Map contacts from a Zap into the inbound endpoint.",
+    kind: "inbound_webhook",
+    authMethods: ALL_AUTH,
+    setupNote:
+      "\"Webhooks by Zapier\" is a paid-plan action (not on Zapier's free tier), but once available " +
+      "it lets you map fields and set headers with no code — a good fit for Bearer token or an API-key " +
+      "header. It cannot compute an HMAC signature without an extra \"Code by Zapier\" step (also paid), " +
+      "so choose Bearer or API-key-header auth for a Zapier connection unless you're adding that step.",
+  },
 ];
 
 export function connectorFor(id: string): Connector | undefined {

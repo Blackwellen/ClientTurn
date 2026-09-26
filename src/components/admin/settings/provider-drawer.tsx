@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { Input, Select, Switch } from "@/components/ui/form";
 import { IconTile, ProviderMark } from "@/components/admin/ui";
-import { formatDateTime, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatNumber } from "@/lib/admin/format";
+import { formatDateTime, formatRelative } from "@/lib/dates";
 import {
   PROVIDER_HEALTH_LABEL,
   PROVIDER_HEALTH_TONE,
@@ -116,7 +117,7 @@ export function ProviderDrawer({
           <p className="mt-1 text-[12.5px] text-content-muted">
             {PROVIDER_TYPE_LABEL[provider.type]}
             {provider.lastCheckedAt
-              ? ` · last checked ${formatRelative(provider.lastCheckedAt)}`
+              ? ` · last checked ${formatRelative(provider.lastCheckedAt, { style: "ago" })}`
               : ""}
           </p>
         </div>
@@ -229,7 +230,7 @@ export function ProviderDrawer({
                 </Row>
                 <Row label="Last checked">
                   {provider.lastCheckedAt
-                    ? formatDateTime(provider.lastCheckedAt)
+                    ? formatDateTime(provider.lastCheckedAt, { year: true })
                     : "Not monitored"}
                 </Row>
               </dl>
@@ -434,7 +435,7 @@ export function ProviderDrawer({
                     <li key={index} className="text-[12.5px]">
                       <p className="text-content">{change.summary}</p>
                       <p className="text-[11.5px] text-content-subtle">
-                        {formatRelative(change.at)} · {change.by ?? "system"}
+                        {formatRelative(change.at, { style: "ago" })} · {change.by ?? "system"}
                       </p>
                     </li>
                   ))}
@@ -481,7 +482,7 @@ export function ProviderDrawer({
               <Row label="Environment">{provider.credentialEnvironment}</Row>
               <Row label="Last rotated">
                 {provider.credentialRotatedAt
-                  ? formatDateTime(provider.credentialRotatedAt)
+                  ? formatDateTime(provider.credentialRotatedAt, { year: true })
                   : "Not recorded"}
               </Row>
             </dl>

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { PlanLimitState } from "@/components/ui/feedback";
@@ -58,11 +59,12 @@ export function ReactivationView({
           </p>
         </div>
 
-        <div className="flex w-full shrink-0 flex-wrap items-center gap-2.5 sm:w-auto">
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2.5 sm:w-auto" data-tour="reactivation-actions">
           <CampaignViewSwitch value={filters.view} />
           {canCreate && (
             <Link
               href="/app/reactivation/new"
+              data-tour="reactivation-create"
               className="bg-primary text-on-primary hover:bg-primary-hover focus-visible:outline-content-accent inline-flex h-10 items-center gap-2 rounded-lg px-4 text-[14px] font-semibold shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               <Plus className="size-4" aria-hidden />
@@ -74,8 +76,8 @@ export function ReactivationView({
 
       {!enabled && (
         <PlanLimitState
-          title="Reactivation campaigns need the Growth plan"
-          description="Growth and above can re-contact an old lead list from Client Turn, with opt-outs, suppressions and quiet hours enforced automatically."
+          title={`Reactivation campaigns need the ${unlockPlanLabel("campaigns")}`}
+          description={`${unlockPlanLabel("campaigns")} and above can re-contact an old lead list from Client Turn, with opt-outs, suppressions and quiet hours enforced automatically.`}
           action={
             <Link
               href="/app/settings?section=billing"

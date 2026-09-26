@@ -70,8 +70,8 @@ export default function DashboardLoading() {
         </Card>
       </div>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
-        {Array.from({ length: 2 }, (_, i) => (
+      <div className="grid gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
+        {Array.from({ length: 3 }, (_, i) => (
           <Card key={i}>
             <CardHeader>
               <Skeleton className="h-4 w-32" />

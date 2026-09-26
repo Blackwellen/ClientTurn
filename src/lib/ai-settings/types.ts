@@ -49,6 +49,76 @@ export const AGENT_CHANNEL_OPTIONS = [
 export type AgentModeValue = (typeof AGENT_MODE_OPTIONS)[number]["value"];
 export type AgentChannelValue = (typeof AGENT_CHANNEL_OPTIONS)[number]["value"];
 
+/**
+ * The `integrations.provider_type` of a workspace's own mailbox (migration
+ * 0038/0039; `src/lib/email/store.ts`). The send path (`channelState`) reads
+ * this same type, so the settings form and the sender agree on what
+ * "connected" means. It used to read 'smtp_mailbox', a type no row ever has,
+ * which left the Email channel permanently un-tickable.
+ */
+export const EMAIL_MAILBOX_PROVIDER_TYPE = "imap_smtp";
+
+/** Mirrors `UNHEALTHY` in the send path: a mailbox in these states cannot send. */
+const UNUSABLE_MAILBOX_STATUSES = new Set(["DISCONNECTED", "ACTION_REQUIRED"]);
+
+/** Whether a mailbox integration row (or its absence) can send email. */
+export function isMailboxUsable(row: { status: string | null } | null | undefined): boolean {
+  if (!row) return false;
+  return !UNUSABLE_MAILBOX_STATUSES.has(row.status ?? "");
+}
+
+/**
+ * Whether the assistant may be offered a channel. SMS always has the platform
+ * sender; WhatsApp needs the plan; email needs the workspace's own mailbox,
+ * because email has no platform fallback sender.
+ */
+export function agentChannelAvailable(
+  channel: AgentChannelValue,
+  availability: { whatsappEnabled: boolean; emailConnected: boolean },
+): boolean {
+  if (channel === "whatsapp") return availability.whatsappEnabled;
+  if (channel === "email") return availability.emailConnected;
+  return true;
+}
+
+/**
+ * Why a set of assistant settings cannot be saved, or null. Shared by the form
+ * (for a message before the round trip) and the server action (the authority).
+ */
+export function agentSettingsProblem(settings: {
+  enabled: boolean;
+  agentMode: AgentModeValue;
+  agentChannels: readonly AgentChannelValue[];
+}): string | null {
+  if (settings.enabled && settings.agentMode !== "OFF" && settings.agentChannels.length === 0) {
+    return "Choose at least one channel for the assistant to work on.";
+  }
+  return null;
+}
+
+/**
+ * What the assist-layer controls actually do, worded from the code that reads
+ * them (`restyleMessage` and `matchAnswerWithAi` in src/lib/jobs/handlers, the
+ * agent context in src/lib/agent/context.ts).
+ */
+export const AI_ASSIST_FIELD_COPY = {
+  replyLength: {
+    label: "Reply length",
+    hint: "Guidance the AI follows when it writes a reply or rewords a message. A preference, not a hard limit.",
+    options: { short: "Short", normal: "Normal" } as Record<(typeof AI_REPLY_LENGTH_OPTIONS)[number], string>,
+  },
+  allowAiReply: {
+    label: "Let AI reword automatic messages",
+    hint:
+      "Your rules still decide what is said. AI may only adjust the wording and tone of qualification questions that have no answer options, the handover reply, and messages you ask it to polish. Every fact, name and link must survive, and the original text is sent if the reworded version fails a check. Follow-up sequence steps are sent exactly as written.",
+  },
+  allowAiInterpretation: {
+    label: "Let AI interpret unclear answers",
+    hint:
+      "When a reply to a qualification question does not match any of your configured answers, AI suggests which answer it means. The suggestion is re-checked against your options, and if it still does not match the answer is left for review. Your rules make the qualification decision.",
+  },
+} as const;
+
 export type AiBehaviourSettings = {
   /** Master on/off switch — business_settings.ai_assist_enabled. */
   enabled: boolean;
@@ -94,3 +164,18 @@ export const DEFAULT_AI_BEHAVIOUR: AiBehaviourSettings = {
   agentHandoverOnReview: true,
   agentAnswerServiceQuestions: true,
 };
+
+/**
+ * True when a settings change lets the assistant do more without a person:
+ * turning it on in auto-reply, moving to AUTO_REPLY, switching on AI-worded
+ * sends, or removing hand-over on review. Exported for tests.
+ */
+export function widensAutonomy(before: Pick<AiBehaviourSettings, "enabled" | "agentMode" | "allowAiReply" | "agentHandoverOnReview">,
+  next: Pick<AiBehaviourSettings, "enabled" | "agentMode" | "allowAiReply" | "agentHandoverOnReview">): boolean {
+  const autoBefore = before.enabled && before.agentMode === "AUTO_REPLY";
+  const autoAfter = next.enabled && next.agentMode === "AUTO_REPLY";
+  if (autoAfter && !autoBefore) return true;
+  if (next.allowAiReply && !before.allowAiReply) return true;
+  if (before.agentHandoverOnReview && !next.agentHandoverOnReview) return true;
+  return false;
+}

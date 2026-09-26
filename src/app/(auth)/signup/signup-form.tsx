@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState } from "react";
-import { Building2, Mail, User } from "lucide-react";
+import { Mail, User } from "lucide-react";
 import { signUp, type AuthResult } from "@/lib/auth/actions";
 import {
   ATTRIBUTION_FIELDS,
@@ -17,7 +17,7 @@ import {
   SubmitButton,
   TextField,
 } from "../_components/auth-form-parts";
-import { AuthDivider, GoogleAuthButton } from "@/components/auth/google-button";
+import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
 export function SignupForm() {
   const router = useRouter();
@@ -72,17 +72,6 @@ export function SignupForm() {
           error={fieldError("lastName")}
         />
       </div>
-
-      <TextField
-        id="businessName"
-        name="businessName"
-        label="Business name"
-        autoComplete="organization"
-        placeholder="Your business name"
-        icon={Building2}
-        required
-        error={fieldError("businessName")}
-      />
 
       <TextField
         id="email"
@@ -142,11 +131,7 @@ export function SignupForm() {
 
       <SubmitButton pendingLabel="Creating account…" busy={Boolean(state?.ok && state.redirectTo)}>Create your account</SubmitButton>
 
-      <AuthDivider />
-
-      <GoogleAuthButton
-        label={"Sign up with Google"}
-      />
+      <GoogleSignInButton audience="customer" variant="signup" />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Already have an account?{" "}

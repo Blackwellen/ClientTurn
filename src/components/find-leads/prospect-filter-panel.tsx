@@ -14,6 +14,7 @@ import { prospectStatusLabel, verificationLabel } from "@/lib/prospects/types";
 import { eligibilityLabel } from "@/lib/policy/types";
 import type { ProspectFilterOptions } from "@/lib/prospects/queries";
 import { useFindLeadsParams } from "./use-find-leads-params";
+import { Select } from "@/components/ui/form";
 
 /**
  * The advanced filter panel (V4 §12.4).
@@ -244,21 +245,18 @@ function SelectField({
       <label htmlFor={id} className="mb-2 block text-[12px] font-medium text-content-secondary">
         {label}
       </label>
-      <select
+      <Select
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          "h-9 w-full rounded-md border border-line bg-surface px-2.5 text-[13px] text-content",
-          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
-        )}
+        className="text-[13px]"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

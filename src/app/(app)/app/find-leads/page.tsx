@@ -23,6 +23,7 @@ import { DiscoverView } from "@/components/find-leads/discover/discover-view";
 import { IntentView } from "@/components/find-leads/intent/intent-view";
 import { CampaignsView } from "@/components/find-leads/campaigns/campaigns-view";
 import { SocialQueueView } from "@/components/find-leads/social/social-queue-view";
+import { loadInMailPanel } from "@/lib/outreach/inmail-queries";
 import { SequencePlan } from "@/components/find-leads/social/sequence-plan";
 import { SocialFunnelPanel } from "@/components/find-leads/social/social-funnel";
 import { SignalsPanel } from "@/components/find-leads/social/signals-panel";
@@ -129,6 +130,7 @@ export default async function FindLeadsPage({
     socialFunnel,
     socialControls,
     signals,
+    inmail,
   ] = await Promise.all([
     filters.view === "prospects"
       ? listProspects(workspace.businessId, filters)
@@ -148,6 +150,13 @@ export default async function FindLeadsPage({
     filters.view === "social"
       ? listSignals(workspace.businessId)
       : Promise.resolve([]),
+    // LinkedIn InMail credits. Fails on its own: the queue still renders.
+    filters.view === "social"
+      ? loadInMailPanel(workspace.businessId).then(
+          (data) => ({ data, error: false }),
+          () => ({ data: null, error: true }),
+        )
+      : Promise.resolve(undefined),
   ]);
 
   const canManage = hasRole(workspace.role, "admin");
@@ -196,6 +205,7 @@ export default async function FindLeadsPage({
               }
               autopilot={socialControls.socialAutonomousSending}
               signals={<SignalsPanel signals={signals} canManage={canManage} />}
+              inmail={inmail}
             />
           ) : null
         }

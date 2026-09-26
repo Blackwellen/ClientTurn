@@ -10,6 +10,7 @@ import type {
   Reason,
   Rule,
 } from "./engine";
+import { QUALIFICATION_OUTCOME_LABEL } from "./outcome-labels.ts";
 
 export const RESPONSE_TYPES = [
   "text",
@@ -208,36 +209,28 @@ export const RESULT_META: Record<
   { label: string; tone: "success" | "danger" | "warning" | "neutral"; detail: string }
 > = {
   QUALIFIED: {
-    label: "Qualified",
+    label: QUALIFICATION_OUTCOME_LABEL.QUALIFIED,
     tone: "success",
     detail: "Every required question is answered and every rule held.",
   },
   NOT_QUALIFIED: {
-    label: "Not qualified",
+    label: QUALIFICATION_OUTCOME_LABEL.NOT_QUALIFIED,
     tone: "danger",
     detail: "An explicit fail rule, an inactive service, or a blocked area.",
   },
   REVIEW: {
-    label: "Review",
+    label: QUALIFICATION_OUTCOME_LABEL.REVIEW,
     tone: "warning",
     detail:
       "Something could not be decided on the rules alone. A person picks it up.",
   },
   PENDING: {
-    label: "Pending",
+    label: QUALIFICATION_OUTCOME_LABEL.PENDING,
     tone: "neutral",
     detail: "A required question has not been answered yet.",
   },
 };
 
-export const REVIEW_NOTE =
-  "Qualification is entirely deterministic: configured questions, configured rules, and nothing else. There is no score, no model and no confidence threshold. An answer that cannot be matched to a configured option, or a rule that cannot be evaluated, always produces REVIEW and a human handover — never a guess.";
-
-export const ORDER_NOTE =
-  "Rules are read in priority order, lowest number first. A fail rule ends the evaluation immediately; a review rule is remembered and applied at the end.";
-
-export const SERVICE_AREA_NOTE =
-  "Service validity and the postcode service area are checked before any rule below, from the values set in Settings. An inactive service or a blocked postcode is NOT_QUALIFIED on its own.";
 
 // ------------------------------------------------------------------ helpers
 
@@ -328,14 +321,6 @@ export const previewInputSchema = z.object({
 export type PreviewInput = z.input<typeof previewInputSchema>;
 
 // ------------------------------------------------------------------- filters
-
-export const QUALIFICATION_TABS = [
-  { value: "questions", label: "Questions" },
-  { value: "rules", label: "Rules" },
-  { value: "preview", label: "Preview" },
-] as const;
-
-export type QualificationTab = (typeof QUALIFICATION_TABS)[number]["value"];
 
 export const qualificationFilterSchema = z.object({
   tab: z.enum(["questions", "rules", "preview"]).default("questions").catch("questions"),

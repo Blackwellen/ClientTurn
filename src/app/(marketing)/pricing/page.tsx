@@ -53,7 +53,7 @@ import { PlanComparison } from "@/components/marketing/public/pricing/comparison
 import { Columns } from "@/components/marketing/public/charts";
 
 const title = "Pricing";
-const description = `ClientTurn plans from £${PLANS.starter.monthlyPrice} a month. Clear monthly allowances for inbound leads, verified prospects, communications and users, with a ${TRIAL_DAYS}-day free trial and no card required to start.`;
+const description = `ClientTurn plans from £${PLANS.starter.monthlyPrice} a month. Clear monthly allowances for inbound leads, verified prospects, communications and users, with a ${TRIAL_DAYS}-day free trial. A card is required to start; nothing is charged until the trial ends.`;
 const path = "/pricing";
 
 const siteUrl = (
@@ -115,11 +115,11 @@ const NUMBER = new Intl.NumberFormat("en-GB");
 const FAQS: FaqItem[] = [
   {
     q: "Is there a free trial?",
-    a: `Yes — ${TRIAL_DAYS} days, and no card is required to start. You can connect a lead source, configure your follow-up and qualification and watch the whole flow run before you pay anything. Trial workspaces have smaller allowances than any paid plan, and sourcing and cold email are off during the trial.`,
+    a: `Yes — ${TRIAL_DAYS} days. A card is required to start and is checked by Stripe, but nothing is charged until the trial ends, and you can cancel before then. You can connect a lead source, configure your follow-up and qualification and watch the whole flow run before you pay anything. Trial workspaces have smaller allowances than any paid plan, and sourcing and cold email are off during the trial.`,
   },
   {
     q: "Do I need a card to start?",
-    a: "No. You create a workspace with an email address, and you are only asked for payment details when you choose a paid plan.",
+    a: `Yes. A card is needed to start the ${TRIAL_DAYS}-day trial and Stripe checks it is valid, but nothing is charged until the trial ends. Cancel before then and you pay nothing.`,
   },
   {
     q: "Can I cancel at any time?",
@@ -227,7 +227,7 @@ export default function PricingPage() {
                   },
                   {
                     icon: <Gauge className="size-3.5" />,
-                    label: `${TRIAL_DAYS}-day trial, no card required`,
+                    label: `${TRIAL_DAYS}-day trial, nothing charged until it ends`,
                   },
                 ]}
               />
@@ -586,7 +586,7 @@ export default function PricingPage() {
                   <span className="pub-accent">real business.</span>
                 </>
               }
-              body={`Start on the ${TRIAL_DAYS}-day trial without a card, and move to a paid plan only once you have seen it work on your own leads.`}
+              body={`Start on the ${TRIAL_DAYS}-day trial: add a card, pay nothing until it ends, and cancel before then if it is not working on your own leads.`}
               actions={
                 <>
                   <PrimaryCta placement="pricing_page_final" size="lg">

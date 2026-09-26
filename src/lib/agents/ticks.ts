@@ -3,6 +3,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveAudience } from "@/lib/campaigns/queries";
 import { DEFAULT_AUDIENCE_FILTER } from "@/lib/campaigns/types";
 import { evaluate } from "@/lib/policy/service";
+import { enqueue } from "@/lib/jobs/queue";
+import { resumeFollowUpBlock } from "@/lib/leads/resume-rule";
+import { AgentBlocked, chooseReengagementChannel } from "./policy";
 
 /**
  * Booking and re-engagement agent ticks.
@@ -14,12 +17,15 @@ import { evaluate } from "@/lib/policy/service";
  * them, so instead:
  *
  *   * The **booking agent** finds qualified leads that have stalled without a
- *     booking and, where policy permits, re-arms the existing follow-up
- *     automation. The message still goes out through `message.send` and its
- *     guards — the agent only decides *that* it should, never *how*.
+ *     booking and, when set to run automatically and policy permits, hands them
+ *     back to the existing follow-up automation (re-arms it and queues the next
+ *     step). The message still goes out through the follow-up engine and its
+ *     guards — the agent only decides *that* it should, never *how*. It does not
+ *     offer times or confirm bookings; the conversation assistant does that.
  *   * The **re-engagement agent** builds an audience with the same resolver the
- *     Reactivation wizard uses, and drafts a campaign. It never launches one
- *     itself unless the agent is explicitly set to AUTO.
+ *     Reactivation wizard uses, and drafts a campaign. It never launches one,
+ *     whatever its autonomy: `campaign.launch` is closed to agents in the
+ *     service registry, because sending to a whole audience is a person's call.
  *
  * Everything either produces is queued work a person can see and stop, and
  * every candidate is checked against ChannelPolicyService before the agent acts.
@@ -56,7 +62,7 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
 
   let query = admin
     .from("leads")
-    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active")
+    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active, status, archived_at")
     .eq("business_id", agent.business_id)
     .eq("is_test", false)
     .eq("qualification_state", "QUALIFIED")
@@ -97,15 +103,22 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
 
     const permitted =
       decision.outcome === "ALLOWED" || decision.outcome === "REQUIRE_TEMPLATE";
+    // The same rule "Hand back" uses: no follow-up for a booked, closed or
+    // archived lead.
+    const resumeBlock = resumeFollowUpBlock({
+      status: lead.status,
+      optedOut: lead.opted_out,
+      archived: Boolean(lead.archived_at),
+    });
 
-    if (!permitted) {
+    if (!permitted || resumeBlock) {
       blocked += 1;
       await upsertQueueItem(admin, agent, {
         itemType: "BOOKING",
         subjectId: lead.id,
         subjectLabel: displayName(lead),
         status: "BLOCKED",
-        blockedReason: decision.message,
+        blockedReason: resumeBlock?.message ?? decision.message,
       });
       continue;
     }
@@ -118,14 +131,28 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
       blockedReason: null,
     });
 
-    // Only an AUTO agent changes anything. Re-arming the automation hands the
-    // work to the existing guarded follow-up engine rather than sending here.
-    if (agent.autonomy === "AUTO" && !lead.automation_active) {
-      await admin
-        .from("leads")
-        .update({ automation_active: true })
-        .eq("id", lead.id)
-        .eq("business_id", agent.business_id);
+    // Only an AUTO agent changes anything. Re-arming the automation and
+    // queueing its next step hands the work to the existing guarded follow-up
+    // engine rather than sending here. Re-arming alone did nothing: the engine
+    // only moves when an advance job runs.
+    if (agent.autonomy === "AUTO") {
+      if (!lead.automation_active) {
+        const { error: armError } = await admin
+          .from("leads")
+          .update({ automation_active: true })
+          .eq("id", lead.id)
+          .eq("business_id", agent.business_id);
+        if (armError) throw new Error("Follow-up could not be restarted for a lead.");
+      }
+      await enqueue(
+        "automation.advance",
+        { leadId: lead.id },
+        {
+          businessId: agent.business_id,
+          // One nudge per lead per agent per day, however often the tick runs.
+          idempotencyKey: `agent-booking:${agent.id}:${lead.id}:${new Date().toISOString().slice(0, 10)}`,
+        },
+      );
     }
 
     actioned += 1;
@@ -137,8 +164,8 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
     blocked,
     detail:
       agent.autonomy === "AUTO"
-        ? `Re-started follow-up for ${actioned} qualified lead(s) with no booking.`
-        : `Queued ${actioned} qualified lead(s) that need a booking nudge.`,
+        ? `Handed ${actioned} qualified lead(s) with no booking back to follow-up.`
+        : `Listed ${actioned} qualified lead(s) with no booking for you to chase.`,
   };
 }
 
@@ -154,22 +181,69 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
 export async function runReengagementTick(agent: AgentRow): Promise<TickResult> {
   const admin = createAdminClient();
 
-  // An open campaign already covers this work; a second one would double-contact.
-  const { data: open } = await admin
-    .from("campaigns")
-    .select("id")
+  // An open campaign this agent drafted already covers this work; a second one
+  // would double-contact. Campaigns people made themselves are theirs and do
+  // not stop the agent -- the audience resolver's cooldown already keeps a
+  // lead from being picked twice in quick succession.
+  const { data: drafted, error: draftedError } = await admin
+    .from("agent_queue_items")
+    .select("subject_id")
     .eq("business_id", agent.business_id)
-    .in("status", ["DRAFT", "SCHEDULED", "RUNNING"])
-    .limit(1)
-    .maybeSingle();
+    .eq("agent_id", agent.id)
+    .eq("item_type", "REENGAGE")
+    .eq("subject_type", "CAMPAIGN");
+  if (draftedError) throw new Error("The agent's earlier campaigns could not be read.");
 
-  if (open) {
-    return {
-      examined: 0,
-      actioned: 0,
-      blocked: 0,
-      detail: "A reactivation campaign is already open. Nothing new was drafted.",
-    };
+  const ownIds = (drafted ?? [])
+    .map((row) => row.subject_id)
+    .filter((id): id is string => Boolean(id));
+
+  if (ownIds.length > 0) {
+    const { data: open, error: openError } = await admin
+      .from("campaigns")
+      .select("id")
+      .eq("business_id", agent.business_id)
+      .in("id", ownIds)
+      .in("status", ["DRAFT", "SCHEDULED", "RUNNING"])
+      .limit(1)
+      .maybeSingle();
+    if (openError) throw new Error("The agent's earlier campaigns could not be read.");
+
+    if (open) {
+      return {
+        examined: 0,
+        actioned: 0,
+        blocked: 0,
+        detail: "This agent's last reactivation campaign is still open. Nothing new was drafted.",
+      };
+    }
+  }
+
+  // The channel follows what is connected. A draft on a channel that cannot
+  // send would only fail at launch.
+  const { data: integrations, error: integrationError } = await admin
+    .from("integrations")
+    .select("provider_type, status")
+    .eq("business_id", agent.business_id)
+    .in("provider_type", ["imap_smtp", "twilio_sms"]);
+  if (integrationError) throw new Error("Connections could not be read.");
+
+  const healthy = (provider: string) =>
+    (integrations ?? []).some(
+      (row) =>
+        row.provider_type === provider &&
+        row.status !== "DISCONNECTED" &&
+        row.status !== "ACTION_REQUIRED",
+    );
+  const channel = chooseReengagementChannel({
+    mailbox: healthy("imap_smtp"),
+    sms: healthy("twilio_sms"),
+  });
+
+  if (!channel) {
+    throw new AgentBlocked(
+      "Connect a mailbox or Twilio SMS in Settings → Connections so the agent has a channel to draft a campaign on.",
+    );
   }
 
   const { preview, eligibleLeadIds } = await resolveAudience(
@@ -184,7 +258,10 @@ export async function runReengagementTick(agent: AgentRow): Promise<TickResult> 
       lastContactedBeforeDays: 30,
       ...(agent.service_id ? { serviceId: agent.service_id } : {}),
     },
-    "email",
+    channel,
+    // The cron tick has no user session: without the service-role client the
+    // resolver's reads would run as nobody and match nothing.
+    admin,
   );
 
   const capped = eligibleLeadIds.slice(0, agent.daily_prospect_cap);
@@ -204,7 +281,7 @@ export async function runReengagementTick(agent: AgentRow): Promise<TickResult> 
       business_id: agent.business_id,
       name: `Re-engagement · ${new Date().toLocaleDateString("en-GB")}`,
       description: "Drafted automatically by a re-engagement agent.",
-      channel: "email",
+      channel,
       status: "DRAFT",
       audience_label: "Quiet leads over 60 days old",
       estimated_audience_size: capped.length,

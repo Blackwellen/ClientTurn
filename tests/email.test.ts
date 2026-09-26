@@ -13,6 +13,8 @@ import {
   MAILBOX_PRESETS,
   type EmailAccountConfig,
 } from "../src/lib/email/account.ts";
+import { isAutomatedMail, stripQuotedReply } from "../src/lib/email/inbound.ts";
+import { escapeIlike } from "../src/lib/supabase/ilike.ts";
 
 /* ------------------------------------------------------------ addresses --- */
 
@@ -335,4 +337,123 @@ describe("mail error classification", () => {
     );
     assert.ok(!result.message.includes("hunter2"));
   });
+});
+
+/* ---------------------------------------------------------- reply body --- */
+
+describe("stripQuotedReply", () => {
+  test("cuts at a '>' quote line", () => {
+    assert.equal(
+      stripQuotedReply("Yes please.\n\n> On Tue, we wrote:\n> the original message"),
+      "Yes please.",
+    );
+  });
+
+  test("cuts at an Outlook-style 'On ... wrote:' line", () => {
+    assert.equal(
+      stripQuotedReply("Sounds good.\n\nOn Mon, 1 Sep 2026 at 09:00, Jamie wrote:\nOriginal text"),
+      "Sounds good.",
+    );
+  });
+
+  test("cuts at an '-- Original Message --' separator", () => {
+    assert.equal(
+      stripQuotedReply("Thanks.\n\n----- Original Message -----\nFrom: someone"),
+      "Thanks.",
+    );
+  });
+
+  test("never returns empty for content that is entirely above the quote", () => {
+    const result = stripQuotedReply("thanks");
+    assert.equal(result, "thanks");
+  });
+
+  test("a message that is only quoted history still returns something", () => {
+    const result = stripQuotedReply("> nothing but quote\n> more quote");
+    assert.equal(result, "> nothing but quote\n> more quote");
+  });
+});
+
+/* -------------------------------------------------------- machine mail --- */
+
+describe("isAutomatedMail", () => {
+  test("flags an Auto-Submitted header", () => {
+    assert.equal(isAutomatedMail({ autoSubmitted: "auto-replied" }), true);
+  });
+
+  test("does not flag 'Auto-Submitted: no'", () => {
+    assert.equal(isAutomatedMail({ autoSubmitted: "no" }), false);
+  });
+
+  test("flags bulk precedence", () => {
+    assert.equal(isAutomatedMail({ precedence: "bulk" }), true);
+  });
+
+  test("flags a mailer-daemon sender", () => {
+    assert.equal(isAutomatedMail({ from: "MAILER-DAEMON@example.com" }), true);
+  });
+
+  test("flags a no-reply sender", () => {
+    assert.equal(isAutomatedMail({ from: "no-reply@example.com" }), true);
+  });
+
+  test("flags the RFC 3834 empty return-path marker", () => {
+    assert.equal(isAutomatedMail({ returnPath: "<>" }), true);
+  });
+
+  test("a normal human reply is not flagged", () => {
+    assert.equal(
+      isAutomatedMail({
+        from: "jamie@example.com",
+        returnPath: "<jamie@example.com>",
+        precedence: null,
+        autoSubmitted: null,
+      }),
+      false,
+    );
+  });
+});
+
+/* ------------------------------------------------------- ILIKE escaping --- */
+
+describe("escapeIlike", () => {
+  test("escapes the two ILIKE wildcards", () => {
+    assert.equal(escapeIlike("al%ice_test"), "al\\%ice\\_test");
+  });
+
+  test("escapes a literal backslash so it cannot unescape the next character", () => {
+    assert.equal(escapeIlike("a\\%b"), "a\\\\\\%b");
+  });
+
+  test("leaves an address with no special characters unchanged", () => {
+    assert.equal(escapeIlike("jamie@example.com"), "jamie@example.com");
+  });
+
+  test(
+    "regression: a forged From address can no longer widen an ILIKE match to another record",
+    () => {
+      // This is exactly the shape of address `normaliseEmail` legally accepts
+      // (the local-part regex excludes whitespace/@/,/;/<> but not % or _),
+      // and it is what handleEmailPoll and applyInboundMessage pass into
+      // `.ilike("email", ...)` to find the lead/prospect a reply belongs to.
+      const forged = "al%ice@gmail.com";
+      // Genuinely matches the ILIKE pattern "al%ice@gmail.com": starts with
+      // "al", ends with "ice@gmail.com", with the wildcard soaking up the rest.
+      const victimEmail = "alonzoservice@gmail.com";
+
+      // Before the fix: the raw forged address, used as an ILIKE pattern,
+      // would match the victim's email (`%` = zero-or-more of anything).
+      const unescapedPattern = new RegExp(
+        `^${forged.replace(/%/g, ".*").replace(/_/g, ".")}$`,
+        "i",
+      );
+      assert.ok(unescapedPattern.test(victimEmail));
+
+      // After the fix: the escaped pattern is a literal match only.
+      const escaped = escapeIlike(forged);
+      const escapedAsLiteral = escaped.replace(/\\([%_\\])/g, "$1");
+      assert.equal(escapedAsLiteral, forged);
+      assert.notEqual(escapedAsLiteral, victimEmail);
+    },
+  );
 });

@@ -76,7 +76,7 @@ export function FollowUpStatusCard({
 
   return (
     <>
-      <Card className="px-5 py-3.5">
+      <Card className="px-5 py-3.5" data-tour="follow-up-status">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span
             aria-hidden

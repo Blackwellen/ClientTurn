@@ -10,7 +10,7 @@ import {
   PlugZap,
 } from "lucide-react";
 import { Panel, PanelEmpty, PanelLink } from "@/components/admin/ui";
-import { formatRelative } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import { ACTION_REQUIRED_LABEL, type ActionRequiredRow } from "@/lib/admin/types";
 import { cn } from "@/lib/cn";
 
@@ -84,7 +84,7 @@ export function ActionRequiredPanel({ items }: { items: ActionRequiredRow[] }) {
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {row.occurredAt ? formatRelative(row.occurredAt) : "Ongoing"}
+                      {row.occurredAt ? formatRelative(row.occurredAt, { style: "ago" }) : "Ongoing"}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <ChevronRight className="inline size-4 text-content-subtle" aria-hidden />

@@ -1,0 +1,19 @@
+{
+  "tokens": {
+    "agent_decision": 1113,
+    "answer_extraction": 99,
+    "conversation_summary": 55,
+    "copilot_turn": 364,
+    "handoff_brief": 115,
+    "handover_reasoning": 320,
+    "intent_classification": 78,
+    "reactivation_copy": 289,
+    "reply_generation": 303,
+    "research_summary": 242,
+    "search_planning": 421,
+    "social_message": 553,
+    "social_reply_classification": 235,
+    "variant_generation": 192,
+    "website_contacts": 230
+  }
+}

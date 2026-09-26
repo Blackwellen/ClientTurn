@@ -1,5 +1,11 @@
 import { z } from "zod";
 import type { Grade } from "@/lib/prospects/types";
+import {
+  emptyLinkedinFilters,
+  linkedinFilterLines,
+  linkedinFiltersSchema,
+} from "./linkedin-filters.ts";
+import { TECHNOLOGY_KEYS, TECHNOLOGY_LABELS } from "./website-signals.ts";
 
 /**
  * The structured search plan (V4 §10.4).
@@ -104,6 +110,27 @@ export const planExclusionsSchema = z.object({
 });
 export type PlanExclusions = z.infer<typeof planExclusionsSchema>;
 
+/**
+ * Structured buying signals the intent stage fetches from free, first-party
+ * sources: the company's own website and the Companies House register. Empty
+ * and false by default, so an existing plan fetches exactly what it did.
+ */
+export const planSignalsSchema = z.object({
+  /** Roles to look for on companies' own careers and jobs pages (HIRING). */
+  hiringRoles: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+  /** Technologies fingerprinted from the company's own site (TECHNOLOGY). */
+  technologies: z.array(z.enum(TECHNOLOGY_KEYS)).max(20).default([]),
+  /** Share allotments (SH01) on the register (FUNDING). */
+  fundingFilings: z.boolean().default(false),
+  /** New director or LLP-member appointments on the register (JOB_CHANGE). */
+  leadershipChanges: z.boolean().default(false),
+  /** Incorporated inside the freshness window (NEW_COMPANY). */
+  recentlyIncorporated: z.boolean().default(false),
+  /** Registered-office changes (AD01): a possible move or expansion. */
+  officeMoves: z.boolean().default(false),
+});
+export type PlanSignals = z.infer<typeof planSignalsSchema>;
+
 export const searchPlanSchema = z.object({
   version: z.literal(1).default(1),
   industries: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
@@ -111,11 +138,20 @@ export const searchPlanSchema = z.object({
   company: planCompanySchema.default(planCompanySchema.parse({})),
   decisionMakerRoles: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
   intent: planIntentSchema.default(planIntentSchema.parse({})),
+  signals: planSignalsSchema.default(planSignalsSchema.parse({})),
+  /**
+   * Sales Navigator's lead and account filters. Drive the partner search when
+   * a SNAP token exists, the "Open in Sales Navigator" link when it does not,
+   * and the title/seniority filter on an imported list either way.
+   */
+  linkedin: linkedinFiltersSchema.default(emptyLinkedinFilters()),
   exclusions: planExclusionsSchema.default(planExclusionsSchema.parse({})),
   minimumGrade: z.enum(GRADES).default("B"),
   targetVerifiedProspects: z.number().int().min(1).max(10_000).default(100),
   reviewMode: z.enum(REVIEW_MODES).default("HUMAN_REVIEW"),
-  conversionGoal: z.enum(CONVERSION_GOAL_TYPES).default("BOOK_SITE_VISIT"),
+  // A meeting is what a B2B seller books; BOOK_SITE_VISIT was a leftover from
+  // the home-services ICP (CLAUDE.md, resolved conflict 5).
+  conversionGoal: z.enum(CONVERSION_GOAL_TYPES).default("BOOK_APPOINTMENT"),
   /**
    * The customer's own ceiling for this run, in pence. It is a *request*: the
    * budget engine returns the enforceable figure, which is never higher.
@@ -200,6 +236,34 @@ const PROBLEM_SENTENCES: Record<PlanProblem, string> = {
     "Intent is set to required, but no intent signals have been chosen.",
 };
 
+/** True when the plan asks for any buying signal, named or structured. */
+export function planWantsIntent(plan: SearchPlan): boolean {
+  const { signals } = plan;
+  return (
+    plan.intent.categories.length > 0 ||
+    signals.hiringRoles.length > 0 ||
+    signals.technologies.length > 0 ||
+    signals.fundingFilings ||
+    signals.leadershipChanges ||
+    signals.recentlyIncorporated ||
+    signals.officeMoves
+  );
+}
+
+/** The structured signals as short phrases, for the plan summary. */
+export function signalsLabel(signals: PlanSignals): string[] {
+  const parts: string[] = [];
+  if (signals.fundingFilings) parts.push("Raised new capital (Companies House)");
+  if (signals.leadershipChanges) parts.push("Leadership change (Companies House)");
+  if (signals.recentlyIncorporated) parts.push("Newly incorporated");
+  if (signals.officeMoves) parts.push("Moved registered office");
+  if (signals.hiringRoles.length) parts.push(`Hiring: ${signals.hiringRoles.join(", ")}`);
+  if (signals.technologies.length) {
+    parts.push(`Uses: ${signals.technologies.map((key) => TECHNOLOGY_LABELS[key]).join(", ")}`);
+  }
+  return parts;
+}
+
 export function planProblemSentence(problem: PlanProblem): string {
   return PROBLEM_SENTENCES[problem] ?? "This plan needs more detail.";
 }
@@ -218,7 +282,7 @@ export function checkPlanReadiness(plan: SearchPlan): PlanReadiness {
     problems.push("INVALID_EMPLOYEE_RANGE");
   }
 
-  if (plan.intent.required && plan.intent.categories.length === 0) {
+  if (plan.intent.required && !planWantsIntent(plan)) {
     problems.push("INTENT_REQUIRED_WITHOUT_CATEGORIES");
   }
 
@@ -278,7 +342,7 @@ export const REVIEW_MODE_LABELS: Record<ReviewMode, string> = {
 };
 
 export const CONVERSION_GOAL_LABELS: Record<ConversionGoalType, string> = {
-  BOOK_APPOINTMENT: "Book an appointment",
+  BOOK_APPOINTMENT: "Book a meeting",
   BOOK_SITE_VISIT: "Site visit and quotes",
   BOOK_DEMO: "Book a demo",
   REQUEST_QUOTE: "Request a quote",
@@ -390,6 +454,14 @@ export function mergePlanPatch(
       candidate = { ...current.intent, ...(value as Record<string, unknown>) };
     }
 
+    if (key === "signals" && value && typeof value === "object") {
+      candidate = { ...current.signals, ...(value as Record<string, unknown>) };
+    }
+
+    if (key === "linkedin" && value && typeof value === "object") {
+      candidate = { ...current.linkedin, ...(value as Record<string, unknown>) };
+    }
+
     const parsed = shape[key].safeParse(candidate);
     if (!parsed.success) continue;
 
@@ -439,6 +511,17 @@ export function planSummaryLines(plan: SearchPlan): PlanSummaryLine[] {
   }
   if (plan.intent.categories.length) {
     lines.push({ label: "Intent", value: plan.intent.categories.join(", ") });
+  }
+  const signalParts = signalsLabel(plan.signals);
+  if (signalParts.length) {
+    lines.push({ label: "Signals", value: signalParts.join("; ") });
+  }
+  const linkedinLines = linkedinFilterLines(plan.linkedin);
+  if (linkedinLines.length) {
+    lines.push({
+      label: "LinkedIn filters",
+      value: linkedinLines.map((line) => `${line.label}: ${line.value}`).join("; "),
+    });
   }
   lines.push({ label: "Exclusions", value: "Existing customers, competitors, opt-outs" });
   lines.push({ label: "Target", value: `${plan.targetVerifiedProspects} verified prospects` });

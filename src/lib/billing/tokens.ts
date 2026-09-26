@@ -11,22 +11,24 @@
  * — that stays in `provider_price_book` / `cost_events`, which are admin-only.
  */
 
-import type { PlanId } from "./plans";
+import { PLANS, TRIAL, type PlanId } from "./plans.ts";
 
 // ------------------------------------------------------------- allowances
 
 /**
- * Monthly included tokens per tier. The database is the authority at runtime
- * (`plan_entitlements`, so an allowance change is a row edit rather than a
- * deploy); these are the seeded defaults and the fallback when a row is
- * missing, so the two must agree.
+ * Monthly included tokens per tier, derived from the plan catalogue so there
+ * is exactly one place the number is written (`plans.ts`). The database row
+ * (`plan_entitlements.ai_tokens`) is seeded from the same values (0128, with a
+ * test that the two agree) and is what runtime reads first, so an allowance can
+ * still be changed without a deploy; this is the fallback when a row is
+ * missing.
  */
 export const AI_TOKEN_ALLOWANCE: Record<PlanId, number> = {
-  trial: 100_000,
-  starter: 1_000_000,
-  growth: 4_000_000,
-  pro: 12_000_000,
-  enterprise: 40_000_000,
+  trial: TRIAL.aiTokenAllowance,
+  starter: PLANS.starter.aiTokenAllowance,
+  growth: PLANS.growth.aiTokenAllowance,
+  pro: PLANS.pro.aiTokenAllowance,
+  enterprise: PLANS.enterprise.aiTokenAllowance,
 };
 
 /**

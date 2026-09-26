@@ -50,6 +50,7 @@ export function FindLeadsViewSwitch({
     <div
       role="tablist"
       aria-label="Find Leads views"
+      data-tour="find-leads-views"
       onKeyDown={onKeyDown}
       className={cn(
         "inline-flex items-stretch overflow-hidden rounded-lg border border-line bg-surface-sunken",

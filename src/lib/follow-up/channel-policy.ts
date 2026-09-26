@@ -13,6 +13,7 @@
  */
 
 import type { Channel } from "@/lib/automations/types";
+import { bestChannel, type RoutingSignals } from "../messaging/channel-router.ts";
 
 export const WARM_CHANNELS: Channel[] = ["email", "sms", "whatsapp"];
 
@@ -187,7 +188,7 @@ const FALLBACK_ORDER: Record<Channel, Channel[]> = {
 export function resolveFallback(
   channel: Channel,
   available: Record<Channel, boolean>,
-  options: { fallbackEnabled: boolean },
+  options: { fallbackEnabled: boolean; signals?: RoutingSignals },
 ): FallbackOutcome | null {
   if (available[channel]) return null;
 
@@ -199,14 +200,19 @@ export function resolveFallback(
     };
   }
 
-  for (const candidate of FALLBACK_ORDER[channel]) {
-    if (available[candidate]) {
-      return {
-        kind: "FALLBACK",
-        to: candidate,
-        sentence: `${channelWord(channel)} unavailable → ${channelWord(candidate)} if policy permits.`,
-      };
-    }
+  // The channel router ranks only the fallbacks the policy allows, in the
+  // fixed order as the tie-break -- so without signals the answer is exactly
+  // the fixed chain, and a disallowed channel can never be chosen.
+  const candidate = bestChannel(
+    FALLBACK_ORDER[channel].map((option) => ({ channel: option, allowed: available[option] })),
+    options.signals,
+  ) as Channel | null;
+  if (candidate) {
+    return {
+      kind: "FALLBACK",
+      to: candidate,
+      sentence: `${channelWord(channel)} unavailable → ${channelWord(candidate)} if policy permits.`,
+    };
   }
 
   return {

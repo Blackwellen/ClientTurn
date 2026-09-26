@@ -67,6 +67,11 @@ export type AuditAction =
   | "billing.tokens_purchased"
   | "billing.tokens_refunded"
   | "billing.plan_changed"
+  | "billing.trial_checkout_started"
+  | "billing.terms_accepted"
+  | "billing.credits_purchase_started"
+  | "billing.credits_purchased"
+  | "billing.credits_refunded"
   | "admin.impersonation"
   | "admin.workspace_suspended"
   | "admin.workspace_unsuspended"
@@ -180,6 +185,8 @@ export type AuditAction =
   | "social_outreach.reply_recorded"
   | "prospect.research_summarised"
   | "prospect.exported"
+  // Selected rows from the Leads list, via api/exports/leads.
+  | "lead.exported"
   | "recurring_search.created"
   | "recurring_search.paused"
   | "recurring_search.resumed"
@@ -244,7 +251,27 @@ export type AuditAction =
   // Copilot writes. The Copilot never writes to a table directly; this records
   // that it invoked a domain service, and that a human confirmed it (§28.9).
   | "copilot.action_executed"
-  | "copilot.action_denied";
+  | "copilot.action_denied"
+  // Data rights (Phase 6). The acts themselves audit under their service
+  // operation names; these are the ones with no operation behind them.
+  | "data_rights.retention_enforced"
+  | "privacy_request.received"
+  | "privacy_request.verified"
+  | "privacy_request.routed"
+  // Revenue engine Phase 3: channels, closing, handoff.
+  | "booking.rescheduled"
+  | "commercial_authority.updated"
+  | "checkout.proposed"
+  | "handoff.brief_generated"
+  | "crm.note_pushed"
+  | "inmail.recorded"
+  | "inmail.reply_recorded"
+  | "social.fallback_enrolled"
+  | "domain_health.checked"
+  // Revenue engine Phase 5: the duplicate queue. A merge or its undo from the
+  // admin System view; the workspace path audits as merge_candidate.resolve.
+  | "admin.merge_candidate_resolved"
+  | "admin.merge_reverted";
 
 /**
  * The full audit vocabulary.
@@ -277,7 +304,7 @@ export async function recordAudit(entry: {
   metadata?: Record<string, unknown>;
 }): Promise<string | null> {
   const supabase = createAdminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("audit_log")
     .insert({
       business_id: entry.businessId,
@@ -290,6 +317,21 @@ export async function recordAudit(entry: {
     })
     .select("id")
     .single();
+
+  // Never thrown: an audit write must not undo or block the action it
+  // records. But a missing row is logged, so the gap in the trail is visible
+  // rather than silent, and the caller receives null rather than an id.
+  if (error) {
+    console.error("[audit] recordAudit insert failed", {
+      businessId: entry.businessId,
+      action: entry.action,
+      entityType: entry.entityType ?? null,
+      entityId: entry.entityId ?? null,
+      code: error.code,
+      message: error.message,
+    });
+    return null;
+  }
 
   return data?.id ?? null;
 }

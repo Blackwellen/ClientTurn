@@ -12,6 +12,9 @@ import {
   type SendRequest,
   type SendResult,
 } from "./types";
+import { decideSmsSender, twilioErrorSuppression } from "./sms-compliance";
+import { suppress } from "@/lib/policy/suppression";
+import { twilioContentVariables } from "./whatsapp-templates";
 
 const API_ROOT = "https://api.twilio.com/2010-04-01";
 
@@ -126,6 +129,11 @@ function addressFor(channel: Channel, value: string): string {
  */
 const PERMANENT_CODES = new Set([
   21211, 21214, 21217, 21219, 21610, 21612, 21614, 21408, 21606, 63003,
+  // 63016: outside the WhatsApp 24-hour session window, free text refused —
+  // the policy gate above should stop this before it reaches Twilio, but a
+  // retry cannot fix it either way, and repeating it damages the number's
+  // quality rating.
+  63016,
 ]);
 
 function toSendResult(status: number, body: unknown): SendResult {
@@ -150,6 +158,31 @@ function toSendResult(status: number, body: unknown): SendResult {
       PERMANENT_CODES.has(code) ||
       (status >= 400 && status < 500 && status !== 429),
   };
+}
+
+/**
+ * The StatusCallback for outbound messages: the configured webhook URL
+ * (TWILIO_WEBHOOK_URL, also what signatures are verified against), else the
+ * app URL + the webhook route. Only a public https URL is sent -- Twilio
+ * cannot call back to localhost, and a plain-http callback would expose the
+ * delivery payload.
+ */
+export function twilioStatusCallbackUrl(
+  webhookUrl: string | null | undefined,
+  siteUrl: string | null | undefined,
+): string | null {
+  const candidate =
+    webhookUrl || (siteUrl ? `${siteUrl.replace(/\/+$/, "")}/api/webhooks/twilio` : null);
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" || url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -195,6 +228,35 @@ const STATUS_MAP: Record<string, MessageStatusEvent["status"]> = {
   undelivered: "FAILED",
 };
 
+/**
+ * A synchronous refusal that is a fact about the recipient — they texted STOP
+ * to the carrier (21610) or the number is invalid (21211, 21614) — is written
+ * to the suppression list, so no send path queues another message to them.
+ *
+ * Best effort: the send has already failed permanently and the result must
+ * reach the caller either way. A failed suppression write is logged; the same
+ * code comes back on the status callback, which records it too.
+ */
+async function recordRecipientFailure(request: SendRequest, errorCode: string) {
+  const hit = twilioErrorSuppression(errorCode, request.channel);
+  if (!hit) return;
+  try {
+    await suppress({
+      businessId: request.businessId,
+      channel: hit.channel,
+      reason: hit.reason,
+      source: "PROVIDER_TWILIO",
+      sourceReference: `twilio:${errorCode}`,
+      phone: stripChannelPrefix(request.to),
+    });
+  } catch (error) {
+    console.error("[twilio] could not record provider suppression", {
+      errorCode,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 class TwilioProvider implements MessagingProvider {
   readonly name = "twilio";
 
@@ -227,12 +289,53 @@ class TwilioProvider implements MessagingProvider {
       };
     }
 
-    const form = new URLSearchParams({
-      To: addressFor(request.channel, request.to),
-      Body: request.body,
-    });
+    // A one-way alphanumeric sender cannot receive STOP, so a message from one
+    // must carry another opt-out route or not go at all.
+    let body = request.body;
+    if (request.channel === "sms" && from) {
+      const decision = decideSmsSender({
+        from,
+        body,
+        optOutUrl: request.unsubscribeUrl,
+      });
+      if (decision.action === "block") {
+        return {
+          ok: false,
+          errorCode: decision.errorCode,
+          errorMessage: decision.errorMessage,
+          permanent: true,
+        };
+      }
+      body = decision.body;
+    }
+
+    // Outside the WhatsApp window the gate hands over an approved template
+    // (brief §45): sent by ContentSid with its variables, never as free text.
+    const template = request.channel === "whatsapp" ? (request.template ?? null) : null;
+    if (template && template.provider !== "twilio") {
+      return {
+        ok: false,
+        errorCode: "template_wrong_transport",
+        errorMessage: "A WhatsApp Business Account template cannot be sent through Twilio.",
+        permanent: true,
+      };
+    }
+
+    const form = new URLSearchParams({ To: addressFor(request.channel, request.to) });
+    if (template) {
+      form.set("ContentSid", template.externalId);
+      form.set("ContentVariables", twilioContentVariables(template));
+    } else {
+      form.set("Body", body);
+    }
     if (from) form.set("From", addressFor(request.channel, from));
     else form.set("MessagingServiceSid", credentials.messagingServiceSid!);
+
+    // Phase 3.5: delivery status on every send, to the existing webhook route
+    // (which already records message.status). The same URL signature
+    // verification uses, so the callbacks verify.
+    const statusCallback = twilioStatusCallbackUrl(serverEnv.twilio.webhookUrl, serverEnv.siteUrl);
+    if (statusCallback) form.set("StatusCallback", statusCallback);
 
     let response: Response;
     try {
@@ -261,8 +364,10 @@ class TwilioProvider implements MessagingProvider {
       };
     }
 
-    const body = await response.json().catch(() => null);
-    return toSendResult(response.status, body);
+    const payload = await response.json().catch(() => null);
+    const result = toSendResult(response.status, payload);
+    if (!result.ok) await recordRecipientFailure(request, result.errorCode);
+    return result;
   }
 
   async verifyWebhook(request: Request, rawBody: string): Promise<boolean> {
@@ -318,4 +423,36 @@ class TwilioProvider implements MessagingProvider {
 
 export function createTwilioProvider(): MessagingProvider {
   return new TwilioProvider();
+}
+
+/**
+ * Every Content template on the platform's Twilio account with its WhatsApp
+ * approval, for the registry sync (brief §45):
+ * `GET https://content.twilio.com/v1/ContentAndApprovals`, paged by
+ * `meta.next_page_url`. Null when Twilio is not configured; throws when Twilio
+ * refuses, so a sync never mistakes an outage for "no templates".
+ */
+export async function fetchTwilioContentTemplates(): Promise<Record<string, unknown>[] | null> {
+  const credentials = twilioCredentials();
+  if (!credentials) return null;
+
+  const authorization = `Basic ${Buffer.from(`${credentials.authSid}:${credentials.authToken}`).toString("base64")}`;
+  const out: Record<string, unknown>[] = [];
+  let url: string | null = "https://content.twilio.com/v1/ContentAndApprovals?PageSize=100";
+
+  for (let page = 0; url && page < 20; page += 1) {
+    const response: Response = await fetch(url, { headers: { Authorization: authorization } });
+    if (!response.ok) {
+      throw new Error(`Twilio Content templates could not be read (status ${response.status}).`);
+    }
+    const payload = (await response.json().catch(() => ({}))) as {
+      contents?: Record<string, unknown>[];
+      meta?: { next_page_url?: string | null };
+    };
+    out.push(...(payload.contents ?? []));
+    const next = payload.meta?.next_page_url ?? null;
+    // Only ever follow Twilio's own host.
+    url = next && next.startsWith("https://content.twilio.com/") ? next : null;
+  }
+  return out;
 }

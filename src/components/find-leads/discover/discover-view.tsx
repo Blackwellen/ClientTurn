@@ -28,18 +28,18 @@ export function DiscoverView({
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* Ordered last on small screens so the chat is what a phone opens on. */}
-      <div className="order-2 w-full lg:order-1 lg:w-auto">
+      <div className="order-2 w-full lg:order-1 lg:w-auto" data-tour="find-leads-sessions">
         <SearchSessionsRail
           groups={data.sessionGroups}
           totalCount={data.sessionCount}
         />
       </div>
 
-      <div className="order-1 min-w-0 flex-1 lg:order-2">
+      <div className="order-1 min-w-0 flex-1 lg:order-2" data-tour="find-leads-chat">
         <DiscoverChat firstName={firstName} profileComplete={data.profile.complete} />
       </div>
 
-      <div className="order-3 flex w-full shrink-0 flex-col gap-4 lg:w-[340px]">
+      <div className="order-3 flex w-full shrink-0 flex-col gap-4 lg:w-[340px]" data-tour="find-leads-profile">
         <AcquisitionProfileCard
           profile={data.profile}
           analysis={data.analysis}

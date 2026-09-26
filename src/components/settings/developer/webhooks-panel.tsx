@@ -22,7 +22,7 @@ import {
   updateWebhookEndpointAction,
 } from "@/lib/webhooks/actions";
 import {
-  DELIVERY_STATUS_LABELS,
+  deliveryStatusLabel,
   ENDPOINT_STATUS_LABELS,
   ENDPOINT_STATUS_TONES,
   WEBHOOK_EVENTS,
@@ -398,8 +398,15 @@ function DeliveryLog({ deliveries }: { deliveries: WebhookDeliveryView[] }) {
         <ul className="min-w-[520px] divide-y divide-line rounded-lg border border-line">
           {deliveries.map((delivery) => (
             <li key={delivery.id} className="flex items-start gap-3 px-2.5 py-2">
-              <Badge tone={DELIVERY_TONES[delivery.status]} dense>
-                {DELIVERY_STATUS_LABELS[delivery.status]}
+              <Badge
+                tone={
+                  delivery.status === "PENDING" && delivery.attempts > 0
+                    ? DELIVERY_TONES.FAILED
+                    : DELIVERY_TONES[delivery.status]
+                }
+                dense
+              >
+                {deliveryStatusLabel(delivery)}
               </Badge>
 
               <div className="min-w-0 flex-1">

@@ -167,7 +167,9 @@ export function CategoryBuilder({
           }
           picker={(close) => (
             <div className="max-h-64 min-w-[16rem] overflow-y-auto py-1">
-              {Object.values(SIGNAL_SOURCES).map((source) => {
+              {Object.values(SIGNAL_SOURCES)
+                .filter((source) => !source.unavailable)
+                .map((source) => {
                 const checked = signalTypes.includes(source.key);
                 return (
                   <button

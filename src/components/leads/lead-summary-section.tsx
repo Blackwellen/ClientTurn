@@ -1,5 +1,6 @@
 "use client";
 
+import { allowedNextStatuses } from "@/lib/leads/status-transitions";
 import * as React from "react";
 import {
   AlertTriangle,
@@ -18,8 +19,9 @@ import {
 import { cn } from "@/lib/cn";
 import { Select } from "@/components/ui/form";
 import { LEAD_STATUS } from "@/components/ui/badge";
+import { QUALIFICATION_OUTCOME_LABEL as OUTCOME } from "@/lib/qualification/outcome-labels";
 import { formatDateTime, formatRelative } from "@/lib/dates";
-import { LEAD_STATUSES } from "@/lib/leads/filters";
+import { statusNeedsReason } from "@/lib/leads/detail-page";
 import {
   attentionReasonLabel,
   type LeadCapabilities,
@@ -190,10 +192,10 @@ function CardAction({
 /* ----------------------------------------------------------------- section */
 
 const QUALIFICATION_COPY: Record<string, { label: string; blurb: string }> = {
-  PENDING: { label: "Pending", blurb: "Lead not yet qualified" },
-  QUALIFIED: { label: "Qualified", blurb: "Meets your criteria" },
-  REVIEW: { label: "Needs review", blurb: "A person must decide on this lead" },
-  NOT_QUALIFIED: { label: "Not qualified", blurb: "Does not meet your criteria" },
+  PENDING: { label: OUTCOME.PENDING, blurb: "Lead not yet qualified" },
+  QUALIFIED: { label: OUTCOME.QUALIFIED, blurb: "Meets your criteria" },
+  REVIEW: { label: OUTCOME.REVIEW, blurb: "A person must decide on this lead" },
+  NOT_QUALIFIED: { label: OUTCOME.NOT_QUALIFIED, blurb: "Does not meet your criteria" },
 };
 
 /**
@@ -216,6 +218,7 @@ export function LeadSummarySection({
   pending,
   run,
   onOpenComposer,
+  onRequestClose,
   focus,
 }: {
   detail: LeadDetail;
@@ -225,6 +228,8 @@ export function LeadSummarySection({
   pending: string | null;
   run: RunAction;
   onOpenComposer: (channel: "sms" | "whatsapp") => void;
+  /** Won and lost need a reason, so they open a dialog instead of saving. */
+  onRequestClose: (outcome: "WON" | "LOST") => void;
   focus?: string;
 }) {
   const { lead, members, bookings } = detail;
@@ -317,7 +322,7 @@ export function LeadSummarySection({
                   {provider.label}
                 </span>
               </div>
-              <MetaRow icon={ScrollText} label="Meta form" value={source?.form_name} />
+              <MetaRow icon={ScrollText} label="Form" value={source?.form_name} />
               <MetaRow
                 icon={Megaphone}
                 label="Campaign"
@@ -366,19 +371,20 @@ export function LeadSummarySection({
               className="h-9 text-[13px]"
               disabled={!canWrite || pending === "status"}
               value={lead.status}
-              onChange={(event) =>
-                run(
+              onChange={(event) => {
+                const next = event.target.value;
+                if (statusNeedsReason(next)) {
+                  onRequestClose(next);
+                  return;
+                }
+                void run(
                   "status",
-                  () =>
-                    actions.updateLeadStatus({
-                      leadId: lead.id,
-                      status: event.target.value,
-                    }),
+                  () => actions.updateLeadStatus({ leadId: lead.id, status: next }),
                   "Status updated.",
-                )
-              }
+                );
+              }}
             >
-              {LEAD_STATUSES.map((status) => (
+              {allowedNextStatuses(lead.status).map((status) => (
                 <option key={status} value={status}>
                   {LEAD_STATUS[status].label}
                 </option>
@@ -438,10 +444,10 @@ export function LeadSummarySection({
                 )
               }
             >
-              <option value="PENDING">Pending</option>
-              <option value="QUALIFIED">Qualified</option>
-              <option value="REVIEW">Needs review</option>
-              <option value="NOT_QUALIFIED">Not qualified</option>
+              <option value="PENDING">{OUTCOME.PENDING}</option>
+              <option value="QUALIFIED">{OUTCOME.QUALIFIED}</option>
+              <option value="REVIEW">{OUTCOME.REVIEW}</option>
+              <option value="NOT_QUALIFIED">{OUTCOME.NOT_QUALIFIED}</option>
             </Select>
           </ControlField>
 
@@ -562,6 +568,7 @@ export function LeadSummarySection({
         pending={pending}
         run={run}
         onOpenComposer={onOpenComposer}
+        onRequestClose={onRequestClose}
       />
 
       {lead.notes && (

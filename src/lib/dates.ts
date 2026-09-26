@@ -98,27 +98,53 @@ export function greetingFor(timezone: string, now = new Date()) {
   return "Good evening";
 }
 
-export function formatDate(value: string | Date | null | undefined) {
-  if (!value) return "—";
+const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/** "5 Mar, 14:05" — dense rows where the year is implied. */
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** "5 Mar 2025, 14:05" — audit and detail surfaces where the year matters. */
+const DATE_TIME_WITH_YEAR_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function toValidDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
   const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function formatDateTime(value: string | Date | null | undefined) {
-  if (!value) return "—";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+/** "5 Mar 2025". Empty or unparseable input renders "—". */
+export function formatDate(value: string | Date | null | undefined) {
+  const date = toValidDate(value);
+  return date ? DATE_FORMAT.format(date) : "—";
+}
+
+/**
+ * Date plus 24-hour time. The default is the compact "5 Mar, 14:05";
+ * `{ year: true }` gives "5 Mar 2025, 14:05", the admin console's form.
+ */
+export function formatDateTime(
+  value: string | Date | null | undefined,
+  options: { year?: boolean } = {},
+) {
+  const date = toValidDate(value);
+  if (!date) return "—";
+  return (options.year ? DATE_TIME_WITH_YEAR_FORMAT : DATE_TIME_FORMAT).format(date);
 }
 
 /**
@@ -145,10 +171,36 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 6e4],
 ];
 
-export function formatRelative(value: string | Date | null | undefined) {
-  if (!value) return "—";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
+const RELATIVE_AGO_WINDOW_MS = 30 * 864e5;
+
+/**
+ * True when `formatRelative(value, { style: "ago" })` would produce an actual
+ * "N ago" phrase rather than falling back to a date. Callers that pair an
+ * absolute date with a relative one use this so they never render
+ * "5 Mar 2024 (5 Mar 2024)".
+ */
+export function hasRelativePhrase(value: string | Date | null | undefined): boolean {
+  const date = toValidDate(value);
+  if (!date) return false;
+  return Date.now() - date.getTime() < RELATIVE_AGO_WINDOW_MS;
+}
+
+/**
+ * Relative time.
+ *
+ * - Default (`style: "auto"`): `Intl.RelativeTimeFormat` — "5 minutes ago",
+ *   "in 2 hours", "yesterday", "last month". Empty input renders "—".
+ * - `style: "ago"` (the admin console's form): past-only "5 minutes ago",
+ *   "1 day ago", switching to an absolute date after 30 days; a future
+ *   timestamp reads "just now" and empty input reads "Never".
+ */
+export function formatRelative(
+  value: string | Date | null | undefined,
+  options: { style?: "auto" | "ago" } = {},
+) {
+  if (options.style === "ago") return formatRelativeAgo(value);
+  const date = toValidDate(value);
+  if (!date) return "—";
   const diff = date.getTime() - Date.now();
   const abs = Math.abs(diff);
   if (abs < 6e4) return "just now";
@@ -157,6 +209,25 @@ export function formatRelative(value: string | Date | null | undefined) {
     if (abs >= ms) return formatter.format(Math.round(diff / ms), unit);
   }
   return formatter.format(Math.round(diff / 6e4), "minute");
+}
+
+function formatRelativeAgo(value: string | Date | null | undefined) {
+  if (!value) return "Never";
+  const date = toValidDate(value);
+  if (!date) return "—";
+  const diff = Date.now() - date.getTime();
+  if (diff < 0) return "just now";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes === 1) return "1 minute ago";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  if (diff < RELATIVE_AGO_WINDOW_MS) return `${days} days ago`;
+  return formatDate(date);
 }
 
 /**

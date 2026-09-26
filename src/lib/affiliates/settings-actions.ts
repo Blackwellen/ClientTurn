@@ -8,6 +8,7 @@ import { getUser } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/audit";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import { getAffiliateAccount } from "./portal";
+import { siteOrigin } from "./origin";
 import {
   NOTIFICATION_PREFS,
   RANGE_KEYS,
@@ -366,16 +367,4 @@ export async function updateAffiliatePreferences(
 
   revalidatePath("/affiliates/app/settings");
   return { ok: true, message: "Preferences saved." };
-}
-
-/* --------------------------------------------------------------- helpers -- */
-
-async function siteOrigin(): Promise<string> {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) return configured.replace(/\/+$/, "");
-
-  const headerList = await headers();
-  const host = headerList.get("host") ?? "localhost:3000";
-  const protocol = host.startsWith("localhost") ? "http" : "https";
-  return `${protocol}://${host}`;
 }

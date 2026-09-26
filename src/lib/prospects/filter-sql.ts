@@ -1,5 +1,6 @@
 import "server-only";
 import type { ProspectFilters } from "./filters";
+import { orIlike } from "../supabase/ilike.ts";
 
 /**
  * Translates parsed prospect filters into PostgREST predicates.
@@ -35,15 +36,6 @@ const QUICK_STATUS: Record<string, string[]> = {
   contacted: ["APPROVED", "OUTREACH_ACTIVE"],
   replied: ["REPLIED"],
 };
-
-/**
- * `escapeOr` guards the one place a value reaches PostgREST as raw filter
- * syntax. A comma or parenthesis in a search term would otherwise be parsed as
- * additional predicates rather than as text.
- */
-function escapeOr(value: string): string {
-  return value.replace(/[,()\\]/g, " ").trim();
-}
 
 /**
  * True when a filter reaches into the company row, which the caller must then
@@ -117,17 +109,11 @@ export function applyProspectFilters<T>(query: T, filters: ProspectFilters): T {
   }
 
   if (filters.search) {
-    const term = escapeOr(filters.search);
-    if (term) {
-      q = q.or(
-        [
-          `first_name.ilike.*${term}*`,
-          `last_name.ilike.*${term}*`,
-          `email.ilike.*${term}*`,
-          `role_title.ilike.*${term}*`,
-        ].join(","),
-      );
-    }
+    // The one place a value reaches PostgREST as raw filter syntax: `orIlike`
+    // double-quotes it and escapes LIKE wildcards, so a comma or parenthesis
+    // is matched as text rather than parsed as another predicate.
+    const or = orIlike(["first_name", "last_name", "email", "role_title"], filters.search);
+    if (or) q = q.or(or);
   }
 
   return q as T;

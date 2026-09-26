@@ -14,15 +14,17 @@ import {
   SeverityBadge,
 } from "@/components/admin/ui";
 import {
-  formatDate,
   formatMoney,
   formatNumber,
-  formatRelative,
   formatUsagePercent,
-  hasRelativePhrase,
   initialsOf,
 } from "@/lib/admin/format";
-import { formatTimezoneLabel } from "@/lib/dates";
+import {
+  formatDate,
+  formatRelative,
+  formatTimezoneLabel,
+  hasRelativePhrase,
+} from "@/lib/dates";
 import type { CustomerDetail, UsageCell } from "@/lib/admin/types";
 
 /* --------------------------------------------------------------- sections */
@@ -234,14 +236,14 @@ export function CustomerSupportDrawer({
             {hasRelativePhrase(detail.createdAt) && (
               <span className="text-content-muted">
                 {" "}
-                ({formatRelative(detail.createdAt)})
+                ({formatRelative(detail.createdAt, { style: "ago" })})
               </span>
             )}
           </Field>
           <Field label="Onboarding step">{detail.onboardingStep}</Field>
           <Field label="Last health check">
             {detail.lastHealthCheckAt
-              ? formatRelative(detail.lastHealthCheckAt)
+              ? formatRelative(detail.lastHealthCheckAt, { style: "ago" })
               : "Never run"}
           </Field>
         </dl>
@@ -336,7 +338,7 @@ export function CustomerSupportDrawer({
                     </p>
                   ) : (
                     <p className="truncate text-[11.5px] text-content-subtle">
-                      Last sync {formatRelative(integration.lastSuccessAt)}
+                      Last sync {formatRelative(integration.lastSuccessAt, { style: "ago" })}
                     </p>
                   )}
                 </div>
@@ -386,7 +388,7 @@ export function CustomerSupportDrawer({
                   {event.label}
                 </span>
                 <span className="shrink-0 text-[11.5px] whitespace-nowrap text-content-muted">
-                  {formatRelative(event.createdAt)}
+                  {formatRelative(event.createdAt, { style: "ago" })}
                 </span>
               </li>
             ))}
@@ -418,7 +420,7 @@ export function CustomerSupportDrawer({
                     {error.message}
                   </p>
                   <p className="text-[11.5px] text-content-subtle">
-                    {error.area} · {formatRelative(error.occurredAt)}
+                    {error.area} · {formatRelative(error.occurredAt, { style: "ago" })}
                   </p>
                 </div>
                 <SeverityBadge severity={error.severity} />

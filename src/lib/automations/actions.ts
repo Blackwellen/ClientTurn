@@ -10,6 +10,7 @@ import { findUnknownMergeFields } from "@/lib/automation/scheduler";
 import {
   AUTOMATION_TYPE_META,
   AUTOMATION_TYPES,
+  isWiredAutomationType,
   quietHoursSchema,
   saveDraftSchema,
   type AutomationType,
@@ -67,7 +68,9 @@ export async function createAutomation(input: {
   const parsed = z
     .object({ type: z.enum(AUTOMATION_TYPES) })
     .safeParse(input);
-  if (!parsed.success) return fail("That automation type is not available.");
+  if (!parsed.success || !isWiredAutomationType(parsed.data.type)) {
+    return fail("That automation type is not available.");
+  }
 
   const workspace = await admin();
   if (!workspace) {
@@ -204,7 +207,7 @@ export async function saveAutomationDraft(input: {
 }
 
 /**
- * "Update sequence" from the Follow-Up editor: one press writes the draft and
+ * "Publish changes" from the Follow-Up editor: one press writes the draft and
  * publishes it. Both halves keep their own validation and their own audit
  * entry — this only removes the two-step dance from the UI, never a check.
  *

@@ -1,0 +1,46 @@
+{
+  "id": "direct-b2b-contradiction",
+  "scenario": "§91 contradiction",
+  "motion": "DIRECT_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Roughly what budget have you set aside for the project?"
+    },
+    {
+      "role": "lead",
+      "text": "Around ten thousand."
+    },
+    {
+      "role": "agent",
+      "text": "Thanks. When would you want it live?"
+    },
+    {
+      "role": "lead",
+      "text": "Actually we have no budget yet, the board has not signed anything off."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "candidates": [
+      {
+        "text": "Understood, thanks for being clear. Once the board has a budget in mind, would it help to see a scoped proposal?",
+        "valid": true
+      },
+      {
+        "text": "No problem, our starter package is £4,500 so it should fit.",
+        "valid": false,
+        "codes": [
+          "UNSUPPORTED_PRICE_CLAIM"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "£"
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowLeft, Lock } from "lucide-react";
@@ -7,8 +8,52 @@ import { getEntitlements } from "@/lib/billing/entitlements";
 import { getFilterOptions } from "@/lib/leads/queries";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
-import { EmptyState, PlanLimitState, Skeleton } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, PlanLimitState, Skeleton } from "@/components/ui/feedback";
 import { ReactivationWizard } from "@/components/reactivation/reactivation-wizard";
+import {
+  campaignChannelReadiness,
+  pickDefaultChannel,
+  type CampaignTemplateOption,
+} from "@/lib/campaigns/reactivation-channels";
+import {
+  listWorkspaceTemplates,
+  whatsAppTransportFor,
+} from "@/lib/messaging/template-registry";
+
+/**
+ * Approved templates on the WhatsApp sender this workspace actually uses. A
+ * registry that cannot be read offers none, which keeps the WhatsApp channel
+ * closed (with its explanation) rather than letting a campaign launch that
+ * could not be delivered.
+ */
+async function approvedWhatsAppTemplates(
+  businessId: string,
+  whatsappAllowed: boolean,
+): Promise<CampaignTemplateOption[]> {
+  if (!whatsappAllowed) return [];
+  try {
+    const [templates, transport] = await Promise.all([
+      listWorkspaceTemplates(businessId),
+      whatsAppTransportFor(businessId),
+    ]);
+    return templates
+      .filter((template) => template.provider === transport && template.status === "APPROVED")
+      .map((template) => ({
+        id: template.id,
+        name: template.name,
+        language: template.language,
+        category: template.category,
+        body: template.body,
+        variables: template.variables,
+      }));
+  } catch (error) {
+    console.error("[reactivation] WhatsApp templates unreadable", {
+      businessId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
 
 export const metadata: Metadata = {
   title: "Create reactivation campaign · Client Turn",
@@ -46,7 +91,7 @@ export default async function NewReactivationPage() {
       <div className="space-y-5">
         <WizardHeader />
         <PlanLimitState
-          title="Reactivation campaigns need the Growth plan"
+          title={`Reactivation campaigns need the ${unlockPlanLabel("campaigns")}`}
           description="Upgrade to message an old lead list from Client Turn, with opt-outs, suppressions and quiet hours enforced for you."
           action={
             <Link
@@ -90,41 +135,50 @@ export default async function NewReactivationPage() {
   }
 
   const supabase = await createClient();
-  const [options, { data: settings }, { data: integrations }] =
-    await Promise.all([
-      getFilterOptions(workspace.businessId),
-      supabase
-        .from("business_settings")
-        .select(
-          "default_channel, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
-        )
-        .eq("business_id", workspace.businessId)
-        .maybeSingle(),
-      supabase
-        .from("integrations")
-        .select("provider_type, status")
-        .eq("business_id", workspace.businessId),
-    ]);
+  const [
+    options,
+    { data: settings, error: settingsError },
+    { data: integrations, error: integrationsError },
+    whatsappTemplates,
+  ] = await Promise.all([
+    getFilterOptions(workspace.businessId),
+    supabase
+      .from("business_settings")
+      .select(
+        "default_channel, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, opt_out_wording, ai_assist_enabled",
+      )
+      .eq("business_id", workspace.businessId)
+      .maybeSingle(),
+    supabase
+      .from("integrations")
+      .select("provider_type, status")
+      .eq("business_id", workspace.businessId),
+    approvedWhatsAppTemplates(workspace.businessId, entitlements.whatsappEnabled),
+  ]);
 
-  const defaultChannel =
-    settings?.default_channel === "whatsapp" && entitlements.whatsappEnabled
-      ? "whatsapp"
-      : "sms";
-
-  const usable = (provider: string) =>
-    (integrations ?? []).some(
-      (integration) =>
-        integration.provider_type === provider &&
-        integration.status !== "DISCONNECTED" &&
-        integration.status !== "ACTION_REQUIRED",
+  // Without the settings and connections the wizard would guess at quiet
+  // hours and at which channels can send, so it is not shown on a guess.
+  if (settingsError || integrationsError) {
+    return (
+      <div className="space-y-5">
+        <WizardHeader />
+        <ErrorState
+          title="The campaign builder could not load"
+          description="Your workspace settings could not be read just now. Nothing has been created or sent. Refresh to try again."
+        />
+      </div>
     );
+  }
 
-  const providerConnected =
-    usable("twilio_sms") || usable("twilio_whatsapp") || usable("whatsapp_cloud");
+  // Each channel needs its own connection: an SMS number, WhatsApp, or --
+  // for email -- the workspace's own connected mailbox.
+  const providers = campaignChannelReadiness(integrations ?? []);
 
-  // Email campaigns go out through the workspace's own mailbox, so the channel
-  // is only offered once that mailbox is connected and not in a failed state.
-  const emailEnabled = usable("imap_smtp");
+  const defaultChannel = pickDefaultChannel(settings?.default_channel, providers, {
+    sms: true,
+    whatsapp: entitlements.whatsappEnabled && whatsappTemplates.length > 0,
+    email: true,
+  });
 
   return (
     <div className="space-y-5">
@@ -135,8 +189,12 @@ export default async function NewReactivationPage() {
           options={{ services: options.services, sources: options.sources }}
           defaultChannel={defaultChannel}
           whatsappEnabled={entitlements.whatsappEnabled}
-          emailEnabled={emailEnabled}
-          providerConnected={providerConnected}
+          providers={providers}
+          whatsappTemplates={whatsappTemplates}
+          optOutWording={settings?.opt_out_wording ?? "Reply STOP to opt out."}
+          aiPersonalizeAvailable={
+            entitlements.aiAssistAllowed && (settings?.ai_assist_enabled ?? false)
+          }
           quietHours={{
             enabled: settings?.quiet_hours_enabled ?? true,
             start: (settings?.quiet_hours_start ?? "20:00").slice(0, 5),

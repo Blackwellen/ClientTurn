@@ -2,7 +2,7 @@
  * The Qualification editor's draft model.
  *
  * The editor is explicitly draft-then-publish: nothing typed reaches live
- * intake until "Publish qualification" succeeds. The draft is a plain
+ * intake until "Publish changes" succeeds. The draft is a plain
  * client-side value, which is what lets the live preview run the real engine
  * over questions that have never touched the database.
  *
@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type { QualificationResult } from "./engine.ts";
+import { QUALIFICATION_OUTCOME_LABEL } from "./outcome-labels.ts";
 import {
   OPERATORS,
   OPERATOR_META,
@@ -380,10 +381,10 @@ export const QUALIFICATION_STAT_META: Record<
   QualificationResult,
   { label: string; dot: string }
 > = {
-  PENDING: { label: "Pending", dot: "bg-content-subtle" },
-  QUALIFIED: { label: "Qualified", dot: "bg-success-500" },
-  NOT_QUALIFIED: { label: "Not qualified", dot: "bg-danger-500" },
-  REVIEW: { label: "Review", dot: "bg-warning-500" },
+  PENDING: { label: QUALIFICATION_OUTCOME_LABEL.PENDING, dot: "bg-content-subtle" },
+  QUALIFIED: { label: QUALIFICATION_OUTCOME_LABEL.QUALIFIED, dot: "bg-success-500" },
+  NOT_QUALIFIED: { label: QUALIFICATION_OUTCOME_LABEL.NOT_QUALIFIED, dot: "bg-danger-500" },
+  REVIEW: { label: QUALIFICATION_OUTCOME_LABEL.REVIEW, dot: "bg-warning-500" },
 };
 
 /** Who last changed the live configuration, for the sticky action bar. */

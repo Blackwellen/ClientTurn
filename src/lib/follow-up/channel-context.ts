@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getEntitlements } from "@/lib/billing/entitlements";
-import { packForCountry } from "@/lib/policy/packs";
+import { packForCountry, WORKSPACE_COUNTRY } from "@/lib/policy/packs";
 import { loadSenderHealth, type SenderHealth } from "@/lib/outreach/campaigns/sender";
 import type { Channel } from "@/lib/automations/types";
 import type { WarmChannelContext } from "./channel-policy";
@@ -49,10 +49,10 @@ export async function getFollowUpChannelContext(
     loadSenderHealth(businessId),
   ]);
 
-  // Workspace-level policy uses the default pack. A recipient's own country
+  // Workspace-level policy uses the workspace country's pack (UK). A recipient's own country
   // can narrow it further, and does — per-lead evaluation re-resolves the pack
   // from the contact's country immediately before every send.
-  const pack = await packForCountry(null);
+  const pack = await packForCountry(WORKSPACE_COUNTRY);
 
   const rows = integrations.data ?? [];
   const connected = (provider: string) =>

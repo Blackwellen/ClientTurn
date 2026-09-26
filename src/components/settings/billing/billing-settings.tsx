@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Receipt,
   Rocket,
+  Send,
   ShieldCheck,
   UserRound,
   Users,
@@ -38,7 +39,12 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { formatDate, formatGbp } from "@/lib/dates";
-import { openBillingPortal, startPlanCheckout } from "@/lib/settings/actions";
+import {
+  cancelScheduledPlanChange,
+  openBillingPortal,
+  startPlanCheckout,
+} from "@/lib/settings/actions";
+import { previousSelfServePlan } from "@/lib/billing/plan-change";
 import { invoiceStatusMeta, type InvoiceRow } from "@/lib/billing/types";
 import {
   planLabel,
@@ -54,11 +60,11 @@ const HELP_LINKS: {
   /** No href means the Stripe portal, opened through a server-made session. */
   href?: string;
 }[] = [
-  { label: "How billing works", icon: Info, href: "/app/help" },
-  { label: "Understanding your usage", icon: Gauge, href: "/app/help" },
+  { label: "How billing works", icon: Info, href: "/app/help/billing/plans-and-pricing" },
+  { label: "Understanding your usage", icon: Gauge, href: "/app/help/billing/usage-and-limits" },
   { label: "Update payment method", icon: Wallet },
   { label: "View invoices", icon: Receipt },
-  { label: "Contact support", icon: UserRound, href: "/contact-sales" },
+  { label: "Contact support", icon: UserRound, href: "/app/support" },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -72,12 +78,22 @@ const STATUS_DOT: Record<string, string> = {
 
 const STATUS_COPY: Record<string, string> = {
   ACTIVE: "Your subscription is active and in good standing.",
-  TRIALING: "You are on a free trial. Choose a plan before it ends to keep working.",
+  TRIALING:
+    "You are on a free trial with a card on file. The first payment is taken when the trial ends unless you cancel before then; we email you three days before.",
   PAST_DUE:
-    "The last payment failed. Update your payment method in the Stripe portal to avoid interruption.",
-  UNPAID: "An invoice is unpaid. Settle it in the Stripe portal to restore full access.",
-  CANCELLED: "This subscription has been cancelled.",
-  INCOMPLETE: "Checkout was not completed. Start it again to activate your plan.",
+    "The last payment failed. We retry it once a day for up to 30 days and stop as soon as it succeeds. Update your card to settle it now.",
+  UNPAID: "An invoice is unpaid. Update your card in the billing portal to restore full access.",
+  CANCELLED: "This subscription has ended. The workspace is read-only; your data is intact.",
+  INCOMPLETE: "Checkout was not completed. Start your trial to activate the workspace.",
+};
+
+/** Lifecycle states that say more than the Stripe status alone. */
+const STATE_COPY: Record<string, string> = {
+  PAST_DUE_GRACE:
+    "The last payment failed. Everything keeps running for three days while we retry daily; after that sending and AI pause until it is paid.",
+  PAST_DUE_RESTRICTED:
+    "Sending and AI are paused because the payment is still outstanding. Leads are still captured and nothing is deleted. We keep retrying daily for up to 30 days.",
+  TRIAL_EXPIRED: "Your free trial has ended. Choose a plan to carry on.",
 };
 
 function UsageCard({
@@ -143,6 +159,19 @@ export function BillingSettings({
   const router = useRouter();
   const [checkoutPending, setCheckoutPending] = React.useState(false);
   const upgradeTarget = nextPlanFor(billing.plan);
+  const pending = billing.pendingPlanChange;
+  const trialing = billing.status === "TRIALING";
+  // Offered only on a live paid tier with nothing already scheduled.
+  const downgradeTarget =
+    billing.hasStripeCustomer &&
+    !pending &&
+    !billing.cancelAtPeriodEnd &&
+    ["ACTIVE", "TRIALING"].includes(billing.status)
+      ? previousSelfServePlan(billing.plan)
+      : null;
+  const [changePending, setChangePending] = React.useState(false);
+  const [confirmDowngrade, setConfirmDowngrade] = React.useState(false);
+  const annual = billing.billingInterval === "year";
 
   async function onPortal() {
     setPortalPending(true);
@@ -176,10 +205,8 @@ export function BillingSettings({
     }
 
     setCheckoutPending(true);
-    const result = await startPlanCheckout({
-      plan: upgradeTarget,
-      interval: "month",
-    });
+    // No interval: the server keeps the subscription's own (annual stays annual).
+    const result = await startPlanCheckout({ plan: upgradeTarget });
     setCheckoutPending(false);
 
     if (result.ok) {
@@ -190,6 +217,41 @@ export function BillingSettings({
         title: "Checkout could not start",
         description: result.error,
       });
+    }
+  }
+
+  /**
+   * One tier down. Takes effect at the end of the paid period (terms 6.3);
+   * during a trial it applies straight away, since nothing has been charged.
+   * Two clicks: the first shows what will happen and when.
+   */
+  async function onDowngrade() {
+    if (!downgradeTarget) return;
+    if (!confirmDowngrade) {
+      setConfirmDowngrade(true);
+      return;
+    }
+    setChangePending(true);
+    const result = await startPlanCheckout({ plan: downgradeTarget });
+    setChangePending(false);
+    setConfirmDowngrade(false);
+    if (result.ok) {
+      router.push(result.url);
+      router.refresh();
+    } else {
+      toast({ variant: "error", title: "Could not change plan", description: result.error });
+    }
+  }
+
+  async function onCancelPending() {
+    setChangePending(true);
+    const result = await cancelScheduledPlanChange();
+    setChangePending(false);
+    if (result.ok) {
+      toast({ variant: "success", title: "Scheduled change cancelled", description: `You stay on ${planLabel(billing.plan)}.` });
+      router.refresh();
+    } else {
+      toast({ variant: "error", title: "Could not cancel the change", description: result.error });
     }
   }
 
@@ -249,13 +311,40 @@ export function BillingSettings({
                   </p>
                 </div>
                 <div className="border-t border-line pt-3">
-                  <p className="text-[12px] text-content-subtle">Monthly price</p>
+                  <p className="text-[12px] text-content-subtle">
+                    {annual ? "Annual price" : "Monthly price"}
+                  </p>
                   <p className="lr-tabular text-[13px] font-semibold text-content">
-                    {billing.monthlyPrice === null
-                      ? "Agreed with sales"
-                      : `${formatGbp(billing.monthlyPrice)} / month`}
+                    {annual
+                      ? billing.yearlyPrice === null
+                        ? "Agreed with sales"
+                        : `${formatGbp(billing.yearlyPrice)} / year`
+                      : billing.monthlyPrice === null
+                        ? "Agreed with sales"
+                        : `${formatGbp(billing.monthlyPrice)} / month`}
                   </p>
                 </div>
+
+                {pending ? (
+                  <div className="rounded-lg border border-warning-100 bg-warning-50 px-3 py-2.5">
+                    <p className="text-[13px] font-medium text-content">
+                      Changes to {planLabel(pending.plan)} on {formatDate(pending.effectiveAt)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-content-muted">
+                      You keep {planLabel(billing.plan)} and its limits until then. No refund is due
+                      for the current period.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-1.5"
+                      loading={changePending}
+                      onClick={onCancelPending}
+                    >
+                      Keep {planLabel(billing.plan)} instead
+                    </Button>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2 pt-1">
                   {upgradeTarget && (
@@ -282,6 +371,32 @@ export function BillingSettings({
                     <ExternalLink className="size-3.5" aria-hidden />
                     Manage billing (Stripe)
                   </Button>
+                  {downgradeTarget ? (
+                    <>
+                      <Button
+                        fullWidth
+                        size="sm"
+                        variant="ghost"
+                        loading={changePending}
+                        onClick={onDowngrade}
+                      >
+                        {confirmDowngrade
+                          ? `Confirm: switch to ${PLANS[downgradeTarget].name}`
+                          : `Downgrade to ${PLANS[downgradeTarget].name}`}
+                      </Button>
+                      {confirmDowngrade ? (
+                        <p className="text-[12px] text-content-muted">
+                          {trialing
+                            ? `Your trial continues unchanged; ${PLANS[downgradeTarget].name} is what you are charged for when it ends.`
+                            : `Takes effect on ${
+                                billing.currentPeriodEnd
+                                  ? formatDate(billing.currentPeriodEnd)
+                                  : "your next renewal date"
+                              }. You keep ${planLabel(billing.plan)} until then, with no refund for the current period.`}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
                   {!billing.hasStripeCustomer && (
                     <p className="text-[12px] text-content-subtle">
                       The portal and invoices become available once billing starts.
@@ -305,7 +420,7 @@ export function BillingSettings({
             />
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <UsageCard
                 icon={Users}
                 label="Leads"
@@ -313,13 +428,38 @@ export function BillingSettings({
                 limit={billing.leadLimit}
                 unit="leads"
               />
-              <UsageCard
-                icon={MessageSquare}
-                label="Messages"
-                used={billing.messagesUsed}
-                limit={billing.messageAllowance}
-                unit="messages"
-              />
+              {billing.smsSegmentsUsed === null ? (
+                <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+                  <p className="text-[13px] font-semibold text-content">SMS segments</p>
+                  <p className="mt-2 text-[13px] text-content-muted">
+                    SMS usage could not be loaded just now. Your allowance of{" "}
+                    {billing.smsSegmentAllowance.toLocaleString("en-GB")} segments is unaffected.
+                  </p>
+                </div>
+              ) : (
+                <UsageCard
+                  icon={MessageSquare}
+                  label="SMS segments"
+                  used={billing.smsSegmentsUsed}
+                  limit={billing.smsSegmentAllowance}
+                  unit="segments"
+                />
+              )}
+              <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-sunken text-content-muted">
+                    <Send className="size-4" aria-hidden />
+                  </span>
+                  <p className="text-[13px] font-semibold text-content">Messages sent</p>
+                </div>
+                <p className="lr-tabular mt-3 text-[20px] font-semibold leading-none text-content">
+                  {billing.messagesSent.toLocaleString("en-GB")}
+                </p>
+                <p className="mt-2 text-[12px] text-content-muted">
+                  All channels this period. Shown for reference; only SMS segments count
+                  against the SMS allowance.
+                </p>
+              </div>
               <UsageCard
                 icon={Users}
                 label="Team members"
@@ -445,9 +585,22 @@ export function BillingSettings({
               </span>
             </p>
             <p className="text-[13px] text-content-muted">
-              {STATUS_COPY[billing.status] ??
+              {STATE_COPY[billing.state] ??
+                STATUS_COPY[billing.status] ??
                 "Your subscription state is shown as Stripe reports it."}
             </p>
+            {billing.status === "TRIALING" && billing.trialEndsAt ? (
+              <p className="text-[13px] text-content">
+                Trial ends {formatDate(billing.trialEndsAt)}
+              </p>
+            ) : null}
+            {billing.paymentMethod ? (
+              <p className="flex items-center gap-1.5 text-[13px] text-content-secondary">
+                <CreditCard className="size-3.5" aria-hidden />
+                <span className="capitalize">{billing.paymentMethod.brand}</span> ending{" "}
+                {billing.paymentMethod.last4}, verified by Stripe
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 

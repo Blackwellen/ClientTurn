@@ -366,6 +366,7 @@ function socialInput(overrides: Partial<PolicyInput> = {}): PolicyInput {
     withinMonthlyCap: true,
     withinBudget: true,
     localTime: { hour: 10, minute: 0 },
+    withinWhatsAppWindow: false,
     pack: UK_PACK_0077,
     ...overrides,
   };

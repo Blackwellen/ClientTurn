@@ -7,7 +7,8 @@ import {
   EntitlementError,
 } from "@/lib/billing/entitlements";
 import { nextPermittedSendTime } from "@/lib/automation/scheduler";
-import { resolveAudience } from "@/lib/campaigns/queries";
+import { loadReactivationAllowance, resolveAudience } from "@/lib/campaigns/queries";
+import { reactivationLimitProblem } from "@/lib/campaigns/reactivation-limit";
 import { audienceFilterSchema } from "@/lib/campaigns/types";
 import { loadBusinessContext, queueNotification } from "./shared";
 import { parsePayload } from "./parse";
@@ -87,7 +88,12 @@ export async function handleCampaignExpand(job: ClaimedJob) {
   }
 
   const filter = audienceFilterSchema.parse(campaign.filter_config ?? {});
-  const channel = campaign.channel === "whatsapp" ? "whatsapp" : "sms";
+  // An email campaign's audience is the leads with an email address, checked
+  // against the email suppression list -- not the ones with a mobile.
+  const channel =
+    campaign.channel === "whatsapp" || campaign.channel === "email"
+      ? campaign.channel
+      : "sms";
 
   // Recomputed here rather than trusting the audience stored at review time.
   const { eligibleLeadIds } = await resolveAudience(
@@ -96,6 +102,44 @@ export async function handleCampaignExpand(job: ClaimedJob) {
     channel,
     admin,
   );
+
+  // The plan's reactivation allowance, against the contacts this expansion
+  // would add (rows already in the campaign were counted when added). Over it,
+  // the campaign pauses with a plan-limit notice rather than part-sending.
+  const { data: existingRows, error: existingError } = await admin
+    .from("campaign_contacts")
+    .select("lead_id")
+    .eq("business_id", campaign.business_id)
+    .eq("campaign_id", campaign.id)
+    .limit(10_000);
+  if (existingError) {
+    throw new Error(`Could not read campaign ${campaign.id} contacts: ${existingError.message}`);
+  }
+  const already = new Set((existingRows ?? []).map((row) => row.lead_id));
+  const adding = eligibleLeadIds.filter((leadId) => !already.has(leadId)).length;
+  const limitProblem = reactivationLimitProblem(
+    await loadReactivationAllowance(campaign.business_id),
+    adding,
+  );
+  if (limitProblem) {
+    await admin
+      .from("campaigns")
+      .update({ status: "PAUSED", paused_at: new Date().toISOString() })
+      .eq("id", campaign.id)
+      .eq("business_id", campaign.business_id);
+    await queueNotification({
+      businessId: campaign.business_id,
+      type: "billing",
+      severity: "warning",
+      title: "A campaign was paused at your plan limit",
+      body: limitProblem,
+      entityType: "campaign",
+      entityId: campaign.id,
+      linkUrl: `/app/reactivation?campaign=${campaign.id}`,
+      dedupeKey: `campaign_limit:${campaign.id}`,
+    });
+    return;
+  }
 
   const intervalMs = Math.max(
     1000,

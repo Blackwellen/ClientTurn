@@ -6,7 +6,7 @@ import { Play, ShieldAlert } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { EventStatusBadge } from "@/components/admin/ui";
-import { formatDateTime, formatRelative } from "@/lib/admin/format";
+import { formatDateTime, formatRelative } from "@/lib/dates";
 import type { EventDetail } from "@/lib/admin/types";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -80,13 +80,13 @@ export function EventDetailDrawer({
             )}
           </Row>
           <Row label="Received">
-            {formatDateTime(detail.receivedAt)}{" "}
+            {formatDateTime(detail.receivedAt, { year: true })}{" "}
             <span className="text-content-muted">
-              ({formatRelative(detail.receivedAt)})
+              ({formatRelative(detail.receivedAt, { style: "ago" })})
             </span>
           </Row>
           <Row label="Processed">
-            {detail.processedAt ? formatDateTime(detail.processedAt) : "—"}
+            {detail.processedAt ? formatDateTime(detail.processedAt, { year: true }) : "—"}
           </Row>
         </dl>
 

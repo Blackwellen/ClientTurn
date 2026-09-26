@@ -1,10 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
-import { enqueue } from "@/lib/jobs/queue";
 import { getLiveAccessToken, type OAuthConfig } from "@/lib/integrations/oauth";
 import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
 import { registerLeadSourcePoller } from "@/lib/integrations/providers/lead-source-registry";
+import { ingestLead } from "@/lib/ingest/service";
 
 /**
  * TikTok for Business (Marketing API). Docs: business-api.tiktok.com/portal —
@@ -32,19 +32,26 @@ const TOKEN_URL = "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_t
 const ADVERTISER_URL = "https://business-api.tiktok.com/open_api/v1.3/oauth2/advertiser/get/";
 
 /**
- * ASSUMPTION — could not be confirmed from a fetchable source. Every guide
- * describes downloading instant-form leads from Ads Manager UI or via a CRM
- * partner integration, but none gave the exact polling endpoint path/params
- * for the raw Marketing API. `page/lead/get` follows the `/open_api/v1.3/`
- * naming convention used by every other endpoint above and by TikTok's own
- * `page/get` (page/creative asset) family, but must be verified against a
- * live sandbox app — with real TIKTOK_APP_ID/TIKTOK_APP_SECRET credentials,
- * which are unset in this environment — before this integration is offered
- * to a customer. Until then this poller fails soft: a bad path 404s, the
- * catch in lead-source-poll.ts marks the integration ACTION_REQUIRED, and no
- * lead is silently dropped or fabricated.
+ * Confirmed 2026-09-12 against a real registered app in the TikTok for
+ * Business developer portal (business-api.tiktok.com/portal/apps) — its
+ * "Lead management" scope lists the actual v2.0 API surface: `/lead/get/`,
+ * `/lead/field/get/`, `/page/field/get/`, `/page/lead/task/` and
+ * `/page/lead/task/download/`. The earlier `page/lead/get/` guess (following
+ * the naming pattern of other endpoints) does not exist — this replaces it
+ * with the real path. `/lead/get/` is the direct per-advertiser fetch and is
+ * used here; `/page/lead/task/` + `/page/lead/task/download/` is a separate
+ * bulk-export flow (submit a task, then download its result) that this
+ * poller does not need.
+ *
+ * The exact request/response shape for `/lead/get/` is still unverified — no
+ * live app has completed TikTok's review (apps stay in "Pending" status for
+ * up to 3 days per their own developer portal, and the client key/secret
+ * needed to make a real call are withheld until then). Until a live call
+ * confirms the shape, this poller keeps failing soft: a wrong path or shape
+ * errors out, the catch in lead-source-poll.ts marks the integration
+ * ACTION_REQUIRED, and no lead is silently dropped or fabricated.
  */
-const LEADS_URL = "https://business-api.tiktok.com/open_api/v1.3/page/lead/get/";
+const LEADS_URL = "https://business-api.tiktok.com/open_api/v1.3/lead/get/";
 
 type TikTokFieldDatum = { name?: string; value?: string };
 type TikTokLead = {
@@ -121,42 +128,23 @@ function fieldValue(fields: TikTokFieldDatum[] | undefined, ...names: string[]):
   return fields.find((field) => field.name && wanted.has(field.name.toLowerCase()))?.value;
 }
 
-async function ingestLead(businessId: string, lead: TikTokLead): Promise<void> {
+/**
+ * One TikTok lead through the one intake path (design 03 §1). A database
+ * failure throws (B13), so the poll fails before its cursor is advanced past
+ * this lead. `create_time` is not passed as the submission time: TikTok's
+ * format and time zone for it are not verified here, and a wrong timestamp is
+ * worse than none.
+ */
+async function ingestTikTokLead(businessId: string, lead: TikTokLead): Promise<void> {
   if (!lead.lead_id) return;
 
-  const admin = createAdminClient();
-  const externalId = `tiktok:${lead.lead_id}`;
-
-  const firstName = fieldValue(lead.field_data, "first_name", "name");
-  const lastName = fieldValue(lead.field_data, "last_name");
-  const phone = fieldValue(lead.field_data, "phone_number", "phone");
-  const email = fieldValue(lead.field_data, "email");
-
-  const { data: created, error } = await admin
-    .from("leads")
-    .insert({
-      business_id: businessId,
-      external_id: externalId,
-      first_name: firstName ?? null,
-      last_name: lastName ?? null,
-      phone: phone ?? null,
-      email: email ?? null,
-      status: "NEW",
-    })
-    .select("id")
-    .single();
-
-  // Unique violation on (business_id, external_id) means this lead was
-  // already ingested by a previous poll — not an error.
-  if (error?.code === "23505" || !created) return;
-  if (error) throw error;
-
-  await enqueue(
-    "lead.process",
+  const result = await ingestLead(
     {
-      leadId: created.id,
+      businessId,
       source: {
+        type: "AD_FORM",
         provider: "tiktok_ads",
+        providerRecordId: lead.lead_id,
         pageId: lead.page_id,
         pageName: lead.page_name,
         formId: lead.form_id,
@@ -165,10 +153,25 @@ async function ingestLead(businessId: string, lead: TikTokLead): Promise<void> {
         campaignName: lead.campaign_name,
         adId: lead.ad_id,
         adName: lead.ad_name,
+        caller: { type: "SYSTEM", id: "tiktok_ads_poller" },
+      },
+      person: {
+        firstName: fieldValue(lead.field_data, "first_name", "name"),
+        lastName: fieldValue(lead.field_data, "last_name"),
+        phone: fieldValue(lead.field_data, "phone_number", "phone"),
+        email: fieldValue(lead.field_data, "email"),
       },
     },
-    { businessId, idempotencyKey: `lead.process:${externalId}` },
+    { externalId: `tiktok:${lead.lead_id}` },
   );
+
+  if (result.outcome === "INVALID") {
+    console.warn("[tiktok_ads] lead had no usable contact point", {
+      businessId,
+      leadId: lead.lead_id,
+      reasons: result.reasons,
+    });
+  }
 }
 
 registerLeadSourcePoller("tiktok_ads", {
@@ -210,7 +213,7 @@ registerLeadSourcePoller("tiktok_ads", {
     const leads = json?.data?.leads ?? [];
 
     for (const lead of leads) {
-      await ingestLead(businessId, lead);
+      await ingestTikTokLead(businessId, lead);
     }
 
     const latest = leads

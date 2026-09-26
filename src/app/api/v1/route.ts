@@ -37,6 +37,12 @@ export function GET() {
     endpoints: [
       { method: "GET", path: "/api/v1/me", scope: "business:read" },
       { method: "GET", path: "/api/v1/leads", scope: "leads:read" },
+      {
+        method: "POST",
+        path: "/api/v1/leads",
+        scope: "leads:write",
+        note: "Requires an Idempotency-Key header. 201 CREATED; 200 MERGED, DUPLICATE, SUPPRESSED or REVIEW; 409 REJECTED (a suppressed contact: nothing stored); 422 INVALID.",
+      },
       { method: "GET", path: "/api/v1/leads/{id}", scope: "leads:read" },
       { method: "PATCH", path: "/api/v1/leads/{id}", scope: "leads:write" },
       { method: "GET", path: "/api/v1/events", scope: "business:read" },

@@ -131,6 +131,42 @@ export async function listBookings(
   };
 }
 
+/**
+ * Requested times no calendar confirmed (B10, decision Q1). They hold their
+ * slot, and the lead was told a person will confirm, so they are listed
+ * soonest-first for the team to confirm or decline. Past ones are included:
+ * a request nobody answered is still unanswered.
+ *
+ * Unlike `listBookings`, a failed read is reported rather than shown as
+ * "nothing waiting", because an empty list here tells the operator there is
+ * nothing to do.
+ */
+export async function listPendingBookings(
+  businessId: string,
+  limit: number,
+): Promise<{ rows: BookingListRow[]; total: number; failed: boolean }> {
+  const supabase = await createClient();
+  const [members, result] = await Promise.all([
+    getWorkspaceMembers(businessId),
+    supabase
+      .from("bookings")
+      .select(SELECT, { count: "exact" })
+      .eq("business_id", businessId)
+      .eq("status", "pending")
+      .order("starts_at", { ascending: true, nullsFirst: false })
+      .limit(limit),
+  ]);
+
+  if (result.error) return { rows: [], total: 0, failed: true };
+
+  const byId = new Map(members.map((member) => [member.userId, member]));
+  return {
+    rows: ((result.data ?? []) as unknown as RawBooking[]).map((raw) => toRow(raw, byId)),
+    total: result.count ?? 0,
+    failed: false,
+  };
+}
+
 function monthKeyNow(timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,

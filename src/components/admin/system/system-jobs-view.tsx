@@ -34,7 +34,8 @@ import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { JobDetailDrawer } from "./job-detail-drawer";
 import { cancelJob, moveJobToDeadLetter, retryJob } from "@/lib/admin/job-actions";
-import { formatChange, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatChange, formatNumber } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import {
   ADMIN_RANGES,
   ADMIN_RANGE_LABEL,
@@ -310,7 +311,7 @@ export function SystemJobsView({
                         {group.label}
                       </span>
                       <span className="block truncate text-[11.5px] text-content-subtle">
-                        Oldest {formatRelative(group.oldestAt)}
+                        Oldest {formatRelative(group.oldestAt, { style: "ago" })}
                       </span>
                     </span>
                   </button>
@@ -537,10 +538,10 @@ export function SystemJobsView({
                           {job.attempts} / {job.maxAttempts}
                         </td>
                         <td className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {formatRelative(job.createdAt)}
+                          {formatRelative(job.createdAt, { style: "ago" })}
                         </td>
                         <td className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {job.startedAt ? formatRelative(job.startedAt) : "—"}
+                          {job.startedAt ? formatRelative(job.startedAt, { style: "ago" }) : "—"}
                         </td>
                         <td className="lr-tabular px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-secondary">
                           {formatDuration(job.durationMs)}

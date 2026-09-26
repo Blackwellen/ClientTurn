@@ -7,6 +7,7 @@ import {
   type EmailAccountConfig,
 } from "./account";
 import { fetchPop3Messages, verifyPop3 } from "./pop3";
+import { extractFeedbackReport, type ContentTypeHeaderLike } from "./feedback-report";
 import type { EmailCredentials } from "./store";
 
 /**
@@ -27,6 +28,15 @@ export type InboundEmail = {
   messageId: string | null;
   /** Present when the mail is a bounce/auto-reply rather than a human. */
   autoSubmitted: boolean;
+  /**
+   * The ARF `message/feedback-report` part, which the parser delivers as an
+   * attachment and so never reaches `text`. Empty string when the top-level
+   * Content-Type declares a feedback report but the part is missing; null
+   * for any other mail. See `./feedback-report`.
+   */
+  feedbackReport: string | null;
+  /** The reported original message attached to a feedback report, if any. */
+  reportedMessage: string | null;
 };
 
 export type InboundCursor = EmailAccountConfig["cursor"];
@@ -89,6 +99,12 @@ async function parseRaw(raw: string | Buffer, uid: string): Promise<InboundEmail
     return typeof value === "string" ? value : null;
   };
 
+  const report = extractFeedbackReport({
+    // mailparser returns this header structured ({ value, params }).
+    contentType: parsed.headers.get("content-type") as unknown as ContentTypeHeaderLike,
+    attachments: parsed.attachments,
+  });
+
   return {
     uid,
     from: addressFromHeader(parsed.from?.value?.[0]?.address ?? parsed.from?.text),
@@ -102,6 +118,8 @@ async function parseRaw(raw: string | Buffer, uid: string): Promise<InboundEmail
       from: parsed.from?.text ?? null,
       returnPath: headerValue("return-path"),
     }),
+    feedbackReport: report.feedbackReport,
+    reportedMessage: report.reportedMessage,
   };
 }
 
@@ -116,6 +134,12 @@ async function fetchImap(
     host: config.inbound.host!,
     port: config.inbound.port!,
     secure: config.inbound.secure,
+    // Without this, imapflow's default is *opportunistic* STARTTLS: it falls
+    // back to a plaintext session (and a plaintext login) if the upgrade
+    // fails or a man-in-the-middle strips the capability. Mirrors `requireTLS`
+    // on the SMTP side (smtp.ts) — a non-direct-TLS connection must upgrade or
+    // fail, never silently send the password in the clear.
+    doSTARTTLS: config.inbound.secure ? undefined : true,
     auth: { user: config.inbound.username!, pass: password },
     logger: false,
     tls: { minVersion: "TLSv1.2" },
@@ -293,6 +317,7 @@ export async function verifyInbound(
       host: config.inbound.host,
       port: config.inbound.port,
       secure: config.inbound.secure,
+      doSTARTTLS: config.inbound.secure ? undefined : true,
       auth: { user: config.inbound.username, pass: password },
       logger: false,
       tls: { minVersion: "TLSv1.2" },

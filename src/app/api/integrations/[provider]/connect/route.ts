@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth/session";
 import { createOAuthState, buildAuthorizeUrl } from "@/lib/integrations/oauth";
 import { getOAuthProviderConfig, isOAuthProvider } from "@/lib/integrations/providers/registry";
+import { OAUTH_RETURN_COOKIE, safeOAuthReturnPath } from "@/lib/integrations/catalog";
 // Populates that registry. Without it every provider is "unknown" here.
 import "@/lib/integrations/providers/all";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * admin or owner may connect a new external account to the workspace.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
@@ -36,13 +37,37 @@ export async function GET(
     );
   }
 
-  const { state, codeVerifier } = await createOAuthState(
-    provider,
-    workspace.businessId,
-    workspace.userId,
-    config,
-  );
+  let state: string;
+  let codeVerifier: string | null;
+  try {
+    ({ state, codeVerifier } = await createOAuthState(
+      provider,
+      workspace.businessId,
+      workspace.userId,
+      config,
+    ));
+  } catch (error) {
+    console.error(`[integrations/${provider}/connect] Could not start OAuth state:`, error);
+    return NextResponse.json(
+      { error: "Could not start this connection. Try again in a moment." },
+      { status: 500 },
+    );
+  }
+
   const authorizeUrl = buildAuthorizeUrl(provider, config, state, codeVerifier);
 
-  return NextResponse.redirect(authorizeUrl);
+  const response = NextResponse.redirect(authorizeUrl);
+  // Started from onboarding: come back there rather than to Settings. Only an
+  // allowlisted path is ever stored (see safeOAuthReturnPath).
+  const returnPath = safeOAuthReturnPath(request.nextUrl.searchParams.get("return"));
+  if (returnPath) {
+    response.cookies.set(OAUTH_RETURN_COOKIE, returnPath, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/integrations",
+      maxAge: 15 * 60,
+    });
+  }
+  return response;
 }

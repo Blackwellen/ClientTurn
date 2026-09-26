@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/dates";
 import {
   CAMPAIGN_PRIORITIES,
   campaignStatusLabel,
@@ -309,14 +310,6 @@ function describeObjective(campaign: HeaderData): string | null {
   if (!campaign.conversionGoalLabel) return null;
   const where = campaign.serviceName ? ` for ${campaign.serviceName}` : "";
   return `Outreach${where} to generate ${campaign.conversionGoalLabel.toLowerCase()} outcomes.`;
-}
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 function relative(value: string): string {

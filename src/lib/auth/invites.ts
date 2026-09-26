@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { inviteExpired } from "@/lib/team/rules";
 
 /**
  * Turns pending invitations into real memberships once the invited person has
@@ -20,16 +21,20 @@ export async function activatePendingInvites(
   const admin = createAdminClient();
   const normalised = email.trim().toLowerCase();
 
-  const { data: pending } = await admin
+  const { data: pending, error: readError } = await admin
     .from("business_members")
-    .select("id, business_id, role, invited_email")
+    .select("id, business_id, role, invited_email, invited_at")
     .eq("user_id", userId)
     .eq("status", "invited");
 
-  if (!pending || pending.length === 0) return 0;
+  if (readError || !pending || pending.length === 0) return 0;
 
+  // A lapsed invitation is not accepted: the admin resends it, which restarts
+  // the clock (INVITE_TTL_DAYS in @/lib/team/rules).
   const matching = pending.filter(
-    (row) => (row.invited_email ?? "").trim().toLowerCase() === normalised,
+    (row) =>
+      (row.invited_email ?? "").trim().toLowerCase() === normalised &&
+      !inviteExpired(row.invited_at),
   );
   if (matching.length === 0) return 0;
 

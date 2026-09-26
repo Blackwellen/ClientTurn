@@ -6,9 +6,9 @@ import type { ProviderType } from "./catalog";
 
 /**
  * Shared OAuth2 authorization-code plumbing. Every workspace-connected
- * provider (Google Ads, Microsoft Advertising, TikTok, LinkedIn, Slack, Zoho)
- * uses the same shape: build an authorize URL with a CSRF state token, verify
- * that state on callback, exchange the code, store the result.
+ * provider (Google Ads, TikTok, LinkedIn, Slack, Zoho) uses the same shape:
+ * build an authorize URL with a CSRF state token, verify that state on
+ * callback, exchange the code, store the result.
  *
  * HubSpot is deliberately not built on this — it uses a customer-pasted
  * private-app token instead of a redirect flow.
@@ -51,13 +51,28 @@ export async function createOAuthState(
   const codeVerifier = config?.usePkce ? randomBytes(32).toString("base64url") : null;
   const admin = createAdminClient();
 
-  await admin.from("integration_oauth_states").insert({
+  const { error } = await admin.from("integration_oauth_states").insert({
     state,
     provider_type: provider,
     business_id: businessId,
     user_id: userId,
     code_verifier: codeVerifier,
   });
+
+  // This was previously unchecked: a failed insert still returned a
+  // seemingly-valid state, sent the customer through the whole provider
+  // consent screen, and only failed on the way back with no error anywhere
+  // to explain why -- the callback simply couldn't find the row and refused
+  // the whole connection as untrusted. Throwing here fails at the one point
+  // where it can still be shown to the person clicking Connect, instead of
+  // after they've re-authenticated with a third party for nothing.
+  if (error) {
+    console.error(
+      `[oauth] Failed to persist OAuth state for ${provider} (business ${businessId}):`,
+      error,
+    );
+    throw new Error(`Could not start the ${provider} connection. Try again in a moment.`);
+  }
 
   return { state, codeVerifier };
 }

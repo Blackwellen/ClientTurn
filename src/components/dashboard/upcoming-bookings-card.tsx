@@ -11,7 +11,7 @@ import { CardActionLink } from "./card-action-link";
 import { BookingOutcomeControl } from "./booking-outcome-control";
 
 /** "THU" over "4 SEP", in the workspace's own timezone. */
-function dateBlock(value: string | null, timezone: string) {
+export function dateBlock(value: string | null, timezone: string) {
   if (!value) return { weekday: "—", day: "" };
   const date = new Date(value);
   const part = (options: Intl.DateTimeFormatOptions) =>
@@ -24,7 +24,7 @@ function dateBlock(value: string | null, timezone: string) {
   };
 }
 
-function timeRange(row: BookingListRow, timezone: string) {
+export function timeRange(row: BookingListRow, timezone: string) {
   if (!row.startsAt) return "Not scheduled";
   const start = formatTimeInZone(row.startsAt, timezone);
   if (!row.endsAt) return start;

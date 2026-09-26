@@ -65,11 +65,38 @@ function openSocket(options: Pop3Options): Promise<Socket | TLSSocket> {
 }
 
 /**
+ * Upgrades a plain socket to TLS in place, after the server has agreed to
+ * STLS. Detaches the plain socket's listeners first: once the connection
+ * reader built on top of it hands over, nothing else may read from it.
+ */
+function upgradeToTls(socket: Socket, options: Pop3Options): Promise<TLSSocket> {
+  return new Promise((resolve, reject) => {
+    socket.removeAllListeners("data");
+    socket.removeAllListeners("error");
+    socket.removeAllListeners("timeout");
+
+    const tlsSocket = tlsConnect(
+      { socket, host: options.host, servername: options.host, minVersion: "TLSv1.2" },
+      () => resolve(tlsSocket),
+    );
+    tlsSocket.setTimeout(TIMEOUT_MS);
+    tlsSocket.once("error", reject);
+    tlsSocket.once("timeout", () => {
+      tlsSocket.destroy();
+      reject(new Pop3Error("The mail server did not respond.", "ETIMEDOUT"));
+    });
+  });
+}
+
+/**
  * POP3 framing: a single-line reply ends at the first CRLF; a multi-line reply
  * ends at a lone "." on its own line, with leading dots on content lines
  * un-stuffed by the caller.
  */
-function createConnectionReader(socket: Socket | TLSSocket): Connection {
+function createConnectionReader(
+  socket: Socket | TLSSocket,
+  expectGreeting = true,
+): Connection {
   let buffer = "";
   let pending:
     | {
@@ -132,13 +159,18 @@ function createConnectionReader(socket: Socket | TLSSocket): Connection {
     settle();
   });
 
-  const greeting = new Promise<void>((resolve, reject) => {
-    pending = {
-      multiline: false,
-      resolve: () => resolve(),
-      reject,
-    };
-  });
+  // After an STLS upgrade the reader is rebuilt on the new TLS socket, and
+  // there is no second greeting to wait for — the server goes straight from
+  // the STLS "+OK" into the handshake, then back to the command stream.
+  const greeting = expectGreeting
+    ? new Promise<void>((resolve, reject) => {
+        pending = {
+          multiline: false,
+          resolve: () => resolve(),
+          reject,
+        };
+      })
+    : Promise.resolve();
 
   return {
     async send(command: string, multiline = false) {
@@ -159,6 +191,39 @@ function createConnectionReader(socket: Socket | TLSSocket): Connection {
   };
 }
 
+/**
+ * Connects and, unless already on direct TLS, requires the server to upgrade
+ * via STLS (RFC 2595) before any command that could carry a credential runs.
+ * Refuses rather than falling back to plaintext: a server that does not
+ * offer STLS on a non-TLS port is a downgrade waiting to happen, and this
+ * client would rather fail loudly than mail a password across the network in
+ * the clear. Mirrors `requireTLS` on the SMTP side (smtp.ts) and `doSTARTTLS`
+ * on the IMAP side (inbound.ts) — the same rule for every protocol.
+ */
+async function openConnection(options: Pop3Options): Promise<Connection> {
+  const socket = await openSocket(options);
+
+  if (options.secure) {
+    return createConnectionReader(socket);
+  }
+
+  const plain = socket as Socket;
+  const insecure = createConnectionReader(plain);
+
+  try {
+    await insecure.send("STLS");
+  } catch {
+    plain.destroy();
+    throw new Pop3Error(
+      "This mail server does not support an encrypted upgrade (STLS), so the connection was refused rather than sending the password in the clear. Use the provider's direct-TLS incoming port instead (usually 995).",
+      "stls_unsupported",
+    );
+  }
+
+  const tls = await upgradeToTls(plain, options);
+  return createConnectionReader(tls, false);
+}
+
 export type Pop3Message = { uid: string; index: number; raw: string };
 
 /**
@@ -172,8 +237,7 @@ export async function fetchPop3Messages(
   after: string | null,
   limit = 25,
 ): Promise<{ messages: Pop3Message[]; lastUid: string | null }> {
-  const socket = await openSocket(options);
-  const connection = createConnectionReader(socket);
+  const connection = await openConnection(options);
 
   try {
     await connection.send(`USER ${options.username}`);
@@ -222,8 +286,7 @@ export async function fetchPop3Messages(
 
 /** Authenticates and disconnects, for the "test connection" button. */
 export async function verifyPop3(options: Pop3Options): Promise<void> {
-  const socket = await openSocket(options);
-  const connection = createConnectionReader(socket);
+  const connection = await openConnection(options);
   try {
     await connection.send(`USER ${options.username}`);
     await connection.send(`PASS ${options.password}`);

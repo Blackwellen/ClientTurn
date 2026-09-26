@@ -175,6 +175,11 @@
   /* Solid dark-green fill for the workspace/environment icon glyph boxes,
      matched against the approved reference mockups. */
   --ct-shell-icon-bg: #0c3d0e;
+
+  /* Chevron for the native <select> fallback (Select native mode). A data
+     URI cannot read currentColor, so the colour is a token that the dark
+     scope below redefines -- the old inline style hard-coded the light grey. */
+  --lr-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8f' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* ClientTurn renders light, always. There is no dark theme and no system
@@ -225,6 +230,8 @@
   --lr-shadow-md: 0 4px 10px -2px rgb(0 0 0 / 0.5);
   --lr-shadow-lg: 0 14px 22px -6px rgb(0 0 0 / 0.55);
   --lr-shadow-xl: 0 24px 32px -8px rgb(0 0 0 / 0.6);
+
+  --lr-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa7b8' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* ------------------------------------------------------- auth surface ---
@@ -316,6 +323,42 @@
   .ct-auth-float,
   .ct-auth-shimmer,
   .ct-auth-glow-breathe {
+    animation: none !important;
+  }
+}
+
+/* Product-tour leader line (Phase 8.29): the line draws from the caption to
+   the target, then the dot at the target end pops in. The path uses
+   pathLength=1, so the dash offset runs 1 -> 0 whatever its real length. */
+@keyframes ct-tour-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ct-tour-dot {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.ct-tour-draw {
+  animation: ct-tour-draw 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ct-tour-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ct-tour-dot 240ms ease-out 360ms both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ct-tour-draw,
+  .ct-tour-dot {
     animation: none !important;
   }
 }

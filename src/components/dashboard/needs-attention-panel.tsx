@@ -39,7 +39,7 @@ const KIND_ICON: Record<
   out_of_area: MapPinOff,
   review: SearchCheck,
   no_response: Clock,
-  meta: PlugZap,
+  lead_source: PlugZap,
   messaging: MessageSquareX,
   booking: CalendarX,
   followup: Rocket,
@@ -62,7 +62,7 @@ export function NeedsAttentionPanel({ items }: { items: AttentionItem[] }) {
   const rows = items.slice(0, MAX_ROWS);
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex h-full flex-col" data-tour="dashboard-needs-attention">
       <CardHeader>
         <SectionHeader
           title="Needs attention"

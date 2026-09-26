@@ -1,6 +1,10 @@
 import "server-only";
+import type { EmailOrigin } from "../../email-origin";
 import type { Capability } from "../../cost-model";
 import type { SearchPlan } from "../../plan";
+import type { IntentEvidence, IntentEvidenceKind } from "../../intent-evidence";
+import type { TechnologyKey } from "../../website-signals";
+import type { LinkedinFilters } from "../../linkedin-filters";
 
 /**
  * The sourcing provider contract.
@@ -54,6 +58,15 @@ export type CompanyCandidate = {
     lat: number | null;
     lon: number | null;
   };
+  /**
+   * Position usable at query time only, and never persisted.
+   *
+   * Set by Google Places, whose terms (ToS §3.2.3; Service Specific Terms) do
+   * not allow its coordinates to be stored beyond 30 days. The run uses it to
+   * test the plan's radius when the candidate is found and stores only the
+   * verdict. See `../company-provenance.ts`.
+   */
+  discoveryOnly?: { lat: number | null; lon: number | null };
 };
 
 export type ContactCandidate = {
@@ -62,6 +75,11 @@ export type ContactCandidate = {
   lastName: string | null;
   roleTitle: string | null;
   email: string | null;
+  /**
+   * Where the provider says the address came from (§26). Absent = the
+   * provider's default (`originForProvider`). PATTERN_INFERRED = guessed.
+   */
+  emailOrigin?: EmailOrigin;
   /**
    * Optional, and deliberately not persisted from a sourced record.
    *
@@ -128,13 +146,39 @@ export type IntentCategoryQuery = {
   keywords: string[];
 };
 
+/**
+ * The structured signals the intent stage asks for, beyond keyword categories.
+ * Each provider fetches only the kinds it can serve and ignores the rest.
+ */
+export type IntentWants = {
+  kinds: IntentEvidenceKind[];
+  /** Roles to look for on careers pages (HIRING). */
+  hiringRoles: string[];
+  /** Technologies to fingerprint (TECHNOLOGY). */
+  technologies: TechnologyKey[];
+};
+
 export type IntentResult = {
-  /** Matches a category name from the plan's intent list. */
-  category: string;
+  /**
+   * The plan category a keyword match belongs to. Null for structured
+   * evidence (a register filing, a careers-page role), which the run files
+   * under whichever category collects its kind.
+   */
+  category: string | null;
   domain: string;
+  /** When the evidenced thing happened, where the source dates it. */
   observedAt: string;
   strength: number;
   sourceUrl: string | null;
+  /** Kind, source, reference, date and matched text: shown as "why this lead". */
+  evidence: IntentEvidence;
+};
+
+/** A company the intent stage is checking, with what the register knows of it. */
+export type IntentCompany = {
+  domain: string;
+  /** Companies House number, set when enrichment matched the register. */
+  registrationId: string | null;
 };
 
 /** What every provider call returns, so cost and failure are handled uniformly. */
@@ -205,6 +249,8 @@ export type SourcingProvider = {
     /** Set for providers that read something the workspace itself supplied,
      *  such as an uploaded LinkedIn export. Ignored by pure API providers. */
     businessId?: string;
+    /** The plan's Sales Navigator filters. Read by the LinkedIn adapter only. */
+    linkedin?: LinkedinFilters;
   }) => Promise<ProviderResponse<ContactCandidate>>;
   enrichCompanies?: (input: {
     companies: CompanyCandidate[];
@@ -231,6 +277,10 @@ export type SourcingProvider = {
      *  each. Matching on a bare category name would be guesswork. */
     categories: IntentCategoryQuery[];
     freshnessDays: number;
+    /** Structured signals requested. Absent means keyword categories only. */
+    wants?: IntentWants;
+    /** Register identity per domain, for sources that key on it. */
+    companies?: IntentCompany[];
   }) => Promise<ProviderResponse<IntentResult>>;
 };
 

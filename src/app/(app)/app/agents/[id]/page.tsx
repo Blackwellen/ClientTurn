@@ -12,10 +12,9 @@ import {
   getAgentLeads,
   getAgentQueue,
 } from "@/lib/agents/queries";
+import { agentRunState } from "@/lib/agents/policy";
 import {
   TAB_LABELS,
-  agentStatusLabel,
-  agentStatusTone,
   agentTypeLabel,
   cadenceLabel,
   tabsForType,
@@ -70,7 +69,7 @@ export default async function AgentPage({
   const needsRuns = tab === "overview" || tab === "queue";
   const supabase = await createClient();
 
-  const [queue, activity, leads, runsResult] = await Promise.all([
+  const [queue, activity, leads, runsResult, plansResult] = await Promise.all([
     tab === "queue" ? getAgentQueue(workspace.businessId, id) : Promise.resolve([]),
     tab === "overview" || tab === "activity"
       ? getAgentActivity(workspace.businessId, id, tab === "activity" ? 100 : 10)
@@ -85,7 +84,22 @@ export default async function AgentPage({
           .order("created_at", { ascending: false })
           .limit(25)
       : Promise.resolve({ data: [] }),
+    tab === "settings" && canManage
+      ? supabase
+          .from("search_strategies")
+          .select("id, version, search_sessions!search_strategies_session_id_fkey(title)")
+          .eq("business_id", workspace.businessId)
+          .eq("status", "APPROVED")
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  if ("error" in runsResult && runsResult.error) throw new Error("Agent runs could not be loaded.");
+  if (plansResult.error) throw new Error("Approved search plans could not be loaded.");
+  const plans = (plansResult.data ?? []).map((plan) => ({
+    id: plan.id,
+    name: `${plan.search_sessions?.title ?? "Approved search"} · v${plan.version}`,
+  }));
+  const runState = agentRunState(agent);
 
   const runs = (runsResult.data ?? []).map((run) => ({
     id: run.id,
@@ -120,15 +134,18 @@ export default async function AgentPage({
               {agent.name}
             </h1>
             <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-content-muted">
-              <Badge tone={agentStatusTone(agent.status)} dot>
-                {agentStatusLabel(agent.status)}
+              <Badge tone={runState.tone} dot>
+                {runState.label}
               </Badge>
               {cadenceLabel(agent.cadence)}
             </p>
+            {runState.hint && (
+              <p className="mt-1 text-[12px] text-content-muted">{runState.hint}</p>
+            )}
           </div>
         </div>
 
-        {canManage && <AgentControls id={id} status={agent.status} />}
+        {canManage && <AgentControls id={id} status={agent.status} cadence={agent.cadence} />}
       </header>
 
       {agent.statusReason && (
@@ -164,7 +181,8 @@ export default async function AgentPage({
         <SettingsTab
           agent={agent}
           canManage={canManage}
-          controls={<AgentControls id={id} status={agent.status} />}
+          controls={<AgentControls id={id} status={agent.status} cadence={agent.cadence} />}
+          plans={plans}
         />
       )}
     </div>

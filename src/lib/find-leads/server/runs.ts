@@ -3,9 +3,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit, recordUsage } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { estimateRunCost } from "../cost-model";
-import { checkPlanReadiness, describePlan, formatMinor, type SearchPlan } from "../plan";
+import {
+  checkPlanReadiness,
+  describePlan,
+  formatMinor,
+  planWantsIntent,
+  type SearchPlan,
+} from "../plan";
 import { upsertStrategySignal } from "./signals";
-import type { SignalKind } from "../signals";
+import { signalKindForPlan, type SignalKind } from "../signals";
 import { currentStageNumber, progressPercent, STAGES, type StageKey } from "../stages";
 import {
   EMPTY_COUNTERS,
@@ -106,8 +112,8 @@ async function autoContactPermitted(
  * slice of the profile.
  */
 function signalKindFor(plan: SearchPlan): SignalKind {
-  if (plan.intent.categories.length > 0) return "KEYWORD";
-  return "ICP_TOP";
+  // The rule lives with the signal vocabulary, where it is tested.
+  return signalKindForPlan(plan);
 }
 
 export async function createRun(input: {
@@ -118,6 +124,14 @@ export async function createRun(input: {
   agentId?: string;
   plan: SearchPlan;
   triggerSource?: "MANUAL" | "RECURRING";
+  /**
+   * Agent runs only: the providers this run must not use (the agent's
+   * unselected sources), and which READY prospects an auto-contact run may
+   * enrol without review. Both are stored on the run so a resumed invocation
+   * honours the same limits it was created with.
+   */
+  excludedProviders?: string[];
+  enrolment?: "ALL" | "KNOWN_COMPANIES";
 }): Promise<CreateRunResult> {
   const readiness = checkPlanReadiness(input.plan);
   if (!readiness.ready) {
@@ -135,7 +149,8 @@ export async function createRun(input: {
     }
   }
 
-  const intentEnabled = input.plan.intent.categories.length > 0;
+  // Structured signals (register filings, careers pages) count as intent too.
+  const intentEnabled = planWantsIntent(input.plan);
   const budget = await resolveBudget({
     businessId: input.businessId,
     requestedTarget: input.plan.targetVerifiedProspects,
@@ -179,6 +194,8 @@ export async function createRun(input: {
         estimate: estimate.byCapability,
         unitCosts: budget.unitCosts,
         intentEnabled,
+        ...(input.excludedProviders ? { excludedProviders: input.excludedProviders } : {}),
+        ...(input.enrolment ? { enrolment: input.enrolment } : {}),
       } as never,
       counts_json: EMPTY_COUNTERS as never,
     })

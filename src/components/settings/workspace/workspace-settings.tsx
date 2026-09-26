@@ -159,7 +159,7 @@ export function WorkspaceSettings({
   const previewLogo = logoPreview ?? profile.logoUrl;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="settings-workspace">
       {readOnly && (
         <ReadOnlyNotice message="Only an owner or admin can change workspace settings." />
       )}

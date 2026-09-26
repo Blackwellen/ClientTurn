@@ -50,7 +50,7 @@ const FAQS = [
   },
   {
     q: "Is there a free trial?",
-    a: `Yes — ${TRIAL_DAYS} days, no card required. You can connect Meta, configure your messages and questions and see the whole flow run before you pay anything.`,
+    a: `Yes — ${TRIAL_DAYS} days. A card is needed to start, but nothing is charged until the trial ends and you can cancel before then. You can connect Meta, configure your messages and questions and see the whole flow run before you pay anything.`,
   },
 ] as const;
 

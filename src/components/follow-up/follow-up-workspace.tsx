@@ -204,7 +204,7 @@ export function FollowUpWorkspace({
 
   if (!automation) {
     return (
-      <Card>
+      <Card data-tour="follow-up-sequence">
         <CardContent className="p-0">
           <EmptyState
             icon={FileText}
@@ -232,7 +232,7 @@ export function FollowUpWorkspace({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="follow-up-sequence">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
         {/* ------------------------------------------------ sequence */}
         <Card className="min-w-0">
@@ -460,7 +460,7 @@ function SaveBar({
             loading={saving}
             disabled={!valid || !dirty}
           >
-            Update sequence
+            Publish changes
           </Button>
         </div>
       )}

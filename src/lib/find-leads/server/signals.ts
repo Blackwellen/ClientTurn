@@ -1,6 +1,28 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Signal, SignalKind } from "../signals";
+import { serverEnv } from "@/lib/env";
+import {
+  liveFeeds,
+  signalAvailability,
+  type Signal,
+  type SignalFeed,
+  type SignalKind,
+} from "../signals";
+import { allProviders } from "./providers/registry";
+
+/**
+ * The free feeds this deployment has live, from which providers report
+ * configured. Passed to the plan editor so it only offers signals that can
+ * run, and says what to connect for the rest.
+ */
+export function liveSignalFeeds(): SignalFeed[] {
+  return [...liveFeeds(allProviders().filter((provider) => provider.configured()).map((p) => p.key))];
+}
+
+/** True when a SNAP partner token is configured, so LinkedIn search runs server-side. */
+export function linkedinPartnerConfigured(): boolean {
+  return Boolean(serverEnv.sourcing.linkedinSnapToken);
+}
 
 /**
  * Reading and running signals.
@@ -28,7 +50,10 @@ export async function listSignals(businessId: string): Promise<Signal[]> {
     .order("leads_found_this_week", { ascending: false })
     .limit(60);
 
+  const live = new Set(liveSignalFeeds());
+
   return (data ?? []).map((row) => ({
+    needs: signalAvailability(row.kind as SignalKind, live).needs,
     id: row.id,
     name: row.name,
     kind: row.kind as SignalKind,

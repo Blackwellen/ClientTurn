@@ -33,9 +33,40 @@ export type ProviderIdentity = {
   config?: Record<string, unknown>;
 };
 
+/**
+ * Passed to `getConfig` on the callback leg only (never on the initial
+ * connect/authorize redirect, where none of this exists yet). Exists for
+ * Zoho's Multi DC flow: the authorization server appends `location` and
+ * `accounts-server` to its redirect once the user's actual data center is
+ * known, and the token exchange must go to *that* DC using *that* DC's
+ * client secret -- see the header comment on zoho-crm.ts. Every other
+ * provider's `getConfig` ignores this and keeps working unchanged, since a
+ * zero-argument function is assignable wherever one taking an optional
+ * argument is expected.
+ */
+export type OAuthCallbackHint = { searchParams: URLSearchParams };
+
 export type ProviderAdapter = {
-  getConfig: () => OAuthConfig | null;
+  getConfig: (hint?: OAuthCallbackHint) => OAuthConfig | null;
   identify: (token: TokenResponse) => Promise<ProviderIdentity>;
+  /**
+   * Optional. Runs once, immediately after the generic callback has written
+   * the `integrations`/`integration_secrets` rows -- the first point at which
+   * an `integrationId` exists. Exists for a provider whose connection is not
+   * complete on token exchange alone (Calendly must additionally register a
+   * webhook subscription and needs the row's own id to build the callback
+   * URL; Zoho must persist which data center it authenticated against so a
+   * later token refresh hits the same one). A thrown error fails the whole
+   * connect attempt, the same as a failed token exchange -- a Connect button
+   * that reports success while a required follow-up call silently failed is
+   * worse than one that fails loudly here.
+   */
+  afterConnect?: (params: {
+    integrationId: string;
+    businessId: string;
+    token: TokenResponse;
+    searchParams: URLSearchParams;
+  }) => Promise<void>;
 };
 
 const registry = new Map<string, ProviderAdapter>();

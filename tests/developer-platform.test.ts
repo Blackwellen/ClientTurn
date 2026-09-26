@@ -230,10 +230,12 @@ describe("API key IP allowlist", () => {
     assert.equal(ipAllowed("8.8.8.8", ["0.0.0.0/0"]), true);
   });
 
-  test("IPv6 is exact-match only, never approximated", () => {
+  test("IPv6 exact entries and CIDR blocks both match (see connections/developer fixes)", () => {
     assert.equal(ipAllowed("2001:db8::1", ["2001:db8::1"]), true);
-    // A prefix comparison we cannot do correctly must refuse, not guess.
-    assert.equal(ipAllowed("2001:db8::2", ["2001:db8::/32"]), false);
+    // An IPv6 CIDR entry is accepted by the form, so it has to match: an entry
+    // that is accepted and never matches locks the key out.
+    assert.equal(ipAllowed("2001:db8::2", ["2001:db8::/32"]), true);
+    assert.equal(ipAllowed("2001:db9::2", ["2001:db8::/32"]), false);
   });
 
   test("a malformed entry never matches anything", () => {

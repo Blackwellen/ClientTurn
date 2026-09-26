@@ -1,6 +1,7 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
 import { providerJson, unconfigured } from "./http";
+import { apolloEmailOrigin } from "../../email-origin";
 import {
   providerFailure,
   type CompanyCandidate,
@@ -38,6 +39,8 @@ type ApolloPerson = {
   last_name?: string;
   title?: string;
   email?: string;
+  /** "verified" | "unverified" | "likely to engage" | "guessed" | "extrapolated" | "unavailable". */
+  email_status?: string;
   linkedin_url?: string;
   organization?: { id?: string; primary_domain?: string };
 };
@@ -167,6 +170,9 @@ async function findContacts(input: {
         person.email && !person.email.includes("email_not_unlocked")
           ? person.email
           : null,
+      // §26: a guessed or extrapolated address is PATTERN_INFERRED, and cold
+      // dispatch will not send to it until it is verified.
+      emailOrigin: apolloEmailOrigin(person.email_status),
       linkedinUrl: person.linkedin_url ?? null,
       companyExternalId: person.organization?.id ?? null,
       companyDomain: person.organization?.primary_domain ?? null,

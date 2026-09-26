@@ -553,9 +553,7 @@ describe("copilot tool surface", () => {
   test("campaign state changes and fact edits always need confirmation", () => {
     for (const name of [
       "pauseCampaign",
-      "resumeCampaign",
       "updateBusinessFact",
-      "startSourcingRun",
     ]) {
       assert.equal(
         copilotTool(name)?.requiresConfirmation,

@@ -82,9 +82,33 @@ export async function metaSendingAccount(
 
   const config = (data.config ?? {}) as Record<string, unknown>;
   const pageId = typeof config.pageId === "string" ? config.pageId : null;
-  const pageToken = secret?.access_token ?? null;
+  const storedToken = secret?.access_token ?? null;
 
-  if (!pageId || !pageToken) return null;
+  if (!pageId || !storedToken) return null;
+
+  // The stored token may be a user token or a page token depending on how the
+  // connection was made or refreshed. The /{pageId}/messages endpoint always
+  // requires a page token.  Try to exchange: GET /{pageId}?fields=access_token
+  // returns the page token when called with a user token that has admin access
+  // to the page.  If the stored token is already a page token, the same call
+  // still returns the page token (idempotent), so this is safe regardless.
+  let pageToken = storedToken;
+  try {
+    const exchangeResponse = await fetch(
+      `${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(storedToken)}`,
+      { cache: "no-store" },
+    );
+    if (exchangeResponse.ok) {
+      const json = (await exchangeResponse.json().catch(() => null)) as {
+        access_token?: string;
+      } | null;
+      if (json?.access_token) pageToken = json.access_token;
+    }
+  } catch {
+    // Exchange failed — use the stored token as-is. If the stored token is
+    // already a page token this works; if it is an expired user token the
+    // send will fail and bubble up through the normal error path.
+  }
 
   return {
     integrationId: data.id,

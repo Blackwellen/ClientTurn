@@ -1,4 +1,6 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import { enqueue, type ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,51 +27,83 @@ import {
 import { applyQualification } from "./qualify";
 import { parsePayload } from "./parse";
 import { leadProcessPayload } from "./payloads";
+import { applyAttributionFilter, attributionTuple } from "./lead-source-key";
 
 type SourceInput = NonNullable<
   ReturnType<typeof leadProcessPayload.parse>["source"]
 >;
+
+/**
+ * `lead_sources.provider` is a closed list (lead_sources_provider_check, 0038).
+ * Three intake providers exist only on the job payload -- MCP creates, Meta
+ * DMs and CRM/connector records -- and writing them into the form registry
+ * failed the check, killing lead.process for every such lead (no attribution
+ * row, no permission record, no first score). They are filed under the
+ * nearest permitted provider; the touch itself keeps the precise provider.
+ */
+const REGISTRY_PROVIDER: Record<string, string> = {
+  mcp: "api",
+  meta_dm: "meta",
+  connector: "other",
+};
 
 async function resolveSource(
   businessId: string,
   source: SourceInput,
 ): Promise<string | null> {
   const admin = createAdminClient();
+  // B11: one row per full attribution tuple, not per form. Keying on the form
+  // alone gave every later lead the *first* lead's campaign/ad set/ad. Rows
+  // written before the fix still carry that first lead's ids; they cannot be
+  // corrected retroactively (the per-lead ids were never stored), so this only
+  // stops new leads being mis-attributed.
+  const tuple = attributionTuple({
+    ...source,
+    provider: REGISTRY_PROVIDER[source.provider] ?? source.provider,
+  });
 
-  let lookup = admin
+  const find = async () => {
+    const { data, error } = await applyAttributionFilter(
+      admin.from("lead_sources").select("id").eq("business_id", businessId),
+      tuple,
+    )
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`lead_sources lookup failed: ${error.message}`);
+    return data?.id ?? null;
+  };
+
+  const existing = await find();
+  if (existing) return existing;
+
+  // Race-safe: `lead_sources_attribution_key` (0114) is unique over the tuple
+  // with NULLS NOT DISTINCT, so two workers resolving the same new ad at once
+  // produce one row. DO NOTHING rather than DO UPDATE: an existing row's
+  // display names are left as they were.
+  const { data: created, error } = await admin
     .from("lead_sources")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("provider", source.provider);
+    .upsert(
+      {
+        business_id: businessId,
+        ...tuple,
+        page_name: source.pageName ?? null,
+        form_name: source.formName ?? null,
+        campaign_name: source.campaignName ?? null,
+        adset_name: source.adsetName ?? null,
+        ad_name: source.adName ?? null,
+        source_name: source.sourceName ?? null,
+      },
+      {
+        onConflict: "business_id,provider,page_id,form_id,campaign_id,adset_id,ad_id",
+        ignoreDuplicates: true,
+      },
+    )
+    .select("id");
 
-  lookup = source.formId
-    ? lookup.eq("form_id", source.formId)
-    : lookup.is("form_id", null);
-
-  const { data: existing } = await lookup.limit(1).maybeSingle();
-  if (existing) return existing.id;
-
-  const { data: created } = await admin
-    .from("lead_sources")
-    .insert({
-      business_id: businessId,
-      provider: source.provider,
-      page_id: source.pageId ?? null,
-      page_name: source.pageName ?? null,
-      form_id: source.formId ?? null,
-      form_name: source.formName ?? null,
-      campaign_id: source.campaignId ?? null,
-      campaign_name: source.campaignName ?? null,
-      adset_id: source.adsetId ?? null,
-      adset_name: source.adsetName ?? null,
-      ad_id: source.adId ?? null,
-      ad_name: source.adName ?? null,
-      source_name: source.sourceName ?? null,
-    })
-    .select("id")
-    .single();
-
-  return created?.id ?? null;
+  if (error && error.code !== "23505") {
+    throw new Error(`lead_sources insert failed: ${error.message}`);
+  }
+  return created?.[0]?.id ?? (await find());
 }
 
 async function resolveService(
@@ -198,12 +232,14 @@ async function startFollowUp(business: BusinessContext, lead: LeadRecord) {
     },
   );
 
-  const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "New lead";
-  await enqueue(
-    "notification.slack",
-    { businessId: business.businessId, leadId: lead.id, text: `New lead: ${name} — follow-up started` },
-    { businessId: business.businessId },
-  );
+  if (business.slackNotify.newLead) {
+    const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "New lead";
+    await enqueue(
+      "notification.slack",
+      { businessId: business.businessId, leadId: lead.id, text: `New lead: ${name} — follow-up started` },
+      { businessId: business.businessId },
+    );
+  }
 }
 
 export async function handleLeadProcess(job: ClaimedJob) {
@@ -233,9 +269,27 @@ export async function handleLeadProcess(job: ClaimedJob) {
     patch.phone_normalized = normalised;
   }
 
-  if (!initial.source_id && payload.source) {
-    const sourceId = await resolveSource(business.businessId, payload.source);
-    if (sourceId) patch.source_id = sourceId;
+  // The form registry row for this submission's attribution tuple. Resolved
+  // for every touch (not only a lead with no source) so the touch itself is
+  // attributed; the lead's own source_id is provenance and set only once.
+  const touchSourceId = payload.source
+    ? await resolveSource(business.businessId, payload.source)
+    : null;
+  if (!initial.source_id && touchSourceId) patch.source_id = touchSourceId;
+
+  if (payload.touchId && touchSourceId) {
+    // lead_touches is outside the generated types until they are regenerated.
+    const touches = createAdminClient() as unknown as SupabaseClient;
+    logWriteError(
+      await touches
+        .from("lead_touches")
+        .update({ lead_source_id: touchSourceId })
+        .eq("id", payload.touchId)
+        .eq("business_id", business.businessId)
+        .is("lead_source_id", null),
+      "lead.process: attribute touch",
+      { businessId: business.businessId, leadId: initial.id },
+    );
   }
 
   if (!initial.service_id) {
@@ -247,11 +301,29 @@ export async function handleLeadProcess(job: ClaimedJob) {
   }
 
   if (Object.keys(patch).length > 0) {
-    await admin
+    const patched = await admin
       .from("leads")
       .update(patch)
       .eq("id", initial.id)
       .eq("business_id", business.businessId);
+    // 23505: the normalised phone already belongs to another live lead
+    // (0123 identity index). The lead keeps its raw number and is processed
+    // anyway; ingestLead() is where such conflicts go to review.
+    if (patched.error?.code === "23505" && patch.phone_normalized) {
+      delete patch.phone_normalized;
+      if (Object.keys(patch).length > 0) {
+        assertWrite(
+          await admin.from("leads").update(patch).eq("id", initial.id).eq("business_id", business.businessId),
+          "lead.process: lead patch",
+          { businessId: business.businessId, leadId: initial.id },
+        );
+      }
+    } else {
+      assertWrite(patched, "lead.process: lead patch", {
+        businessId: business.businessId,
+        leadId: initial.id,
+      });
+    }
   }
 
   const lead = (await loadLead(initial.id)) ?? initial;
@@ -269,7 +341,11 @@ export async function handleLeadProcess(job: ClaimedJob) {
 
   // The lead's own id is the event id, so this handler re-running — which it is
   // built to survive — cannot deliver the same lead to a customer's CRM twice.
-  await emitWebhookEvent({
+  // ingestLead() emits the same event through the outbox under the same id,
+  // so whichever runs first delivers it and the other is a no-op. A repeat
+  // enquiry from an existing lead is `lead.touched` (outbox), never a second
+  // `lead.created`.
+  if (payload.newLead) await emitWebhookEvent({
     businessId: business.businessId,
     type: "lead.created",
     eventId: lead.id,
@@ -285,16 +361,33 @@ export async function handleLeadProcess(job: ClaimedJob) {
     },
   });
 
+  // `opted_out` is derived from the suppression list (0123) and true only for
+  // an all-channel opt-out. A destination suppressed on just the channel
+  // follow-up would use is still never contacted: it is treated as opted out
+  // for this run, and follow-up is switched off rather than the flag written.
+  let suppressedOnChannel = lead.opted_out;
   if (contact && !lead.opted_out) {
-    // A number suppressed before this lead arrived must never be contacted.
     if (await isSuppressed(business.businessId, contact, business.defaultChannel)) {
-      await admin
-        .from("leads")
-        .update({ opted_out: true, automation_active: false })
-        .eq("id", lead.id)
-        .eq("business_id", business.businessId);
-      lead.opted_out = true;
+      assertWrite(
+        await admin
+          .from("leads")
+          .update({ automation_active: false })
+          .eq("id", lead.id)
+          .eq("business_id", business.businessId),
+        "lead.process: stop follow-up for a suppressed destination",
+        { businessId: business.businessId, leadId: lead.id },
+      );
+      suppressedOnChannel = true;
     }
+  }
+
+  // RECORD_ONLY (ingest/plan.ts processModeFor): attribution, permission and
+  // the integration event are done; score it and stop. A merged repeat
+  // enquiry must never restart a sequence, and a suppressed, review, DM or
+  // unmessaged-import lead is not followed up from here.
+  if (payload.mode === "RECORD_ONLY") {
+    if (payload.newLead) await queueScore(business.businessId, lead.id);
+    return;
   }
 
   if (!(await alreadyMetered(business.businessId, lead.id))) {
@@ -337,6 +430,12 @@ export async function handleLeadProcess(job: ClaimedJob) {
 
   const { output } = await applyQualification(business, lead);
 
+  // Score after qualification, so the first score sees the qualification
+  // result. Queued rather than inline: scoring must never delay first contact,
+  // and a scoring failure must not fail lead processing. Every lead is scored,
+  // including the blocked ones below — an out-of-area lead is still a lead.
+  await queueScore(business.businessId, lead.id);
+
   const blocked = output.reasons.some(
     (reason) =>
       reason.code === "postcode_blocked" ||
@@ -368,7 +467,7 @@ export async function handleLeadProcess(job: ClaimedJob) {
     return;
   }
 
-  if (lead.opted_out) {
+  if (suppressedOnChannel) {
     await flagForAttention({
       businessId: business.businessId,
       leadId: lead.id,
@@ -380,5 +479,29 @@ export async function handleLeadProcess(job: ClaimedJob) {
     return;
   }
 
+  // A lead created with follow-up off (an import, an API or MCP create, a
+  // wizard lead the operator chose not to message) is not started here.
+  if (!lead.automation_active) return;
+
   await startFollowUp(business, lead);
+}
+
+/**
+ * `lead.processed`: the first score of a new lead, keyed as it always has
+ * been. A repeat touch is re-scored by the outbox's `lead.touched` instead.
+ */
+async function queueScore(businessId: string, leadId: string) {
+  try {
+    await enqueue(
+      "lead.score",
+      { leadId, triggerEvent: "lead.processed" },
+      {
+        businessId,
+        priority: 60,
+        idempotencyKey: `lead.score:${leadId}:lead.processed`,
+      },
+    );
+  } catch (error) {
+    console.error("lead.process: could not queue lead.score", { leadId, error });
+  }
 }

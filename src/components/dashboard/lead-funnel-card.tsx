@@ -144,7 +144,7 @@ export function LeadFunnelCard({
   previous: PeriodCounts;
 }) {
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex h-full flex-col" data-tour="dashboard-funnel">
       <CardHeader>
         <SectionHeader
           title="Lead funnel"

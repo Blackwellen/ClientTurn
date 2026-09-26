@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sealSecret } from "@/lib/security/secret-box";
+import { recordAudit } from "@/lib/audit";
 import {
   AUTH_METHODS,
   AUTH_METHOD_KEYS,
@@ -201,7 +202,18 @@ export async function installWorkspaceApp(input: unknown) {
     .select("id")
     .single();
 
-  return error ? { error: "App installation failed. Please retry." } : { id: data.id };
+  if (error) return { error: "App installation failed. Please retry." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "integration.connected",
+    entityType: "workspace_app_install",
+    entityId: data.id,
+    metadata: { app_key: connector.id, auth_method: parsed.data.authMethod },
+  });
+
+  return { id: data.id };
 }
 
 export async function uninstallWorkspaceApp(id: unknown) {
@@ -209,13 +221,32 @@ export async function uninstallWorkspaceApp(id: unknown) {
   if (!parsed.success) return { error: "Invalid installation." };
 
   const workspace = await requireRole("admin");
-  const { error } = await createAdminClient()
+  const db = createAdminClient();
+  const { data: install } = await db
+    .from("workspace_app_installs")
+    .select("app_key")
+    .eq("id", parsed.data)
+    .eq("business_id", workspace.businessId)
+    .maybeSingle();
+
+  const { error } = await db
     .from("workspace_app_installs")
     .update({ active: false })
     .eq("id", parsed.data)
     .eq("business_id", workspace.businessId);
 
-  return error ? { error: "Could not uninstall app." } : { ok: true };
+  if (error) return { error: "Could not uninstall app." };
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "integration.disconnected",
+    entityType: "workspace_app_install",
+    entityId: parsed.data,
+    metadata: install ? { app_key: install.app_key } : {},
+  });
+
+  return { ok: true };
 }
 
 /* ------------------------------------------------- operating a connector */

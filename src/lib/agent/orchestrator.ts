@@ -18,16 +18,21 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runTask } from "@/lib/ai/model-router";
-import { applyQualification } from "@/lib/jobs/handlers/qualify";
+import { applyQualification, recordInferredAnswers } from "@/lib/jobs/handlers/qualify";
 import { loadLead, queueNotification } from "@/lib/jobs/handlers/shared";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import {
   assembleContext,
   allowedUrls,
   publishedPriceStrings,
+  refreshQualification,
   renderContextBlock,
+  renderStableBlock,
   type AgentContext,
 } from "./context";
+import { buildStrategyBlock, leadDirection, type Strategy } from "./strategy";
+import { buildMessageFeatures } from "@/lib/learning/features";
+import { logWriteError } from "@/lib/supabase/write-result";
 import {
   closeRun,
   openRun,
@@ -43,12 +48,24 @@ import {
 } from "./classification";
 import { modeIsSilent, resolveMode } from "./lifecycle";
 import { evaluateRunGate, evaluateSendGate } from "./policy";
-import { correctionPrompt, validateResponse } from "./validate";
+import { correctionPrompt, validateResponse, type ValidationFacts } from "./validate";
+import type { TaskSkippedReason } from "@/lib/ai/model-router";
+import type { SpendStage } from "@/lib/ai/budget";
+import {
+  checkoutGate,
+  checkoutMessage,
+  DISABLED_AUTHORITY,
+  toMinor,
+  type CheckoutLink,
+} from "@/lib/commercial/authority";
+import { motionAllowsDirectClose } from "@/lib/opportunities/stages";
+import { latestLeadOpportunity } from "@/lib/opportunities/service";
 import {
   applySuppression,
   createBooking,
   draftMessage,
   getCalendarAvailability,
+  proposeCheckout,
   recordQualificationAnswer,
   recordReplyClassification,
   requestHumanHandover,
@@ -61,10 +78,12 @@ import {
 } from "./tools";
 import { maybeRefreshSummary } from "./summary";
 import { matchOfferedSlot, type Slot } from "./availability/slots";
+import { bookingFailureRoute, bookingReplyText } from "@/lib/bookings/confirmation";
 import {
   AGENT_TURN_LOCK_SECONDS,
   agentDecisionSchema,
   confidenceDecision,
+  confidenceVerdictForTolerance,
   isExtractableField,
   MAX_AGENT_STEPS,
   replyClassificationFor,
@@ -161,6 +180,12 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
 
   if (!run) return skipped("This event has already been handled.");
 
+  // ---- the plan for this turn ------------------------------------------
+  // Deterministic, from the sales library. Recorded on the run (method and
+  // reason) whichever way the turn ends, and rendered for the model.
+  const strategy = strategyFor(context, mode, channel, latestMessage);
+  run.strategy = strategy.record;
+
   // ---- claim the conversation turn -------------------------------------
   // Two inbound messages arriving together must not produce two replies.
   const turnSeq = await claimTurn(context.conversation.conversationId);
@@ -185,6 +210,7 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
       binding,
       heuristic,
       injection,
+      strategy,
     });
   } finally {
     await releaseTurn(context.conversation.conversationId, turnSeq);
@@ -203,10 +229,39 @@ type ExecuteInput = {
   binding: ReturnType<typeof classifyDeterministic>;
   heuristic: ReturnType<typeof classifyHeuristic>;
   injection: string | null;
+  strategy: Strategy;
 };
 
-async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
-  const { context, run, event } = input;
+function strategyFor(
+  context: AgentContext,
+  mode: ReturnType<typeof resolveMode>,
+  channel: AgentChannel,
+  latestMessage: string | null,
+): Strategy {
+  return buildStrategyBlock({
+    mode,
+    motion: context.sales.motion,
+    archetypeKey: context.sales.archetypeKey,
+    channel,
+    selection: {
+      question: context.qualification.nextQuestion,
+      stopReason: context.qualification.stopReason,
+      known: context.qualification.known,
+    },
+    latestMessage,
+    hasApprovedInsight: context.offer.hasApprovedClaims,
+    bookingAvailable: Boolean(context.booking.bookingUrl) || context.booking.availabilityQueryable,
+    preferredMethods: context.sales.preferences?.preferredMethods,
+    direction: leadDirection(context.lead),
+    stakeholderCount: context.opportunityMemory?.stakeholders.length ?? 0,
+  });
+}
+
+async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
+  // Reassigned once, if this turn records an answer before the model call.
+  let input = initial;
+  const { run, event } = input;
+  let context = input.context;
 
   const tools = toolContext(input, null);
 
@@ -236,48 +291,34 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
     return { outcome: "NO_ACTION", runId: run.id, detail: "Nothing to say in this mode." };
   }
 
-  // ---- the model proposes ----------------------------------------------
-  const decision = await proposeDecision(input, null);
-
-  if (!decision) {
-    // The model was unavailable or returned nothing usable. Fail safe:
-    // a person, not a guess.
-    return handover(input, "LOW_CONFIDENCE", "The assistant could not interpret this reply.");
-  }
-
-  // A binding verdict has already returned above, so the model's intent is
-  // the only one still in play here.
-  const intent = decision.intent;
-  const verdict = confidenceDecision(decision.confidence);
-
-  if (verdict === "HANDOVER") {
-    return handover(input, "LOW_CONFIDENCE", "The reply was too unclear to answer safely.");
-  }
-
-  if (decision.proposed_action === "REQUEST_HANDOVER") {
+  // ---- objections that are always a person's job -----------------------
+  // Security, legal, contract and procurement (objection library). Decided
+  // here, before the model, rather than hoping the model proposes it.
+  if (input.strategy.objection?.handoverRequired) {
     return handover(
       input,
-      decision.handover_reason ?? "OUT_OF_SCOPE",
-      "The assistant judged this needs a person.",
+      "POLICY",
+      `The lead raised a ${input.strategy.objection.label.toLowerCase()} question that a person must answer.`,
     );
   }
 
-  // ---- accept extractions ----------------------------------------------
-  await applyExtractions(input, decision);
-
-  // ---- record the qualification answer ---------------------------------
+  // ---- record what this reply answers, before the model call ------------
+  // Deterministic: the reply is matched against the question put to the lead
+  // last turn, and inferred answers (lead details) are recorded too. Done
+  // before generation so the model is handed the question that comes NEXT,
+  // not the one the lead has just answered.
   let qualificationChanged = false;
-  if (
-    input.latestMessage &&
-    context.qualification.nextQuestion &&
-    context.conversation.currentQuestionId === context.qualification.nextQuestion.id
-  ) {
+  if (context.qualification.inferred.length > 0) {
+    qualificationChanged =
+      (await recordInferredAnswers(context.business.businessId, context.lead.id, context.qualification.inferred)) > 0;
+  }
+  if (input.latestMessage && context.qualification.currentQuestion) {
     const stored = await recordQualificationAnswer(tools, {
-      question: context.qualification.nextQuestion,
+      question: context.qualification.currentQuestion,
       reply: input.latestMessage,
       value: input.latestMessage,
     });
-    qualificationChanged = stored.ok;
+    qualificationChanged = qualificationChanged || stored.ok;
   }
 
   let qualificationResult: string | null = null;
@@ -296,11 +337,10 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
       await closeRun(run, {
         status: "COMPLETED",
         outcome: "QUALIFICATION_UPDATED",
-        intent,
-        intentConfidence: decision.confidence,
-        replyClassification: replyClassificationFor(intent),
+        intent: input.heuristic?.intent ?? "UNKNOWN",
+        replyClassification: replyClassificationFor(input.heuristic?.intent ?? "UNKNOWN"),
         qualificationAfter: output.result,
-        decision: { reasoningCode: decision.reasoning_code, qualification: output.result },
+        decision: { qualification: output.result },
       });
       return {
         outcome: "QUALIFICATION_UPDATED",
@@ -308,7 +348,66 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
         detail: "The lead did not meet the workspace's rules.",
       };
     }
+
+    // Re-read the picture and re-plan: the next question has moved on.
+    const lead = { ...refreshed, qualification_state: output.result };
+    context = {
+      ...context,
+      lead,
+      qualification: await refreshQualification(context, lead),
+    };
+    const strategy = strategyFor(context, input.mode, input.channel, input.latestMessage);
+    run.strategy = strategy.record;
+    input = { ...input, context, strategy };
   }
+
+  // ---- the model proposes ----------------------------------------------
+  const proposal = await proposeDecision(input, null);
+  const decision = proposal.decision;
+
+  if (!decision) {
+    // The budget manager decided a person should answer this live
+    // conversation (Phase 4): say so, rather than calling it low confidence.
+    if (proposal.skippedReason === "BUDGET_HUMAN") {
+      return handover(
+        input,
+        "BUDGET_EXCEEDED",
+        "The assistant's spend limit for this conversation was reached, so a person should reply.",
+      );
+    }
+    // The model was unavailable or returned nothing usable. Fail safe:
+    // a person, not a guess.
+    return handover(input, "LOW_CONFIDENCE", "The assistant could not interpret this reply.");
+  }
+
+  // A binding verdict has already returned above, so the model's intent is
+  // the only one still in play here.
+  const intent = decision.intent;
+  // Risk tolerance (Settings -> AI & selling) can only raise the handover
+  // floor: CAUTIOUS hands over anything short of ACT confidence.
+  const verdict = confidenceVerdictForTolerance(decision.confidence, context.sales.preferences?.riskTolerance);
+
+  if (verdict === "HANDOVER") {
+    return handover(input, "LOW_CONFIDENCE", "The reply was too unclear to answer safely.");
+  }
+
+  if (decision.proposed_action === "REQUEST_HANDOVER") {
+    return handover(
+      input,
+      decision.handover_reason ?? "OUT_OF_SCOPE",
+      "The assistant judged this needs a person.",
+    );
+  }
+
+  // ---- accept extractions ----------------------------------------------
+  await applyExtractions(input, decision);
+
+  // ---- direct close (Phase 3.2, decision Q2) ----------------------------
+  if (decision.proposed_action === "PROPOSE_CHECKOUT") {
+    return proposeTheCheckout(input, decision);
+  }
+
+  // (The qualification answer was recorded before the model call.)
 
   // ---- is the lead confirming a time we already offered? ---------------
   // Checked before anything else booking-related, and decided by string
@@ -337,6 +436,7 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
         businessHours: context.booking.businessHours,
         appointmentDurationMinutes: context.booking.appointmentDurationMinutes,
         bookingBufferMinutes: context.booking.bookingBufferMinutes,
+        calendarIntegrationId: context.booking.meetingType?.calendarIntegrationId ?? null,
       },
     });
     if (availability.ok && availability.data.slots.length > 0) {
@@ -405,6 +505,17 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
       body: composed,
       sendKey,
       runAt: sendGate.decision === "QUEUE" ? sendGate.runAt : undefined,
+      // §61: what this reply was, for workspace-level learning.
+      features: buildMessageFeatures({
+        family: "AGENT_REPLY",
+        body: composed,
+        channel: input.channel,
+        sendAt: sendGate.decision === "QUEUE" ? sendGate.runAt : new Date(),
+        timeZone: context.business.timezone,
+        archetype: input.strategy.record.archetypeKey,
+        motion: input.strategy.record.motion,
+        method: input.strategy.record.method,
+      }),
     });
     outcome = sent.ok
       ? offeredSlots.length > 0
@@ -419,21 +530,33 @@ async function executeTurn(input: ExecuteInput): Promise<TurnResult> {
   }
 
   // ---- advance the conversation pointer --------------------------------
-  if (
-    context.conversation.conversationId &&
-    (decision.proposed_action === "ASK_NEXT_QUESTION" ||
-      decision.proposed_action === "ANSWER_AND_ASK") &&
-    context.qualification.nextQuestion
-  ) {
-    const admin = createAdminClient();
-    await admin
-      .from("conversations")
-      .update({ current_question_id: context.qualification.nextQuestion.id })
-      .eq("id", context.conversation.conversationId)
-      .eq("business_id", context.business.businessId);
+  // The pointer names the question the strategy told the model to ask, so the
+  // next reply is matched against exactly that. Once there is nothing left to
+  // ask it is cleared, so a later reply cannot be recorded against a question
+  // the conversation has moved past.
+  if (context.conversation.conversationId) {
+    const asked =
+      (decision.proposed_action === "ASK_NEXT_QUESTION" ||
+        decision.proposed_action === "ANSWER_AND_ASK") &&
+      input.strategy.record.nextQuestionId
+        ? input.strategy.record.nextQuestionId
+        : null;
+    const clear = !asked && !context.qualification.nextQuestion && context.conversation.currentQuestionId;
+    if (asked || clear) {
+      const admin = createAdminClient();
+      logWriteError(
+        await admin
+          .from("conversations")
+          .update({ current_question_id: asked })
+          .eq("id", context.conversation.conversationId)
+          .eq("business_id", context.business.businessId),
+        "agent: set current question",
+        { businessId: context.business.businessId, conversationId: context.conversation.conversationId },
+      );
+    }
   }
 
-  await maybeRefreshSummary(context);
+  await maybeRefreshSummary(context, run.id);
 
   await closeRun(run, {
     status: outcome === "FAILED" ? "FAILED" : "COMPLETED",
@@ -572,6 +695,7 @@ async function handover(
   input: ExecuteInput,
   reason: HandoverReason,
   detail: string,
+  options: { acknowledged?: boolean } = {},
 ): Promise<TurnResult> {
   const { context, run } = input;
   const tools = toolContext(input, null);
@@ -595,10 +719,20 @@ async function handover(
   // A short, honest acknowledgement -- not a sales reply. Composed
   // deterministically so nothing about it can be hallucinated, and only sent
   // when the workspace is in AUTO_REPLY.
-  if (context.business.agent.mode === "AUTO_REPLY" && context.leadContext.contactable) {
+  //
+  // `agent_handover`, not `agent`: the takeover above is already set by the
+  // time the worker evaluates this, and an ordinary agent message is refused
+  // under a takeover. Opt-out, suppression and quiet hours still bind. Skipped
+  // when the caller has already told the lead a person is coming.
+  if (
+    !options.acknowledged &&
+    context.business.agent.mode === "AUTO_REPLY" &&
+    context.leadContext.contactable
+  ) {
     await sendMessage(tools, {
       body: acknowledgementFor(reason),
       sendKey: `agent-handover:${run.id}`,
+      origin: "agent_handover",
     });
   }
 
@@ -679,6 +813,68 @@ async function sendTheBookingLink(
   };
 }
 
+// ---------------------------------------------------------- direct close
+
+/**
+ * The model proposed a checkout. Deterministic from here: the commercial gate
+ * (enabled, motion, approved link, value ceiling, contactability), then the
+ * validator over the exact text that will be sent (words + the approved URL),
+ * then the propose_checkout tool. Anything the gate refuses goes to a person
+ * as READY_TO_BUY -- a lead who wants to buy is never left without an answer.
+ */
+async function proposeTheCheckout(input: ExecuteInput, decision: AgentDecision): Promise<TurnResult> {
+  const { context, run } = input;
+  const authority = context.commerce?.authority ?? DISABLED_AUTHORITY;
+  const opportunity = await latestLeadOpportunity(context.business.businessId, context.lead.id);
+
+  const gate = checkoutGate({
+    authority,
+    motionAllowsDirectClose: motionAllowsDirectClose(context.sales.motion),
+    linkId: decision.checkout_link_id,
+    opportunityValueMinor: opportunity?.outcome === "OPEN" ? toMinor(opportunity.value) : null,
+    contactable: context.leadContext.contactable,
+  });
+
+  if (!gate.allowed) {
+    return handover(input, "READY_TO_BUY", `The lead looks ready to buy. ${gate.detail}`);
+  }
+
+  const body = await composeValidated(input, decision, [], gate.link);
+  if (!body) {
+    return handover(
+      input,
+      "READY_TO_BUY",
+      "The lead looks ready to buy, but a safe checkout message could not be composed.",
+    );
+  }
+
+  const sent = await proposeCheckout(toolContext(input, decision.confidence), {
+    body,
+    sendKey: `agent-checkout:${run.id}`,
+    link: gate.link,
+  });
+
+  if (!sent.ok) {
+    return handover(input, "TOOL_FAILURE", "The checkout link could not be sent.");
+  }
+
+  await closeRun(run, {
+    status: "COMPLETED",
+    outcome: "MESSAGE_SENT",
+    intent: decision.intent,
+    intentConfidence: decision.confidence,
+    replyClassification: replyClassificationFor(decision.intent),
+    lifecycleAfter: context.lifecycle,
+    decision: {
+      action: "PROPOSE_CHECKOUT",
+      checkoutLinkId: gate.link.id,
+      reasoningCode: decision.reasoning_code,
+    },
+  });
+
+  return { outcome: "MESSAGE_SENT", runId: run.id, detail: "Checkout link sent." };
+}
+
 // ---------------------------------------------------------------- model
 
 /**
@@ -686,14 +882,36 @@ async function sendTheBookingLink(
  * after a validation failure, and carries the validator's instructions -- not
  * the rejected text, so a bad draft cannot seed a worse one.
  */
+type Proposal = {
+  decision: AgentDecision | null;
+  /** Why no call happened (budget, tokens, AI off); null when it did. */
+  skippedReason: TaskSkippedReason | null;
+};
+
+/** Lifecycle states at which a lead is an opportunity for the budget manager. */
+const OPPORTUNITY_LIFECYCLES = new Set(["QUALIFIED", "BOOKING_PENDING", "BOOKED", "WON"]);
+
+/**
+ * The spend stage for the budget manager (Phase 4): a qualified lead is an
+ * opportunity (decision Q3 opens one at qualification), anything earlier in a
+ * live conversation is engaged.
+ */
+function spendStage(context: AgentContext): SpendStage {
+  return OPPORTUNITY_LIFECYCLES.has(context.lifecycle) ||
+    context.lead.qualification_state === "QUALIFIED"
+    ? "OPPORTUNITY"
+    : "ENGAGED";
+}
+
 async function proposeDecision(
   input: ExecuteInput,
   correction: string | null,
-): Promise<AgentDecision | null> {
+): Promise<Proposal> {
   const context = renderContextBlock(input.context, {
     latestMessage: input.latestMessage,
     confirmedSlots: [],
     correction: correction ?? undefined,
+    strategy: input.strategy.text,
   });
 
   const result = await runTask<AgentDecision>({
@@ -701,17 +919,25 @@ async function proposeDecision(
     businessId: input.context.business.businessId,
     leadId: input.context.lead.id,
     conversationId: input.context.conversation.conversationId,
+    // Offer card, voice and business rules: identical across this
+    // workspace's turns, so it sits in the cacheable prefix.
+    stableContext: renderStableBlock(input.context),
     context,
     maxOutputTokens: 400,
     // Keyed on the run so a retried job is charged once. The retry after a
     // validation failure is a genuinely second call and carries its own key.
     idempotencyKey: `agent:${input.run.id}:${correction ? "retry" : "first"}`,
+    // Writes this call's tokens and cost onto the conversation_agent_runs row.
+    agentRunId: input.run.id,
+    // Phase 4 budget manager: an opportunity gets the opportunity ceiling.
+    stage: spendStage(input.context),
   }).catch(() => null);
 
-  if (!result?.data) return null;
+  const skippedReason = result?.skippedReason ?? null;
+  if (!result?.data) return { decision: null, skippedReason };
 
   const parsed = agentDecisionSchema.safeParse(result.data);
-  return parsed.success ? parsed.data : null;
+  return { decision: parsed.success ? parsed.data : null, skippedReason };
 }
 
 /**
@@ -723,26 +949,49 @@ async function composeValidated(
   input: ExecuteInput,
   decision: AgentDecision,
   confirmedSlots: string[],
+  checkout: CheckoutLink | null = null,
 ): Promise<string | null> {
-  const facts = {
+  const authority = input.context.commerce?.authority ?? null;
+  const facts: ValidationFacts = {
     channel: input.channel,
     businessName: input.context.workspace.businessName,
-    publishedPriceText: publishedPriceStrings(input.context),
+    // A proposed checkout adds exactly its own approved price text, nothing more.
+    publishedPriceText: [
+      ...publishedPriceStrings(input.context),
+      ...(checkout ? [checkout.price_text] : []),
+    ],
     confirmedSlots,
     bookingConfirmed: false,
-    allowedUrls: allowedUrls(input.context),
+    // The checkout URL is allowed only on the turn that proposes it.
+    allowedUrls: [...allowedUrls(input.context), ...(checkout ? [checkout.url] : [])],
     serviceAreaConfirmed: false,
+    // Style lint: failures take the same one-retry -> handover path.
+    forbiddenPhrases: input.context.offer.voice.forbiddenPhrases,
+    prohibitedClaims: input.context.offer.voice.prohibitedClaims,
+    // Direct close (Q2): discount ceiling and per-link price text.
+    commercial: authority
+      ? {
+          enabled: authority.enabled,
+          maxDiscountPercent: authority.max_discount_percent,
+          checkoutLinks: authority.approved_checkout_links,
+        }
+      : null,
   };
 
+  // With a checkout, the text validated is the text sent: words + the URL.
+  const render = (text: string) => (checkout ? checkoutMessage(text, checkout) : text);
+
   const first = decision.message?.trim() ?? "";
-  const firstCheck = validateResponse(first, facts);
-  if (firstCheck.ok) return firstCheck.body;
+  const firstCheck = validateResponse(render(first), facts);
+  if (firstCheck.ok) return checkout ? first : firstCheck.body;
 
   const retry = await proposeDecision(input, correctionPrompt(firstCheck.failures));
-  if (!retry?.message) return null;
+  if (!retry.decision?.message) return null;
 
-  const secondCheck = validateResponse(retry.message.trim(), facts);
-  return secondCheck.ok ? secondCheck.body : null;
+  const second = retry.decision.message.trim();
+  const secondCheck = validateResponse(render(second), facts);
+  if (!secondCheck.ok) return null;
+  return checkout ? second : secondCheck.body;
 }
 
 // ----------------------------------------------------------- extractions
@@ -870,10 +1119,19 @@ async function loadOfferedSlots(conversationId: string | null): Promise<Slot[]> 
 }
 
 /**
- * Creates the booking the lead just confirmed, then tells them -- in that
- * order, never the reverse. The confirmation sentence is composed
- * deterministically from the tool result, so the one line that must never be
- * wrong ("that is booked for X") is never a model output.
+ * Acts on the time the lead just chose, then tells them -- in that order,
+ * never the reverse. Every sentence here comes from `bookingReplyText`
+ * (lib/bookings/confirmation.ts), never from the model, and which sentence is
+ * sent depends on what actually happened (B10, brief §57, decision Q1):
+ *
+ *   * confirmed -- the provider accepted it: "that is booked for X".
+ *   * pending   -- no calendar could confirm it: "I have requested X ... not
+ *                  confirmed yet". The lead is not BOOKED.
+ *   * calendar did not confirm -- same honest "requested" text, and the
+ *                  conversation is handed to a person to confirm it.
+ *   * slot taken -- fresh times from the calendar are offered instead.
+ *   * Calendly  -- ClientTurn cannot book on Calendly; the lead is sent the
+ *                  booking link to finish it, and the webhook records it.
  */
 async function confirmBooking(
   input: ExecuteInput,
@@ -886,48 +1144,242 @@ async function confirmBooking(
   // is precisely what `requiresConfirmedAvailability` asserts.
   const base = toolContext(input, decision.confidence);
   const tools = { ...base, facts: { ...base.facts, availabilityConfirmed: true } };
+  const firstName = context.leadContext.firstName;
 
   const booked = await createBooking(tools, {
     startsAt: slot.startsAt,
     endsAt: slot.endsAt,
     slotLabel: slot.label,
+    bufferMinutes: context.booking.bookingBufferMinutes,
+    calendarIntegrationId: context.booking.meetingType?.calendarIntegrationId ?? null,
   });
 
   if (!booked.ok) {
-    // Someone took the slot, or the insert failed. Either way the lead must
-    // not be told they are booked.
-    return handover(
-      input,
-      booked.code === "BOOKING_ALREADY_EXISTS" ? "POLICY" : "TOOL_FAILURE",
-      "The lead chose a time but the booking could not be completed.",
-    );
+    switch (bookingFailureRoute(booked.code)) {
+      case "offer_alternatives":
+        return offerAlternativeSlots(input, decision, slot);
+      case "pending_handover":
+        return requestedAndHandedOver(input, decision, slot, booked.detail);
+      case "send_link":
+        return sendLinkForSlot(input, decision, slot);
+      default:
+        // Already booked, or the write failed outright. Either way the lead
+        // must not be told they are booked.
+        return handover(
+          input,
+          booked.code === "BOOKING_ALREADY_EXISTS" ? "POLICY" : "TOOL_FAILURE",
+          "The lead chose a time but the booking could not be completed.",
+        );
+    }
   }
 
-  const name = context.leadContext.firstName;
-  const body = name
-    ? `Thanks ${name} — that is booked for ${slot.label}. We will send confirmation shortly.`
-    : `That is booked for ${slot.label}. We will send confirmation shortly.`;
+  const confirmed = booked.data.outcome === "confirmed";
+  const body = confirmed
+    ? bookingReplyText({ kind: "confirmed", firstName, slotLabel: slot.label, invited: booked.data.invited })
+    : bookingReplyText({ kind: "pending", firstName, slotLabel: slot.label });
 
-  const sent = await sendMessage(tools, { body, sendKey: `agent-booked:${run.id}` });
+  const sent = await sendMessage(tools, {
+    body,
+    sendKey: confirmed ? `agent-booked:${run.id}` : `agent-requested:${run.id}`,
+  });
 
-  await maybeRefreshSummary(context);
+  await maybeRefreshSummary(context, run.id);
 
   await closeRun(run, {
     status: "COMPLETED",
-    outcome: "BOOKING_CREATED",
+    outcome: confirmed ? "BOOKING_CREATED" : sent.ok ? "MESSAGE_SENT" : "FAILED",
     intent: "BOOKING_REQUEST",
     intentConfidence: decision.confidence,
     replyClassification: "BOOKING_INTENT",
-    lifecycleAfter: "BOOKED",
+    lifecycleAfter: confirmed ? "BOOKED" : context.lifecycle,
     decision: {
-      action: "CREATE_BOOKING",
+      action: confirmed ? "CREATE_BOOKING" : "REQUEST_BOOKING",
       slot: slot.label,
       bookingId: booked.data.bookingId,
+      bookingOutcome: booked.data.outcome,
+      invited: booked.data.invited,
       confirmationSent: sent.ok,
     },
   });
 
-  return { outcome: "BOOKING_CREATED", runId: run.id, detail: `Booked for ${slot.label}.` };
+  return confirmed
+    ? { outcome: "BOOKING_CREATED", runId: run.id, detail: `Booked for ${slot.label}.` }
+    : {
+        outcome: sent.ok ? "MESSAGE_SENT" : "FAILED",
+        runId: run.id,
+        detail: `${slot.label} requested; awaiting the business's confirmation.`,
+      };
+}
+
+/**
+ * The chosen slot was taken between the offer and the booking. Fresh times
+ * from the calendar are offered in its place -- recorded as a new
+ * BOOKING_OPTIONS_SENT run so the lead's next reply is matched against them.
+ */
+async function offerAlternativeSlots(
+  input: ExecuteInput,
+  decision: AgentDecision,
+  taken: Slot,
+): Promise<TurnResult> {
+  const { context, run } = input;
+  const tools = toolContext(input, decision.confidence);
+
+  const availability = await getCalendarAvailability(tools, {
+    date: null,
+    dayPart: null,
+    timezone: context.business.timezone,
+    availability: {
+      bookingMode: context.business.bookingMode,
+      businessHours: context.booking.businessHours,
+      appointmentDurationMinutes: context.booking.appointmentDurationMinutes,
+      bookingBufferMinutes: context.booking.bookingBufferMinutes,
+      calendarIntegrationId: context.booking.meetingType?.calendarIntegrationId ?? null,
+    },
+  });
+
+  if (!availability.ok) {
+    return handover(input, "PROVIDER_FAILURE", `${taken.label} was taken and fresh times could not be read.`);
+  }
+
+  const fresh = availability.data.slots.filter((slot) => slot.startsAt !== taken.startsAt);
+  if (fresh.length === 0) return offerNothingAvailable(input, decision);
+
+  const sent = await sendMessage(tools, {
+    body: bookingReplyText({
+      kind: "slot_taken",
+      firstName: context.leadContext.firstName,
+      slotLabel: taken.label,
+      alternatives: fresh.map((slot) => slot.label),
+    }),
+    sendKey: `agent-slot-taken:${run.id}`,
+  });
+
+  await closeRun(run, {
+    status: sent.ok ? "COMPLETED" : "FAILED",
+    outcome: sent.ok ? "BOOKING_OPTIONS_SENT" : "FAILED",
+    intent: "BOOKING_REQUEST",
+    intentConfidence: decision.confidence,
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: context.lifecycle,
+    decision: { action: "SLOT_TAKEN", slot: taken.label, offeredSlots: fresh },
+  });
+
+  return {
+    outcome: sent.ok ? "BOOKING_OPTIONS_SENT" : "FAILED",
+    runId: run.id,
+    detail: `${taken.label} was taken; offered fresh times.`,
+  };
+}
+
+/**
+ * The calendar could not confirm the time. The request is held (`pending`)
+ * and a person is asked to confirm it. The lead gets one honest message --
+ * "requested, not confirmed yet" -- rather than a generic handover line, so
+ * `requestHumanHandover` is called directly instead of via `handover()`.
+ */
+async function requestedAndHandedOver(
+  input: ExecuteInput,
+  decision: AgentDecision,
+  slot: Slot,
+  detail: string,
+): Promise<TurnResult> {
+  const { context, run } = input;
+  const tools = toolContext(input, decision.confidence);
+  const unresolved = `The lead chose ${slot.label}; the calendar did not confirm it. ${detail}`.slice(0, 500);
+
+  await requestHumanHandover(tools, {
+    reason: "PROVIDER_FAILURE",
+    summary: {
+      intent: "BOOKING_REQUEST",
+      service: context.leadContext.serviceName,
+      qualificationStatus: context.lead.qualification_state,
+      keyAnswers: context.qualification.answered.slice(0, 6),
+      bookingIntent: true,
+      unresolvedIssue: unresolved,
+      sentiment: "neutral",
+      summary: buildHandoverNarrative(context, unresolved),
+    },
+  });
+
+  if (context.business.agent.mode === "AUTO_REPLY" && context.leadContext.contactable) {
+    await sendMessage(tools, {
+      body: bookingReplyText({
+        kind: "pending",
+        firstName: context.leadContext.firstName,
+        slotLabel: slot.label,
+      }),
+      sendKey: `agent-requested:${run.id}`,
+      // The takeover was set just above, so an `agent` message would be stopped
+      // (stopped:human_takeover) and the lead would hear nothing after choosing
+      // a time. This is the runtime's own fixed acknowledgement of that
+      // takeover, which is exactly what `agent_handover` exempts (as in
+      // handover()).
+      origin: "agent_handover",
+    });
+  }
+
+  await emitAutomationEvent({
+    businessId: context.business.businessId,
+    leadId: context.lead.id,
+    eventType: "lead.human_takeover",
+    payload: { reason: "PROVIDER_FAILURE" },
+  });
+
+  await closeRun(run, {
+    status: "HANDED_OVER",
+    outcome: "HANDOVER_CREATED",
+    intent: "BOOKING_REQUEST",
+    intentConfidence: decision.confidence,
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: "HANDED_OVER",
+    decision: { action: "REQUEST_BOOKING", slot: slot.label, reason: "PROVIDER_FAILURE" },
+  });
+
+  return { outcome: "HANDOVER_CREATED", runId: run.id, detail: unresolved };
+}
+
+/**
+ * Calendly: ClientTurn cannot create the booking, so the lead is sent the
+ * configured booking link to finish it there. booking.sync records the
+ * booking when Calendly's webhook arrives.
+ */
+async function sendLinkForSlot(
+  input: ExecuteInput,
+  decision: AgentDecision,
+  slot: Slot,
+): Promise<TurnResult> {
+  const { context, run } = input;
+  if (!context.booking.bookingUrl) {
+    return handover(input, "PROVIDER_FAILURE", `The lead chose ${slot.label}; no Calendly link is configured.`);
+  }
+
+  const tools = toolContext(input, decision.confidence);
+  const sent = await sendBookingLink(tools, {
+    body: bookingReplyText({
+      kind: "calendly_link",
+      firstName: context.leadContext.firstName,
+      slotLabel: slot.label,
+    }),
+    sendKey: `agent-booking:${run.id}`,
+  });
+
+  await closeRun(run, {
+    status: sent.ok ? "COMPLETED" : "FAILED",
+    // Recorded as options sent (with no slots), so a repeat of the time does
+    // not loop back into this branch.
+    outcome: sent.ok ? "BOOKING_OPTIONS_SENT" : "FAILED",
+    intent: "BOOKING_REQUEST",
+    intentConfidence: decision.confidence,
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: context.lifecycle,
+    decision: { action: "SEND_BOOKING_LINK", slot: slot.label },
+  });
+
+  return {
+    outcome: sent.ok ? "BOOKING_OPTIONS_SENT" : "FAILED",
+    runId: run.id,
+    detail: sent.ok ? "Calendly link sent for the chosen time." : "Could not send the booking link.",
+  };
 }
 
 /**
@@ -941,14 +1393,21 @@ async function offerNothingAvailable(
 ): Promise<TurnResult> {
   const tools = toolContext(input, decision.confidence);
 
-  await sendMessage(tools, {
+  // Queued before the handover below, but dispatched by the worker after it,
+  // so it travels as a handover acknowledgement: as a plain agent message the
+  // guard would refuse it for the takeover. It already tells the lead a person
+  // is coming, so the handover does not send a second acknowledgement.
+  const sent = await sendMessage(tools, {
     body:
       "I could not find anything free in the next couple of weeks. " +
       "I will get someone from the team to sort a time with you.",
     sendKey: `agent-no-slots:${input.run.id}`,
+    origin: "agent_handover",
   });
 
-  return handover(input, "POLICY", "No calendar availability inside the booking window.");
+  return handover(input, "POLICY", "No calendar availability inside the booking window.", {
+    acknowledged: sent.ok,
+  });
 }
 
 // -------------------------------------------------------------- plumbing

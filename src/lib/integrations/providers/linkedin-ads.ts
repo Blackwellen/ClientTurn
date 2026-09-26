@@ -1,10 +1,15 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
-import { enqueue } from "@/lib/jobs/queue";
 import { getLiveAccessToken, type OAuthConfig } from "@/lib/integrations/oauth";
 import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
 import { registerLeadSourcePoller } from "@/lib/integrations/providers/lead-source-registry";
+import { ingestLead } from "@/lib/ingest/service";
+import {
+  linkedinScopes,
+  organizationsFromAcls,
+  type LinkedInOrganization,
+} from "@/lib/integrations/linkedin-orgs";
 
 /**
  * LinkedIn Marketing API — Lead Sync. Confirmed against Microsoft Learn's
@@ -54,15 +59,23 @@ function config(): OAuthConfig | null {
     tokenUrl: TOKEN_URL,
     clientId,
     clientSecret,
-    scope: "r_marketing_leadgen_automation r_ads r_organization_admin",
+    scope: linkedinScopes(serverEnv.linkedinAds.communityManagementApproved === "true"),
   };
 }
 
-async function fetchOrganization(
-  accessToken: string,
-): Promise<{ id: string | null; name: string | null }> {
-  // Resolves the calling member's administered organization so the
-  // integration row shows a human-readable account rather than a bare token.
+type OrganizationAclsResponse = {
+  elements?: Array<{
+    organizationalTarget?: string;
+    "organizationalTarget~"?: { localizedName?: string };
+  }>;
+} | null;
+
+/**
+ * Every organisation the member administers. The connection used to take the
+ * first one silently; an agency administering several pages had no way to
+ * choose, so every one is kept and Settings offers the choice.
+ */
+async function fetchOrganizations(accessToken: string): Promise<LinkedInOrganization[]> {
   // ACL role names per organization-access-control-by-role.
   const url = new URL(ORGANIZATION_ACLS_URL);
   url.searchParams.set("q", "roleAssignee");
@@ -74,27 +87,26 @@ async function fetchOrganization(
       "X-Restli-Protocol-Version": "2.0.0",
     },
   });
-  const json = (await response.json().catch(() => null)) as {
-    elements?: Array<{
-      organizationalTarget?: string;
-      "organizationalTarget~"?: { localizedName?: string };
-    }>;
-  } | null;
-
-  const first = json?.elements?.[0];
-  const urn = first?.organizationalTarget ?? null;
-  return {
-    id: urn ? urn.split(":").pop() ?? null : null,
-    name: first?.["organizationalTarget~"]?.localizedName ?? null,
-  };
+  const json = (await response.json().catch(() => null)) as OrganizationAclsResponse;
+  return organizationsFromAcls(json?.elements ?? []);
 }
 
 registerOAuthProvider("linkedin_ads", {
   getConfig: config,
   async identify(token) {
     try {
-      const org = await fetchOrganization(token.accessToken);
-      return { externalAccountId: org.id, displayName: org.name, scopes: [] };
+      const organizations = await fetchOrganizations(token.accessToken);
+      const first = organizations[0] ?? null;
+      return {
+        externalAccountId: first?.id ?? null,
+        displayName: first?.name ?? null,
+        scopes: [],
+        // The URN is what the engagement provider reads (`config.organizationUrn`).
+        // It was never written, so page engagement could not find the page.
+        config: first
+          ? { organizationUrn: first.urn, organizations }
+          : { organizations },
+      };
     } catch {
       // Lead Sync API access not yet approved for this app, or the member has
       // no organization role — connection still succeeds so status can show
@@ -125,10 +137,23 @@ type LeadFormQuestion = {
 };
 
 type LeadFormSchema = {
-  id?: string;
+  id?: string | number;
   versionedLeadGenFormUrn?: string;
+  /** Where Lead Sync returns the questions (Microsoft Learn, Lead Sync API). */
+  content?: { questions?: LeadFormQuestion[] };
+  /** Kept as a fallback for any older shape. */
   questions?: LeadFormQuestion[];
 };
+
+/**
+ * The numeric form id inside a versioned form URN:
+ * `urn:li:versionedLeadGenForm:(urn:li:leadGenForm:3162,1)` -> `3162`.
+ * `GET /rest/leadForms/{id}` takes this id, not the versioned URN.
+ */
+export function leadFormIdFromUrn(urn: string): string | null {
+  const match = urn.match(/urn:li:leadGenForm:(\d+)/);
+  return match ? match[1] : null;
+}
 
 /**
  * LinkedIn's predefined field names, mapped onto our lead columns.
@@ -150,26 +175,32 @@ const PREDEFINED_FIELD_MAP: Record<string, "email" | "phone" | "first_name" | "l
 };
 
 /**
- * Question schemas, cached for the life of the process.
+ * Question schemas, cached for a bounded time rather than the life of the
+ * process.
  *
  * A poll typically returns many responses to the same handful of forms, and
  * the schema does not change between them -- fetching it per response would
- * turn one poll into dozens of API calls against a rate-limited endpoint.
+ * turn one poll into dozens of API calls against a rate-limited endpoint. The
+ * TTL exists so that a customer editing their form's questions is picked up
+ * within one cache lifetime instead of requiring a process restart.
  */
-const FORM_SCHEMA_CACHE = new Map<string, Map<number, string>>();
+const FORM_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
+const FORM_SCHEMA_CACHE = new Map<string, { map: Map<number, string>; cachedAt: number }>();
 
 async function questionMapFor(
   formUrn: string,
   accessToken: string,
 ): Promise<Map<number, string>> {
   const cached = FORM_SCHEMA_CACHE.get(formUrn);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.cachedAt < FORM_SCHEMA_CACHE_TTL_MS) return cached.map;
 
   const map = new Map<number, string>();
 
   try {
+    const formId = leadFormIdFromUrn(formUrn);
+    if (!formId) throw new Error("Unrecognised lead form URN.");
     const response = await fetch(
-      `https://api.linkedin.com/rest/leadForms/${encodeURIComponent(formUrn)}`,
+      `https://api.linkedin.com/rest/leadForms/${formId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -181,7 +212,7 @@ async function questionMapFor(
 
     if (response.ok) {
       const schema = (await response.json().catch(() => null)) as LeadFormSchema | null;
-      for (const question of schema?.questions ?? []) {
+      for (const question of schema?.content?.questions ?? schema?.questions ?? []) {
         if (question.questionId === undefined) continue;
         map.set(question.questionId, question.predefinedField ?? question.name ?? "");
       }
@@ -194,7 +225,7 @@ async function questionMapFor(
 
   // Cached even when empty, so a form whose schema is unavailable is not
   // re-fetched for every response in the same poll.
-  FORM_SCHEMA_CACHE.set(formUrn, map);
+  FORM_SCHEMA_CACHE.set(formUrn, { map, cachedAt: Date.now() });
   return map;
 }
 
@@ -303,45 +334,56 @@ async function ingestLeadFormResponse(
 ): Promise<void> {
   if (!response.id) return;
 
-  const admin = createAdminClient();
-  const externalId = `linkedin:${response.id}`;
   const fields = await mapLeadFields(response, accessToken);
-
-  const { data: created, error } = await admin
-    .from("leads")
-    .insert({
-      business_id: businessId,
-      external_id: externalId,
-      email: fields.email,
-      phone: fields.phone,
-      first_name: fields.firstName,
-      last_name: fields.lastName,
-      notes: fields.extras.length
-        ? `LinkedIn Lead Gen Forms answers: ${fields.extras.join(" | ")}`
-        : null,
-      status: "NEW",
-    })
-    .select("id")
-    .single();
-
-  if (error?.code === "23505" || !created) return;
-  if (error) throw error;
-
   const campaign = response.leadMetadataInfo?.sponsoredLeadMetadataInfo?.campaign;
 
-  await enqueue(
-    "lead.process",
+  // Custom answers keep their own question text as the key.
+  const answers: Record<string, string> = {};
+  fields.extras.forEach((extra, index) => {
+    const split = extra.indexOf(": ");
+    const key = split > 0 ? extra.slice(0, split) : `Answer ${index + 1}`;
+    answers[key.slice(0, 200)] = (split > 0 ? extra.slice(split + 2) : extra).slice(0, 2000);
+  });
+
+  // The one intake path (design 03 §1). A database failure throws (B13), so
+  // the poll retries rather than losing the lead.
+  const result = await ingestLead(
     {
-      leadId: created.id,
+      businessId,
       source: {
+        type: "AD_FORM",
         provider: "linkedin_ads",
+        providerRecordId: response.id,
         formId: response.versionedLeadGenFormUrn,
         campaignId: campaign?.id,
         campaignName: campaign?.name,
+        submittedAt: response.submittedAt,
+        caller: { type: "SYSTEM", id: "linkedin_ads_poller" },
       },
+      person: {
+        email: fields.email ?? undefined,
+        phone: fields.phone ?? undefined,
+        firstName: fields.firstName ?? undefined,
+        lastName: fields.lastName ?? undefined,
+        companyName: fields.company ?? undefined,
+      },
+      ...(Object.keys(answers).length ? { answers } : {}),
     },
-    { businessId, idempotencyKey: `lead.process:${externalId}` },
+    {
+      externalId: `linkedin:${response.id}`,
+      insertExtras: fields.extras.length
+        ? { notes: `LinkedIn Lead Gen Forms answers: ${fields.extras.join(" | ")}` }
+        : {},
+    },
   );
+
+  if (result.outcome === "INVALID") {
+    console.warn("[linkedin_ads] lead form response had no usable contact point", {
+      businessId,
+      responseId: response.id,
+      reasons: result.reasons,
+    });
+  }
 }
 
 /**
@@ -379,7 +421,11 @@ registerLeadSourcePoller("linkedin_ads", {
       .maybeSingle();
 
     const since = cursor?.cursor_value ? Number(cursor.cursor_value) : Date.now() - 24 * 60 * 60 * 1000;
-    const owner = encodeURIComponent(`(organization:urn%3Ali%3Aorganization%3A${organizationId})`);
+    // Rest.li 2.0: the parentheses and the key stay raw; only the URN inside
+    // is encoded, once -- `owner=(organization:urn%3Ali%3Aorganization%3A123)`
+    // exactly as the Lead Sync docs write it. Encoding the whole value again
+    // turned %3A into %253A.
+    const owner = `(organization:${encodeURIComponent(`urn:li:organization:${organizationId}`)})`;
     const url =
       `https://api.linkedin.com/rest/leadFormResponses?q=owner&owner=${owner}` +
       `&leadType=(leadType:SPONSORED)&submittedAtTimeRange=(start:${since},end:${Date.now()})`;

@@ -222,6 +222,25 @@ export function subtractBusy(
 }
 
 /**
+ * The booking-time re-check (B10). A slot offered on an earlier turn is only
+ * booked if the calendar's busy blocks *now* still leave it free, with the
+ * same buffer rule the offer used. An unparseable slot is never free.
+ */
+export function isSlotStillFree(
+  slot: { startsAt: string; endsAt: string },
+  busy: BusyInterval[],
+  bufferMinutes = 0,
+): boolean {
+  const start = Date.parse(slot.startsAt);
+  const end = Date.parse(slot.endsAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false;
+  return (
+    subtractBusy([{ startsAt: slot.startsAt, endsAt: slot.endsAt, label: "" }], busy, bufferMinutes)
+      .length === 1
+  );
+}
+
+/**
  * Narrows a slot list to a part of the day the lead asked for. Unrecognised
  * wording returns the list untouched -- a preference the runtime cannot parse
  * must never silently discard real availability.

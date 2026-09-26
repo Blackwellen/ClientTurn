@@ -14,6 +14,14 @@ import {
   setQualificationResult,
   updateLeadStatus,
 } from "@/lib/leads/actions";
+import {
+  anonymiseLeadAction,
+  deleteLeadAction,
+  exportLeadAction,
+  leadCrmSystemsAction,
+  suppressLeadAction,
+} from "@/lib/data-rights/actions";
+import type { BusinessRole } from "@/lib/auth/session";
 import { LeadDrawer } from "./lead-drawer";
 import { useLeadParams } from "./use-lead-params";
 
@@ -26,12 +34,15 @@ export function LeadDrawerHost({
   detail,
   capabilities,
   canWrite,
+  role,
   initialTab,
   focus,
 }: {
   detail: LeadDetail;
   capabilities: LeadCapabilities;
   canWrite: boolean;
+  /** The viewer's workspace role; the server re-checks every action anyway. */
+  role?: BusinessRole;
   initialTab?: string;
   focus?: string;
 }) {
@@ -42,6 +53,7 @@ export function LeadDrawerHost({
       detail={detail}
       capabilities={capabilities}
       canWrite={canWrite}
+      role={role}
       initialTab={initialTab}
       focus={focus}
       onClose={closeLead}
@@ -56,6 +68,13 @@ export function LeadDrawerHost({
         sendBookingLink,
         markWon,
         markLost,
+        dataRights: {
+          suppress: suppressLeadAction,
+          anonymise: anonymiseLeadAction,
+          erase: deleteLeadAction,
+          exportData: exportLeadAction,
+          crmSystems: leadCrmSystemsAction,
+        },
       }}
     />
   );

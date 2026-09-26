@@ -6,6 +6,7 @@ import {
   CreditCard,
   Link2,
   ShieldCheck,
+  Sparkles,
   Terminal,
   Users,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const ICONS: Record<
   workspace: Building2,
   connections: Link2,
   "business-profile": Brain,
+  "ai-selling": Sparkles,
   team: Users,
   developer: Terminal,
   "data-controls": ShieldCheck,
@@ -38,10 +40,10 @@ const ICONS: Record<
  */
 export function SettingsSectionNav({ active }: { active: SettingsSection }) {
   return (
-    <nav aria-label="Settings sections">
-      {/* Five across on wide screens; scrolls horizontally on mobile rather
+    <nav aria-label="Settings sections" data-tour="settings-nav">
+      {/* Four across on wide screens (two even rows of four); on mobile they stack rather
           than wrapping into an uneven grid. */}
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = ICONS[section.id];
           const isActive = section.id === active;
@@ -50,6 +52,7 @@ export function SettingsSectionNav({ active }: { active: SettingsSection }) {
             <li key={section.id}>
               <Link
                 href={`/app/settings?section=${section.id}`}
+                data-tour={`settings-nav-${section.id}`}
                 scroll={false}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(

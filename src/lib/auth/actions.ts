@@ -6,8 +6,11 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { attributeSignup } from "@/lib/affiliates/attribution";
+import { recordTermsAcceptance, requestOrigin } from "@/lib/billing/terms-acceptance";
 import { activatePendingInvites } from "./invites";
-import { INVITE_ONLY_ERROR, SELF_SERVE_SIGNUP_OPEN } from "./signup-mode";
+import { destinationForUser, sanitizeRedirectPath } from "./destination";
+import { provisionCustomerWorkspace } from "./provision";
+import { UNNAMED_WORKSPACE } from "./workspace-name";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import {
   attributionSchema,
@@ -43,14 +46,6 @@ async function originUrl(): Promise<string> {
   return host ? `${proto}://${host}` : "http://localhost:3000";
 }
 
-/** Only same-origin relative paths survive, so `?redirect=` cannot be a phishing hop. */
-function safeRedirect(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== "string") return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  if (value.startsWith("/login") || value.startsWith("/signup")) return null;
-  return value;
-}
-
 async function limited(
   key: "auth:signin" | "auth:signup" | "auth:reset",
 ): Promise<AuthResult | null> {
@@ -66,21 +61,6 @@ async function limited(
 function str(form: FormData, key: string): string {
   const value = form.get(key);
   return typeof value === "string" ? value : "";
-}
-
-async function destinationForUser(userId: string): Promise<string> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("business_members")
-    .select("businesses(status)")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  const status = data?.businesses?.status;
-  return status === "active" ? "/app" : "/onboarding";
 }
 
 async function recordAttribution(form: FormData, userId: string) {
@@ -135,17 +115,9 @@ export async function signUp(
   _prev: AuthResult | null,
   formData: FormData,
 ): Promise<AuthResult> {
-  // The real gate. Hiding the form only removes the button; this removes the
-  // endpoint, so a replayed action payload cannot provision a workspace while
-  // the product is invite-only.
-  if (!SELF_SERVE_SIGNUP_OPEN) {
-    return { ok: false, error: INVITE_ONLY_ERROR };
-  }
-
   const parsed = signUpSchema.safeParse({
     firstName: str(formData, "firstName"),
     lastName: str(formData, "lastName"),
-    businessName: str(formData, "businessName"),
     email: str(formData, "email"),
     password: str(formData, "password"),
     terms: str(formData, "terms") || undefined,
@@ -164,11 +136,10 @@ export async function signUp(
     email: input.email,
     password: input.password,
     options: {
-      emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+      emailRedirectTo: `${origin}/auth/callback?next=/start-trial`,
       data: {
         first_name: input.firstName,
         last_name: input.lastName,
-        business_name: input.businessName,
       },
     },
   });
@@ -194,70 +165,38 @@ export async function signUp(
     return { ok: true, redirectTo: `/verify-email?email=${encodeURIComponent(input.email)}` };
   }
 
-  let businessId: string | null = null;
-
+  let businessId: string;
   try {
-    const { error: profileError } = await admin.from("profiles").upsert(
-      {
-        id: userId,
-        email: input.email,
-        first_name: input.firstName,
-        last_name: input.lastName,
-      },
-      { onConflict: "id" },
-    );
-    if (profileError) throw profileError;
-
-    const { data: business, error: businessError } = await admin
-      .from("businesses")
-      .insert({
-        name: input.businessName,
-        status: "onboarding",
-        onboarding_step: "business",
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (businessError || !business) throw businessError ?? new Error("business");
-    businessId = business.id;
-
-    const { error: memberError } = await admin.from("business_members").insert({
-      business_id: businessId,
-      user_id: userId,
-      role: "owner",
-      status: "active",
-      accepted_at: new Date().toISOString(),
-    });
-    if (memberError) throw memberError;
-
-    const { error: settingsError } = await admin
-      .from("business_settings")
-      .insert({ business_id: businessId });
-    if (settingsError) throw settingsError;
-
-    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    const { error: subscriptionError } = await admin
-      .from("subscriptions")
-      .insert({
-        business_id: businessId,
-        plan: "trial",
-        status: "TRIALING",
-        trial_ends_at: trialEndsAt.toISOString(),
-        lead_limit: 25,
-        user_limit: 1,
-        whatsapp_enabled: false,
-        campaigns_enabled: false,
-        ai_assist_allowed: false,
-      });
-    if (subscriptionError) throw subscriptionError;
+    ({ businessId } = await provisionCustomerWorkspace({
+      userId,
+      email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      // Named by the owner in onboarding's first step (8.29).
+      businessName: UNNAMED_WORKSPACE,
+    }));
   } catch {
-    // Never leave a half-built workspace behind. Cascades clear the child rows.
-    if (businessId) {
-      await admin.from("businesses").delete().eq("id", businessId);
-    }
-    await admin.from("profiles").delete().eq("id", userId);
     await admin.auth.admin.deleteUser(userId).catch(() => undefined);
     return { ok: false, error: GENERIC_ERROR };
+  }
+
+  try {
+    // The terms box was required above but never recorded; it is now. Not
+    // fatal to signup: the acceptance that authorises a charge is taken again
+    // at Checkout and recorded there, keyed on the session.
+    const requester = requestOrigin(await headers());
+    await recordTermsAcceptance({
+      businessId,
+      userId,
+      source: "signup",
+      ip: requester.ip,
+      userAgent: requester.userAgent,
+    });
+  } catch (error) {
+    console.error("[signup] terms acceptance not recorded", {
+      businessId,
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 
   try {
@@ -271,7 +210,7 @@ export async function signUp(
     // any. Runs after the workspace exists so an affiliate is never shown a
     // referral for an account that failed to provision, and swallows its own
     // errors for the same reason as the marketing attribution above.
-    await attributeSignup({ userId, businessId: businessId! });
+    await attributeSignup({ userId, businessId });
   } catch {
     // Referral credit must never block account creation either.
   }
@@ -285,7 +224,8 @@ export async function signUp(
     };
   }
 
-  return { ok: true, redirectTo: "/onboarding" };
+  // Card and terms first (8.10); onboarding follows once Stripe confirms.
+  return { ok: true, redirectTo: "/start-trial" };
 }
 
 export async function signIn(
@@ -329,7 +269,7 @@ export async function signIn(
 
   revalidatePath("/", "layout");
 
-  const requested = safeRedirect(formData.get("redirect"));
+  const requested = sanitizeRedirectPath(formData.get("redirect"));
   const destination = requested ?? (await destinationForUser(data.user.id));
 
   return { ok: true, redirectTo: destination };

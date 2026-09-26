@@ -24,6 +24,7 @@ import { PanelEmpty } from "@/components/affiliates/portal-ui";
 import { toggleResourceSave } from "@/lib/affiliates/link-actions";
 import { RESOURCE_CATEGORY_LABEL, type ResourceCategory } from "@/lib/affiliates/types";
 import type { PortalResource } from "@/lib/affiliates/portal";
+import { Select } from "@/components/ui/form";
 
 /**
  * The resources hub (V4 §33).
@@ -119,11 +120,11 @@ export function ResourcesView({
             className="h-11 w-full rounded-[10px] border border-line bg-surface pl-10 pr-3 text-[13.5px] text-content placeholder:text-content-subtle"
           />
         </div>
-        <select
+        <Select
           value={typeFilter}
           onChange={(event) => setTypeFilter(event.target.value)}
           aria-label="Filter by asset type"
-          className="h-11 rounded-[10px] border border-line bg-surface px-3 text-[13.5px] text-content"
+          className="h-11 rounded-[10px] text-[13.5px]"
         >
           <option value="all">All asset types</option>
           <option value="IMAGE">Images</option>
@@ -131,7 +132,7 @@ export function ResourcesView({
           <option value="TEXT">Copy</option>
           <option value="VIDEO">Video</option>
           <option value="LINK">Links</option>
-        </select>
+        </Select>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
@@ -180,15 +181,15 @@ export function ResourcesView({
                 campaign materials.
               </p>
             </div>
-            <select
+            <Select
               value={sort}
               onChange={(event) => setSort(event.target.value as "recent" | "name")}
               aria-label="Sort resources"
-              className="h-9 rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content"
+              className="h-9 rounded-[9px] text-[13px]"
             >
               <option value="recent">Most recent</option>
               <option value="name">Name</option>
-            </select>
+            </Select>
           </div>
 
           {filtered.length === 0 ? (

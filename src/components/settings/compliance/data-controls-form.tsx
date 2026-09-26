@@ -122,6 +122,7 @@ export function DataControlsForm({
       socialAutonomousSending: value.socialAutonomousSending,
       socialAutoPromoteOnReply: value.socialAutoPromoteOnReply,
       socialWithdrawAfterDays: value.socialWithdrawAfterDays,
+      socialSkipToEmailAfterDays: value.socialSkipToEmailAfterDays,
       socialFollowUpGapHours: value.socialFollowUpGapHours,
       socialMaxFollowUps: value.socialMaxFollowUps,
     });
@@ -546,7 +547,14 @@ export function DataControlsForm({
           </li>
         </ul>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <NumberField
+            label="Move unanswered invites to email after"
+            suffix="days"
+            value={value.socialSkipToEmailAfterDays}
+            onChange={(next) => set("socialSkipToEmailAfterDays", next)}
+            disabled={!canManage}
+          />
           <NumberField
             label="Withdraw unanswered invites after"
             suffix="days"
@@ -570,9 +578,12 @@ export function DataControlsForm({
           />
         </div>
         <p className="mt-2 text-[12px] text-content-muted">
-          A pending invite keeps consuming your weekly allowance, so withdrawing the ones
-          that go unanswered frees capacity for someone who will reply. Blank means never
-          withdraw. Whoever you withdraw is not invited again.
+          After the first number of days an unanswered invite hands the prospect to your
+          email sequence (the invite stays open in case they accept late). After the
+          second, ClientTurn stops waiting and asks you to withdraw the invite in LinkedIn,
+          because a pending invite keeps consuming your allowance. The first must not be
+          later than the second. Leave either blank for never. Whoever you withdraw is not
+          invited again.
         </p>
       </Panel>
 

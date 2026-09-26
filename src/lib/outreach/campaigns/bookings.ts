@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalisePhone } from "@/lib/messaging/types";
 import { normaliseEmail } from "@/lib/prospects/dedupe";
+import { escapeIlike } from "@/lib/supabase/ilike";
 import { promoteCampaignProspect } from "./replies";
 import { recordCampaignEvent } from "./lifecycle";
 
@@ -54,7 +55,7 @@ export async function promoteOnBookedEvent(input: {
 
   // Email is the identifier cold outreach actually holds; phone is a fallback
   // for a booking form that collected one.
-  query = email ? query.ilike("email", email) : query.eq("phone_e164", phone!);
+  query = email ? query.ilike("email", escapeIlike(email)) : query.eq("phone_e164", phone!);
 
   const { data: prospect } = await query.maybeSingle();
   if (!prospect?.campaign_id) return null;

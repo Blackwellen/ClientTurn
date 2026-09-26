@@ -15,7 +15,8 @@ import { Panel, PanelEmpty } from "@/components/admin/ui";
 import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { cn } from "@/lib/cn";
-import { formatMoney, formatNumber, formatRelative, titleise } from "@/lib/admin/format";
+import { formatMoney, formatNumber, titleise } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import {
   AFFILIATE_TABS,
   TAB_LABELS,
@@ -210,7 +211,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                       </Badge>
                     </Td>
                     <Td>{row.planKey ?? "—"}</Td>
-                    <Td>{formatRelative(row.signupAt)}</Td>
+                    <Td>{formatRelative(row.signupAt, { style: "ago" })}</Td>
                     <Td numeric>{formatMoney(row.lifetimeRevenueMinor / 100)}</Td>
                   </tr>
                 ))}
@@ -249,7 +250,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                             month: "short",
                             year: "numeric",
                           })
-                        : formatRelative(row.createdAt)}
+                        : formatRelative(row.createdAt, { style: "ago" })}
                     </Td>
                     <Td numeric>{formatMoney(row.baseAmountMinor / 100)}</Td>
                     <Td numeric className="font-medium">
@@ -342,7 +343,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                         {titleise(row.status)}
                       </Badge>
                     </Td>
-                    <Td>{row.paidAt ? formatRelative(row.paidAt) : "—"}</Td>
+                    <Td>{row.paidAt ? formatRelative(row.paidAt, { style: "ago" }) : "—"}</Td>
                     <Td className="text-right">
                       {(row.status === "APPROVED" || row.status === "PROCESSING") && (
                         <Button
@@ -402,7 +403,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                       </Badge>
                     </Td>
                     <Td numeric>{formatNumber(row.downloadCount)}</Td>
-                    <Td>{formatRelative(row.updatedAt)}</Td>
+                    <Td>{formatRelative(row.updatedAt, { style: "ago" })}</Td>
                   </tr>
                 ))}
               </Grid>
@@ -457,7 +458,7 @@ function ApplicationQueue({
                     <p className="mt-0.5 text-[12px] text-content-muted">
                       {row.contactEmail}
                       {row.country && ` · ${row.country}`}
-                      {` · applied ${formatRelative(row.createdAt)}`}
+                      {` · applied ${formatRelative(row.createdAt, { style: "ago" })}`}
                     </p>
                     {row.websiteUrl && (
                       <a

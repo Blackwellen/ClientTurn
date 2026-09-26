@@ -42,7 +42,7 @@ export function AgentsView({
         />
         {canManage && (
           <Button asChild size="lg" className="shrink-0">
-            <Link href="/app/agents/new">
+            <Link href="/app/agents/new" data-tour="agents-new">
               <Plus className="size-4" aria-hidden />
               New agent
             </Link>
@@ -70,7 +70,7 @@ function SummaryStrip({
   counts: { all: number; active: number; needsAttention: number; draft: number };
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-line bg-surface px-5 py-3.5">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-line bg-surface px-5 py-3.5" data-tour="agents-summary">
       <Stat label="agents" value={counts.all} />
       <Stat label="running" value={counts.active} tone="success" />
       <Stat label="need attention" value={counts.needsAttention} tone="warning" />
@@ -124,7 +124,7 @@ function AgentSection({
   const definition = AGENT_TYPE_DEFINITIONS[type];
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-tour={`agents-${type.toLowerCase()}`}>
       <div className="flex items-center gap-2">
         <h2 className="text-[15px] font-semibold text-content">{definition.label}s</h2>
         <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] tabular-nums text-content-secondary">

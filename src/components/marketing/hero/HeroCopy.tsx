@@ -16,7 +16,7 @@ export function HeroCopy({ progress, activeStage, reducedMotion }: { progress: M
         <motion.div className="conversion-cta" whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={reducedMotion ? undefined : { scale: 0.98 }}>
           <CtaLink placement="hero_primary" size="lg">Start Converting <ArrowRight size={19} aria-hidden /></CtaLink>
         </motion.div>
-        <p className="conversion-trial">14-day free trial <span>·</span> No card required</p>
+        <p className="conversion-trial">14-day free trial <span>·</span> Nothing charged for 14 days</p>
       </motion.div>
       <div className="conversion-narrative" aria-live="polite" aria-atomic="true">
         <AnimatePresence mode="wait" initial={false}>

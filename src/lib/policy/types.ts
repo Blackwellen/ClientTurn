@@ -80,7 +80,11 @@ export type PolicyReasonCode =
   | "BLOCKED_DOMAIN_HEALTH"
   | "BLOCKED_BUSINESS_STATE"
   | "BLOCKED_SOURCE_NOT_PERMITTED"
-  | "REVIEW_REQUIRED";
+  | "REVIEW_REQUIRED"
+  /** Review because the recipient's subscriber type is unresolved or needs a
+   *  person; distinct from a provenance review so a contentless connection
+   *  request can proceed while a message cannot. */
+  | "REVIEW_SUBSCRIBER_TYPE";
 
 /** V4 §91.2. */
 /**
@@ -128,7 +132,13 @@ export type PolicyRequirement =
   | "POSTAL_FOOTER"
   | "PRIVACY_NOTICE"
   | "APPROVED_TEMPLATE"
-  | "HUMAN_REVIEW";
+  | "HUMAN_REVIEW"
+  /**
+   * The message may open or continue a conversation but must not market:
+   * no offer, price, booking or checkout link, or sales call to action.
+   * Enforced deterministically by `promotional-content.ts` at compose time.
+   */
+  | "NON_PROMOTIONAL_ONLY";
 
 /* ------------------------------------------------------------ policy packs */
 
@@ -141,6 +151,17 @@ export type ChannelRuleSet = {
   requirePostalFooter?: boolean;
   requireUnsubscribe?: boolean;
   requirePrivacyNotice?: boolean;
+  /**
+   * Subscriber types the law treats as *individual* subscribers for electronic
+   * marketing (UK PECR reg. 22: sole traders, ordinary partnerships, private
+   * individuals — and UNKNOWN, which is never assumed corporate).
+   *
+   * For these, a relationship alone is not enough to market to them. What the
+   * relationship permits is decided by `individualMarketingBasis` in
+   * `channel-policy.ts`; see docs/revenue-engine/00 §6.1. Absent in a pack
+   * means the jurisdiction draws no such distinction.
+   */
+  individualSubscriberTypes?: SubscriberType[];
 };
 
 export type QuietHoursRule = {
@@ -198,6 +219,24 @@ export type PolicyInput = {
   withinBudget: boolean;
   /** Local time in the recipient's timezone, for quiet hours. */
   localTime: { hour: number; minute: number };
+  /**
+   * WHATSAPP only: whether this send falls inside the 24-hour customer-service
+   * window (they messaged first, recently). Ignored for every other channel.
+   *
+   * Defaults conservatively to `false` at the caller when the real window
+   * cannot be established — a business-initiated WhatsApp message outside the
+   * window is refused by the API itself, and assuming "inside the window"
+   * without checking is exactly the assumption that gets a number's quality
+   * rating throttled.
+   */
+  withinWhatsAppWindow: boolean;
+  /**
+   * WHATSAPP only: an explicit WhatsApp opt-in is on record for this contact
+   * (a consent scope naming WHATSAPP). Meta requires one before a business
+   * starts a conversation; a mobile number on a lead form is not one unless
+   * the form said so. Optional so older callers default to "not recorded".
+   */
+  whatsAppOptIn?: boolean;
   pack: CompliancePolicyPack;
 };
 
@@ -221,6 +260,8 @@ const REASON_SENTENCES: Record<PolicyReasonCode, string> = {
   BLOCKED_SOURCE_NOT_PERMITTED:
     "This record came from a source your workspace has not permitted for outreach.",
   REVIEW_REQUIRED: "This contact needs a human decision before any message is sent.",
+  REVIEW_SUBSCRIBER_TYPE:
+    "We could not confirm whether this is a business or an individual, so it needs a human decision before any message is sent.",
 };
 
 export function policyReasonSentence(code: PolicyReasonCode): string {
@@ -318,3 +359,21 @@ export function decisionColumnFor(
   // REVIEW_REQUIRED and every REQUIRE_* variant.
   return "ESCALATED";
 }
+
+/**
+ * Whether a stated REFERRAL is enough to create a lead.
+ *
+ * One rule on every path (tracker 8.24 #8): a referral is warm only with
+ * written evidence of who referred the person and when -- at least 20
+ * characters, the Add Lead wizard's bar. Without it the Add Lead wizard and
+ * the CSV import hold the record for review, and the API and MCP refuse the
+ * create with that reason, rather than one path creating a lead that another
+ * would have held. Every other relationship is judged by `isWarmRelationship`.
+ */
+export const REFERRAL_EVIDENCE_MIN = 20;
+
+export function referralEvidenceSufficient(evidence: string | null | undefined): boolean {
+  return (evidence ?? "").trim().length >= REFERRAL_EVIDENCE_MIN;
+}
+
+export const REFERRAL_EVIDENCE_MESSAGE = `A referral needs evidence: who referred them and when, in at least ${REFERRAL_EVIDENCE_MIN} characters. Without it the contact is held for review rather than created as a lead.`;

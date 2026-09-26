@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { enqueue } from "@/lib/jobs/queue";
+import { scheduleSlackDigests } from "@/lib/jobs/handlers/slack-digest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -75,6 +76,35 @@ export async function GET(request: Request) {
     { idempotencyKey: `outreach-optimize:${dateKey}` },
   );
   enqueued.push("outreach.optimize");
+
+  await scheduleSlackDigests();
+  enqueued.push("notification.slack_digest");
+
+  // Sending-domain DNS health (Phase 3.5): SPF, DMARC and a DKIM selector
+  // probe per active sender domain, written to domain_health_snapshots. One
+  // job fans out over every workspace; the snapshot is keyed per day.
+  await enqueue(
+    "domain.health_check",
+    {},
+    { idempotencyKey: `domain-health:${dateKey}` },
+  );
+  enqueued.push("domain.health_check");
+
+  // Complaint rate per sender identity over 7 days (§43): WATCH at 0.1%,
+  // PAUSED at 0.3%. Fans out one job per workspace with an active sender.
+  await enqueue("email.sender_health", {}, { idempotencyKey: `sender-health:${dateKey}` });
+  enqueued.push("email.sender_health");
+
+  // The WhatsApp approved-template registry (§45): the platform's Twilio
+  // Content templates, then each Cloud API workspace's own.
+  await enqueue("whatsapp.template_sync", {}, { idempotencyKey: `whatsapp-template-sync:${dateKey}` });
+  enqueued.push("whatsapp.template_sync");
+
+  // Failed-payment recovery (8.10): each failed subscription invoice is
+  // retried at most once a day for up to 30 days and stops once paid; then
+  // messaging overage is added to the customer's next invoice (8.13).
+  await enqueue("billing.daily", {}, { idempotencyKey: `billing-daily:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("billing.daily");
 
   if (isFirstOfMonth) {
     await enqueue(

@@ -22,8 +22,8 @@ These are enforced in code, not by convention, and
 fail if any of them stops being true.
 
 1. **One list of scopes.** `lib/platform/scopes.ts` is the only place a
-   permission is declared — ten of them, covering leads, prospects, campaigns,
-   analytics, the business profile and the AI agents. `MCP_SCOPES` is a
+   permission is declared — eleven of them (`PLATFORM_SCOPES`), covering leads,
+   prospects, campaigns, analytics, the business profile and the AI agents. `MCP_SCOPES` is a
    re-export of it, not a copy, so a scope cannot mean one thing over HTTP and
    something wider over MCP. A write is never gated by a `:read` scope, and
    `tests/mcp.test.ts` fails if one ever is.
@@ -87,15 +87,72 @@ lets automated secret scanning find it.
 | GET | `/api/v1` | none (public description) | — |
 | GET | `/api/v1/me` | `business:read` | viewer |
 | GET | `/api/v1/leads` | `leads:read` | viewer |
+| POST | `/api/v1/leads` | `leads:write` | member |
 | GET | `/api/v1/leads/{id}` | `leads:read` | viewer |
 | PATCH | `/api/v1/leads/{id}` | `leads:write` | member |
 | GET | `/api/v1/events` | `business:read` | viewer |
 
-`POST /api/v1/leads` deliberately does not exist. Creating a lead means
-deduplication, capturing a contactability record, and starting follow-up;
-`lead.create` is absent from the service registry precisely because a thinner
-version that skipped those would be worse than none. The endpoint returns a 400
-that says so rather than a bare 405.
+### Creating a lead: `POST /api/v1/leads`
+
+Runs the `lead.create` operation, which is `ingestLead()` — the one intake path
+the ad-platform pollers, the Google Ads webhook, the Add Lead wizard, CSV import
+and MCP all use (`lib/ingest/`, docs/revenue-engine/03-phase1-spine-design.md
+§1). So the API gets the same deduplication, suppression check, permission
+record and per-touch attribution as every other source, never a thinner copy.
+
+* **`Idempotency-Key` header, required** (8–200 printable characters). A repeat
+  with the same key returns the first outcome as `DUPLICATE` with
+  `original_outcome`, and creates nothing. A key reused with a different body
+  is reported in `reasons` (`idempotency_key_reused_with_different_body`).
+* **`relationship` is required and must be warm** (`THEY_CONTACTED_US`,
+  `EXISTING_CUSTOMER`, `REFERRAL`, `REQUESTED_INFORMATION`,
+  `EXPLICIT_MARKETING_CONSENT`, `EXISTING_BUSINESS_RELATIONSHIP`). A contact you
+  merely found is a prospect, not a lead.
+* **`REFERRAL` needs evidence**: who referred them and when, at least 20
+  characters, in `consent.evidence`. Without it the request is refused (400
+  `invalid_request`). This is the same rule on every path: the Add Lead wizard
+  and CSV import hold an unevidenced referral for review, and MCP `create_lead`
+  refuses it the same way.
+* **A suppressed contact is refused, not recorded**: 409 `REJECTED`, nothing
+  stored. The caller is creating a record by hand, and "cannot be added" is the
+  honest answer; an ad form's enquiry from a suppressed person is still
+  recorded, by the pollers, so the business sees it.
+* **Follow-up is never started from the API.** The lead is recorded, qualified
+  and metered; a person chooses to message it. Starting outreach is an external
+  action, and the API has nobody to confirm one.
+
+```json
+POST /api/v1/leads
+Idempotency-Key: 5f0c2a8e-web-form-1234
+{
+  "first_name": "Jo", "last_name": "Bloggs",
+  "email": "jo@acme.co.uk", "phone": "07700 900123",
+  "company_name": "Acme Studio Ltd",
+  "relationship": "THEY_CONTACTED_US",
+  "source": { "type": "WEB_FORM", "provider": "webflow", "record_id": "sub_881",
+              "form_name": "Contact us", "utm_source": "google", "gclid": "…",
+              "submitted_at": "2026-09-25T10:04:00Z" },
+  "answers": { "Budget": "£5k–£10k" },
+  "consent": { "marketing": true, "whatsapp": false, "evidence": "Ticked box v3 on /contact" }
+}
+```
+
+The response is the outcome contract, never flattened into success/failure:
+
+```json
+{ "data": { "outcome": "CREATED", "lead_id": "…", "touch_id": "…",
+            "matched_by": null, "reasons": [] } }
+```
+
+| `outcome` | HTTP | Meaning |
+|---|---|---|
+| `CREATED` | 201 | A new lead. |
+| `MERGED` | 200 | The same person (email, or phone with no conflicting email) already existed; blank fields were filled, nothing was overwritten, and a touch was recorded. `matched_by` says which rule. |
+| `DUPLICATE` | 200 | The same key or the same `source.record_id` was already ingested. |
+| `SUPPRESSED` | 200 | Not returned by this endpoint (it refuses suppressed contacts with `REJECTED`). Other intake paths record the enquiry and never contact it. |
+| `REVIEW` | 200 | Recorded, but the phone belongs to another lead with a different email. Never merged; a person decides. |
+| `INVALID` | 422 | No usable email or phone. Nothing stored. |
+| `REJECTED` | 409 | The email or phone is suppressed (opted out, bounced, complained or blocked). Nothing stored. |
 
 ### Errors
 
@@ -165,8 +222,10 @@ the worst possible failure mode because it looks like a network problem.
   that produced the event, so a slow endpoint never slows down lead processing.
 * Claimed via `claim_webhook_deliveries` (FOR UPDATE SKIP LOCKED), so two
   overlapping workers never send the same webhook twice.
-* Retries at 30s, 5m, 30m, 2h, 8h, 12h — six attempts over roughly 19 hours,
-  then `EXHAUSTED` and visible in Settings rather than retried forever. Each
+* Retries at 30s, 5m, 30m, 2h, 8h, 12h — seven attempts in all (the first plus
+  six retries) over about 22.6 hours, then `EXHAUSTED` and visible in Settings
+  rather than retried forever. Between retries a delivery shows as
+  **Retrying** (stored as `PENDING` with `attempts > 0`). Each
   retry books its own job at its due time, so the schedule survives restarts.
 * **4xx is not retried** (except 408 and 429, which explicitly ask to be). A 404
   will not become a 200 in six hours.
@@ -205,6 +264,51 @@ waits, and concludes the product is broken.
 | `lead.handover_required` | `jobs/handlers/shared.ts` |
 | `booking.created` | `jobs/handlers/booking-sync.ts` |
 | `message.received` | `jobs/handlers/message-inbound.ts` |
+| `lead.touched` | the event outbox (`events/outbox.ts`), from `ingestLead()` |
+| `lead.scored` | the event outbox, from `jobs/handlers/lead-score.ts` |
+| `score.changed` | the event outbox, from `jobs/handlers/lead-score.ts` |
+| `reply.received` | the event outbox, from a trigger on `messages` (0123) |
+| `meeting.booked` | the event outbox, from a trigger on `bookings` (0123) |
+| `meeting.pending` | the event outbox, from a trigger on `bookings` (0123) |
+| `meeting.cancelled` | the event outbox, from a trigger on `bookings` (0123) |
+| `meeting.no_show` | the event outbox, from a trigger on `bookings` (0123) |
+| `contact.unsubscribed` | the event outbox, from a trigger on `suppression_entries` (0123) |
+| `contact.suppressed` | the event outbox, from a trigger on `suppression_entries` (0123) |
+| `ai.escalated` | the event outbox, from a trigger on `agent_handoffs` (0123) |
+| `opportunity.created` | the event outbox, from `opportunities/service.ts` |
+| `opportunity.won` | the event outbox, from `opportunities/service.ts` (closed as won) |
+| `opportunity.lost` | the event outbox, from `opportunities/service.ts` (closed as lost) |
+
+The three `opportunity.*` payloads carry `lead_id`; `opportunity.created` adds
+`stage` and `motion`, and `won`/`lost` add the `reason` given when it was
+closed. `subject_id` is the opportunity id.
+
+#### The event outbox
+
+Phase 1 adds `domain_events` (docs/revenue-engine/03-phase1-spine-design.md §4).
+A domain event is written in the same unit of work as the change — by
+`emitDomainEvent()` in TypeScript, or by a database trigger where the change is
+written from many places (bookings, suppressions, handoffs, inbound replies) —
+and an `event.dispatch` job fans it out: to customer webhooks (the types in
+`WEBHOOK_FORWARDED`), to the `automation_events` projection, and to re-scoring.
+`dedupe_key` is unique, so an event is emitted once however often its source
+retries, and an event more than three hops from its cause is dropped with a
+warning (loop protection).
+
+Payloads (every one also carries `subject_type`, `subject_id` and
+`occurred_at`):
+
+| Type | `data` |
+|---|---|
+| `lead.touched` | `lead_id`, `touch_id`, `outcome` (`MERGED`/`SUPPRESSED`), `source_type`, `source`, contact fields |
+| `lead.scored`, `score.changed` | `lead_id`, `score_id`, `total`, `grade`, `previous_grade`, `confidence`, `trigger_event`, `scoring_version` |
+| `reply.received` | `message_id`, `lead_id`, `channel`, `classification` (often null at arrival) |
+| `meeting.*` | `booking_id`, `lead_id`, `provider`, `status`, `previous_status`, `starts_at`, `ends_at` |
+| `contact.unsubscribed`, `contact.suppressed` | `lead_id` (when the address belongs to a lead), `suppression_id`, `channel` (`ALL` or one channel), `reason`, `source` |
+| `ai.escalated` | `handoff_id`, `lead_id`, `conversation_id`, `reason`, `priority` |
+
+`lead.created` is sent both by `lead.process` and by the outbox under the same
+event id (the lead id), so a receiver gets it once.
 
 `lead.status_changed` is emitted inside the service operation rather than at
 each call site, so it fires whoever moved the lead — a person, Copilot, an
@@ -230,84 +334,108 @@ Everything reachable from outside is a **service operation** declared in
 app, Copilot, the agent runtime, MCP and the public API at once — and, just as
 importantly, absent from all of them if it is not declared.
 
-42 tools are offered to an MCP client today, across twelve domains:
+<!-- mcp-tools:start (generated: node scripts/generate-mcp-tools-doc.mjs) -->
 
-| Domain | Operations | Notes |
-|---|---|---|
-| `lead` | get, search, update, assign, set_status, add_note, flag_attention, archive, restore | `lead.create` is deliberately absent — see below |
-| `message` | send | EXTERNAL: always waits for a person |
-| `agent` | list, get, create, configure, start, run_now, pause, stop | create/configure are ordinary writes; start/run_now are FINANCIAL |
-| `ai_settings` | get, update | The conversation assistant's behaviour |
-| `connector` | list, get, replay_event, dismiss_event, disconnect | disconnect is DESTRUCTIVE |
-| `campaign` | list, get, pause, resume, launch | launch **and resume** are BULK_EXTERNAL |
-| `prospect` | search, get, approve, reject | |
-| `booking` | list, get, set_status | |
-| `business` | get_profile, get_status | |
-| `analytics` | summary | |
-| `qualification` | list_questions | |
-| *(legacy)* | create_lead | The one hand-written tool left; not a duplicate |
+90 tools are declared for MCP clients, across 26 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
 
-### How the risk class decides who waits
+| Domain | Tool | Kind | Scope |
+|---|---|---|---|
+| `agent` | `agent.list` | READ | `agents:read` |
+| `agent` | `agent.get` | READ | `agents:read` |
+| `agent` | `agent.create` | WRITE | `agents:write` |
+| `agent` | `agent.configure` | WRITE | `agents:write` |
+| `agent` | `agent.start` | APPROVAL_GATED | `agents:write` |
+| `agent` | `agent.run_now` | APPROVAL_GATED | `agents:write` |
+| `agent` | `agent.pause` | WRITE | `agents:write` |
+| `agent` | `agent.stop` | WRITE | `agents:write` |
+| `agent` | `agent.delete` | APPROVAL_GATED | `agents:write` |
+| `ai_budget` | `ai_budget.update` | WRITE | `business:write` |
+| `ai_settings` | `ai_settings.get` | READ | `agents:read` |
+| `ai_settings` | `ai_settings.update` | WRITE | `agents:write` |
+| `ai_usage` | `ai_usage.get` | READ | `analytics:read` |
+| `analytics` | `analytics.summary` | READ | `analytics:read` |
+| `booking` | `booking.list` | READ | `leads:read` |
+| `booking` | `booking.get` | READ | `leads:read` |
+| `booking` | `booking.set_status` | WRITE | `leads:write` |
+| `business` | `business.get_profile` | READ | `business:read` |
+| `business` | `business.get_status` | READ | `business:read` |
+| `campaign` | `campaign.list` | READ | `campaigns:read` |
+| `campaign` | `campaign.get` | READ | `campaigns:read` |
+| `campaign` | `campaign.pause` | WRITE | `campaigns:write` |
+| `campaign` | `campaign.resume` | APPROVAL_GATED | `campaigns:write` |
+| `campaign` | `campaign.launch` | APPROVAL_GATED | `campaigns:write` |
+| `campaign` | `campaign.add_lead` | WRITE | `campaigns:write` |
+| `connector` | `connector.list` | READ | `business:read` |
+| `connector` | `connector.get` | READ | `business:read` |
+| `connector` | `connector.replay_event` | WRITE | `business:write` |
+| `connector` | `connector.dismiss_event` | WRITE | `business:write` |
+| `connector` | `connector.disconnect` | APPROVAL_GATED | `business:write` |
+| `crm_pull` | `crm_pull.list` | READ | `business:read` |
+| `crm_pull` | `crm_pull.set` | WRITE | `business:write` |
+| `experiment` | `experiment.list` | READ | `campaigns:read` |
+| `experiment` | `experiment.results` | READ | `campaigns:read` |
+| `experiment` | `experiment.create` | WRITE | `campaigns:write` |
+| `experiment` | `experiment.start` | WRITE | `campaigns:write` |
+| `experiment` | `experiment.stop` | WRITE | `campaigns:write` |
+| `funnel` | `funnel.get` | READ | `analytics:read` |
+| `lead` | `lead.get` | READ | `leads:read` |
+| `lead` | `lead.search` | READ | `leads:read` |
+| `lead` | `lead.update` | WRITE | `leads:write` |
+| `lead` | `lead.assign` | WRITE | `leads:write` |
+| `lead` | `lead.set_status` | WRITE | `leads:write` |
+| `lead` | `lead.add_note` | WRITE | `leads:write` |
+| `lead` | `lead.flag_attention` | WRITE | `leads:write` |
+| `lead` | `lead.record_whatsapp_opt_in` | WRITE | `leads:write` |
+| `lead` | `lead.archive` | APPROVAL_GATED | `leads:write` |
+| `lead` | `lead.restore` | WRITE | `leads:write` |
+| `lead` | `lead.suppress` | APPROVAL_GATED | `leads:write` |
+| `lead` | `lead.anonymise` | APPROVAL_GATED | `leads:write` |
+| `lead` | `lead.delete` | APPROVAL_GATED | `leads:write` |
+| `lead` | `lead.export` | READ | `leads:read` |
+| `lead` | `lead.score_explain` | READ | `leads:read` |
+| `lead` | `lead.contactability` | READ | `leads:read` |
+| `lead` | `lead.rescore` | WRITE | `leads:write` |
+| `lead` | `lead.takeover` | WRITE | `leads:write` |
+| `lead` | `lead.resume_follow_up` | WRITE | `leads:write` |
+| `legitimate_interest` | `legitimate_interest.save` | WRITE | `business:write` |
+| `meeting_type` | `meeting_type.list` | READ | `business:read` |
+| `meeting_type` | `meeting_type.save` | WRITE | `business:write` |
+| `meeting_type` | `meeting_type.archive` | WRITE | `business:write` |
+| `member` | `member.list` | READ | `business:read` |
+| `member` | `member.invite` | APPROVAL_GATED | `business:write` |
+| `member` | `member.resend_invite` | APPROVAL_GATED | `business:write` |
+| `member` | `member.set_role` | WRITE | `business:write` |
+| `member` | `member.remove` | APPROVAL_GATED | `business:write` |
+| `member` | `member.transfer_ownership` | APPROVAL_GATED | `business:write` |
+| `merge_candidate` | `merge_candidate.list` | READ | `leads:read` |
+| `merge_candidate` | `merge_candidate.resolve` | APPROVAL_GATED | `leads:write` |
+| `message` | `message.send` | APPROVAL_GATED | `leads:write` |
+| `message` | `message.draft` | WRITE | `leads:write` |
+| `opportunity` | `opportunity.list` | READ | `leads:read` |
+| `opportunity` | `opportunity.get` | READ | `leads:read` |
+| `opportunity` | `opportunity.set_stage` | WRITE | `leads:write` |
+| `opportunity` | `opportunity.close` | APPROVAL_GATED | `leads:write` |
+| `privacy_request` | `privacy_request.list` | READ | `business:read` |
+| `privacy_request` | `privacy_request.create` | WRITE | `business:write` |
+| `privacy_request` | `privacy_request.update` | WRITE | `business:write` |
+| `prospect` | `prospect.search` | READ | `prospects:read` |
+| `prospect` | `prospect.get` | READ | `prospects:read` |
+| `prospect` | `prospect.approve` | WRITE | `prospects:write` |
+| `prospect` | `prospect.reject` | WRITE | `prospects:write` |
+| `qualification` | `qualification.list_questions` | READ | `business:read` |
+| `sales_settings` | `sales_settings.get` | READ | `business:read` |
+| `sales_settings` | `sales_settings.update` | WRITE | `business:write` |
+| `scoring_weights` | `scoring_weights.update` | WRITE | `business:write` |
+| `whatsapp_template` | `whatsapp_template.list` | READ | `business:read` |
+| `whatsapp_template` | `whatsapp_template.sync` | WRITE | `business:write` |
+| `whatsapp_template` | `whatsapp_template.map_step` | WRITE | `business:write` |
+| `(legacy)` | `create_lead` | WRITE | `leads:write` |
 
-The registry grades every operation, and the grade — not the handler — decides
-whether a person has to agree first:
+<!-- mcp-tools:end -->
 
-| Risk | Runs | Examples |
-|---|---|---|
-| `READ` | immediately | every list and get |
-| `SAFE_WRITE` | immediately | `lead.add_note`, `agent.create` |
-| `REVERSIBLE_WRITE` | immediately, audited | `lead.set_status`, `agent.configure` |
-| `EXTERNAL` / `BULK_EXTERNAL` | **needs a person** | `message.send`, `campaign.launch` |
-| `FINANCIAL` | **needs a person** | `agent.start`, `agent.run_now` |
-| `DESTRUCTIVE` | **needs a person** | `lead.archive`, `connector.disconnect` |
-
-Over MCP, "needs a person" means the call **parks** in `mcp_approvals` with a
-plain-English summary and does not execute. The assistant is told plainly, so it
-cannot report success. Approving runs it on the *approver's* authority, with the
-approval id as the idempotency key so approving twice cannot act twice.
-
-`agent.create` being a `SAFE_WRITE` while `agent.start` is `FINANCIAL` is the
-whole design in one line: a new agent is always a DRAFT and does nothing, so
-configuring it wrongly costs nothing, and setting it running unattended is the
-part that needs a decision.
-
-### What no caller can do
-
-Some things are absent by construction rather than gated, which is a stronger
-guarantee than a permission check:
-
-* **No model, temperature, token budget or system prompt.** A caller that could
-  set them could talk an agent out of its own guardrails.
-* **No `lead.create`.** Creating a lead means deduplication, capturing a lawful
-  basis, and starting follow-up. A thinner version that skipped those would be
-  worse than none. `create_lead` survives as the one legacy tool because it does
-  all three and refuses anything that is not a warm relationship.
-* **No send authority for Copilot.** `message.send` and `campaign.launch`
-  exclude `COPILOT` from their callers, and `tests/copilot.test.ts` fails if
-  that changes. The chat assistant in the corner of the screen does not get to
-  put words in the customer's name in front of a real person.
-* **No destructive operation for an autonomous agent.** Asserted by
-  `tests/services.test.ts`: an unattended agent cannot set `confirmed`, so a
-  destructive operation it could reach would be one nobody agreed to.
-
-### The context budget
-
-`tools/list` is sent to a model at the start of every session, so the catalogue
-is a standing tax on every conversation. It is ~4.7k tokens today, and
-`tests/mcp.test.ts` fails above 8k or if any single description exceeds 400
-characters.
-
-That budget is also why the legacy `MCP_TOOLS` array shrank from seventeen
-entries to one. Thirteen duplicated a service operation — offering both
-`get_lead` and `lead.get` makes an assistant choose between two tools that do
-the same thing and costs the context twice. The other four were worse:
-`send_message`, `launch_campaign`, `start_sourcing_run` and `change_overage_cap`
-parked for approval and then **failed** when approved, because `executeApproval`
-can only run a registered service operation and there was none. `message.send`
-and `campaign.launch` now exist for real; the other two are gone rather than
-left as promises.
-
----
+`lead.get` returns the lead and its last 20 messages as `recent_activity` (over
+the API, beside `data`). `lead.create` is the API's intake (see above);
+`create_lead` survives as the one hand-written MCP tool.
 
 ## MCP
 
@@ -324,12 +452,26 @@ claude mcp add --transport http clientturn \
   --header "Authorization: Bearer ct_live_…"
 ```
 
-**A workspace API key is the credential to use.** The older OAuth-issued MCP
-access token still works, but it expires after an hour and the only way to
-refresh it is a Next.js server action, which no MCP client can call — so a
-connection made with one worked for an hour and then stopped for no visible
-reason. Claude, Codex and Gemini all configure a static bearer header, which is
-what a long-lived API key is.
+**A workspace API key is the credential to use.** Claude, Codex and Gemini all
+configure a static bearer header, which is what a long-lived API key is.
+
+**Settings → Developer → Assistant connections** issues one: *New connection*
+asks for a name and the permissions, and shows the key once, with the server
+URL and a ready-to-paste client configuration. The key is an ordinary workspace
+API key scoped to exactly those permissions and **bound to the connection**
+(`api_keys.mcp_client_id`, migration 0133; before 0133 is applied the binding is
+carried by a `[mcp:<connection id>]` tag at the end of the key's name). So:
+
+* calls made with it are attributed to the connection in `mcp_audit_logs`;
+* *Replace key* on the connection revokes the old key and shows a new one;
+* revoking the connection revokes its key, and the gateway also refuses a key
+  whose connection is suspended or revoked, even if the key row were missed.
+
+The dialog used to show an OAuth *client secret*, which the gateway never
+accepted, and *New key* minted a one-hour access token whose only refresh path
+was a Next.js server action no MCP client can call — so a connection worked for
+an hour and then stopped. The OAuth access tokens still authenticate until they
+expire; nothing issues new ones from the UI.
 
 ### Behaviour
 
@@ -347,6 +489,97 @@ what a long-lived API key is.
   approval id as the idempotency key so approving twice cannot act twice.
 * Every call is audited in `mcp_audit_logs`, including every refusal, with the
   credential that made it.
+
+---
+
+## The Zapier app
+
+A Zapier Platform CLI integration ("Client Turn", `developer.zapier.com/app/246145`)
+sits on top of the same API keys and endpoints above — it is a client of
+`/api/v1`, not a fourth surface with its own rules. Private (invite-only) until
+it clears Zapier's review for the public directory.
+
+| Piece | Type | Calls |
+|---|---|---|
+| Authentication | API Key | Every request; validated with `GET /api/v1/me` |
+| New Lead | Trigger, Polling | `GET /api/v1/leads` |
+| Find Lead | Action, Search | `GET /api/v1/leads?query=…` |
+| Update Lead | Action, Create | `PATCH /api/v1/leads/{id}` |
+
+There is no Create action yet. `POST /api/v1/leads` now exists (see above) and
+runs the full intake pipeline, so a Create Lead action can be added on top of it
+— sending a stable `Idempotency-Key` per Zap run — once the app is next
+published. Until then a Zap uses "Webhooks by Zapier" against that endpoint or
+the connector endpoint from `lib/integrations/apps.ts`.
+
+**Every request sets its own `Authorization` header explicitly**, inside each
+step's own code rather than relying on the Request Template's global header
+merge. That merge looked configured correctly and worked for the trigger in
+testing, then produced a 401 on the Update action with the identical key
+against the identical endpoint — a live-`fetch()` call with the same key
+succeeded every time. Whatever Zapier's cause, an explicit header per step
+removed the failure mode entirely, so it is now the pattern for all three
+steps rather than something to keep half-fixed.
+
+Search and polling requests unwrap `{ data: […], count }` into a bare array
+(`results.data`) in a `.then()` — Zapier requires triggers and searches to
+return an array, and the public API deliberately wraps every list response,
+so every step does this unwrapping rather than exposing an unwrapped variant
+of the endpoint just for Zapier.
+
+Verifying a change to any step means testing it against the **live** API with
+a throwaway workspace — Zapier's own request tester calls the real
+`developer.zapier.com` app, so there is no local/staging variant to point it
+at instead. The pattern:
+
+```bash
+node --env-file=.env --env-file=.env.local --import ./scripts/e2e-resolver.mjs <script.mjs>
+```
+
+with a script that creates a business, a user, a lead and a **live**
+`createApiKey(...)` for it, prints the key, and — after the manual test in
+Zapier's UI is done — deletes all four (`api_keys`, `leads`,
+`business_members`, `businesses`, the auth user) in one follow-up run. A live
+key is fine here specifically because nothing behind it is real: the business
+is synthetic and gets deleted the same session, never left to accumulate.
+Delete the connected account in Zapier's own connections list
+(`zapier.com/app/assets/connections`) at the same time — a stale connection
+to a deleted business shows as "expired" and is otherwise silent clutter.
+
+### Publishing status (2026-09-12)
+
+Signed off as release-ready with one accepted gap. Zapier's own publishing
+checklist (`developer.zapier.com/app/246145` → Validate) still blocks the
+"Publish" action on:
+
+- **`find_lead` has no live Zap run recorded.** Structural, not a bug: Zapier
+  never allows a Search step to be the last step of a Zap, so proving it live
+  needs a 3-step Zap (trigger → search → action), and any 3-step Zap is
+  gated behind Zapier's paid plan regardless of which apps are used — a
+  2-step Zap ending in `find_lead` is not a workaround, it does not exist as
+  a publishable shape. **Explicitly authorized to ship without this** rather
+  than pay for Zapier Pro; revisit if a Pro trial becomes available or the
+  business ends up on a paid Zapier plan anyway.
+- **Fewer than 3 users with a live Zap** (has 1 — the admin account used to
+  build it). Needs real adoption, which is now seeded by the invite email
+  below rather than something to chase manually.
+- **Admin email domain match.** `admin@clientturn.com` is invited as an Admin
+  team member on the integration, but the invitation is stuck **Pending**
+  because that address has no inbox yet. Needs either a real mailbox behind
+  it or DNS-level forwarding to somewhere that can click the confirmation.
+
+Everything else that was previously blocking (static sample data on all
+three steps, a live task recorded for `new_lead` and `update_lead`, the
+description/logo metadata checks) is fixed and verified.
+
+**Adoption is seeded automatically**: the first time a workspace's Stripe
+subscription takes a real payment (`invoice.paid`, `billing_reason:
+subscription_create`), `src/app/api/webhooks/stripe/route.ts` enqueues a
+`notification.send` job (`kind: "developer_integrations_invite"`, see
+`src/lib/jobs/handlers/notification-send.ts`) that emails the workspace's
+owner/admins a branded invite to connect Client Turn on Zapier, sent from
+`admin@clientturn.com`. Fires at most once per workspace ever (keyed on the
+business id alone in `jobs.idempotency_key`).
 
 ---
 

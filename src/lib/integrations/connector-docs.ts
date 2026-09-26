@@ -20,7 +20,7 @@ export function examplePayload(): Record<string, unknown> {
     lastName: "Shah",
     email: "priya@example.co.uk",
     phone: "+447700900123",
-    company: "Example Roofing Ltd",
+    company: "Example Studio Ltd",
   };
 }
 

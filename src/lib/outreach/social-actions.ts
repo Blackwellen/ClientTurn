@@ -285,6 +285,29 @@ export async function sendSocialInviteAction(
 
   if (!result.ok) return fail(result.error);
 
+  // The composed invitation note has now been performed. Marked sent rather
+  // than left in DRAFT: a DRAFT row blocks the next step being composed, and a
+  // SENT one is what tells the Article 14 check this person has been told
+  // where their details came from.
+  if (parsed.data.noteBody) {
+    const { error: noteError } = await admin
+      .from("social_outbound_messages")
+      .update({
+        status: "SENT",
+        sent_at: new Date().toISOString(),
+        sent_by: access.workspace.userId,
+        performed_by: account.send_mode,
+      })
+      .eq("business_id", access.workspace.businessId)
+      .eq("prospect_id", parsed.data.prospectId)
+      .eq("platform", parsed.data.platform)
+      .eq("kind", "INVITE_NOTE")
+      .eq("status", "DRAFT");
+    if (noteError) {
+      console.error("social: mark invite note sent", noteError.message);
+    }
+  }
+
   refresh();
   return ok({ state: result.state });
 }

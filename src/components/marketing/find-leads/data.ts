@@ -731,11 +731,6 @@ export const INTEGRATION_ROWS = [
   "Zapier",
   "Webhooks",
   "Pipedrive",
-  "Instantly",
-  "Clay",
-  "Smartlead",
-  "folk",
-  "Attio",
 ] as const;
 
 /* ------------------------------------------------------------ final flow */

@@ -117,6 +117,8 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   variant?: ConfirmVariant;
   loading?: boolean;
+  /** Optional controls under the text (a channel choice, an extra option). */
+  children?: React.ReactNode;
 };
 
 export function ConfirmDialog({
@@ -130,6 +132,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "default",
   loading = false,
+  children,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = React.useState(false);
   const pending = loading || busy;
@@ -183,6 +186,7 @@ export function ConfirmDialog({
         <div className="min-w-0 space-y-1.5">
           <p className="text-[13px] text-content">{scope}</p>
           <p className="text-[13px] text-content-muted">{consequence}</p>
+          {children && <div className="pt-1.5">{children}</div>}
         </div>
       </div>
     </Modal>

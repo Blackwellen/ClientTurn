@@ -11,6 +11,7 @@ import {
   type ConversionGoalType,
 } from "@/lib/business-profile/types";
 import { saveConversionGoal } from "@/lib/business-profile/actions";
+import { Select } from "@/components/ui/form";
 
 /**
  * Create or edit a conversion goal.
@@ -92,31 +93,31 @@ export function GoalEditor({
         </Field>
 
         <Field label="What should happen?">
-          <select
+          <Select
             value={type}
             onChange={(event) => setType(event.target.value as ConversionGoalType)}
-            className={cn(INPUT, "h-9 py-0")}
+            
           >
             {CONVERSION_GOAL_TYPES.map((value) => (
               <option key={value} value={value}>
                 {goalLabel(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field label="Where does it go?">
-          <select
+          <Select
             value={destinationType}
             onChange={(event) => setDestinationType(event.target.value)}
-            className={cn(INPUT, "h-9 py-0")}
+            
           >
             {DESTINATIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         {destination?.needsValue && (

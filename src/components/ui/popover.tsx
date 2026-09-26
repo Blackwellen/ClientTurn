@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { isInsideFloatingLayer } from "./floating";
 
 /**
  * A small anchored panel for editing a value in place.
@@ -37,7 +38,10 @@ export function Popover({
   React.useEffect(() => {
     if (!open) return;
 
+    // A Select or menu opened inside the panel is portalled to <body>;
+    // pressing or focusing inside it is not an outside interaction.
     function onPointerDown(event: PointerEvent) {
+      if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
@@ -47,6 +51,7 @@ export function Popover({
       rootRef.current?.querySelector("button")?.focus();
     }
     function onFocusIn(event: FocusEvent) {
+      if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
 

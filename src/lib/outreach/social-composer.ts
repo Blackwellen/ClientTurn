@@ -12,6 +12,7 @@ import {
   type SocialCopyKind,
 } from "./social-copy";
 import type { SocialPlatform } from "./social-limits";
+import { isPromotional, NON_PROMOTIONAL_INSTRUCTION } from "@/lib/policy/promotional-content";
 
 /**
  * Composing one social message.
@@ -44,6 +45,13 @@ export type ComposeInput = {
    * the caller from the prospect and step, which is what makes it stable.
    */
   idempotencyKey: string;
+  /**
+   * The policy engine returned NON_PROMOTIONAL_ONLY: an individual subscriber
+   * who accepted a connection but has not asked to hear about our services
+   * (docs/revenue-engine/00 §6.1). The message may not market, and the check
+   * is deterministic (`policy/promotional-content.ts`), not left to the model.
+   */
+  nonPromotional?: boolean;
 };
 
 export type ComposedMessage = {
@@ -162,12 +170,18 @@ export async function composeSocialMessage(
   const context = await loadContext(input);
   if (!context) return null;
 
-  const template = renderSocialTemplate({
+  const rendered = renderSocialTemplate({
     kind: input.kind,
     platform: input.platform,
     step: input.step,
     context: context.copy,
   });
+  // The standard templates introduce the business, which is marketing. Where
+  // only conversation is permitted, the fallback is a plain acknowledgement.
+  const template =
+    input.nonPromotional && isPromotional(rendered)
+      ? conversationalOpener(context.copy.prospect.first_name)
+      : rendered;
 
   // Every path below returns the template on failure, so it is built first and
   // the model is only ever an improvement on something already sendable.
@@ -197,6 +211,7 @@ export async function composeSocialMessage(
       `Platform: ${input.platform}.`,
       `Message type: ${input.kind === "OPENER" ? "the first message after they accepted a connection request" : `follow-up number ${input.step - 1}, sent because they did not reply`}.`,
       `Hard limit: ${limit} characters.`,
+      ...(input.nonPromotional ? ["", NON_PROMOTIONAL_INSTRUCTION] : []),
       "",
       "Facts you may use. You know nothing else about this person or their company:",
       ...context.facts.map((fact) => `- ${fact}`),
@@ -210,7 +225,9 @@ export async function composeSocialMessage(
     return fallback(
       result.skippedReason === "NO_TOKENS"
         ? "This workspace has used its AI allowance, so the standard message was sent."
-        : null,
+        : result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN"
+          ? "This workspace reached its AI budget, so the standard message was sent."
+          : null,
     );
   }
   if (!result.data) return fallback(null);
@@ -233,10 +250,24 @@ export async function composeSocialMessage(
     );
   }
 
+  if (input.nonPromotional && isPromotional(checked.body)) {
+    return fallback(
+      "The generated message promoted your services to someone who has not asked to hear about them, so a plain acknowledgement was used instead.",
+    );
+  }
+
   return {
     body: truncateAtWord(checked.body, limit),
     composedBy: "AI",
     modelRef: "social_message",
     fallbackReason: null,
   };
+}
+
+/** A non-promotional first message: thanks, and nothing to sell. */
+function conversationalOpener(firstName: string | null | undefined): string {
+  const name = firstName?.trim();
+  return name
+    ? `Thanks for connecting, ${name}. Good to be in touch.`
+    : "Thanks for connecting. Good to be in touch.";
 }

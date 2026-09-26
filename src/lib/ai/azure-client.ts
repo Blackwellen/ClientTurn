@@ -1,5 +1,6 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
+import { usageFromProvider } from "./tokens";
 
 /**
  * Raw Azure OpenAI transport. Nothing here decides business logic — see
@@ -43,6 +44,13 @@ export type ToolSpec = {
   };
 };
 
+/**
+ * Token fields on both result types (see ./tokens.ts):
+ *   inputTokens       = prompt_tokens, cached prefix INCLUDED
+ *   cachedInputTokens = the cached SUBSET of inputTokens -- never add the two
+ *   outputTokens      = completion_tokens
+ * Billing arithmetic lives in `billableTokens`/`costFor`, not at call sites.
+ */
 export type ToolChatResult = {
   content: string | null;
   toolCalls: ToolCallRequest[];
@@ -79,9 +87,10 @@ export async function chatWithTools(
   messages: ToolTurn[],
   tools: ToolSpec[],
   maxTokens: number,
+  deploymentOverride?: string | null,
 ): Promise<ToolChatResult> {
   const url =
-    `${serverEnv.azure.endpoint}/openai/deployments/${deploymentName(deployment)}` +
+    `${serverEnv.azure.endpoint}/openai/deployments/${deploymentName(deployment, deploymentOverride)}` +
     `/chat/completions?api-version=${serverEnv.azure.apiVersion}`;
 
   const controller = new AbortController();
@@ -111,16 +120,13 @@ export async function chatWithTools(
 
     const json = await response.json();
     const choice = json.choices?.[0] ?? {};
-    const usage = json.usage ?? {};
 
     return {
       content: choice.message?.content ?? null,
       toolCalls: Array.isArray(choice.message?.tool_calls)
         ? (choice.message.tool_calls as ToolCallRequest[])
         : [],
-      inputTokens: usage.prompt_tokens ?? 0,
-      cachedInputTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-      outputTokens: usage.completion_tokens ?? 0,
+      ...usageFromProvider(json.usage),
       latencyMs: Date.now() - startedAt,
       finishReason: choice.finish_reason ?? null,
     };
@@ -134,11 +140,17 @@ export async function chatWithTools(
   }
 }
 
-function deploymentName(deployment: AiDeployment): string {
+/**
+ * The Azure deployment to call. `override` is an explicit deployment name from
+ * the tier config (ai_model_tiers.deployment_name, migration 0122); without
+ * one the alias resolves through its env var exactly as before.
+ */
+function deploymentName(deployment: AiDeployment, override?: string | null): string {
   const name =
-    deployment === "nano"
+    override ||
+    (deployment === "nano"
       ? serverEnv.azure.deploymentFast
-      : serverEnv.azure.deploymentDefault;
+      : serverEnv.azure.deploymentDefault);
   if (!name || !serverEnv.azure.endpoint || !serverEnv.azure.apiKey) {
     throw new AiUnavailableError("Azure AI is not configured");
   }
@@ -162,9 +174,10 @@ export async function chat(
   deployment: AiDeployment,
   messages: ChatMessage[],
   maxTokens: number,
+  deploymentOverride?: string | null,
 ): Promise<ChatResult> {
   const url =
-    `${serverEnv.azure.endpoint}/openai/deployments/${deploymentName(deployment)}` +
+    `${serverEnv.azure.endpoint}/openai/deployments/${deploymentName(deployment, deploymentOverride)}` +
     `/chat/completions?api-version=${serverEnv.azure.apiVersion}`;
 
   const controller = new AbortController();
@@ -191,13 +204,10 @@ export async function chat(
     }
 
     const json = await response.json();
-    const usage = json.usage ?? {};
 
     return {
       content: json.choices?.[0]?.message?.content ?? "",
-      inputTokens: usage.prompt_tokens ?? 0,
-      cachedInputTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-      outputTokens: usage.completion_tokens ?? 0,
+      ...usageFromProvider(json.usage),
       latencyMs: Date.now() - startedAt,
     };
   } catch (error) {

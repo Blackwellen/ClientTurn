@@ -295,18 +295,40 @@ export async function assertCapability(
   }
 }
 
-/** Automatic overage is OFF unless the workspace deliberately enabled it. */
+/**
+ * Automatic overage is OFF unless the workspace deliberately enabled it, and
+ * it is a budget, not a switch: once the month's recorded overage spend
+ * (`usage_overage_events`, 0129) reaches the cap the workspace set, overage is
+ * off again until the next month. A read failure answers "off".
+ */
 export async function isOverageEnabled(businessId: string): Promise<boolean> {
   const admin = createAdminClient();
+  const now = new Date();
+  const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+
   const { data } = await admin
     .from("customer_usage_allocations")
     .select("overage_enabled, overage_cap_minor")
     .eq("business_id", businessId)
-    .order("billing_period", { ascending: false })
-    .limit(1)
+    .eq("billing_period", period)
     .maybeSingle();
 
-  return Boolean(data?.overage_enabled && (data.overage_cap_minor ?? 0) > 0);
+  const capMinor = Number(data?.overage_cap_minor ?? 0);
+  if (!data?.overage_enabled || capMinor <= 0) return false;
+
+  // usage_overage_events post-dates the generated types.
+  const spent = await (admin as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("usage_overage_events")
+    .select("amount_minor")
+    .eq("business_id", businessId)
+    .eq("billing_period", period);
+  if (spent.error) return false;
+
+  const spentMinor = ((spent.data ?? []) as { amount_minor: number }[]).reduce(
+    (sum, row) => sum + Number(row.amount_minor),
+    0,
+  );
+  return spentMinor < capMinor;
 }
 
 const METRIC_WORDS: Record<V4Metric, string> = {

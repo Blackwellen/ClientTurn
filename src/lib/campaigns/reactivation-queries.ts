@@ -1,4 +1,5 @@
 import "server-only";
+import { campaignChannelReadiness, type CampaignChannel } from "./reactivation-channels";
 import { createClient } from "@/lib/supabase/server";
 import { leadDisplayName } from "@/lib/leads/types";
 import type { CampaignStatus } from "./types";
@@ -602,16 +603,11 @@ export async function getReactivationCampaignDetail(
     }),
   );
 
-  const messagingProviders =
-    campaign.channel === "whatsapp"
-      ? ["twilio_whatsapp", "whatsapp_cloud"]
-      : ["twilio_sms"];
-  const providerConnected = (integrations ?? []).some(
-    (integration) =>
-      messagingProviders.includes(integration.provider_type) &&
-      integration.status !== "DISCONNECTED" &&
-      integration.status !== "ACTION_REQUIRED",
-  );
+  // The connection that carries this campaign's own channel: an email
+  // campaign needs the mailbox, not an SMS number.
+  const campaignChannel: CampaignChannel =
+    campaign.channel === "whatsapp" || campaign.channel === "email" ? campaign.channel : "sms";
+  const providerConnected = campaignChannelReadiness(integrations ?? [])[campaignChannel];
 
   const audienceLabel = audienceLabelFor(campaign);
   const denominator = Math.max(

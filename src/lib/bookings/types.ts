@@ -6,6 +6,9 @@
 import { z } from "zod";
 
 export const BOOKING_STATUSES = [
+  // A time the lead requested that no calendar confirmed (B10, decision Q1).
+  // Becomes `scheduled` only when a person confirms it.
+  "pending",
   "scheduled",
   "completed",
   "cancelled",
@@ -15,6 +18,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
+  pending: "Awaiting confirmation",
   scheduled: "Scheduled",
   completed: "Completed",
   cancelled: "Cancelled",

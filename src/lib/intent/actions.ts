@@ -26,7 +26,11 @@ import {
  * customer cannot raise for themselves.
  */
 
-const SOURCE_KEYS = Object.keys(SIGNAL_SOURCES) as [string, ...string[]];
+// Sources nothing in the product can collect (visitor tracking) are refused
+// server-side, not only hidden in the picker.
+const SOURCE_KEYS = Object.values(SIGNAL_SOURCES)
+  .filter((source) => !source.unavailable)
+  .map((source) => source.key) as [string, ...string[]];
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -174,7 +178,8 @@ export async function setIntentCategoryActive(
 const monitorSchema = z.object({
   categoryId: z.uuid(),
   name: z.string().trim().max(80).default(""),
-  monitorType: z.enum(["ICP", "NAMED_COMPANIES", "FIRST_PARTY"]),
+  // FIRST_PARTY (visitors to your own site) is not offered: nothing tracks them.
+  monitorType: z.enum(["ICP", "NAMED_COMPANIES"]),
   cadence: z.enum(["DAILY", "WEEKLY", "FORTNIGHTLY", "MONTHLY"]),
   icpProfileIds: z.array(z.uuid()).max(20).default([]),
   companies: z.array(z.string().trim().min(1).max(200)).max(200).default([]),

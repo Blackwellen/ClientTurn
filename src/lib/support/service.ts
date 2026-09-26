@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { bundledArticle, searchBundled } from "./help";
+import { helpCategory } from "@/lib/help/categories";
+import type { HelpImageSize, HelpScreenshot } from "@/lib/help/contract";
+import { getHelpArticleForRender, recordHelpView, searchHelp } from "@/lib/help/service";
 import type { TicketDetail, TicketSummary } from "./types";
 
 /**
@@ -129,101 +131,57 @@ export type HelpArticle = {
   slug: string;
   title: string;
   summary: string | null;
+  /** A help-centre category slug (`@/lib/help/categories`). */
   category: string;
-  /** Icon key for the bundled set; null for published articles. */
+  /** Icon key for the category, resolved to a component by the popout. */
   icon: string | null;
 };
 
+export type HelpArticleDetail = HelpArticle & {
+  body: string;
+  updated: string | null;
+  screenshots: HelpScreenshot[];
+  imageSizes: Record<string, HelpImageSize>;
+};
+
 /**
- * Help article search (V4 §23.11).
+ * Help article search (V4 §23.11, Phase 8.5).
  *
- * Searches the platform's own published article index and nothing else. There
- * is deliberately no web search here: a support surface that answers from the
- * open internet will eventually tell a customer something about ClientTurn that
- * is not true.
+ * Delegates to the HelpService, which merges the bundled markdown articles
+ * with published `support_articles` overrides and ranks them over title,
+ * summary, keywords and body. There is deliberately no web search here: a
+ * support surface that answers from the open internet will eventually tell a
+ * customer something about ClientTurn that is not true.
  */
 export async function searchArticles(
   query: string,
   limit = 8,
 ): Promise<HelpArticle[]> {
-  const admin = createAdminClient();
-
-  const base = admin
-    .from("support_articles")
-    .select("slug, title, summary, category, view_count")
-    .eq("status", "PUBLISHED");
-
-  const trimmed = query.trim();
-
-  const { data } = trimmed
-    ? await base
-        // Title, summary and keywords, so a search for "mailbox" finds
-        // "Setting up email outreach".
-        .or(
-          `title.ilike.%${escapeLike(trimmed)}%,summary.ilike.%${escapeLike(trimmed)}%`,
-        )
-        .limit(limit)
-    : await base.order("view_count", { ascending: false }).limit(limit);
-
-  const published: HelpArticle[] = (data ?? []).map((row) => ({
-    slug: row.slug,
-    title: row.title,
-    summary: row.summary,
-    category: row.category,
-    icon: null,
+  const results = await searchHelp(query, limit);
+  return results.map((article) => ({
+    slug: article.slug,
+    title: article.title,
+    summary: article.summary,
+    category: article.category,
+    icon: helpCategory(article.category)?.icon ?? null,
   }));
-
-  // The bundled index is the floor, not the ceiling: a published article with
-  // the same slug replaces its bundled version rather than appearing twice.
-  const slugs = new Set(published.map((article) => article.slug));
-  const bundled = searchBundled(trimmed)
-    .filter((article) => !slugs.has(article.slug))
-    .map((article) => ({
-      slug: article.slug,
-      title: article.title,
-      summary: article.summary,
-      category: article.category,
-      icon: article.icon,
-    }));
-
-  return [...published, ...bundled].slice(0, limit);
 }
 
-export async function getArticle(slug: string): Promise<
-  (HelpArticle & { body: string }) | null
-> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("support_articles")
-    .select("slug, title, summary, category, body_markdown")
-    .eq("slug", slug)
-    .eq("status", "PUBLISHED")
-    .maybeSingle();
-
-  if (data) {
-    return {
-      slug: data.slug,
-      title: data.title,
-      summary: data.summary,
-      category: data.category,
-      icon: null,
-      body: data.body_markdown,
-    };
-  }
-
-  const fallback = bundledArticle(slug);
-  if (!fallback) return null;
+/** One article for the popout, counted as a view. */
+export async function getArticle(slug: string): Promise<HelpArticleDetail | null> {
+  const found = await getHelpArticleForRender(slug);
+  if (!found) return null;
+  const { article, imageSizes } = found;
+  await recordHelpView(article.slug);
   return {
-    slug: fallback.slug,
-    title: fallback.title,
-    summary: fallback.summary,
-    category: fallback.category,
-    icon: fallback.icon,
-    body: fallback.body,
+    slug: article.slug,
+    title: article.title,
+    summary: article.summary,
+    category: article.category,
+    icon: helpCategory(article.category)?.icon ?? null,
+    body: article.body,
+    updated: article.updated,
+    screenshots: article.screenshots,
+    imageSizes,
   };
-}
-
-/** `%` and `_` are wildcards in ILIKE; a customer typing them means them. */
-function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, (match) => `\\${match}`).slice(0, 80);
 }

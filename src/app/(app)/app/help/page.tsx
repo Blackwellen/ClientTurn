@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import {
   ArrowUpRight,
   Check,
-  ChevronDown,
   Clock,
   Mail,
   MessageSquareText,
@@ -20,7 +19,16 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader, SectionHeader } from "@/components/app/page-header";
-import { BUNDLED_ARTICLES } from "@/lib/support/help";
+import { helpIndexByCategory, searchHelp, toSummary } from "@/lib/help/service";
+import type { HelpCategorySlug } from "@/lib/help/categories";
+import type { HelpArticleSummary } from "@/lib/help/contract";
+import {
+  HelpCategoryGrid,
+  HelpSearchForm,
+  HelpSearchResults,
+} from "@/components/help/help-centre";
+import { ReplayTourButton } from "@/components/tour/replay-tour-button";
+import { SECTION_TOURS } from "@/lib/tour/model";
 
 export const metadata: Metadata = { title: "Help · Client Turn" };
 export const dynamic = "force-dynamic";
@@ -65,24 +73,25 @@ const GUIDES: {
   },
 ];
 
-/**
- * The developer articles, read from the bundled index rather than restated.
- *
- * They are rendered inline as disclosures rather than linked to a separate
- * reader: there are four of them, someone reading one usually wants the next,
- * and a page of links to four short articles is a worse experience than the
- * four articles.
- */
-const DEVELOPER_ARTICLES = BUNDLED_ARTICLES.filter(
-  (article) => article.category === "Developer",
-);
-
-export default async function HelpPage() {
+export default async function HelpPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const workspace = await requireWorkspace();
-  const [steps, health] = await Promise.all([
+  const params = await searchParams;
+  const raw = Array.isArray(params.q) ? params.q[0] : params.q;
+  const query = (raw ?? "").trim().slice(0, 120);
+
+  const [steps, health, grouped, results] = await Promise.all([
     getGettingStarted(workspace.businessId),
     getWorkspaceHealth(workspace),
+    helpIndexByCategory(),
+    query ? searchHelp(query, 20) : Promise.resolve([] as HelpArticleSummary[]),
   ]);
+  const summaries = new Map<HelpCategorySlug, HelpArticleSummary[]>(
+    [...grouped.entries()].map(([slug, articles]) => [slug, articles.map(toSummary)]),
+  );
 
   const done = steps.filter((step) => step.done).length;
 
@@ -91,7 +100,38 @@ export default async function HelpPage() {
       <PageHeader
         title="Help"
         description="Get set up, understand what Client Turn is doing, and reach a human when you need one."
+        action={<ReplayTourButton />}
       />
+
+      <div className="max-w-2xl">
+        <HelpSearchForm base="/app/help" query={query} size="md" />
+      </div>
+
+      {query ? (
+        <HelpSearchResults base="/app/help" query={query} results={results} />
+      ) : (
+        <section aria-labelledby="help-guides-title" className="space-y-3">
+          <h2 id="help-guides-title" className="text-[15px] font-semibold text-content">
+            Guides
+          </h2>
+          <HelpCategoryGrid base="/app/help" grouped={summaries} />
+        </section>
+      )}
+
+      <Card id="page-tours" className="space-y-3 p-5">
+        <div>
+          <h2 className="font-semibold">Tour a page</h2>
+          <p className="text-sm text-content-muted">
+            A short, guided look at one page: what each part is for and what to do there.
+            You can also press Tour this page at the top of any of these pages.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SECTION_TOURS.map((tour) => (
+            <ReplayTourButton key={tour.section} section={tour.section} label={tour.label} />
+          ))}
+        </div>
+      </Card>
 
       <Card id="app-installs" className="space-y-3 p-5">
         <h2 className="font-semibold">Import contacts from another system</h2>
@@ -305,65 +345,6 @@ x-clientturn-signature: <hmac_hex>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <SectionHeader
-            title="For developers"
-            description="Read your workspace from your own systems, receive events, or connect an AI assistant."
-          />
-        </CardHeader>
-        <CardContent className="space-y-2 pt-0">
-          {DEVELOPER_ARTICLES.map((article) => (
-            // A native <details> rather than a state-driven accordion: it is
-            // keyboard accessible, findable by the browser's own in-page
-            // search even while closed, and needs no client component.
-            <details
-              key={article.slug}
-              className="group border-line hover:border-line-strong rounded-lg border transition-colors"
-            >
-              <summary className="focus-visible:outline-content-accent flex cursor-pointer items-start gap-3 px-3.5 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
-                <span
-                  aria-hidden
-                  className="bg-accent-50 text-content-accent flex size-8 shrink-0 items-center justify-center rounded-md"
-                >
-                  <Terminal className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="text-content block text-[13px] font-medium">
-                    {article.title}
-                  </span>
-                  <span className="text-content-muted block text-[13px]">
-                    {article.summary}
-                  </span>
-                </span>
-                <ChevronDown
-                  aria-hidden
-                  className="text-content-subtle mt-0.5 size-4 shrink-0 transition-transform group-open:rotate-180"
-                />
-              </summary>
-
-              <div className="space-y-3 border-t border-line px-3.5 py-3">
-                {article.body.split("\n\n").map((paragraph, index) => (
-                  <p
-                    key={index}
-                    className="text-content-secondary text-[13px] leading-relaxed"
-                  >
-                    {paragraph}
-                  </p>
-                ))}
-              </div>
-            </details>
-          ))}
-
-          <Link
-            href="/app/settings?section=developer"
-            className="group border-line hover:border-line-strong focus-visible:outline-content-accent mt-1 flex items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-[13px] font-medium focus-visible:outline-2"
-          >
-            <span className="text-content">Open Settings → Developer</span>
-            <ArrowUpRight className="text-content-subtle group-hover:text-content-muted size-3.5 shrink-0" />
-          </Link>
-        </CardContent>
-      </Card>
     </div>
   );
 }

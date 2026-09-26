@@ -25,6 +25,22 @@ import { getJobsView } from "@/lib/admin/jobs";
 import { getComplianceView } from "@/lib/admin/compliance";
 import { getReadinessReport } from "@/lib/admin/readiness";
 import { JOB_STATUS_FILTERS } from "@/lib/admin/jobs-types";
+import {
+  AUDIT_ACTOR_FILTERS,
+  DOMAIN_EVENT_STATES,
+  getAiSpend,
+  getProviderQuotas,
+  listAuditLog,
+  listDomainEvents,
+  listMergeCandidates,
+  listStuckLeads,
+} from "@/lib/admin/revenue-ops";
+import {
+  SystemAiSpendView,
+  SystemAuditView,
+  SystemDomainEventsView,
+  SystemLeadOpsView,
+} from "@/components/admin/system/system-revenue-views";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +75,26 @@ const paramsSchema = z.object({
   sq: z.string().trim().max(120).default("").catch(""),
   stype: z
     .enum(["all", "email", "phone", "domain"])
+    .default("all")
+    .catch("all"),
+  // Lead ops / domain events / audit
+  merge: z.enum(["OPEN", "MERGED", "DISMISSED"]).default("OPEN").catch("OPEN"),
+  state: z.enum(DOMAIN_EVENT_STATES).default("all").catch("all"),
+  // An action prefix: lower-case, dots and underscores only.
+  action: z
+    .string()
+    .trim()
+    .max(60)
+    .regex(/^[a-z_.]*$/)
+    .default("")
+    .catch(""),
+  actor: z.enum(AUDIT_ACTOR_FILTERS).default("all").catch("all"),
+  // Domain event types are validated against the vocabulary in the view.
+  etype: z
+    .string()
+    .trim()
+    .max(60)
+    .regex(/^[a-z_.]+$/)
     .default("all")
     .catch("all"),
 });
@@ -97,6 +133,11 @@ export default async function AdminSystemPage({
     policy: first(raw.policy),
     sq: first(raw.sq),
     stype: first(raw.stype),
+    merge: first(raw.merge),
+    state: first(raw.state),
+    action: first(raw.action),
+    actor: first(raw.actor),
+    etype: isDomainEventsView(first(raw.view)) ? first(raw.type) : undefined,
   });
 
   return (
@@ -154,6 +195,26 @@ export default async function AdminSystemPage({
         />
       )}
       {params.view === "readiness" && <ReadinessView />}
+      {params.view === "lead-ops" && <LeadOpsView mergeStatus={params.merge} />}
+      {params.view === "ai-spend" && <AiSpendView range={params.range} />}
+      {params.view === "domain-events" && (
+        <DomainEventsView
+          type={params.etype}
+          state={params.state}
+          range={params.range}
+          page={params.page}
+          pageSize={params.size}
+        />
+      )}
+      {params.view === "audit" && (
+        <AuditView
+          action={params.action}
+          actor={params.actor}
+          range={params.range}
+          page={params.page}
+          pageSize={params.size}
+        />
+      )}
       {params.view === "compliance" && (
         <ComplianceView
           suppressionQuery={params.sq}
@@ -163,6 +224,46 @@ export default async function AdminSystemPage({
       )}
     </div>
   );
+}
+
+/** Domain-event types share the `type` URL key with the Events and Jobs views. */
+function isDomainEventsView(view: string | undefined) {
+  return view === "domain-events";
+}
+
+async function LeadOpsView({ mergeStatus }: { mergeStatus: "OPEN" | "MERGED" | "DISMISSED" }) {
+  const [stuck, candidates] = await Promise.all([
+    listStuckLeads(),
+    listMergeCandidates(mergeStatus),
+  ]);
+  return <SystemLeadOpsView stuck={stuck} candidates={candidates} mergeStatus={mergeStatus} />;
+}
+
+async function AiSpendView({ range }: { range: (typeof ADMIN_RANGES)[number] }) {
+  const [spend, quotas] = await Promise.all([getAiSpend(range), getProviderQuotas(range)]);
+  return <SystemAiSpendView spend={spend} quotas={quotas} range={range} />;
+}
+
+async function DomainEventsView(props: {
+  type: string;
+  state: (typeof DOMAIN_EVENT_STATES)[number];
+  range: (typeof ADMIN_RANGES)[number];
+  page: number;
+  pageSize: number;
+}) {
+  const result = await listDomainEvents(props);
+  return <SystemDomainEventsView result={result} filters={props} />;
+}
+
+async function AuditView(props: {
+  action: string;
+  actor: (typeof AUDIT_ACTOR_FILTERS)[number];
+  range: (typeof ADMIN_RANGES)[number];
+  page: number;
+  pageSize: number;
+}) {
+  const result = await listAuditLog(props);
+  return <SystemAuditView result={result} filters={props} />;
 }
 
 async function ReadinessView() {

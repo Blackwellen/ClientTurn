@@ -33,14 +33,13 @@ export const attributionSchema = z.object({
   landingPath: z.string().trim().max(500).optional(),
 });
 
+/**
+ * No business name: every workspace is named once, by hand, in onboarding's
+ * first step (8.29), whichever way the owner signed up.
+ */
 export const signUpSchema = z.object({
   firstName: name("first name"),
   lastName: name("last name"),
-  businessName: z
-    .string()
-    .trim()
-    .min(2, "Enter your business name")
-    .max(120, "Business name is too long"),
   email: emailSchema,
   password: passwordSchema,
   terms: z

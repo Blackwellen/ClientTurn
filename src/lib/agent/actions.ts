@@ -27,6 +27,7 @@ import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import type { AgentActionResult } from "./views";
+import { draftApprovalVerdict } from "./draft-approval";
 
 function fail(error: string): AgentActionResult {
   return { ok: false, error };
@@ -294,26 +295,60 @@ export async function sendDraft(input: unknown): Promise<AgentActionResult> {
   if (!workspace) return fail("You do not have permission to do that.");
 
   const admin = createAdminClient();
-  const { data: draft } = await admin
+  const { data: draft, error: draftError } = await admin
     .from("messages")
-    .select("id, lead_id, send_key, status")
+    .select("id, lead_id, send_key, status, created_at")
     .eq("id", parsed.data.draftId)
     .eq("business_id", workspace.businessId)
     .maybeSingle();
 
+  if (draftError) return fail("That draft could not be read.");
   if (!draft || draft.status !== "DRAFT") {
     return fail("That draft has already been sent or discarded.");
   }
   if (!draft.lead_id) return fail("That draft is not attached to a lead.");
 
-  const { error } = await admin
+  // Anything the lead has said since the draft was written, on any channel.
+  // The draft stays a DRAFT: the person reviewing can edit it or discard it.
+  const { data: latestInbound, error: inboundError } = await admin
     .from("messages")
-    .update({ status: "QUEUED", scheduled_for: new Date().toISOString() })
+    .select("created_at")
+    .eq("business_id", workspace.businessId)
+    .eq("lead_id", draft.lead_id)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Not knowing is not the same as "no reply": refuse rather than guess.
+  if (inboundError) return fail("The conversation could not be checked. Try again.");
+
+  const verdict = draftApprovalVerdict({
+    draftCreatedAt: draft.created_at,
+    latestInboundAt: latestInbound?.created_at ?? null,
+  });
+  if (!verdict.ok) return fail(verdict.error);
+
+  const { data: queued, error } = await admin
+    .from("messages")
+    .update({
+      status: "QUEUED",
+      scheduled_for: new Date().toISOString(),
+      // A person approved it, so a person is sending it. Left as `agent`, the
+      // guard would refuse it for the very takeover or pause under which a
+      // person is reviewing drafts; `manual` still binds opt-out, suppression
+      // and quiet hours. Provenance is kept on `agent_run_id`.
+      origin: "manual",
+    })
     .eq("id", draft.id)
     .eq("business_id", workspace.businessId)
-    .eq("status", "DRAFT");
+    .eq("status", "DRAFT")
+    .select("id")
+    .maybeSingle();
 
   if (error) return fail("The reply could not be queued.");
+  // A concurrent approve or discard got there first.
+  if (!queued) return fail("That draft has already been sent or discarded.");
 
   await enqueue(
     "message.send",

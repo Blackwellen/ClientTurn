@@ -2,19 +2,25 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  stripe,
-  mapSubscriptionStatus,
-  planForPriceId,
-  entitlementsForPlan,
-} from "@/lib/billing/stripe";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
+import { stripe } from "@/lib/billing/stripe";
 import { recordAudit } from "@/lib/audit";
 import { creditTokenPurchase } from "@/lib/billing/token-service";
+import {
+  applyStripeSubscription,
+  applySubscriptionCheckout,
+  notifyTrialEnding,
+} from "@/lib/billing/subscription-sync";
+import { recordInvoiceFailure, recordInvoicePaid } from "@/lib/billing/dunning";
+import {
+  applyMessageCreditCheckout,
+  applyMessageCreditRefund,
+} from "@/lib/billing/message-credits";
 import {
   accrueCommission,
   reverseCommission,
 } from "@/lib/affiliates/commissions";
-import { syncReferralLifecycle } from "@/lib/affiliates/lifecycle";
+import { enqueue } from "@/lib/jobs/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +28,8 @@ const HANDLED = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  // Three days' notice before the card is first charged (8.10).
+  "customer.subscription.trial_will_end",
   "invoice.paid",
   "invoice.payment_failed",
   // One-off AI token top-ups. `checkout.session.completed` is the only place
@@ -96,7 +104,39 @@ export async function POST(request: Request) {
   });
 
   if (inboxError?.code === "23505") {
-    return NextResponse.json({ received: true, duplicate: true });
+    // A duplicate of an event whose earlier attempt *failed* is Stripe's retry
+    // doing its job, and must be re-applied: answering "duplicate" there would
+    // drop the transition for good. The conditional update is the claim, so
+    // two concurrent retries cannot both re-apply. Every transition below is
+    // idempotent (fixed-value updates, conditional status moves, keyed
+    // ledgers), which is what makes re-applying safe.
+    const { data: reclaimed, error: reclaimError } = await supabase
+      .from("webhook_events")
+      .update({ status: "processing", last_error: null })
+      .eq("provider", "stripe")
+      .eq("external_event_id", event.id)
+      .eq("status", "failed")
+      .select("id");
+    if (reclaimError) {
+      console.error("[stripe webhook] could not reclaim failed event", {
+        eventId: event.id,
+        code: reclaimError.code,
+        message: reclaimError.message,
+      });
+      return NextResponse.json({ error: "inbox unavailable" }, { status: 500 });
+    }
+    if (!reclaimed?.length) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+  } else if (inboxError) {
+    // No inbox row means no idempotency guard. Refuse, and let Stripe retry,
+    // rather than apply a transition that a retry could apply again.
+    console.error("[stripe webhook] inbox insert failed", {
+      eventId: event.id,
+      code: inboxError.code,
+      message: inboxError.message,
+    });
+    return NextResponse.json({ error: "inbox unavailable" }, { status: 500 });
   }
 
   try {
@@ -108,23 +148,31 @@ export async function POST(request: Request) {
       await applyEvent(event);
     }
 
-    await supabase
-      .from("webhook_events")
-      .update({
-        status: HANDLED.has(event.type) ? "processed" : "ignored",
-        processed_at: new Date().toISOString(),
-      })
-      .eq("provider", "stripe")
-      .eq("external_event_id", event.id);
+    logWriteError(
+      await supabase
+        .from("webhook_events")
+        .update({
+          status: HANDLED.has(event.type) ? "processed" : "ignored",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("provider", "stripe")
+        .eq("external_event_id", event.id),
+      "stripe webhook: mark processed",
+      { eventId: event.id, eventType: event.type },
+    );
   } catch (error) {
-    await supabase
-      .from("webhook_events")
-      .update({
-        status: "failed",
-        last_error: error instanceof Error ? error.message : String(error),
-      })
-      .eq("provider", "stripe")
-      .eq("external_event_id", event.id);
+    logWriteError(
+      await supabase
+        .from("webhook_events")
+        .update({
+          status: "failed",
+          last_error: error instanceof Error ? error.message : String(error),
+        })
+        .eq("provider", "stripe")
+        .eq("external_event_id", event.id),
+      "stripe webhook: mark failed",
+      { eventId: event.id, eventType: event.type },
+    );
 
     return NextResponse.json({ error: "processing failed" }, { status: 500 });
   }
@@ -137,15 +185,23 @@ async function applyEvent(event: Stripe.Event) {
     event.type === "checkout.session.completed" ||
     event.type === "checkout.session.expired"
   ) {
+    // Each is a no-op for the others' sessions (keyed on metadata.kind).
     await applyTokenCheckout(event);
+    await applyMessageCreditCheckout(event);
+    if (event.type === "checkout.session.completed") {
+      await applySubscriptionCheckout(event.data.object as Stripe.Checkout.Session, {
+        eventId: event.id,
+      });
+    }
     return;
   }
 
   if (event.type === "charge.refunded") {
-    // A refund can be either a token top-up or a subscription payment that
-    // earned an affiliate commission. Both are attempted; each is a no-op for
-    // the other's charges.
+    // A refund can be a token top-up, a message-credit top-up or a
+    // subscription payment that earned an affiliate commission. All are
+    // attempted; each is a no-op for the others' charges.
     await applyTokenRefund(event);
+    await applyMessageCreditRefund(event);
     await applyAffiliateRefund(event);
     return;
   }
@@ -155,84 +211,34 @@ async function applyEvent(event: Stripe.Event) {
     return;
   }
 
-  const supabase = createAdminClient();
+  if (event.type === "customer.subscription.trial_will_end") {
+    await notifyTrialEnding(event.data.object as Stripe.Subscription);
+    return;
+  }
 
   if (event.type.startsWith("customer.subscription.")) {
-    const subscription = event.data.object as Stripe.Subscription;
-    const businessId = subscription.metadata?.business_id;
-    if (!businessId) return;
-
-    const item = subscription.items.data[0];
-    const priceId = item?.price?.id ?? null;
-    const plan =
-      event.type === "customer.subscription.deleted"
-        ? "trial"
-        : planForPriceId(priceId);
-
-    const status =
-      event.type === "customer.subscription.deleted"
-        ? "CANCELLED"
-        : mapSubscriptionStatus(subscription.status);
-
-    const periodStart = item?.current_period_start;
-    const periodEnd = item?.current_period_end;
-
-    await supabase
-      .from("subscriptions")
-      .update({
-        stripe_customer_id: String(subscription.customer),
-        stripe_subscription_id: subscription.id,
-        stripe_price_id: priceId,
-        plan,
-        status,
-        billing_interval:
-          item?.price?.recurring?.interval === "year" ? "year" : "month",
-        current_period_start: periodStart
-          ? new Date(periodStart * 1000).toISOString()
-          : null,
-        current_period_end: periodEnd
-          ? new Date(periodEnd * 1000).toISOString()
-          : null,
-        cancel_at_period_end: subscription.cancel_at_period_end ?? false,
-        cancelled_at: subscription.canceled_at
-          ? new Date(subscription.canceled_at * 1000).toISOString()
-          : null,
-        ...entitlementsForPlan(plan),
-      })
-      .eq("business_id", businessId);
-
-    await recordAudit({
-      businessId,
-      actorType: "provider",
-      action: "billing.plan_changed",
-      entityType: "subscription",
-      metadata: { plan, status, stripe_event: event.type },
-    });
-
-    // Keep the referral's lifecycle in step with the subscription. Trial and
-    // churn are subscription facts, not payment facts, so they are mirrored
-    // here rather than inferred from the commission ledger.
-    await syncReferralLifecycle({
-      businessId,
-      subscriptionStatus: subscription.status,
+    // Throws on a failed write: the catch above marks the event failed and
+    // answers 500, and Stripe's retry re-applies it.
+    await applyStripeSubscription(event.data.object as Stripe.Subscription, {
+      eventType: event.type,
+      eventId: event.id,
       deleted: event.type === "customer.subscription.deleted",
-      planKey: plan,
     });
     return;
   }
 
   if (event.type === "invoice.paid") {
+    // Stops any daily retry of this invoice immediately, then accrues
+    // affiliate commission for the payment.
+    await recordInvoicePaid(event.data.object as Stripe.Invoice, event.id);
     await applyAffiliateAccrual(event);
     return;
   }
 
   if (event.type === "invoice.payment_failed") {
-    const invoice = event.data.object as Stripe.Invoice;
-    const customerId = String(invoice.customer);
-    await supabase
-      .from("subscriptions")
-      .update({ status: "PAST_DUE" })
-      .eq("stripe_customer_id", customerId);
+    // Opens the daily retry (dunning) for a subscription invoice. No Stripe
+    // I/O here: the retry itself is the daily job's.
+    await recordInvoiceFailure(event.data.object as Stripe.Invoice, event.id);
   }
 }
 
@@ -260,6 +266,26 @@ async function applyAffiliateAccrual(event: Stripe.Event) {
   const amountPaidMinor = invoice.amount_paid ?? 0;
   if (amountPaidMinor <= 0) return;
 
+  // A subscription's first PAID invoice is the moment a workspace becomes a
+  // paying customer -- the point to invite them to the Zapier integration.
+  // With a card-first trial the `subscription_create` invoice is £0 (returned
+  // above), so the first paid one is the post-trial `subscription_cycle`.
+  // Any paid subscription invoice qualifies; the key is the business alone
+  // (not the invoice), so it fires exactly once per workspace, ever.
+  if (
+    isFirstPaidInviteCandidate(invoice.billing_reason ?? null, amountPaidMinor) &&
+    !(await integrationsInviteAlreadySent(businessId))
+  ) {
+    await enqueue(
+      "notification.send",
+      { kind: "developer_integrations_invite", businessId },
+      {
+        businessId,
+        idempotencyKey: `notification.send:developer-integrations-invite:${businessId}`,
+      },
+    );
+  }
+
   const periodStart = invoice.period_start
     ? new Date(invoice.period_start * 1000)
     : new Date();
@@ -285,6 +311,34 @@ async function applyAffiliateAccrual(event: Stripe.Event) {
       metadata: { stripe_event: event.type, amountMinor: result.amountMinor },
     });
   }
+}
+
+/**
+ * The job's idempotency key only lasts as long as the finished job row, which
+ * retention purges. The notification row it writes is kept, so it is the
+ * durable "already invited" marker. A failed read errs towards not inviting.
+ */
+async function integrationsInviteAlreadySent(businessId: string): Promise<boolean> {
+  const { count, error } = await createAdminClient()
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .ilike("title", "Connect Client Turn to%Zapier%");
+  if (error) {
+    console.error("[stripe] integrations invite check failed", { businessId, message: error.message });
+    return true;
+  }
+  return (count ?? 0) > 0;
+}
+
+/** Paid subscription invoices; the idempotency key makes only the first count. */
+function isFirstPaidInviteCandidate(billingReason: string | null, amountPaidMinor: number): boolean {
+  return (
+    amountPaidMinor > 0 &&
+    (billingReason === "subscription_create" ||
+      billingReason === "subscription_cycle" ||
+      billingReason === "subscription_update")
+  );
 }
 
 /**
@@ -327,8 +381,8 @@ async function businessForInvoice(
 /** Reverses commission when a subscription charge is refunded. */
 async function applyAffiliateRefund(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
-  // Token top-ups are handled by `applyTokenRefund` and never earn commission.
-  if (charge.metadata?.kind === "ai_tokens") return;
+  // Top-ups are handled by their own refund handlers and never earn commission.
+  if (charge.metadata?.kind === "ai_tokens" || charge.metadata?.kind === "message_credits") return;
 
   const invoiceId = invoiceIdOf(charge);
   if (!invoiceId) return;
@@ -398,11 +452,15 @@ async function applyTokenCheckout(event: Stripe.Event) {
   const supabase = createAdminClient();
 
   if (event.type === "checkout.session.expired") {
-    await supabase
-      .from("ai_token_purchases")
-      .update({ status: "EXPIRED" })
-      .eq("id", purchaseId)
-      .eq("status", "PENDING");
+    assertWrite(
+      await supabase
+        .from("ai_token_purchases")
+        .update({ status: "EXPIRED" })
+        .eq("id", purchaseId)
+        .eq("status", "PENDING"),
+      "stripe webhook: expire token purchase",
+      { eventId: event.id, purchaseId },
+    );
     return;
   }
 
@@ -410,7 +468,7 @@ async function applyTokenCheckout(event: Stripe.Event) {
   // (an async payment method still clearing) stays PENDING until it settles.
   if (session.payment_status !== "paid") return;
 
-  const { data: purchase } = await supabase
+  const paidUpdate = await supabase
     .from("ai_token_purchases")
     .update({
       status: "PAID",
@@ -421,6 +479,14 @@ async function applyTokenCheckout(event: Stripe.Event) {
     .in("status", ["PENDING", "PAID"])
     .select("id, business_id, tokens, pack_key")
     .maybeSingle();
+  // A failed update used to read as "no such purchase" and return, leaving a
+  // paid top-up uncredited. Throwing lets Stripe's retry credit it; the
+  // credit itself is guarded by `credited_at` and the ledger key.
+  assertWrite(paidUpdate, "stripe webhook: mark token purchase paid", {
+    eventId: event.id,
+    purchaseId,
+  });
+  const purchase = paidUpdate.data;
 
   if (!purchase) return;
 
@@ -455,13 +521,18 @@ async function applyTokenRefund(event: Stripe.Event) {
   if (!purchaseId) return;
 
   const supabase = createAdminClient();
-  const { data: purchase } = await supabase
+  const refundUpdate = await supabase
     .from("ai_token_purchases")
     .update({ status: "REFUNDED" })
     .eq("id", purchaseId)
     .eq("status", "PAID")
     .select("id, business_id")
     .maybeSingle();
+  assertWrite(refundUpdate, "stripe webhook: mark token purchase refunded", {
+    eventId: event.id,
+    purchaseId,
+  });
+  const purchase = refundUpdate.data;
 
   if (!purchase) return;
 

@@ -34,6 +34,7 @@ function NavLink({
     <Link
       href={item.href}
       onClick={onNavigate}
+      data-tour={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group flex items-center gap-3 rounded-[10px] text-[14px] font-medium",
@@ -95,6 +96,7 @@ function WorkspaceCard({
 
   return (
     <div
+      data-tour="workspace-card"
       className="ct-rail-workspace shrink-0 items-center gap-3 px-5 py-4"
       style={{ borderBottom: "1px solid var(--ct-shell-divider)" }}
     >

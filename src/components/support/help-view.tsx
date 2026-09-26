@@ -1,18 +1,15 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   ArrowLeft,
-  Calendar,
+  ArrowUpRight,
   ChevronRight,
-  CircleHelp,
-  Mail,
   MessageSquare,
-  Rocket,
   Search,
   Send,
-  Settings,
-  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -20,19 +17,29 @@ import {
   readHelpArticle,
   searchHelpArticles,
 } from "@/lib/support/actions";
+import { HelpIcon } from "@/components/help/help-icons";
+import { ReplayTourButton } from "@/components/tour/replay-tour-button";
 import { NewTicketForm } from "./new-ticket-form";
 import type { Screen } from "./support-popout";
 
 type Article = Awaited<ReturnType<typeof searchHelpArticles>>[number];
 type FullArticle = NonNullable<Awaited<ReturnType<typeof readHelpArticle>>>;
 
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  rocket: Rocket,
-  users: Users,
-  mail: Mail,
-  calendar: Calendar,
-  settings: Settings,
-};
+/**
+ * The markdown renderer is only needed once an article is opened, so it is
+ * loaded then rather than with the popout's launcher on every page.
+ */
+const HelpMarkdown = dynamic(
+  () => import("@/components/help/help-markdown").then((mod) => mod.HelpMarkdown),
+  {
+    loading: () => (
+      <div aria-hidden className="mt-3 space-y-2">
+        <div className="h-4 w-full animate-pulse rounded bg-surface-sunken" />
+        <div className="h-4 w-5/6 animate-pulse rounded bg-surface-sunken" />
+      </div>
+    ),
+  },
+);
 
 /**
  * The Help tab (V4 §23.4).
@@ -162,7 +169,6 @@ function HelpIndex({
       ) : (
         <ul className="space-y-2.5">
           {articles.map((article) => {
-            const Icon = ICONS[article.icon ?? ""] ?? CircleHelp;
             return (
               <li key={article.slug}>
                 <button
@@ -178,7 +184,7 @@ function HelpIndex({
                     aria-hidden
                     className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-line bg-surface-sunken text-content-secondary"
                   >
-                    <Icon className="size-4" />
+                    <HelpIcon icon={article.icon} className="size-4" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-semibold text-content">
@@ -224,6 +230,17 @@ function HelpIndex({
           <Send className="size-4" aria-hidden />
           New support ticket
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <ReplayTourButton />
+        <Link
+          href="/app/help"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-content-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
+        >
+          Browse the help centre
+          <ArrowUpRight className="size-3.5" aria-hidden />
+        </Link>
       </div>
     </div>
   );
@@ -276,16 +293,27 @@ function ArticleView({ slug, onBack }: { slug: string; onBack: () => void }) {
           <h2 className="text-[19px] font-bold leading-snug text-content">
             {article.title}
           </h2>
-          {/* Plain text, rendered as paragraphs. No HTML is interpreted, so an
-              article can never inject markup into the shell. */}
-          {article.body.split("\n\n").map((paragraph, index) => (
-            <p
-              key={index}
-              className="mt-3 whitespace-pre-wrap text-[13.5px] leading-[1.65] text-content-secondary"
-            >
-              {paragraph}
-            </p>
-          ))}
+          {article.summary ? (
+            <p className="mt-1 text-[13px] text-content-muted">{article.summary}</p>
+          ) : null}
+          {/* Markdown, rendered with raw HTML dropped — an article can never
+              inject markup into the shell. Same renderer as /help. */}
+          <div className="mt-4">
+            <HelpMarkdown
+              body={article.body}
+              imageSizes={article.imageSizes}
+              screenshots={article.screenshots}
+              helpBase="/app/help"
+              compact
+            />
+          </div>
+          <Link
+            href={`/app/help/${article.category}/${article.slug}`}
+            className="mt-6 inline-flex items-center gap-1.5 text-[13px] font-medium text-content-accent hover:underline"
+          >
+            Open as a full page
+            <ArrowUpRight className="size-3.5" aria-hidden />
+          </Link>
         </article>
       )}
     </div>

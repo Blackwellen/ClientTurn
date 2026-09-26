@@ -12,7 +12,6 @@ export type ProviderType =
   | "calendly"
   | "email"
   | "google_ads"
-  | "microsoft_ads"
   | "tiktok_ads"
   | "linkedin_ads"
   | "slack"
@@ -57,6 +56,10 @@ export type ProviderDefinition = {
   /** What stops working the moment this is disconnected. */
   disconnectConsequence: string;
   configurable: boolean;
+  /** Shown as a Beta badge: the flow is built but not yet proven live. */
+  beta?: boolean;
+  /** Something to know before connecting, shown on the card. */
+  caveat?: string;
 };
 
 export const PROVIDERS: ProviderDefinition[] = [
@@ -85,7 +88,17 @@ export const PROVIDERS: ProviderDefinition[] = [
   },
   {
     id: "twilio_sms",
-    connection: "workspace",
+    // One shared Twilio account sends for every workspace on this deployment
+    // (see `src/lib/messaging/twilio.ts`, `registry.ts`) -- there is no
+    // per-workspace credential to hold, the same shape as Resend email below.
+    // Previously marked "workspace" with `connectionMethod: "oauth"` and
+    // `connectPath: null`, which `workspaceProviderBlock` (catalog.ts) always
+    // renders as "Not yet available" regardless of configuration -- the exact
+    // bug already fixed for HubSpot's token connection (see that function's
+    // comment), just not caught here at the time. Confirmed live 2026-09-13:
+    // credentials had been on Vercel for days and the card still would not
+    // offer a connection.
+    connection: "platform",
     connectPath: null,
     connectionMethod: "oauth",
     name: "Twilio SMS",
@@ -93,10 +106,15 @@ export const PROVIDERS: ProviderDefinition[] = [
     summary:
       "Sends your follow-up text messages and receives the replies that drive qualification.",
     accountLabel: "Sending number",
-    // serverEnv.twilio also accepts TWILIO_SID / TWILIO_CLIENT_SECRET.
+    // serverEnv.twilio also accepts TWILIO_SID / TWILIO_CLIENT_SECRET. A
+    // sender identity is as required as the credentials themselves --
+    // `isTwilioConfigured()` refuses to send without one, so a card that
+    // called itself configured without checking would report healthy while
+    // every message failed.
     requiredEnv: [
       "TWILIO_ACCOUNT_SID|TWILIO_SID",
       "TWILIO_AUTH_TOKEN|TWILIO_CLIENT_SECRET",
+      "TWILIO_SMS_FROM|TWILIO_MESSAGING_SERVICE_SID",
     ],
     disconnectConsequence:
       "All SMS follow-up stops immediately, including sequences already in progress, and inbound replies are no longer received.",
@@ -104,7 +122,10 @@ export const PROVIDERS: ProviderDefinition[] = [
   },
   {
     id: "twilio_whatsapp",
-    connection: "workspace",
+    // Same shared Twilio account as twilio_sms above -- see that entry's
+    // comment. Distinct from `whatsapp_cloud` below, which genuinely is a
+    // per-workspace connection (each customer's own Meta WhatsApp number).
+    connection: "platform",
     connectPath: null,
     connectionMethod: "oauth",
     name: "WhatsApp",
@@ -125,7 +146,13 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "whatsapp_cloud",
     connection: "workspace",
-    connectPath: null,
+    // Embedded Signup through the generic OAuth route: the adapter
+    // (providers/whatsapp-cloud.ts) sends `config_id` with
+    // `override_default_response_type`, resolves the WABA and number after
+    // the exchange and subscribes the app to the WABA. It was null here, so
+    // the card could never offer a connection even with every credential set.
+    // Without META_WHATSAPP_CONFIG_ID the card still says it is unavailable.
+    connectPath: "/api/integrations/whatsapp_cloud/connect",
     connectionMethod: "oauth",
     name: "WhatsApp (direct)",
     category: "messaging",
@@ -145,7 +172,7 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "google_calendar",
     connection: "workspace",
-    connectPath: null,
+    connectPath: "/api/integrations/google_calendar/connect",
     connectionMethod: "oauth",
     name: "Google Calendar",
     category: "booking",
@@ -160,7 +187,10 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id: "calendly",
     connection: "workspace",
-    connectPath: null,
+    // The OAuth adapter (src/lib/integrations/providers/calendly.ts) and its
+    // webhook route (src/app/api/webhooks/calendly/route.ts) are both live —
+    // see docs/INTEGRATION_SETUP.md for the env vars this still needs.
+    connectPath: "/api/integrations/calendly/connect",
     connectionMethod: "oauth",
     name: "Calendly",
     category: "booking",
@@ -180,7 +210,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Resend email",
     category: "email",
     summary:
-      "Sends your system email — invitations, handover alerts and integration failure warnings.",
+      "Client Turn's own system email: team invitations, handover alerts and failure warnings. Not your campaigns — those send from the mailbox you connect above.",
     accountLabel: "Sending domain",
     requiredEnv: ["RESEND_API_KEY"],
     disconnectConsequence:
@@ -197,28 +227,19 @@ export const PROVIDERS: ProviderDefinition[] = [
       "Delivers leads from your Google Ads Lead Form extensions into Client Turn.",
     accountLabel: "Google Ads account",
     // serverEnv.googleAds falls back to the plain Google OAuth client.
+    // No developer token requirement: Google sunset developer tokens on
+    // 2026-09-09 (see src/lib/integrations/providers/google-ads.ts's header
+    // comment) -- API access is now decided by the Cloud project behind these
+    // OAuth credentials, not by a separate token value this app could hold.
+    // Requiring GOOGLE_ADS_DEVELOPER_TOKEN here previously blocked the
+    // Connect button on every deployment with real OAuth credentials but no
+    // token, which is now the normal case.
     requiredEnv: [
       "GOOGLE_ADS_CLIENT_ID|GOOGLE_CLIENT_ID",
       "GOOGLE_ADS_CLIENT_SECRET|GOOGLE_CLIENT_SECRET",
-      "GOOGLE_ADS_DEVELOPER_TOKEN",
     ],
     disconnectConsequence:
       "New leads from your Google Ads lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
-    configurable: true,
-  },
-  {
-    id: "microsoft_ads",
-    connection: "workspace",
-    connectPath: "/api/integrations/microsoft_ads/connect",
-    connectionMethod: "oauth",
-    name: "Microsoft Advertising",
-    category: "leads",
-    summary:
-      "Delivers leads from your Microsoft (Bing) Advertising Lead Form extensions into Client Turn.",
-    accountLabel: "Microsoft Advertising account",
-    requiredEnv: ["MICROSOFT_ADS_CLIENT_ID", "MICROSOFT_ADS_CLIENT_SECRET", "MICROSOFT_ADS_DEVELOPER_TOKEN"],
-    disconnectConsequence:
-      "New leads from your Microsoft Advertising lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
     configurable: true,
   },
   {
@@ -228,6 +249,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     connectionMethod: "oauth",
     name: "TikTok Lead Generation",
     category: "leads",
+    // The lead-retrieval endpoint has not been confirmed against a live TikTok
+    // ad account (tracker 8.24 #15), so the card says so.
+    beta: true,
     summary:
       "Delivers leads from your TikTok Lead Generation ads into Client Turn.",
     accountLabel: "TikTok for Business account",
@@ -248,6 +272,8 @@ export const PROVIDERS: ProviderDefinition[] = [
     connectionMethod: "oauth",
     name: "LinkedIn Lead Gen Forms",
     category: "leads",
+    caveat:
+      "LinkedIn releases lead form responses only to apps it has approved for its Lead Sync API. Until that approval covers your account, the connection succeeds but no leads arrive.",
     summary:
       "Delivers leads from your LinkedIn Lead Gen Forms ads into Client Turn.",
     accountLabel: "LinkedIn ad account",
@@ -264,7 +290,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Slack",
     category: "messaging",
     summary:
-      "Posts new-lead and handover alerts into a Slack channel your team is already watching.",
+      "Posts new-lead, handover, booking and warm-prospect alerts into a Slack channel your team is already watching.",
     accountLabel: "Slack workspace",
     requiredEnv: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"],
     disconnectConsequence:
@@ -294,7 +320,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Zoho CRM",
     category: "crm",
     summary:
-      "Pushes qualified leads and bookings into your Zoho CRM as leads and deals.",
+      "Pushes qualified leads into your Zoho CRM as Leads, updating the same Lead on every change rather than creating another.",
     accountLabel: "Zoho CRM account",
     requiredEnv: ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET"],
     disconnectConsequence:
@@ -309,7 +335,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Salesforce",
     category: "crm",
     summary:
-      "Pushes qualified leads and bookings into Salesforce as leads, contacts or opportunities.",
+      "Pushes qualified leads into Salesforce as Leads, and adds an Opportunity once a lead has one in Client Turn.",
     accountLabel: "Salesforce org",
     requiredEnv: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
     disconnectConsequence:
@@ -367,6 +393,36 @@ export type ProviderCardModel = {
   connected: boolean;
   status: string;
 };
+
+/** The exact wording the Connections design uses for an unconnectable provider. */
+export const NOT_AVAILABLE_REASON =
+  "Client Turn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.";
+
+/**
+ * Whether an unconnected `workspace` provider should be blocked as "not yet
+ * available", separated out from `getIntegrationsView` so it can be unit
+ * tested without a database.
+ *
+ * A `token` connection (the customer pastes their own credential, e.g.
+ * HubSpot's private-app token) has `connectPath: null` *by design* — there is
+ * no redirect flow to send them to. Only an `oauth` connection actually needs
+ * one to be offerable. Requiring a `connectPath` regardless of
+ * `connectionMethod` made every token provider permanently unavailable no
+ * matter how `requiredEnv` evaluated — confirmed live for HubSpot (2026-09-13):
+ * `requiredEnv: []` so `configured` was always `true`, yet the card still
+ * rendered "Not yet available" with the Connect button disabled.
+ */
+export function workspaceProviderBlock(
+  definition: ProviderDefinition,
+  args: { configured: boolean; connected: boolean },
+): ProviderBlock {
+  if (args.connected) return null;
+  const needsConnectPath = definition.connectionMethod === "oauth";
+  if (!args.configured || (needsConnectPath && !definition.connectPath)) {
+    return { kind: "unavailable", reason: NOT_AVAILABLE_REASON };
+  }
+  return null;
+}
 
 export function connectionStatus(integration: IntegrationRecord | null) {
   return integration?.status ?? "DISCONNECTED";
@@ -447,10 +503,16 @@ export const AVAILABILITY_META: Record<ConnectionAvailability, AvailabilityMeta>
 export function providerAvailability(
   model: ProviderCardModel,
 ): ConnectionAvailability {
+  // Checked before the platform short-circuit below: twilio_whatsapp is a
+  // platform provider (one shared Twilio account) that is nonetheless
+  // Growth-plan-only, and a plan block is a different fact from "the
+  // platform hasn't configured this yet" -- the two produce different
+  // wording and the plan one should never be swallowed by the other.
+  if (model.block?.kind === "plan") return "PLAN_LOCKED";
+
   if (model.definition.connection === "platform") {
     return model.block ? "NOT_AVAILABLE" : "SYSTEM_MANAGED";
   }
-  if (model.block?.kind === "plan") return "PLAN_LOCKED";
   if (model.block?.kind === "unavailable") return "NOT_AVAILABLE";
 
   if (model.connected) {
@@ -501,10 +563,6 @@ export function connectionActions(model: ProviderCardModel) {
   };
 }
 
-/** The exact wording the Connections design uses for an unconnectable provider. */
-export const NOT_AVAILABLE_REASON =
-  "Client Turn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.";
-
 export type ConnectionHealthSummary = {
   total: number;
   connected: number;
@@ -531,4 +589,146 @@ export function summariseConnections(
   }
 
   return { total: cards.length, connected, notAvailable, needsAttention, lastCheckedAt };
+}
+
+/* --------------------------------------------------------------------------
+   The OAuth round trip's outcome, as the Connections page reports it.
+   -------------------------------------------------------------------------- */
+
+export type ConnectResultMessage = {
+  variant: "success" | "error";
+  title: string;
+  description: string;
+};
+
+/**
+ * Reads `?connected=<provider>` / `?connect=failed` from the callback's
+ * redirect. Nothing used to read them, so a connection that succeeded or
+ * failed looked identical: the page simply reloaded.
+ */
+export function connectResultMessage(params: {
+  connected: string | null;
+  connect: string | null;
+}): ConnectResultMessage | null {
+  if (params.connected) {
+    const provider = PROVIDERS.find((entry) => entry.id === params.connected);
+    const name = provider?.name ?? "The account";
+    return {
+      variant: "success",
+      title: `${name} connected`,
+      description:
+        provider?.category === "leads"
+          ? "New leads will start arriving here. The first check runs within a few minutes."
+          : "The connection is live. You can test or configure it from its card.",
+    };
+  }
+  if (params.connect === "failed") {
+    return {
+      variant: "error",
+      title: "That connection did not complete",
+      description:
+        "Nothing was connected. The provider may have been cancelled, the permission request declined, or the sign-in link expired. Try Connect again.",
+    };
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------------------
+   Per-provider details the setup drawer shows. Loaded server-side, for admins
+   only where a credential is involved.
+   -------------------------------------------------------------------------- */
+
+export type CrmPushFailure = {
+  leadId: string;
+  leadName: string;
+  status: "failed" | "partial";
+  error: string | null;
+  at: string;
+};
+
+export type ProviderExtras = {
+  googleAds?: {
+    /** Where Google Ads posts each lead. Null until the connection exists. */
+    webhookUrl: string | null;
+    /** The key pasted into the lead form. Admin only; null otherwise. */
+    webhookKey: string | null;
+    customerId: string | null;
+    accessibleCustomerIds: string[];
+  };
+  meta?: {
+    pages: { id: string; name: string }[];
+    selectedPageId: string | null;
+    tokenExpiresAt: string | null;
+  };
+  slack?: { channelId: string | null };
+  linkedin?: {
+    organizations: { id: string; name: string }[];
+    selectedId: string | null;
+    /** Community Management API approved: company-page engagement is on. */
+    pageEngagementEnabled: boolean;
+  };
+  crm?: {
+    lastPushAt: string | null;
+    pushedLast30Days: number;
+    failures: CrmPushFailure[];
+  };
+};
+
+/** Meta's long-lived user token lasts about 60 days and cannot be refreshed. */
+export const META_TOKEN_WARN_DAYS = 10;
+
+/**
+ * Whether a Meta connection should be renewed, from its token expiry.
+ *
+ * Meta issues no refresh token: the only renewal is the person reconnecting.
+ * Warned from day ~50 (ten days left), so there is time to do it before
+ * leads stop arriving.
+ */
+export function metaTokenRenewal(
+  expiresAt: string | null,
+  now: Date = new Date(),
+): { daysLeft: number; warn: boolean; expired: boolean } | null {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - now.getTime();
+  if (!Number.isFinite(ms)) return null;
+  const daysLeft = Math.floor(ms / 86_400_000);
+  return { daysLeft, warn: ms > 0 && daysLeft <= META_TOKEN_WARN_DAYS, expired: ms <= 0 };
+}
+
+/** The Google Ads lead-form webhook address for one connection. */
+export function googleAdsWebhookUrl(siteUrl: string, integrationId: string): string {
+  return `${siteUrl.replace(/\/$/, "")}/api/webhooks/google-ads?integration=${encodeURIComponent(integrationId)}`;
+}
+
+/* --------------------------------------------------------------------------
+   Where the OAuth round trip lands.
+   -------------------------------------------------------------------------- */
+
+/** Cookie the connect route sets when the flow started somewhere other than Settings. */
+export const OAUTH_RETURN_COOKIE = "ct_oauth_return";
+
+/** Pages a connection may return to. Anything else lands on Settings. */
+const OAUTH_RETURN_PATHS = ["/onboarding"] as const;
+
+/**
+ * The page the callback redirects to, from the `?return=` the connect route
+ * was opened with. An allowlist, never a free path: an open redirect after an
+ * OAuth grant is a phishing primitive.
+ */
+export function safeOAuthReturnPath(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return (OAUTH_RETURN_PATHS as readonly string[]).includes(value) ? value : null;
+}
+
+/** The callback's redirect, with the outcome the landing page reads. */
+export function oauthLandingPath(input: {
+  returnPath: string | null;
+  provider: string;
+  ok: boolean;
+}): string {
+  const base = input.returnPath ?? "/app/settings?section=connections";
+  const joiner = base.includes("?") ? "&" : "?";
+  return input.ok
+    ? `${base}${joiner}connected=${encodeURIComponent(input.provider)}`
+    : `${base}${joiner}connect=failed`;
 }

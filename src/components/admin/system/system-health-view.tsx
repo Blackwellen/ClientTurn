@@ -28,12 +28,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { refreshProviderHealth } from "@/lib/admin/actions";
 import {
-  formatDateTime,
   formatMs,
   formatNumber,
-  formatRelative,
   formatUptime,
 } from "@/lib/admin/format";
+import { formatDateTime, formatRelative } from "@/lib/dates";
 import type { SystemHealth } from "@/lib/admin/types";
 
 const SUMMARY: {
@@ -190,7 +189,7 @@ export function SystemHealthView({ health }: { health: SystemHealth }) {
                 </button>
                 <p className="text-[11px] text-content-subtle">
                   {health.checkedAt
-                    ? `Last updated: ${formatDateTime(health.checkedAt)}`
+                    ? `Last updated: ${formatDateTime(health.checkedAt, { year: true })}`
                     : "Never probed"}
                 </p>
               </div>
@@ -239,7 +238,7 @@ export function SystemHealthView({ health }: { health: SystemHealth }) {
                       </td>
                       <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
                         {row.lastIncidentAt
-                          ? formatDateTime(row.lastIncidentAt)
+                          ? formatDateTime(row.lastIncidentAt, { year: true })
                           : "—"}
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -299,7 +298,7 @@ export function SystemHealthView({ health }: { health: SystemHealth }) {
                         {formatNumber(row.failed)}
                       </td>
                       <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                        {formatRelative(row.lastRunAt)}
+                        {formatRelative(row.lastRunAt, { style: "ago" })}
                       </td>
                       <td className="px-3 py-2">
                         <QueueStatusBadge status={row.status} />
@@ -347,7 +346,7 @@ export function SystemHealthView({ health }: { health: SystemHealth }) {
                       <span className="block truncate">{row.impact}</span>
                     </td>
                     <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {row.since ? formatDateTime(row.since) : "—"}
+                      {row.since ? formatDateTime(row.since, { year: true }) : "—"}
                     </td>
                     <td className="px-3 py-2">
                       <Badge tone={IMPACT_TONE[row.status]} dot>

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { serverEnv } from "@/lib/env";
+import { loadHelpIndex } from "@/lib/help/disk";
 
 /**
  * Public marketing routes only. Authenticated app, admin and affiliate
@@ -14,6 +15,7 @@ const routes: { path: string; priority: number; changeFrequency: MetadataRoute.S
   { path: "results", priority: 0.7, changeFrequency: "monthly" },
   { path: "enterprise", priority: 0.7, changeFrequency: "monthly" },
   { path: "developers", priority: 0.6, changeFrequency: "monthly" },
+  { path: "help", priority: 0.6, changeFrequency: "weekly" },
   { path: "affiliates", priority: 0.5, changeFrequency: "monthly" },
   { path: "contact-sales", priority: 0.6, changeFrequency: "yearly" },
   { path: "sub-processors", priority: 0.3, changeFrequency: "monthly" },
@@ -28,10 +30,31 @@ const routes: { path: string; priority: number; changeFrequency: MetadataRoute.S
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  return routes.map(({ path, priority, changeFrequency }) => ({
+  const pages = routes.map(({ path, priority, changeFrequency }) => ({
     url: `${serverEnv.siteUrl}/${path}`,
     lastModified,
     changeFrequency,
     priority,
   }));
+
+  // Help articles and their categories, read from the bundled markdown. Each
+  // article carries its own `updated` date, which is the honest lastModified.
+  const articles = loadHelpIndex().articles;
+  const categories = [...new Set(articles.map((article) => article.category))];
+  const help = [
+    ...categories.map((category) => ({
+      url: `${serverEnv.siteUrl}/help/${category}`,
+      lastModified,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    })),
+    ...articles.map((article) => ({
+      url: `${serverEnv.siteUrl}/help/${article.category}/${article.slug}`,
+      lastModified: article.updated ? new Date(`${article.updated}T00:00:00Z`) : lastModified,
+      changeFrequency: "monthly" as const,
+      priority: 0.5,
+    })),
+  ];
+
+  return [...pages, ...help];
 }

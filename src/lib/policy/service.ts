@@ -1,8 +1,9 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logWriteError } from "@/lib/supabase/write-result";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { canSend, summariseEligibility } from "./channel-policy";
-import { packForCountry } from "./packs";
+import { countryFromPhone, packForCountry } from "./packs";
 import { checkSuppression } from "./suppression";
 import { loadDataControls } from "@/lib/compliance/queries";
 import { verdictForSources } from "@/lib/compliance/types";
@@ -60,6 +61,14 @@ export type EvaluateOptions = {
   /** Sender readiness, resolved by the caller that owns the channel. */
   sender?: { available: boolean; health: "HEALTHY" | "WATCH" | "WARNING" | "PAUSED" };
   caps?: { withinDaily: boolean; withinMonthly: boolean; withinBudget: boolean };
+  /**
+   * WHATSAPP only. Whether this send falls inside the 24-hour customer-service
+   * window. The caller owns this because it requires reading the conversation
+   * the pure rules deliberately never touch. Defaults to `false` — outside the
+   * window, template required — which is the safe assumption for any caller
+   * (eligibility badges, other channels) that has not established otherwise.
+   */
+  withinWhatsAppWindow?: boolean;
   /** Persist the decision. Off for speculative checks in list rendering. */
   record?: boolean;
   /**
@@ -168,13 +177,74 @@ async function loadPermission(businessId: string, subject: PolicySubject) {
   const { data } = await admin
     .from("contact_permissions")
     .select(
-      "relationship_type, consent_status, consent_evidence, subscriber_type, country",
+      "relationship_type, consent_status, consent_evidence, consent_scope, subscriber_type, country",
     )
     .eq("business_id", businessId)
     .eq("subject_type", subject.type)
     .eq("subject_id", subject.id)
     .maybeSingle();
-  return data;
+  if (data || subject.type !== "PROSPECT") return data;
+
+  // A prospect with no permission record: the only trustworthy subscriber
+  // classification is the company's register verdict (0080). The email domain
+  // is not one -- a sole trader's own domain looks exactly like a company's.
+  // Unresolved stays UNKNOWN, which the packs send to review, never to send.
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("company:prospect_companies(subscriber_type, location_json)")
+    .eq("business_id", businessId)
+    .eq("id", subject.id)
+    .maybeSingle();
+  const company = (prospect as { company?: { subscriber_type?: string | null; location_json?: unknown } | null } | null)
+    ?.company;
+  return {
+    relationship_type: "FOUND_BY_US",
+    consent_status: "UNKNOWN",
+    consent_evidence: null,
+    consent_scope: [],
+    subscriber_type: company?.subscriber_type ?? "UNKNOWN",
+    country: ((company?.location_json ?? {}) as { country?: string | null }).country ?? null,
+  };
+}
+
+/**
+ * Subscriber and relationship facts for the rules: the stored record first,
+ * the caller's claim only where nothing is stored. Exported for tests.
+ */
+export function resolvePermissionFacts(
+  subject: Pick<
+    PolicySubject,
+    "subscriberType" | "relationshipType" | "consentStatus" | "hasConsentEvidence"
+  >,
+  permission: {
+    subscriber_type?: string | null;
+    relationship_type?: string | null;
+    consent_status?: string | null;
+    consent_evidence?: string | null;
+  } | null,
+): Pick<PolicyInput, "subscriberType" | "relationshipType" | "consentStatus" | "hasConsentEvidence"> {
+  if (permission) {
+    return {
+      subscriberType: (permission.subscriber_type as SubscriberType) ?? "UNKNOWN",
+      relationshipType: (permission.relationship_type as RelationshipType) ?? "UNKNOWN",
+      // Withdrawal is the one fact a caller may add: it can only restrict.
+      consentStatus:
+        subject.consentStatus === "WITHDRAWN"
+          ? "WITHDRAWN"
+          : ((permission.consent_status as ConsentStatus) ?? "UNKNOWN"),
+      hasConsentEvidence: Boolean(permission.consent_evidence),
+    };
+  }
+  return {
+    subscriberType: subject.subscriberType ?? "UNKNOWN",
+    relationshipType: subject.relationshipType ?? "UNKNOWN",
+    consentStatus: subject.consentStatus ?? "UNKNOWN",
+    hasConsentEvidence: subject.hasConsentEvidence ?? false,
+  };
+}
+
+function scopeIncludes(scope: unknown, channel: string): boolean {
+  return Array.isArray(scope) && scope.some((value) => String(value).toUpperCase() === channel);
 }
 
 export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision> {
@@ -190,7 +260,8 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
     campaignType === "COLD" ? loadProvenance(businessId, subject) : Promise.resolve([]),
   ]);
 
-  const country = subject.country ?? permission?.country ?? null;
+  // A +44 number is UK evidence in its own right (see countryFromPhone).
+  const country = subject.country ?? permission?.country ?? countryFromPhone(subject.phone) ?? null;
   const pack = await packForCountry(country);
 
   const destination = destinationFor(subject, channel);
@@ -217,14 +288,11 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
     channel,
     campaignType,
     country,
-    subscriberType:
-      subject.subscriberType ?? (permission?.subscriber_type as SubscriberType) ?? "UNKNOWN",
-    relationshipType:
-      subject.relationshipType ?? (permission?.relationship_type as RelationshipType) ?? "UNKNOWN",
-    consentStatus:
-      subject.consentStatus ?? (permission?.consent_status as ConsentStatus) ?? "UNKNOWN",
-    hasConsentEvidence:
-      subject.hasConsentEvidence ?? Boolean(permission?.consent_evidence),
+    // The stored permission record is authoritative. A caller-supplied value
+    // is only a fallback for a subject that has no record yet (the Add Lead
+    // wizard evaluating before insert). Letting callers win meant cold dispatch
+    // could relabel a sole trader CORPORATE on every send (defect B1).
+    ...resolvePermissionFacts(subject, permission),
     destination,
     suppression: suppression
       ? { reason: suppression.reason, scope: suppression.scope }
@@ -243,6 +311,8 @@ export async function evaluate(options: EvaluateOptions): Promise<PolicyDecision
     withinMonthlyCap: caps.withinMonthly,
     withinBudget: caps.withinBudget,
     localTime: localTimeIn(subject.timezone, at),
+    withinWhatsAppWindow: options.withinWhatsAppWindow ?? false,
+    whatsAppOptIn: scopeIncludes(permission?.consent_scope, "WHATSAPP"),
     pack,
   };
 
@@ -289,6 +359,14 @@ async function recordDecision(
   options: { evidence: boolean },
 ): Promise<void> {
   const admin = createAdminClient();
+  // Observability: logged, never thrown (see above).
+  const logContext = {
+    businessId,
+    subjectType: subject.type,
+    subjectId: subject.id,
+    channel,
+    campaignType,
+  };
   await admin
     .from("contactability_results")
     .upsert(
@@ -325,8 +403,12 @@ async function recordDecision(
       { onConflict: "business_id,subject_type,subject_id,channel,campaign_type" },
     )
     .then(
-      () => undefined,
-      () => undefined,
+      (result) => {
+        logWriteError(result, "policy: contactability_results upsert", logContext);
+      },
+      (error: unknown) => {
+        console.error("[policy] contactability_results upsert threw", { ...logContext, error });
+      },
     );
 
   if (!options.evidence) return;
@@ -379,8 +461,12 @@ async function recordDecision(
       decided_at: new Date().toISOString(),
     })
     .then(
-      () => undefined,
-      () => undefined,
+      (result) => {
+        logWriteError(result, "policy: compliance_decisions insert", logContext);
+      },
+      (error: unknown) => {
+        console.error("[policy] compliance_decisions insert threw", { ...logContext, error });
+      },
     );
 }
 
@@ -440,9 +526,17 @@ export async function recordPermission(input: {
   email?: string | null;
   phone?: string | null;
   recordedBy?: string | null;
+  /**
+   * Channels the person explicitly opted in to (e.g. ["WHATSAPP"]). Omitted,
+   * an existing row's scope is left as it is rather than being cleared.
+   */
+  consentScope?: string[];
 }): Promise<void> {
   const admin = createAdminClient();
-  await admin.from("contact_permissions").upsert(
+  // Throws on failure: the permission record is the evidence policy decisions
+  // rest on, and callers (the Add Lead wizard's warning, the lead-process
+  // retry) need to know it was not saved.
+  const { error } = await admin.from("contact_permissions").upsert(
     {
       business_id: input.businessId,
       subject_type: input.subject.type,
@@ -458,9 +552,15 @@ export async function recordPermission(input: {
       subscriber_type: input.subscriberType ?? "UNKNOWN",
       country: input.country ?? null,
       recorded_by: input.recordedBy ?? null,
+      ...(input.consentScope ? { consent_scope: input.consentScope } : {}),
     },
     { onConflict: "business_id,subject_type,subject_id" },
   );
+  if (error) {
+    throw new Error(
+      `contact_permissions upsert failed for ${input.subject.type} ${input.subject.id}: ${error.message}`,
+    );
+  }
 }
 
 export { canSend, summariseEligibility } from "./channel-policy";

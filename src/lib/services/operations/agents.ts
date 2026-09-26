@@ -5,10 +5,12 @@ import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import {
   AGENT_TYPES,
   SOURCE_DEFINITIONS,
+  readinessProblems,
   type AgentType,
   type SourceKey,
 } from "@/lib/agents/types";
 import { getAiBehaviour } from "@/lib/ai-settings/queries";
+import { widensAutonomy } from "@/lib/ai-settings/types";
 import {
   AI_REPLY_LENGTH_OPTIONS,
   AI_TONE_OPTIONS,
@@ -212,6 +214,16 @@ async function assertCanRun(businessId: string, agent: AgentRow): Promise<void> 
   }
 
   if (!sources) return;
+
+  // The readiness rule the Settings tab shows, enforced here so no caller can
+  // start an agent that would run and find nothing.
+  const problems = readinessProblems({
+    agentType: agent.agent_type as AgentType,
+    enabledSources: (await loadSources(businessId, agent.id)) as SourceKey[],
+  });
+  if (problems.length > 0) {
+    throw new ServiceError("CONFLICT", problems.join(" "));
+  }
 
   // Sourcing spends money the moment it runs, so it needs an approved plan
   // first. Booking and re-engagement orchestrate engines configured elsewhere
@@ -462,6 +474,15 @@ defineOperation("agent.create", {
             },
           ]
         : []),
+      ...(args.enrichPhone
+        ? [
+            {
+              code: "phone_not_collected",
+              message:
+                "Sourcing never collects phone numbers, so enrichPhone has no effect.",
+            },
+          ]
+        : []),
       {
         code: "draft",
         message:
@@ -619,6 +640,15 @@ defineOperation("agent.configure", {
             },
           ]
         : []),
+      ...(args.enrichPhone
+        ? [
+            {
+              code: "phone_not_collected",
+              message:
+                "Sourcing never collects phone numbers, so enrichPhone has no effect.",
+            },
+          ]
+        : []),
       // A running agent picks up new settings on its next tick, not mid-run.
       // Saying so is the difference between a caller reporting "done" and
       // reporting something true.
@@ -739,6 +769,64 @@ lifecycle("agent.run_now");
 lifecycle("agent.pause");
 lifecycle("agent.stop");
 
+/**
+ * Deleting an agent removes the agent and what only it uses -- setup, queue,
+ * signals, timeline (ON DELETE CASCADE) -- and keeps the work it produced:
+ * leads, prospects and sourcing runs survive with agent_id cleared (ON DELETE
+ * SET NULL). Refused while a run is in flight, so a half-finished run is never
+ * left pointing at nothing mid-spend; stop the agent and let the run finish.
+ */
+defineOperation("agent.delete", {
+  schema: z.object({ agentId: z.string().uuid() }),
+  async run({ args, context }: HandlerInput<{ agentId: string }>) {
+    const before = await loadAgentOrFail(context.businessId, args.agentId);
+    const db = createAdminClient();
+
+    const { data: live, error: liveError } = await db
+      .from("sourcing_runs")
+      .select("id")
+      .eq("business_id", context.businessId)
+      .eq("agent_id", before.id)
+      .in("status", ["QUEUED", "RUNNING"])
+      .limit(1);
+    if (liveError) throw liveError;
+    if (live && live.length > 0) {
+      throw new ServiceError(
+        "CONFLICT",
+        "This agent has a run in progress. Stop the agent and wait for the run to finish, then delete it.",
+      );
+    }
+
+    const [leads, prospects, runs] = await Promise.all(
+      (["leads", "prospects", "sourcing_runs"] as const).map(async (table) => {
+        const { count, error } = await db
+          .from(table)
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", context.businessId)
+          .eq("agent_id", before.id);
+        if (error) throw error;
+        return count ?? 0;
+      }),
+    );
+
+    const { error } = await db
+      .from("agents")
+      .delete()
+      .eq("business_id", context.businessId)
+      .eq("id", before.id);
+    if (error) throw error;
+
+    return {
+      data: {
+        deleted: { id: before.id, name: before.name },
+        kept: { leads, prospects, sourcingRuns: runs },
+      },
+      entityId: before.id,
+      before: snapshot(before),
+    };
+  },
+});
+
 /* ------------------------------------------------- conversation assistant */
 
 defineOperation("ai_settings.get", {
@@ -770,11 +858,23 @@ const aiUpdateSchema = z
 
 type AiUpdateArgs = z.infer<typeof aiUpdateSchema>;
 
+
 defineOperation("ai_settings.update", {
   schema: aiUpdateSchema,
   async run({ args, context }: HandlerInput<AiUpdateArgs>) {
     const before = await getAiBehaviour(context.businessId);
     const next: AiBehaviourSettings = { ...before, ...args };
+
+    // Copilot may tune the assistant, but not widen what it does unsupervised:
+    // letting it send on its own, or dropping the hand-over-on-review
+    // safeguard, is a decision a person makes in Settings, not a chat
+    // suggestion to accept.
+    if (context.caller === "COPILOT" && widensAutonomy(before, next)) {
+      throw new ServiceError(
+        "FORBIDDEN_ROLE",
+        "Switching the assistant to reply on its own, or removing its hand-over safeguards, has to be done by a person in Settings → Workspace → AI assistant.",
+      );
+    }
 
     if (next.enabled) {
       const { assertEntitlement, EntitlementError } = await import(

@@ -4,19 +4,23 @@ import * as React from "react";
 import {
   CalendarPlus,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Hand,
   MessageSquare,
   Phone,
   Play,
+  Send,
   Trophy,
   UserPlus,
   XCircle,
   Zap,
 } from "lucide-react";
-import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { DropdownGroup, DropdownItem, DropdownMenu } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/ui/modal";
 import type { LeadCapabilities, LeadDetail } from "@/lib/leads/types";
+import { HANDOVER_COPY, handBackUnavailableReason } from "@/lib/leads/resume-rule";
 import type { LeadDrawerActions, RunAction } from "./lead-drawer-actions";
 
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -27,20 +31,32 @@ function WhatsAppIcon({ className }: { className?: string }) {
   );
 }
 
+type ActionGroup = "Contact" | "Qualification" | "Ownership" | "Outcome";
+
+const GROUPS: ActionGroup[] = ["Contact", "Qualification", "Ownership", "Outcome"];
+
 type ActionSpec = {
   key: string;
+  group: ActionGroup;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   /** Non-null means the action is unavailable, and why. */
   blocked?: string | null;
+  /** What the action does, shown under the label while it is available. */
+  help?: string;
   tone?: "default" | "success" | "danger";
   onSelect: () => void;
 };
 
 /**
- * Every manual action for a lead in one grid. Actions that cannot legally run
- * are disabled with the reason in a tooltip rather than hidden, so the
- * operator learns what to configure instead of wondering where a button went.
+ * Every manual action for a lead: one primary action (Message) and an
+ * "Actions" menu grouped Contact / Qualification / Ownership / Outcome.
+ *
+ * This replaced a twelve-button grid in which the most common act, replying,
+ * weighed the same as "Mark needs review". Actions that cannot legally run stay in
+ * the menu, disabled, with the reason printed under the label rather than in
+ * a hover-only tooltip, so the operator learns what to configure instead of
+ * wondering where a button went — on touch too.
  */
 export function LeadManualActions({
   detail,
@@ -50,6 +66,7 @@ export function LeadManualActions({
   pending,
   run,
   onOpenComposer,
+  onRequestClose,
 }: {
   detail: LeadDetail;
   actions: LeadDrawerActions;
@@ -58,9 +75,11 @@ export function LeadManualActions({
   pending: string | null;
   run: RunAction;
   onOpenComposer: (channel: "sms" | "whatsapp") => void;
+  /** Opens the won/lost dialog, which asks for the reason. */
+  onRequestClose: (outcome: "WON" | "LOST") => void;
 }) {
   const { lead } = detail;
-  const [confirm, setConfirm] = React.useState<null | "lost" | "not_qualified">(null);
+  const [confirm, setConfirm] = React.useState<null | "not_qualified">(null);
 
   const closed = lead.status === "WON" || lead.status === "LOST";
   const noPermission = canWrite ? null : "You do not have permission to act on leads.";
@@ -72,6 +91,7 @@ export function LeadManualActions({
   const specs: ActionSpec[] = [
     {
       key: "sms",
+      group: "Contact",
       label: "Send SMS",
       icon: MessageSquare,
       blocked:
@@ -83,6 +103,7 @@ export function LeadManualActions({
     },
     {
       key: "whatsapp",
+      group: "Contact",
       label: "Send WhatsApp",
       icon: WhatsAppIcon,
       blocked:
@@ -96,15 +117,17 @@ export function LeadManualActions({
     },
     {
       key: "call",
+      group: "Contact",
       label: "Call",
       icon: Phone,
       blocked: noPhone,
       onSelect: () => {
-        if (lead.phone) window.location.href = `tel:${lead.phone}`;
+        if (lead.phone) window.location.assign(`tel:${lead.phone}`);
       },
     },
     {
       key: "booking",
+      group: "Contact",
       label: "Send booking link",
       icon: CalendarPlus,
       blocked:
@@ -123,6 +146,7 @@ export function LeadManualActions({
     },
     {
       key: "qualified",
+      group: "Qualification",
       label: "Mark qualified",
       icon: CheckCircle2,
       tone: "success",
@@ -141,6 +165,7 @@ export function LeadManualActions({
     },
     {
       key: "not_qualified",
+      group: "Qualification",
       label: "Mark not qualified",
       icon: XCircle,
       tone: "danger",
@@ -153,7 +178,8 @@ export function LeadManualActions({
     },
     {
       key: "review",
-      label: "Mark review",
+      group: "Qualification",
+      label: "Mark needs review",
       icon: Clock,
       blocked:
         noPermission ??
@@ -169,6 +195,7 @@ export function LeadManualActions({
     },
     {
       key: "assign",
+      group: "Ownership",
       label: "Assign",
       icon: UserPlus,
       blocked: noPermission,
@@ -180,7 +207,9 @@ export function LeadManualActions({
     },
     {
       key: "takeover",
-      label: "Human takeover",
+      group: "Ownership",
+      label: HANDOVER_COPY.takeOver,
+      help: HANDOVER_COPY.takeOverHelp,
       icon: Hand,
       blocked:
         noPermission ??
@@ -198,18 +227,20 @@ export function LeadManualActions({
     },
     {
       key: "resume",
-      label: "Resume follow-up",
+      group: "Ownership",
+      label: HANDOVER_COPY.handBack,
+      help: HANDOVER_COPY.handBackHelp,
       icon: Play,
+      // The rule lead.resume_follow_up enforces. The drawer only opens
+      // unarchived leads; the server refuses an archived one regardless.
       blocked:
         noPermission ??
-        optedOut ??
-        (!lead.human_takeover
-          ? "Automated follow-up is already running for this lead."
-          : closed
-            ? "Follow-up does not resume on a won or lost lead."
-            : lead.status === "BOOKED"
-              ? "This lead is booked — follow-up has already done its job."
-              : null),
+        handBackUnavailableReason({
+          status: lead.status,
+          optedOut: lead.opted_out,
+          archived: false,
+          humanTakeover: lead.human_takeover,
+        }),
       onSelect: () =>
         run(
           "resume",
@@ -219,6 +250,7 @@ export function LeadManualActions({
     },
     {
       key: "won",
+      group: "Outcome",
       label: "Mark won",
       icon: Trophy,
       tone: "success",
@@ -229,92 +261,103 @@ export function LeadManualActions({
           : lead.status === "LOST"
             ? "This lead is marked lost. Change its status first."
             : null),
-      onSelect: () => run("won", () => actions.markWon(lead.id), "Marked as won."),
+      onSelect: () => onRequestClose("WON"),
     },
     {
       key: "lost",
+      group: "Outcome",
       label: "Mark lost",
       icon: XCircle,
       tone: "danger",
       blocked:
         noPermission ?? (lead.status === "LOST" ? "This lead is already lost." : null),
-      onSelect: () => setConfirm("lost"),
+      onSelect: () => onRequestClose("LOST"),
     },
   ];
+
+  // Message goes out on the first channel that can legally be used; the
+  // other channel stays one click away in the menu.
+  const messageSpec =
+    specs.find((spec) => spec.key === "sms" && !spec.blocked) ??
+    specs.find((spec) => spec.key === "whatsapp" && !spec.blocked) ??
+    null;
+  const messageBlocked = messageSpec
+    ? null
+    : (specs.find((spec) => spec.key === "sms")?.blocked ?? "Messaging is unavailable.");
 
   return (
     <>
       <section
         id="lead-manual-actions"
+        aria-labelledby="lead-manual-actions-title"
         className="rounded-xl border border-line bg-surface p-4 shadow-xs"
       >
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span
             aria-hidden
             className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-content-accent"
           >
             <Zap className="size-4" />
           </span>
-          <div className="min-w-0">
-            <h3 className="text-[14px] font-semibold text-content">Manual actions</h3>
-            <p className="text-[12px] text-content-muted">Take action on this lead.</p>
+          <div className="min-w-0 flex-1">
+            <h3
+              id="lead-manual-actions-title"
+              className="text-[14px] font-semibold text-content"
+            >
+              Actions
+            </h3>
+            <p className="truncate text-[12px] text-content-muted">
+              {messageBlocked ?? "Reply, qualify, hand over or close this lead."}
+            </p>
+          </div>
+
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Button
+              size="sm"
+              variant="primary"
+              className="flex-1 sm:flex-none"
+              disabled={!messageSpec || pending === messageSpec.key}
+              loading={messageSpec ? pending === messageSpec.key : false}
+              title={messageBlocked ?? undefined}
+              onClick={() => messageSpec?.onSelect()}
+            >
+              <Send className="size-3.5" aria-hidden />
+              Message
+            </Button>
+
+            <DropdownMenu
+              align="end"
+              label="Lead actions"
+              className="w-72"
+              trigger={
+                <Button size="sm" variant="secondary" className="flex-1 sm:flex-none">
+                  Actions
+                  <ChevronDown className="size-3.5" aria-hidden />
+                </Button>
+              }
+            >
+              {GROUPS.map((group) => (
+                <DropdownGroup key={group} label={group}>
+                  {specs
+                    .filter((spec) => spec.group === group)
+                    .map((spec) => (
+                      <DropdownItem
+                        key={spec.key}
+                        icon={spec.icon}
+                        destructive={spec.tone === "danger" && !spec.blocked}
+                        disabled={Boolean(spec.blocked) || pending === spec.key}
+                        description={spec.blocked ?? spec.help}
+                        onSelect={spec.onSelect}
+                      >
+                        {spec.label}
+                      </DropdownItem>
+                    ))}
+                </DropdownGroup>
+              ))}
+            </DropdownMenu>
           </div>
         </div>
-
-        <div className="mt-3.5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {specs.map((spec) => {
-            const Icon = spec.icon;
-            const disabled = Boolean(spec.blocked) || pending === spec.key;
-            return (
-              <button
-                key={spec.key}
-                type="button"
-                disabled={disabled}
-                title={spec.blocked ?? undefined}
-                aria-describedby={spec.blocked ? `${spec.key}-blocked` : undefined}
-                onClick={spec.onSelect}
-                className={cn(
-                  "inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-2.5",
-                  "text-[12px] font-medium text-content-secondary shadow-xs",
-                  "transition-colors duration-[var(--lr-duration-fast)]",
-                  "hover:bg-surface-hover hover:text-content",
-                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
-                  "disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-surface",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-3.5 shrink-0",
-                    spec.tone === "success" && "text-success-600",
-                    spec.tone === "danger" && "text-danger-500",
-                    !spec.tone && "text-content-subtle",
-                  )}
-                />
-                <span className="truncate">{spec.label}</span>
-                {spec.blocked && (
-                  <span id={`${spec.key}-blocked`} className="sr-only">
-                    {spec.blocked}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
       </section>
-
-      <ConfirmDialog
-        open={confirm === "lost"}
-        variant="warning"
-        title="Mark this lead as lost?"
-        scope="This lead moves to Lost."
-        consequence="Automated follow-up stops immediately and the lead leaves your active figures. You can reopen it later by changing the status."
-        confirmLabel="Mark as lost"
-        onClose={() => setConfirm(null)}
-        onConfirm={async () => {
-          await run("lost", () => actions.markLost(lead.id), "Marked as lost.");
-          setConfirm(null);
-        }}
-      />
 
       <ConfirmDialog
         open={confirm === "not_qualified"}

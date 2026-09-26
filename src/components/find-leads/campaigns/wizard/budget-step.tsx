@@ -8,10 +8,10 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import {
   formatCount,
-  formatMoneyMinor,
   type CampaignDraft,
   type FieldErrors,
 } from "@/lib/outreach/campaign-draft";
+import { formatMoneyMinor } from "@/lib/outreach/types";
 import {
   summariseCampaignBudget,
   type CampaignBudgetContext,

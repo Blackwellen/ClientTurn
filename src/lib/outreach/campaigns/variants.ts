@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAzureConfigured } from "@/lib/ai/azure-client";
 import { runTask } from "@/lib/ai/model-router";
@@ -80,6 +81,11 @@ export async function generateVariants(input: {
   draft: CampaignDraft;
   step: SequenceStep;
   count: number;
+  /**
+   * One id per request the person made (a client nonce). Preferred billing key;
+   * without it the request is keyed on its own content -- see below.
+   */
+  requestId?: string | null;
 }): Promise<VariantResult> {
   if (!isAzureConfigured()) {
     return {
@@ -100,29 +106,37 @@ export async function generateVariants(input: {
 
   const context = await businessContext(input.businessId, input.draft);
 
+  // The customer's own copy is untrusted input to the model, not instructions
+  // to it: a campaign body containing "ignore previous instructions" must stay
+  // a campaign body.
+  const prompt = [
+    `Business: ${context.businessName}`,
+    `Service being promoted: ${context.serviceName ?? "not specified"}`,
+    `Goal: ${input.draft.goal.conversionGoal ?? "not specified"}`,
+    `Audience: ${describeAudience(input.draft)}`,
+    // Supplied rather than baked into the prompt, so the list the model is
+    // told about and the list `unknownMergeFields` enforces are the same list.
+    `Merge fields you may use: ${MERGE_FIELDS.map((f) => `{{${f}}}`).join(", ")}`,
+    `Write ${input.count} variant${input.count === 1 ? "" : "s"} of this email.`,
+    "",
+    "Existing subject:",
+    wrapUntrustedContent(input.step.subject || "(none yet)"),
+    "",
+    "Existing body:",
+    wrapUntrustedContent(input.step.body || "(none yet)"),
+  ].join("\n");
+
   const result = await runTask<VariantGenerationResult>({
     taskType: "variant_generation",
     businessId: input.businessId,
     maxOutputTokens: 1200,
-    // The customer's own copy is untrusted input to the model, not instructions
-    // to it: a campaign body containing "ignore previous instructions" must stay
-    // a campaign body.
-    context: [
-      `Business: ${context.businessName}`,
-      `Service being promoted: ${context.serviceName ?? "not specified"}`,
-      `Goal: ${input.draft.goal.conversionGoal ?? "not specified"}`,
-      `Audience: ${describeAudience(input.draft)}`,
-      // Supplied rather than baked into the prompt, so the list the model is
-      // told about and the list `unknownMergeFields` enforces are the same list.
-      `Merge fields you may use: ${MERGE_FIELDS.map((f) => `{{${f}}}`).join(", ")}`,
-      `Write ${input.count} variant${input.count === 1 ? "" : "s"} of this email.`,
-      "",
-      "Existing subject:",
-      wrapUntrustedContent(input.step.subject || "(none yet)"),
-      "",
-      "Existing body:",
-      wrapUntrustedContent(input.step.body || "(none yet)"),
-    ].join("\n"),
+    context: prompt,
+    // Without a request id, the exact prompt identifies the request: a
+    // resubmitted identical request is charged once. Asking again after
+    // changing the step, the count or the draft is a new request.
+    correlationId: `variants:${
+      input.requestId ?? createHash("sha256").update(prompt).digest("hex").slice(0, 32)
+    }`,
   });
 
   // `NO_TOKENS` is a billing state, not a failure. Saying so is the difference
@@ -131,6 +145,12 @@ export async function generateVariants(input: {
     return {
       ok: false,
       error: "This workspace has used its AI allowance for the period.",
+    };
+  }
+  if (result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN") {
+    return {
+      ok: false,
+      error: "This workspace's AI budget does not cover generating variants right now.",
     };
   }
   if (result.skippedReason === "AI_UNAVAILABLE" || result.data === null) {

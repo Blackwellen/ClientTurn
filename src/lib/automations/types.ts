@@ -13,6 +13,18 @@ export const AUTOMATION_TYPES = [
 
 export type AutomationType = (typeof AUTOMATION_TYPES)[number];
 
+/**
+ * Types the database accepts but nothing enrols a lead into yet. The
+ * "unresponsive" sequence has no trigger: no code path starts a run of it when
+ * the new-lead sequence ends without a reply. It is not offered, created or
+ * shown until that trigger exists, so no one edits a sequence that never runs.
+ */
+export const UNWIRED_AUTOMATION_TYPES: readonly AutomationType[] = ["unresponsive"];
+
+export function isWiredAutomationType(type: string): boolean {
+  return !(UNWIRED_AUTOMATION_TYPES as readonly string[]).includes(type);
+}
+
 export const AUTOMATION_TYPE_META: Record<
   AutomationType,
   { label: string; trigger: string; description: string }

@@ -1,33 +1,28 @@
 import "server-only";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { evaluateAllChannels } from "@/lib/policy/service";
-import { findDuplicates } from "@/lib/leads/add-lead/duplicate-check";
-import { blockingDuplicates } from "@/lib/leads/add-lead/types";
-import { getOverview, rangeBounds, type AnalyticsRange } from "@/lib/analytics/v4-queries";
-import { isWarmRelationship, type RelationshipType } from "@/lib/policy/types";
-import { recordPermission } from "@/lib/policy/service";
-import { normalisePhone } from "@/lib/messaging/types";
-import { normaliseEmail } from "@/lib/prospects/dedupe";
+import { recordAudit } from "@/lib/audit";
+import { ingestLead } from "@/lib/ingest/service";
+import { isWarmRelationship,
+  REFERRAL_EVIDENCE_MESSAGE,
+  referralEvidenceSufficient, type RelationshipType } from "@/lib/policy/types";
 import type { AuthContext } from "./gateway";
+import { suppressionRefusal } from "./guards";
 import type { ToolDefinition } from "./tools";
 
 /**
- * MCP tool implementations.
+ * MCP tool implementations for the tools that are not service-layer
+ * operations — today, only `create_lead` (see `MCP_TOOLS` in `tools.ts`).
+ *
+ * This file used to carry fifteen more cases (`search_leads`, `get_lead`,
+ * `assign_lead`, `pause_campaign`, …) that wrote tables directly. They were
+ * unreachable — `callTool` only routes a name here when it is in `MCP_TOOLS`,
+ * and every one of them had been replaced by a registry operation — and they
+ * were removed so that nobody re-lists a name and silently revives a write
+ * path that skips the service layer. New capabilities go in the service
+ * registry, never here.
  *
  * Every handler is workspace-scoped by `auth.businessId` — never by an id the
- * caller supplied — so a valid token for one workspace cannot read another's
- * data even if it guesses a lead id.
- *
- * Reads return shaped, human-readable objects rather than raw rows: an
- * assistant does not need `business_id`, and returning it leaks the tenancy
- * model for no benefit.
+ * caller supplied.
  */
-
-function clampLimit(value: unknown, fallback = 20): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(1, Math.min(50, Math.floor(parsed)));
-}
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -38,493 +33,117 @@ export async function runReadOrWriteTool(
   tool: ToolDefinition,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const db = createAdminClient();
-
   switch (tool.name) {
-    /* ------------------------------------------------------------- leads */
-    case "search_leads": {
-      let query = db
-        .from("leads")
-        .select("id, first_name, last_name, email, phone, status, qualification_state, created_at")
-        .eq("business_id", auth.businessId)
-        .eq("is_test", false)
-        .order("created_at", { ascending: false })
-        .limit(clampLimit(args.limit));
-
-      const status = str(args.status);
-      if (status) query = query.eq("status", status.toUpperCase());
-
-      const search = str(args.query);
-      if (search) {
-        const term = search.replace(/[,()\\]/g, " ");
-        query = query.or(
-          `first_name.ilike.*${term}*,last_name.ilike.*${term}*,email.ilike.*${term}*,phone.ilike.*${term}*`,
-        );
-      }
-
-      const { data } = await query;
-      return {
-        leads: (data ?? []).map((row) => ({
-          id: row.id,
-          name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
-          email: row.email,
-          phone: row.phone,
-          status: row.status,
-          qualification: row.qualification_state,
-          createdAt: row.created_at,
-        })),
-      };
-    }
-
-    case "get_lead": {
-      const leadId = str(args.leadId);
-      if (!leadId) throw new Error("leadId is required.");
-
-      const { data: lead } = await db
-        .from("leads")
-        .select(
-          "id, first_name, last_name, email, phone, company_name, status, qualification_state, needs_attention, attention_reason, created_at, booked_at, won_at, lost_at",
-        )
-        .eq("business_id", auth.businessId)
-        .eq("id", leadId)
-        .maybeSingle();
-
-      if (!lead) throw new Error("That lead was not found in this workspace.");
-
-      const { data: messages } = await db
-        .from("messages")
-        .select("direction, channel, body, created_at")
-        .eq("business_id", auth.businessId)
-        .eq("lead_id", leadId)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      return {
-        lead: {
-          id: lead.id,
-          name: [lead.first_name, lead.last_name].filter(Boolean).join(" ") || null,
-          email: lead.email,
-          phone: lead.phone,
-          company: lead.company_name,
-          status: lead.status,
-          qualification: lead.qualification_state,
-          needsAttention: lead.needs_attention,
-          attentionReason: lead.attention_reason,
-          createdAt: lead.created_at,
-        },
-        recentMessages: (messages ?? []).reverse().map((row) => ({
-          direction: row.direction,
-          channel: row.channel,
-          body: row.body,
-          at: row.created_at,
-        })),
-      };
-    }
-
     case "create_lead": {
       const relationship = str(args.relationshipType) as RelationshipType | null;
       if (!relationship) throw new Error("relationshipType is required.");
 
-      // The Prospect/Lead boundary, enforced at the API edge exactly as it is
-      // in the wizard: a contact you merely found is not a lead.
-      if (!isWarmRelationship(relationship)) {
+      // REFERRAL was advertised in the tool description and then refused as
+      // "not warm". It is warm with evidence, the wizard's and the API's rule.
+      if (relationship === "REFERRAL") {
+        if (!referralEvidenceSufficient(str(args.evidence))) {
+          throw new Error(REFERRAL_EVIDENCE_MESSAGE);
+        }
+      } else if (!isWarmRelationship(relationship)) {
+        // The Prospect/Lead boundary, enforced at the API edge exactly as it
+        // is in the wizard: a contact you merely found is not a lead.
         throw new Error(
           "That relationship does not describe a warm lead. A contact you found or imported must be added as a prospect and reviewed before contact.",
         );
       }
 
-      const email = normaliseEmail(str(args.email));
-      const phone = str(args.phone) ? normalisePhone(String(args.phone)) : null;
-      if (!email && !phone) throw new Error("A lead needs an email address or a phone number.");
-
       /*
-       * The same duplicate rule the Add Lead wizard applies, and the reason
-       * this tool is now idempotent.
+       * The one intake path (design 03 §1). ingestLead() is what makes this
+       * tool idempotent and safe:
        *
-       * There was no idempotency key and no duplicate check, so a retried call
-       * -- which is the normal behaviour of every HTTP client and every agent
-       * runtime on a timeout -- created a second lead. Two rows for one person
-       * means two follow-up sequences, and the recipient gets messaged twice by
-       * a product whose entire promise is that it contacts people carefully.
-       *
-       * A client-supplied key would work, and this is better: an exact email or
-       * phone match already *is* the identity of the record, the wizard already
-       * treats it as blocking ("an exact email or phone match is the same
-       * person"), and using it here means a caller gets idempotency without
-       * having to know to ask for it. The existing lead is returned rather than
-       * an error, because a retry that says "already done, here it is" is what
-       * an idempotent create should do; a weaker match is not treated as the
-       * same person and still creates.
+       *   * identity resolution: an exact email or phone match is the same
+       *     person, so a retried call -- the normal behaviour of every HTTP
+       *     client and agent runtime on a timeout -- returns the existing lead
+       *     (MERGED) instead of creating a second one that would be messaged
+       *     twice;
+       *   * suppression, checked before anything is written, in REFUSE mode:
+       *     a suppressed address or number is someone who opted out, bounced
+       *     or was blocked, the Add Lead wizard refuses them ("cannot be
+       *     overridden here"), and an assistant must not be a way round that.
+       *     A failed lookup throws, refusing the create rather than treating
+       *     "unknown" as "not suppressed";
+       *   * the permission record, the touch and lead.process.
        */
-      const existing = blockingDuplicates(
-        await findDuplicates(auth.businessId, {
-          email,
-          mobile: phone,
-          firstName: str(args.firstName),
-          lastName: str(args.lastName),
-          company: str(args.companyName),
-        }),
-      ).filter((match) => match.kind === "LEAD");
+      const result = await ingestLead(
+        {
+          businessId: auth.businessId,
+          source: {
+            type: "MCP",
+            provider: "mcp",
+            caller: { type: "MCP_CLIENT", id: auth.clientId ?? auth.userId ?? undefined },
+          },
+          person: {
+            firstName: str(args.firstName) ?? undefined,
+            lastName: str(args.lastName) ?? undefined,
+            email: str(args.email) ?? undefined,
+            phone: str(args.phone) ?? undefined,
+            companyName: str(args.companyName) ?? undefined,
+          },
+          relationship,
+        },
+        {
+          onSuppressed: "REFUSE",
+          // Never auto-started over MCP: a person chooses to message.
+          insertExtras: { automation_active: false, created_by_user_id: auth.userId },
+          permission: {
+            source: "MCP",
+            recordedBy: auth.userId,
+            ...(relationship === "REFERRAL" ? { evidence: str(args.evidence) } : {}),
+          },
+        },
+      );
 
-      if (existing.length > 0) {
-        // Same shape as the create path, which already carried `created` --
-        // so a caller that reads it can tell a retry from a first attempt
-        // without parsing prose.
+      if (result.outcome === "INVALID") {
+        throw new Error("A lead needs an email address or a phone number.");
+      }
+
+      if (result.outcome === "REJECTED") {
+        await recordAudit({
+          businessId: auth.businessId,
+          actorUserId: auth.userId,
+          action: "lead.opt_out_override_attempt",
+          entityType: "lead",
+          entityId: null,
+          metadata: { via: "mcp", tool: "create_lead", relationship_type: relationship },
+        });
+        throw new Error(suppressionRefusal([{ reason: "SUPPRESSED" }]) ?? "That contact cannot be added.");
+      }
+
+      if (result.outcome === "MERGED" || result.outcome === "DUPLICATE") {
+        // Same shape as the create path, so a caller that reads `created` can
+        // tell a retry from a first attempt without parsing prose.
         return {
-          leadId: existing[0].id,
+          leadId: result.leadId,
           created: false,
+          outcome: result.outcome,
           message:
-            "A lead with that email address or phone number already exists in this workspace, so nothing was created. Its id is returned.",
+            "A lead with that email address or phone number already exists in this workspace, so nothing new was created. Its id is returned.",
         };
       }
 
-      const { data: lead, error } = await db
-        .from("leads")
-        .insert({
-          business_id: auth.businessId,
-          first_name: str(args.firstName),
-          last_name: str(args.lastName),
-          company_name: str(args.companyName),
-          email,
-          phone,
-          phone_normalized: phone,
-          intake_method: "API",
-          relationship_type: relationship,
-          created_via: "API",
-          created_by_user_id: auth.userId,
-          // Never auto-started over the API: a person chooses to message.
-          automation_active: false,
-        })
-        .select("id")
-        .single();
-
-      if (error || !lead) throw new Error("The lead could not be created.");
-
-      await recordPermission({
+      // The workspace audit trail, alongside the MCP call log: a lead that
+      // appeared from an assistant should be explicable from `audit_log`
+      // alone, like one added through the wizard.
+      await recordAudit({
         businessId: auth.businessId,
-        subject: { type: "LEAD", id: lead.id },
-        relationshipType: relationship,
-        consentSource: "MCP",
-        email,
-        phone,
-        recordedBy: auth.userId,
-      });
-
-      return { leadId: lead.id, created: true };
-    }
-
-    case "assign_lead": {
-      const leadId = str(args.leadId);
-      if (!leadId) throw new Error("leadId is required.");
-      const userId = str(args.userId);
-
-      if (userId) {
-        const { data: member } = await db
-          .from("business_members")
-          .select("user_id")
-          .eq("business_id", auth.businessId)
-          .eq("user_id", userId)
-          .eq("status", "active")
-          .maybeSingle();
-        if (!member) throw new Error("That user is not a member of this workspace.");
-      }
-
-      const { error } = await db
-        .from("leads")
-        .update({ assigned_user_id: userId })
-        .eq("business_id", auth.businessId)
-        .eq("id", leadId);
-
-      if (error) throw new Error("The lead could not be assigned.");
-      return { leadId, assignedTo: userId };
-    }
-
-    case "update_lead_status": {
-      const leadId = str(args.leadId);
-      const status = str(args.status)?.toUpperCase();
-      if (!leadId || !status) throw new Error("leadId and status are required.");
-
-      const allowed = ["NEW", "CONTACTED", "RESPONDED", "QUALIFIED", "BOOKED", "WON", "LOST"];
-      if (!allowed.includes(status)) {
-        throw new Error(`status must be one of: ${allowed.join(", ")}.`);
-      }
-
-      const { error } = await db
-        .from("leads")
-        .update({ status })
-        .eq("business_id", auth.businessId)
-        .eq("id", leadId);
-
-      if (error) throw new Error("The lead status could not be changed.");
-      return { leadId, status };
-    }
-
-    /* --------------------------------------------------------- prospects */
-    case "search_prospects": {
-      let query = db
-        .from("prospects")
-        .select(
-          "id, first_name, last_name, role_title, email, status, grade, score, outreach_eligibility",
-        )
-        .eq("business_id", auth.businessId)
-        .eq("is_test", false)
-        .is("promoted_to_lead_id", null)
-        .order("score", { ascending: false, nullsFirst: false })
-        .limit(clampLimit(args.limit));
-
-      const grade = str(args.grade);
-      if (grade) {
-        const order = ["D", "C", "B", "A", "A+"];
-        const index = order.indexOf(grade.toUpperCase());
-        if (index >= 0) query = query.in("grade", order.slice(index));
-      }
-
-      const search = str(args.query);
-      if (search) {
-        const term = search.replace(/[,()\\]/g, " ");
-        query = query.or(
-          `first_name.ilike.*${term}*,last_name.ilike.*${term}*,email.ilike.*${term}*,role_title.ilike.*${term}*`,
-        );
-      }
-
-      const { data } = await query;
-      return {
-        prospects: (data ?? []).map((row) => ({
-          id: row.id,
-          name: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
-          role: row.role_title,
-          email: row.email,
-          status: row.status,
-          grade: row.grade,
-          score: row.score,
-          // Stated on every prospect so an assistant cannot treat a sourced
-          // record as someone it may contact.
-          contactable: row.outreach_eligibility === "ELIGIBLE",
-          eligibility: row.outreach_eligibility,
-        })),
-      };
-    }
-
-    case "get_prospect": {
-      const prospectId = str(args.prospectId);
-      if (!prospectId) throw new Error("prospectId is required.");
-
-      const { data: prospect } = await db
-        .from("prospects")
-        .select(
-          "id, first_name, last_name, role_title, email, status, grade, score, outreach_eligibility, eligibility_reason, prospect_companies ( name, domain, industry )",
-        )
-        .eq("business_id", auth.businessId)
-        .eq("id", prospectId)
-        .maybeSingle();
-
-      if (!prospect) throw new Error("That prospect was not found in this workspace.");
-
-      const { data: score } = await db
-        .from("prospect_scores")
-        .select("total_score, grade, explanation, factor_json")
-        .eq("business_id", auth.businessId)
-        .eq("prospect_id", prospectId)
-        .eq("is_current", true)
-        .maybeSingle();
-
-      const company = prospect.prospect_companies as unknown as {
-        name: string;
-        domain: string | null;
-        industry: string | null;
-      } | null;
-
-      return {
-        prospect: {
-          id: prospect.id,
-          name: [prospect.first_name, prospect.last_name].filter(Boolean).join(" ") || null,
-          role: prospect.role_title,
-          email: prospect.email,
-          company: company?.name ?? null,
-          domain: company?.domain ?? null,
-          industry: company?.industry ?? null,
-          status: prospect.status,
-          grade: prospect.grade,
-          score: prospect.score,
-          contactable: prospect.outreach_eligibility === "ELIGIBLE",
-          eligibility: prospect.outreach_eligibility,
-          eligibilityReason: prospect.eligibility_reason,
+        actorUserId: auth.userId,
+        action: "lead.created_manually",
+        entityType: "lead",
+        entityId: result.leadId,
+        metadata: {
+          via: "mcp",
+          tool: "create_lead",
+          relationship_type: relationship,
+          outcome: result.outcome,
         },
-        scoreExplanation: score?.explanation ?? null,
-        scoreFactors: score?.factor_json ?? null,
-      };
-    }
-
-    case "approve_prospect": {
-      const prospectId = str(args.prospectId);
-      if (!prospectId) throw new Error("prospectId is required.");
-
-      const { data: prospect } = await db
-        .from("prospects")
-        .select("id, email, status")
-        .eq("business_id", auth.businessId)
-        .eq("id", prospectId)
-        .maybeSingle();
-
-      if (!prospect) throw new Error("That prospect was not found in this workspace.");
-
-      // Approval is not an override. The policy engine decides, and it is
-      // re-run here rather than trusting whatever was stored earlier.
-      const { eligibility } = await evaluateAllChannels(
-        auth.businessId,
-        { type: "PROSPECT", id: prospectId, email: prospect.email },
-        "COLD",
-        { record: true },
-      );
-
-      if (eligibility !== "ELIGIBLE") {
-        throw new Error(
-          `This prospect cannot be approved: contact rules currently return ${eligibility}.`,
-        );
-      }
-
-      await db
-        .from("prospects")
-        .update({
-          status: "APPROVED",
-          approved_by: auth.userId,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("business_id", auth.businessId)
-        .eq("id", prospectId);
-
-      return { prospectId, approved: true };
-    }
-
-    /* --------------------------------------------------------- campaigns */
-    case "list_campaigns": {
-      const { data } = await db
-        .from("outreach_campaigns")
-        .select("id, name, status, minimum_grade, launched_at")
-        .eq("business_id", auth.businessId)
-        .order("updated_at", { ascending: false })
-        .limit(50);
-
-      const { data: results } = await db.rpc("outreach_campaign_results", {
-        p_business_id: auth.businessId,
       });
 
-      const byId = new Map((results ?? []).map((row) => [row.campaign_id, row]));
-
-      return {
-        campaigns: (data ?? []).map((row) => {
-          const funnel = byId.get(row.id);
-          return {
-            id: row.id,
-            name: row.name,
-            status: row.status,
-            minimumGrade: row.minimum_grade,
-            launchedAt: row.launched_at,
-            audience: funnel?.audience_count ?? 0,
-            contacted: funnel?.contacted_count ?? 0,
-            replies: funnel?.reply_count ?? 0,
-            promotedToLeads: funnel?.promoted_count ?? 0,
-          };
-        }),
-      };
-    }
-
-    case "pause_campaign": {
-      const campaignId = str(args.campaignId);
-      if (!campaignId) throw new Error("campaignId is required.");
-
-      const { error } = await db
-        .from("outreach_campaigns")
-        .update({ status: "PAUSED", paused_at: new Date().toISOString() })
-        .eq("business_id", auth.businessId)
-        .eq("id", campaignId)
-        .in("status", ["ACTIVE", "OPTIMIZING", "READY"]);
-
-      if (error) throw new Error("The campaign could not be paused.");
-      return { campaignId, status: "PAUSED" };
-    }
-
-    /* -------------------------------------------------- business/analytics */
-    case "get_business_profile": {
-      const [profile, services, icps, goals] = await Promise.all([
-        db
-          .from("business_profiles")
-          .select("website_url, business_type, sales_model, summary")
-          .eq("business_id", auth.businessId)
-          .maybeSingle(),
-        db.from("services").select("name").eq("business_id", auth.businessId),
-        db
-          .from("icp_profiles")
-          .select("name, industries, locations, roles")
-          .eq("business_id", auth.businessId)
-          .eq("active", true),
-        db
-          .from("conversion_goals")
-          .select("name, type")
-          .eq("business_id", auth.businessId)
-          .eq("active", true),
-      ]);
-
-      return {
-        website: profile.data?.website_url ?? null,
-        businessType: profile.data?.business_type ?? null,
-        salesModel: profile.data?.sales_model ?? null,
-        summary: profile.data?.summary ?? null,
-        services: (services.data ?? []).map((row) => row.name),
-        idealCustomerProfiles: icps.data ?? [],
-        conversionGoals: goals.data ?? [],
-      };
-    }
-
-    case "get_dashboard_metrics": {
-      const range = (str(args.range) ?? "30d") as AnalyticsRange;
-      const valid: AnalyticsRange[] = ["7d", "30d", "90d", "12m"];
-      const bounds = rangeBounds(valid.includes(range) ? range : "30d");
-      const overview = await getOverview(auth.businessId, bounds);
-
-      return {
-        range,
-        metrics: overview.metrics.map((metric) => ({
-          key: metric.key,
-          value: metric.value,
-          changeVsPreviousPeriod: metric.change,
-        })),
-        funnel: overview.funnel.map((stage) => ({
-          stage: stage.label,
-          count: stage.count,
-        })),
-      };
-    }
-
-    case "get_status": {
-      const [integrations, senders, jobs] = await Promise.all([
-        db
-          .from("integrations")
-          .select("provider_type, status")
-          .eq("business_id", auth.businessId),
-        db
-          .from("sender_identities")
-          .select("email, status")
-          .eq("business_id", auth.businessId)
-          .eq("active", true),
-        db
-          .from("jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("business_id", auth.businessId)
-          .eq("state", "pending"),
-      ]);
-
-      return {
-        integrations: (integrations.data ?? []).map((row) => ({
-          provider: row.provider_type,
-          status: row.status,
-        })),
-        senders: (senders.data ?? []).map((row) => ({
-          email: row.email,
-          status: row.status,
-        })),
-        pendingBackgroundJobs: jobs.count ?? 0,
-      };
+      return { leadId: result.leadId, created: true, outcome: result.outcome };
     }
 
     default:

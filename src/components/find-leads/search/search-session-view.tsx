@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/d
 import { useToast } from "@/components/ui/toast";
 import type { SearchSessionView } from "@/lib/find-leads/types";
 import type { SearchPlan } from "@/lib/find-leads/plan";
+import type { SignalFeed } from "@/lib/find-leads/signals";
 import { SearchConversation } from "./search-conversation";
 import { StructuredPlanPanel } from "./structured-plan-panel";
 import { SourcingControls } from "./sourcing-controls";
@@ -38,8 +39,13 @@ export function SearchSessionView({
   session,
   initialBudget,
   canManage,
+  liveFeeds = [],
+  linkedinPartner = false,
 }: {
   session: SearchSessionView;
+  /** Free signal feeds live for this workspace, for the signals editor. */
+  liveFeeds?: SignalFeed[];
+  linkedinPartner?: boolean;
   initialBudget: {
     maxTarget: number;
     maxProviderCostMinor: number;
@@ -173,7 +179,13 @@ export function SearchSessionView({
         <SearchConversation sessionId={session.id} messages={session.messages} />
 
         <div className="space-y-4">
-          <StructuredPlanPanel plan={plan} onChange={commit} disabled={!canManage} />
+          <StructuredPlanPanel
+            plan={plan}
+            onChange={commit}
+            disabled={!canManage}
+            liveFeeds={liveFeeds}
+            linkedinPartner={linkedinPartner}
+          />
           <SourcingControls
             sessionId={session.id}
             plan={plan}

@@ -23,11 +23,12 @@ import { wrapUntrustedContent } from "@/lib/ai/safety";
 import type { ConversationSummary } from "@/lib/ai/schemas";
 import type { AgentContext } from "./context";
 import { SUMMARY_TRIGGER_MESSAGE_COUNT, VERBATIM_MESSAGE_WINDOW } from "./types";
+import { refreshOpportunityMemory } from "@/lib/opportunities/memory-service";
 
 export type StoredSummary = {
   /** Written by the runtime from database state, never by the model. */
   qualificationStatus: string;
-  bookingState: "none" | "scheduled";
+  bookingState: "none" | "scheduled" | "pending";
   handoverState: "none" | "handed_over";
   optedOut: boolean;
   service: string | null;
@@ -41,7 +42,19 @@ export type StoredSummary = {
  * window. Cheap to call on every turn: it returns immediately unless there is
  * genuinely new history to compress.
  */
-export async function maybeRefreshSummary(context: AgentContext): Promise<void> {
+export async function maybeRefreshSummary(
+  context: AgentContext,
+  /** The conversation_agent_runs row this turn belongs to; the summary's tokens are added to it. */
+  agentRunId?: string | null,
+): Promise<void> {
+  // Opportunity memory (§48) is refreshed every turn that reaches here: it is
+  // deterministic and cheap, unlike the summary below. Best effort.
+  await refreshOpportunityMemory({
+    businessId: context.business.businessId,
+    leadId: context.lead.id,
+    service: context.leadContext.serviceName,
+  });
+
   const conversationId = context.conversation.conversationId;
   if (!conversationId) return;
   if (context.conversation.totalMessages < SUMMARY_TRIGGER_MESSAGE_COUNT) return;
@@ -87,6 +100,10 @@ export async function maybeRefreshSummary(context: AgentContext): Promise<void> 
     conversationId,
     context: transcript,
     maxOutputTokens: 250,
+    // The window being compressed ends at this message. A retried turn sees
+    // the same window and is charged once; a later window is a new summary.
+    correlationId: `${conversationId}:${older[older.length - 1].id}`,
+    agentRunId: agentRunId ?? null,
   }).catch(() => null);
 
   // A failed summary is not an error. The turn still has the verbatim window
@@ -96,7 +113,11 @@ export async function maybeRefreshSummary(context: AgentContext): Promise<void> 
 
   const summary: StoredSummary = {
     qualificationStatus: context.lead.qualification_state,
-    bookingState: context.booking.liveBooking ? "scheduled" : "none",
+    bookingState: context.booking.liveBooking
+      ? context.booking.liveBooking.status === "pending"
+        ? "pending"
+        : "scheduled"
+      : "none",
     handoverState: context.lead.human_takeover ? "handed_over" : "none",
     optedOut: context.lead.opted_out,
     service: context.leadContext.serviceName,

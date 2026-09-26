@@ -5,6 +5,9 @@ import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { BOOKING_STATUS_LABEL, bookingStatusSchema } from "./types";
+import { staffStatusChange } from "./confirmation";
+import { bookLeadOnConfirmation } from "./book-lead";
+import { refreshBookingReminder } from "./reminders";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -43,6 +46,11 @@ export async function updateBookingStatus(input: {
   if (!booking) return fail("Booking not found.");
   if (booking.status === parsed.data.status) return { ok: true };
 
+  // B10 / decision Q1: a requested time becomes a booking only when a person
+  // confirms it here, and that is the moment the lead becomes BOOKED.
+  const change = staffStatusChange(booking.status, parsed.data.status);
+  if (!change.ok) return fail(change.error);
+
   const { error } = await supabase
     .from("bookings")
     .update({ status: parsed.data.status })
@@ -50,6 +58,16 @@ export async function updateBookingStatus(input: {
     .eq("business_id", workspace.businessId);
 
   if (error) return fail("Could not update the booking.");
+
+  if (change.bookLead) {
+    const booked = await bookLeadOnConfirmation({
+      businessId: workspace.businessId,
+      bookingId: booking.id,
+      leadId: booking.lead_id,
+      revertTo: booking.status,
+    });
+    if (!booked) return fail("Could not mark the lead as booked.");
+  }
 
   // A booking that did not happen puts the lead back in front of a person
   // rather than silently disappearing.
@@ -63,6 +81,16 @@ export async function updateBookingStatus(input: {
       })
       .eq("id", booking.lead_id)
       .eq("business_id", workspace.businessId);
+  }
+
+  // A meeting that is no longer scheduled has nothing to be reminded about.
+  if (parsed.data.status !== "scheduled") {
+    await refreshBookingReminder({
+      businessId: workspace.businessId,
+      leadId: booking.lead_id,
+      bookingId: booking.id,
+      change: `status:${parsed.data.status}`,
+    });
   }
 
   await recordAudit({

@@ -88,6 +88,9 @@ export type ProspectListRow = {
   campaignName: string | null;
   intent: ProspectIntentBadge | null;
   source_provider: string | null;
+  /** Set on a sourced (cold) prospect. With no `replied_at`, it cannot be promoted. */
+  source_run_id: string | null;
+  replied_at: string | null;
   last_activity_at: string | null;
   /** What that last activity actually was, resolved from the underlying rows.
    *  Null when nothing has happened since sourcing. */
@@ -312,4 +315,34 @@ export function intentFreshness(observedAt: string, now: Date = new Date()): str
   if (days < 7) return `${days} days ago`;
   if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
   return `${Math.floor(days / 30)} months ago`;
+}
+
+/**
+ * Why "Promote to lead" is unavailable, or null when it is available.
+ *
+ * Mirrors `promote_reviewed_prospect` (0123) exactly, so the button can never
+ * offer what the database will refuse: a sourced prospect (one with a
+ * `source_run_id`) with no recorded reply is cold, and cold prospects are not
+ * promoted by hand. A connector, import or manually added contact has no run
+ * and can be promoted directly.
+ */
+export function promotionBlockedReason(prospect: {
+  promotedToLeadId: string | null;
+  outreachEligibility: string;
+  status: string;
+  repliedAt: string | null;
+  sourceRunId: string | null;
+  /** An inbound message is on the conversation even if replied_at lags. */
+  hasInboundMessage?: boolean;
+}): string | null {
+  if (prospect.promotedToLeadId) return "This prospect is already a lead";
+  if (prospect.outreachEligibility === "SUPPRESSED" || prospect.status === "SUPPRESSED") {
+    return "A suppressed prospect cannot be promoted";
+  }
+  if (prospect.sourceRunId && !prospect.repliedAt) {
+    return prospect.hasInboundMessage
+      ? "Record their reply first (They replied, in the social queue or conversation). A sourced prospect becomes a lead once a reply is recorded."
+      : "A cold sourced prospect needs a reply first. A connector, import or manually added contact can be promoted directly.";
+  }
+  return null;
 }

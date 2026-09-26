@@ -62,25 +62,29 @@ export async function POST(request: Request) {
 
   const ip = clientIdentifier(request.headers);
 
-  // Bounded before the credential is looked up, so guessing a key costs an
-  // attacker rate-limit budget rather than a database query.
-  const guessLimit = await checkRateLimit("api:unauthenticated", ip);
-  if (!guessLimit.allowed) {
-    return NextResponse.json(
-      {
-        jsonrpc: "2.0",
-        id: body.id ?? null,
-        error: { code: -32029, message: "Too many requests." },
-      },
-      {
-        status: 429,
-        headers: { "retry-after": String(Math.max(1, guessLimit.retryAfterSeconds)) },
-      },
-    );
-  }
-
   const auth = await authenticate(request.headers.get("authorization"), ip);
   if (!auth) {
+    // Only a credential that failed to resolve is charged against the shared
+    // per-address "guessing" bucket. A token that resolves is governed only by
+    // its own per-key bucket below — charging every call regardless of outcome
+    // would throttle a legitimate high-volume MCP client sharing an address
+    // (a corporate NAT/proxy, ordinary for this product's B2B customers) down
+    // to the guessing budget instead of its real allowance.
+    const guessLimit = await checkRateLimit("api:unauthenticated", ip);
+    if (!guessLimit.allowed) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: body.id ?? null,
+          error: { code: -32029, message: "Too many requests." },
+        },
+        {
+          status: 429,
+          headers: { "retry-after": String(Math.max(1, guessLimit.retryAfterSeconds)) },
+        },
+      );
+    }
+
     // 401 with the standard challenge, so a client knows to re-authorise
     // rather than treating this as a tool failure.
     return NextResponse.json(

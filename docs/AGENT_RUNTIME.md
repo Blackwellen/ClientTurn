@@ -77,7 +77,10 @@ assemble context
 | `classification.ts` | Deterministic reply classification — binding verdicts | ✅ |
 | `lifecycle.ts` | Lifecycle + mode derivation from existing columns | ✅ |
 | `policy.ts` | Run gate, send gate, tool gate, length policy | ✅ |
-| `validate.ts` | Outbound claim validation | ✅ |
+| `validate.ts` | Outbound claim validation + style/QA lint (clichés, em dashes, "just", one question, workspace forbidden phrases / prohibited claims) | ✅ |
+| `strategy.ts` | The per-turn strategy block: motion, question style, objective, the one next question or "stop and propose the close", what not to ask, objection playbook. Method + reason stored in `decision_json.strategy` | ✅ |
+| `offer-card.ts` | One voice profile + budgeted offer card (≤600 tokens), accepted/verified facts only, sent as the stable prompt prefix | ✅ |
+| `../qualification/next-question.ts` | Adaptive question selection: known/inferred questions never asked, value-ranked, stops at the motion's decision threshold | ✅ |
 | `context.ts` | Context assembly + prompt block rendering | server |
 | `tools.ts` | Tool registry, permissions, executors | server |
 | `orchestrator.ts` | The turn | server |
@@ -138,6 +141,7 @@ hands over.
 | Mentioning prompts, providers, credentials | Never |
 | Claiming to be human | Never |
 | Over the channel's hard length | Rejected, never truncated mid-fact |
+| Pressure language: invented deadlines or scarcity, "act now", threats of loss, guilt | Never (`STYLE_PRESSURE`; also applied to restyled and reactivation copy, which falls back to the template) |
 
 Truncation is deliberately not a remedy: cutting a message in half can change
 what it promises.
@@ -395,6 +399,31 @@ key answers) is written by the runtime from database state, not by the model,
 so a compression pass cannot lose the facts that matter. Summaries refresh
 once per window of new messages, not every turn.
 
+**Opportunity memory** (0131, `src/lib/opportunities/memory.ts`) sits beside
+the structured lead: one small jsonb per opportunity holding goals, pains,
+requirements, objections, budget signals, timeframe, people involved,
+commitments the business made, open questions and the next action. It is
+derived deterministically from answers, the lead's and the business's own
+messages and the summary, refreshed every turn, and rendered into the
+volatile context in under 600 characters. The model never writes it.
+
+## Workspace selling preferences
+
+Settings -> AI & selling stores five preferences the runtime now reads
+(`workspace_sales_overrides` ARCHETYPE_SETTINGS '*'):
+
+| Setting | Effect |
+|---|---|
+| Qualification depth | LIGHT asks only what fills the motion's decision threshold; STANDARD stops at the threshold; THOROUGH asks every applicable question. Required questions are always asked. |
+| Preferred methods | Bias the method router, only within `eligibleMethods` (MEDDPICC only on ENTERPRISE; insight-led only with an approved claim). Method names never reach the prompt. |
+| Research depth | Moves the tier ceiling of research tasks only (LIGHT cheapest; DEEP one tier up if every budget and the value rule allow). |
+| Risk tolerance | Can only raise the handover floor: CAUTIOUS hands over any turn below ACT (0.85). BALANCED and ASSERTIVE keep the 0.6 floor; nothing lowers it. |
+| Example messages | Tone examples in the offer card, labelled "not facts", dropped first under its budget. |
+
+The method router also receives the relationship's real direction
+(`leadDirection`: a promoted prospect, a sourcing-run lead or FOUND_BY_US is
+OUTBOUND) and the number of people involved from opportunity memory.
+
 ## Observability
 
 **Customers** see outcomes: assistant replied, reply drafted for review,
@@ -403,6 +432,30 @@ prompts, tool arguments, reasoning or provider detail.
 
 **Platform admin** sees `conversation_agent_runs` — trigger, mode, outcome,
 latency, tokens, cost, error code, tools used and refused.
+
+Tokens and cost on a run are the sum of the model calls made for it, added by
+`runTask` whenever it is given `agentRunId` (via `add_agent_run_usage`, which
+increments rather than overwrites, so a run with several calls accumulates):
+
+- `input_tokens`, `output_tokens` — the provider's prompt and completion counts
+  (prompt already includes any cached prefix).
+- `estimated_cost_usd` — the cost `recordAiUsage` priced for each call.
+- `model_provider`, `model_name` — the last call's (`azure_openai`, `nano` or
+  `mini`).
+
+The calls that carry the run id are the `agent_decision` call (and its single
+retry after a validation failure) and the rolling `conversation_summary`
+refresh made during the same turn. Each also writes its own `ai_runs` row and
+a token-ledger row linked to the run. A call that never reached the provider
+(AI off, no tokens, transport error) adds nothing, so a run with zero tokens
+made no billable call. Model calls outside a conversation turn — answer
+extraction and restyling in the deterministic inbound path, campaigns, Find
+Leads, Copilot — are not agent runs and are metered only in `ai_runs` and the
+token ledger.
+
+Every call's token debit is keyed so a retried job is charged once: the
+decision call on `agent:<run id>:first|retry`, the summary on the conversation
+plus the last message of the window being compressed.
 
 `conversation_agent_runs` and `agent_handoffs` are member-readable via RLS
 (they carry no internals). `conversation_agent_actions`,

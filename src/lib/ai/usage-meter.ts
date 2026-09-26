@@ -4,6 +4,14 @@ import { recordUsage } from "@/lib/audit";
 import type { UsageFeature, UsageMetric } from "@/lib/billing/usage-metrics";
 import type { AiDeployment } from "./azure-client";
 import type { TaskType } from "./schemas";
+import {
+  billableTokens,
+  costFor,
+  KeyedTtlCache,
+  priceBookKey,
+  type PriceBook,
+  type PriceRow,
+} from "./tokens";
 
 /**
  * Which product surface spent the tokens (V4 section 18).
@@ -37,50 +45,43 @@ const TASK_FEATURE: Record<TaskType, UsageFeature> = {
   // the sending of a campaign in one place rather than as two unrelated lines.
   variant_generation: "outreach",
   copilot_turn: "copilot",
+  // The handoff brief is read in the inbox by the person taking over.
+  handoff_brief: "inbox",
 };
 
-type PriceRow = { unit_cost: number; unit: string };
-type PriceBook = {
-  input: PriceRow;
-  cachedInput: PriceRow;
-  output: PriceRow;
-};
-
-let cachedPriceBook: PriceBook | null = null;
-let cachedAt = 0;
+/**
+ * Cached per model. A single shared slot (the old behaviour) served whichever
+ * deployment loaded first to every other deployment for five minutes, pricing
+ * mini calls at nano rates or the reverse.
+ */
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000;
+const priceBookCache = new KeyedTtlCache<PriceBook>(PRICE_CACHE_TTL_MS);
 
 async function loadPriceBook(deployment: AiDeployment): Promise<PriceBook> {
-  const now = Date.now();
-  if (cachedPriceBook && now - cachedAt < PRICE_CACHE_TTL_MS) return cachedPriceBook;
+  const model = priceBookKey(deployment);
+  const cached = priceBookCache.get(model);
+  if (cached) return cached;
 
-  const model = deployment === "nano" ? "gpt_5_4_nano" : "gpt_5_4_mini";
   const supabase = createAdminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("provider_price_book")
     .select("product, unit_cost, unit")
     .eq("provider", "azure")
     .in("product", [`${model}_input`, `${model}_cached_input`, `${model}_output`])
     .is("effective_to", null);
 
+  const zero: PriceRow = { unit_cost: 0, unit: "per_million_tokens" };
   const byProduct = new Map((data ?? []).map((row) => [row.product, row]));
   const priceBook: PriceBook = {
-    input: byProduct.get(`${model}_input`) ?? { unit_cost: 0, unit: "per_million_tokens" },
-    cachedInput: byProduct.get(`${model}_cached_input`) ?? {
-      unit_cost: 0,
-      unit: "per_million_tokens",
-    },
-    output: byProduct.get(`${model}_output`) ?? { unit_cost: 0, unit: "per_million_tokens" },
+    input: byProduct.get(`${model}_input`) ?? zero,
+    cachedInput: byProduct.get(`${model}_cached_input`) ?? zero,
+    output: byProduct.get(`${model}_output`) ?? zero,
   };
 
-  cachedPriceBook = priceBook;
-  cachedAt = now;
+  // A failed read is not cached: the next call retries rather than pricing
+  // five minutes of usage at zero.
+  if (!error) priceBookCache.set(model, priceBook);
   return priceBook;
-}
-
-function costFor(tokens: number, price: PriceRow): number {
-  if (price.unit === "per_million_tokens") return (tokens / 1_000_000) * price.unit_cost;
-  return tokens * price.unit_cost;
 }
 
 export type RecordAiUsageInput = {
@@ -92,7 +93,9 @@ export type RecordAiUsageInput = {
   deployment: AiDeployment;
   promptKey: string;
   promptVersion: number;
+  /** prompt_tokens, cached prefix INCLUDED (as Azure reports it). */
   inputTokens: number;
+  /** The cached subset of inputTokens. Not additional to it. */
   cachedInputTokens: number;
   outputTokens: number;
   latencyMs: number;
@@ -100,6 +103,18 @@ export type RecordAiUsageInput = {
   resultJson: unknown;
   status: "ok" | "error" | "fallback" | "low_confidence";
   errorCode?: string | null;
+  /**
+   * Stable key for this model call (the token-debit idempotency key when it is
+   * stable). Keys the usage_events rows, so a retried job re-recording the
+   * same call does not count it twice. Falls back to the ai_runs id.
+   */
+  operationKey?: string | null;
+};
+
+export type RecordAiUsageResult = {
+  /** The ai_runs row id, or null if the insert failed. */
+  runId: string | null;
+  estimatedCostUsd: number;
 };
 
 /**
@@ -107,16 +122,16 @@ export type RecordAiUsageInput = {
  * (audit + cost detail), usage_events (the per-metric ledger other reports
  * read) and cost_events (priced from provider_price_book, never hardcoded).
  */
-export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
+export async function recordAiUsage(input: RecordAiUsageInput): Promise<RecordAiUsageResult> {
   const supabase = createAdminClient();
   const priceBook = await loadPriceBook(input.deployment);
 
-  const inputCost = costFor(input.inputTokens, priceBook.input);
-  const cachedCost = costFor(input.cachedInputTokens, priceBook.cachedInput);
-  const outputCost = costFor(input.outputTokens, priceBook.output);
-  const estimatedCostUsd = inputCost + cachedCost + outputCost;
+  // Azure's prompt_tokens already includes the cached prefix: uncached input is
+  // billed at the input rate, the cached subset at the cached rate, once each.
+  const tokens = billableTokens(input);
+  const { totalCost: estimatedCostUsd } = costFor(input, priceBook);
 
-  const { data: run } = await supabase
+  const { data: run, error: runError } = await supabase
     .from("ai_runs")
     .insert({
       business_id: input.businessId,
@@ -127,9 +142,11 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
       deployment: input.deployment,
       prompt_key: input.promptKey,
       prompt_version: input.promptVersion,
-      input_tokens: input.inputTokens,
-      cached_input_tokens: input.cachedInputTokens,
-      output_tokens: input.outputTokens,
+      // Stored split, so input + cached + output is exactly what the provider
+      // counted and any report summing the three columns is correct.
+      input_tokens: tokens.uncachedInput,
+      cached_input_tokens: tokens.cachedInput,
+      output_tokens: tokens.output,
       estimated_cost_usd: estimatedCostUsd,
       latency_ms: input.latencyMs,
       confidence: input.confidence,
@@ -140,7 +157,12 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
     .select("id")
     .single();
 
+  if (runError) {
+    console.error("[usage-meter] ai_runs insert failed", runError.message);
+  }
+
   const runId = run?.id ?? null;
+  const operationKey = input.operationKey ?? runId;
   const occurredAt = new Date().toISOString();
 
   // Named explicitly rather than built by interpolation, so a renamed metric is
@@ -152,9 +174,9 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
   const [inputMetric, cachedMetric, outputMetric] = tokenMetrics[input.deployment];
 
   const usageRows: { metric: UsageMetric; quantity: number }[] = [
-    { metric: inputMetric, quantity: input.inputTokens },
-    { metric: cachedMetric, quantity: input.cachedInputTokens },
-    { metric: outputMetric, quantity: input.outputTokens },
+    { metric: inputMetric, quantity: tokens.uncachedInput },
+    { metric: cachedMetric, quantity: tokens.cachedInput },
+    { metric: outputMetric, quantity: tokens.output },
   ].filter((row) => row.quantity > 0);
 
   for (const row of usageRows) {
@@ -166,19 +188,20 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
       feature: TASK_FEATURE[input.taskType],
       provider: "azure_openai",
       ...(runId ? { entity: { type: "ai_run", id: runId } } : {}),
-      // Keyed on the run, so a retried handler re-recording the same model call
-      // does not bill the tokens twice.
-      ...(runId ? { operationId: `${row.metric}:${runId}` } : {}),
+      // Keyed on the call's stable key where there is one (a retried job makes
+      // a new ai_runs row, so the run id alone would count it twice), else on
+      // the run.
+      ...(operationKey ? { operationId: `${row.metric}:${operationKey}` } : {}),
       metadata: { task_type: input.taskType, deployment: input.deployment },
     });
   }
 
   if (estimatedCostUsd > 0) {
-    await supabase.from("cost_events").insert({
+    const { error: costError } = await supabase.from("cost_events").insert({
       business_id: input.businessId,
       provider: "azure",
       metric: input.taskType,
-      quantity: input.inputTokens + input.cachedInputTokens + input.outputTokens,
+      quantity: tokens.allowanceDebit,
       currency: "USD",
       unit_cost: priceBook.input.unit_cost,
       total_cost: estimatedCostUsd,
@@ -186,5 +209,10 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<void> {
       estimated: true,
       reconciled: false,
     });
+    if (costError) {
+      console.error("[usage-meter] cost_events insert failed", costError.message);
+    }
   }
+
+  return { runId, estimatedCostUsd };
 }

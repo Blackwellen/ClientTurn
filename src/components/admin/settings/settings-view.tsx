@@ -31,7 +31,8 @@ import {
   updateOutreachSettings,
   updateProviderSettings,
 } from "@/lib/admin/settings-actions";
-import { formatDate, formatMoneyPrecise, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatMoneyPrecise, formatNumber } from "@/lib/admin/format";
+import { formatDate, formatRelative } from "@/lib/dates";
 import {
   FLAG_STATUSES,
   FLAG_STATUS_LABEL,
@@ -451,7 +452,7 @@ function AiView({
               </h3>
               <p className="mt-0.5 text-[12.5px] text-content-secondary">
                 {ai.killSwitch
-                  ? `Engaged ${formatRelative(ai.killSwitchAt)} — ${ai.killSwitchReason ?? "no reason recorded"}. No agent will start a new run.`
+                  ? `Engaged ${formatRelative(ai.killSwitchAt, { style: "ago" })} — ${ai.killSwitchReason ?? "no reason recorded"}. No agent will start a new run.`
                   : "Stops every agent from starting a new run, platform-wide. Runs already claimed by a worker finish."}
               </p>
             </div>
@@ -959,7 +960,7 @@ function FlagRow({
         {formatNumber(flag.workspaceCount)}
       </td>
       <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-        {formatRelative(flag.updatedAt)}
+        {formatRelative(flag.updatedAt, { style: "ago" })}
       </td>
       <td className="px-4 py-2.5 text-right">
         {dirty && (
@@ -1001,7 +1002,7 @@ function ChangeLog({ data }: { data: PlatformSettingsData }) {
                 </span>
               </span>
               <span className="shrink-0 text-[11.5px] whitespace-nowrap text-content-muted">
-                {formatRelative(change.at)}
+                {formatRelative(change.at, { style: "ago" })}
               </span>
             </li>
           ))}

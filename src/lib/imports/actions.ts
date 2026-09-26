@@ -6,7 +6,8 @@ import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { checkSuppressionBatch, normaliseEmail } from "@/lib/policy/suppression";
-import { recordPermission } from "@/lib/policy/service";
+import { ingestLead } from "@/lib/ingest/service";
+import { logWriteError } from "@/lib/supabase/write-result";
 import { normalisePhone } from "@/lib/messaging/types";
 import { companyDedupeKey, normaliseDomain } from "@/lib/prospects/dedupe";
 import {
@@ -52,7 +53,9 @@ const createSchema = z.object({
   // Bounded deliberately: a browser-parsed file has to fit in a server action
   // payload, and a 5,000-row ceiling keeps that honest.
   rows: z.array(z.array(z.string().max(500)).max(80)).max(5000),
-  mapping: z.record(z.enum(FIELD_KEYS), z.number().int().min(0).max(79)),
+  // partialRecord: the wizard maps only the columns the file has. Under Zod 4
+  // an enum-keyed z.record is exhaustive and refused every real mapping.
+  mapping: z.partialRecord(z.enum(FIELD_KEYS), z.number().int().min(0).max(79)),
   defaultRelationship: z.enum(RELATIONSHIPS).nullable(),
   sourceDetail: z.string().trim().max(200).default(""),
   startFollowUp: z.boolean().default(false),
@@ -415,41 +418,62 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
 
     try {
       if (decision === "IMPORT_AS_LEAD") {
-        const { data: lead, error } = await db
-          .from("leads")
-          .insert({
-            business_id: workspace.businessId,
-            first_name: row.first_name,
-            last_name: row.last_name,
-            company_name: row.company_name,
-            email,
-            phone: row.phone_e164,
-            phone_normalized: row.phone_e164,
-            postcode: row.postcode,
-            notes: row.notes,
-            intake_method: "IMPORT",
-            relationship_type: job.default_relationship_type,
-            created_via: "IMPORT",
-            created_by_user_id: workspace.userId,
-            // Never started automatically unless the operator asked: importing
-            // a list is not the same as choosing to message it.
-            automation_active: job.start_follow_up,
-          })
-          .select("id")
-          .single();
+        // The one intake path (design 03 §1): identity resolution, the phone
+        // as well as the email checked against suppression, the permission
+        // record and a touch per row. Keyed by (import, row), so re-running a
+        // commit that failed part-way adds no second lead or touch.
+        const ingested = await ingestLead(
+          {
+            businessId: workspace.businessId,
+            source: {
+              type: "CSV",
+              provider: "csv_import",
+              providerRecordId: `${job.id}:${row.id}`,
+              caller: { type: "USER", id: workspace.userId },
+            },
+            person: {
+              firstName: row.first_name ?? undefined,
+              lastName: row.last_name ?? undefined,
+              email: email ?? undefined,
+              phone: row.phone_e164 ?? undefined,
+              companyName: row.company_name ?? undefined,
+              roleTitle: row.role_title ?? undefined,
+              postcode: row.postcode ?? undefined,
+            },
+            relationship: (job.default_relationship_type ?? "IMPORTED") as RelationshipType,
+          },
+          {
+            // A suppressed contact is skipped, as before, not imported.
+            onSuppressed: "REFUSE",
+            insertExtras: {
+              notes: row.notes,
+              created_by_user_id: workspace.userId,
+              // Never started automatically unless the operator asked:
+              // importing a list is not the same as choosing to message it.
+              automation_active: job.start_follow_up,
+            },
+            permission: {
+              detail: row.source_detail ?? job.default_source_detail,
+              source: "IMPORT",
+              recordedBy: workspace.userId,
+            },
+            process: { mode: job.start_follow_up ? "FULL" : "RECORD_ONLY" },
+          },
+        );
 
-        if (error || !lead) throw new Error("insert failed");
-
-        await recordPermission({
-          businessId: workspace.businessId,
-          subject: { type: "LEAD", id: lead.id },
-          relationshipType: (job.default_relationship_type ?? "IMPORTED") as RelationshipType,
-          relationshipDetail: row.source_detail ?? job.default_source_detail,
-          consentSource: "IMPORT",
-          email,
-          phone: row.phone_e164,
-          recordedBy: workspace.userId,
-        });
+        if (ingested.outcome === "REJECTED") {
+          logWriteError(
+            await db
+              .from("lead_import_rows")
+              .update({ import_state: "SKIPPED", error_message: "Suppressed before import" })
+              .eq("id", row.id),
+            "import: mark row suppressed",
+            { businessId: workspace.businessId },
+          );
+          continue;
+        }
+        if (!ingested.leadId) throw new Error(`ingest ${ingested.outcome}`);
+        const lead = { id: ingested.leadId };
 
         await db.from("lead_source_evidence").insert({
           business_id: workspace.businessId,
@@ -470,23 +494,36 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
         leadCount += 1;
       } else {
         const domain = normaliseDomain(email ? email.split("@")[1] : null);
-        const { data: company } = await db
+        const dedupeKey = companyDedupeKey({
+          domain,
+          name: row.company_name,
+          postcode: row.postcode,
+        });
+        // B16: an existing company is reused as it is. The previous upsert
+        // overwrote its name with this CSV row's (or "Unknown company"),
+        // replacing a registered or first-party name with a spreadsheet cell.
+        const { data: insertedCompany } = await db
           .from("prospect_companies")
           .upsert(
             {
               business_id: workspace.businessId,
               name: row.company_name ?? "Unknown company",
               domain,
-              dedupe_key: companyDedupeKey({
-                domain,
-                name: row.company_name,
-                postcode: row.postcode,
-              }),
+              dedupe_key: dedupeKey,
             },
-            { onConflict: "business_id,dedupe_key" },
+            { onConflict: "business_id,dedupe_key", ignoreDuplicates: true },
           )
-          .select("id")
-          .single();
+          .select("id");
+        const company =
+          insertedCompany?.[0] ??
+          (
+            await db
+              .from("prospect_companies")
+              .select("id")
+              .eq("business_id", workspace.businessId)
+              .eq("dedupe_key", dedupeKey)
+              .maybeSingle()
+          ).data;
 
         const { data: prospect, error } = await db
           .from("prospects")

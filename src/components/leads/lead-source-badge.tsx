@@ -1,15 +1,19 @@
 import * as React from "react";
 import {
+  Bot,
   Briefcase,
   Building2,
+  Code2,
   CalendarDays,
   DoorOpen,
   FlaskConical,
   Globe,
   Mail,
+  MessageCircle,
   Music2,
   PenLine,
   PhoneCall,
+  Plug,
   RotateCcw,
   Search,
   Upload,
@@ -45,6 +49,9 @@ const SOURCES: Record<string, SourceStyle> = {
   meta_lead_ads: { label: "Meta", icon: Users, tint: INFO },
   facebook: { label: "Facebook", icon: Users, tint: INFO },
   instagram: { label: "Instagram", icon: Users, tint: INFO },
+  // A Messenger or Instagram DM that became a lead (social/meta-inbound.ts).
+  meta_dm: { label: "Meta message", icon: MessageCircle, tint: INFO },
+  meta_webhook: { label: "Meta", icon: Users, tint: INFO },
 
   google: {
     label: "Google Ads",
@@ -56,12 +63,23 @@ const SOURCES: Record<string, SourceStyle> = {
     icon: Search,
     tint: "bg-warning-50 text-warning-700 border-warning-100",
   },
-  microsoft_ads: { label: "Microsoft Ads", icon: Search, tint: INFO },
   tiktok_ads: { label: "TikTok Ads", icon: Music2, tint: NEUTRAL },
-  linkedin_ads: { label: "LinkedIn Ads", icon: Briefcase, tint: INFO },
+  // The catalogue's name for the connection, so a lead reads the same here as
+  // the card it came from in Settings -> Connections.
+  linkedin_ads: { label: "LinkedIn Lead Gen Forms", icon: Briefcase, tint: INFO },
+  linkedin: { label: "LinkedIn", icon: Briefcase, tint: INFO },
+  tiktok: { label: "TikTok", icon: Music2, tint: NEUTRAL },
 
   website: { label: "Website", icon: Globe, tint: NEUTRAL },
   webhook: { label: "Website", icon: Globe, tint: NEUTRAL },
+  webform: { label: "Website form", icon: Globe, tint: NEUTRAL },
+  // Machine callers, named for a person rather than as raw slugs.
+  api: { label: "API", icon: Code2, tint: NEUTRAL },
+  mcp: { label: "AI assistant", icon: Bot, tint: NEUTRAL },
+  connector: { label: "Connected app", icon: Plug, tint: NEUTRAL },
+  hubspot: { label: "HubSpot", icon: Briefcase, tint: NEUTRAL },
+  zoho_crm: { label: "Zoho CRM", icon: Briefcase, tint: NEUTRAL },
+  salesforce: { label: "Salesforce", icon: Briefcase, tint: NEUTRAL },
   email: { label: "Email", icon: Mail, tint: NEUTRAL },
   referral: {
     label: "Referral",
@@ -78,6 +96,8 @@ const SOURCES: Record<string, SourceStyle> = {
   other: { label: "Other", icon: Building2, tint: NEUTRAL },
   import: { label: "Imported", icon: Upload, tint: NEUTRAL },
   csv: { label: "Imported", icon: Upload, tint: NEUTRAL },
+  csv_import: { label: "Imported", icon: Upload, tint: NEUTRAL },
+  manual_prospect: { label: "Promoted prospect", icon: UserPlus, tint: NEUTRAL },
   reactivation: {
     label: "Reactivation",
     icon: RotateCcw,

@@ -12,18 +12,31 @@ import {
  * A compact, truthful integration strip — not a copy of the home page
  * marketplace.
  *
- * "Direct" means ClientTurn holds the connection itself with a working
- * self-serve OAuth flow, as listed in `src/lib/integrations/catalog.ts`
- * (`connectPath` set). "Webhook connector" means the other system posts to a
- * signed inbound endpoint we host: ClientTurn never calls out to it and
+ * "Direct" means the customer can connect it themselves, right now, with no
+ * one from Client Turn involved — either a self-serve OAuth redirect or a
+ * self-serve pasted-credential dialog, both `connectionMethod` values in
+ * `src/lib/integrations/catalog.ts` for an entry with `connectPath` set
+ * (OAuth) or `connectionMethod: "token"` (paste, e.g. HubSpot's own private
+ * app / service key token). "Webhook connector" means the other system posts
+ * to a signed inbound endpoint we host: ClientTurn never calls out to it and
  * cannot read or write anything in it. Every entry in
  * `src/lib/integrations/apps.ts` is that second kind, so listing Pipedrive or
  * Zapier as a native integration here would be a straightforward lie.
  *
- * "Team-assisted" is for catalog entries with `connectPath: null` — no
- * self-serve Connect button exists yet, so the connection is made by hand.
- * Labelling one of these "native"/"Direct" would overstate parity with the
- * providers that actually have a working OAuth flow today.
+ * "Team-assisted" is for a catalog entry that is genuinely not self-serve
+ * yet — `connectPath: null` *and* no token-paste dialog either, so the
+ * connection can only be made by hand today. Labelling one of those
+ * "native"/"Direct" would overstate parity with the providers that actually
+ * have a working self-serve flow.
+ *
+ * Salesforce is the one exception worth calling out: it has a real
+ * `connectPath` and real platform credentials as of 2026-09-13, so by the
+ * letter of the rule above it qualifies as "native". It stays "assisted"
+ * anyway, on the same precedent this project already applied to Meta before
+ * that integration went live — a working adapter plus configured credentials
+ * is not the same claim as a flow that has actually moved a lead into a real
+ * org. Move it to "native" once someone has connected one real Salesforce
+ * account and confirmed a lead lands there, not before.
  */
 type Item = { name: string; kind: "native" | "bridge" | "assisted" };
 
@@ -61,6 +74,7 @@ const CATEGORIES: { icon: LucideIcon; title: string; items: Item[] }[] = [
     title: "CRM & automation",
     items: [
       { name: "HubSpot", kind: "native" },
+      { name: "Zoho CRM", kind: "native" },
       { name: "Salesforce", kind: "assisted" },
       { name: "Pipedrive", kind: "bridge" },
       { name: "Zapier", kind: "bridge" },

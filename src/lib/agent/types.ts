@@ -243,6 +243,62 @@ export function replyClassificationFor(intent: LeadIntent): ReplyClassification 
   return REPLY_BUCKET[intent];
 }
 
+/**
+ * The canonical `messages.reply_classification` vocabulary -- exactly the
+ * CHECK constraint (0029, extended by 0115 with BOOKING_INTENT and
+ * NOT_INTERESTED). This is what analytics and campaign rules read; the agent's
+ * coarser REPLY_CLASSIFICATIONS are mapped onto it on write and never stored
+ * raw. tests/write-integrity holds this list equal to the migration.
+ */
+export const MESSAGE_REPLY_CLASSIFICATIONS = [
+  "POSITIVE_INTEREST",
+  "NEUTRAL_QUESTION",
+  "BOOKING_INTENT",
+  "OBJECTION",
+  "NOT_NOW",
+  "NOT_INTERESTED",
+  "WRONG_PERSON",
+  "REFERRAL_TO_OTHER_PERSON",
+  "UNSUBSCRIBE",
+  "COMPLAINT",
+  "BOUNCE",
+  "AUTO_RESPONSE",
+  "HUMAN_REQUEST",
+  "UNKNOWN",
+] as const;
+export type MessageReplyClassification = (typeof MESSAGE_REPLY_CLASSIFICATIONS)[number];
+
+/**
+ * Replies counted as positive by reply analytics. The single TS home for the
+ * set; `outreach_campaign_results()` (0115) mirrors it in SQL.
+ */
+export const POSITIVE_MESSAGE_REPLY_CLASSIFICATIONS: readonly MessageReplyClassification[] = [
+  "POSITIVE_INTEREST",
+  "NEUTRAL_QUESTION",
+  "BOOKING_INTENT",
+];
+
+const MESSAGE_CLASSIFICATION_FOR: Record<ReplyClassification, MessageReplyClassification> = {
+  POSITIVE: "POSITIVE_INTEREST",
+  QUESTION: "NEUTRAL_QUESTION",
+  OBJECTION: "OBJECTION",
+  BOOKING_INTENT: "BOOKING_INTENT",
+  // A refusal, not a deferral: NOT_NOW invites a later follow-up, this does not.
+  NOT_INTERESTED: "NOT_INTERESTED",
+  UNSUBSCRIBE: "UNSUBSCRIBE",
+  HUMAN_REQUEST: "HUMAN_REQUEST",
+  WRONG_NUMBER: "WRONG_PERSON",
+  COMPLAINT: "COMPLAINT",
+  UNKNOWN: "UNKNOWN",
+};
+
+/** The storable `messages.reply_classification` value for an agent bucket. */
+export function toMessageReplyClassification(
+  classification: ReplyClassification,
+): MessageReplyClassification {
+  return MESSAGE_CLASSIFICATION_FOR[classification];
+}
+
 // ------------------------------------------------------------------ risk
 
 export const RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
@@ -276,6 +332,44 @@ export function confidenceDecision(
   if (confidence >= floor) return "ACT";
   if (confidence >= AGENT_CONFIDENCE.CLARIFY) return "CLARIFY";
   return "HANDOVER";
+}
+
+/** Settings -> AI & selling risk tolerance (settings/ai-selling.ts). */
+export type AgentRiskTolerance = "CAUTIOUS" | "BALANCED" | "ASSERTIVE";
+
+/**
+ * The confidence below which a conversational turn is handed to a person, per
+ * risk tolerance. It can only be RAISED above AGENT_CONFIDENCE.CLARIFY, never
+ * lowered: ASSERTIVE keeps the same floor as BALANCED, because a lower floor
+ * would let the model act on replies it could not read. Binding verdicts
+ * (deterministic classification, qualification) are untouched by this.
+ */
+export const RISK_HANDOVER_FLOOR: Record<AgentRiskTolerance, number> = {
+  CAUTIOUS: AGENT_CONFIDENCE.ACT,
+  BALANCED: AGENT_CONFIDENCE.CLARIFY,
+  ASSERTIVE: AGENT_CONFIDENCE.CLARIFY,
+};
+
+export function handoverFloor(tolerance: AgentRiskTolerance | null | undefined): number {
+  const floor = tolerance ? RISK_HANDOVER_FLOOR[tolerance] : undefined;
+  return Math.max(AGENT_CONFIDENCE.CLARIFY, floor ?? AGENT_CONFIDENCE.CLARIFY);
+}
+
+/**
+ * `confidenceDecision`, with the workspace's risk tolerance applied. CAUTIOUS
+ * turns every CLARIFY (and a missing confidence) into HANDOVER.
+ */
+export function confidenceVerdictForTolerance(
+  confidence: number | null,
+  tolerance: AgentRiskTolerance | null | undefined,
+  risk: RiskLevel = "LOW",
+): ConfidenceDecision {
+  const base = confidenceDecision(confidence, risk);
+  if (base !== "CLARIFY") return base;
+  const floor = handoverFloor(tolerance);
+  if (floor <= AGENT_CONFIDENCE.CLARIFY) return base;
+  if (confidence === null || confidence < floor) return "HANDOVER";
+  return base;
 }
 
 // -------------------------------------------------------------- outcomes
@@ -335,6 +429,13 @@ export const HANDOVER_REASONS = [
   "EMERGENCY",
   "HIGH_VALUE",
   "NO_NEXT_QUESTION",
+  // Phase 4 budget manager: this conversation's AI spend is capped and a
+  // person should reply (runTask skippedReason BUDGET_HUMAN).
+  "BUDGET_EXCEEDED",
+  // Phase 3.2: the lead is ready to buy but the assistant may not close it
+  // (direct close off, a motion that closes through people, a link not on the
+  // approved list, or a deal above the workspace's value ceiling).
+  "READY_TO_BUY",
 ] as const;
 export type HandoverReason = (typeof HANDOVER_REASONS)[number];
 
@@ -352,6 +453,8 @@ export const HANDOVER_REASON_LABEL: Record<HandoverReason, string> = {
   EMERGENCY: "The lead described an emergency",
   HIGH_VALUE: "A high-value enquiry your rules route to a person",
   NO_NEXT_QUESTION: "There is no next qualification question configured",
+  BUDGET_EXCEEDED: "The assistant's budget for this conversation is used up",
+  READY_TO_BUY: "The lead is ready to buy and needs a person to close",
 };
 
 export type HandoverPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -370,6 +473,8 @@ export const HANDOVER_PRIORITY_FOR: Record<HandoverReason, HandoverPriority> = {
   EMERGENCY: "URGENT",
   HIGH_VALUE: "HIGH",
   NO_NEXT_QUESTION: "NORMAL",
+  BUDGET_EXCEEDED: "NORMAL",
+  READY_TO_BUY: "HIGH",
 };
 
 // ------------------------------------------------------------ model I/O
@@ -391,6 +496,10 @@ export const agentDecisionSchema = z.object({
       "CHECK_AVAILABILITY",
       "SEND_BOOKING_OPTIONS",
       "REQUEST_HANDOVER",
+      // Direct close (Phase 3.2): send one approved checkout link, named by
+      // `checkout_link_id`. Offered to the model only when the workspace has
+      // enabled it and the motion closes by checkout; gated again at runtime.
+      "PROPOSE_CHECKOUT",
       "NO_ACTION",
     ])
     .catch("NO_ACTION"),
@@ -407,6 +516,8 @@ export const agentDecisionSchema = z.object({
     .default([]),
   handover_reason: z.enum(HANDOVER_REASONS).nullable().default(null),
   reasoning_code: z.string().max(80).default("UNSPECIFIED"),
+  /** Only with PROPOSE_CHECKOUT: the id of an approved link, never a URL. */
+  checkout_link_id: z.string().max(64).nullable().default(null),
 });
 export type AgentDecision = z.infer<typeof agentDecisionSchema>;
 

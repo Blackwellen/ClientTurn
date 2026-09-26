@@ -42,7 +42,7 @@ import { cn } from "@/lib/cn";
  * The Qualification editor.
  *
  * Draft-then-publish, deliberately: everything typed here lives in local state
- * until "Publish qualification" succeeds, which is what makes "Discard
+ * until "Publish changes" succeeds, which is what makes "Discard
  * changes" honest and stops a half-finished edit from reaching live intake.
  * The preview beside it evaluates that same draft with the real engine.
  */
@@ -204,7 +204,7 @@ export function QualificationEditor({
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.95fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.95fr)_minmax(0,1fr)]" data-tour="qualification-questions">
         <div className="space-y-4">
           <Card>
             <CardHeader className="flex-col items-stretch gap-3 border-b-0 px-5 pt-5 pb-0 sm:flex-row sm:items-start">
@@ -331,7 +331,7 @@ export function QualificationEditor({
               loading={publishing}
               disabled={!dirty || issues.length > 0}
             >
-              Publish qualification
+              Publish changes
             </Button>
           </div>
         </div>

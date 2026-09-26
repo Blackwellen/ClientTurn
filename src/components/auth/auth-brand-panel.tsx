@@ -53,7 +53,7 @@ const FEATURES: Record<AuthVariant, AuthFeature[]> = {
     { icon: Zap, title: "Instant responses", description: "Never miss a new enquiry." },
     { icon: CalendarCheck2, title: "More bookings", description: "Turn enquiries into scheduled jobs." },
     { icon: TrendingUp, title: "Clear visibility", description: "See what's happening across your lead journey." },
-    { icon: Users, title: "Built for service businesses", description: "Simple lead conversion software for trade and service teams." },
+    { icon: Users, title: "Built for B2B teams", description: "Lead conversion for agencies, studios, SaaS and professional-services firms." },
   ],
   login: [
     { icon: Zap, title: "Pick up where you left off", description: "Your leads, bookings and progress are always here." },
@@ -73,7 +73,7 @@ const FEATURES: Record<AuthVariant, AuthFeature[]> = {
   ],
   "partner-signup": [
     { icon: Megaphone, title: "Share what you already recommend", description: "Tracked links you can put anywhere you reach people." },
-    { icon: Users, title: "Introduce the businesses you know", description: "Trade and service firms who need to answer leads faster." },
+    { icon: Users, title: "Introduce the businesses you know", description: "Agencies, studios and B2B firms who need to answer leads faster." },
     { icon: BadgePoundSterling, title: "Earn on what they pay", description: "Recurring commission, confirmed after the refund hold." },
     { icon: Wallet, title: "Get paid on a schedule", description: "Monthly payouts once approved commission clears the minimum." },
   ],
@@ -97,7 +97,7 @@ const COPY: Record<
   signup: {
     headline: ["Turn leads into", "paying clients."],
     support:
-      "ClientTurn helps trade and service businesses respond faster, follow up smarter, and book more jobs.",
+      "ClientTurn helps B2B businesses respond faster, follow up smarter, and book more meetings.",
     annotation: ["A smarter way", "to grow"],
   },
   login: {

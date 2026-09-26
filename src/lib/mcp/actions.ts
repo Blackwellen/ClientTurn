@@ -10,7 +10,7 @@ import {
   refreshTokens,
   rejectApproval,
   revokeClient,
-  issueTokens,
+  issueConnectionKey,
 } from "./provisioning";
 import { MCP_SCOPES } from "./tools";
 
@@ -26,6 +26,12 @@ import { MCP_SCOPES } from "./tools";
 export type McpActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? { data?: undefined } : { data: T }))
   | { ok: false; error: string };
+
+/**
+ * Settings is one route with `?section=` (V3 IA); `/app/settings/connections`
+ * no longer exists, so revalidating it refreshed nothing.
+ */
+const SETTINGS_PATH = "/app/settings";
 
 function fail(error: string): { ok: false; error: string } {
   return { ok: false, error };
@@ -43,7 +49,8 @@ export async function createMcpClientAction(input: unknown): Promise<
   McpActionResult<{
     clientId: string;
     oauthClientId: string;
-    clientSecret: string;
+    /** The bearer key the assistant is configured with. Shown once. */
+    apiKey: string | null;
     scopes: string[];
   }>
 > {
@@ -67,16 +74,16 @@ export async function createMcpClientAction(input: unknown): Promise<
 
   if (!created) return fail("That connection could not be created.");
 
-  revalidatePath("/app/settings/connections");
+  revalidatePath(SETTINGS_PATH);
 
-  // The secret travels back exactly once, to be shown once. Nothing stores it,
-  // and there is no action that can retrieve it later.
+  // The key travels back exactly once, to be shown once. Only its digest is
+  // stored, and there is no action that can retrieve it later.
   return {
     ok: true,
     data: {
       clientId: created.clientId,
       oauthClientId: created.oauthClientId,
-      clientSecret: created.clientSecret,
+      apiKey: created.apiKey,
       scopes: created.scopes,
     },
   };
@@ -87,38 +94,32 @@ export async function createMcpClientAction(input: unknown): Promise<
 const clientIdSchema = z.object({ clientId: z.string().uuid() });
 
 /**
- * Issues a token pair for an existing connection.
+ * Issues a fresh bearer key for an existing connection, revoking the old one.
  *
- * Separate from creation so a customer can re-key a connection whose token
- * leaked without tearing down the client and reconfiguring the assistant that
- * uses it.
+ * Separate from creation so a customer can re-key a connection whose key
+ * leaked without tearing down the connection. What it issues is a workspace
+ * API key bound to the connection -- the credential an MCP client can hold as
+ * a static header -- not a one-hour OAuth token no client would refresh.
  */
 export async function issueMcpTokenAction(input: unknown): Promise<
-  McpActionResult<{ accessToken: string; refreshToken: string; expiresInSeconds: number }>
+  McpActionResult<{ apiKey: string }>
 > {
   const parsed = clientIdSchema.safeParse(input);
   if (!parsed.success) return fail("That connection could not be found.");
 
   const workspace = await requireRole("admin");
 
-  const tokens = await issueTokens({
+  const issued = await issueConnectionKey({
     businessId: workspace.businessId,
     clientId: parsed.data.clientId,
     userId: workspace.userId,
   });
 
-  if (!tokens) return fail("That connection is not active, or has no permissions left.");
+  if (!issued) return fail("That connection is not active, or has no permissions left.");
 
-  revalidatePath("/app/settings/connections");
+  revalidatePath(SETTINGS_PATH);
 
-  return {
-    ok: true,
-    data: {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresInSeconds: tokens.expiresInSeconds,
-    },
-  };
+  return { ok: true, data: { apiKey: issued.key } };
 }
 
 /**
@@ -168,7 +169,7 @@ export async function revokeMcpClientAction(input: unknown): Promise<McpActionRe
 
   if (!revoked) return fail("That connection could not be revoked.");
 
-  revalidatePath("/app/settings/connections");
+  revalidatePath(SETTINGS_PATH);
   return { ok: true };
 }
 
@@ -188,7 +189,7 @@ export async function approveMcpRequestAction(input: unknown): Promise<McpAction
     userId: workspace.userId,
   });
 
-  revalidatePath("/app/settings/connections");
+  revalidatePath(SETTINGS_PATH);
   return result.ok ? { ok: true } : fail(result.message);
 }
 
@@ -206,6 +207,6 @@ export async function rejectMcpRequestAction(input: unknown): Promise<McpActionR
 
   if (!rejected) return fail("That request is no longer waiting for a decision.");
 
-  revalidatePath("/app/settings/connections");
+  revalidatePath(SETTINGS_PATH);
   return { ok: true };
 }

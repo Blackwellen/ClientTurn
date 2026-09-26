@@ -1,9 +1,11 @@
 "use client";
 
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Bell,
   Clock3,
   Hash,
   Info,
@@ -18,7 +20,11 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Checkbox, FormField, Input, Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
-import { updateMessagingSettings, updateSlackChannel } from "@/lib/settings/actions";
+import {
+  updateMessagingSettings,
+  updateSlackChannel,
+  updateSlackNotificationPreferences,
+} from "@/lib/settings/actions";
 import type { MessagingSettings } from "@/lib/settings/types";
 
 function SlackChannelCard({
@@ -49,19 +55,20 @@ function SlackChannelCard({
   }
 
   return (
-    <Card>
+    // Anchored so the Slack card in Settings -> Connections can link here.
+    <Card id="slack-alerts">
       <CardHeader>
         <SectionHeader
           icon={Hash}
           title="Slack alerts"
-          description="Which channel receives new-lead and handover alerts."
+          description="Which channel receives new-lead, handover, booking and warm-prospect alerts."
         />
       </CardHeader>
       <CardContent className="space-y-3">
         <FormField
           label="Slack channel ID"
           htmlFor="slack-channel"
-          hint="Open the channel in Slack, then check its About panel — the channel ID is listed there (for example C0123456789)."
+          hint="In Slack, invite the bot to the channel first — type /invite @ClientTurn in that channel. Then open its About panel to find the channel ID (for example C0123456789) and paste it here. Without the invite, alerts fail silently."
         >
           <Input
             id="slack-channel"
@@ -80,6 +87,123 @@ function SlackChannelCard({
       <CardFooter className="justify-end">
         <Button size="sm" loading={saving} disabled={readOnly} onClick={onSave}>
           Save Slack channel
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+const SLACK_PREFERENCE_ITEMS = [
+  {
+    key: "newLead" as const,
+    label: "New lead",
+    description: "A lead arrives and follow-up starts.",
+  },
+  {
+    key: "handover" as const,
+    label: "Handover",
+    description: "A conversation needs a person — human or AI-triggered.",
+  },
+  {
+    key: "booking" as const,
+    label: "Booking",
+    description: "A lead books an appointment.",
+  },
+  {
+    key: "warmProspect" as const,
+    label: "Warm prospect",
+    description: "A Find Leads run surfaces contactable prospects.",
+  },
+];
+
+/**
+ * Independent of the channel card above: which of the four event kinds
+ * actually post to Slack. Kept separate from the in-app notification
+ * preferences (Account → Notifications) since Slack and in-app are different
+ * channels a team may want tuned differently — muting Slack for routine
+ * new-lead pings while keeping the in-app badge, say.
+ */
+function SlackPreferencesCard({
+  preferences,
+  readOnly,
+}: {
+  preferences: {
+    newLead: boolean;
+    handover: boolean;
+    booking: boolean;
+    warmProspect: boolean;
+    digest: boolean;
+  };
+  readOnly: boolean;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [values, setValues] = React.useState(preferences);
+  const [saving, setSaving] = React.useState(false);
+
+  async function onSave() {
+    setSaving(true);
+    const result = await updateSlackNotificationPreferences(values);
+    setSaving(false);
+    if (result.ok) {
+      toast({ variant: "success", title: "Slack alert settings saved" });
+      router.refresh();
+    } else {
+      toast({ variant: "error", title: "Could not save", description: result.error });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <SectionHeader
+          icon={Bell}
+          title="What goes to Slack"
+          description="Turn off any alert type this channel doesn't need to see."
+        />
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {SLACK_PREFERENCE_ITEMS.map((item) => (
+          <div key={item.key} className="flex items-start gap-2">
+            <Checkbox
+              id={`slack-pref-${item.key}`}
+              className="mt-0.5"
+              checked={values[item.key]}
+              disabled={readOnly || saving}
+              onChange={(event) =>
+                setValues({ ...values, [item.key]: event.target.checked })
+              }
+            />
+            <label htmlFor={`slack-pref-${item.key}`} className="text-content text-[13px]">
+              {item.label}
+              <span className="text-content-muted block text-[12px]">{item.description}</span>
+            </label>
+          </div>
+        ))}
+        <div className="border-line mt-1 border-t pt-3">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="slack-pref-digest"
+              className="mt-0.5"
+              checked={values.digest}
+              disabled={readOnly || saving}
+              onChange={(event) =>
+                setValues({ ...values, digest: event.target.checked })
+              }
+            />
+            <label htmlFor="slack-pref-digest" className="text-content text-[13px]">
+              Daily digest
+              <span className="text-content-muted block text-[12px]">
+                One summary message each morning — leads in, booked, handovers,
+                assistant activity — instead of (or alongside) the per-event alerts above.
+              </span>
+            </label>
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="justify-end">
+        <Button size="sm" loading={saving} disabled={readOnly} onClick={onSave}>
+          Save Slack alert settings
         </Button>
       </CardFooter>
     </Card>
@@ -162,7 +286,7 @@ export function MessagingForm({
               >
                 <option value="sms">SMS</option>
                 <option value="whatsapp" disabled={!whatsappEnabled}>
-                  WhatsApp{whatsappEnabled ? "" : " — Growth plan and above"}
+                  WhatsApp{whatsappEnabled ? "" : ` — ${unlockPlanLabel("whatsapp")} and above`}
                 </option>
               </Select>
             </FormField>
@@ -183,7 +307,7 @@ export function MessagingForm({
                 <option value="">No fallback</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp" disabled={!whatsappEnabled}>
-                  WhatsApp{whatsappEnabled ? "" : " — Growth plan and above"}
+                  WhatsApp{whatsappEnabled ? "" : ` — ${unlockPlanLabel("whatsapp")} and above`}
                 </option>
               </Select>
             </FormField>
@@ -193,7 +317,7 @@ export function MessagingForm({
             <p className="border-warning-100 bg-warning-50 text-content-secondary flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]">
               <Lock className="text-warning-600 mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>
-                WhatsApp is available on the Growth plan and above.{" "}
+                WhatsApp is available on the {unlockPlanLabel("whatsapp")} and above.{" "}
                 <Link
                   href="/app/settings?section=billing"
                   className="text-content-accent font-medium"
@@ -289,7 +413,19 @@ export function MessagingForm({
       </Card>
 
       {settings.slackConnected && (
-        <SlackChannelCard channelId={settings.slackChannelId} readOnly={readOnly} />
+        <>
+          <SlackChannelCard channelId={settings.slackChannelId} readOnly={readOnly} />
+          <SlackPreferencesCard
+            preferences={{
+              newLead: settings.slackNotifyNewLead,
+              handover: settings.slackNotifyHandover,
+              booking: settings.slackNotifyBooking,
+              warmProspect: settings.slackNotifyWarmProspect,
+              digest: settings.slackDigestEnabled,
+            }}
+            readOnly={readOnly}
+          />
+        </>
       )}
 
       <Card>
@@ -307,8 +443,10 @@ export function MessagingForm({
           <p className="text-content-muted flex items-start gap-2 text-[13px]">
             <Info className="text-content-subtle mt-0.5 size-3.5 shrink-0" aria-hidden />
             Every first outbound message carries this wording, and a lead who
-            replies STOP is opted out immediately and permanently. This is a legal
-            requirement, so it is fixed and cannot be edited or switched off.
+            replies STOP is opted out straight away. STOP by SMS or WhatsApp stops
+            that channel until they text START on it; STOPALL, or asking in words
+            to stop, covers every channel. This is a legal requirement, so it is
+            fixed and cannot be edited or switched off.
           </p>
         </CardContent>
       </Card>

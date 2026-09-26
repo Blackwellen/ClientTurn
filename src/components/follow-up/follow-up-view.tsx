@@ -19,7 +19,7 @@ import { TestFollowUpPanel } from "@/components/follow-up/test-follow-up-panel";
 import { FollowUpPerformancePanel } from "@/components/follow-up/performance-panel";
 import { EnrolmentRulesPanel } from "@/components/follow-up/enrolment-rules-panel";
 import { StopConditionsPanel } from "@/components/automations/stop-conditions";
-import { AUTOMATION_TYPE_META } from "@/lib/automations/types";
+import { AUTOMATION_TYPE_META, isWiredAutomationType } from "@/lib/automations/types";
 import {
   FOLLOW_UP_TABS,
   followUpHref,
@@ -62,7 +62,10 @@ export async function FollowUpView({
       getFollowUpChannelContext(businessId),
     ]);
 
-  const sequences = automations.filter((item) => item.type !== "booking_reminder");
+  // Unwired types (nothing enrols into them) are hidden rather than offered.
+  const sequences = automations.filter(
+    (item) => item.type !== "booking_reminder" && isWiredAutomationType(item.type),
+  );
   const bookingItem = automations.find((item) => item.type === "booking_reminder") ?? null;
 
   const selectedId =
@@ -122,7 +125,7 @@ export async function FollowUpView({
         }
       />
 
-      <TabLinkBar aria-label="Follow-up views">
+      <TabLinkBar aria-label="Follow-up views" data-tour="follow-up-tabs">
         {FOLLOW_UP_TABS.map((tab) => (
           <TabLink
             key={tab.id}

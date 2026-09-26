@@ -67,9 +67,10 @@ const SERVICE_TOOLS: ToolDeclaration[] = operationsForCaller("COPILOT").map(
     requiresConfirmation: requiresConfirmation(operation.risk),
     effect: operation.effect,
     // Anything naming a single record needs one selected first.
-    needsObject: /\.(get|update|assign|set_status|add_note|archive|restore|flag_attention)$/.test(
-      operation.name,
-    ),
+    needsObject:
+      /\.(get|update|assign|set_status|add_note|archive|restore|flag_attention|score_explain|contactability|draft|resolve)$/.test(
+        operation.name,
+      ) && !/^(funnel|ai_usage)\./.test(operation.name),
   }),
 );
 
@@ -81,6 +82,12 @@ const SERVICE_TOOLS: ToolDeclaration[] = operationsForCaller("COPILOT").map(
  * enable overage, alter a suppression, or edit a locked business fact. Those
  * are outside Copilot's authority entirely, so there is no argument shape that
  * could express them.
+ *
+ * Also absent: resuming a campaign (it restarts bulk sending, which is why the
+ * registry excludes COPILOT from `campaign.resume`), tools with no
+ * implementation, and legacy tools that duplicated a registry operation
+ * (`getProspects` is `prospect.search`). Every remaining legacy tool has an
+ * argument schema in `legacy-schemas.ts` and a case in `tool-service.ts`.
  */
 export const COPILOT_TOOLS: ToolDeclaration[] = [
   /* ------------------------------------------- service-layer operations
@@ -93,13 +100,6 @@ export const COPILOT_TOOLS: ToolDeclaration[] = [
   ...SERVICE_TOOLS,
 
   /* ------------------------------------------------------------- reads */
-  {
-    name: "getProspects",
-    kind: "READ",
-    summary: "List sourced prospects",
-    scope: "viewer",
-    requiresConfirmation: false,
-  },
   {
     name: "getCampaign",
     kind: "READ",
@@ -152,22 +152,6 @@ export const COPILOT_TOOLS: ToolDeclaration[] = [
 
   /* ------------------------------------------------------------ writes */
   {
-    name: "createSearchSession",
-    kind: "WRITE",
-    summary: "Start a new prospect search",
-    scope: "member",
-    requiresConfirmation: false,
-  },
-  {
-    name: "startSourcingRun",
-    kind: "WRITE",
-    summary: "Run a sourcing search",
-    scope: "admin",
-    requiresConfirmation: true,
-    effect:
-      "This spends sourcing allowance and may incur provider costs against your plan.",
-  },
-  {
     name: "createCampaignDraft",
     kind: "WRITE",
     summary: "Create a campaign draft",
@@ -182,15 +166,6 @@ export const COPILOT_TOOLS: ToolDeclaration[] = [
     requiresConfirmation: true,
     effect:
       "No further emails are sent for this campaign. Prospects part-way through the sequence are held where they are and resume if you switch it back on.",
-  },
-  {
-    name: "resumeCampaign",
-    kind: "WRITE",
-    summary: "Resume a campaign",
-    scope: "admin",
-    requiresConfirmation: true,
-    effect:
-      "Sending restarts from where each prospect left off. Every stop condition is re-checked immediately before each send.",
   },
   {
     name: "updateCampaignPriority",
@@ -391,3 +366,39 @@ export const runToolSchema = z.object({
   /** True only when a human pressed Confirm on the dialog for this action. */
   confirmed: z.boolean().default(false),
 });
+
+/* ------------------------------------------------- what Copilot may not do */
+
+/**
+ * What Copilot can never do, as the Actions tab and onboarding state it.
+ *
+ * Each entry names the registry operations that would do it; a test checks
+ * that every one exists and does not list COPILOT as a caller, so the sentence
+ * cannot outlive the permission it describes. Entries with no operation have
+ * no implementation anywhere Copilot can reach (there is no overage switch in
+ * the registry, and `updateBusinessFact` goes through `saveFact`, which
+ * refuses a locked fact).
+ */
+export const COPILOT_CANNOT: { label: string; operations: string[] }[] = [
+  { label: "send a message or outreach", operations: ["message.send"] },
+  { label: "launch or resume a campaign", operations: ["campaign.launch", "campaign.resume"] },
+  { label: "change AI budgets", operations: ["ai_budget.update"] },
+  { label: "add anyone to the do-not-contact list", operations: ["lead.suppress"] },
+  {
+    label: "anonymise, delete or export a person's data",
+    operations: ["lead.anonymise", "lead.delete", "lead.export"],
+  },
+  { label: "enable overage", operations: [] },
+  { label: "edit a locked business fact", operations: [] },
+];
+
+/** "a, b and c". */
+export function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** The Copilot tools that only run after a person confirms, by summary. */
+export function confirmedToolSummaries(tools: readonly ToolDeclaration[] = COPILOT_TOOLS): string[] {
+  return tools.filter((tool) => tool.requiresConfirmation).map((tool) => tool.summary);
+}

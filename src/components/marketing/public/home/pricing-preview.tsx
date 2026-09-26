@@ -147,7 +147,7 @@ export function PricingPreviewSection() {
               <span className="pub-accent">Scale when the pipeline does.</span>
             </h2>
             <p className="pub-lead mt-6">
-              Every plan starts with a {TRIAL_DAYS}-day free trial. No card required, and no
+              Every plan starts with a {TRIAL_DAYS}-day free trial, with nothing charged until it ends, and no
               long-term contract — self-serve plans run to the end of the period you have paid
               for and can be cancelled from billing settings.
             </p>

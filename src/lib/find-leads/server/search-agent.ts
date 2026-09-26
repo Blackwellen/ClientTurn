@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { runTask } from "@/lib/ai/model-router";
 import type { SearchPlanningResult } from "@/lib/ai/schemas";
 import { estimateRunCost } from "../cost-model";
@@ -94,6 +95,8 @@ export async function runSearchAgentTurn(input: {
   plan: SearchPlan;
   history: { role: string; content: string }[];
   message: string;
+  /** The search session this turn belongs to; with the history length it keys billing. */
+  sessionId?: string | null;
 }): Promise<AgentTurn> {
   const profile = await readAcquisitionProfile(input.businessId);
 
@@ -109,11 +112,27 @@ export async function runSearchAgentTurn(input: {
     .filter(Boolean)
     .join("\n") || "No business profile has been set up yet.";
 
+  const context = buildContext({
+    profileSummary,
+    plan: input.plan,
+    history: input.history,
+    message: input.message,
+  });
+
   const result = await runTask<SearchPlanningResult>({
     taskType: "search_planning",
     businessId: input.businessId,
-    context: buildContext({ profileSummary, plan: input.plan, history: input.history, message: input.message }),
+    context,
     maxOutputTokens: 900,
+    // Session id + turn index when the caller has them; otherwise the turn
+    // index + the exact prompt, which is the same on a retry of this turn and
+    // different for every later one.
+    correlationId: input.sessionId
+      ? `search:${input.sessionId}:${input.history.length}`
+      : `search:${input.history.length}:${createHash("sha256")
+          .update(context)
+          .digest("hex")
+          .slice(0, 32)}`,
   });
 
   if (!result.data) {

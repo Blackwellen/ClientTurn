@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   ApiError,
   apiSuccess,
@@ -60,21 +60,72 @@ export const GET = withApiKey({ scope: "leads:read" }, async (request, context) 
 });
 
 /**
- * `POST /api/v1/leads` is deliberately absent.
+ * `POST /api/v1/leads` — record an inbound lead (design 03 §1).
  *
- * Creating a lead means deduplication, capturing a contactability record, and
- * starting follow-up. `lead.create` is not in the service registry precisely
- * because a thinner version that skipped those would be worse than none — so
- * there is nothing here to expose, and saying so is more useful than a 405 with
- * no explanation.
+ * Runs `lead.create`, which is ingestLead(): the same intake path the ad
+ * pollers, the wizard and MCP use, so deduplication, suppression, the
+ * permission record and attribution all apply. Requires `leads:write`, a
+ * member's authority, and an `Idempotency-Key` header: a retried request with
+ * the same key returns the first outcome (`DUPLICATE`, with
+ * `original_outcome`) and creates nothing.
+ *
+ * Status codes follow the outcome contract:
+ *   201 CREATED · 200 MERGED, DUPLICATE, SUPPRESSED, REVIEW
+ *   422 INVALID (nothing usable arrived) · 409 REJECTED (nothing stored)
  */
-export async function POST() {
-  const error = new ApiError(
-    "invalid_request",
-    "Leads cannot be created through the API yet. Use a lead source integration or the Add Lead form, both of which run deduplication and start follow-up.",
-  );
-  return Response.json(
-    { error: { code: error.code, message: error.message, request_id: randomUUID() } },
-    { status: 400 },
-  );
-}
+const OUTCOME_STATUS: Record<string, number> = {
+  CREATED: 201,
+  MERGED: 200,
+  DUPLICATE: 200,
+  SUPPRESSED: 200,
+  REVIEW: 200,
+  INVALID: 422,
+  REJECTED: 409,
+};
+
+const idempotencyKey = z
+  .string()
+  .trim()
+  .min(8, "Idempotency-Key must be at least 8 characters")
+  .max(200)
+  .regex(/^[!-~]+$/, "Idempotency-Key must be printable ASCII without spaces");
+
+export const POST = withApiKey(
+  { scope: "leads:write", minimumRole: "member" },
+  async (request, context) => {
+    const key = idempotencyKey.safeParse(request.headers.get("idempotency-key") ?? "");
+    if (!key.success) {
+      throw new ApiError(
+        "invalid_request",
+        "An Idempotency-Key header is required, so a retried request never creates a second lead.",
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw new ApiError("invalid_request", "The request body must be JSON.");
+    }
+
+    const result = await runOperation<{ outcome: string; lead_id: string | null }>(
+      "lead.create",
+      body,
+      {
+        businessId: context.businessId,
+        userId: context.userId,
+        role: context.userRole,
+        caller: "API",
+        correlationId: context.requestId,
+        idempotencyKey: key.data,
+      },
+    );
+
+    if (!result.success) throw serviceFailureToApiError(result);
+
+    return apiSuccess(
+      { data: result.data },
+      { status: OUTCOME_STATUS[result.data.outcome] ?? 200 },
+    );
+  },
+);

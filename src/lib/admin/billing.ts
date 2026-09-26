@@ -26,6 +26,7 @@ import type {
   SubscriptionRow,
   SubscriptionStatus,
 } from "./billing-types";
+import { orIlike } from "@/lib/supabase/ilike";
 
 /**
  * The Admin Billing surface (V4 §45).
@@ -260,7 +261,7 @@ async function listSubscriptions(
     const { data: matches } = await supabase
       .from("businesses")
       .select("id")
-      .or(`name.ilike.%${filters.q}%,website.ilike.%${filters.q}%`)
+      .or(orIlike(["name", "website"], filters.q) ?? "id.not.is.null")
       .limit(200);
     businessIds = (matches ?? []).map((row) => row.id);
     if (businessIds.length === 0) {

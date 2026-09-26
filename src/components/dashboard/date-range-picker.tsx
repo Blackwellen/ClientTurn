@@ -47,6 +47,7 @@ export function DateRangePicker({
 
   return (
     <div
+      data-tour="dashboard-date-range"
       className={cn(
         "flex flex-wrap items-center justify-end gap-2",
         pending && "opacity-70",

@@ -24,7 +24,8 @@ import {
   PlanBadge,
   UsageCellView,
 } from "@/components/admin/ui";
-import { formatDate, formatRelative, initialsOf } from "@/lib/admin/format";
+import { initialsOf } from "@/lib/admin/format";
+import { formatDate, formatRelative } from "@/lib/dates";
 import type {
   CustomerListResult,
   CustomerRow,
@@ -211,7 +212,7 @@ export function CustomerTable({
                       {formatDate(row.joinedAt)}
                     </td>
                     <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.lastActivityAt)}
+                      {formatRelative(row.lastActivityAt, { style: "ago" })}
                     </td>
                     <td
                       className="px-2.5 py-2 text-right"

@@ -1,0 +1,48 @@
+{
+  "id": "book-meeting-one-word-reply",
+  "scenario": "§91 one-word reply",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Thanks for your enquiry. Would a short call next week help you decide?"
+    },
+    {
+      "role": "lead",
+      "text": "Yes"
+    }
+  ],
+  "facts": {
+    "allowedUrls": [
+      "https://book.example.com/acme"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "heuristic": {
+      "intent": "POSITIVE_REPLY"
+    },
+    "candidates": [
+      {
+        "text": "Great. Here is the booking link so you can pick a time that suits: https://book.example.com/acme",
+        "valid": true
+      },
+      {
+        "text": "Great. Which day suits you? And how big is your team?",
+        "valid": false,
+        "codes": [
+          "STYLE_MULTIPLE_QUESTIONS"
+        ]
+      },
+      {
+        "text": "Would a short call next week help you decide?",
+        "valid": true,
+        "repeatsQuestion": true
+      }
+    ],
+    "live": {
+      "maxQuestions": 1
+    }
+  }
+}

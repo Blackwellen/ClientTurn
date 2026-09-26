@@ -29,6 +29,20 @@ import {
   type TokenSummary,
 } from "./tokens";
 import type { PlanId } from "./plans";
+import { OVERDRAW_CEILING_RATIO } from "@/lib/ai/tokens";
+
+/**
+ * The RPCs added in migration 0116 post-date the last `database.types.ts`
+ * generation. Cast at this one seam, bound so `this.rest` still resolves.
+ */
+type UntypedRpc = (
+  name: string,
+  args: Record<string, unknown>,
+) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+
+function untypedRpc(admin: ReturnType<typeof createAdminClient>): UntypedRpc {
+  return (admin.rpc as unknown as UntypedRpc).bind(admin);
+}
 
 export type TokenPeriod = { periodStart: string; periodEnd: string };
 
@@ -158,7 +172,10 @@ export async function ensureTokenBalance(businessId: string): Promise<TokenBalan
   if (error?.code === "23505") return ensureTokenBalance(businessId);
   if (error || !created) throw error ?? new Error("Could not open a token balance.");
 
-  await admin.from("ai_token_ledger").insert({
+  // The balance row above is the grant; this is its ledger trail. Throwing
+  // would not help — the next call finds the balance and never comes back
+  // here — so a failure is logged (23505 is an already-written grant).
+  const { error: grantLedgerError } = await admin.from("ai_token_ledger").insert({
     business_id: businessId,
     period_start: period.periodStart,
     delta_tokens: included,
@@ -167,6 +184,14 @@ export async function ensureTokenBalance(businessId: string): Promise<TokenBalan
     balance_after: included + carriedPurchased,
     metadata: { carriedPurchased },
   });
+  if (grantLedgerError && grantLedgerError.code !== "23505") {
+    console.error("[token-service] grant ledger insert failed", {
+      businessId,
+      periodStart: period.periodStart,
+      code: grantLedgerError.code,
+      message: grantLedgerError.message,
+    });
+  }
 
   return {
     periodStart: created.period_start,
@@ -207,26 +232,80 @@ export async function getTokenStatus(businessId: string): Promise<TokenStatus> {
 }
 
 /**
- * The pre-flight check. Returns false when there is not enough allowance left
- * to safely attempt a call of this size — the caller then skips the model
- * entirely rather than spending on a call it cannot pay for.
+ * The pre-flight check (read-only). Returns false when there is not enough
+ * allowance left to safely attempt a call of this size -- the caller then
+ * skips the model entirely rather than spending on a call it cannot pay for.
+ *
+ * This is a plain read, so it is NOT atomic against concurrent workers. Any
+ * caller that is about to spend should use `reserveTokenCapacity`, which
+ * admits under a row lock and counts every call already in flight.
  */
 export async function hasTokenCapacity(
   businessId: string,
   estimatedTokens: number,
 ): Promise<{ ok: boolean; status: TokenStatus }> {
   const status = await getTokenStatus(businessId);
-  return { ok: status.available >= estimatedTokens, status };
+  return { ok: status.remaining > 0 && status.available >= estimatedTokens, status };
+}
+
+/**
+ * Atomic admission (B21). Holds `estimatedTokens` against the allowance until
+ * the call is settled by `recordTokenConsumption({ reservationId })` or
+ * released by `releaseTokenReservation`. A crashed worker's hold expires on
+ * its own after five minutes.
+ *
+ * `ok: false` means "do not call the model" -- the caller degrades to its
+ * deterministic path exactly as for a workspace without AI. A database error
+ * also refuses: failing closed on spend is the safe direction.
+ */
+export async function reserveTokenCapacity(
+  businessId: string,
+  estimatedTokens: number,
+): Promise<{ ok: boolean; reservationId: string | null }> {
+  const balance = await ensureTokenBalance(businessId);
+  const { data, error } = await untypedRpc(createAdminClient())("reserve_ai_tokens", {
+    target_business_id: businessId,
+    target_period_start: balance.periodStart,
+    tokens: Math.max(Math.ceil(estimatedTokens), 1),
+  });
+
+  if (error) {
+    console.error("[token-service] reserve_ai_tokens failed", error.message);
+    return { ok: false, reservationId: null };
+  }
+  const reservationId = typeof data === "string" ? data : null;
+  return { ok: reservationId !== null, reservationId };
+}
+
+/** Drops a hold without debiting: the call never reached the provider. */
+export async function releaseTokenReservation(
+  businessId: string,
+  reservationId: string,
+): Promise<void> {
+  const { error } = await untypedRpc(createAdminClient())("release_ai_token_reservation", {
+    target_business_id: businessId,
+    reservation_id: reservationId,
+  });
+  if (error) {
+    // Not fatal: an unreleased hold expires on its own.
+    console.error("[token-service] release_ai_token_reservation failed", error.message);
+  }
 }
 
 /**
  * Debits the true cost after a call. Idempotent on `idempotencyKey`, so a
  * retried worker cannot bill the same call twice.
  *
- * `allowOverdraw` exists for the reconciliation case only: a call that has
- * already happened must be recorded even if its real cost overshot the
- * estimate. Refusing to record it would understate usage, which is worse than
- * a small overshoot on one period.
+ * A call that already happened is always recorded -- refusing would
+ * understate usage. Overdraw is bounded upstream by atomic admission
+ * (`reserveTokenCapacity`), so the only overshoot left is estimate-vs-actual
+ * on admitted calls. A debit that still lands beyond the emergency ceiling
+ * (OVERDRAW_CEILING_RATIO x the plan allocation) is flagged `over_ceiling`
+ * in the ledger; the balance is then negative, so every later admission and
+ * `hasTokenCapacity` check refuses until the workspace tops up or rolls over.
+ *
+ * `totalTokens` is prompt + completion (see `billableTokens` in
+ * `@/lib/ai/tokens`) -- never add the cached subset on top.
  */
 export async function recordTokenConsumption(input: {
   businessId: string;
@@ -236,28 +315,37 @@ export async function recordTokenConsumption(input: {
   agentRunId?: string | null;
   taskType?: string | null;
   deployment?: string | null;
+  /** The hold from `reserveTokenCapacity`, released as the debit lands. */
+  reservationId?: string | null;
 }): Promise<number | null> {
-  if (input.totalTokens <= 0) return null;
+  if (input.totalTokens <= 0) {
+    if (input.reservationId) {
+      await releaseTokenReservation(input.businessId, input.reservationId);
+    }
+    return null;
+  }
 
   const admin = createAdminClient();
   const balance = await ensureTokenBalance(input.businessId);
 
-  const { data, error } = await admin.rpc("consume_ai_tokens", {
+  const { data, error } = await untypedRpc(admin)("consume_ai_tokens_bounded", {
     target_business_id: input.businessId,
     target_period_start: balance.periodStart,
-    tokens: input.totalTokens,
+    tokens: Math.ceil(input.totalTokens),
     consume_reason: "CONSUMPTION",
     idem_key: input.idempotencyKey,
-    // The generated RPC signature takes optional arguments rather than
-    // nullable ones, so an absent value is omitted rather than passed as null.
-    ...(input.aiRunId ? { source_ai_run_id: input.aiRunId } : {}),
-    ...(input.agentRunId ? { source_agent_run_id: input.agentRunId } : {}),
-    ...(input.taskType ? { source_task_type: input.taskType } : {}),
-    ...(input.deployment ? { source_deployment: input.deployment } : {}),
-    allow_overdraw: true,
+    source_ai_run_id: input.aiRunId ?? null,
+    source_agent_run_id: input.agentRunId ?? null,
+    source_task_type: input.taskType ?? null,
+    source_deployment: input.deployment ?? null,
+    reservation_id: input.reservationId ?? null,
+    overdraw_ceiling_ratio: OVERDRAW_CEILING_RATIO,
   });
 
-  if (error) return null;
+  if (error) {
+    console.error("[token-service] consume_ai_tokens_bounded failed", error.message);
+    return null;
+  }
 
   await maybeWarn(input.businessId, balance.periodStart);
   return typeof data === "number" ? data : null;
@@ -289,11 +377,23 @@ async function maybeWarn(businessId: string, periodStart: string): Promise<void>
   const threshold = nextWarningThreshold(summary.percentUsed, data.warned_at_percent);
   if (threshold === null) return;
 
-  await admin
+  const { error: watermarkError } = await admin
     .from("ai_token_balances")
     .update({ warned_at_percent: threshold })
     .eq("business_id", businessId)
     .eq("period_start", periodStart);
+  // The watermark is what stops the warning repeating on every call. Without
+  // it recorded, skip the notification; the next call tries both again.
+  if (watermarkError) {
+    console.error("[token-service] warning watermark update failed", {
+      businessId,
+      periodStart,
+      threshold,
+      code: watermarkError.code,
+      message: watermarkError.message,
+    });
+    return;
+  }
 
   // Imported lazily: the notification helper pulls in the job queue, and the
   // model router must not carry that weight on every call.

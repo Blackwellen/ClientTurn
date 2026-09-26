@@ -200,7 +200,7 @@ export function LeadsToolbar({
   const chips = useActiveChips(filters, options);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour="leads-toolbar">
       <LeadSearchInput
         value={filters.q ?? ""}
         onChange={(value) => setFilter({ q: value || null })}

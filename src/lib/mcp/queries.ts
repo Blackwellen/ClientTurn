@@ -21,7 +21,8 @@ export type McpConnection = {
   scopes: { scope: string; label: string }[];
   createdAt: string;
   lastUsedAt: string | null;
-  /** Live access tokens. Zero means the connection exists but cannot yet call. */
+  /** Live credentials (bound API keys, plus any legacy access tokens). Zero
+   *  means the connection exists but cannot yet call. */
   activeTokens: number;
   /** Calls in the last 7 days, so an idle connection is visible as idle. */
   recentCalls: number;
@@ -90,6 +91,22 @@ export async function listMcpConnections(): Promise<McpConnection[]> {
   const tokenCount = new Map<string, number>();
   for (const row of tokens ?? []) {
     tokenCount.set(row.client_id, (tokenCount.get(row.client_id) ?? 0) + 1);
+  }
+
+  // The bearer keys connections issue (workspace API keys bound to them). Read
+  // by name tag, which every connection key carries whether or not 0133 has
+  // been applied, so the count is right in both states.
+  const { data: keys } = await db
+    .from("api_keys")
+    .select("name, expires_at")
+    .eq("business_id", workspace.businessId)
+    .is("revoked_at", null)
+    .like("name", "%[mcp:%]");
+  for (const key of keys ?? []) {
+    if (key.expires_at && key.expires_at <= now) continue;
+    const match = /\[mcp:([0-9a-f-]{36})\]$/i.exec(key.name);
+    if (!match) continue;
+    tokenCount.set(match[1], (tokenCount.get(match[1]) ?? 0) + 1);
   }
 
   const callCount = new Map<string, number>();

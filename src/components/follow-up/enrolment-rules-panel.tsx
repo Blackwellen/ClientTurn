@@ -15,8 +15,8 @@ import {
  *
  * Enrolment in ClientTurn is a property of the automation's trigger, not a
  * separate rule engine: a lead enters the new-lead sequence because a lead was
- * created, and the unresponsive sequence because the first one finished without
- * a reply. Rendering that plainly is more honest than offering a rules builder
+ * created. (The "unresponsive" type has no trigger yet and is not shown; see
+ * UNWIRED_AUTOMATION_TYPES.) Rendering that plainly is more honest than offering a rules builder
  * whose only legal configuration is the one already in force.
  *
  * The exit conditions listed are the same ones `evaluateStopConditions`

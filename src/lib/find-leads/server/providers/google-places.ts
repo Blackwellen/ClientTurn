@@ -1,6 +1,7 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
 import { providerJson, unconfigured } from "./http";
+import { placesCandidateFields } from "../company-provenance";
 import {
   providerFailure,
   type CompanyCandidate,
@@ -16,39 +17,37 @@ import {
  *
  * Cost rank 0 — this runs first in the waterfall, and the records it returns
  * are pre-filtered on stage 5 before anything expensive touches them.
+ *
+ * ## Discovery only (B24, decision Q7)
+ *
+ * Google Maps Platform ToS §3.2.3(a) forbids pre-fetching, caching or storing
+ * Places content, naming "business names, addresses" explicitly; the Service
+ * Specific Terms allow latitude/longitude to be cached for at most 30 days;
+ * only the place ID may be stored indefinitely. So this provider asks Places
+ * for the place ID, the website and the position — nothing else — and returns:
+ *
+ *   - the place ID as `externalId` (persistable);
+ *   - the website's domain, as a pointer to the company's own site, which is
+ *     where its identity is read from (with Companies House at enrichment);
+ *     the domain stands in as the name until then;
+ *   - the position in `discoveryOnly`, used once by the run to test "within X
+ *     miles" at query time and never written to the database.
+ *
+ * Display name, address, types and coordinates are not persisted. See
+ * `../company-provenance.ts`.
  */
 
 type PlacesResult = {
   places?: {
     id?: string;
-    displayName?: { text?: string };
     websiteUri?: string;
-    primaryType?: string;
-    formattedAddress?: string;
     location?: { latitude?: number; longitude?: number };
-    addressComponents?: { longText?: string; types?: string[] }[];
   }[];
   nextPageToken?: string;
 };
 
 function key(): string | undefined {
   return serverEnv.sourcing.googlePlacesApiKey;
-}
-
-function hostFrom(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
-function componentOf(
-  components: { longText?: string; types?: string[] }[] | undefined,
-  type: string,
-): string | null {
-  return components?.find((c) => c.types?.includes(type))?.longText ?? null;
 }
 
 async function searchCompanies(
@@ -78,9 +77,9 @@ async function searchCompanies(
     headers: {
       "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask":
-        "places.id,places.displayName,places.websiteUri,places.primaryType," +
-        "places.formattedAddress,places.location,places.addressComponents," +
-        "nextPageToken",
+        // Only what may be kept (the place ID) or used transiently (website as
+        // a pointer, position for the radius test). ToS §3.2.3.
+        "places.id,places.websiteUri,places.location,nextPageToken",
     },
     body: {
       textQuery: query,
@@ -91,8 +90,8 @@ async function searchCompanies(
             locationBias: {
               circle: {
                 center: { latitude: location.lat, longitude: location.lon },
-                // Places caps the bias radius at 50km; a wider plan radius is
-                // enforced again in the pre-filter using real coordinates.
+                // Places caps the bias radius at 50km; the plan's real radius is
+                // enforced by the run at discovery, from `discoveryOnly`.
                 radius: Math.min(50_000, location.radiusKm * 1000),
               },
             },
@@ -103,27 +102,10 @@ async function searchCompanies(
 
   if (!result.ok) return providerFailure<CompanyCandidate>(result.code, result.latencyMs);
 
-  const records = (result.data.places ?? []).map((place): CompanyCandidate => {
-    const website = place.websiteUri;
-    return {
-      externalId: place.id ?? null,
-      name: place.displayName?.text ?? "Unknown company",
-      domain: hostFrom(website),
-      websiteUrl: website ?? null,
-      industry: place.primaryType ?? null,
-      employeeCount: null,
-      companySize: null,
-      description: null,
-      location: {
-        country: componentOf(place.addressComponents, "country"),
-        region: componentOf(place.addressComponents, "administrative_area_level_2"),
-        city: componentOf(place.addressComponents, "postal_town"),
-        postcode: componentOf(place.addressComponents, "postal_code"),
-        lat: place.location?.latitude ?? null,
-        lon: place.location?.longitude ?? null,
-      },
-    };
-  });
+  const records = (result.data.places ?? [])
+    .map((place) => placesCandidateFields(place))
+    .filter((fields): fields is NonNullable<typeof fields> => fields !== null)
+    .map((fields): CompanyCandidate => fields);
 
   return {
     ok: true,
@@ -148,6 +130,11 @@ export const googlePlacesProvider: SourcingProvider = {
  * Geocoding for `validate_target_location`. Separate from the provider
  * interface because it is not part of a run's waterfall — it resolves a plan
  * before any run exists, and costs nothing against the run budget.
+ *
+ * The result resolves the *user's own* target location (a city they typed),
+ * not a business, and is used at query time. Geocoding content carries the
+ * same 30-day cap on cached coordinates, so whatever stores the resolved plan
+ * must not keep these coordinates indefinitely (see the B24 report).
  */
 export async function geocodePlace(input: {
   city: string | null;

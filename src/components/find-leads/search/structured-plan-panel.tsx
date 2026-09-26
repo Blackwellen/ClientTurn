@@ -8,6 +8,8 @@ import {
   Crosshair,
   Flag,
   Layers,
+  UserSearch,
+  Radar,
   MapPin,
   ShieldCheck,
   Target,
@@ -25,8 +27,13 @@ import {
   intentFreshnessLabel,
   kmToMiles,
   milesToKm,
+  signalsLabel,
   type SearchPlan,
 } from "@/lib/find-leads/plan";
+import { linkedinFilterLines } from "@/lib/find-leads/linkedin-filters";
+import type { SignalFeed } from "@/lib/find-leads/signals";
+import { LinkedinFiltersEditor, SalesNavigatorHandoff } from "./linkedin-filters-editor";
+import { SignalsEditor } from "./signals-editor";
 
 /**
  * The structured search plan panel (V4 §10.8).
@@ -44,6 +51,8 @@ type RowKey =
   | "company"
   | "roles"
   | "intent"
+  | "signals"
+  | "linkedin"
   | "exclusions"
   | "grade"
   | "target"
@@ -56,6 +65,8 @@ const ROW_ICONS: Record<RowKey, React.ComponentType<{ className?: string }>> = {
   company: Layers,
   roles: UserCheck,
   intent: Zap,
+  signals: Radar,
+  linkedin: UserSearch,
   exclusions: Ban,
   grade: ShieldCheck,
   target: Target,
@@ -67,10 +78,16 @@ export function StructuredPlanPanel({
   plan,
   onChange,
   disabled,
+  liveFeeds = [],
+  linkedinPartner = false,
 }: {
   plan: SearchPlan;
   onChange: (next: SearchPlan) => void;
   disabled: boolean;
+  /** Free signal feeds live for this workspace; decides what is offered. */
+  liveFeeds?: SignalFeed[];
+  /** True when a SNAP partner token is configured. */
+  linkedinPartner?: boolean;
 }) {
   const [editing, setEditing] = React.useState<RowKey | null>(null);
 
@@ -112,6 +129,19 @@ export function StructuredPlanPanel({
       value: plan.intent.categories.length
         ? `${plan.intent.categories.join(", ")}\n${intentFreshnessLabel(plan.intent.freshnessDays)}`
         : "No intent signals",
+    },
+    {
+      key: "signals",
+      label: "Signals",
+      value: signalsLabel(plan.signals).join("\n") || "None",
+    },
+    {
+      key: "linkedin",
+      label: "LinkedIn filters",
+      value:
+        linkedinFilterLines(plan.linkedin)
+          .map((line) => `${line.label}: ${line.value}`)
+          .join("\n") || "None",
     },
     {
       key: "exclusions",
@@ -197,6 +227,9 @@ export function StructuredPlanPanel({
       <PlanEditDialog
         rowKey={editing}
         plan={plan}
+        liveFeeds={liveFeeds}
+        linkedinPartner={linkedinPartner}
+        canImport={!disabled}
         onClose={() => setEditing(null)}
         onSave={(next) => {
           onChange(next);
@@ -230,11 +263,17 @@ function companyValue(plan: SearchPlan): string {
 function PlanEditDialog({
   rowKey,
   plan,
+  liveFeeds,
+  linkedinPartner,
+  canImport,
   onClose,
   onSave,
 }: {
   rowKey: RowKey | null;
   plan: SearchPlan;
+  liveFeeds: SignalFeed[];
+  linkedinPartner: boolean;
+  canImport: boolean;
   onClose: () => void;
   onSave: (plan: SearchPlan) => void;
 }) {
@@ -254,6 +293,8 @@ function PlanEditDialog({
     company: "Company",
     roles: "Decision maker",
     intent: "Intent",
+    signals: "Buying signals",
+    linkedin: "LinkedIn filters",
     exclusions: "Exclusions",
     grade: "Minimum grade",
     target: "Result target",
@@ -406,7 +447,7 @@ function PlanEditDialog({
           <div className="space-y-3">
             <ListField
               label="Buying signals"
-              hint="One per line, for example Roof repair or Building works."
+              hint="One per line, for example Rebrand or New website. These are your workspace's intent categories."
               values={draft.intent.categories}
               onChange={(categories) =>
                 setDraft({ ...draft, intent: { ...draft.intent, categories } })
@@ -430,6 +471,34 @@ function PlanEditDialog({
                 <option value="180">Last 180 days</option>
               </Select>
             </div>
+          </div>
+        )}
+
+        {rowKey === "signals" && (
+          <SignalsEditor
+            value={draft.signals}
+            live={liveFeeds}
+            onChange={(signals) => setDraft({ ...draft, signals })}
+          />
+        )}
+
+        {rowKey === "linkedin" && (
+          <div className="space-y-4">
+            <LinkedinFiltersEditor
+              value={draft.linkedin}
+              onChange={(linkedin) => setDraft({ ...draft, linkedin })}
+            />
+            <SalesNavigatorHandoff
+              // Titles fall back to the plan's decision-maker roles, so the
+              // link opens a useful search before any LinkedIn filter is set.
+              filters={
+                draft.linkedin.titlesInclude.length > 0
+                  ? draft.linkedin
+                  : { ...draft.linkedin, titlesInclude: draft.decisionMakerRoles }
+              }
+              partnerConfigured={linkedinPartner}
+              canImport={canImport}
+            />
           </div>
         )}
 

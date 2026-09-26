@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, Lightbulb, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { OField, OInput, OSelect, OToggle, OButton, OPanel, OSectionTitle } from "../ui";
 import type { StepActions } from "../step-types";
-import { INDUSTRIES, TIMEZONES, DAYS, type BusinessHours, type DayKey } from "@/lib/settings/types";
+import { industryOptionsFor, TIMEZONES, DAYS, type BusinessHours, type DayKey } from "@/lib/settings/types";
 import { suggestedServicesFor } from "@/lib/onboarding/steps";
 import type { BusinessStepInput } from "@/lib/onboarding/actions";
 
@@ -258,7 +258,7 @@ export function BusinessStep({
                 onChange={(e) => setBusiness({ ...business, industry: e.target.value })}
               >
                 <option value="">Choose an industry</option>
-                {INDUSTRIES.map((industry) => (
+                {industryOptionsFor(business.industry).map((industry) => (
                   <option key={industry} value={industry}>
                     {industry}
                   </option>

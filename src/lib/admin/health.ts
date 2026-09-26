@@ -43,7 +43,12 @@ const QUEUES: { key: string; label: string; types: JobType[] }[] = [
   {
     key: "notifications",
     label: "Notifications",
-    types: ["notification.send", "notification.slack"],
+    types: [
+      "notification.send",
+      "notification.slack",
+      "notification.slack_digest",
+      "slack.interaction",
+    ],
   },
   {
     key: "nightly_summaries",

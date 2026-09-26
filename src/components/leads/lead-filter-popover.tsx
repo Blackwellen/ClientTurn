@@ -1,5 +1,6 @@
 "use client";
 
+import { isInsideFloatingLayer } from "@/components/ui/floating";
 import * as React from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -114,6 +115,8 @@ export function LeadFilterButton({
   React.useEffect(() => {
     if (!open) return;
     function onPointerDown(event: PointerEvent) {
+      // The Select lists inside the panel are portalled to <body>.
+      if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
@@ -243,9 +246,9 @@ export function LeadFilterButton({
 
             <div className="space-y-4">
               {options.forms.length > 0 && (
-                <Group label="Meta form">
+                <Group label="Form">
                   <Select
-                    aria-label="Meta form"
+                    aria-label="Form"
                     value={draft.form}
                     onChange={(event) =>
                       setDraft((c) => ({ ...c, form: event.target.value }))

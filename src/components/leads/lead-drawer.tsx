@@ -1,16 +1,23 @@
 "use client";
 
+import { allowedNextStatuses } from "@/lib/leads/status-transitions";
 import * as React from "react";
-import { ChevronDown, MessageSquare, MoreHorizontal, Phone, X } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Maximize2, MessageSquare, MoreHorizontal, Phone, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { Select } from "@/components/ui/form";
 import { LEAD_STATUS } from "@/components/ui/badge";
 import { useEscape } from "@/components/ui/drawer";
 import { useToast } from "@/components/ui/toast";
-import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
+import {
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+  DropdownSeparator,
+} from "@/components/ui/dropdown";
+import type { DataRightsMode } from "@/lib/data-rights/wording";
 import { formatRelative } from "@/lib/dates";
-import { LEAD_STATUSES } from "@/lib/leads/filters";
 import {
   leadDisplayName,
   type LeadCapabilities,
@@ -20,6 +27,9 @@ import type { LeadDrawerActions } from "./lead-drawer-actions";
 import { LeadSummarySection } from "./lead-summary-section";
 import { LeadConversationSection } from "./lead-conversation-section";
 import { LeadActivitySection } from "./lead-activity-section";
+import { LeadDataRightsDialogs } from "./lead-data-rights";
+import { CloseOutcomeDialog } from "./close-outcome-dialog";
+import { leadPageHref, statusNeedsReason } from "@/lib/leads/detail-page";
 
 const TABS = [
   { value: "summary", label: "Summary" },
@@ -103,6 +113,7 @@ export function LeadDrawer({
   actions,
   capabilities,
   canWrite,
+  role,
   onClose,
   initialTab = "summary",
   focus,
@@ -111,6 +122,8 @@ export function LeadDrawer({
   actions: LeadDrawerActions;
   capabilities: LeadCapabilities;
   canWrite: boolean;
+  /** Decides which data-rights items show; the server enforces regardless. */
+  role?: "owner" | "admin" | "member" | "viewer";
   onClose: () => void;
   initialTab?: string;
   focus?: string;
@@ -126,6 +139,9 @@ export function LeadDrawer({
   );
   const [pending, setPending] = React.useState<string | null>(null);
   const [channel, setChannel] = React.useState<"sms" | "whatsapp">("sms");
+  const [rightsMode, setRightsMode] = React.useState<DataRightsMode | null>(null);
+  const [closeOutcome, setCloseOutcome] = React.useState<"WON" | "LOST" | null>(null);
+  const isAdmin = role === "owner" || role === "admin";
 
   const panelRef = React.useRef<HTMLDivElement>(null);
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
@@ -178,6 +194,7 @@ export function LeadDrawer({
       <div
         ref={panelRef}
         role="dialog"
+        data-tour="lead-drawer"
         tabIndex={-1}
         aria-label={`Lead ${name}`}
         // The panel is focused so the dialog is announced on open, but it is
@@ -216,19 +233,21 @@ export function LeadDrawer({
                   className="h-9 w-[136px] pl-7 text-[13px]"
                   disabled={!canWrite || pending === "status"}
                   value={lead.status}
-                  onChange={(event) =>
-                    run(
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    // Won and lost need a reason, so they ask for one first.
+                    if (statusNeedsReason(next)) {
+                      setCloseOutcome(next);
+                      return;
+                    }
+                    void run(
                       "status",
-                      () =>
-                        actions.updateLeadStatus({
-                          leadId: lead.id,
-                          status: event.target.value,
-                        }),
+                      () => actions.updateLeadStatus({ leadId: lead.id, status: next }),
                       "Status updated.",
-                    )
-                  }
+                    );
+                  }}
                 >
-                  {LEAD_STATUSES.map((status) => (
+                  {allowedNextStatuses(lead.status).map((status) => (
                     <option key={status} value={status}>
                       {LEAD_STATUS[status].label}
                     </option>
@@ -242,6 +261,15 @@ export function LeadDrawer({
                   )}
                 />
               </div>
+
+              <Link
+                href={leadPageHref(lead.id)}
+                aria-label="Open full page"
+                title="Open full page"
+                className="rounded-lg p-2 text-content-subtle transition-colors hover:bg-surface-hover hover:text-content focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent"
+              >
+                <Maximize2 className="size-4.5" aria-hidden />
+              </Link>
 
               <button
                 type="button"
@@ -324,6 +352,31 @@ export function LeadDrawer({
                   Email lead
                 </DropdownItem>
               )}
+              {actions.dataRights && canWrite && (
+                <>
+                  <DropdownSeparator />
+                  <DropdownLabel>Data rights</DropdownLabel>
+                  <DropdownItem onSelect={() => setRightsMode("SUPPRESS")}>
+                    Suppress…
+                  </DropdownItem>
+                  <DropdownItem onSelect={() => setRightsMode("RESTRICT")}>
+                    Restrict processing…
+                  </DropdownItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownItem onSelect={() => setRightsMode("EXPORT")}>
+                        Export data…
+                      </DropdownItem>
+                      <DropdownItem destructive onSelect={() => setRightsMode("ANONYMISE")}>
+                        Anonymise…
+                      </DropdownItem>
+                      <DropdownItem destructive onSelect={() => setRightsMode("DELETE")}>
+                        Erase…
+                      </DropdownItem>
+                    </>
+                  )}
+                </>
+              )}
             </DropdownMenu>
           </div>
 
@@ -384,6 +437,7 @@ export function LeadDrawer({
               pending={pending}
               run={run}
               onOpenComposer={openComposer}
+              onRequestClose={setCloseOutcome}
               focus={focus}
             />
           </div>
@@ -421,6 +475,31 @@ export function LeadDrawer({
           </div>
         )}
       </div>
+
+      <CloseOutcomeDialog
+        outcome={closeOutcome}
+        onClose={() => setCloseOutcome(null)}
+        onSubmit={(outcome, reason) =>
+          run(
+            outcome === "WON" ? "won" : "lost",
+            () =>
+              outcome === "WON"
+                ? actions.markWon(lead.id, reason)
+                : actions.markLost(lead.id, reason),
+            outcome === "WON" ? "Marked as won." : "Marked as lost.",
+          )
+        }
+      />
+
+      {actions.dataRights && (
+        <LeadDataRightsDialogs
+          leadId={lead.id}
+          mode={rightsMode}
+          onClose={() => setRightsMode(null)}
+          onErased={onClose}
+          actions={actions.dataRights}
+        />
+      )}
     </>
   );
 }

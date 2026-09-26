@@ -52,8 +52,14 @@ export default async function WizardPreviewPage({
             }}
             defaultChannel={flag("email") ? "email" : "sms"}
             whatsappEnabled
-            emailEnabled={flag("email")}
-            providerConnected={!flag("offline")}
+            providers={{
+              sms: !flag("offline"),
+              whatsapp: !flag("offline"),
+              email: flag("email") && !flag("offline"),
+            }}
+            whatsappTemplates={[]}
+            optOutWording="Reply STOP to opt out."
+            aiPersonalizeAvailable={flag("ai")}
             quietHours={{
               enabled: true,
               start: "20:00",

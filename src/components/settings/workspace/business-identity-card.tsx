@@ -4,7 +4,7 @@ import * as React from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { SectionHeader } from "@/components/app/page-header";
-import { INDUSTRIES, TIMEZONES, timezoneLabel } from "@/lib/settings/types";
+import { industryOptionsFor, TIMEZONES, timezoneLabel } from "@/lib/settings/types";
 import { LogoUploader } from "./logo-uploader";
 
 export type IdentityDraft = {
@@ -77,7 +77,7 @@ export function BusinessIdentityCard({
                   onChange={(event) => onChange({ industry: event.target.value })}
                 >
                   <option value="">Not set</option>
-                  {INDUSTRIES.map((industry) => (
+                  {industryOptionsFor(draft.industry).map((industry) => (
                     <option key={industry} value={industry}>
                       {industry}
                     </option>

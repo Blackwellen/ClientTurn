@@ -13,6 +13,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logWriteError } from "@/lib/supabase/write-result";
 import { serverEnv } from "@/lib/env";
 import { recordAudit } from "@/lib/audit";
 import { stripe } from "./stripe";
@@ -118,18 +119,30 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
       cancel_url: `${serverEnv.siteUrl}/app/settings?section=billing&topup=cancelled`,
     });
 
+    // Bookkeeping on the purchase row: the webhook credits by `purchase_id`
+    // from the session metadata, not by these columns, so failures are logged
+    // and the user's checkout is not blocked.
+    const purchaseContext = { businessId: workspace.businessId, purchaseId: purchase.id };
     if (!session.url) {
-      await admin
-        .from("ai_token_purchases")
-        .update({ status: "FAILED" })
-        .eq("id", purchase.id);
+      logWriteError(
+        await admin
+          .from("ai_token_purchases")
+          .update({ status: "FAILED" })
+          .eq("id", purchase.id),
+        "token checkout: mark purchase failed",
+        purchaseContext,
+      );
       return { ok: false, error: "Could not start checkout. Try again." };
     }
 
-    await admin
-      .from("ai_token_purchases")
-      .update({ stripe_checkout_session_id: session.id })
-      .eq("id", purchase.id);
+    logWriteError(
+      await admin
+        .from("ai_token_purchases")
+        .update({ stripe_checkout_session_id: session.id })
+        .eq("id", purchase.id),
+      "token checkout: record session id",
+      { ...purchaseContext, sessionId: session.id },
+    );
 
     await recordAudit({
       businessId: workspace.businessId,
@@ -142,7 +155,11 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
 
     return { ok: true, url: session.url };
   } catch {
-    await admin.from("ai_token_purchases").update({ status: "FAILED" }).eq("id", purchase.id);
+    logWriteError(
+      await admin.from("ai_token_purchases").update({ status: "FAILED" }).eq("id", purchase.id),
+      "token checkout: mark purchase failed",
+      { businessId: workspace.businessId, purchaseId: purchase.id },
+    );
     return { ok: false, error: "Could not start checkout. Try again." };
   }
 }

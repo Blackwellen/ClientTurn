@@ -262,12 +262,15 @@ const TEMPLATES: Record<SocialCopyKind, Record<"LINKEDIN" | "OTHER", string[]>> 
    * confusing. It asks exactly one question, because there will be no second
    * message unless they answer this one.
    */
+  // Deliberately not a pitch: a comment is public engagement, not a request to
+  // be marketed to by DM (docs/revenue-engine/00 §6.1). If they want to know
+  // more they will say, and their reply is what opens that conversation.
   PRIVATE_REPLY: {
     LINKEDIN: [
-      "Thanks for the comment, {{first_name}} — replying here rather than in the thread.\n\n{{business_name}} works with {{company_type}} on {{service_line}}. Happy to answer anything about it.\n\nWas there something specific you wanted to know?",
+      "Thanks for the comment, {{first_name}} — replying here rather than in the thread.\n\nWas there something specific you wanted to know?",
     ],
     OTHER: [
-      "Thanks for commenting, {{first_name}} — thought I'd reply directly rather than in the thread.\n\n{{business_name}} does {{service_line}}, so if that's what prompted it, ask away.\n\nWhat were you after?",
+      "Thanks for commenting, {{first_name}} — thought I'd reply directly rather than in the thread.\n\nWhat were you after?",
     ],
   },
   FOLLOW_UP: {

@@ -24,7 +24,40 @@ function isStatusHost(request: NextRequest): boolean {
   return STATUS_HOSTS.has(host);
 }
 
+/**
+ * Canonical-domain redirect: `www.clientturn.com` -> `clientturn.com`.
+ *
+ * Both hostnames are aliased to the same Vercel deployment, so a visitor could
+ * reach either one and get an identical page -- which is exactly the problem.
+ * The Supabase session cookie the app sets is host-only (`proxy-session.ts`
+ * sets no explicit `domain`), so a session established on one hostname is
+ * invisible on the other. Every OAuth connect flow (Calendly, Slack, HubSpot,
+ * Zoho...) builds its redirect_uri from `NEXT_PUBLIC_SITE_URL`, which is the
+ * apex domain -- so a workspace member who happened to be signed in on `www`
+ * would click Connect, complete the provider's consent screen, get redirected
+ * back to the apex domain with no session cookie for it, and land on `/login`
+ * looking logged out. Discovered 2026-09-13 exercising the Calendly connect
+ * flow live; the fix belongs here because the failure is general, not
+ * Calendly-specific.
+ *
+ * A redirect before Supabase's cookie logic runs, rather than a cookie
+ * `domain` of `.clientturn.com`, because sharing the cookie would still leave
+ * two live copies of the app answering as the same signed-in session --
+ * harmless today, but a needless second surface. One canonical host is
+ * simpler to reason about.
+ */
+function isWwwHost(request: NextRequest): boolean {
+  return (request.headers.get("host")?.toLowerCase() ?? "") === "www.clientturn.com";
+}
+
 export async function proxy(request: NextRequest) {
+  if (isWwwHost(request)) {
+    const url = request.nextUrl.clone();
+    url.host = "clientturn.com";
+    url.port = "";
+    return NextResponse.redirect(url, 308);
+  }
+
   if (isStatusHost(request)) {
     const { pathname } = request.nextUrl;
 

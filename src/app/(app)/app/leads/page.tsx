@@ -88,6 +88,7 @@ export default async function LeadsPage({
         total={total}
         filters={filters}
         members={options.members}
+        role={workspace.role}
       />
 
       {/* A lead id that no longer resolves (deleted, or another workspace's)
@@ -97,6 +98,7 @@ export default async function LeadsPage({
           detail={detail}
           capabilities={capabilities}
           canWrite={canWrite}
+          role={workspace.role}
           initialTab={first(params.leadTab)}
           focus={first(params.leadFocus)}
         />

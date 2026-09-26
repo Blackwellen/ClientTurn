@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +130,16 @@ export function AiTokenMeter({
             {status.purchasedTokens > 0
               ? ` ${formatTokens(status.purchasedTokens)} of that is topped-up tokens, which carry over.`
               : ""}
+          </p>
+          <p className="text-muted text-[12.5px]">
+            This allowance counts AI use in tokens; the separate £ spending limits in{" "}
+            <Link
+              href="/app/settings?section=ai-selling"
+              className="font-medium text-content-accent underline-offset-4 hover:underline"
+            >
+              AI &amp; selling
+            </Link>{" "}
+            also apply, and AI stops at whichever limit is reached first while your rules carry on.
           </p>
         </div>
 

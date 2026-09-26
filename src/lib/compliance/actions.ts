@@ -87,7 +87,9 @@ const schema = z.object({
   socialAutonomousSending: z.boolean().default(false),
   socialAutoPromoteOnReply: z.boolean().default(false),
   // Bounds mirror the CHECK constraints added in 0072.
-  socialWithdrawAfterDays: z.number().int().min(3).max(90).nullable().default(21),
+  socialWithdrawAfterDays: z.number().int().min(3).max(90).nullable().default(30),
+  // Null = never hand an unanswered invite to email. Bounds mirror 0093.
+  socialSkipToEmailAfterDays: z.number().int().min(1).max(60).nullable().default(7),
   socialFollowUpGapHours: z.number().int().min(24).max(720).default(96),
   socialMaxFollowUps: z.number().int().min(0).max(2).default(2),
 
@@ -109,6 +111,19 @@ export async function saveDataControlsAction(
       error: issue
         ? `${issue.path.join(".") || "That"} is not valid: ${issue.message}`
         : "Some of those details were not valid.",
+    };
+  }
+
+  // The database refuses crossed windows (0093); say why rather than failing.
+  if (
+    parsed.data.socialSkipToEmailAfterDays !== null &&
+    parsed.data.socialWithdrawAfterDays !== null &&
+    parsed.data.socialSkipToEmailAfterDays > parsed.data.socialWithdrawAfterDays
+  ) {
+    return {
+      ok: false,
+      error:
+        "Moving an unanswered invite to email must happen before it is withdrawn, or it would never happen. Make the first number smaller than the second.",
     };
   }
 
@@ -140,6 +155,7 @@ export async function saveDataControlsAction(
       social_autonomous_sending: value.socialAutonomousSending,
       social_auto_promote_on_reply: value.socialAutoPromoteOnReply,
       social_withdraw_after_days: value.socialWithdrawAfterDays,
+      social_skip_to_email_after_days: value.socialSkipToEmailAfterDays,
       social_follow_up_gap_hours: value.socialFollowUpGapHours,
       social_max_follow_ups: value.socialMaxFollowUps,
       sourcing_strictness: value.sourcingStrictness,

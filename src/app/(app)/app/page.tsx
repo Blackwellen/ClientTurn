@@ -9,8 +9,13 @@ import {
   type PeriodCounts,
   type SeriesKey,
 } from "@/lib/dashboard/queries";
-import { getBookingDestination, listBookings } from "@/lib/bookings/queries";
+import {
+  getBookingDestination,
+  listBookings,
+  listPendingBookings,
+} from "@/lib/bookings/queries";
 import { listCampaigns } from "@/lib/campaigns/queries";
+import { getRevenueControl } from "@/lib/dashboard/revenue-control";
 import {
   comparisonLabel,
   formatGbp,
@@ -28,9 +33,13 @@ import { LeadFunnelCard } from "@/components/dashboard/lead-funnel-card";
 import { NeedsAttentionPanel } from "@/components/dashboard/needs-attention-panel";
 import { RecentLeadsCard } from "@/components/dashboard/recent-leads-card";
 import { UpcomingBookingsCard } from "@/components/dashboard/upcoming-bookings-card";
+import { PendingBookingsCard } from "@/components/dashboard/pending-bookings-card";
 import { SourcePerformanceCard } from "@/components/dashboard/source-performance-card";
 import { FollowUpPerformanceCard } from "@/components/dashboard/follow-up-performance-card";
 import { ReactivationPerformanceCard } from "@/components/dashboard/reactivation-performance-card";
+import { RevenueControlSection } from "@/components/dashboard/revenue-control-section";
+import { SetupChecklistCard } from "@/components/dashboard/setup-checklist-card";
+import { getGettingStarted } from "@/lib/settings/queries";
 
 export const metadata: Metadata = { title: "Dashboard · Client Turn" };
 export const dynamic = "force-dynamic";
@@ -39,6 +48,8 @@ const UPCOMING_BOOKINGS = 6;
 /** A daily sweep, not a backlog. Anything older is worked from the lead. */
 const AWAITING_OUTCOME = 4;
 const RECENT_CAMPAIGNS = 5;
+/** Requested times waiting on a person to confirm or decline (B10). */
+const PENDING_BOOKINGS = 5;
 
 function delta(
   current: number,
@@ -114,7 +125,17 @@ export default async function DashboardPage({
   // batch rather than a sequential waterfall. `getDashboardData` carries the
   // KPIs, funnel, sparklines, sources and follow-up metrics in a single pass
   // over the lead cohort, so the page never reads the same rows twice.
-  const [data, health, bookings, awaitingOutcome, destination, campaigns] = await Promise.all([
+  const [
+    data,
+    health,
+    bookings,
+    awaitingOutcome,
+    pendingBookings,
+    destination,
+    campaigns,
+    revenueControl,
+    gettingStarted,
+  ] = await Promise.all([
     getDashboardData(workspace.businessId, range),
     getHealthStripData(workspace.businessId),
     listBookings(
@@ -122,7 +143,9 @@ export default async function DashboardPage({
       {
         tab: "upcoming",
         view: "list",
-        status: "all",
+        // Only confirmed bookings: a `pending` request is not a booking and
+        // has its own card, and a cancelled one is not coming up.
+        status: "scheduled",
         page: 1,
         pageSize: UPCOMING_BOOKINGS,
       },
@@ -142,8 +165,14 @@ export default async function DashboardPage({
       },
       workspace.timezone,
     ),
+    listPendingBookings(workspace.businessId, PENDING_BOOKINGS),
     getBookingDestination(workspace.businessId),
     listCampaigns(workspace.businessId),
+    // Each card degrades on its own; this never rejects.
+    getRevenueControl(workspace.businessId, range),
+    // "Finish setting up": what onboarding let the owner skip. A failed read
+    // hides the card rather than failing the dashboard.
+    getGettingStarted(workspace.businessId).catch(() => []),
   ]);
 
   const comparison = comparisonLabel(range);
@@ -172,13 +201,24 @@ export default async function DashboardPage({
         }
       />
 
+      <SetupChecklistCard items={gettingStarted} />
+
       <HealthStrip items={health} />
 
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
+      <div data-tour="dashboard-kpis" className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
         {KPIS.map((kpi) => {
           const current = data.current[kpi.key];
           const previous = data.previous[kpi.key];
-          const movement = delta(current, previous, comparison);
+          // A rate with an empty denominator is null (metric registry
+          // `rate()`): shown as "—" with no movement, never as 0%.
+          const movement: Delta =
+            current === null || previous === null
+              ? {
+                  value: current === null ? "No leads yet" : "No prior data",
+                  direction: "flat",
+                  comparison,
+                }
+              : delta(current, previous, comparison);
           return (
             <KpiCard
               key={kpi.key}
@@ -186,9 +226,11 @@ export default async function DashboardPage({
               label={kpi.label}
               hint={kpi.hint}
               value={
-                kpi.percent
-                  ? formatPercent(current, 1)
-                  : current.toLocaleString("en-GB")
+                current === null
+                  ? "—"
+                  : kpi.percent
+                    ? formatPercent(current, 1)
+                    : current.toLocaleString("en-GB")
               }
               delta={movement}
               sparkline={
@@ -224,8 +266,16 @@ export default async function DashboardPage({
         <NeedsAttentionPanel items={attention} />
       </div>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
+      <RevenueControlSection data={revenueControl} />
+
+      <div className="grid gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
         <RecentLeadsCard leads={data.recentLeads} />
+        <PendingBookingsCard
+          rows={pendingBookings.rows}
+          total={pendingBookings.total}
+          failed={pendingBookings.failed}
+          timezone={workspace.timezone}
+        />
         <UpcomingBookingsCard
           rows={bookings.rows}
           awaitingOutcome={awaitingOutcome.rows}

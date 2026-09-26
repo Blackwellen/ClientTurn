@@ -1,8 +1,5 @@
 import "server-only";
-import {
-  DEFAULT_SEQUENCE_SETTINGS,
-  type SocialSequenceSettings,
-} from "./social-sequence";
+import { type SocialSequenceSettings, sequenceSettingsFromRow } from "./social-sequence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordSocialAcceptance } from "./social-relationship";
 import {
@@ -14,6 +11,7 @@ import {
   socialCapacity,
   MAX_INVITE_NOTE_CHARS,
   MAX_SOCIAL_MESSAGE_CHARS,
+  SOCIAL_PLATFORMS,
   type SocialAccountTier,
   type SocialCapacity,
   type SocialPlatform,
@@ -181,7 +179,9 @@ export async function planSocialAction(
   const [{ data: prospect }, { data: existing }, accounts] = await Promise.all([
     admin
       .from("prospects")
-      .select("id, linkedin_url, outreach_eligibility, status, promoted_to_lead_id")
+      .select(
+        "id, linkedin_url, social_profile_url, outreach_eligibility, status, promoted_to_lead_id",
+      )
       .eq("business_id", businessId)
       .eq("id", prospectId)
       .maybeSingle(),
@@ -229,7 +229,16 @@ export async function planSocialAction(
     };
   }
 
-  const profileUrl = existing?.profile_url ?? prospect.linkedin_url ?? null;
+  // LinkedIn's own column first; every other platform writes the generic
+  // social identity (0073) instead. Reading `linkedin_url` unconditionally
+  // here meant a TikTok, Facebook or Instagram prospect with no
+  // `social_connection_states` row yet -- i.e. every first invite, before
+  // anything has been recorded -- always resolved to no profile at all and
+  // was blocked outright, regardless of what the engagement provider found.
+  const profileUrl =
+    existing?.profile_url ??
+    (platform === "LINKEDIN" ? prospect.linkedin_url : prospect.social_profile_url) ??
+    null;
 
   if (canMessage(state)) {
     if (state === "MESSAGED" || state === "REPLIED") {
@@ -574,19 +583,25 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
     admin
       .from("prospects")
       .select(
-        "id, first_name, last_name, grade, score, linkedin_url, status, outreach_eligibility, prospect_companies ( name )",
+        "id, first_name, last_name, grade, score, linkedin_url, social_platform, social_profile_url, status, outreach_eligibility, prospect_companies ( name )",
       )
       .eq("business_id", businessId)
       .eq("is_test", false)
       .is("promoted_to_lead_id", null)
       .eq("outreach_eligibility", "ELIGIBLE")
       .in("status", ["READY", "APPROVED", "OUTREACH_ACTIVE"])
-      .not("linkedin_url", "is", null)
+      // A prospect is reachable here from either identity column: `linkedin_url`
+      // for LinkedIn, or the generic `social_platform`/`social_profile_url` pair
+      // (0073) that Facebook, Instagram and TikTok engagement write. Filtering on
+      // `linkedin_url` alone silently dropped every prospect found on the other
+      // three platforms from this whole queue -- they had accounts, drafts and a
+      // connection-state row, but could never appear as "ready to invite".
+      .or("linkedin_url.not.is.null,social_profile_url.not.is.null")
       .limit(500),
     admin
       .from("social_outbound_messages")
       .select(
-        "id, prospect_id, account_id, platform, kind, sequence_step, body, composed_by, last_error, created_at, prospects ( first_name, last_name, linkedin_url, prospect_companies ( name ) )",
+        "id, prospect_id, account_id, platform, kind, sequence_step, body, composed_by, last_error, created_at, prospects ( first_name, last_name, linkedin_url, social_profile_url, prospect_companies ( name ) )",
       )
       .eq("business_id", businessId)
       .eq("status", "DRAFT")
@@ -608,7 +623,20 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
 
   for (const prospect of candidates ?? []) {
     const company = prospect.prospect_companies as unknown as { name: string } | null;
-    const existing = stateByProspect.get(`${prospect.id}:LINKEDIN`);
+
+    // `linkedin_url` wins when both are set, matching how the prospect was
+    // actually reached; otherwise fall back to the generic social identity
+    // (0073) that Facebook, Instagram and TikTok engagement write. A
+    // `social_platform` value this queue does not recognise is treated as
+    // LinkedIn's absence rather than guessed at.
+    const platform: SocialPlatform = prospect.linkedin_url
+      ? "LINKEDIN"
+      : SOCIAL_PLATFORMS.includes(prospect.social_platform as SocialPlatform)
+        ? (prospect.social_platform as SocialPlatform)
+        : "LINKEDIN";
+    const profileUrl = prospect.linkedin_url ?? prospect.social_profile_url;
+
+    const existing = stateByProspect.get(`${prospect.id}:${platform}`);
     const state = (existing?.state as SocialState | undefined) ?? "NOT_CONNECTED";
 
     const pendingDays =
@@ -622,9 +650,9 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
         [prospect.first_name, prospect.last_name].filter(Boolean).join(" ").trim() ||
         "Unnamed prospect",
       companyName: company?.name ?? null,
-      platform: "LINKEDIN",
+      platform,
       state,
-      profileUrl: existing?.profile_url ?? prospect.linkedin_url,
+      profileUrl: existing?.profile_url ?? profileUrl,
       grade: prospect.grade,
       score: prospect.score === null ? null : Number(prospect.score),
       inviteSentAt: existing?.invite_sent_at ?? null,
@@ -653,6 +681,7 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
       first_name: string | null;
       last_name: string | null;
       linkedin_url: string | null;
+      social_profile_url: string | null;
       prospect_companies: { name: string } | null;
     } | null;
 
@@ -665,7 +694,9 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
         "Unnamed prospect",
       companyName: prospect?.prospect_companies?.name ?? null,
       platform: row.platform as SocialPlatform,
-      profileUrl: prospect?.linkedin_url ?? null,
+      // Same fallback as the queue rows above: LinkedIn's dedicated column
+      // first, then the generic social identity every other platform writes.
+      profileUrl: prospect?.linkedin_url ?? prospect?.social_profile_url ?? null,
       kind: row.kind as SocialDraft["kind"],
       sequenceStep: row.sequence_step,
       body: row.body,
@@ -707,44 +738,68 @@ export async function loadSocialQueue(businessId: string): Promise<SocialQueue> 
 export async function enrolProspectsInSocialSequence(input: {
   businessId: string;
   prospectIds: string[];
+  /**
+   * Forces every prospect onto this one platform -- what the scheduler uses
+   * when it already knows which channel it is working. Left unset, each
+   * prospect is enrolled on the platform its own profile identifies: its
+   * `linkedin_url`, or otherwise the generic social identity (0073) that
+   * Facebook, Instagram and TikTok engagement write. Approval does not know
+   * in advance which platform a batch of prospects came from, and defaulting
+   * the whole call to LinkedIn silently meant approving a TikTok prospect
+   * never put it on the sequencer's clock at all.
+   */
   platform?: SocialPlatform;
 }): Promise<{ enrolled: number }> {
-  const platform = input.platform ?? "LINKEDIN";
   if (input.prospectIds.length === 0) return { enrolled: 0 };
 
   const admin = createAdminClient();
 
-  // Only an active account for this platform makes enrolment meaningful.
-  // Without one the sequencer would compose an invite it has nowhere to send
-  // from, and halt on the next sweep having already spent the tokens.
+  // Only an active account for a prospect's platform makes enrolment
+  // meaningful. Without one the sequencer would compose an invite it has
+  // nowhere to send from, and halt on the next sweep having already spent the
+  // tokens.
   const accounts = await listSocialAccounts(input.businessId);
-  const account = accounts.find(
-    (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
-  );
-  if (!account) return { enrolled: 0 };
+  const activeAccountFor = (platform: SocialPlatform) =>
+    accounts.find(
+      (candidate) => candidate.platform === platform && candidate.status === "ACTIVE",
+    ) ?? null;
 
   const { data: eligible } = await admin
     .from("prospects")
-    .select("id, linkedin_url")
+    .select("id, linkedin_url, social_platform, social_profile_url")
     .eq("business_id", input.businessId)
     .in("id", input.prospectIds)
     .eq("outreach_eligibility", "ELIGIBLE")
     .in("status", ["APPROVED", "OUTREACH_ACTIVE"])
     .is("promoted_to_lead_id", null)
-    .not("linkedin_url", "is", null);
+    .or("linkedin_url.not.is.null,social_profile_url.not.is.null");
 
   const rows = (eligible ?? [])
-    .filter((prospect) => Boolean(prospect.linkedin_url))
-    .map((prospect) => ({
-      business_id: input.businessId,
-      prospect_id: prospect.id,
-      account_id: account.id,
-      platform,
-      state: "NOT_CONNECTED" as const,
-      profile_url: prospect.linkedin_url,
-      next_action: "INVITE" as const,
-      next_action_at: new Date().toISOString(),
-    }));
+    .map((prospect) => {
+      const platform: SocialPlatform =
+        input.platform ??
+        (prospect.linkedin_url
+          ? "LINKEDIN"
+          : SOCIAL_PLATFORMS.includes(prospect.social_platform as SocialPlatform)
+            ? (prospect.social_platform as SocialPlatform)
+            : "LINKEDIN");
+      const profileUrl =
+        platform === "LINKEDIN" ? prospect.linkedin_url : prospect.social_profile_url;
+      const account = activeAccountFor(platform);
+      if (!account || !profileUrl) return null;
+
+      return {
+        business_id: input.businessId,
+        prospect_id: prospect.id,
+        account_id: account.id,
+        platform,
+        state: "NOT_CONNECTED" as const,
+        profile_url: profileUrl,
+        next_action: "INVITE" as const,
+        next_action_at: new Date().toISOString(),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   if (rows.length === 0) return { enrolled: 0 };
 
@@ -781,18 +836,6 @@ export async function loadSocialSequenceSettings(
     .eq("business_id", businessId)
     .maybeSingle();
 
-  return {
-    withdrawAfterDays:
-      data?.social_withdraw_after_days ?? DEFAULT_SEQUENCE_SETTINGS.withdrawAfterDays,
-    skipToEmailAfterDays:
-      data?.social_skip_to_email_after_days ??
-      DEFAULT_SEQUENCE_SETTINGS.skipToEmailAfterDays,
-    followUpGapHours:
-      data?.social_follow_up_gap_hours ?? DEFAULT_SEQUENCE_SETTINGS.followUpGapHours,
-    maxFollowUps: data?.social_max_follow_ups ?? DEFAULT_SEQUENCE_SETTINGS.maxFollowUps,
-    warmBeforeInvite:
-      data?.social_warm_before_invite ?? DEFAULT_SEQUENCE_SETTINGS.warmBeforeInvite,
-    warmDelayHours:
-      data?.social_warm_delay_hours ?? DEFAULT_SEQUENCE_SETTINGS.warmDelayHours,
-  };
+  // Blank means never: a saved null is kept (sequenceSettingsFromRow).
+  return sequenceSettingsFromRow(data ?? null);
 }

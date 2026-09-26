@@ -27,6 +27,7 @@ import {
   type TaxState,
   type TrialState,
 } from "./programme";
+import { ilikeContains } from "@/lib/supabase/ilike";
 
 /**
  * Portal reads for the partner surfaces (V4 §30-36).
@@ -293,10 +294,11 @@ export async function listReferralPage(
   if (options.status && options.status !== "all") {
     query = query.eq("status", options.status);
   }
-  if (options.search?.trim()) {
+  const labelPattern = ilikeContains(options.search ?? "");
+  if (labelPattern) {
     // Only the display label is searchable. There is no customer identity here
     // to search against, which is the point.
-    query = query.ilike("display_label", `%${options.search.trim()}%`);
+    query = query.ilike("display_label", labelPattern);
   }
 
   const { data, count } = await query

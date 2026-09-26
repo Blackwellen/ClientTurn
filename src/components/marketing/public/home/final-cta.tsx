@@ -24,7 +24,7 @@ import { ScrollDraw } from "./scroll-draw";
  * close rate or margin, so it must not imply it.
  *
  * The four assurances underneath are the actual commercial terms: the trial
- * length comes from the plan catalogue, and "no card" and "cancel anytime"
+ * length comes from the plan catalogue, and "nothing charged during the trial" and "cancel anytime"
  * are what the Terms say.
  */
 
@@ -156,7 +156,7 @@ function OutcomeMap() {
 export function FinalCtaSection() {
   const assurances = [
     `${TRIAL_DAYS}-day free trial`,
-    "No card required",
+    "Nothing charged during the trial",
     "Guided setup",
     "Cancel anytime",
   ];

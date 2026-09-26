@@ -5,18 +5,43 @@ import { recordAudit, recordUsage } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { PermanentJobError } from "@/lib/jobs/registry";
-import { parsePlan, type SearchPlan } from "@/lib/find-leads/plan";
+import { parsePlan, planWantsIntent, type SearchPlan } from "@/lib/find-leads/plan";
 import { STAGE_KEYS, STAGES, progressPercent, type StageKey } from "@/lib/find-leads/stages";
 import { EMPTY_COUNTERS, type RunCounters } from "@/lib/find-leads/types";
 import { runProviderBatch } from "@/lib/find-leads/server/providers/router";
-import { capabilityAvailable, unhealthyProviders } from "@/lib/find-leads/server/providers/registry";
+import {
+  capabilityAvailable,
+  providersFor,
+  unhealthyProviders,
+} from "@/lib/find-leads/server/providers/registry";
 import type {
   CompanyCandidate,
   ContactCandidate,
   IntentCategoryQuery,
   IntentResult,
+  IntentWants,
 } from "@/lib/find-leads/server/providers/types";
+import {
+  EVIDENCE_KIND_CATEGORY_NAME,
+  EVIDENCE_KIND_LABELS,
+  EVIDENCE_SIGNAL_TYPE,
+  kindsForCategory,
+  type IntentEvidenceKind,
+} from "@/lib/find-leads/intent-evidence";
+import { recordIntentSignal } from "@/lib/find-leads/server/intent-record";
+import {
+  EVIDENCE_KIND_FEED,
+  SIGNAL_FEED_NEEDS,
+  intentWantsFor,
+} from "@/lib/find-leads/signals";
 import { withinPlanLocations } from "@/lib/find-leads/server/locations";
+import {
+  EMPTY_LOCATION,
+  discoveryGeoInside,
+  fillBlanks,
+  hasAnyLocation,
+  registeredNameUpdate,
+} from "@/lib/find-leads/server/company-provenance";
 import type { UnitCosts } from "@/lib/find-leads/cost-model";
 import { assessContacts, lawfulBasisFor } from "@/lib/find-leads/contact-legality";
 import {
@@ -47,6 +72,9 @@ import {
 import { checkSuppressionBatch } from "@/lib/policy/suppression";
 import { evaluateAllChannels } from "@/lib/policy/service";
 import type { Grade } from "@/lib/prospects/types";
+import { selectEnrollable } from "@/lib/agents/policy";
+import { originForProvider } from "@/lib/find-leads/email-origin";
+import { recordEmailOrigin } from "@/lib/find-leads/server/email-origin-store";
 
 /**
  * The sourcing run worker: the twelve-stage state machine (V4 §11.4-11.18).
@@ -103,6 +131,13 @@ type RunContext = {
    */
   strictness: { mode: SourcingStrictness; requireRegistryMatch: boolean };
   deadline: number;
+  /**
+   * Which READY prospects an auto-contact run enrols. KNOWN_COMPANIES is an
+   * agent set to "Review new companies only": prospects at a company first
+   * seen in this run wait for review.
+   */
+  enrolment: "ALL" | "KNOWN_COMPANIES";
+  runCreatedAt: string;
 };
 
 /**
@@ -138,7 +173,7 @@ export async function handleSourcingRun(job: ClaimedJob): Promise<void> {
   const { data: run } = await admin
     .from("sourcing_runs")
     .select(
-      "id, agent_id, status, cancel_requested, target_verified, minimum_grade, limits_json, checkpoint_json",
+      "id, agent_id, status, cancel_requested, target_verified, minimum_grade, limits_json, checkpoint_json, created_at",
     )
     .eq("id", runId)
     .eq("business_id", businessId)
@@ -160,6 +195,8 @@ export async function handleSourcingRun(job: ClaimedJob): Promise<void> {
     plan?: unknown;
     unitCosts?: UnitCosts;
     intentEnabled?: boolean;
+    excludedProviders?: string[];
+    enrolment?: "ALL" | "KNOWN_COMPANIES";
   };
   const plan = parsePlan(limits.plan);
 
@@ -185,10 +222,17 @@ export async function handleSourcingRun(job: ClaimedJob): Promise<void> {
     businessId,
     plan,
     unitCosts: limits.unitCosts ?? {},
-    intentEnabled: limits.intentEnabled ?? plan.intent.categories.length > 0,
+    intentEnabled: limits.intentEnabled ?? planWantsIntent(plan),
     target: run.target_verified,
     minimumGrade: run.minimum_grade as Grade,
-    unhealthy: await unhealthyProviders(),
+    // An agent's unselected sources are routed around exactly like an
+    // unhealthy provider, so the waterfall never calls them.
+    unhealthy: new Set([
+      ...(await unhealthyProviders()),
+      ...(Array.isArray(limits.excludedProviders) ? limits.excludedProviders : []),
+    ]),
+    enrolment: limits.enrolment === "KNOWN_COMPANIES" ? "KNOWN_COMPANIES" : "ALL",
+    runCreatedAt: run.created_at,
     strictness: await loadStrictness(businessId),
     deadline: Date.now() + TIME_BUDGET_MS,
   };
@@ -541,7 +585,7 @@ async function findCompanies(
     }
 
     for (const candidate of outcome.records) {
-      const inserted = await upsertCompany(context, candidate);
+      const inserted = await upsertCompany(context, candidate, outcome.provider);
       if (inserted) found += 1;
     }
 
@@ -565,9 +609,25 @@ async function findCompanies(
 async function upsertCompany(
   context: RunContext,
   candidate: CompanyCandidate,
+  provider: string | null,
 ): Promise<boolean> {
   const admin = createAdminClient();
   const domain = normaliseDomain(candidate.domain ?? candidate.websiteUrl);
+
+  // B24: a position a provider only lets us use at query time (Google Places,
+  // ToS §3.2.3) is tested against the plan's radius here, once, and only the
+  // verdict is stored. A place confidently outside the radius is not stored.
+  let location: Record<string, unknown> = candidate.location;
+  if (candidate.discoveryOnly) {
+    const geo = withinPlanLocations(context.plan, {
+      ...candidate.discoveryOnly,
+      city: null,
+      region: null,
+      country: null,
+    });
+    if (geo.confident && !geo.inside) return false;
+    location = geo.confident ? { ...EMPTY_LOCATION, discoveryGeo: "INSIDE" } : { ...EMPTY_LOCATION };
+  }
 
   const dedupeKey = companyDedupeKey({
     name: candidate.name,
@@ -575,34 +635,79 @@ async function upsertCompany(
     postcode: candidate.location.postcode,
   });
 
-  const { data: company, error } = await admin
-    .from("prospect_companies")
-    .upsert(
-      {
+  const incoming = {
+    name: candidate.name,
+    domain,
+    website_url: candidate.websiteUrl,
+    industry: candidate.industry,
+    employee_count: candidate.employeeCount,
+    company_size: candidate.companySize,
+    description: candidate.description,
+    location_json: location,
+    // Keyed by provider, so a Places place ID (the one Places field that may
+    // be kept indefinitely) is identifiable as one.
+    external_ids: candidate.externalId ? { [provider ?? "source"]: candidate.externalId } : {},
+  };
+
+  // B16: re-discovery fills blanks and never overwrites. The previous upsert
+  // replaced a name or description from a better source (the register, the
+  // company's own site) with whatever the latest search returned.
+  const findExisting = () =>
+    admin
+      .from("prospect_companies")
+      .select(
+        "id, name, domain, website_url, industry, employee_count, company_size, description, location_json, external_ids",
+      )
+      .eq("business_id", context.businessId)
+      .eq("dedupe_key", dedupeKey)
+      .maybeSingle();
+
+  let { data: existing, error: readError } = await findExisting();
+  if (readError) return false;
+
+  if (!existing) {
+    const { data: created, error: insertError } = await admin
+      .from("prospect_companies")
+      .insert({
         business_id: context.businessId,
-        name: candidate.name,
-        domain,
-        website_url: candidate.websiteUrl,
-        industry: candidate.industry,
-        employee_count: candidate.employeeCount,
-        company_size: candidate.companySize,
-        description: candidate.description,
-        location_json: candidate.location as never,
-        external_ids: candidate.externalId ? { source: candidate.externalId } : {},
+        ...incoming,
+        location_json: incoming.location_json as never,
         dedupe_key: dedupeKey,
-      },
-      { onConflict: "business_id,dedupe_key", ignoreDuplicates: false },
-    )
-    .select("id")
-    .maybeSingle();
+      })
+      .select("id")
+      .maybeSingle();
 
-  if (error || !company) return false;
+    if (created) return recordCompanyFound(context, created.id, candidate.name, domain);
+    // Another worker inserted the same company between our read and write.
+    if (insertError?.code !== "23505") return false;
+    ({ data: existing, error: readError } = await findExisting());
+    if (readError || !existing) return false;
+  }
 
+  const patch = fillBlanks(existing as Record<string, unknown>, incoming);
+  if (Object.keys(patch).length > 0) {
+    await admin
+      .from("prospect_companies")
+      .update(patch as never)
+      .eq("id", existing.id)
+      .eq("business_id", context.businessId);
+  }
+
+  return recordCompanyFound(context, existing.id, candidate.name, domain);
+}
+
+async function recordCompanyFound(
+  context: RunContext,
+  companyId: string,
+  candidateName: string,
+  domain: string | null,
+): Promise<boolean> {
+  const admin = createAdminClient();
   await admin.from("sourcing_run_results").insert({
     business_id: context.businessId,
     run_id: context.runId,
-    company_id: company.id,
-    candidate_name: candidate.name,
+    company_id: companyId,
+    candidate_name: candidateName,
     candidate_domain: domain,
     outcome: "COMPANY_FOUND",
   });
@@ -662,6 +767,10 @@ async function findContacts(context: RunContext): Promise<StageSummary> {
           })),
           roles: context.plan.decisionMakerRoles,
           limit: slice.length * 3,
+          // Without these the LinkedIn adapter cannot read the customer's own
+          // imported list, and a partner search ignores the plan's filters.
+          businessId: context.businessId,
+          linkedin: context.plan.linkedin,
         }) ??
         Promise.resolve({
           ok: false,
@@ -680,7 +789,9 @@ async function findContacts(context: RunContext): Promise<StageSummary> {
       const company = slice.find(
         (row) => row.domain && row.domain === normaliseDomain(candidate.companyDomain),
       );
-      if (await insertProspect(context, candidate, company?.id ?? null)) contacts += 1;
+      if (await insertProspect(context, candidate, company?.id ?? null, outcome.provider)) {
+        contacts += 1;
+      }
     }
 
     await saveCheckpoint(context, { stage: "FINDING_CONTACTS", offset: index + CONTACT_BATCH });
@@ -696,6 +807,7 @@ async function insertProspect(
   context: RunContext,
   candidate: ContactCandidate,
   companyId: string | null,
+  provider: string | null,
 ): Promise<boolean> {
   const admin = createAdminClient();
   const email = normaliseEmail(candidate.email);
@@ -743,6 +855,10 @@ async function insertProspect(
       subscriber_type: contacts.subscriberType,
       status: "DISCOVERED",
       source_run_id: context.runId,
+      // B16: which provider supplied this contact. The compliance stage's
+      // first-party check (`website_contacts`, `companies_house`,
+      // `*_engagement`) reads this, and never matched while it was unset.
+      source_provider: provider,
       agent_id: context.agentId,
       // Cold sourced records are never eligible until the compliance stage
       // says so. REVIEW is the safe default, not ELIGIBLE.
@@ -767,6 +883,16 @@ async function insertProspect(
   }
 
   if (error || !prospect) return false;
+
+  // §26: where the address came from. A separate, schema-lag-tolerant write.
+  if (contacts.email) {
+    await recordEmailOrigin({
+      table: "prospects",
+      businessId: context.businessId,
+      id: prospect.id,
+      origin: candidate.emailOrigin ?? originForProvider(provider),
+    });
+  }
 
   await admin.from("sourcing_run_results").insert([
     {
@@ -798,6 +924,34 @@ async function insertProspect(
 /* ------------------------------------------------------ 5. pre-filtering */
 
 /**
+ * Whether a stored company is inside the plan's locations.
+ *
+ * A company found through Google Places has no stored position (B24, ToS
+ * §3.2.3) -- only the verdict its position gave at discovery. That verdict is
+ * used when nothing better has been stored since.
+ */
+function companyGeo(plan: SearchPlan, locationJson: unknown) {
+  const location = (locationJson ?? {}) as {
+    lat?: number | null;
+    lon?: number | null;
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+  };
+  const candidate = {
+    lat: location.lat ?? null,
+    lon: location.lon ?? null,
+    city: location.city ?? null,
+    region: location.region ?? null,
+    country: location.country ?? null,
+  };
+  if (!hasAnyLocation(candidate) && discoveryGeoInside(locationJson)) {
+    return { inside: true, confident: true };
+  }
+  return withinPlanLocations(plan, candidate);
+}
+
+/**
  * The free filter. Everything here is arithmetic on data already held — no
  * provider is called — which is exactly why it runs before enrichment.
  */
@@ -810,13 +964,7 @@ async function preFilter(context: RunContext): Promise<StageSummary> {
     const company = prospect.company;
     const reasons: string[] = [];
 
-    const geo = withinPlanLocations(context.plan, {
-      lat: (company?.location_json as { lat?: number } | null)?.lat ?? null,
-      lon: (company?.location_json as { lon?: number } | null)?.lon ?? null,
-      city: (company?.location_json as { city?: string } | null)?.city ?? null,
-      region: (company?.location_json as { region?: string } | null)?.region ?? null,
-      country: (company?.location_json as { country?: string } | null)?.country ?? null,
-    });
+    const geo = companyGeo(context.plan, company?.location_json ?? null);
     if (!geo.inside) reasons.push("REJECTED_GEOGRAPHY");
 
     const employees = company?.employee_count ?? null;
@@ -932,8 +1080,13 @@ async function enrich(context: RunContext): Promise<StageSummary> {
         .update({
           industry: record.industry ?? company.industry,
           employee_count: record.employeeCount ?? company.employee_count,
-          company_size: record.companySize,
-          description: record.description,
+          // An enricher that knows nothing about a field must not blank it:
+          // Companies House echoes the input record back with these null (B16).
+          ...(record.companySize ? { company_size: record.companySize } : {}),
+          ...(record.description ? { description: record.description } : {}),
+          // The registered name replaces a placeholder (the domain a Places
+          // discovery stood in with, B24) and never a real name.
+          ...registeredNameUpdate(company, record.registeredName),
           // The register identity, where a register was actually consulted.
           // This is what makes `SOLE_TRADER`/`PARTNERSHIP` reachable: without a
           // match the packs' distinction between an incorporated body and a
@@ -945,7 +1098,9 @@ async function enrich(context: RunContext): Promise<StageSummary> {
                 subscriber_type: record.subscriberType ?? "UNKNOWN",
               }
             : {}),
-          location_json: record.location as never,
+          // Same rule: an all-null location would erase what discovery stored,
+          // including the geo verdict.
+          ...(hasAnyLocation(record.location) ? { location_json: record.location as never } : {}),
         })
         .eq("id", company.id)
         .eq("business_id", context.businessId);
@@ -1282,13 +1437,10 @@ async function classify(context: RunContext): Promise<StageSummary> {
         id: prospect.id,
         email,
         country,
-        // A generic or role address is not a confirmed corporate subscriber, so
-        // it stays UNKNOWN and the pack decides. Only a real company domain
-        // asserts CORPORATE.
-        subscriberType:
-          domain && !isGenericEmailDomain(domain) && !isRoleMailbox(email)
-            ? "CORPORATE"
-            : "UNKNOWN",
+        // No subscriber type from the email domain: a sole trader's own
+        // domain is indistinguishable from a company's. The policy service
+        // reads the company's Companies House verdict instead, and an
+        // unresolved company stays UNKNOWN (review, never send).
         relationshipType: "FOUND_BY_US",
       },
       "COLD",
@@ -1385,28 +1537,55 @@ async function classify(context: RunContext): Promise<StageSummary> {
 
 /* ------------------------------------------------------------ 10. scoring */
 
-async function score(context: RunContext): Promise<StageSummary> {
+/**
+ * Sum of live (unexpired) intent score impacts per prospect.
+ *
+ * Intent matching (stage 11) runs after scoring (stage 10), and the score used
+ * to be computed without it, so intent was always 0 (design doc 04 §2,
+ * "existing defect"). Scoring now reads live matches here, and stage 11
+ * re-scores every prospect it matched. Read in chunks so a large run does not
+ * build an over-long `in (...)` filter.
+ */
+async function liveIntentBoosts(
+  context: RunContext,
+  prospectIds: string[],
+): Promise<Map<string, number>> {
   const admin = createAdminClient();
-  const prospects = await loadRunProspects(context, ["DISCOVERED", "VERIFIED", "REVIEW"]);
+  const boosts = new Map<string, number>();
+  const now = new Date().toISOString();
+  for (let index = 0; index < prospectIds.length; index += 200) {
+    const { data, error } = await admin
+      .from("prospect_intent_matches")
+      .select("prospect_id, score_impact")
+      .eq("business_id", context.businessId)
+      .in("prospect_id", prospectIds.slice(index, index + 200))
+      .gt("expires_at", now);
+    if (error) throw new Error(`prospect_intent_matches read failed: ${error.message}`);
+    for (const row of data ?? []) {
+      boosts.set(row.prospect_id, (boosts.get(row.prospect_id) ?? 0) + Number(row.score_impact));
+    }
+  }
+  return boosts;
+}
+
+/** One category at its maximum impact (intent/types.ts MAX_SCORE_IMPACT) is a
+ *  full-strength INTENT factor. */
+const INTENT_FULL_STRENGTH_IMPACT = 25;
+
+async function score(context: RunContext, only?: Set<string>): Promise<StageSummary> {
+  const admin = createAdminClient();
+  const loaded = await loadRunProspects(context, ["DISCOVERED", "VERIFIED", "REVIEW"]);
+  // `only` is the re-score after intent matching: just the prospects it touched.
+  const prospects = only ? loaded.filter((prospect) => only.has(prospect.id)) : loaded;
+  const intentBoosts = await liveIntentBoosts(
+    context,
+    prospects.map((prospect) => prospect.id),
+  );
   let scored = 0;
 
   for (const prospect of prospects) {
     const company = prospect.company;
-    const location = (company?.location_json ?? {}) as {
-      lat?: number;
-      lon?: number;
-      city?: string;
-      region?: string;
-      country?: string;
-    };
-
-    const geo = withinPlanLocations(context.plan, {
-      lat: location.lat ?? null,
-      lon: location.lon ?? null,
-      city: location.city ?? null,
-      region: location.region ?? null,
-      country: location.country ?? null,
-    });
+    const geo = companyGeo(context.plan, company?.location_json ?? null);
 
     const industryMatch =
       company?.industry && context.plan.industries.length
@@ -1460,7 +1639,20 @@ async function score(context: RunContext): Promise<StageSummary> {
       },
     ];
 
-    const result = scoreProspect(features);
+    // Intent contributes twice, by design of scoreProspect: as its own weighted
+    // factor, and as a bounded additive boost (capped at 15 inside the scorer).
+    const intentImpact = intentBoosts.get(prospect.id) ?? 0;
+    if (intentImpact > 0) {
+      features.push({
+        factor: "INTENT",
+        value: Math.min(1, intentImpact / INTENT_FULL_STRENGTH_IMPACT),
+        confidence: 0.8,
+        evidenceSummary: "Live buying-intent signal",
+        evidenceSource: "prospect_intent_matches",
+      });
+    }
+
+    const result = scoreProspect(features, { intentBoost: intentImpact });
 
     await admin
       .from("prospects")
@@ -1542,9 +1734,21 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
   // workspace has never defined matches nothing rather than inventing one.
   const { data: categoryRows } = await admin
     .from("intent_categories")
-    .select("id, name, score_impact, freshness_days, keywords_entities")
+    .select("id, name, score_impact, freshness_days, keywords_entities, signal_types")
     .eq("business_id", context.businessId)
     .eq("active", true);
+
+  type CategoryRow = NonNullable<typeof categoryRows>[number];
+  const shapeOf = (row: CategoryRow) => {
+    const configured = row.keywords_entities as { keywords?: unknown } | null;
+    const keywords = Array.isArray(configured?.keywords)
+      ? configured.keywords.filter((k): k is string => typeof k === "string")
+      : [];
+    const signalTypes = Array.isArray(row.signal_types)
+      ? (row.signal_types as unknown[]).filter((t): t is string => typeof t === "string")
+      : [];
+    return { name: row.name, keywords, signalTypes };
+  };
 
   const categories = new Map(
     (categoryRows ?? []).map((row) => [row.name.trim().toLowerCase(), row]),
@@ -1553,19 +1757,20 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
   // The plan names categories; the workspace defines what they mean. A plan
   // naming a category the workspace has never configured matches nothing,
   // rather than being invented here.
-  const categoryQueries: IntentCategoryQuery[] = context.plan.intent.categories
-    .map((name) => {
-      const row = categories.get(name.trim().toLowerCase());
-      if (!row) return null;
-      const configured = row.keywords_entities as { keywords?: unknown } | null;
-      const keywords = Array.isArray(configured?.keywords)
-        ? configured.keywords.filter((k): k is string => typeof k === "string")
-        : [];
-      return { name: row.name, keywords };
-    })
-    .filter((entry): entry is IntentCategoryQuery => entry !== null);
+  const planCategories = context.plan.intent.categories
+    .map((name) => categories.get(name.trim().toLowerCase()) ?? null)
+    .filter((row): row is CategoryRow => row !== null);
+  const categoryQueries: IntentCategoryQuery[] = planCategories.map((row) => {
+    const shape = shapeOf(row);
+    return { name: shape.name, keywords: shape.keywords };
+  });
 
-  if (categoryQueries.length === 0) {
+  // Structured evidence (a register filing, a careers-page role) beyond the
+  // keyword categories: what the plan asked for, plus what its categories
+  // collect. See `intentWantsFor`.
+  const wants: IntentWants = intentWantsFor(context.plan, planCategories.map(shapeOf));
+
+  if (categoryQueries.length === 0 && wants.kinds.length === 0) {
     await raiseIssue(context, {
       severity: "WARNING",
       code: "INTENT_CATEGORIES_NOT_CONFIGURED",
@@ -1577,11 +1782,70 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
     return { text: "No matching intent categories are configured.", count: 0, skipped: true };
   }
 
+  // Register signals need the free Companies House key. Say so, rather than
+  // letting the run report "no signals" when nothing was ever looked for.
+  const registerKinds = wants.kinds.filter((kind) => EVIDENCE_KIND_FEED[kind] === "COMPANIES_HOUSE");
+  if (registerKinds.length > 0 && !providersFor("INTENT", context.unhealthy).some((p) => p.key === "companies_house")) {
+    await raiseIssue(context, {
+      severity: "WARNING",
+      code: "INTENT_REGISTER_UNCONFIGURED",
+      message: "Companies House signals were not checked.",
+      detail: `${registerKinds.map((kind) => EVIDENCE_KIND_LABELS[kind]).join(", ")} ${registerKinds.length === 1 ? "comes" : "come"} from the Companies House register. ${SIGNAL_FEED_NEEDS.COMPANIES_HOUSE}`,
+      requiresUserAction: true,
+    });
+  }
+
+  // Each structured kind is filed under a category that collects it: one the
+  // plan names, else any active workspace category, else one created for it
+  // (visible and editable in the Intent tab). Intent events are keyed on a
+  // category, so evidence with nowhere to go would otherwise be dropped.
+  const kindCategory = new Map<IntentEvidenceKind, CategoryRow>();
+  for (const kind of wants.kinds) {
+    const collects = (row: CategoryRow) => kindsForCategory(shapeOf(row)).includes(kind);
+    let row = planCategories.find(collects) ?? (categoryRows ?? []).find(collects) ?? null;
+
+    if (!row) {
+      const name = EVIDENCE_KIND_CATEGORY_NAME[kind];
+      const { data: existing } = await admin
+        .from("intent_categories")
+        .select("id, name, score_impact, freshness_days, keywords_entities, signal_types, active")
+        .eq("business_id", context.businessId)
+        .eq("name", name)
+        .maybeSingle();
+
+      // A category the customer switched off stays off.
+      if (existing && !existing.active) continue;
+
+      if (existing) {
+        row = existing;
+      } else {
+        const { data: created } = await admin
+          .from("intent_categories")
+          .insert({
+            business_id: context.businessId,
+            name,
+            description: "Created by a search that asked for this signal.",
+            signal_types: [EVIDENCE_SIGNAL_TYPE[kind]] as never,
+            keywords_entities: { keywords: [] } as never,
+            freshness_days: context.plan.intent.freshnessDays,
+            score_impact: 10,
+          })
+          .select("id, name, score_impact, freshness_days, keywords_entities, signal_types")
+          .maybeSingle();
+        row = created ?? null;
+      }
+    }
+
+    if (row) kindCategory.set(kind, row);
+  }
+
   const byDomain = new Map<string, RunProspect[]>();
+  const registration = new Map<string, string | null>();
   for (const prospect of prospects) {
     const domain = prospect.company?.domain;
     if (!domain) continue;
     byDomain.set(domain, [...(byDomain.get(domain) ?? []), prospect]);
+    if (prospect.company?.registration_id) registration.set(domain, prospect.company.registration_id);
   }
 
   const domains = [...byDomain.keys()];
@@ -1589,99 +1853,89 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
     return { text: "No company domains to check for signals.", count: 0, skipped: true };
   }
 
+  // Every configured intent source runs, not only the cheapest. The website
+  // and the register answer different questions, so the first to succeed is
+  // not a substitute for the other. Each is routed alone by marking the rest
+  // unhealthy for that batch, so the router's accounting still applies.
+  const sources = providersFor("INTENT", context.unhealthy);
+  const now = Date.now();
   let matched = 0;
 
   for (let index = 0; index < domains.length; index += INTENT_BATCH) {
     await assertContinuable(context);
     const slice = domains.slice(index, index + INTENT_BATCH);
 
-    const outcome = await runProviderBatch<IntentResult>({
-      runId: context.runId,
-      businessId: context.businessId,
-      stage: "INTENT_MATCHING",
-      capability: "INTENT",
-      recordCount: slice.length,
-      unitCosts: context.unitCosts,
-      unhealthy: context.unhealthy,
-      idempotencyKey: `intent:${index}`,
-      invoke: (provider) =>
-        provider.fetchIntent?.({
-          domains: slice,
-          // Only the categories this plan asked for, carrying the keywords the
-          // workspace configured for each.
-          categories: categoryQueries,
-          freshnessDays: context.plan.intent.freshnessDays,
-        }) ??
-        Promise.resolve({
-          ok: false,
-          records: [],
-          costMinor: 0,
-          cursor: null,
-          latencyMs: 0,
-          errorCode: "PROVIDER_NOT_CONFIGURED" as const,
-        }),
-    });
+    for (const source of sources) {
+      const outcome = await runProviderBatch<IntentResult>({
+        runId: context.runId,
+        businessId: context.businessId,
+        stage: "INTENT_MATCHING",
+        capability: "INTENT",
+        recordCount: slice.length,
+        unitCosts: context.unitCosts,
+        unhealthy: new Set([
+          ...context.unhealthy,
+          ...sources.filter((other) => other.key !== source.key).map((other) => other.key),
+        ]),
+        idempotencyKey: `intent:${source.key}:${index}`,
+        invoke: (provider) =>
+          provider.fetchIntent?.({
+            domains: slice,
+            // Only the categories this plan asked for, carrying the keywords the
+            // workspace configured for each.
+            categories: categoryQueries,
+            freshnessDays: context.plan.intent.freshnessDays,
+            wants,
+            companies: slice.map((domain) => ({ domain, registrationId: registration.get(domain) ?? null })),
+          }) ??
+          Promise.resolve({
+            ok: false,
+            records: [],
+            costMinor: 0,
+            cursor: null,
+            latencyMs: 0,
+            errorCode: "PROVIDER_NOT_CONFIGURED" as const,
+          }),
+      });
 
-    if (outcome.budgetExhausted) throw new RunHalt("BUDGET");
-    if (!outcome.ok) continue;
+      if (outcome.budgetExhausted) throw new RunHalt("BUDGET");
+      if (!outcome.ok) continue;
 
-    for (const signal of outcome.records) {
-      const category = categories.get(signal.category.trim().toLowerCase());
-      if (!category) continue;
+      for (const signal of outcome.records) {
+        const category = signal.category
+          ? categories.get(signal.category.trim().toLowerCase())
+          : kindCategory.get(signal.evidence.kind);
+        if (!category) continue;
 
-      const targets = byDomain.get(signal.domain) ?? [];
-      if (targets.length === 0) continue;
+        const targets = byDomain.get(signal.domain) ?? [];
+        if (targets.length === 0) continue;
 
-      const expiresAt = new Date(
-        new Date(signal.observedAt).getTime() + category.freshness_days * 864e5,
-      ).toISOString();
-
-      for (const prospect of targets) {
-        // dedupe_key collapses the same underlying signal arriving twice, from
-        // a retry or from two providers.
-        const dedupeKey = `${signal.domain}:${category.id}:${signal.observedAt}`;
-
-        const { data: event } = await admin
-          .from("intent_events")
-          .upsert(
-            {
-              business_id: context.businessId,
-              intent_category_id: category.id,
-              company_id: prospect.company?.id ?? null,
-              prospect_id: prospect.id,
-              signal_type: "SOURCING_RUN",
-              source: outcome.provider ?? "unknown",
-              source_url: signal.sourceUrl,
-              observed_at: signal.observedAt,
-              expires_at: expiresAt,
-              confidence: Math.max(0, Math.min(1, signal.strength)),
-              score_impact: category.score_impact,
-              dedupe_key: dedupeKey,
-            },
-            { onConflict: "business_id,dedupe_key", ignoreDuplicates: false },
-          )
-          .select("id")
-          .maybeSingle();
-
-        if (!event) continue;
-
-        const { error } = await admin.from("prospect_intent_matches").insert({
-          business_id: context.businessId,
-          prospect_id: prospect.id,
-          intent_category_id: category.id,
-          intent_event_id: event.id,
-          expires_at: expiresAt,
-          score_impact: category.score_impact,
-        });
-
-        // 23505 is the (prospect_id, intent_event_id) unique index: the same
-        // match already recorded, which is success, not failure.
-        if (!error) matched += 1;
+        // Written by the same recorder the "Add website" check uses, so the
+        // evidence a prospect shows does not depend on which path found it.
+        for (const prospect of targets) {
+          const recorded = await recordIntentSignal({
+            businessId: context.businessId,
+            prospectId: prospect.id,
+            companyId: prospect.company?.id ?? null,
+            category,
+            signal,
+            provider: outcome.provider ?? "unknown",
+            now,
+          });
+          if (recorded) matched += 1;
+        }
       }
     }
 
     await saveCheckpoint(context, { stage: "INTENT_MATCHING", offset: index + INTENT_BATCH });
   }
+
+  // Scoring (stage 10) ran before these matches existed. Re-score every
+  // prospect in the run with a live match -- read from the table rather than
+  // from `matched`, so a run resumed mid-stage still re-scores the matches an
+  // earlier invocation recorded.
+  const withIntent = await prospectsWithLiveIntent(context);
+  if (withIntent.size > 0) await score(context, withIntent);
 
   return {
     text: "Analysed signals for buying intent.",
@@ -1801,6 +2055,8 @@ type RunProspect = {
     location_json: unknown;
     /** The register's verdict, where one was obtained. */
     subscriber_type: string | null;
+    /** Companies House number, where enrichment matched the register. */
+    registration_id: string | null;
   } | null;
 };
 
@@ -1812,7 +2068,7 @@ async function loadRunProspects(
   const { data } = await admin
     .from("prospects")
     .select(
-      "id, email, role_title, status, grade, score, verification_status, outreach_eligibility, eligibility_reason, source_provider, company:prospect_companies(id, name, domain, industry, employee_count, location_json, subscriber_type)",
+      "id, email, role_title, status, grade, score, verification_status, outreach_eligibility, eligibility_reason, source_provider, company:prospect_companies(id, name, domain, industry, employee_count, location_json, subscriber_type, registration_id)",
     )
     .eq("business_id", context.businessId)
     .eq("source_run_id", context.runId)
@@ -2014,14 +2270,18 @@ async function completeRun(context: RunContext): Promise<void> {
       .eq("id", signalId);
   }
 
+  let sessionTitle: string | null = null;
+
   if (run?.session_id) {
     // The rail's per-session count is the sum of what its runs produced.
     const { data: session } = await admin
       .from("search_sessions")
-      .select("prospects_found")
+      .select("prospects_found, title")
       .eq("business_id", context.businessId)
       .eq("id", run.session_id)
       .maybeSingle();
+
+    sessionTitle = session?.title ?? null;
 
     await admin
       .from("search_sessions")
@@ -2036,6 +2296,31 @@ async function completeRun(context: RunContext): Promise<void> {
       content: `Sourcing finished. ${counters.ready.toLocaleString("en-GB")} prospects are ready${counters.reviewRequired > 0 ? `, and ${counters.reviewRequired.toLocaleString("en-GB")} need your review` : ""}.`,
       structured_data: { runId: context.runId, milestone: true } as never,
     });
+  }
+
+  // Real-time warm-prospect alert, same shape as Gojiberry's "new high-intent
+  // lead" Slack ping — but reusing the one platform-wide notification.slack
+  // job rather than a sourcing-specific sender, so it inherits the same
+  // channel config, retry and dead-letter behaviour as every other alert.
+  if (counters.ready > 0) {
+    const { data: slackPrefs } = await admin
+      .from("business_settings")
+      .select("slack_notify_warm_prospect")
+      .eq("business_id", context.businessId)
+      .maybeSingle();
+
+    if (slackPrefs?.slack_notify_warm_prospect ?? true) {
+      await enqueue(
+        "notification.slack",
+        {
+          businessId: context.businessId,
+          text: sessionTitle
+            ? `Found: ${counters.ready.toLocaleString("en-GB")} warm prospect${counters.ready === 1 ? "" : "s"} — "${sessionTitle}"`
+            : `Found: ${counters.ready.toLocaleString("en-GB")} warm prospect${counters.ready === 1 ? "" : "s"}`,
+        },
+        { businessId: context.businessId },
+      );
+    }
   }
 
   // Verified prospects are the metered unit, billed on what was produced —
@@ -2109,15 +2394,69 @@ async function enrolAndDispatch(
     return;
   }
 
-  // Only records that are still READY and ELIGIBLE right now.
-  await admin
-    .from("prospects")
-    .update({ campaign_id: campaign.id })
-    .eq("business_id", context.businessId)
-    .eq("source_run_id", context.runId)
-    .eq("status", "READY")
-    .eq("outreach_eligibility", "ELIGIBLE")
-    .is("campaign_id", null);
+  if (context.enrolment === "KNOWN_COMPANIES") {
+    const { data: ready, error: readyError } = await admin
+      .from("prospects")
+      .select("id, company_id")
+      .eq("business_id", context.businessId)
+      .eq("source_run_id", context.runId)
+      .eq("status", "READY")
+      .eq("outreach_eligibility", "ELIGIBLE")
+      .is("campaign_id", null);
+    if (readyError) throw readyError;
+
+    const companyIds = [
+      ...new Set((ready ?? []).map((row) => row.company_id).filter((id): id is string => Boolean(id))),
+    ];
+    const { data: companies, error: companyError } = companyIds.length
+      ? await admin
+          .from("prospect_companies")
+          .select("id, created_at")
+          .eq("business_id", context.businessId)
+          .in("id", companyIds)
+      : { data: [], error: null };
+    if (companyError) throw companyError;
+
+    const { enrol, held } = selectEnrollable(
+      (ready ?? []).map((row) => ({ id: row.id, companyId: row.company_id })),
+      new Map((companies ?? []).map((row) => [row.id, row.created_at])),
+      context.runCreatedAt,
+      "KNOWN_COMPANIES",
+    );
+
+    if (enrol.length > 0) {
+      const { error: enrolError } = await admin
+        .from("prospects")
+        .update({ campaign_id: campaign.id })
+        .eq("business_id", context.businessId)
+        .in("id", enrol)
+        .eq("status", "READY")
+        .is("campaign_id", null);
+      if (enrolError) throw enrolError;
+    }
+
+    if (held.length > 0) {
+      await raiseIssue(context, {
+        severity: "INFO",
+        code: "NEW_COMPANIES_NEED_REVIEW",
+        message: `${held.length.toLocaleString("en-GB")} prospects are at companies new to your workspace.`,
+        detail: "This agent is set to review new companies, so they wait for your approval.",
+        requiresUserAction: true,
+      });
+    }
+    if (enrol.length === 0) return;
+  } else {
+    // Only records that are still READY and ELIGIBLE right now.
+    const { error: enrolError } = await admin
+      .from("prospects")
+      .update({ campaign_id: campaign.id })
+      .eq("business_id", context.businessId)
+      .eq("source_run_id", context.runId)
+      .eq("status", "READY")
+      .eq("outreach_eligibility", "ELIGIBLE")
+      .is("campaign_id", null);
+    if (enrolError) throw enrolError;
+  }
 
   await enqueue(
     "outreach.dispatch",

@@ -62,6 +62,17 @@ export const RATE_LIMITS = {
   // Promo codes carry a real discount. Generous enough for ordinary use,
   // tight enough that the endpoint cannot be used to enumerate offers.
   "affiliate:promo": { limit: 10, windowSeconds: 3600 },
+  // A pasted-token connect (HubSpot today) makes an authenticated call to the
+  // provider's API on every attempt. Keyed per workspace, not per IP, so it
+  // bounds a bad-token retry loop without punishing shared office egress.
+  "integration:connect_token": { limit: 10, windowSeconds: 600 },
+  // Public data-subject requests (/privacy-request). Each one sends a
+  // verification email, so it is bounded per address to stop the form being
+  // used to mail strangers.
+  "privacy:request": { limit: 5, windowSeconds: 3600 },
+  // Confirming a request from its emailed link. Generous for a real person,
+  // tight enough that token guessing is pointless on top of 256-bit tokens.
+  "privacy:verify": { limit: 20, windowSeconds: 600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

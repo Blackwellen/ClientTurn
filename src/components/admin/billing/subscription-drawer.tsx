@@ -18,12 +18,11 @@ import { Drawer, DrawerBody } from "@/components/ui/drawer";
 import { Input, Select } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import {
-  formatDate,
-  formatDateTime,
   formatMoney,
   formatMoneyPrecise,
   formatNumber,
 } from "@/lib/admin/format";
+import { formatDate, formatDateTime } from "@/lib/dates";
 import {
   SUBSCRIPTION_STATUS_LABEL,
   SUBSCRIPTION_STATUS_TONE,
@@ -459,7 +458,7 @@ export function SubscriptionDrawer({
                   <div className="min-w-0">
                     <p className="text-[12.5px] text-content">{event.summary}</p>
                     <p className="lr-tabular text-[11.5px] text-content-subtle">
-                      {formatDateTime(event.at)}
+                      {formatDateTime(event.at, { year: true })}
                     </p>
                   </div>
                 </li>

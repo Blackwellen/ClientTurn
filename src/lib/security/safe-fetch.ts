@@ -162,6 +162,8 @@ export async function assertSafeUrl(raw: string): Promise<UrlCheck> {
 }
 
 const ALLOWED_CONTENT = ["text/html", "application/xhtml+xml", "text/plain"];
+/** Opt-in only, for reading a site's own sitemap.xml. */
+const XML_CONTENT = ["application/xml", "text/xml"];
 
 /**
  * Fetches a public page, re-validating every redirect hop.
@@ -169,7 +171,11 @@ const ALLOWED_CONTENT = ["text/html", "application/xhtml+xml", "text/plain"];
  * `redirect: "manual"` is the important part: letting the platform follow a
  * redirect would skip every check above for the hop that actually matters.
  */
-export async function safeFetchText(raw: string): Promise<SafeFetchResult> {
+export async function safeFetchText(
+  raw: string,
+  options: { allowXml?: boolean } = {},
+): Promise<SafeFetchResult> {
+  const allowed = options.allowXml ? [...ALLOWED_CONTENT, ...XML_CONTENT] : ALLOWED_CONTENT;
   let target = raw;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
@@ -187,7 +193,9 @@ export async function safeFetchText(raw: string): Promise<SafeFetchResult> {
           // Identifying the crawler is the polite minimum, and lets a site
           // block us deliberately rather than by guessing.
           "user-agent": "ClientTurnBot/1.0 (+https://clientturn.com/bot)",
-          accept: "text/html,application/xhtml+xml",
+          accept: options.allowXml
+            ? "application/xml,text/xml,text/html;q=0.5"
+            : "text/html,application/xhtml+xml",
         },
         cache: "no-store",
       });
@@ -202,7 +210,7 @@ export async function safeFetchText(raw: string): Promise<SafeFetchResult> {
       if (!response.ok) return { ok: false, code: "FETCH_FAILED" };
 
       const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-      if (!ALLOWED_CONTENT.some((allowed) => contentType.includes(allowed))) {
+      if (!allowed.some((type) => contentType.includes(type))) {
         return { ok: false, code: "UNSUPPORTED_CONTENT_TYPE" };
       }
 

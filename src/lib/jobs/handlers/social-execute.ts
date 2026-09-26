@@ -6,6 +6,8 @@ import { parsePayload } from "./parse";
 import { socialExecutePayload } from "./payloads";
 import { recordSocialAction } from "@/lib/outreach/social-outreach";
 import { partnerSenderFor } from "@/lib/outreach/social-partners";
+import { evaluate } from "@/lib/policy/service";
+import { isPromotional } from "@/lib/policy/promotional-content";
 
 /**
  * Performs one prepared social action through a partner integration.
@@ -75,6 +77,19 @@ export async function handleSocialExecute(job: ClaimedJob): Promise<void> {
         last_error:
           "This account no longer sends through a partner integration, so the message is waiting for someone to send it.",
       })
+      .eq("id", message.id);
+    return;
+  }
+
+  // Send-time policy check (brief §98, defect B2). The scheduler's check was
+  // at compose time; since then the person may have opted out, been
+  // suppressed, or the workspace may have lapsed. Draft-time permission is not
+  // send-time permission.
+  const refusal = await sendTimeRefusal(payload, message.kind, message.body);
+  if (refusal) {
+    await admin
+      .from("social_outbound_messages")
+      .update({ last_error: refusal })
       .eq("id", message.id);
     return;
   }
@@ -179,4 +194,55 @@ export async function handleSocialExecute(job: ClaimedJob): Promise<void> {
     .eq("business_id", payload.businessId)
     .eq("prospect_id", payload.prospectId)
     .eq("platform", payload.platform);
+}
+
+/**
+ * Why this message may not be sent now, or null if it may.
+ *
+ * Mirrors the scheduler's rules: every message carrying content needs ALLOWED
+ * (an invite note is cold content; an opener or follow-up is judged warm on the
+ * strength of the acceptance), and a conversation-only verdict refuses a draft
+ * that markets. The draft stays for a person to review rather than being
+ * discarded.
+ */
+async function sendTimeRefusal(
+  payload: { businessId: string; prospectId: string; platform: string },
+  kind: string,
+  body: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const [{ data: state }, { data: prospect }] = await Promise.all([
+    admin
+      .from("social_connection_states")
+      .select("profile_url")
+      .eq("business_id", payload.businessId)
+      .eq("prospect_id", payload.prospectId)
+      .eq("platform", payload.platform)
+      .maybeSingle(),
+    admin
+      .from("prospects")
+      .select("linkedin_url, social_profile_url")
+      .eq("business_id", payload.businessId)
+      .eq("id", payload.prospectId)
+      .maybeSingle(),
+  ]);
+
+  const profileUrl =
+    state?.profile_url ??
+    (payload.platform === "LINKEDIN" ? prospect?.linkedin_url : prospect?.social_profile_url) ??
+    null;
+
+  const verdict = await evaluate({
+    businessId: payload.businessId,
+    subject: { type: "PROSPECT", id: payload.prospectId, social: profileUrl },
+    channel: "SOCIAL",
+    campaignType: kind === "INVITE_NOTE" ? "COLD" : "WARM",
+    permissionOnly: true,
+  });
+
+  if (verdict.outcome !== "ALLOWED") return verdict.message;
+  if (verdict.requirements?.includes("NON_PROMOTIONAL_ONLY") && isPromotional(body)) {
+    return "This message promotes your services to someone who has not asked to hear about them, so it was not sent. Edit it to a plain, non-promotional message.";
+  }
+  return null;
 }

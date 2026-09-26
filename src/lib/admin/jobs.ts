@@ -19,6 +19,7 @@ import {
   type JobsViewData,
   type QueueLagPoint,
 } from "./jobs-types";
+import { orIlike } from "@/lib/supabase/ilike";
 
 /**
  * The platform Jobs surface. Everything here reads `public.jobs` — the same
@@ -48,6 +49,8 @@ const JOB_PROVIDER: Record<string, string> = {
   "webhook.replay": "webhook",
   "notification.send": "resend",
   "notification.slack": "slack",
+  "notification.slack_digest": "slack",
+  "slack.interaction": "slack",
   "usage.aggregate": "job",
   "retention.cleanup": "job",
   "cost.rollup_daily": "billing",
@@ -132,6 +135,14 @@ const JOB_SIDE_EFFECT: Record<string, JobSideEffectClass> = {
   "sourcing.run": "reconcile",
   // A Slack webhook POST returns no id we persist, so a repeat cannot be ruled out.
   "notification.slack": "unverifiable",
+  // Composes and enqueues one notification.slack; a repeat is that job's
+  // problem, not this one's, and reruns produce identical digest content for
+  // the same day either way.
+  "notification.slack_digest": "reconcile",
+  // The webhook route's own unique index on (provider, external_event_id)
+  // is what actually prevents a doubled click; this job is the reconciled
+  // side effect of a row that can only exist once.
+  "slack.interaction": "reconcile",
 };
 
 export function sideEffectOf(type: string): JobSideEffectClass {
@@ -531,9 +542,8 @@ async function listJobs(
     // A UUID prefix matches the id; anything else is matched against the type
     // and the recorded error, which is where an operator's search term lives.
     const term = filters.q.replace(/^job_/i, "");
-    query = query.or(
-      `type.ilike.%${term}%,last_error.ilike.%${term}%,idempotency_key.ilike.%${term}%`,
-    );
+    const or = orIlike(["type", "last_error", "idempotency_key"], term);
+    if (or) query = query.or(or);
   }
 
   const from = (filters.page - 1) * filters.pageSize;

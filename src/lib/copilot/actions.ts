@@ -124,6 +124,11 @@ export async function askCopilot(input: unknown): Promise<
   );
   if (!sessionId) return fail("Copilot could not start a session.");
 
+  // Earlier turns are read *before* this message is stored. Reading after
+  // appended it to the history and the loop then added it again, so the model
+  // received every question twice (and billed for it twice).
+  const history = await recentTurns(sessionId, workspace.businessId);
+
   await appendMessage({
     sessionId,
     businessId: workspace.businessId,
@@ -142,7 +147,6 @@ export async function askCopilot(input: unknown): Promise<
   // unavailable or the workspace is out of allowance. Keeping the deterministic
   // router as the fallback rather than deleting it means an AI outage degrades
   // Copilot to what it used to be, instead of removing it.
-  const history = await recentTurns(sessionId, workspace.businessId);
   const turn = await runCopilotTurn({
     context,
     message: parsed.data.prompt,
@@ -345,15 +349,16 @@ async function answerFrom(
   }
 
   if (/lead|prospect|compan/.test(text)) {
-    const result = await runTool(context, "searchLeads", { query: extractQuery(prompt) }, false);
+    const query = extractQuery(prompt);
+    const result = await runTool(context, "lead.search", query ? { query } : {}, false);
     if (result.ok) {
-      const rows = result.data as unknown[];
+      const rows = (result.data as { leads?: unknown[] } | null)?.leads ?? [];
       return {
         content:
           rows.length === 0
             ? "No leads matched that. Try a name, a company or an email address."
             : `Found ${rows.length} matching ${rows.length === 1 ? "lead" : "leads"}.`,
-        toolSummary: { tool: "searchLeads", label: result.summary },
+        toolSummary: { tool: "lead.search", label: result.summary },
       };
     }
   }
@@ -362,7 +367,7 @@ async function answerFrom(
   // answer it cannot ground in a tool result.
   return {
     content:
-      "I can look at your leads, prospects, campaigns, analytics, intent signals and business profile, and I can pause or resume a campaign with your confirmation. Ask me about any of those and I will answer from your live data.",
+      "I can look at your leads, prospects, campaigns, analytics, intent signals and business profile, and I can pause a campaign with your confirmation. Ask me about any of those and I will answer from your live data.",
     toolSummary: {},
   };
 }

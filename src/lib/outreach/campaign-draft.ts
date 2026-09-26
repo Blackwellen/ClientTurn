@@ -212,15 +212,17 @@ export const INTENT_AGE_OPTIONS = [
 
 /**
  * Reply classifications the campaign reacts to, mapped onto the
- * `messages.reply_classification` vocabulary from 0029 so campaign handling and
- * the unified inbox agree about what a reply was.
+ * `messages.reply_classification` vocabulary (0029, extended by 0115 with
+ * BOOKING_INTENT and NOT_INTERESTED) so campaign handling and the unified inbox
+ * agree about what a reply was. tests/phase0-followups holds every stored
+ * value to exactly one rule's list (UNKNOWN / BOUNCE / AUTO_RESPONSE aside).
  */
 export const REPLY_RULES = [
   {
     key: "POSITIVE",
     label: "Positive reply",
     hint: "Mark as interested and notify team",
-    classifications: ["POSITIVE_INTEREST"],
+    classifications: ["POSITIVE_INTEREST", "BOOKING_INTENT"],
     actions: ["NOTIFY_AND_FOLLOW_UP", "NOTIFY_ONLY", "CREATE_TASK"],
     defaultAction: "NOTIFY_AND_FOLLOW_UP",
   },
@@ -236,7 +238,7 @@ export const REPLY_RULES = [
     key: "NOT_INTERESTED",
     label: "Not interested",
     hint: "Move to suppression list",
-    classifications: ["OBJECTION", "NOT_NOW"],
+    classifications: ["OBJECTION", "NOT_NOW", "NOT_INTERESTED"],
     actions: ["AUTO_SUPPRESS", "STOP_SEQUENCE"],
     defaultAction: "AUTO_SUPPRESS",
   },
@@ -986,13 +988,7 @@ export function optimizationAllowed(
 
 /* ------------------------------------------------------------ formatting */
 
-export function formatMoneyMinor(minor: number): string {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
-  }).format(minor / 100);
-}
+// Money in minor units is `formatMoneyMinor` in `./types.ts` — one implementation.
 
 export function formatCount(value: number): string {
   return value.toLocaleString("en-GB");

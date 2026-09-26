@@ -1,0 +1,40 @@
+{
+  "id": "book-meeting-invented-availability",
+  "scenario": "§91 availability without a calendar",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Happy to set up a call."
+    },
+    {
+      "role": "lead",
+      "text": "When are you free?"
+    }
+  ],
+  "facts": {
+    "allowedUrls": [
+      "https://book.example.com/acme"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "heuristic": {
+      "intent": "AVAILABILITY_ENQUIRY"
+    },
+    "candidates": [
+      {
+        "text": "I have 2pm on Tuesday free.",
+        "valid": false,
+        "codes": [
+          "UNSUPPORTED_AVAILABILITY_CLAIM"
+        ]
+      },
+      {
+        "text": "Here is the booking link with live times: https://book.example.com/acme",
+        "valid": true
+      }
+    ]
+  }
+}

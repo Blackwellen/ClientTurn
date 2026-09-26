@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { createHash } from "node:crypto";
 import { runTask } from "@/lib/ai/model-router";
 import type { SocialReplyClassification } from "@/lib/ai/schemas";
@@ -8,6 +9,7 @@ import { isOptOutPhrase } from "@/lib/agent/classification";
 import { suppress } from "@/lib/policy/suppression";
 import { enqueueAgentTurn, inboundMessageEvent } from "@/lib/agent/events";
 import type { SocialPlatform } from "@/lib/outreach/social-limits";
+import { recordSocialEngagement } from "@/lib/outreach/social-relationship";
 
 /**
  * A reply on a social channel.
@@ -128,20 +130,44 @@ export async function ingestSocialReply(
   // and everything downstream of it already ran. Returning early is what makes
   // a redelivered webhook harmless.
   if (error?.code === "23505") {
-    const { data: existing } = await admin
+    const { data: existing, error: existingError } = await admin
       .from("social_inbound_replies")
       .select("classification, promoted_lead_id")
       .eq("business_id", input.businessId)
       .eq("platform", input.platform)
       .eq("external_ref", externalRef)
       .maybeSingle();
+    if (existingError) throw existingError;
+
+    // "Everything downstream already ran" holds only if the first attempt
+    // finished. The writes below throw rather than fail silently, so a first
+    // attempt can stop part-way; a resubmission is then the retry. The two
+    // consent-critical steps are idempotent and are re-applied when the record
+    // shows the first attempt did not get as far as them:
+    //   - no classification stored => it stopped before classifying, so the
+    //     sequence stop may not have landed;
+    //   - an opt-out (stored, or in the words) => suppression is re-applied.
+    if (existing && !existing.classification) {
+      await stopSequence({
+        businessId: input.businessId,
+        prospectId: input.prospectId,
+        platform: input.platform,
+        receivedAt,
+      });
+    }
+    const optedOut =
+      existing?.classification === "OPT_OUT" ||
+      (existing && !existing.classification && isOptOutPhrase(body));
+    if (optedOut) {
+      await suppressProspect(input.businessId, input.prospectId);
+    }
 
     return {
       recorded: false,
       classification:
         (existing?.classification as IngestReplyResult["classification"]) ?? null,
       leadId: existing?.promoted_lead_id ?? null,
-      suppressed: existing?.classification === "OPT_OUT",
+      suppressed: Boolean(optedOut),
     };
   }
   if (error) throw error;
@@ -167,10 +193,16 @@ export async function ingestSocialReply(
 
   const classification = await classifyReply(input.businessId, body, inserted.id);
 
-  await admin
-    .from("social_inbound_replies")
-    .update({ classification, classified_at: new Date().toISOString() })
-    .eq("id", inserted.id);
+  // Logged, not thrown: an opt-out must still be acted on below. A missing
+  // classification is also what tells a resubmission to re-apply the stop.
+  logWriteError(
+    await admin
+      .from("social_inbound_replies")
+      .update({ classification, classified_at: new Date().toISOString() })
+      .eq("id", inserted.id),
+    "social reply: store classification",
+    { businessId: input.businessId, prospectId: input.prospectId, replyId: inserted.id },
+  );
 
   // Carry the verdict onto the thread.
   //
@@ -179,11 +211,15 @@ export async function ingestSocialReply(
   // unread and not by the question somebody actually opens it with -- who wants
   // to talk to me.
   if (conversationId) {
-    await admin
-      .from("conversations")
-      .update({ interest: classification })
-      .eq("business_id", input.businessId)
-      .eq("id", conversationId);
+    logWriteError(
+      await admin
+        .from("conversations")
+        .update({ interest: classification })
+        .eq("business_id", input.businessId)
+        .eq("id", conversationId),
+      "social reply: conversation interest",
+      { businessId: input.businessId, prospectId: input.prospectId, conversationId },
+    );
   }
 
   /* 4. Act --------------------------------------------------------------- */
@@ -191,6 +227,18 @@ export async function ingestSocialReply(
   if (classification === "OPT_OUT") {
     await suppressProspect(input.businessId, input.prospectId);
     return { recorded: true, classification, leadId: null, suppressed: true };
+  }
+
+  // Interest or a question is the person opening a conversation about our
+  // services, which lifts the "conversation only" limit on an individual
+  // subscriber. Anything else leaves the recorded basis as it was.
+  if (classification === "INTERESTED" || classification === "QUESTION") {
+    await recordSocialEngagement({
+      businessId: input.businessId,
+      prospectId: input.prospectId,
+      platform: input.platform,
+      receivedAt,
+    });
   }
 
   const leadId = await maybePromote({
@@ -224,8 +272,16 @@ async function stopSequence(input: {
   receivedAt: string;
 }): Promise<void> {
   const admin = createAdminClient();
+  const context = {
+    businessId: input.businessId,
+    prospectId: input.prospectId,
+    platform: input.platform,
+  };
 
-  await admin
+  // All three are attempted before any failure is thrown, so one failed write
+  // cannot stop the others (above all the DRAFT discard) from landing. A throw
+  // then fails the ingest; a resubmission re-applies them (see the 23505 path).
+  const stateUpdate = await admin
     .from("social_connection_states")
     .update({
       state: "REPLIED",
@@ -242,7 +298,7 @@ async function stopSequence(input: {
 
   // The composed-but-unsent follow-up. In ASSISTED mode this is the message a
   // person would otherwise have sent an hour later without knowing.
-  await admin
+  const discardUpdate = await admin
     .from("social_outbound_messages")
     .update({
       status: "DISCARDED",
@@ -255,7 +311,7 @@ async function stopSequence(input: {
   // `replied_at` on the prospect is what `promote_reviewed_prospect` checks, so
   // this write is the difference between a promotable prospect and one the
   // routine will refuse.
-  await admin
+  const prospectUpdate = await admin
     .from("prospects")
     .update({
       replied_at: input.receivedAt,
@@ -265,6 +321,10 @@ async function stopSequence(input: {
     .eq("business_id", input.businessId)
     .eq("id", input.prospectId)
     .in("status", ["APPROVED", "OUTREACH_ACTIVE", "READY"]);
+
+  assertWrite(discardUpdate, "social reply: discard pending drafts", context);
+  assertWrite(stateUpdate, "social reply: stop sequence", context);
+  assertWrite(prospectUpdate, "social reply: mark prospect replied", context);
 }
 
 /* -------------------------------------------------------- the transcript */
@@ -286,6 +346,11 @@ async function recordInboundMessage(input: {
 }): Promise<string | null> {
   const admin = createAdminClient();
   const channel = channelFor(input.platform);
+  const context = {
+    businessId: input.businessId,
+    prospectId: input.prospectId,
+    platform: input.platform,
+  };
 
   const { data: prospect } = await admin
     .from("prospects")
@@ -297,7 +362,7 @@ async function recordInboundMessage(input: {
   let conversationId = prospect?.conversation_id ?? null;
 
   if (!conversationId) {
-    const { data: created } = await admin
+    const created = await admin
       .from("conversations")
       .insert({
         business_id: input.businessId,
@@ -308,41 +373,60 @@ async function recordInboundMessage(input: {
       })
       .select("id")
       .single();
+    // The transcript is not the system of record for the reply (the
+    // `social_inbound_replies` row is), so these writes are logged, not thrown.
+    logWriteError(created, "social reply: create conversation", context);
 
-    conversationId = created?.id ?? null;
+    conversationId = created.data?.id ?? null;
     if (conversationId) {
-      await admin
-        .from("prospects")
-        .update({ conversation_id: conversationId })
-        .eq("business_id", input.businessId)
-        .eq("id", input.prospectId);
+      logWriteError(
+        await admin
+          .from("prospects")
+          .update({ conversation_id: conversationId })
+          .eq("business_id", input.businessId)
+          .eq("id", input.prospectId),
+        "social reply: link conversation",
+        { ...context, conversationId },
+      );
     }
   } else {
-    await admin
-      .from("conversations")
-      .update({ last_inbound_at: input.receivedAt, last_message_at: input.receivedAt })
-      .eq("id", conversationId);
+    logWriteError(
+      await admin
+        .from("conversations")
+        .update({ last_inbound_at: input.receivedAt, last_message_at: input.receivedAt })
+        .eq("id", conversationId),
+      "social reply: conversation timestamps",
+      { ...context, conversationId },
+    );
   }
 
   if (!conversationId) return null;
 
-  await admin.from("messages").insert({
-    business_id: input.businessId,
-    conversation_id: conversationId,
-    prospect_id: input.prospectId,
-    direction: "inbound",
-    channel,
-    body: input.body,
-    status: "RECEIVED",
-    received_at: input.receivedAt,
-  });
+  logWriteError(
+    await admin.from("messages").insert({
+      business_id: input.businessId,
+      conversation_id: conversationId,
+      prospect_id: input.prospectId,
+      direction: "inbound",
+      channel,
+      body: input.body,
+      status: "RECEIVED",
+      received_at: input.receivedAt,
+    }),
+    "social reply: transcript message",
+    { ...context, conversationId },
+  );
 
-  await admin
-    .from("social_connection_states")
-    .update({ conversation_id: conversationId })
-    .eq("business_id", input.businessId)
-    .eq("prospect_id", input.prospectId)
-    .eq("platform", input.platform);
+  logWriteError(
+    await admin
+      .from("social_connection_states")
+      .update({ conversation_id: conversationId })
+      .eq("business_id", input.businessId)
+      .eq("prospect_id", input.prospectId)
+      .eq("platform", input.platform),
+    "social reply: link state to conversation",
+    { ...context, conversationId },
+  );
 
   return conversationId;
 }
@@ -411,7 +495,7 @@ async function classifyReply(
 async function suppressProspect(businessId: string, prospectId: string): Promise<void> {
   const admin = createAdminClient();
 
-  await admin
+  const prospectUpdate = await admin
     .from("prospects")
     .update({
       outreach_eligibility: "SUPPRESSED",
@@ -425,12 +509,14 @@ async function suppressProspect(businessId: string, prospectId: string): Promise
   // The global list too. An opt-out on LinkedIn is an opt-out, and a workspace
   // emailing them next week because the suppression was only recorded on the
   // prospect row is exactly the failure 0069 unified the lists to prevent.
-  const { data: prospect } = await admin
+  const { data: prospect, error: prospectReadError } = await admin
     .from("prospects")
     .select("email, phone_e164, linkedin_url")
     .eq("business_id", businessId)
     .eq("id", prospectId)
     .maybeSingle();
+  // A failed read would otherwise look like "no destinations to suppress".
+  if (prospectReadError) throw prospectReadError;
 
   // The one suppression list every send path reads (0069). Each destination is
   // filed in its own column rather than a generic `destination` field: the
@@ -446,18 +532,33 @@ async function suppressProspect(businessId: string, prospectId: string): Promise
     ...(prospect?.phone_e164 ? [{ phone: prospect.phone_e164 }] : []),
   ];
 
+  // Every destination is attempted before any failure is thrown. The reply is
+  // already recorded, so throwing does not lose it: the ingest fails visibly
+  // and a resubmission re-applies this whole function (see the 23505 path),
+  // which is idempotent. Swallowing it instead left an opt-out that the email
+  // path could not see.
+  let suppressError: unknown = null;
   for (const destination of destinations) {
-    await suppress({
-      businessId,
-      ...destination,
-      channel: "ALL",
-      reason: "OPT_OUT",
-      source: "social_reply",
-    }).catch(() => {
-      // A suppression that fails to write must not lose the reply we already
-      // recorded. The prospect row above is the binding one for this channel.
-    });
+    try {
+      await suppress({
+        businessId,
+        ...destination,
+        channel: "ALL",
+        reason: "OPT_OUT",
+        source: "social_reply",
+      });
+    } catch (error) {
+      console.error("[social reply] global suppression failed", {
+        businessId,
+        prospectId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      suppressError ??= error;
+    }
   }
+
+  assertWrite(prospectUpdate, "social reply: suppress prospect", { businessId, prospectId });
+  if (suppressError) throw suppressError;
 }
 
 /* ------------------------------------------------------------ promotion */
@@ -505,10 +606,15 @@ async function maybePromote(input: {
   // outcome a workspace with auto-promotion off gets anyway.
   if (error || !leadId) return null;
 
-  await admin
-    .from("social_inbound_replies")
-    .update({ promoted_lead_id: leadId })
-    .eq("id", input.replyId);
+  // The promotion itself is done (the RPC); this back-reference is logged.
+  logWriteError(
+    await admin
+      .from("social_inbound_replies")
+      .update({ promoted_lead_id: leadId })
+      .eq("id", input.replyId),
+    "social reply: record promoted lead",
+    { businessId: input.businessId, prospectId: input.prospectId, replyId: input.replyId, leadId },
+  );
 
   // Hand the conversation to the agent. From here it is an ordinary lead
   // conversation: the agent qualifies, answers, and tries to book, on the

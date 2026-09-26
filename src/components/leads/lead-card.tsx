@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, Mail, MoreVertical, Phone } from "lucide-re
 import { cn } from "@/lib/cn";
 import { StatusBadge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/form";
 import { formatRelative } from "@/lib/dates";
 import {
   attentionReasonLabel,
@@ -25,11 +26,16 @@ export function LeadCard({
   row,
   assigneeName,
   onOpen,
+  selected,
+  onToggleSelect,
   className,
 }: {
   row: LeadListRow;
   assigneeName: string | null;
   onOpen: () => void;
+  /** Present when the list offers bulk selection. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
   className?: string;
 }) {
   const name = leadDisplayName(row);
@@ -54,11 +60,25 @@ export function LeadCard({
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
         "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         row.opted_out && "opacity-75",
+        selected && "border-accent-500 ring-1 ring-accent-500/60",
         className,
       )}
     >
       {/* identity + status */}
       <div className="flex items-start gap-2">
+        {onToggleSelect && (
+          <span
+            className="-ml-0.5 mt-[3px] shrink-0"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Checkbox
+              checked={!!selected}
+              onChange={onToggleSelect}
+              aria-label={`Select ${name}`}
+            />
+          </span>
+        )}
         {row.needs_attention && (
           <AlertCircle
             className="mt-px size-4 shrink-0 text-danger-500"

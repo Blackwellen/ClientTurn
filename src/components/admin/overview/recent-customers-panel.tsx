@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Building2, ChevronRight } from "lucide-react";
 import { Panel, PanelEmpty, PanelLink, BusinessCell } from "@/components/admin/ui";
 import { StatusBadge } from "@/components/ui/badge";
-import { formatRelative } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import type { RecentCustomerRow } from "@/lib/admin/types";
 
 export function RecentCustomersPanel({
@@ -61,7 +61,7 @@ export function RecentCustomersPanel({
                     <StatusBadge kind="subscription" value={row.subscriptionStatus} />
                   </td>
                   <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                    {formatRelative(row.joinedAt)}
+                    {formatRelative(row.joinedAt, { style: "ago" })}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <ChevronRight className="inline size-4 text-content-subtle" aria-hidden />

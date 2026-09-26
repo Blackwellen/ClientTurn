@@ -10,6 +10,20 @@ const uuid = z.uuid();
 export const leadProcessPayload = z.object({
   leadId: uuid,
   serviceName: z.string().trim().max(200).optional(),
+  /**
+   * The touch that queued this run (ingestLead, design 03 §1). Absent for the
+   * callers that still insert directly (onboarding test lead, promotion).
+   */
+  touchId: uuid.optional(),
+  /** False when the touch matched a lead that already existed (a repeat enquiry). */
+  newLead: z.boolean().default(true),
+  /**
+   * FULL runs qualification, metering and follow-up. RECORD_ONLY attributes,
+   * records permission, notifies integrations and scores, and starts nothing:
+   * a merged repeat enquiry, a suppressed or review lead, a social DM, or an
+   * import the operator did not ask to message (ingest/plan.ts processModeFor).
+   */
+  mode: z.enum(["FULL", "RECORD_ONLY"]).default("FULL"),
   source: z
     .object({
       provider: z
@@ -20,9 +34,12 @@ export const leadProcessPayload = z.object({
           "test",
           "webform",
           "google_ads",
-          "microsoft_ads",
           "tiktok_ads",
           "linkedin_ads",
+          "api",
+          "mcp",
+          "meta_dm",
+          "connector",
         ])
         .default("meta"),
       pageId: z.string().max(120).optional(),
@@ -88,6 +105,15 @@ export const bookingSyncPayload = z.object({
     .enum(["scheduled", "completed", "cancelled", "no_show"])
     .default("scheduled"),
   notes: z.string().max(2000).optional(),
+  /**
+   * Phase 3.1, Calendly reschedules. On `cancelled`: this cancellation is the
+   * old half of a reschedule (Calendly's `rescheduled: true`). On `scheduled`:
+   * `previousExternalEventId` names the event this one replaces (parsed from
+   * Calendly's `old_invitee`), so the existing row moves instead of a second
+   * booking appearing.
+   */
+  rescheduled: z.boolean().optional(),
+  previousExternalEventId: z.string().max(200).optional(),
 });
 
 export const integrationHealthPayload = z.object({
@@ -176,4 +202,43 @@ export const socialExecutePayload = z.object({
   businessId: uuid,
   prospectId: uuid,
   platform: z.enum(["LINKEDIN", "FACEBOOK", "INSTAGRAM", "TIKTOK"]),
+});
+
+/** Points at the recorded webhook_events row; the handler re-reads it rather than trusting a repeated copy. */
+export const slackInteractionPayload = z.object({
+  externalEventId: z.string().min(1).max(200),
+});
+
+/* ------------------------------------------------------------ lead scoring */
+
+/**
+ * Re-score one lead (design doc 04 §2). `triggerEvent` names what changed
+ * (`lead.processed`, `reply.classified:<messageId>`, `booking.no_show:<id>`) and
+ * is half of the idempotency key: the same event is scored once per engine
+ * version, however many times the job runs.
+ */
+export const leadScorePayload = z.object({
+  leadId: uuid,
+  triggerEvent: z
+    .string()
+    .min(1)
+    .max(200)
+    // Up to two id segments: `reply.classified:<id>`, and a person's
+    // re-score from the lead page, `manual:<userId>:<epoch ms>` (lead.rescore).
+    .regex(/^[a-z_]+(\.[a-z_]+)*(:[A-Za-z0-9_-]+){0,2}$/),
+  /** The domain event that asked for this score (event outbox, design 03 §4). */
+  causationId: uuid.optional(),
+  causationDepth: z.number().int().min(0).max(100).optional(),
+});
+
+/* ---------------------------------------------------------------- ingest */
+
+/**
+ * A verified inbound lead webhook, recorded in `webhook_events` by its route
+ * and ingested here (CLAUDE.md: verify, record, acknowledge, queue). The
+ * handler re-reads the stored row rather than trusting the payload.
+ */
+export const ingestWebhookPayload = z.object({
+  webhookEventId: uuid,
+  provider: z.enum(["google_ads"]),
 });

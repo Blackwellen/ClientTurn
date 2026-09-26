@@ -91,6 +91,9 @@ const GUARDED_TREES: { prefix: string; layout: string; guard: string; why: strin
  */
 const SELF_GUARDED: Record<string, string> = {
   "onboarding/page.tsx": "requireWorkspace",
+  // Card-first trial (8.10): the app layout redirects here until Stripe has
+  // confirmed a subscription, so it cannot sit under that layout either.
+  "start-trial/page.tsx": "requireUser",
 };
 
 /**
@@ -223,6 +226,9 @@ const MECHANISMS: Record<string, RegExp> = {
   hmac: /timingSafeEqual\s*\(/,
   "stripe-signature": /webhooks\.constructEvent\s*\(/,
   "twilio-signature": /verifyTwilioSignature\s*\(/,
+  // Slack's HMAC-SHA256 over `v0:{timestamp}:{body}`, verified in one place
+  // (`lib/integrations/providers/slack.ts`) and reused by every Slack route.
+  "slack-signature": /verifySlackSignature\s*\(/,
   // Meta signs with sha256 over the raw body; the comparison is constant-time
   // inside the helper, which is where it belongs.
   "meta-signature": /verifyMetaSignature\s*\(/,
@@ -232,6 +238,10 @@ const MECHANISMS: Record<string, RegExp> = {
   // different envelope — so it gets its own guard rather than being folded into
   // "meta-signature", which would let a route claim a check it does not do.
   "meta-signed-request": /parseSignedRequest\s*\(/,
+  // Google Ads lead-form webhooks carry a shared `google_key` in the body, not
+  // a signature; it is compared in constant time (sha256 + timingSafeEqual)
+  // against the key stored for the integration named in the URL.
+  "google-key": /googleKeyMatches\s*\(/,
   // A signed-in user who also has an affiliate account. The partner portal is
   // a separate identity from a workspace membership.
   affiliate: /getAffiliate(Account)?\s*\(/,
@@ -246,6 +256,8 @@ const MECHANISMS: Record<string, RegExp> = {
 };
 
 const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
+  // The "update your card" link: owner-only redirect to a fresh portal session.
+  "api/billing/portal/route.ts": "session",
   "affiliates/app/payouts/[id]/breakdown/route.ts": "affiliate",
   "affiliates/app/payouts/[id]/statement/route.ts": "affiliate",
   "affiliates/app/payouts/export/route.ts": "affiliate",
@@ -255,12 +267,15 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "auth/callback/route.ts": "public",
   "r/[slug]/route.ts": "public",
   "api/analytics/export/route.ts": "session",
+  "api/auth/google/connect/route.ts": "public",
+  "api/auth/google/callback/route.ts": "public",
   "api/avatar/[scope]/[id]/route.ts": "session",
   "api/apps/[id]/events/route.ts": "hmac",
   "api/cron/daily/route.ts": "cron-secret",
   "api/cron/worker/route.ts": "cron-secret",
   "api/dev/seed/route.ts": "dev-only",
   "api/exports/attribution/route.ts": "session",
+  "api/exports/leads/route.ts": "session",
   "api/exports/prospects/route.ts": "session",
   "api/find-leads/runs/[runId]/route.ts": "session",
   "api/integrations/[provider]/callback/route.ts": "public",
@@ -268,15 +283,19 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/marketing/track/route.ts": "public",
   "api/mcp/route.ts": "mcp-token",
   "api/search/route.ts": "session",
+  "api/unsubscribe/[token]/route.ts": "public",
   "api/v1/route.ts": "public",
   "api/v1/events/route.ts": "api-key",
   "api/v1/leads/route.ts": "api-key",
   "api/v1/leads/[id]/route.ts": "api-key",
   "api/v1/me/route.ts": "api-key",
+  "api/webhooks/calendly/route.ts": "hmac",
+  "api/webhooks/google-ads/route.ts": "google-key",
   "api/webhooks/linkedin-ads/route.ts": "hmac",
   "api/webhooks/meta/route.ts": "meta-signature",
   "api/webhooks/meta/data-deletion/route.ts": "meta-signed-request",
   "api/webhooks/meta/deauthorize/route.ts": "meta-signed-request",
+  "api/webhooks/slack/interactive/route.ts": "slack-signature",
   "api/webhooks/stripe/route.ts": "stripe-signature",
   "api/webhooks/twilio/route.ts": "twilio-signature",
 };
@@ -286,6 +305,17 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
  * correct rather than an oversight.
  */
 const PUBLIC_ROUTES: Record<string, string> = {
+  "api/unsubscribe/[token]/route.ts":
+    "the RFC 8058 one-click unsubscribe target that mailbox providers POST to. The unguessable token in the path " +
+    "is the credential, exactly as for the unsubscribe page; a recipient must never need an account to opt out. " +
+    "It is rate-limited and idempotent, and it can only ever suppress.",
+  "api/auth/google/connect/route.ts":
+    "the first hop of native Google sign-in, reached by someone who is not signed in yet by definition. " +
+    "It only ever redirects to Google's own consent screen after setting a short-lived signed CSRF cookie; it touches no account.",
+  "api/auth/google/callback/route.ts":
+    "Google's own redirect back after consent, with no session cookie guaranteed. Its credential is the single-use, " +
+    "HMAC-signed state cookie from /connect, verified before the authorization code is ever exchanged. It never creates an account: " +
+    "an email with no existing ClientTurn profile+membership is turned away before Supabase is touched at all.",
   "auth/callback/route.ts":
     "the Supabase auth callback. The single-use PKCE code in the query string is the credential, exchanged for a session here; " +
     "requiring a session to reach the endpoint that creates one is circular.",

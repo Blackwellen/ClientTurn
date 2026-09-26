@@ -30,20 +30,32 @@ export type SourcingAllowance = {
   /** Whether verified prospects may run past the included allowance, if the
    *  workspace has explicitly turned automatic overage on. */
   prospectOverageAvailable: boolean;
+  /** Mirrors the seeded `sourcing_enabled` capability. When false the plan
+   *  has no sourcing at all, and every sourcing figure above is 0. */
+  sourcingIncluded: boolean;
+  /** Mirrors the seeded `cold_email_enabled` capability. When false
+   *  `emailSends` is 0: outbound (cold) email is not available. */
+  coldEmailIncluded: boolean;
 };
 
 export const SOURCING_ALLOWANCES: Record<
   Exclude<PlanId, "trial"> | "trial",
   SourcingAllowance
 > = {
+  // The trial seeds soft limits for these metrics (0038), but also seeds
+  // `sourcing_enabled` and `cold_email_enabled` to 0, so none of them can be
+  // used. The honest allowance is therefore 0 -- "Not included in trial" --
+  // not the dormant soft limits.
   trial: {
-    verifiedProspects: 18,
-    searchRuns: 1,
-    savedSearches: 1,
-    intentMonitors: 1,
-    senderIdentities: 1,
-    emailSends: 40,
+    verifiedProspects: 0,
+    searchRuns: 0,
+    savedSearches: 0,
+    intentMonitors: 0,
+    senderIdentities: 0,
+    emailSends: 0,
     prospectOverageAvailable: false,
+    sourcingIncluded: false,
+    coldEmailIncluded: false,
   },
   starter: {
     verifiedProspects: 90,
@@ -53,6 +65,8 @@ export const SOURCING_ALLOWANCES: Record<
     senderIdentities: 1,
     emailSends: 1_800,
     prospectOverageAvailable: true,
+    sourcingIncluded: true,
+    coldEmailIncluded: true,
   },
   growth: {
     verifiedProspects: 450,
@@ -62,6 +76,8 @@ export const SOURCING_ALLOWANCES: Record<
     senderIdentities: 3,
     emailSends: 7_000,
     prospectOverageAvailable: true,
+    sourcingIncluded: true,
+    coldEmailIncluded: true,
   },
   pro: {
     verifiedProspects: 1_800,
@@ -71,6 +87,8 @@ export const SOURCING_ALLOWANCES: Record<
     senderIdentities: 10,
     emailSends: 22_000,
     prospectOverageAvailable: true,
+    sourcingIncluded: true,
+    coldEmailIncluded: true,
   },
   enterprise: {
     verifiedProspects: 9_000,
@@ -80,6 +98,8 @@ export const SOURCING_ALLOWANCES: Record<
     senderIdentities: 50,
     emailSends: 90_000,
     prospectOverageAvailable: true,
+    sourcingIncluded: true,
+    coldEmailIncluded: true,
   },
 };
 
@@ -92,8 +112,11 @@ export const AUTOMATIC_OVERAGE_DEFAULT_ON = false;
 const NUMBER = new Intl.NumberFormat("en-GB");
 
 /** Enterprise allowances are a starting point, not a ceiling — they are set per contract. */
+export const NOT_INCLUDED_IN_TRIAL = "Not included in trial";
+
 export function allowanceLabel(plan: PlanId, value: number): string {
   if (plan === "enterprise") return "Custom";
+  if (plan === "trial" && value === 0) return NOT_INCLUDED_IN_TRIAL;
   return NUMBER.format(value);
 }
 

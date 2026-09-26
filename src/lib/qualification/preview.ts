@@ -18,6 +18,7 @@ import {
   type Question,
 } from "./engine.ts";
 import { usesOptions, type DraftQuestion } from "./draft.ts";
+import { QUALIFICATION_OUTCOME_LABEL } from "./outcome-labels.ts";
 import { answerValues, readRouting } from "./routing.ts";
 import type { ResponseType, ServiceAreaSettings, ServiceRef } from "./types.ts";
 
@@ -149,22 +150,22 @@ export const PREVIEW_RESULT_COPY: Record<
   { label: string; detail: string }
 > = {
   QUALIFIED: {
-    label: "Result: QUALIFIED",
+    label: `Result: ${QUALIFICATION_OUTCOME_LABEL.QUALIFIED}`,
     detail:
       "Based on the answers above, this enquiry would be marked as qualified and sent to booking or handover.",
   },
   REVIEW: {
-    label: "Result: REVIEW",
+    label: `Result: ${QUALIFICATION_OUTCOME_LABEL.REVIEW}`,
     detail:
       "Based on the answers above, this enquiry would be sent to a person to look at rather than routed automatically.",
   },
   NOT_QUALIFIED: {
-    label: "Result: NOT QUALIFIED",
+    label: `Result: ${QUALIFICATION_OUTCOME_LABEL.NOT_QUALIFIED}`,
     detail:
       "Based on the answers above, this enquiry would be marked as not qualified and would not go through to booking.",
   },
   PENDING: {
-    label: "Result: PENDING",
+    label: `Result: ${QUALIFICATION_OUTCOME_LABEL.PENDING}`,
     detail:
       "A required question has not been answered yet, so this enquiry would wait rather than being routed.",
   },

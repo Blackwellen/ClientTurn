@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { csvCell } from "@/lib/csv";
 import { getActiveWorkspace } from "@/lib/auth/session";
 import { getAttributionRows } from "@/lib/analytics/queries";
 import { parseAnalyticsParams, sortAttribution } from "@/lib/analytics/types";
@@ -20,13 +21,6 @@ const HEADERS = [
   "Booking rate (%)",
   "Estimated pipeline (GBP)",
 ];
-
-/** Guards against a leading =, +, - or @ being executed by a spreadsheet. */
-function csvCell(value: string | number) {
-  const text = String(value);
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
 
 export async function GET(request: Request) {
   const workspace = await getActiveWorkspace();

@@ -16,6 +16,7 @@ import {
   accountReference,
   connectionActions,
   type ProviderCardModel,
+  type ProviderExtras,
 } from "@/lib/integrations/catalog";
 import {
   connectProviderToken,
@@ -23,6 +24,7 @@ import {
   testConnection,
 } from "@/lib/settings/actions";
 import { ProviderIcon } from "./provider-icon";
+import { ProviderDetails } from "./provider-details";
 
 /**
  * Every provider is configured here rather than on its own page. Secrets are
@@ -32,9 +34,13 @@ import { ProviderIcon } from "./provider-icon";
 export function ConnectionSetupDrawer({
   model,
   onClose,
+  extras,
+  canManage = false,
 }: {
   model: ProviderCardModel | null;
   onClose: () => void;
+  extras?: ProviderExtras;
+  canManage?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -244,6 +250,13 @@ export function ConnectionSetupDrawer({
               )}
             </section>
           )}
+
+          <ProviderDetails
+            provider={definition.id}
+            extras={extras}
+            connected={model.connected}
+            canManage={canManage}
+          />
 
           {model.block?.kind === "unavailable" && (
             <div className="rounded-lg border border-warning-100 bg-warning-50 px-3.5 py-3">

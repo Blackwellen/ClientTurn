@@ -13,6 +13,7 @@ import { ApiKeysPanel } from "@/components/settings/developer/api-keys-panel";
 import { WebhooksPanel } from "@/components/settings/developer/webhooks-panel";
 import { DeveloperOverview } from "@/components/settings/developer/developer-overview";
 import { McpConnectionsPanel } from "@/components/settings/connections/mcp-connections-panel";
+import { mcpServerUrl } from "@/lib/mcp/connection-key";
 
 /**
  * Settings → Developer.
@@ -85,6 +86,7 @@ export async function DeveloperSection() {
         approvals={mcpApprovals}
         scopeOptions={scopeOptions}
         canManage={canManage}
+        serverUrl={mcpServerUrl(serverEnv.siteUrl)}
       />
     </div>
   );

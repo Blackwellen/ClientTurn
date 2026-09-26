@@ -2,15 +2,22 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import {
   AiUnavailableError,
-  chatWithTools,
   isAzureConfigured,
+  type AiDeployment,
   type ToolSpec,
   type ToolTurn,
 } from "@/lib/ai/azure-client";
+import { checkSpend } from "@/lib/ai/budget-service";
+import { tierFromDecision } from "@/lib/ai/budget";
+import { providerFor, targetFor } from "@/lib/ai/providers";
 import { getPrompt } from "@/lib/ai/prompt-registry";
 import { recordAiUsage } from "@/lib/ai/usage-meter";
 import { estimateTokensForCall } from "@/lib/billing/tokens";
-import { hasTokenCapacity, recordTokenConsumption } from "@/lib/billing/token-service";
+import {
+  recordTokenConsumption,
+  releaseTokenReservation,
+  reserveTokenCapacity,
+} from "@/lib/billing/token-service";
 import { handlerSchema } from "@/lib/services/runtime";
 import { serviceOperation } from "@/lib/services";
 import { toolInputSchema } from "@/lib/services/json-schema";
@@ -22,6 +29,13 @@ import {
   type ToolDeclaration,
 } from "./types";
 import { runTool, type ToolContext, type ToolOutcome } from "./tool-service";
+import { legacyToolSchema } from "./legacy-schemas";
+import {
+  buildTurnMessages,
+  copilotSystemPrompt,
+  tokensToDebit,
+  wrapToolResult,
+} from "./turn";
 
 /**
  * Copilot's tool-calling loop (Programme §2).
@@ -46,8 +60,9 @@ import { runTool, type ToolContext, type ToolOutcome } from "./tool-service";
  *     before it must answer with what it has.
  *   * **MAX_TOOL_CALLS** — a hard ceiling across the whole turn, so a model
  *     looping on one failing tool cannot spend a workspace's allowance.
- *   * **The token gate** — checked before the first call, exactly as `runTask`
- *     does, so a workspace at its limit degrades rather than overspends.
+ *   * **The token gate** — an atomic reservation taken before the first call,
+ *     exactly as `runTask` does, so a workspace at its limit degrades rather
+ *     than overspends, and concurrent turns cannot all spend the same balance.
  */
 
 /** Enough for read, think, act, confirm. Beyond this it is looping, not working. */
@@ -120,23 +135,20 @@ function toolSpecsFor(role: string): ToolSpec[] {
 }
 
 /**
- * A service-layer tool's parameters come from its own Zod validator, so what
- * the model is shown is what will be enforced. Tools that predate the service
- * layer have no declared schema; they are offered with an open object, which is
- * honest about the fact that nothing is validating their shape yet.
+ * Every tool's parameters come from a Zod validator — the service operation's
+ * own, or the legacy tool's schema in `legacy-schemas.ts` — so what the model
+ * is shown is what will be enforced. A tool with no schema is not offered.
  */
 function parametersFor(tool: ToolDeclaration): Record<string, unknown> | null {
-  if (serviceOperation(tool.name)) {
-    const schema = handlerSchema(tool.name);
-    if (!schema) return null;
-    try {
-      return toolInputSchema(schema) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
+  const schema = serviceOperation(tool.name)
+    ? handlerSchema(tool.name)
+    : legacyToolSchema(tool.name);
+  if (!schema) return null;
+  try {
+    return toolInputSchema(schema) as Record<string, unknown>;
+  } catch {
+    return null;
   }
-
-  return { type: "object", properties: {}, additionalProperties: true };
 }
 
 /* ------------------------------------------------------------------- turn */
@@ -165,31 +177,71 @@ export async function runCopilotTurn(input: {
   const prompt = getPrompt("copilot_turn");
   const specs = toolSpecsFor(input.context.role);
 
-  const turns: ToolTurn[] = [
-    {
-      role: "system",
-      content: input.preamble
-        ? `${prompt.systemPrompt}\n\nAbout this workspace:\n${input.preamble}`
-        : prompt.systemPrompt,
-    },
-    ...input.history.map((entry) => ({
-      role: entry.role === "user" ? ("user" as const) : ("assistant" as const),
-      content: entry.content,
-    })),
-    { role: "user", content: input.message },
-  ];
+  const systemPrompt = copilotSystemPrompt(prompt.systemPrompt, input.preamble);
 
-  // Checked before the first call, not after: a workspace at its limit should
-  // never spend on a turn it cannot pay for.
+  // The message appears exactly once, even if the caller's history already
+  // holds the stored copy of it.
+  const turns: ToolTurn[] = buildTurnMessages({
+    systemPrompt,
+    history: input.history,
+    message: input.message,
+  });
+
+  // Reserved before the first call, not checked after: a workspace at its
+  // limit should never spend on a turn it cannot pay for. The reservation is
+  // atomic (B21) -- it counts every call already in flight -- so concurrent
+  // turns cannot each see the same remaining balance and all proceed.
   const estimate = estimateTokensForCall(
     MAX_OUTPUT_TOKENS,
-    prompt.systemPrompt.length + input.message.length + (input.preamble?.length ?? 0),
+    systemPrompt.length + input.message.length,
   );
-  const capacity = await hasTokenCapacity(input.context.businessId, estimate);
-  if (!capacity.ok) {
+  const admission = await reserveTokenCapacity(input.context.businessId, estimate);
+  if (!admission.ok) {
     return degraded(correlationId, steps);
   }
+  // Held until the first step's debit settles it. Cleared once handed to
+  // that debit; anything still held when the turn ends never reached the
+  // provider and is released rather than left to expire.
+  let reservationId: string | null = admission.reservationId;
 
+  try {
+    return await runSteps(input, {
+      correlationId,
+      steps,
+      turns,
+      specs,
+      takeReservation: () => {
+        const held = reservationId;
+        reservationId = null;
+        return held;
+      },
+      releaseReservation: async () => {
+        const held = reservationId;
+        reservationId = null;
+        if (held) await releaseTokenReservation(input.context.businessId, held);
+      },
+    });
+  } finally {
+    if (reservationId) {
+      await releaseTokenReservation(input.context.businessId, reservationId);
+    }
+  }
+}
+
+async function runSteps(
+  input: Parameters<typeof runCopilotTurn>[0],
+  state: {
+    correlationId: string;
+    steps: CopilotStep[];
+    turns: ToolTurn[];
+    specs: ToolSpec[];
+    /** The admission hold, handed to exactly one debit (the first). */
+    takeReservation: () => string | null;
+    /** Drops the hold when the provider was never billed. */
+    releaseReservation: () => Promise<void>;
+  },
+): Promise<CopilotTurnResult> {
+  const { correlationId, steps, turns, specs } = state;
   let toolCallsMade = 0;
   let awaiting: CopilotTurnResult["awaitingConfirmation"] = null;
 
@@ -199,23 +251,53 @@ export async function runCopilotTurn(input: {
     // opportunity to use.
     const lastStep = step === MAX_STEPS - 1 || toolCallsMade >= MAX_TOOL_CALLS;
 
+    // Budget manager (Phase 4), before every step: a Copilot turn is several
+    // model calls, and each one is a spend decision like any `runTask`. It is
+    // recorded in ai_budget_decisions whatever the answer. SKIP and HUMAN
+    // both end the turn gracefully -- there is no person to hand a Copilot
+    // turn to, so HUMAN degrades exactly like SKIP.
+    const spend = await checkSpend({
+      businessId: input.context.businessId,
+      taskType: "copilot_turn",
+      promptChars: promptCharsOf(turns),
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    });
+    const tierNumber =
+      spend.decision === "SKIP" || spend.decision === "HUMAN"
+        ? null
+        : tierFromDecision(spend.decision);
+    const tier = tierNumber ? spend.config.tiers[tierNumber] : null;
+    const target = tier ? targetFor(tier) : null;
+    if (!tier || !target) {
+      await state.releaseReservation();
+      return budgetStopped(correlationId, steps, awaiting);
+    }
+    const deployment: AiDeployment = target.alias;
+
     let result;
     try {
-      result = await chatWithTools(
-        "mini",
+      result = await providerFor(tier).chatWithTools(
+        target,
         turns,
         lastStep ? [] : specs,
         MAX_OUTPUT_TOKENS,
       );
     } catch (error) {
-      await meter(input.context.businessId, correlationId, 0, 0, 0, 0, "error",
+      // The provider did not bill a failed call, so the hold goes back now
+      // rather than sitting against the allowance until it expires.
+      await state.releaseReservation();
+      await meter(input.context.businessId, correlationId, deployment, 0, 0, 0, 0, "error",
         error instanceof AiUnavailableError ? "AI_UNAVAILABLE" : "UNKNOWN_ERROR");
       return degraded(correlationId, steps);
     }
 
+    // Raw provider counts, unchanged: `inputTokens` is Azure's prompt_tokens
+    // (which already includes cached tokens) and `cachedInputTokens` is the
+    // cached subset. The meter owns the pricing arithmetic.
     await meter(
       input.context.businessId,
       correlationId,
+      deployment,
       result.inputTokens,
       result.cachedInputTokens,
       result.outputTokens,
@@ -226,11 +308,14 @@ export async function runCopilotTurn(input: {
 
     await recordTokenConsumption({
       businessId: input.context.businessId,
-      totalTokens:
-        result.inputTokens + result.cachedInputTokens + result.outputTokens,
+      // prompt + completion. Cached tokens are already inside prompt_tokens.
+      totalTokens: tokensToDebit(result),
       idempotencyKey: `copilot:${correlationId}:${step}`,
       taskType: "copilot_turn",
-      deployment: "mini",
+      deployment,
+      // The first step's debit settles the admission hold; later steps have
+      // none and debit directly.
+      reservationId: state.takeReservation(),
     }).catch(() => {
       // Metering must never mask a successful turn.
     });
@@ -275,7 +360,9 @@ export async function runCopilotTurn(input: {
       turns.push({
         role: "tool",
         tool_call_id: call.id,
-        content: outcome.payload.slice(0, MAX_RESULT_CHARS),
+        // Tool results carry lead- and prospect-controlled text (names,
+        // notes, messages), so they reach the model marked as untrusted data.
+        content: wrapToolResult(outcome.payload, MAX_RESULT_CHARS),
       });
     }
   }
@@ -420,6 +507,37 @@ function degraded(correlationId: string, steps: CopilotStep[]): CopilotTurnResul
 }
 
 /**
+ * The budget manager declined the next model call. Before any step that is
+ * the ordinary degraded reply; mid-turn it says so and keeps what was done,
+ * because the tool steps already taken really happened.
+ */
+function budgetStopped(
+  correlationId: string,
+  steps: CopilotStep[],
+  awaiting: CopilotTurnResult["awaitingConfirmation"],
+): CopilotTurnResult {
+  if (steps.length === 0 && !awaiting) return degraded(correlationId, steps);
+  return {
+    reply:
+      "I had to stop there because this workspace's AI budget does not allow another step. Here is what I did.",
+    steps,
+    awaitingConfirmation: awaiting,
+    degraded: true,
+    correlationId,
+  };
+}
+
+/** Rough prompt size for the spend estimate: the serialised conversation so far. */
+function promptCharsOf(turns: ToolTurn[]): number {
+  let chars = 0;
+  for (const turn of turns) {
+    chars += typeof turn.content === "string" ? turn.content.length : 0;
+    if ("tool_calls" in turn && turn.tool_calls) chars += JSON.stringify(turn.tool_calls).length;
+  }
+  return chars;
+}
+
+/**
  * Strips the markdown the prompt asked it not to use.
  *
  * Prompts are requests, not guarantees, and a stray `**` in a chat bubble that
@@ -438,6 +556,7 @@ function cleanReply(content: string | null): string {
 async function meter(
   businessId: string,
   correlationId: string,
+  deployment: AiDeployment,
   inputTokens: number,
   cachedInputTokens: number,
   outputTokens: number,
@@ -449,7 +568,7 @@ async function meter(
   await recordAiUsage({
     businessId,
     taskType: "copilot_turn",
-    deployment: "mini",
+    deployment,
     promptKey: prompt.promptKey,
     promptVersion: prompt.version,
     inputTokens,

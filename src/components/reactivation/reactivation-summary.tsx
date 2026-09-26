@@ -140,7 +140,7 @@ export function ReactivationSummary({ summary }: { summary: SummaryData }) {
         " scheduled";
 
   return (
-    <div className={GRID}>
+    <div className={GRID} data-tour="reactivation-summary">
       <SummaryStatCard
         icon={Users}
         tone="success"

@@ -1,5 +1,6 @@
 "use client";
 
+import { unlockPlanLabel } from "@/lib/billing/plans";
 import * as React from "react";
 import Link from "next/link";
 import { Send } from "lucide-react";
@@ -115,7 +116,7 @@ export function TestFollowUpPanel({
                   disabled={option === "whatsapp" && !whatsappEnabled}
                 >
                   {CHANNEL_LABEL[option]}
-                  {option === "whatsapp" && !whatsappEnabled ? " — Growth plan" : ""}
+                  {option === "whatsapp" && !whatsappEnabled ? ` — ${unlockPlanLabel("whatsapp")}` : ""}
                 </option>
               ))}
             </Select>

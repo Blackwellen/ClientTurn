@@ -19,6 +19,15 @@
  * decision is available if the only visible number is the total.
  */
 
+import {
+  INTENT_EVIDENCE_KINDS,
+  kindsForCategory,
+  type CategoryShape,
+  type IntentEvidenceKind,
+} from "./intent-evidence.ts";
+import { TECH_FINGERPRINTS, type TechnologyKey } from "./website-signals.ts";
+import type { SearchPlan } from "./plan.ts";
+
 export const SIGNAL_KINDS = [
   "ENGAGEMENT",
   "COMPETITOR",
@@ -55,6 +64,136 @@ export type Signal = {
   lastRunAt: string | null;
   nextRunAt: string | null;
   lastResult: string | null;
+  /**
+   * Set when nothing that feeds this kind is configured: what to connect, in
+   * words. A signal whose source is missing would otherwise run and silently
+   * find nothing, which reads as "no leads" rather than "not set up".
+   */
+  needs?: string | null;
+};
+
+/* ---------------------------------------------------- where signals come from */
+
+/**
+ * The free, first-party feeds a signal can draw on.
+ *
+ * Every entry is the company's own website, the official register, the
+ * workspace's own accounts, or a company-search source for discovery. No kind
+ * depends on a paid contact-data vendor.
+ */
+export const SIGNAL_FEEDS = [
+  "COMPANY_WEBSITE",
+  "COMPANIES_HOUSE",
+  "OWN_SOCIAL_ACCOUNTS",
+  "COMPANY_SEARCH",
+] as const;
+export type SignalFeed = (typeof SIGNAL_FEEDS)[number];
+
+/** The sourcing provider behind each feed. Asserted against the registry in tests. */
+export const SIGNAL_FEED_PROVIDERS: Record<SignalFeed, string[]> = {
+  COMPANY_WEBSITE: ["website_signals"],
+  COMPANIES_HOUSE: ["companies_house"],
+  OWN_SOCIAL_ACCOUNTS: ["meta_engagement", "linkedin_engagement", "tiktok_engagement"],
+  COMPANY_SEARCH: ["google_places", "meta_ad_library", "tiktok_commercial_content"],
+};
+
+/** What to connect when a feed is missing. Written for a customer. */
+export const SIGNAL_FEED_NEEDS: Record<SignalFeed, string> = {
+  COMPANY_WEBSITE: "Nothing to connect: this reads companies' own public websites.",
+  COMPANIES_HOUSE:
+    "Needs a Companies House API key. It is free from developer.company-information.service.gov.uk.",
+  OWN_SOCIAL_ACCOUNTS: "Needs a connected Facebook, Instagram, LinkedIn or TikTok account.",
+  COMPANY_SEARCH: "Needs a company search source, such as Google Places.",
+};
+
+/**
+ * Which feeds can serve each kind. Any one of them is enough.
+ *
+ * An empty list is a kind with no lawful free source. COMPETITOR is one: no
+ * platform lets a third party list another company's followers, and scraping
+ * them is exactly what this product does not do.
+ */
+export const SIGNAL_KIND_FEEDS: Record<SignalKind, SignalFeed[]> = {
+  ENGAGEMENT: ["OWN_SOCIAL_ACCOUNTS"],
+  COMPETITOR: [],
+  // Officer appointments on the register: a company-level leadership change.
+  JOB_CHANGE: ["COMPANIES_HOUSE"],
+  // Share allotments (SH01) on the register.
+  FUNDING: ["COMPANIES_HOUSE"],
+  // Roles named on the company's own careers and jobs pages.
+  HIRING: ["COMPANY_WEBSITE"],
+  KEYWORD: ["COMPANY_WEBSITE"],
+  ICP_TOP: ["COMPANY_SEARCH"],
+  WEBSITE_SIGNAL: ["COMPANY_WEBSITE"],
+};
+
+export const NO_LAWFUL_SOURCE =
+  "No free, lawful source can supply this signal, so it is not offered.";
+
+export type SignalAvailability = { available: boolean; needs: string | null };
+
+/** Whether a kind can run with the feeds this workspace has live, and if not, why. */
+export function signalAvailability(
+  kind: SignalKind,
+  live: ReadonlySet<SignalFeed>,
+): SignalAvailability {
+  const feeds = SIGNAL_KIND_FEEDS[kind];
+  if (feeds.length === 0) return { available: false, needs: NO_LAWFUL_SOURCE };
+  if (feeds.some((feed) => live.has(feed))) return { available: true, needs: null };
+  return { available: false, needs: SIGNAL_FEED_NEEDS[feeds[0]] };
+}
+
+/** The feeds live for a workspace, from which providers report configured. */
+export function liveFeeds(configuredProviderKeys: Iterable<string>): Set<SignalFeed> {
+  const configured = new Set(configuredProviderKeys);
+  return new Set(
+    SIGNAL_FEEDS.filter((feed) => SIGNAL_FEED_PROVIDERS[feed].some((key) => configured.has(key))),
+  );
+}
+
+/**
+ * What kind of signal a plan represents.
+ *
+ * Derived from the plan rather than asked for: the customer described a
+ * target, and this is the label that best describes what the resulting search
+ * looks for. The most specific request wins; ICP_TOP is what a plan with no
+ * distinguishing feature genuinely is.
+ */
+export function signalKindForPlan(plan: SearchPlan): SignalKind {
+  const { signals } = plan;
+  if (signals.fundingFilings) return "FUNDING";
+  if (signals.hiringRoles.length > 0) return "HIRING";
+  if (signals.leadershipChanges) return "JOB_CHANGE";
+  if (signals.technologies.length > 0) return "WEBSITE_SIGNAL";
+  if (plan.intent.categories.length > 0) return "KEYWORD";
+  return "ICP_TOP";
+}
+
+/**
+ * The structured evidence a plan asks the intent stage to fetch, beyond the
+ * keyword categories it names. Each maps to one free feed.
+ */
+export function requestedEvidenceKinds(plan: SearchPlan): IntentEvidenceKind[] {
+  const { signals } = plan;
+  const kinds: IntentEvidenceKind[] = [];
+  if (signals.fundingFilings) kinds.push("FUNDING");
+  if (signals.hiringRoles.length > 0) kinds.push("HIRING");
+  if (signals.leadershipChanges) kinds.push("JOB_CHANGE");
+  if (signals.recentlyIncorporated) kinds.push("NEW_COMPANY");
+  if (signals.officeMoves) kinds.push("EXPANSION");
+  if (signals.technologies.length > 0) kinds.push("TECHNOLOGY");
+  return kinds;
+}
+
+/** The feed that produces each evidence kind. */
+export const EVIDENCE_KIND_FEED: Record<IntentEvidenceKind, SignalFeed> = {
+  FUNDING: "COMPANIES_HOUSE",
+  JOB_CHANGE: "COMPANIES_HOUSE",
+  NEW_COMPANY: "COMPANIES_HOUSE",
+  EXPANSION: "COMPANIES_HOUSE",
+  HIRING: "COMPANY_WEBSITE",
+  TECHNOLOGY: "COMPANY_WEBSITE",
+  WEBSITE_MENTION: "COMPANY_WEBSITE",
 };
 
 /**
@@ -140,4 +279,46 @@ export function nextRunLabel(nextRunAt: string | null, now: Date = new Date()): 
 
   const days = Math.round(hours / 24);
   return `in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+/**
+ * Everything the intent stage should fetch for a plan: the structured kinds
+ * it asked for, plus those its named categories collect (a "New funding"
+ * category fetches register allotments without a separate toggle).
+ *
+ * A HIRING category's keywords are the roles to look for, and a TECHNOLOGY
+ * category's keywords name technologies to fingerprint.
+ */
+export function intentWantsFor(
+  plan: SearchPlan,
+  categories: CategoryShape[],
+): { kinds: IntentEvidenceKind[]; hiringRoles: string[]; technologies: TechnologyKey[] } {
+  const kinds = new Set<IntentEvidenceKind>(requestedEvidenceKinds(plan));
+  const roles = new Set(plan.signals.hiringRoles);
+  const technologies = new Set<TechnologyKey>(plan.signals.technologies);
+
+  for (const category of categories) {
+    for (const kind of kindsForCategory(category)) {
+      if (kind === "WEBSITE_MENTION") continue;
+      if (kind === "HIRING") {
+        category.keywords.forEach((keyword) => roles.add(keyword));
+        if (roles.size === 0) continue;
+      }
+      if (kind === "TECHNOLOGY") {
+        const text = [category.name, ...category.keywords].join(" ").toLowerCase();
+        const named = TECH_FINGERPRINTS.filter(
+          (entry) => text.includes(entry.label.toLowerCase().split(" ")[0]) || text.includes(entry.key.toLowerCase()),
+        );
+        named.forEach((entry) => technologies.add(entry.key));
+        if (named.length === 0) continue;
+      }
+      kinds.add(kind);
+    }
+  }
+
+  return {
+    kinds: INTENT_EVIDENCE_KINDS.filter((kind) => kinds.has(kind)),
+    hiringRoles: [...roles].slice(0, 20),
+    technologies: [...technologies],
+  };
 }

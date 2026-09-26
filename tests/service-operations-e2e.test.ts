@@ -231,6 +231,14 @@ describe("lead operations write what the schema accepts", () => {
       "lead.flag_attention",
     );
     ok(
+      await run("lead.record_whatsapp_opt_in", {
+        leadId: world.leadId,
+        optedInOn: new Date().toISOString().slice(0, 10),
+        source: "PHONE_CALL",
+      }),
+      "lead.record_whatsapp_opt_in",
+    );
+    ok(
       await run("lead.assign", { leadId: world.leadId, userId: world.userId }),
       "lead.assign",
     );

@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -9,10 +10,14 @@ import { replyWindow } from "@/lib/inbox/types";
 import type { Database } from "@/lib/supabase/database.types";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
+import { manualSendKeys } from "@/lib/jobs/send-core";
 import { normalisePhone } from "@/lib/messaging/provider";
 import { assertEntitlement, EntitlementError } from "@/lib/billing/entitlements";
 import { enqueueCrmPushes } from "@/lib/integrations/providers/crm-trigger";
+import { runOperation, type ServiceResult } from "@/lib/services";
 import { LEAD_STATUSES, QUALIFICATION_RESULTS } from "./filters";
+import { closeReasonSchema, statusNeedsReason } from "./detail-page";
+import { leadStatusTransition } from "./status-transitions";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -26,7 +31,27 @@ const assignSchema = z.object({
 const statusSchema = z.object({
   leadId: leadIdSchema,
   status: z.enum(LEAD_STATUSES),
+  /** Required for WON and LOST (decision Q3); ignored otherwise. */
+  reason: z.string().optional(),
+  /** An admin's reason for overriding a refused status transition (§51). */
+  overrideReason: z.string().trim().max(500).optional(),
 });
+
+/** The service context for a person acting in the app. */
+function uiContext(workspace: ActiveWorkspace, confirmed = false) {
+  return {
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    role: workspace.role,
+    caller: "UI" as const,
+    confirmed,
+    correlationId: randomUUID(),
+  };
+}
+
+function fromService(result: ServiceResult): ActionResult {
+  return result.success ? { ok: true } : { ok: false, error: result.message };
+}
 
 /**
  * A manually-typed reply.
@@ -58,7 +83,8 @@ function fail(error: string): ActionResult {
 
 function refresh() {
   revalidatePath("/app");
-  revalidatePath("/app/leads");
+  // "layout" so the lead detail pages under /app/leads/[id] refresh too.
+  revalidatePath("/app/leads", "layout");
 }
 
 async function loadLead(workspace: ActiveWorkspace, leadId: string) {
@@ -151,6 +177,8 @@ const STATUS_TIMESTAMPS: Partial<Record<string, "qualified_at" | "booked_at" | "
 export async function updateLeadStatus(input: {
   leadId: string;
   status: string;
+  reason?: string;
+  overrideReason?: string;
 }): Promise<ActionResult> {
   const parsed = statusSchema.safeParse(input);
   if (!parsed.success) return fail("That status is not valid.");
@@ -162,8 +190,51 @@ export async function updateLeadStatus(input: {
     return fail("You do not have permission to change lead status.");
   }
 
+  /*
+   * WON and LOST live on the opportunity; the lead's status is its projection
+   * (decision Q3). They go through `lead.set_status`, which closes the lead's
+   * opportunity -- creating one first if it has none -- in the same
+   * transaction as the status, with the reason a person gave. The reason is
+   * required here: it feeds every won/lost report and the connected CRM.
+   */
+  if (statusNeedsReason(parsed.data.status)) {
+    const reason = closeReasonSchema.safeParse(parsed.data.reason ?? "");
+    if (!reason.success) {
+      return fail(
+        `Say why this lead was ${parsed.data.status === "WON" ? "won" : "lost"} before closing it.`,
+      );
+    }
+    const result = await runOperation(
+      "lead.set_status",
+      {
+        leadId: parsed.data.leadId,
+        status: parsed.data.status,
+        reason: reason.data,
+        ...(parsed.data.overrideReason ? { overrideReason: parsed.data.overrideReason } : {}),
+      },
+      uiContext(workspace),
+    );
+    if (result.success) refresh();
+    return fromService(result);
+  }
+
   const lead = await loadLead(workspace, parsed.data.leadId);
   if (!lead) return fail("Lead not found.");
+
+  // The state machine (§51). A refused move either fails with its reason or,
+  // with an override reason, goes through `lead.set_status`, which checks the
+  // role and writes the override into the audit row.
+  const transition = leadStatusTransition(lead.status, parsed.data.status);
+  if (!transition.allowed) {
+    if (!parsed.data.overrideReason) return fail(transition.reason);
+    const result = await runOperation(
+      "lead.set_status",
+      { leadId: lead.id, status: parsed.data.status, overrideReason: parsed.data.overrideReason },
+      uiContext(workspace),
+    );
+    if (result.success) refresh();
+    return fromService(result);
+  }
 
   const now = new Date().toISOString();
   const patch: Database["public"]["Tables"]["leads"]["Update"] = { status: parsed.data.status };
@@ -171,11 +242,6 @@ export async function updateLeadStatus(input: {
   if (stamp) patch[stamp] = now;
 
   if (parsed.data.status === "QUALIFIED") patch.qualification_state = "QUALIFIED";
-  if (parsed.data.status === "LOST") {
-    patch.automation_active = false;
-    patch.needs_attention = false;
-  }
-  if (parsed.data.status === "WON") patch.automation_active = false;
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -195,7 +261,7 @@ export async function updateLeadStatus(input: {
     metadata: { from: lead.status, to: parsed.data.status },
   });
 
-  if (["QUALIFIED", "BOOKED", "WON"].includes(parsed.data.status)) {
+  if (["QUALIFIED", "BOOKED"].includes(parsed.data.status)) {
     await enqueueCrmPushes(workspace.businessId, lead.id);
   }
 
@@ -203,12 +269,14 @@ export async function updateLeadStatus(input: {
   return { ok: true };
 }
 
-export async function markWon(leadId: string) {
-  return updateLeadStatus({ leadId, status: "WON" });
+/** Closes the lead won, with the reason (required). */
+export async function markWon(leadId: string, reason: string) {
+  return updateLeadStatus({ leadId, status: "WON", reason });
 }
 
-export async function markLost(leadId: string) {
-  return updateLeadStatus({ leadId, status: "LOST" });
+/** Closes the lead lost, with the reason (required). */
+export async function markLost(leadId: string, reason: string) {
+  return updateLeadStatus({ leadId, status: "LOST", reason });
 }
 
 export async function markQualification(input: {
@@ -269,7 +337,11 @@ export async function markQualification(input: {
   return { ok: true };
 }
 
-/** Stops automated follow-up and hands the conversation to a person. */
+/**
+ * Stops automated follow-up and hands the conversation to a person. The
+ * `lead.takeover` operation is the one implementation, shared with the lead
+ * page, Copilot and MCP.
+ */
 export async function humanTakeover(leadId: string): Promise<ActionResult> {
   const parsed = leadIdSchema.safeParse(leadId);
   if (!parsed.success) return fail("Lead not found.");
@@ -281,46 +353,12 @@ export async function humanTakeover(leadId: string): Promise<ActionResult> {
     return fail("You do not have permission to take over this conversation.");
   }
 
-  const lead = await loadLead(workspace, parsed.data);
-  if (!lead) return fail("Lead not found.");
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("leads")
-    .update({
-      human_takeover: true,
-      automation_active: false,
-      needs_attention: true,
-      attention_reason: "human_requested",
-    })
-    .eq("id", lead.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return fail("Could not take over this conversation.");
-
-  await admin
-    .from("automation_runs")
-    .update({
-      state: "STOPPED",
-      stopped_at: new Date().toISOString(),
-      stopped_reason: "human_takeover",
-    })
-    .eq("lead_id", lead.id)
-    .eq("business_id", workspace.businessId)
-    .eq("state", "ACTIVE");
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: "lead.human_takeover",
-    entityType: "lead",
-    entityId: lead.id,
-  });
-
-  refresh();
-  return { ok: true };
+  const result = await runOperation("lead.takeover", { leadId: parsed.data }, uiContext(workspace));
+  if (result.success) refresh();
+  return fromService(result);
 }
 
+/** Hands the lead back to automated follow-up (`lead.resume_follow_up`). */
 export async function resumeAutomation(leadId: string): Promise<ActionResult> {
   const parsed = leadIdSchema.safeParse(leadId);
   if (!parsed.success) return fail("Lead not found.");
@@ -332,42 +370,13 @@ export async function resumeAutomation(leadId: string): Promise<ActionResult> {
     return fail("You do not have permission to resume automation.");
   }
 
-  const lead = await loadLead(workspace, parsed.data);
-  if (!lead) return fail("Lead not found.");
-  if (lead.opted_out) {
-    return fail("This lead opted out. Automation cannot be resumed.");
-  }
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("leads")
-    .update({
-      human_takeover: false,
-      automation_active: true,
-      needs_attention: false,
-      attention_reason: null,
-    })
-    .eq("id", lead.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return fail("Could not resume automation.");
-
-  await enqueue(
-    "automation.advance",
-    { leadId: lead.id },
-    { businessId: workspace.businessId },
+  const result = await runOperation(
+    "lead.resume_follow_up",
+    { leadId: parsed.data },
+    uiContext(workspace),
   );
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: "lead.automation_resumed",
-    entityType: "lead",
-    entityId: lead.id,
-  });
-
-  refresh();
-  return { ok: true };
+  if (result.success) refresh();
+  return fromService(result);
 }
 
 export async function setFollowUpPaused(input: {
@@ -388,6 +397,8 @@ export async function sendManualMessage(input: {
   body: string;
   conversationId?: string;
   subject?: string;
+  /** One per composed message, from the composer, so a retry of it is exact. */
+  clientNonce?: string;
 }): Promise<ActionResult> {
   const parsed = messageSchema.safeParse(input);
   if (!parsed.success) return fail("Enter a message before sending.");
@@ -516,7 +527,35 @@ export async function sendManualMessage(input: {
     }
   }
 
-  const sendKey = crypto.randomUUID();
+  /*
+   * Derived, not random. A random key per click made a double-click two
+   * messages; this key is the same for the same message pressed twice (see
+   * `manualSendKeys`), so the unique (business_id, send_key) index turns the
+   * second press into a no-op instead of a second text to the lead.
+   */
+  const nonce = z.string().trim().min(8).max(80).safeParse(input.clientNonce);
+  const { key: sendKey, candidates } = manualSendKeys({
+    leadId: lead.id,
+    channel,
+    body: parsed.data.body,
+    subject: channel === "email" ? (parsed.data.subject ?? null) : null,
+    nonce: nonce.success ? nonce.data : null,
+  });
+
+  const { data: duplicate, error: duplicateError } = await admin
+    .from("messages")
+    .select("id")
+    .eq("business_id", workspace.businessId)
+    .in("send_key", candidates)
+    .limit(1)
+    .maybeSingle();
+  if (duplicateError) return fail("Could not queue the message.");
+  // Already queued by the first press. Reporting success is the truth.
+  if (duplicate) {
+    refresh();
+    return { ok: true };
+  }
+
   const { data: message, error: messageError } = await admin
     .from("messages")
     .insert({
@@ -535,6 +574,11 @@ export async function sendManualMessage(input: {
     .select("id")
     .single();
 
+  // Lost the race to a concurrent press of the same message.
+  if (messageError?.code === "23505") {
+    refresh();
+    return { ok: true };
+  }
   if (messageError || !message) return fail("Could not queue the message.");
 
   await enqueue(

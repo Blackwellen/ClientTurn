@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { BarChart3, CircleHelp, Ticket, X } from "lucide-react";
 import { useFocusTrap, useEscape } from "@/components/ui/drawer";
 import { cn } from "@/lib/cn";
+import { TOUR_START_EVENT } from "@/lib/tour/events";
 import { HelpView } from "./help-view";
 import { NewTicketForm } from "./new-ticket-form";
 import { TicketList } from "./ticket-list";
@@ -64,6 +65,14 @@ export function SupportPopout() {
     return () => window.removeEventListener("clientturn:support", show);
   }, []);
 
+  // The product tour spotlights the page behind this panel, so the panel
+  // gets out of the way when a tour starts (from here or anywhere else).
+  React.useEffect(() => {
+    const hide = () => setOpen(false);
+    window.addEventListener(TOUR_START_EVENT, hide);
+    return () => window.removeEventListener(TOUR_START_EVENT, hide);
+  }, []);
+
   const goto = React.useCallback((next: Tab) => {
     setTab(next);
     setScreen({ kind: "root" });
@@ -74,6 +83,7 @@ export function SupportPopout() {
       <button
         type="button"
         aria-label="Open ClientTurn support"
+        data-tour="help-launcher"
         aria-expanded={open}
         aria-controls="clientturn-support"
         onClick={() => setOpen((current) => !current)}

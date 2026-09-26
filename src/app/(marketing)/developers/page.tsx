@@ -188,11 +188,18 @@ const ENDPOINTS = [
     body: "Search leads by text, status or attention flag.",
   },
   {
+    method: "POST",
+    path: "/api/v1/leads",
+    scope: "leads:write",
+    role: "Member",
+    body: "Record an inbound lead through the same intake as the ad forms. Needs an Idempotency-Key header and a stated relationship; 201 created, 200 merged or duplicate, 409 when the contact is suppressed (nothing stored).",
+  },
+  {
     method: "GET",
     path: "/api/v1/leads/{id}",
     scope: "leads:read",
     role: "Viewer",
-    body: "One lead with its recent activity.",
+    body: "One lead, with its last 20 messages as recent_activity.",
   },
   {
     method: "PATCH",
@@ -692,7 +699,7 @@ export default function DevelopersPage() {
                   <li>
                     <span>Retries on failure</span>
                     <StatePill tone="go">
-                      {WEBHOOK_RETRY_BACKOFF_SECONDS.length} attempts over ~
+                      {WEBHOOK_RETRY_BACKOFF_SECONDS.length + 1} attempts over ~
                       {RETRY_TOTAL_HOURS}h
                     </StatePill>
                   </li>
@@ -966,7 +973,7 @@ export default function DevelopersPage() {
                 </>
               }
               assurances={[
-                "No card required",
+                "Nothing charged during the trial",
                 "Keys created in Settings, in seconds",
                 "Revocable at any time",
               ]}

@@ -458,6 +458,8 @@ export type EnquiryState = {
 export type PermissionState = {
   relationship: RelationshipChoice | "";
   evidence: string;
+  /** They agreed to be messaged on WhatsApp at the mobile entered. */
+  whatsappOptIn?: boolean;
 };
 
 export type QualificationFlowChoice = "default" | "service";
@@ -516,7 +518,7 @@ export function initialAddLeadState(): AddLeadState {
       conversionGoal: "",
       notes: "",
     },
-    permission: { relationship: "", evidence: "" },
+    permission: { relationship: "", evidence: "", whatsappOptIn: false },
     routing: {
       assigneeId: "",
       initialStatus: "NEW",
@@ -858,6 +860,7 @@ export const enquiryPayloadSchema = z.object({
 export const permissionPayloadSchema = z.object({
   relationship: z.enum(RELATIONSHIP_CHOICES),
   evidence: trimmed(MAX_EVIDENCE),
+  whatsappOptIn: z.boolean().default(false),
 });
 
 export const routingPayloadSchema = z.object({

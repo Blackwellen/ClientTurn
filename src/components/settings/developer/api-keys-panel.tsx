@@ -16,6 +16,7 @@ import {
   maskedKey,
   type ApiKeyView,
 } from "@/lib/api-keys/types";
+import { Select } from "@/components/ui/form";
 
 /**
  * API keys (Settings → Developer).
@@ -361,31 +362,31 @@ function CreateKeyDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="text-[12.5px] font-medium text-content">Expires</span>
-            <select
+            <Select
               value={expiry}
               onChange={(event) => setExpiry(event.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-content outline-none focus:border-accent-400"
+              className="mt-1 h-9 w-full text-[13px]"
             >
               {API_KEY_EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <label className="block">
             <span className="text-[12.5px] font-medium text-content">Environment</span>
-            <select
+            <Select
               value={environment}
               onChange={(event) =>
                 setEnvironment(event.target.value === "test" ? "test" : "live")
               }
-              className="mt-1 h-9 w-full rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-content outline-none focus:border-accent-400"
+              className="mt-1 h-9 w-full text-[13px]"
             >
               <option value="live">Live</option>
               <option value="test">Test</option>
-            </select>
+            </Select>
             <span className="mt-1 block text-[11.5px] text-content-subtle">
               Both read the same workspace. The label tells you which is which.
             </span>

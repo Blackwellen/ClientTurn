@@ -7,6 +7,18 @@ import { canReplyOn, channelLabel } from "@/lib/inbox/types";
 import { inboxAction } from "@/lib/inbox/actions";
 
 /**
+ * One id per composed message, so pressing Send twice on the same draft (or
+ * retrying it after a dropped response) is recognised exactly by the server's
+ * duplicate check. Undefined where `randomUUID` is unavailable (an insecure
+ * origin); the server then falls back to its time-bucketed content key.
+ */
+function newComposeNonce(): string | undefined {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : undefined;
+}
+
+/**
  * Per-conversation actions.
  *
  * Reply is only offered on channels ClientTurn can actually send from, and the
@@ -26,6 +38,14 @@ export function InboxControls({
 }) {
   const router = useRouter();
   const [body, setBody] = React.useState("");
+  // Tied to the draft: kept across retries of the same text, replaced when the
+  // text changes or the reply is sent.
+  const nonceRef = React.useRef<string | undefined>(undefined);
+  if (nonceRef.current === undefined) nonceRef.current = newComposeNonce();
+  // The same text in another conversation is another message.
+  React.useEffect(() => {
+    nonceRef.current = newComposeNonce();
+  }, [id]);
   const [error, setError] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
@@ -34,10 +54,17 @@ export function InboxControls({
   function run(action: "read" | "archive" | "restore" | "reply") {
     startTransition(async () => {
       try {
-        const result = await inboxAction({ id, action, body });
+        const result = await inboxAction(
+          action === "reply"
+            ? { id, action, body, clientNonce: nonceRef.current }
+            : { id, action },
+        );
         setError(result.error ?? "");
         if (!result.error) {
-          if (action === "reply") setBody("");
+          if (action === "reply") {
+            setBody("");
+            nonceRef.current = newComposeNonce();
+          }
           router.refresh();
         }
       } catch {
@@ -70,7 +97,10 @@ export function InboxControls({
               value={body}
               maxLength={1200}
               rows={3}
-              onChange={(event) => setBody(event.target.value)}
+              onChange={(event) => {
+                setBody(event.target.value);
+                nonceRef.current = newComposeNonce();
+              }}
               className="mt-1.5 w-full rounded-md border border-line-strong bg-surface p-2.5 text-[13px] text-content focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent"
             />
           </label>

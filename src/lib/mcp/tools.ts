@@ -78,10 +78,11 @@ export type ToolDefinition = {
  * that could not complete. `message.send` and `campaign.launch` now exist for
  * real; the other two are gone rather than left as promises.
  *
- * `create_lead` stays because it is not a duplicate: `lead.create` is
- * deliberately absent from the registry, and this handler does the thing that
- * absence protects — it refuses a contact that is not a warm relationship, and
- * records the lawful basis for contacting them.
+ * `create_lead` stays because it is not a duplicate: the registry's
+ * `lead.create` is offered to the public API only, and this tool refuses a
+ * contact that is not a warm relationship and refuses a suppressed one before
+ * anything is stored. Both run the same ingestLead() (src/lib/ingest), so the
+ * deduplication, permission record and touch are identical.
  */
 export const MCP_TOOLS: ToolDefinition[] = [
 
@@ -103,7 +104,12 @@ export const MCP_TOOLS: ToolDefinition[] = [
         relationshipType: {
           type: "string",
           description:
-            "How you know them: THEY_CONTACTED_US, EXISTING_CUSTOMER, REFERRAL, REQUESTED_INFORMATION, EXPLICIT_MARKETING_CONSENT or EXISTING_BUSINESS_RELATIONSHIP.",
+            "How you know them: THEY_CONTACTED_US, EXISTING_CUSTOMER, REFERRAL, REQUESTED_INFORMATION, EXPLICIT_MARKETING_CONSENT or EXISTING_BUSINESS_RELATIONSHIP. REFERRAL needs evidence.",
+        },
+        evidence: {
+          type: "string",
+          description:
+            "Required for REFERRAL: who referred them and when, at least 20 characters.",
         },
       },
       required: ["relationshipType"],

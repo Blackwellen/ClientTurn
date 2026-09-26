@@ -1,18 +1,20 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { runOperation } from "@/lib/services";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { AGENT_TYPES, SOURCE_DEFINITIONS, type SourceKey } from "./types";
 
 /**
  * Agent mutations.
  *
- * Every write goes through `requireRole("admin")` and then the service role,
- * scoped explicitly to the caller's workspace — the pattern the rest of the
- * codebase uses, with RLS as the backstop rather than the only guard.
+ * Every write checks `requireRole("admin")` and then runs the matching agent
+ * registry operation (`agent.create`, `agent.configure`, `agent.start`, ...),
+ * so the wizard, the Settings form, Copilot, MCP and the API share one
+ * implementation and one set of checks.
  *
  * An agent is always created in DRAFT and is never started by its own creation.
  * Starting is a separate, separately-validated action.
@@ -29,199 +31,195 @@ const saveSchema = z.object({
   dailyCap: z.coerce.number().int().min(1).max(500),
   monthlyCap: z.coerce.number().int().min(1).max(10000),
   sources: z.array(z.enum(SOURCE_KEYS)).max(SOURCE_KEYS.length).default([]),
-  enrichEmail: z.boolean().default(true),
-  enrichPhone: z.boolean().default(false),
   autonomy: z.enum(["REVIEW_ALL", "REVIEW_NEW", "AUTO"]).default("REVIEW_ALL"),
 });
 
-export async function saveAgent(input: unknown) {
+type Workspace = Awaited<ReturnType<typeof requireRole>>;
+
+function uiContext(workspace: Workspace) {
+  return {
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    role: workspace.role,
+    caller: "UI" as const,
+    // The person pressed the button that asks for exactly this act.
+    confirmed: true,
+    correlationId: randomUUID(),
+  };
+}
+
+async function adminOrError(): Promise<Workspace | null> {
+  try {
+    return await requireRole("admin");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Creates an agent through `agent.create`, so the wizard, Copilot, MCP and the
+ * API share one implementation and one set of checks.
+ */
+export async function saveAgent(input: unknown): Promise<{ id?: string; error?: string }> {
   const parsed = saveSchema.safeParse(input);
   if (!parsed.success) {
     return { error: "Check the agent name, sources and limits, then try again." };
   }
 
-  const workspace = await requireRole("admin");
+  const workspace = await adminOrError();
+  if (!workspace) return { error: "You need workspace admin access to create an agent." };
   const value = parsed.data;
 
-  const entitlements = await getV4Entitlements(workspace.businessId);
-  if (!entitlements.active) {
-    return { error: "This workspace does not have an active subscription." };
-  }
-  if (
-    (value.type === "SOURCING" || value.type === "COMBINED") &&
-    !entitlements.sourcingEnabled
-  ) {
-    return { error: "Your plan does not include sourcing agents. Review Billing & Usage." };
-  }
-
-  // Re-checked server-side: the wizard also validates this, but the wizard is
-  // not the authority on anything.
-  if (value.monthlyCap < value.dailyCap) {
-    return { error: "The monthly limit must be at least the daily limit." };
-  }
-
-  // A source the agent type cannot use is dropped rather than rejected, so a
-  // stale browser tab cannot fail the whole submission.
-  const permitted = value.sources.filter((key) =>
-    SOURCE_DEFINITIONS[key]?.types.includes(value.type),
-  );
-
-  const db = createAdminClient();
-
-  if (value.strategyId) {
-    const { data: plan } = await db
-      .from("search_strategies")
-      .select("id")
-      .eq("id", value.strategyId)
-      .eq("business_id", workspace.businessId)
-      .eq("status", "APPROVED")
-      .maybeSingle();
-    if (!plan) {
-      return { error: "Choose an approved search plan from this workspace." };
-    }
-  }
-
-  const { data: agent, error } = await db
-    .from("agents")
-    .insert({
-      business_id: workspace.businessId,
-      created_by: workspace.userId,
+  const result = await runOperation(
+    "agent.create",
+    {
       name: value.name,
-      description: value.description || null,
-      agent_type: value.type,
+      description: value.description || undefined,
+      type: value.type,
       cadence: value.cadence,
-      search_strategy_id: value.strategyId || null,
-      daily_prospect_cap: value.dailyCap,
-      monthly_prospect_cap: value.monthlyCap,
-      timezone: workspace.timezone,
-      status: "DRAFT",
+      dailyCap: value.dailyCap,
+      monthlyCap: value.monthlyCap,
+      sources: value.sources,
       autonomy: value.autonomy,
-      enrich_email: value.enrichEmail,
-      enrich_phone: value.enrichPhone,
-      // Never enabled at creation. Promotion into Leads is a deliberate,
-      // separately-granted behaviour.
-      auto_promote_to_leads: false,
-    })
-    .select("id")
-    .single();
-
-  if (error || !agent) return { error: "The agent could not be saved. Please retry." };
-
-  if (permitted.length > 0) {
-    await db.from("agent_sources").insert(
-      permitted.map((key) => ({
-        business_id: workspace.businessId,
-        agent_id: agent.id,
-        source_key: key,
-        enabled: true,
-        // Real availability is resolved when the agent first runs; recording
-        // REQUIRES_SETUP up front would be a guess.
-        status: "AVAILABLE" as const,
-      })),
-    );
-  }
-
-  await db.from("agent_activity_events").insert({
-    business_id: workspace.businessId,
-    agent_id: agent.id,
-    actor_user_id: workspace.userId,
-    event_type: "CREATED",
-    severity: "INFO",
-    title: "Agent created",
-    detail: "Saved as a draft. Review the setup before starting background work.",
-  });
+      ...(value.strategyId ? { searchPlanId: value.strategyId } : {}),
+    },
+    uiContext(workspace),
+  );
+  if (!result.success) return { error: result.message };
 
   revalidatePath("/app/agents");
-  return { id: agent.id };
+  const data = result.data as { agent: { id: string } };
+  return { id: data.agent.id };
 }
 
+const updateSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(500).default(""),
+  strategyId: z.union([z.uuid(), z.literal("")]).default(""),
+  cadence: z.enum(["MANUAL", "HOURLY", "DAILY", "WEEKLY"]),
+  dailyCap: z.coerce.number().int().min(1).max(500),
+  monthlyCap: z.coerce.number().int().min(1).max(10000),
+  sources: z.array(z.enum(SOURCE_KEYS)).max(SOURCE_KEYS.length).optional(),
+  autonomy: z.enum(["REVIEW_ALL", "REVIEW_NEW", "AUTO"]),
+});
+
+/** Edits an agent's setup through `agent.configure` (the Settings tab form). */
+export async function updateAgent(
+  input: unknown,
+): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Check the agent name, sources and limits, then try again." };
+  }
+  if (parsed.data.monthlyCap < parsed.data.dailyCap) {
+    return { ok: false, error: "The monthly limit must be at least the daily limit." };
+  }
+
+  const workspace = await adminOrError();
+  if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
+  const value = parsed.data;
+
+  const result = await runOperation(
+    "agent.configure",
+    {
+      agentId: value.id,
+      name: value.name,
+      description: value.description || null,
+      cadence: value.cadence,
+      dailyCap: value.dailyCap,
+      monthlyCap: value.monthlyCap,
+      autonomy: value.autonomy,
+      ...(value.sources ? { sources: value.sources } : {}),
+      ...(value.strategyId ? { searchPlanId: value.strategyId } : {}),
+    },
+    uiContext(workspace),
+  );
+  if (!result.success) return { ok: false, error: result.message };
+
+  revalidatePath("/app/agents", "layout");
+  return { ok: true, warnings: (result.warnings ?? []).map((w) => w.message) };
+}
+
+/**
+ * Start, run now, pause and stop, through the agent lifecycle operations — so
+ * the readiness, entitlement and plan checks live in one place.
+ *
+ * "run" is "Run now" / "Run once": on an agent that is not running it starts
+ * it (the same as "start"), on a running one it brings the next run forward.
+ */
 export async function controlAgent(id: unknown, command: unknown) {
   const parsed = z
     .object({ id: z.uuid(), command: z.enum(["start", "pause", "stop", "run"]) })
     .safeParse({ id, command });
   if (!parsed.success) return { error: "Invalid agent control." };
 
-  const workspace = await requireRole("admin");
-  const db = createAdminClient();
+  const workspace = await adminOrError();
+  if (!workspace) return { error: "You need workspace admin access to change this agent." };
 
-  const { data: agent } = await db
+  const db = createAdminClient();
+  const { data: agent, error: readError } = await db
     .from("agents")
-    .select("id, agent_type, search_strategy_id, cadence")
+    .select("id, status")
     .eq("business_id", workspace.businessId)
     .eq("id", parsed.data.id)
     .maybeSingle();
-
+  if (readError) return { error: "The agent could not be read. Please retry." };
   if (!agent) return { error: "Agent not found." };
 
-  const starting = parsed.data.command === "start" || parsed.data.command === "run";
+  const operation =
+    parsed.data.command === "pause"
+      ? "agent.pause"
+      : parsed.data.command === "stop"
+        ? "agent.stop"
+        : parsed.data.command === "run" && agent.status === "ACTIVE"
+          ? "agent.run_now"
+          : "agent.start";
 
-  if (starting) {
-    const entitlements = await getV4Entitlements(workspace.businessId);
-    if (!entitlements.active) {
-      return { error: "This workspace does not have an active subscription." };
-    }
-
-    // Only the roles that actually source prospects need the sourcing
-    // entitlement. Booking and re-engagement work existing leads, which every
-    // paying plan includes.
-    const sources = agent.agent_type === "SOURCING" || agent.agent_type === "COMBINED";
-    if (sources && !entitlements.sourcingEnabled) {
-      return { error: "Your plan does not include sourcing agents. Review Billing & Usage." };
-    }
-
-    // Sourcing needs an approved plan before it can spend anything. Booking
-    // and re-engagement orchestrate engines configured elsewhere, and their
-    // ticks re-check contactability per lead, so there is nothing equivalent
-    // to approve up front.
-    if (agent.agent_type === "SOURCING" || agent.agent_type === "COMBINED") {
-      if (!agent.search_strategy_id) {
-        return {
-          error: "This agent needs an approved Find Leads search plan before it can run.",
-        };
-      }
-
-      const { data: plan } = await db
-        .from("search_strategies")
-        .select("status")
-        .eq("id", agent.search_strategy_id)
-        .eq("business_id", workspace.businessId)
-        .maybeSingle();
-
-      if (plan?.status !== "APPROVED") {
-        return { error: "Approve the search plan in Find Leads before running this agent." };
-      }
-    }
-  }
-
-  const status = starting
-    ? "ACTIVE"
-    : parsed.data.command === "pause"
-      ? "PAUSED"
-      : "STOPPED";
-
-  const { error } = await db
-    .from("agents")
-    .update({
-      status,
-      status_reason: null,
-      next_run_at: starting ? new Date().toISOString() : null,
-      activated_at: starting ? new Date().toISOString() : undefined,
-      paused_at: status === "PAUSED" ? new Date().toISOString() : undefined,
-    })
-    .eq("id", agent.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return { error: "The agent could not be updated." };
-
-  await db.from("agent_activity_events").insert({
-    business_id: workspace.businessId,
-    agent_id: agent.id,
-    actor_user_id: workspace.userId,
-    event_type: status,
-    severity: starting ? "SUCCESS" : "INFO",
-    title: starting ? "Background run requested" : `Agent ${status.toLowerCase()}`,
-  });
+  const result = await runOperation(operation, { agentId: agent.id }, uiContext(workspace));
+  if (!result.success) return { error: result.message };
 
   revalidatePath("/app/agents", "layout");
   return { ok: true };
+}
+
+/**
+ * Deletes an agent through the registry operation, so the UI, MCP and the API
+ * share one implementation, one audit row and one refusal rule (a run in
+ * progress blocks it). `confirmed: true` is sent only from the confirmation
+ * dialog the person clicked through.
+ */
+export async function deleteAgent(
+  id: unknown,
+): Promise<
+  | { ok: true; kept: { leads: number; prospects: number; sourcingRuns: number } }
+  | { ok: false; error: string }
+> {
+  const parsed = z.object({ id: z.uuid() }).safeParse({ id });
+  if (!parsed.success) return { ok: false, error: "Invalid agent." };
+
+  let workspace;
+  try {
+    workspace = await requireRole("admin");
+  } catch {
+    return { ok: false, error: "You need workspace admin access to delete this agent." };
+  }
+
+  const result = await runOperation(
+    "agent.delete",
+    { agentId: parsed.data.id },
+    {
+      businessId: workspace.businessId,
+      userId: workspace.userId,
+      role: workspace.role,
+      caller: "UI",
+      confirmed: true,
+      correlationId: randomUUID(),
+    },
+  );
+  if (!result.success) return { ok: false, error: result.message };
+
+  revalidatePath("/app/agents");
+  const data = result.data as { kept: { leads: number; prospects: number; sourcingRuns: number } };
+  return { ok: true, kept: data.kept };
 }

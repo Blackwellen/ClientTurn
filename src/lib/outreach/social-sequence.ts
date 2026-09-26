@@ -85,6 +85,9 @@ export type SocialSequenceSettings = {
 };
 
 export const DEFAULT_SEQUENCE_SETTINGS: SocialSequenceSettings = {
+  // 30, matching the column default since 0093. The form, the data-controls
+  // reader and the sequencer used to disagree (30 / 21 / "blank means never"
+  // read back as 21 or 30); `sequenceSettingsFromRow` is now the one reading.
   withdrawAfterDays: 30,
   // A week. Long enough that a genuine acceptance usually lands first, short
   // enough that a good prospect is not parked for a month.
@@ -475,4 +478,40 @@ export function nextActionAtFor(decision: SocialSequenceDecision, now: Date): Da
     default:
       return now;
   }
+}
+
+/**
+ * Sequence settings from a `business_data_controls` row.
+ *
+ * The two windows are nullable on purpose -- null means "never withdraw" and
+ * "never fall back to email", which is what a blank field in Data controls
+ * says. They were read with `??`, which turned an explicit null straight back
+ * into the default, so "never" silently meant 21 or 30 days depending on which
+ * reader ran. A missing row (never saved) gets the defaults; a saved null is
+ * kept as null.
+ */
+export function sequenceSettingsFromRow(
+  row: {
+    social_withdraw_after_days?: number | null;
+    social_skip_to_email_after_days?: number | null;
+    social_follow_up_gap_hours?: number | null;
+    social_max_follow_ups?: number | null;
+    social_warm_before_invite?: boolean | null;
+    social_warm_delay_hours?: number | null;
+  } | null,
+): SocialSequenceSettings {
+  const d = DEFAULT_SEQUENCE_SETTINGS;
+  if (!row) return { ...d };
+  return {
+    withdrawAfterDays:
+      row.social_withdraw_after_days === undefined ? d.withdrawAfterDays : row.social_withdraw_after_days,
+    skipToEmailAfterDays:
+      row.social_skip_to_email_after_days === undefined
+        ? d.skipToEmailAfterDays
+        : row.social_skip_to_email_after_days,
+    followUpGapHours: row.social_follow_up_gap_hours ?? d.followUpGapHours,
+    maxFollowUps: row.social_max_follow_ups ?? d.maxFollowUps,
+    warmBeforeInvite: row.social_warm_before_invite ?? d.warmBeforeInvite,
+    warmDelayHours: row.social_warm_delay_hours ?? d.warmDelayHours,
+  };
 }

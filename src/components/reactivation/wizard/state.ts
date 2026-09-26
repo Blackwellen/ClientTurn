@@ -14,6 +14,15 @@ import {
   type AudienceFilter,
 } from "../../../lib/campaigns/types.ts";
 import { htmlToPlainText, isEmptyHtml, plainTextToHtml } from "../../../lib/email/rich-text.ts";
+import {
+  reactivationLimitProblem,
+  type ReactivationAllowance,
+} from "../../../lib/campaigns/reactivation-limit.ts";
+import {
+  CHANNEL_CONNECT_HINT,
+  templateMappingIssue,
+  type CampaignTemplateOption,
+} from "../../../lib/campaigns/reactivation-channels.ts";
 
 export type AudienceSourceKind = "existing" | "csv";
 export type WizardChannel = "sms" | "whatsapp" | "email";
@@ -56,7 +65,17 @@ export type WizardState = {
   subject: string;
   initialMessage: string;
   followUpEnabled: boolean;
+  /**
+   * Always the campaign channel: the follow-up is sent on the same channel as
+   * the initial message. Kept in step by `changeChannel`, never chosen.
+   */
   followUpChannel: WizardChannel;
+  /** WhatsApp only: the approved template sent once the 24-hour window has closed. */
+  whatsappTemplateId: string;
+  /** WhatsApp only: template variable -> merge field key. */
+  whatsappTemplateVariables: Record<string, string>;
+  /** SMS/WhatsApp only, and only when AI assist is on for the workspace. */
+  aiPersonalize: boolean;
   /** Email only. Blank reuses the initial subject, prefixed by the client. */
   followUpSubject: string;
   followUpDelayDays: number;
@@ -82,6 +101,9 @@ export function initialWizardState(channel: WizardChannel): WizardState {
     initialMessage: "",
     followUpEnabled: false,
     followUpChannel: channel,
+    whatsappTemplateId: "",
+    whatsappTemplateVariables: {},
+    aiPersonalize: false,
     followUpSubject: "",
     followUpDelayDays: 3,
     followUpMessage: "",
@@ -167,7 +189,13 @@ export type StepIssues = {
 
 export function validateAudienceStep(
   state: WizardState,
-  context: { eligible: number; audienceReady: boolean; csvBusy: boolean },
+  context: {
+    eligible: number;
+    audienceReady: boolean;
+    csvBusy: boolean;
+    /** The plan's reactivation allowance, when known. */
+    allowance?: ReactivationAllowance | null;
+  },
 ): StepIssues {
   const fields: Record<string, string> = {};
 
@@ -195,6 +223,12 @@ export function validateAudienceStep(
   if (context.audienceReady && context.eligible === 0) {
     fields.audience = "No eligible contacts match this audience.";
   }
+  // Plan limit reached: the server refuses the launch too.
+  const overLimit =
+    context.audienceReady && context.allowance
+      ? reactivationLimitProblem(context.allowance, context.eligible)
+      : null;
+  if (overLimit) fields.audience = overLimit;
 
   return {
     fields,
@@ -208,13 +242,25 @@ export function validateAudienceStep(
 
 export function validateMessageStep(
   state: WizardState,
-  context: { providerConnected: boolean; now: number },
+  context: {
+    /** True when the connection for the chosen channel is usable. */
+    providerConnected: boolean;
+    now: number;
+    /** Approved WhatsApp templates this workspace can send. */
+    whatsappTemplates?: readonly CampaignTemplateOption[];
+  },
 ): StepIssues {
   const fields: Record<string, string> = {};
 
   if (!context.providerConnected) {
-    fields.channel =
-      "Connect a messaging provider in Settings before you launch a campaign.";
+    fields.channel = CHANNEL_CONNECT_HINT[state.channel];
+  }
+
+  // Reactivation reaches people outside WhatsApp's 24-hour window, where only
+  // an approved template is delivered.
+  if (state.channel === "whatsapp") {
+    const issue = whatsappTemplateIssue(state, context.whatsappTemplates ?? []);
+    if (issue) fields.whatsappTemplate = issue;
   }
 
   const limit = bodyLimitFor(state.channel);
@@ -300,6 +346,18 @@ export function validateMessageStep(
 
 /* ----------------------------------------------------------- checklist --- */
 
+/** The chosen template's problem, if any, for the WhatsApp channel. */
+export function whatsappTemplateIssue(
+  state: Pick<WizardState, "whatsappTemplateId" | "whatsappTemplateVariables">,
+  templates: readonly CampaignTemplateOption[],
+): string | null {
+  if (templates.length === 0) {
+    return "WhatsApp needs an approved template before a campaign can launch. Sync your templates in Settings → Connections.";
+  }
+  const template = templates.find((option) => option.id === state.whatsappTemplateId) ?? null;
+  return templateMappingIssue(template, state.whatsappTemplateVariables);
+}
+
 export type ChecklistItem = { label: string; done: boolean };
 
 /** Step 3's launch checklist, derived from state — never hand-maintained. */
@@ -310,11 +368,24 @@ export function launchChecklist(
     providerConnected: boolean;
     messageValid: boolean;
     timingValid: boolean;
+    /**
+     * The server's suppression count for the current audience, or null while
+     * it has not been computed. The item is only ticked once the exclusions
+     * have actually been worked out on the server.
+     */
+    suppressedTotal?: number | null;
   },
 ): ChecklistItem[] {
+  const suppressed = context.suppressedTotal ?? null;
   const items: ChecklistItem[] = [
     { label: "Audience has eligible contacts", done: context.eligible > 0 },
-    { label: "Suppression rules applied", done: true },
+    {
+      label:
+        suppressed === null
+          ? "Suppression rules applied"
+          : `Suppression rules applied (${suppressed.toLocaleString("en-GB")} excluded)`,
+      done: suppressed !== null,
+    },
     { label: "Message content completed", done: context.messageValid },
     { label: "Timing configured", done: context.timingValid },
   ];

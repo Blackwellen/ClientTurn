@@ -11,6 +11,10 @@ export const SYSTEM_VIEWS = [
   "jobs",
   "compliance",
   "readiness",
+  "lead-ops",
+  "ai-spend",
+  "domain-events",
+  "audit",
 ] as const;
 export type SystemView = (typeof SYSTEM_VIEWS)[number];
 
@@ -21,6 +25,10 @@ export const SYSTEM_VIEW_LABEL: Record<SystemView, string> = {
   jobs: "Jobs",
   compliance: "Compliance",
   readiness: "Readiness",
+  "lead-ops": "Lead ops",
+  "ai-spend": "AI spend",
+  "domain-events": "Domain events",
+  audit: "Audit log",
 };
 
 export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
@@ -32,6 +40,10 @@ export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
     "Manage communication policies, regional requirements and compliance controls.",
   readiness:
     "Release readiness, measured from the running system rather than ticked by hand.",
+  "lead-ops": "Stuck leads across every workspace, and the duplicate queue with reversible merges.",
+  "ai-spend": "AI spend per workspace and task, budget refusals, and provider quota usage.",
+  "domain-events": "The domain event outbox: what happened, and whether it has been dispatched.",
+  audit: "The platform audit log: every recorded write, filterable by action, actor and period.",
 };
 
 /**
@@ -59,6 +71,10 @@ export function SystemViewSwitch({ view }: { view: SystemView }) {
       priority: null,
       queue: null,
       sort: null,
+      merge: null,
+      state: null,
+      action: null,
+      actor: null,
     });
   }
 
@@ -79,7 +95,7 @@ export function SystemViewSwitch({ view }: { view: SystemView }) {
       role="tablist"
       aria-label="System view"
       onKeyDown={onKeyDown}
-      className="inline-flex items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5"
+      className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5"
     >
       {SYSTEM_VIEWS.map((option, index) => {
         const active = option === view;

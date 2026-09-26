@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Input, Select, Switch } from "@/components/ui/form";
+import { withOptOutWording } from "@/lib/messaging/sms-compliance";
+import { TEMPLATE_VARIABLE_SOURCES } from "@/lib/messaging/whatsapp-templates";
+import type { CampaignTemplateOption } from "@/lib/campaigns/reactivation-channels";
 import { htmlToPlainText, sanitizeEmailHtml } from "@/lib/email/rich-text";
 import { RichTextEditor } from "./rich-text-editor";
 import { Skeleton } from "@/components/ui/feedback";
@@ -197,14 +200,14 @@ function MergeFieldMenu({ onInsert }: { onInsert: (token: string) => void }) {
   return (
     <label className="flex items-center gap-1.5">
       <span className="text-content-muted text-[11px]">Insert variable</span>
-      <select
+      <Select
         aria-label="Insert variable"
         value=""
         onChange={(event) => {
           if (event.target.value) onInsert(event.target.value);
           event.target.value = "";
         }}
-        className="border-line bg-surface text-content h-6 rounded-sm border px-1 text-[11px]"
+        className="h-6 w-auto rounded-sm gap-1 pl-1.5 pr-1 text-[11px] [&>svg]:size-3.5"
       >
         <option value="">Choose…</option>
         {MERGE_FIELDS.map((field) => (
@@ -212,7 +215,7 @@ function MergeFieldMenu({ onInsert }: { onInsert: (token: string) => void }) {
             {field.label}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -385,6 +388,9 @@ export function MessageTimingStep({
   quietHours,
   channels,
   fieldErrors,
+  whatsappTemplates = [],
+  optOutWording = "",
+  aiPersonalizeAvailable = false,
 }: {
   state: WizardState;
   patch: (patch: Partial<WizardState>) => void;
@@ -394,16 +400,26 @@ export function MessageTimingStep({
   quietHours: QuietHours;
   channels: ChannelOption[];
   fieldErrors: Record<string, string>;
+  /** Approved WhatsApp templates on this workspace's sender. */
+  whatsappTemplates?: CampaignTemplateOption[];
+  /** The workspace's opt-out line, appended to every SMS and WhatsApp. */
+  optOutWording?: string;
+  /** AI assist is on for the workspace and included on its plan. */
+  aiPersonalizeAvailable?: boolean;
 }) {
   const window = formatQuietHours(quietHours);
   const zone = shortTimezone(quietHours.timezone);
   const scheduled = scheduledInstant(state);
   const today = new Date().toISOString().slice(0, 10);
 
-  const renderedPreview = previewTemplate(
-    state.initialMessage || "Your message will appear here.",
-    businessName,
+  // The preview shows the opt-out line exactly as it will be appended.
+  const renderedPreview = withOptOutWording(
+    previewTemplate(state.initialMessage || "Your message will appear here.", businessName),
+    { channel: state.channel, wording: optOutWording },
   );
+  const isTexting = state.channel !== "email";
+  const selectedTemplate =
+    whatsappTemplates.find((template) => template.id === state.whatsappTemplateId) ?? null;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_392px]">
@@ -527,7 +543,121 @@ export function MessageTimingStep({
                 error={fieldErrors.initialMessage}
                 rows={state.channel === "email" ? 9 : 5}
               />
+              {isTexting && (
+                <p className="text-content-muted mt-1.5 text-[12px]">
+                  Every {state.channel === "whatsapp" ? "WhatsApp message" : "SMS"} in
+                  this campaign ends with your opt-out line
+                  {optOutWording ? <> &ldquo;{optOutWording}&rdquo;</> : " (Reply STOP to opt out)"}
+                  , added automatically unless your message already mentions STOP.
+                  Anyone who replies STOP is not messaged on this channel again unless
+                  they reply START.
+                </p>
+              )}
             </div>
+
+            {state.channel === "whatsapp" && (
+              <div className="border-line space-y-3 rounded-lg border px-3.5 py-3">
+                <div>
+                  <label
+                    htmlFor="whatsapp-template"
+                    className="text-content block text-[13px] font-medium"
+                  >
+                    Approved WhatsApp template
+                  </label>
+                  <p className="text-content-muted mt-0.5 text-[12px]">
+                    Reactivation reaches people who have not messaged you in the
+                    last 24 hours. Outside that window WhatsApp only delivers an
+                    approved template, so this template is what they receive.
+                    Your message above is sent instead only to someone who has
+                    messaged you in the last 24 hours.
+                  </p>
+                </div>
+                <Select
+                  id="whatsapp-template"
+                  value={state.whatsappTemplateId}
+                  aria-invalid={Boolean(fieldErrors.whatsappTemplate)}
+                  onChange={(event) =>
+                    patch({
+                      whatsappTemplateId: event.target.value,
+                      whatsappTemplateVariables: {},
+                    })
+                  }
+                >
+                  <option value="">Choose a template</option>
+                  {whatsappTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} · {template.language}
+                    </option>
+                  ))}
+                </Select>
+                {selectedTemplate?.body && (
+                  <p className="bg-surface-sunken text-content-secondary whitespace-pre-wrap rounded-md px-3 py-2 text-[12px]">
+                    {selectedTemplate.body}
+                  </p>
+                )}
+                {selectedTemplate && selectedTemplate.variables.length > 0 && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {selectedTemplate.variables.map((variable) => (
+                      <div key={variable}>
+                        <label
+                          htmlFor={`whatsapp-var-${variable}`}
+                          className="text-content block text-[12px] font-medium"
+                        >
+                          Fill {`{{${variable}}}`} with
+                        </label>
+                        <Select
+                          id={`whatsapp-var-${variable}`}
+                          className="mt-1"
+                          value={state.whatsappTemplateVariables[variable] ?? ""}
+                          onChange={(event) =>
+                            patch({
+                              whatsappTemplateVariables: {
+                                ...state.whatsappTemplateVariables,
+                                [variable]: event.target.value,
+                              },
+                            })
+                          }
+                        >
+                          <option value="">Choose a field</option>
+                          {TEMPLATE_VARIABLE_SOURCES.map((source) => (
+                            <option key={source.key} value={source.key}>
+                              {source.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {fieldErrors.whatsappTemplate && (
+                  <p role="alert" className="text-danger-600 text-[12px]">
+                    {fieldErrors.whatsappTemplate}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {isTexting && aiPersonalizeAvailable && (
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-content text-[13px] font-medium">
+                    Personalise each message with AI
+                  </p>
+                  <p className="text-content-muted mt-0.5 text-[12px]">
+                    Off by default. When on, AI rewrites your message for each
+                    lead using the same merge details. A rewrite that fails your
+                    style checks, runs too long or exceeds your AI budget is not
+                    used: that lead gets your message exactly as written. Uses
+                    your AI allowance.
+                  </p>
+                </div>
+                <Switch
+                  checked={state.aiPersonalize}
+                  onCheckedChange={(value) => patch({ aiPersonalize: value })}
+                  label="Personalise each message with AI"
+                />
+              </div>
+            )}
           </StepSection>
         </div>
 
@@ -579,35 +709,14 @@ export function MessageTimingStep({
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="followup-channel"
-                      className="text-content block text-[13px] font-medium"
-                    >
+                    <span className="text-content block text-[13px] font-medium">
                       Channel
-                    </label>
-                    <Select
-                      id="followup-channel"
-                      className="mt-1.5"
-                      value={state.followUpChannel}
-                      onChange={(event) =>
-                        patch({
-                          followUpChannel: event.target.value as WizardChannel,
-                        })
-                      }
-                    >
-                      {channels.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                          disabled={!option.available}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <p className="text-content-muted mt-1 text-[11px]">
-                      The follow-up uses the campaign channel at send time.
-                    </p>
+                    </span>
+                    <div className="border-line bg-surface-sunken/50 mt-1.5 flex h-9 items-center rounded-md border px-3">
+                      <p className="text-content-muted text-[12px]">
+                        Same as the initial message ({channels.find((option) => option.value === state.channel)?.label ?? state.channel}).
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -634,7 +743,7 @@ export function MessageTimingStep({
                     id="followup-message"
                     value={state.followUpMessage}
                     onChange={(value) => patch({ followUpMessage: value })}
-                    channel={state.followUpChannel}
+                    channel={state.channel}
                     error={fieldErrors.followUpMessage}
                     rows={state.channel === "email" ? 7 : 3}
                   />
@@ -739,7 +848,7 @@ export function MessageTimingStep({
                     <>
                       Quiet hours are switched off for this workspace, so sends
                       can go out at any time. Turn them on in Settings →
-                      Follow-up.
+                      Workspace, under Quiet hours.
                     </>
                   )}
                 </p>

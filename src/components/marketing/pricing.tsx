@@ -157,7 +157,7 @@ export function Pricing() {
         align="centre"
         eyebrow="Pricing"
         title="Priced against the jobs it books, not the seats you fill."
-        lead={`Every plan starts with a ${TRIAL_DAYS}-day free trial. No card required, cancel any time.`}
+        lead={`Every plan starts with a ${TRIAL_DAYS}-day free trial. Nothing is charged until it ends; cancel any time before then.`}
       />
       <Container>
         <div className="ct-cycle-row">

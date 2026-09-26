@@ -106,19 +106,29 @@ export async function checkSuppressionBatch(
   if (normalised.length === 0) return out;
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("suppression_entries")
-    .select("email, reason, business_id, created_at, expires_at, channel")
-    .in("email", normalised)
-    .in("channel", ["EMAIL", "ALL"])
-    .or(`business_id.eq.${businessId},business_id.is.null`);
+  // `suppressed_emails` (0126) matches plaintext or the salted hash an erased
+  // person's entry was converted to (0124), and filters expired rows itself.
+  // Not in the generated types until they are regenerated.
+  const rpc = admin.rpc.bind(admin) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: { email: string; reason: string; business_id: string | null; created_at: string }[] | null;
+    error: { message: string } | null;
+  }>;
+  const { data, error } = await rpc("suppressed_emails", {
+    p_business_id: businessId,
+    p_emails: normalised,
+  });
 
-  if (error || !data) return out;
+  // Fails closed. An empty map here reads as "nobody is suppressed", which is
+  // how a failed lookup used to let a suppressed address into an import or a
+  // campaign audience.
+  if (error) throw new Error(`Suppression lookup failed: ${error.message}`);
+  if (!data) return out;
 
-  const now = Date.now();
   for (const row of data) {
     if (!row.email) continue;
-    if (row.expires_at && new Date(row.expires_at).getTime() <= now) continue;
 
     const key = row.email.toLowerCase();
     const scope: "PLATFORM" | "WORKSPACE" = row.business_id === null ? "PLATFORM" : "WORKSPACE";
@@ -217,7 +227,20 @@ export async function unsuppress(
     };
   }
 
-  await admin.from("suppression_entries").delete().eq("id", entryId).eq("business_id", businessId);
+  const { error } = await admin
+    .from("suppression_entries")
+    .delete()
+    .eq("id", entryId)
+    .eq("business_id", businessId);
+  if (error) {
+    console.error("[suppression] unsuppress delete failed", {
+      businessId,
+      entryId,
+      code: error.code,
+      message: error.message,
+    });
+    return { ok: false, error: "That suppression could not be removed. Please try again." };
+  }
   return { ok: true };
 }
 
@@ -259,6 +282,74 @@ export async function liftSuppressionForDestination(
 }
 
 /**
+ * The recipient texting START on one channel (0111).
+ *
+ * Narrower than `liftSuppressionForDestination` above, and the one the inbound
+ * keyword path uses: it lifts only this channel's OPT_OUT for this phone, never
+ * a MANUAL, INVALID, BOUNCE, COMPLAINT or platform-wide row, and splits an
+ * ALL-channel opt-out into per-channel opt-outs for every *other* channel
+ * rather than deleting it. `remaining` is how many recipient opt-outs still
+ * stand for the phone or email, so the caller knows whether the lead as a
+ * whole is still opted out.
+ */
+export async function liftOptOutForChannel(
+  businessId: string,
+  channel: "SMS" | "WHATSAPP",
+  destination: { phone: string; email?: string | null },
+): Promise<{ lifted: number; split: number; remaining: number }> {
+  const phone = normalisePhone(destination.phone);
+  const email = normaliseEmail(destination.email);
+  if (!phone) return { lifted: 0, split: 0, remaining: 0 };
+
+  const admin = createAdminClient();
+  // `lift_opt_out_for_channel` is added by migration 0111 and is absent from
+  // the generated types until they are regenerated against the applied schema.
+  const { data, error } = await admin.rpc(
+    "lift_opt_out_for_channel" as never,
+    {
+      p_business_id: businessId,
+      p_channel: channel,
+      p_phone: phone,
+      ...(email ? { p_email: email } : {}),
+    } as never,
+  );
+
+  if (error) throw error;
+  const result = (data ?? {}) as { lifted?: number; split?: number; remaining?: number };
+  return {
+    lifted: Number(result.lifted ?? 0),
+    split: Number(result.split ?? 0),
+    // Unknown is read as "still opted out": clearing the lead flag on a bad
+    // read would be the unsafe direction.
+    remaining: result.remaining == null ? 1 : Number(result.remaining),
+  };
+}
+
+/**
+ * A spam complaint against an email address (a feedback-loop / ARF abuse
+ * report). Channel EMAIL, reason COMPLAINT — which `unsuppress()` refuses, so
+ * the workspace cannot lift it either. Idempotent like `suppress()`, so an FBL
+ * that re-delivers the same report is harmless.
+ */
+export async function recordComplaint(input: {
+  businessId: string | null;
+  email: string;
+  source: string;
+  sourceReference?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  await suppress({
+    businessId: input.businessId,
+    channel: "EMAIL",
+    reason: "COMPLAINT",
+    source: input.source,
+    sourceReference: input.sourceReference ?? null,
+    note: input.note ?? null,
+    email: input.email,
+  });
+}
+
+/**
  * Every suppressed destination in a workspace, for a bulk audience filter.
  *
  * The reactivation audience resolver needs to exclude thousands of leads in one
@@ -285,4 +376,29 @@ export async function suppressedDestinations(
     if (row.phone_e164) out.add(row.phone_e164);
   }
   return out;
+}
+
+/**
+ * Spam complaints recorded against this workspace's email since a moment, for
+ * the complaint-rate monitor (brief §43). Only rows that still name an
+ * address: an erased person's complaint survives as a hash, which cannot be
+ * attributed to a sender and is left out rather than guessed at.
+ */
+export async function recentComplaints(
+  businessId: string,
+  sinceIso: string,
+): Promise<{ email: string; createdAt: string }[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("suppression_entries")
+    .select("email, created_at")
+    .eq("business_id", businessId)
+    .eq("reason", "COMPLAINT")
+    .in("channel", ["EMAIL", "ALL"])
+    .gte("created_at", sinceIso)
+    .limit(5000);
+  if (error) throw new Error(`Complaints could not be read: ${error.message}`);
+  return (data ?? [])
+    .filter((row) => Boolean(row.email))
+    .map((row) => ({ email: String(row.email), createdAt: row.created_at }));
 }

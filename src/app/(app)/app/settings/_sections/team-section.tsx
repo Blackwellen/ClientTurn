@@ -4,6 +4,7 @@ import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { countRecentlyRemoved, listTeamMembers } from "@/lib/settings/queries";
 import { planLabel } from "@/lib/settings/types";
+import { inviteExpired, seatsInUse } from "@/lib/team/rules";
 import { EmptyState } from "@/components/ui/feedback";
 import { TeamSettings } from "@/components/settings/team/team-settings";
 
@@ -25,6 +26,19 @@ export async function TeamSection() {
     );
   }
 
+  // Expiry is decided once, on the server, so the table and the seat count
+  // agree and the client never renders a different verdict from its own clock.
+  const now = new Date();
+  const facts = members.map((member) => ({
+    userId: member.userId,
+    role: member.role,
+    status: member.status,
+    invitedAt: member.invitedAt,
+  }));
+  const expiredInviteIds = members
+    .filter((member) => member.status === "invited" && inviteExpired(member.invitedAt, now))
+    .map((member) => member.membershipId);
+
   return (
     <TeamSettings
       members={members}
@@ -32,6 +46,8 @@ export async function TeamSection() {
       actorRole={workspace.role}
       canManage={hasRole(workspace.role, "admin")}
       seatLimit={entitlements.userLimit}
+      seatsUsed={seatsInUse(facts, now)}
+      expiredInviteIds={expiredInviteIds}
       planName={planLabel(entitlements.plan)}
       removedRecently={removedRecently}
     />

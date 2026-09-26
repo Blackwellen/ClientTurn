@@ -1,5 +1,6 @@
 "use client";
 
+import { isInsideFloatingLayer } from "@/components/ui/floating";
 import * as React from "react";
 import { Filter, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -116,6 +117,8 @@ export function CampaignFilterPopover({
   React.useEffect(() => {
     if (!open) return;
     function onPointerDown(event: PointerEvent) {
+      // The Select lists inside the panel are portalled to <body>.
+      if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
@@ -292,7 +295,7 @@ export function CampaignToolbar({
   const { setFilter } = useReactivationParams();
 
   return (
-    <div className="rounded-xl border border-line bg-surface px-3 py-2.5 shadow-xs">
+    <div className="rounded-xl border border-line bg-surface px-3 py-2.5 shadow-xs" data-tour="reactivation-toolbar">
       <div className="flex flex-wrap items-center gap-1.5">
         <SearchInput
           defaultValue={filters.q ?? ""}

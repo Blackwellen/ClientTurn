@@ -35,6 +35,8 @@ const JOB_TYPE_AREA: Record<string, ErrorArea> = {
   "webhook.replay": "Webhook",
   "notification.send": "Messaging / SMS",
   "notification.slack": "Jobs",
+  "notification.slack_digest": "Jobs",
+  "slack.interaction": "Jobs",
   "usage.aggregate": "Jobs",
   "retention.cleanup": "Database",
   "cost.rollup_daily": "Jobs",

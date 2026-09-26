@@ -110,7 +110,7 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
                     numeric
                     className="text-content-secondary hidden px-2 @md:table-cell"
                   >
-                    {formatPercent(row.conversionRate, 1)}
+                    {row.conversionRate === null ? "—" : formatPercent(row.conversionRate, 1)}
                   </TableCell>
                   <TableCell align="right" className="px-0">
                     <ChevronRight

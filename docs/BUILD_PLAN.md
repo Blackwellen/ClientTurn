@@ -373,7 +373,7 @@ and the test lead is invisible to analytics.
 
 ---
 
-## 15. Extended integrations pass (Google Ads, Microsoft Ads, TikTok, LinkedIn, Slack, HubSpot, Zoho CRM)
+## 15. Extended integrations pass (Google Ads, TikTok, LinkedIn, Slack, HubSpot, Zoho CRM)
 
 User-directed scope expansion beyond the original Meta-only lead source lock. Built as shared
 plumbing (one OAuth flow, one connect/callback route pair, three provider registries) plus four
@@ -390,8 +390,8 @@ without this every new-platform lead would have silently failed attribution).
 | Provider | State | Detail |
 |---|---|---|
 | Google Ads | ☑ Working | OAuth + GAQL polling of `lead_form_submission_data`, cursor-tracked |
-| Microsoft Advertising | ◐ OAuth only | No published API exists for retrieving Lead Form submissions — poller fails loudly to `ACTION_REQUIRED` rather than fabricating success |
-| TikTok | ◐ Built, one unverified assumption | Lead-fetch endpoint path could not be confirmed live (TikTok's docs portal is a client-rendered SPA); flagged in-code, fails soft |
+| Microsoft Advertising | ✗ Removed (2026-09-13) | No published API exists for retrieving Lead Form submissions, and Bing Ads has no lead-form product at all to eventually expose one for — removed rather than left as a connect button that can never deliver a lead |
+| TikTok | ◐ Built, endpoint path confirmed, awaiting app review | Lead-fetch endpoint (`/lead/get/`) confirmed 2026-09-12 against a real registered TikTok for Business app's own "Lead management" scope list; request/response shape still unverified — the app sits in TikTok's "Pending" review (up to 3 days) and withholds client key/secret until approved. Fails soft until then |
 | LinkedIn | ◐ Built, blocked on LinkedIn | Real-time webhook fully implemented and signature-verified, but Lead Sync API requires a **separate LinkedIn partner approval** (verified business + Company Page + review) beyond OAuth credentials — will 403 until approved |
 | Slack | ☑ Working | Confirmed no App Directory review needed for per-customer installs |
 | HubSpot | ☑ Working | Customer-pasted private-app token, validated against two real API calls before saving |
@@ -410,3 +410,54 @@ template literal" on an unrelated line; reproduced in total isolation before fix
 insert blocked). All 7 new provider cards render on `/app/integrations`; HubSpot correctly shows
 a live Connect action (no platform credential needed) while the other 6 correctly show "Not yet
 available" until their OAuth credentials are supplied.
+
+## 16. Cost/benefit pass on outreach tools, inbound connectors, and CRM live-testing (2026-09-12/13)
+
+User-directed: assess whether 5 outreach/enrichment integrations (HeyReach, Clay, Instantly,
+Smartlead, SmartReach) were worth their compliance risk versus actual usefulness, then work
+through the CRM/connector queue with real accounts end-to-end (Chrome DevTools MCP, no mocks) —
+audit existing code, fix real bugs found, live-test, sign off.
+
+**Removed entirely** (code, docs, marketing, brand assets): HeyReach, Clay, Instantly, Smartlead,
+SmartReach (cold-outreach/enrichment tools outside the ICP, see §5 of
+`docs/PRODUCTION_PROGRAMME_AUDIT.md` for the compliance reasoning), folk (native webhook payload
+too thin to satisfy this endpoint; magic-link login also failed repeatedly against a real account),
+Breakcold (low expected usage), and Attio (added as a 4th inbound-bridge CRM target, then removed
+the same day — Pipedrive/Zapier/webhooks already cover the bridge case and Zoho/HubSpot/Salesforce
+cover CRM, so a 4th target added more surface than value).
+
+**Inbound connectors (Pipedrive, Zapier, Custom webhook) — live-tested against real accounts.**
+Pipedrive confirmed working end-to-end; its own native webhook payload nests every field and sends
+email/phone as arrays, which this endpoint rejects outright — not a bug here, documented as a
+`setupNote` telling the customer to remap fields via Pipedrive's Automations builder first.
+
+**HubSpot — live-tested, one real bug fixed.** `upsertDeal()` used deal-association type id `4`;
+the correct id (confirmed via `GET /crm/v4/associations/deals/contacts/labels` on a live portal) is
+`3`. Every deal push was silently failing before the fix — caught safely as a `CrmPartialPushError`
+(contact created, deal not), never surfaced to the customer as success. Also noted live: HubSpot's
+own UI has moved "Private Apps" to "Service Keys" (same token format, different menu path).
+
+**Zoho CRM — built out to genuine multi-DC support, then live-tested end-to-end, two real bugs
+fixed.** Registered a real Zoho API Console client and CRM trial org.
+1. The OAuth `SCOPE` only requested `CREATE`+`READ`, missing `UPDATE`. Every re-push of an
+   already-synced lead got 401 `OAUTH_SCOPE_MISMATCH` on the update `PUT`, which `push()`'s error
+   handling treated as "the record may have been deleted" and silently created a duplicate Lead
+   instead of updating the existing one — confirmed live before and after the fix.
+2. `secretForLocation` failed closed for any DC without its own `ZOHO_CLIENT_SECRET_<DC>` env var,
+   including `uk` (its own DC, distinct from `eu` — discovered live in the API Console), `ae`, `sg`
+   and `sa`, and didn't account for Zoho's "use the same OAuth credentials for all data centers"
+   toggle. Fixed by falling back to the base `ZOHO_CLIENT_SECRET` for any unlisted DC, which covers
+   both cases.
+
+Real `ZOHO_CLIENT_ID`/`ZOHO_CLIENT_SECRET` (the same API Console client used for live testing, its
+redirect URI switched from `localhost` back to `clientturn.com` afterward) are now set on both
+Vercel production and local `.env` (2026-09-13).
+
+**Salesforce — not touched this pass.** Built and registered separately (see §4 of
+`docs/PRODUCTION_PROGRAMME_AUDIT.md`); real credentials now exist on Vercel production, but no one
+has live-tested a real org through it. Stays marketed as `"assisted"` until that happens, per this
+project's own Meta precedent (code complete + credentials present ≠ verified).
+
+**Verified:** `npx tsc --noEmit` clean, all 47 connector/settings unit tests pass, 17/17
+OAuth-provider-registry tests pass (confirms the registry type change behind the Zoho fix didn't
+break the other 9 OAuth providers).

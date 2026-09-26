@@ -56,6 +56,7 @@ import {
 } from "@/lib/affiliates/settings-actions";
 import type { AffiliateAccount } from "@/lib/affiliates/portal";
 import type { ReadinessCheck } from "@/lib/affiliates/payouts";
+import { Select } from "@/components/ui/form";
 
 const SECTION_ICON: Record<AffiliateSettingsSection, React.ComponentType<{ className?: string }>> = {
   account: User,
@@ -738,20 +739,20 @@ function TaxSection({ affiliate }: { affiliate: AffiliateAccount }) {
                 >
                   Entity type
                 </label>
-                <select
+                <Select
                   id="tax-entity"
                   value={form.entityType}
                   onChange={(event) =>
                     setForm({ ...form, entityType: event.target.value })
                   }
-                  className="mt-1 h-10 w-full rounded-[9px] border border-line bg-surface px-3 text-[13.5px] text-content"
+                  className="mt-1 h-10 w-full rounded-[9px] text-[13.5px]"
                 >
                   {TAX_ENTITY_TYPES.map((entry) => (
                     <option key={entry.value} value={entry.value}>
                       {entry.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="sm:col-span-2">
                 <TextField
@@ -964,21 +965,21 @@ function PreferencesSection({ affiliate }: { affiliate: AffiliateAccount }) {
             >
               Default reporting range
             </label>
-            <select
+            <Select
               id="pref-range"
               value={prefs.defaultRange}
               onChange={(event) =>
                 save({ ...prefs, defaultRange: event.target.value as RangeKey })
               }
               disabled={pending}
-              className="mt-1 h-10 w-full rounded-[9px] border border-line bg-surface px-3 text-[13.5px] text-content"
+              className="mt-1 h-10 w-full rounded-[9px] text-[13.5px]"
             >
               {RANGE_KEYS.filter((key) => key !== "custom").map((key) => (
                 <option key={key} value={key}>
                   {RANGE_LABEL[key]}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
@@ -988,21 +989,21 @@ function PreferencesSection({ affiliate }: { affiliate: AffiliateAccount }) {
             >
               Default referral landing page
             </label>
-            <select
+            <Select
               id="pref-destination"
               value={prefs.defaultDestination}
               onChange={(event) =>
                 save({ ...prefs, defaultDestination: event.target.value })
               }
               disabled={pending}
-              className="mt-1 h-10 w-full rounded-[9px] border border-line bg-surface px-3 text-[13.5px] text-content"
+              className="mt-1 h-10 w-full rounded-[9px] text-[13.5px]"
             >
               {ALLOWED_DESTINATIONS.map((entry) => (
                 <option key={entry.path} value={entry.path}>
                   {entry.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="flex items-center gap-3">

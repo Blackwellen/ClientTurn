@@ -11,6 +11,7 @@ import {
 } from "@/lib/campaigns/actions";
 import {
   IMPORT_FIELDS,
+  importMappingHasContact,
   type ImportMapping,
   type ImportPreview,
 } from "@/lib/campaigns/types";
@@ -255,8 +256,10 @@ export function CsvImportPanel({
             </Button>
           </div>
           <p className="text-content-muted text-[12px]">
-            Match your columns. A mobile number is required — every other field
-            is optional.
+            Match your columns. Map a mobile number, an email, or both &mdash;
+            every other field is optional. SMS and WhatsApp campaigns reach the
+            contacts with a mobile number; email campaigns reach the ones with an
+            email address.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {IMPORT_FIELDS.map((field) => (
@@ -291,7 +294,7 @@ export function CsvImportPanel({
           <Button
             size="sm"
             loading={busy}
-            disabled={!mapping.phone}
+            disabled={!importMappingHasContact(mapping)}
             onClick={runPreview}
           >
             Validate file

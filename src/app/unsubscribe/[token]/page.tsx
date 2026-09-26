@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { CheckCircle2, XCircle } from "lucide-react";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { normaliseEmail } from "@/lib/email/account";
-import { suppress } from "@/lib/policy/suppression";
+import { CheckCircle2, MailX, XCircle } from "lucide-react";
+import { redirect } from "next/navigation";
+import {
+  findUnsubscribeSubject,
+  performUnsubscribe,
+} from "@/lib/email/unsubscribe";
+import { isUnsubscribeToken } from "@/lib/email/unsubscribe-links";
 
 export const metadata: Metadata = {
   title: "Unsubscribe · ClientTurn",
@@ -12,141 +15,77 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /**
- * One-click unsubscribe, reached from the link and the `List-Unsubscribe`
- * header on every marketing email.
+ * The page the footer link opens.
  *
- * The token is a per-lead random value, so knowing it proves the holder
- * received the mail. No login, no lookup by email address, and no way to
- * enumerate other leads. Acting on GET is deliberate here: RFC 8058 clients
- * and ordinary "click the link" behaviour both have to work, and the only
- * effect is to stop messages — the safe direction.
+ * GET only *confirms*: link scanners, mail-client previews and security
+ * gateways fetch every link in a message without anyone clicking, so acting on
+ * GET would unsubscribe people who never asked. The button POSTs (a server
+ * action) and the work happens there. Mail clients' own one-click button uses
+ * the RFC 8058 route at `/api/unsubscribe/[token]` instead.
  */
-async function unsubscribe(token: string): Promise<
-  { ok: true; business: string } | { ok: false }
-> {
-  if (!/^[0-9a-f-]{36}$/i.test(token)) return { ok: false };
-
-  const admin = createAdminClient();
-
-  // `unsubscribe_token` is added by migration 0039. `database.types.ts` is
-  // generated from the deployed schema, so the column is absent from the
-  // generated types until that migration has been applied and the types
-  // regenerated. The filter column is narrowed here rather than casting the
-  // whole query, so the selected columns stay fully typed.
-  const { data: lead } = await admin
-    .from("leads")
-    .select("id, business_id, email, businesses ( name )")
-    .eq("unsubscribe_token" as "id", token)
-    .maybeSingle();
-
-  // A token that is not a lead may be a prospect: cold outreach carries the
-  // same one-click unsubscribe, and it has to actually work.
-  if (!lead) return unsubscribeProspect(token);
-
-  await admin
-    .from("leads")
-    .update({ opted_out: true, automation_active: false })
-    .eq("id", lead.id);
-
-  // Suppress the address itself as well as the lead, so a second lead record
-  // with the same address cannot be mailed either.
-  //
-  // Channel ALL: someone using an unsubscribe link is asking not to be
-  // contacted, and honouring that only on the channel the link arrived by is a
-  // reading nobody intends.
-  const email = normaliseEmail(lead.email);
-  if (email) {
-    await suppress({
-      businessId: lead.business_id,
-      channel: "ALL",
-      reason: "OPT_OUT",
-      source: "UNSUBSCRIBE_LINK",
-      email,
-    });
-  }
-
-  await admin
-    .from("campaign_contacts")
-    .update({ state: "stopped", stopped_reason: "opted_out" })
-    .eq("lead_id", lead.id)
-    .in("state", ["pending", "scheduled"]);
-
-  const business = lead.businesses as { name?: string } | null;
-  return { ok: true, business: business?.name ?? "this business" };
+async function confirmUnsubscribe(formData: FormData) {
+  "use server";
+  const token = String(formData.get("token") ?? "");
+  if (!isUnsubscribeToken(token)) redirect("/");
+  const result = await performUnsubscribe(token);
+  const status = result.ok ? "done" : result.reason;
+  // Redirect rather than render: the result is read fresh on the next request.
+  redirect(`/unsubscribe/${token}?status=${status}`);
 }
 
-/**
- * The prospect half of unsubscribe.
- *
- * Suppression is written first and at workspace scope, not just on the one
- * prospect row: the point of an opt-out is that the *address* stops being
- * contactable, including by a future sourcing run that rediscovers the same
- * person at the same company.
- */
-async function unsubscribeProspect(token: string): Promise<
-  { ok: true; business: string } | { ok: false }
-> {
-  const admin = createAdminClient();
-
-  const { data: prospect } = await admin
-    .from("prospects")
-    .select("id, business_id, email, businesses ( name )")
-    .eq("unsubscribe_token" as "id", token)
-    .maybeSingle();
-
-  if (!prospect) return { ok: false };
-
-  const email = normaliseEmail(prospect.email);
-
-  if (email) {
-    // One write, one list. This used to write both tables deliberately —
-    // it was the only path that did — because the follow-up and reactivation
-    // engines read a different one from the dispatcher. 0069 removed the need.
-    await suppress({
-      businessId: prospect.business_id,
-      channel: "ALL",
-      reason: "OPT_OUT",
-      source: "UNSUBSCRIBE_LINK",
-      email,
-    });
-  }
-
-  await admin
-    .from("prospects")
-    .update({
-      status: "UNSUBSCRIBED",
-      outreach_eligibility: "SUPPRESSED",
-      eligibility_reason: "Unsubscribed",
-      campaign_id: null,
-    })
-    .eq("id", prospect.id);
-
-  await admin
-    .from("outreach_recipient_runs")
-    .update({
-      status: "STOPPED",
-      stop_reason: "OPTED_OUT",
-      stopped_at: new Date().toISOString(),
-    })
-    .eq("prospect_id", prospect.id)
-    .in("status", ["PENDING", "SCHEDULED", "ACTIVE"]);
-
-  const business = prospect.businesses as { name?: string } | null;
-  return { ok: true, business: business?.name ?? "this business" };
-}
+type View =
+  | { kind: "confirm"; business: string; token: string }
+  | { kind: "done"; business: string }
+  | { kind: "invalid" }
+  | { kind: "error" };
 
 export default async function UnsubscribePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ status?: string }>;
 }) {
   const { token } = await params;
-  const result = await unsubscribe(token);
+  const { status } = await searchParams;
+
+  const subject = await findUnsubscribeSubject(token);
+  const result: View =
+    subject === "error" || status === "error"
+      ? { kind: "error" }
+      : !subject
+        ? { kind: "invalid" }
+        : status === "done"
+          ? { kind: "done", business: subject.business }
+          : { kind: "confirm", business: subject.business, token };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#F7F9FC] px-4 py-16">
       <div className="w-full max-w-md rounded-2xl border border-[#E3E8EF] bg-white p-8 text-center shadow-sm">
-        {result.ok ? (
+        {result.kind === "confirm" && (
+          <>
+            <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#F7F9FC]">
+              <MailX className="size-6 text-[#0B1020]" aria-hidden />
+            </span>
+            <h1 className="mt-4 text-[20px] font-semibold text-[#0B1020]">
+              Unsubscribe from {result.business}?
+            </h1>
+            <p className="mt-2 text-[14px] leading-relaxed text-[#5B6B82]">
+              You will stop receiving marketing messages from {result.business}.
+            </p>
+            <form action={confirmUnsubscribe} className="mt-6">
+              <input type="hidden" name="token" value={result.token} />
+              <button
+                type="submit"
+                className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0B1020] px-4 text-[14px] font-medium text-white hover:bg-[#1A2236] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B1020]"
+              >
+                Unsubscribe
+              </button>
+            </form>
+          </>
+        )}
+
+        {result.kind === "done" && (
           <>
             <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#ECFDF3]">
               <CheckCircle2 className="size-6 text-[#12B76A]" aria-hidden />
@@ -160,7 +99,9 @@ export default async function UnsubscribePage({
               them, they can still reply to you directly.
             </p>
           </>
-        ) : (
+        )}
+
+        {result.kind === "invalid" && (
           <>
             <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#FEF3F2]">
               <XCircle className="size-6 text-[#F04438]" aria-hidden />
@@ -169,9 +110,24 @@ export default async function UnsubscribePage({
               This link is no longer valid
             </h1>
             <p className="mt-2 text-[14px] leading-relaxed text-[#5B6B82]">
-              It may already have been used, or it may have been copied
-              incompletely. Replying &ldquo;STOP&rdquo; to any message from the
-              business also stops all further messages.
+              It may have been copied incompletely. The unsubscribe link in
+              any other email from the business works too, and stops all
+              their marketing. Replying &ldquo;STOP&rdquo; to a text message
+              stops their text messages only.
+            </p>
+          </>
+        )}
+
+        {result.kind === "error" && (
+          <>
+            <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#FEF3F2]">
+              <XCircle className="size-6 text-[#F04438]" aria-hidden />
+            </span>
+            <h1 className="mt-4 text-[20px] font-semibold text-[#0B1020]">
+              We couldn&rsquo;t complete that just now
+            </h1>
+            <p className="mt-2 text-[14px] leading-relaxed text-[#5B6B82]">
+              Nothing has changed yet. Please open the link again in a minute.
             </p>
           </>
         )}

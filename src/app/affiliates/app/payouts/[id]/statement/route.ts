@@ -1,4 +1,5 @@
 import { getAffiliateAccount, listPortalPayouts } from "@/lib/affiliates/portal";
+import { csvCell } from "@/lib/csv";
 import { getPayoutBreakdown } from "@/lib/affiliates/payouts";
 import { formatMinor } from "@/lib/affiliates/types";
 
@@ -52,7 +53,7 @@ export async function GET(
     ["Total payout", formatMinor(payout.amountMinor, currency)],
   ];
 
-  const csv = rows.map(([label, value]) => `${escape(label)},${escape(value)}`).join("\r\n");
+  const csv = rows.map(([label, value]) => `${csvCell(label)},${csvCell(value)}`).join("\r\n");
 
   return new Response(csv, {
     headers: {
@@ -61,16 +62,4 @@ export async function GET(
       "cache-control": "no-store",
     },
   });
-}
-
-/**
- * Quotes a CSV field.
- *
- * The leading-character guard stops a spreadsheet treating a value as a
- * formula — none of these fields is user-controlled today, but a statement is
- * exactly the kind of file that gets opened in Excel without thinking.
- */
-function escape(value: string): string {
-  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safe.replace(/"/g, '""')}"`;
 }

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/form";
 import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { IconTile, ProviderMark } from "@/components/admin/ui";
-import { formatDateTime, formatRelative } from "@/lib/admin/format";
+import { formatDateTime, formatRelative } from "@/lib/dates";
 import {
   JOB_PRIORITY_LABEL,
   JOB_PRIORITY_TONE,
@@ -96,7 +96,7 @@ export function JobDetailDrawer({
             <Badge tone={JOB_PRIORITY_TONE[job.priorityBand]} className="px-2">
               {JOB_PRIORITY_LABEL[job.priorityBand]} priority
             </Badge>
-            <span>Created {formatDateTime(job.createdAt)}</span>
+            <span>Created {formatDateTime(job.createdAt, { year: true })}</span>
           </div>
         </div>
       }
@@ -173,10 +173,10 @@ export function JobDetailDrawer({
                     {job.attempts} / {job.maxAttempts}
                   </span>
                 </Row>
-                <Row label="Created at">{formatDateTime(job.createdAt)}</Row>
-                <Row label="Due at">{formatDateTime(job.runAt)}</Row>
+                <Row label="Created at">{formatDateTime(job.createdAt, { year: true })}</Row>
+                <Row label="Due at">{formatDateTime(job.runAt, { year: true })}</Row>
                 <Row label="Started at">
-                  {job.startedAt ? formatDateTime(job.startedAt) : "Not started"}
+                  {job.startedAt ? formatDateTime(job.startedAt, { year: true }) : "Not started"}
                 </Row>
                 <Row label="Queue">{job.queue}</Row>
                 <Row label="Worker">{job.worker ?? "—"}</Row>
@@ -288,7 +288,7 @@ export function JobDetailDrawer({
                           </Badge>
                         </td>
                         <td className="px-4 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {attempt.startedAt ? formatRelative(attempt.startedAt) : "—"}
+                          {attempt.startedAt ? formatRelative(attempt.startedAt, { style: "ago" }) : "—"}
                         </td>
                         <td className="px-4 py-2 text-[12px] text-content-secondary">
                           {attempt.error ?? "Not recorded for this attempt"}
@@ -320,7 +320,7 @@ export function JobDetailDrawer({
                 <div className="min-w-0">
                   <p className="text-[12.5px] break-words text-content">{line.message}</p>
                   <p className="lr-tabular text-[11.5px] text-content-subtle">
-                    {formatDateTime(line.at)}
+                    {formatDateTime(line.at, { year: true })}
                   </p>
                 </div>
               </li>

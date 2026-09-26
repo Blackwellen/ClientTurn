@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { csvCell } from "@/lib/csv";
 import { getActiveWorkspace, hasRole } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { parseProspectFilters } from "@/lib/prospects/filters";
@@ -59,13 +60,6 @@ const HEADERS = [
   "Sourced",
   "Last activity",
 ];
-
-/** Guards against a leading =, +, - or @ being executed by a spreadsheet. */
-function csvCell(value: string | number | null | undefined) {
-  const text = value === null || value === undefined ? "" : String(value);
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
 
 function isoDay(value: string | null): string {
   if (!value) return "";

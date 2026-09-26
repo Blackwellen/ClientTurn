@@ -9,6 +9,7 @@ import {
   getCrmPushAdapter,
   isCrmProvider,
 } from "@/lib/integrations/providers/crm-registry";
+import { latestLeadOpportunity } from "@/lib/opportunities/service";
 
 export const crmPushPayload = z.object({
   leadId: z.uuid(),
@@ -40,7 +41,7 @@ export async function handleCrmPush(job: ClaimedJob) {
     admin
       .from("leads")
       .select(
-        "id, business_id, first_name, last_name, phone, email, postcode, status, qualification_state, created_at, services(name, average_value)",
+        "id, business_id, first_name, last_name, phone, email, postcode, company_name, status, qualification_state, created_at, services(name, average_value)",
       )
       .eq("id", payload.leadId)
       .maybeSingle(),
@@ -59,8 +60,47 @@ export async function handleCrmPush(job: ClaimedJob) {
 
   const adapter = getCrmPushAdapter(payload.provider);
 
+  // Source guard: a lead pulled *from* this CRM goes back into the record it
+  // came from. Without this a CRM-imported lead with no push record yet was
+  // created again in the CRM on its first push -- a duplicate of the very
+  // record it was imported from.
+  const { data: link, error: linkError } = await admin
+    .from("external_entity_links")
+    .select("external_id")
+    .eq("business_id", businessId)
+    .eq("connection_id", integration.id)
+    .eq("local_type", "LEAD")
+    .eq("local_id", lead.id)
+    .limit(1)
+    .maybeSingle();
+  // Unknown is not "not linked": retrying beats risking a duplicate record.
+  if (linkError) throw new Error(`crm.push link lookup failed: ${linkError.message}`);
+
+  // Re-read at push time, like the lead: the opportunity's current stage and
+  // outcome are what the CRM should show, not whatever triggered the job.
+  const opportunity = await latestLeadOpportunity(businessId, lead.id);
+
   try {
-    const result = await adapter.push({ integrationId: integration.id, lead });
+    const result = await adapter.push({
+      integrationId: integration.id,
+      linkedExternalId: link?.external_id ?? null,
+      lead: {
+        ...lead,
+        opportunity: opportunity
+          ? {
+              id: opportunity.id,
+              name: opportunity.name,
+              stage: opportunity.stage,
+              outcome: opportunity.outcome,
+              outcomeReason: opportunity.outcome_reason,
+              value: opportunity.value,
+              currency: opportunity.currency,
+              expectedCloseDate: opportunity.expected_close_date,
+              closedAt: opportunity.closed_at,
+            }
+          : null,
+      },
+    });
 
     await admin.from("crm_push_records").upsert(
       {

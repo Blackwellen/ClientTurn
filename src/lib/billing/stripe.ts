@@ -1,7 +1,8 @@
 import "server-only";
 import Stripe from "stripe";
 import { serverEnv } from "@/lib/env";
-import { PLANS, TRIAL_ENTITLEMENTS, type PlanId } from "./plans";
+import type { PlanId } from "./plans";
+import { entitlementSnapshot } from "./lifecycle";
 
 export const stripe = new Stripe(serverEnv.stripe.secretKey);
 
@@ -34,24 +35,11 @@ export function mapSubscriptionStatus(status: string): string {
   return STATUS_MAP[status] ?? "INCOMPLETE";
 }
 
-/** The entitlement snapshot written alongside the mirrored Stripe state. */
-export function entitlementsForPlan(plan: PlanId) {
-  if (plan === "trial") {
-    return {
-      lead_limit: TRIAL_ENTITLEMENTS.leadLimit,
-      user_limit: TRIAL_ENTITLEMENTS.userLimit,
-      whatsapp_enabled: TRIAL_ENTITLEMENTS.whatsappEnabled,
-      campaigns_enabled: TRIAL_ENTITLEMENTS.campaignsEnabled,
-      ai_assist_allowed: TRIAL_ENTITLEMENTS.aiAssistAllowed,
-    };
-  }
-
-  const definition = PLANS[plan];
-  return {
-    lead_limit: definition.leadLimit,
-    user_limit: definition.userLimit,
-    whatsapp_enabled: definition.whatsappEnabled,
-    campaigns_enabled: definition.campaignsEnabled,
-    ai_assist_allowed: definition.aiAssistAllowed,
-  };
+/**
+ * The entitlement snapshot written alongside the mirrored Stripe state. While
+ * the subscription is trialling it is the trial's (see `TRIAL` in plans.ts),
+ * whatever tier was chosen at checkout.
+ */
+export function entitlementsForPlan(plan: PlanId, trialing = false) {
+  return entitlementSnapshot(plan, trialing);
 }

@@ -1,11 +1,13 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logWriteError } from "@/lib/supabase/write-result";
 import { recordAudit, recordUsage } from "@/lib/audit";
 import { checkCapacity } from "@/lib/billing/v4-entitlements";
 import { evaluate } from "@/lib/policy/service";
 import { sendEmail, unsubscribeUrl } from "@/lib/email/smtp";
 import {
   buildSourceDisclosure,
+  emailDisclosureDue,
   type Disclosure,
 } from "@/lib/compliance/source-disclosure";
 import { loadDataControls } from "@/lib/compliance/queries";
@@ -20,8 +22,11 @@ import {
   recordCampaignCost,
 } from "./campaigns/budget";
 import { loadSender } from "./campaigns/sender";
+import { claimSenderSlot } from "@/lib/email/sender-slots";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { loadDraft } from "./campaigns/draft";
 import { mergeValuesFor, renderTemplate } from "./templates";
+import { loadProspectEmailOrigins } from "@/lib/find-leads/server/email-origin-store";
 
 /**
  * Cold outreach dispatch (V4 section 17, section 18.27).
@@ -172,7 +177,7 @@ export async function dispatchCampaign(input: {
     .select(
       `id, prospect_id, conversation_id, status, current_step_position, steps_sent, campaign_variant_id,
        prospects ( id, first_name, last_name, role_title, email, unsubscribe_token, status,
-                   outreach_eligibility, grade, score, promoted_to_lead_id,
+                   outreach_eligibility, grade, score, promoted_to_lead_id, verification_status,
                    prospect_companies ( name, domain, is_existing_customer, location_json ) )`,
     )
     .eq("business_id", input.businessId)
@@ -201,6 +206,14 @@ export async function dispatchCampaign(input: {
   const queue = due ?? [];
   if (queue.length === 0) return EMPTY;
 
+  // §26: email origin (0131), read once per batch. A failed read stops the
+  // batch rather than reading "unknown" as "not guessed".
+  const origins = await loadProspectEmailOrigins(
+    input.businessId,
+    queue.map((run) => run.prospect_id).filter((id): id is string => Boolean(id)),
+  );
+  if (!origins) return { ...EMPTY, haltReason: "EMAIL_ORIGIN_UNAVAILABLE", more: true };
+
   let sent = 0;
   let skipped = 0;
   let blocked = 0;
@@ -218,6 +231,7 @@ export async function dispatchCampaign(input: {
       grade: string | null;
       score: number | null;
       promoted_to_lead_id: string | null;
+      verification_status: string | null;
       prospect_companies: {
         name: string;
         domain: string | null;
@@ -242,16 +256,21 @@ export async function dispatchCampaign(input: {
     const step = steps.find((candidate) => candidate.position >= nextPosition);
 
     if (!step) {
-      // Every step delivered. The recipient is done, not failed.
-      await admin
-        .from("outreach_recipient_runs")
-        .update({
-          status: "COMPLETED",
-          next_step_due_at: null,
-          completed_at: new Date().toISOString(),
-        })
-        .eq("business_id", input.businessId)
-        .eq("id", run.id);
+      // Every step delivered. The recipient is done, not failed. A failed
+      // write leaves the run due, and the next invocation lands here again.
+      logWriteError(
+        await admin
+          .from("outreach_recipient_runs")
+          .update({
+            status: "COMPLETED",
+            next_step_due_at: null,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("business_id", input.businessId)
+          .eq("id", run.id),
+        "outreach: complete recipient run",
+        { businessId: input.businessId, campaignId: input.campaignId, runId: run.id },
+      );
       continue;
     }
 
@@ -282,6 +301,8 @@ export async function dispatchCampaign(input: {
         matchingIntentSignals: loaded.draft.intentScore.intentRequired ? 1 : 0,
         suppressed,
         companyExcluded: false,
+        emailOrigin: origins.get(prospect.id) ?? null,
+        verificationStatus: prospect.verification_status,
       },
       loaded.draft,
     );
@@ -303,8 +324,10 @@ export async function dispatchCampaign(input: {
         id: prospect.id,
         email,
         country: location.country ?? null,
-        subscriberType: "CORPORATE",
-        relationshipType: "FOUND_BY_US",
+        // No subscriber type or relationship here: the stored permission
+        // record, or failing that the company's register verdict, decides.
+        // Asserting CORPORATE on every send overrode a sole trader's record
+        // (defect B1).
         timezone: business?.timezone ?? null,
       },
       channel: "EMAIL",
@@ -329,7 +352,7 @@ export async function dispatchCampaign(input: {
     // Claiming the step is the idempotency guard. It is conditional on the
     // position we read, so a retried job, a duplicated queue entry or a second
     // worker all find the row already advanced and send nothing.
-    const { data: claimedStep } = await admin
+    const claim = await admin
       .from("outreach_recipient_runs")
       .update({
         status: "ACTIVE",
@@ -340,6 +363,14 @@ export async function dispatchCampaign(input: {
       .eq("id", run.id)
       .eq("current_step_position", run.current_step_position)
       .select("id");
+    const claimedStep = claim.data;
+    // A failed claim sends nothing (the safe direction), but is logged so it is
+    // not mistaken for another worker having claimed the step.
+    logWriteError(claim, "outreach: claim step", {
+      businessId: input.businessId,
+      campaignId: input.campaignId,
+      runId: run.id,
+    });
 
     if (!claimedStep?.length) {
       skipped += 1;
@@ -357,10 +388,16 @@ export async function dispatchCampaign(input: {
       return { sent, skipped, blocked, haltReason: "CAMPAIGN_CONTACT_CAP", more: true };
     }
 
-    const { data: senderSlot } = await admin.rpc("claim_sender_send_slot", {
-      p_business_id: input.businessId,
-      p_sender_id: sender.id,
-    });
+    // §43: the capped claim -- the ramped cap, ceilinged by the mailbox
+    // provider's safe daily limit, refused while the sender is PAUSED by the
+    // complaint monitor, and starting the warm-up clock on first use. A claim
+    // that errors is no claim: the batch stops rather than sending uncounted.
+    let senderSlot = false;
+    try {
+      senderSlot = await claimSenderSlot(input.businessId, sender.id);
+    } catch {
+      senderSlot = false;
+    }
 
     if (!senderSlot) {
       await releaseCampaignSlot(input);
@@ -418,7 +455,13 @@ export async function dispatchCampaign(input: {
     // prospect -- never hand-written and never model-written, because a
     // plausible sentence naming a source that was never consulted is a
     // fabricated disclosure, which is worse than none.
-    const disclosure = await sourceDisclosureFor(input.businessId, prospect.id);
+    //
+    // First contact only (Art 14(3)(b)): the line goes on the first cold step
+    // delivered to this recipient, not under every follow-up. Follow-ups are
+    // neither blocked nor annotated by it -- the information was given.
+    const disclosure: Disclosure = emailDisclosureDue(run.steps_sent ?? 0)
+      ? await sourceDisclosureFor(input.businessId, prospect.id)
+      : { line: null, blocked: false, gap: null };
 
     // Refused rather than sent without it, on exactly the same reasoning as the
     // missing unsubscribe token below: a cold email that cannot say where it
@@ -426,6 +469,10 @@ export async function dispatchCampaign(input: {
     // keep a campaign moving is the wrong trade.
     if (disclosure.blocked) {
       await releaseCampaignSlot(input);
+      // Released, not left claimed: a claimed step has no due time and would
+      // strand the recipient silently. Released, it is retried next tick and
+      // goes out as soon as the privacy notice or provenance is fixed.
+      await releaseStep(input, run.id, run.current_step_position, run.status);
       skipped += 1;
       continue;
     }
@@ -447,6 +494,7 @@ export async function dispatchCampaign(input: {
     // without one is not lawful to send. Skip rather than send a broken link.
     if (!prospect.unsubscribe_token) {
       await releaseCampaignSlot(input);
+      await releaseStep(input, run.id, run.current_step_position, run.status);
       skipped += 1;
       continue;
     }
@@ -459,23 +507,37 @@ export async function dispatchCampaign(input: {
       // A working one-click unsubscribe is what makes this send lawful.
       unsubscribeUrl: unsubscribeUrl(prospect.unsubscribe_token),
       sendKey,
+      // The campaign's sender identity controls From (Phase 3.5).
+      senderIdentity: { displayName: sender.displayName, email: sender.email },
     });
 
     if (!result.ok) {
       await releaseCampaignSlot(input);
 
-      await admin
-        .from("outreach_recipient_runs")
-        .update({
-          status: result.permanent ? "BOUNCED" : "SCHEDULED",
-          stop_reason: result.errorCode,
-          next_step_due_at: result.permanent
-            ? null
-            : new Date(Date.now() + 3600_000).toISOString(),
-          bounced_at: result.permanent ? new Date().toISOString() : null,
-        })
-        .eq("business_id", input.businessId)
-        .eq("id", run.id);
+      // The claim above already cleared `next_step_due_at`, so a failure here
+      // strands the run rather than re-sending it. Logged, not thrown: the
+      // rest of the batch is unaffected.
+      logWriteError(
+        await admin
+          .from("outreach_recipient_runs")
+          .update({
+            status: result.permanent ? "BOUNCED" : "SCHEDULED",
+            stop_reason: result.errorCode,
+            next_step_due_at: result.permanent
+              ? null
+              : new Date(Date.now() + 3600_000).toISOString(),
+            bounced_at: result.permanent ? new Date().toISOString() : null,
+          })
+          .eq("business_id", input.businessId)
+          .eq("id", run.id),
+        "outreach: record failed send on run",
+        {
+          businessId: input.businessId,
+          campaignId: input.campaignId,
+          runId: run.id,
+          permanent: result.permanent,
+        },
+      );
 
       if (result.permanent && variant) {
         await recordVariantEvent({
@@ -486,11 +548,15 @@ export async function dispatchCampaign(input: {
       }
 
       if (result.permanent) {
-        await admin
-          .from("prospects")
-          .update({ status: "BOUNCED", outreach_eligibility: "SUPPRESSED" })
-          .eq("business_id", input.businessId)
-          .eq("id", prospect.id);
+        logWriteError(
+          await admin
+            .from("prospects")
+            .update({ status: "BOUNCED", outreach_eligibility: "SUPPRESSED" })
+            .eq("business_id", input.businessId)
+            .eq("id", prospect.id),
+          "outreach: mark prospect bounced",
+          { businessId: input.businessId, campaignId: input.campaignId, prospectId: prospect.id },
+        );
       }
 
       skipped += 1;
@@ -500,44 +566,70 @@ export async function dispatchCampaign(input: {
     // The message row is what makes this send visible: the campaign's metrics,
     // the prospect drawer, and — after promotion — the Lead's history all read
     // from here.
-    await admin.from("messages").insert({
-      business_id: input.businessId,
-      conversation_id: conversationId,
-      prospect_id: prospect.id,
-      campaign_id: input.campaignId,
-      outreach_step_id: step.id,
-      campaign_variant_id: variant?.id ?? null,
-      sender_identity_id: sender.id,
-      channel: "email",
-      direction: "outbound",
-      origin: "outreach",
-      status: "SENT",
-      subject,
-      body,
-      message_id_header: result.providerMessageId ?? sendKey,
-      sent_at: new Date().toISOString(),
-    });
+    //
+    // The email has already gone, so none of the writes from here on throw:
+    // aborting now would skip the usage charge and the run advance for a send
+    // that really happened. A duplicate cannot follow from a failure here —
+    // the step claim above moved `current_step_position` and cleared
+    // `next_step_due_at` before the send — so each failure is logged loudly
+    // with the send key instead.
+    const sentContext = {
+      businessId: input.businessId,
+      campaignId: input.campaignId,
+      runId: run.id,
+      prospectId: prospect.id,
+      sendKey,
+    };
+    const sentRow = (extras: Record<string, unknown>) =>
+      admin.from("messages").insert({
+        ...(extras as unknown as Record<string, never>),
+        business_id: input.businessId,
+        conversation_id: conversationId,
+        prospect_id: prospect.id,
+        campaign_id: input.campaignId,
+        outreach_step_id: step.id,
+        campaign_variant_id: variant?.id ?? null,
+        sender_identity_id: sender.id,
+        channel: "email",
+        direction: "outbound",
+        origin: "outreach",
+        status: "SENT",
+        subject,
+        body,
+        message_id_header: result.providerMessageId ?? sendKey,
+        sent_at: new Date().toISOString(),
+      });
+    // Cold outreach is marketing by definition (§43). message_class is a 0127
+    // column: before that migration the row is still recorded without it.
+    let sentWrite = await sentRow({ message_class: "MARKETING" });
+    if (sentWrite.error && isSchemaLag(sentWrite.error)) sentWrite = await sentRow({});
+    logWriteError(sentWrite, "outreach: record sent message (email WAS sent)", sentContext);
 
     const nextStep = steps.find((candidate) => candidate.position > step.position);
 
-    await admin
-      .from("outreach_recipient_runs")
-      .update({
-        status: nextStep ? "SCHEDULED" : "COMPLETED",
-        conversation_id: conversationId,
-        steps_sent: run.steps_sent + 1,
-        // Sticky for the rest of the sequence: switching a person between
-        // variants mid-sequence makes every later reply unattributable.
-        campaign_variant_id: variant?.id ?? run.campaign_variant_id ?? null,
-        last_sent_at: new Date().toISOString(),
-        next_step_due_at: nextStep
-          ? new Date(Date.now() + nextStep.delaySeconds * 1000).toISOString()
-          : null,
-        completed_at: nextStep ? null : new Date().toISOString(),
-        stop_reason: null,
-      })
-      .eq("business_id", input.businessId)
-      .eq("id", run.id);
+    // A failure leaves the run ACTIVE with no due time: stranded, not re-sent.
+    logWriteError(
+      await admin
+        .from("outreach_recipient_runs")
+        .update({
+          status: nextStep ? "SCHEDULED" : "COMPLETED",
+          conversation_id: conversationId,
+          steps_sent: run.steps_sent + 1,
+          // Sticky for the rest of the sequence: switching a person between
+          // variants mid-sequence makes every later reply unattributable.
+          campaign_variant_id: variant?.id ?? run.campaign_variant_id ?? null,
+          last_sent_at: new Date().toISOString(),
+          next_step_due_at: nextStep
+            ? new Date(Date.now() + nextStep.delaySeconds * 1000).toISOString()
+            : null,
+          completed_at: nextStep ? null : new Date().toISOString(),
+          stop_reason: null,
+        })
+        .eq("business_id", input.businessId)
+        .eq("id", run.id),
+      "outreach: advance recipient run after send",
+      sentContext,
+    );
 
     if (variant) {
       await recordVariantEvent({
@@ -547,16 +639,20 @@ export async function dispatchCampaign(input: {
       });
     }
 
-    await admin
-      .from("prospects")
-      .update({
-        status: "OUTREACH_ACTIVE",
-        conversation_id: conversationId,
-        last_contacted_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-      })
-      .eq("business_id", input.businessId)
-      .eq("id", prospect.id);
+    logWriteError(
+      await admin
+        .from("prospects")
+        .update({
+          status: "OUTREACH_ACTIVE",
+          conversation_id: conversationId,
+          last_contacted_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+        })
+        .eq("business_id", input.businessId)
+        .eq("id", prospect.id),
+      "outreach: mark prospect contacted",
+      sentContext,
+    );
 
     // The customer-facing meter, distinct from the provider cost below.
     //
@@ -676,7 +772,7 @@ async function ensureConversation(input: {
 
   if (found) return found.id;
 
-  const { data: created } = await admin
+  const createdResult = await admin
     .from("conversations")
     .insert({
       business_id: input.businessId,
@@ -688,8 +784,13 @@ async function ensureConversation(input: {
     })
     .select("id")
     .single();
+  // Null makes the caller give the slots back and retry next invocation.
+  logWriteError(createdResult, "outreach: create prospect conversation", {
+    businessId: input.businessId,
+    prospectId: input.prospectId,
+  });
 
-  return created?.id ?? null;
+  return createdResult.data?.id ?? null;
 }
 
 /**
@@ -734,7 +835,7 @@ async function sourceDisclosureFor(
 ): Promise<Disclosure> {
   const admin = createAdminClient();
 
-  const [{ data: sources }, controls] = await Promise.all([
+  const [{ data: sources, error: sourcesError }, controls] = await Promise.all([
     admin
       .from("prospect_data_sources")
       .select("source_type")
@@ -743,6 +844,16 @@ async function sourceDisclosureFor(
       .limit(50),
     loadDataControls(businessId),
   ]);
+
+  // An unreadable provenance table is not "nothing recorded", but it is not
+  // permission either: hold the send (the caller skips and retries next tick).
+  if (sourcesError) {
+    return {
+      line: null,
+      blocked: true,
+      gap: `Could not read where this prospect's details came from: ${sourcesError.message}`,
+    };
+  }
 
   return buildSourceDisclosure({
     provenanceTypes: [...new Set((sources ?? []).map((row) => row.source_type))],
@@ -770,15 +881,20 @@ async function releaseStep(
   status: string,
 ): Promise<void> {
   const admin = createAdminClient();
-  await admin
-    .from("outreach_recipient_runs")
-    .update({
-      status,
-      current_step_position: position,
-      next_step_due_at: new Date().toISOString(),
-    })
-    .eq("business_id", input.businessId)
-    .eq("id", runId);
+  // A failure strands the claimed run (no due time) rather than re-sending it.
+  logWriteError(
+    await admin
+      .from("outreach_recipient_runs")
+      .update({
+        status,
+        current_step_position: position,
+        next_step_due_at: new Date().toISOString(),
+      })
+      .eq("business_id", input.businessId)
+      .eq("id", runId),
+    "outreach: release claimed step",
+    { businessId: input.businessId, campaignId: input.campaignId, runId },
+  );
 }
 
 /** A claimed slot that was never used is given back, so a blocked send does
@@ -788,10 +904,15 @@ async function releaseCampaignSlot(input: {
   campaignId: string;
 }): Promise<void> {
   const admin = createAdminClient();
-  await admin.rpc("release_campaign_contact_slot", {
-    p_business_id: input.businessId,
-    p_campaign_id: input.campaignId,
-  });
+  // A failure only under-counts today's remaining capacity.
+  logWriteError(
+    await admin.rpc("release_campaign_contact_slot", {
+      p_business_id: input.businessId,
+      p_campaign_id: input.campaignId,
+    }),
+    "outreach: release campaign slot",
+    { businessId: input.businessId, campaignId: input.campaignId },
+  );
 }
 
 /** Records why a prospect was not contacted, so the decision is inspectable. */
@@ -802,26 +923,37 @@ async function recordBlocked(
   reasonCode: string,
 ): Promise<void> {
   const admin = createAdminClient();
+  const context = { businessId: input.businessId, campaignId: input.campaignId, runId, prospectId, reasonCode };
 
-  await admin
-    .from("outreach_recipient_runs")
-    .update({
-      status: "SUPPRESSED",
-      stop_reason: reasonCode,
-      next_step_due_at: null,
-      stopped_at: new Date().toISOString(),
-    })
-    .eq("business_id", input.businessId)
-    .eq("id", runId);
+  // Logged, not thrown: the send was already refused, and a run left due is
+  // re-checked (and refused again) on the next invocation.
+  logWriteError(
+    await admin
+      .from("outreach_recipient_runs")
+      .update({
+        status: "SUPPRESSED",
+        stop_reason: reasonCode,
+        next_step_due_at: null,
+        stopped_at: new Date().toISOString(),
+      })
+      .eq("business_id", input.businessId)
+      .eq("id", runId),
+    "outreach: record blocked run",
+    context,
+  );
 
-  await admin
-    .from("prospects")
-    .update({
-      outreach_eligibility: reasonCode === "BLOCKED_OPT_OUT" ? "SUPPRESSED" : "REVIEW",
-      eligibility_reason: "Contactability changed before this message was sent",
-    })
-    .eq("business_id", input.businessId)
-    .eq("id", prospectId);
+  logWriteError(
+    await admin
+      .from("prospects")
+      .update({
+        outreach_eligibility: reasonCode === "BLOCKED_OPT_OUT" ? "SUPPRESSED" : "REVIEW",
+        eligibility_reason: "Contactability changed before this message was sent",
+      })
+      .eq("business_id", input.businessId)
+      .eq("id", prospectId),
+    "outreach: record blocked prospect",
+    context,
+  );
 }
 
 async function stopRun(
@@ -830,14 +962,19 @@ async function stopRun(
   reason: string,
 ): Promise<void> {
   const admin = createAdminClient();
-  await admin
-    .from("outreach_recipient_runs")
-    .update({
-      status: "STOPPED",
-      stop_reason: reason,
-      next_step_due_at: null,
-      stopped_at: new Date().toISOString(),
-    })
-    .eq("business_id", input.businessId)
-    .eq("id", runId);
+  // No send happened; a run left due is stopped again next invocation.
+  logWriteError(
+    await admin
+      .from("outreach_recipient_runs")
+      .update({
+        status: "STOPPED",
+        stop_reason: reason,
+        next_step_due_at: null,
+        stopped_at: new Date().toISOString(),
+      })
+      .eq("business_id", input.businessId)
+      .eq("id", runId),
+    "outreach: stop recipient run",
+    { businessId: input.businessId, campaignId: input.campaignId, runId, reason },
+  );
 }

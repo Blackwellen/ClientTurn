@@ -12,6 +12,7 @@ import {
   cadenceLabel,
   queueStatusTone,
   queueTypeLabel,
+  readinessProblems,
   severityTone,
   sourceStatusTone,
   type AgentActivityRow,
@@ -19,6 +20,7 @@ import {
   type AgentSourceRow,
 } from "@/lib/agents/types";
 import type { AgentDetail } from "@/lib/agents/queries";
+import { AgentSettingsForm } from "./agent-settings-form";
 
 /**
  * The Agent detail tabs.
@@ -81,13 +83,14 @@ export function OverviewTab({
                 label="Monthly limit"
                 value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} prospects`}
               />
-              <Row label="Minimum grade" value={agent.minimumGrade} />
               <Row
                 label="Next run"
                 value={
                   agent.nextRunAt
                     ? new Date(agent.nextRunAt).toLocaleString("en-GB")
-                    : "Not scheduled"
+                    : agent.cadence === "MANUAL"
+                      ? "Only when you run it"
+                      : "Not scheduled"
                 }
               />
               <Row label="Sourcing runs" value={runCount.toLocaleString("en-GB")} />
@@ -330,26 +333,17 @@ export function SourcesTab({ sources }: { sources: AgentSourceRow[] }) {
 
 export function CampaignTab({ agent }: { agent: AgentDetail["agent"] }) {
   return (
-    <Panel title="Campaign and conversion">
+    <Panel title="Where the work goes">
       <p className="text-[12.5px] text-content-muted">
-        Discovering a prospect never starts outreach on its own. Approved prospects join an
-        acquisition campaign, where budgets, caps and contact rules are enforced server-side
-        before anything is sent.
+        {agent.agentType === "BOOKING"
+          ? "Stalled qualified leads are handed back to your follow-up sequence, which sends through its own checks. Times are offered and bookings confirmed by the conversation assistant and your booking link."
+          : agent.agentType === "REENGAGEMENT"
+            ? "Quiet leads are gathered into a draft reactivation campaign. You review and launch it in Reactivation; the agent never launches it."
+            : "Prospects wait for your review in Find Leads unless the agent's approval setting lets them go to your active acquisition campaign. There, caps and contact rules are enforced before anything is sent. Moving a prospect into Leads is always your decision."}
       </p>
 
       <dl className="mt-4 space-y-2 border-t border-line-subtle pt-3 text-[12.5px]">
-        <Row
-          label="Campaign"
-          value={agent.campaignId ? "Linked" : "Not linked — prospects wait for review"}
-        />
-        <Row
-          label="Conversion goal"
-          value={agent.conversionGoalId ? "Set" : "Not set"}
-        />
-        <Row
-          label="Promote automatically"
-          value={agent.autoPromoteToLeads ? "Yes, when eligible" : "No — you promote manually"}
-        />
+        <Row label="Approval" value={autonomyLabel(agent.autonomy)} />
       </dl>
 
       <div className="mt-4 flex flex-wrap gap-4 border-t border-line-subtle pt-3 text-[12.5px] font-medium text-content-accent">
@@ -418,41 +412,66 @@ export function SettingsTab({
   agent,
   canManage,
   controls,
+  plans,
 }: {
   agent: AgentDetail["agent"];
   canManage: boolean;
   controls: React.ReactNode;
+  plans: { id: string; name: string }[];
 }) {
+  const problems = readinessProblems({
+    agentType: agent.agentType,
+    enabledSources: agent.enabledSources,
+  });
+  const sources = agent.agentType === "SOURCING" || agent.agentType === "COMBINED";
+
   return (
     <div className="space-y-5">
+      {problems.length > 0 && (
+        <p
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-[12.5px] text-warning-700"
+        >
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>
+            This agent cannot start yet. {problems.join(" ")}
+          </span>
+        </p>
+      )}
+
       <Panel title="Configuration">
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <Field label="Schedule" value={cadenceLabel(agent.cadence)} />
-          <Field label="Approval" value={autonomyLabel(agent.autonomy)} />
-          <Field
-            label="Daily limit"
-            value={`${agent.dailyProspectCap.toLocaleString("en-GB")} prospects`}
-          />
-          <Field
-            label="Monthly limit"
-            value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} prospects`}
-          />
-          <Field label="Minimum grade" value={agent.minimumGrade} />
-          <Field
-            label="Email enrichment"
-            value={agent.enrichEmail ? "On" : "Off"}
-            hint={agent.verifyEmail ? "Addresses are verified before use" : undefined}
-          />
-          <Field
-            label="Phone enrichment"
-            value={agent.enrichPhone ? "On" : "Off"}
-            hint="A found number does not grant permission to call or text it"
-          />
-          <Field
-            label="Promote to Leads"
-            value={agent.autoPromoteToLeads ? "Automatic when eligible" : "Manual"}
-          />
-        </dl>
+        {canManage ? (
+          <AgentSettingsForm agent={agent} plans={plans} />
+        ) : (
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <Field label="Schedule" value={cadenceLabel(agent.cadence)} />
+            <Field label="Approval" value={autonomyLabel(agent.autonomy)} />
+            <Field
+              label="Daily limit"
+              value={`${agent.dailyProspectCap.toLocaleString("en-GB")} prospects`}
+            />
+            <Field
+              label="Monthly limit"
+              value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} prospects`}
+            />
+            {sources && (
+              <Field
+                label="Sources"
+                value={
+                  agent.enabledSources
+                    .map((key) => SOURCE_DEFINITIONS[key]?.label ?? key)
+                    .join(", ") || "None"
+                }
+              />
+            )}
+          </dl>
+        )}
+        {sources && (
+          <p className="mt-4 border-t border-line-subtle pt-3 text-[11.5px] text-content-muted">
+            Contact details: a verified work email for each prospect. Phone numbers are never
+            collected. Minimum grade and targeting come from the approved search plan.
+          </p>
+        )}
       </Panel>
 
       {canManage && (

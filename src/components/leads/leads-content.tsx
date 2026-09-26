@@ -6,6 +6,7 @@ import { hasActiveFilters } from "@/lib/leads/filters";
 import type { LeadListRow, WorkspaceMember } from "@/lib/leads/types";
 import { LeadCardGrid } from "./lead-card-grid";
 import { LeadsTable } from "./leads-table";
+import { LeadBulkBar } from "./lead-bulk-bar";
 import { LeadsPagination } from "./leads-pagination";
 import { LeadsEmptyState, LeadsFilteredEmptyState } from "./leads-states";
 import { useLeadParams } from "./use-lead-params";
@@ -20,11 +21,14 @@ export function LeadsContent({
   total,
   filters,
   members,
+  role,
 }: {
   rows: LeadListRow[];
   total: number;
   filters: LeadFilters;
   members: WorkspaceMember[];
+  /** The viewer's workspace role; the bar offers only what it permits. */
+  role: string;
 }) {
   const { openLead } = useLeadParams();
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -48,20 +52,29 @@ export function LeadsContent({
     [openLead],
   );
 
+  // A viewer has no bulk action to take, so offers no selection to make.
+  const canSelect = role !== "viewer";
+
   const narrowed = hasActiveFilters(filters) || filters.quick !== "all";
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-xl border border-line bg-surface shadow-xs">
+      <div className="rounded-xl border border-line bg-surface shadow-xs" data-tour="leads-list">
         {narrowed ? <LeadsFilteredEmptyState /> : <LeadsEmptyState />}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="leads-list">
       {filters.view === "cards" ? (
-        <LeadCardGrid rows={rows} assigneeNames={assigneeNames} onOpen={open} />
+        <LeadCardGrid
+          rows={rows}
+          assigneeNames={assigneeNames}
+          onOpen={open}
+          selected={canSelect ? selected : undefined}
+          onSelectedChange={canSelect ? setSelected : undefined}
+        />
       ) : (
         <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-xs">
           <LeadsTable
@@ -69,13 +82,21 @@ export function LeadsContent({
             assigneeNames={assigneeNames}
             filters={filters}
             selected={selected}
-            onSelectedChange={setSelected}
+            onSelectedChange={canSelect ? setSelected : undefined}
             onOpen={open}
           />
         </div>
       )}
 
       <LeadsPagination filters={filters} total={total} />
+
+      <LeadBulkBar
+        selected={selected}
+        pageIds={rows.map((row) => row.id)}
+        members={members}
+        role={role}
+        onSelectedChange={setSelected}
+      />
     </div>
   );
 }

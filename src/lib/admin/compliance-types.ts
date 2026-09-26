@@ -196,6 +196,13 @@ export const PRIVACY_REQUEST_TYPES = [
   "DELETION",
   "ACCESS",
   "MARKETING_DATA",
+  // 0124: the intake vocabulary.
+  "ERASURE",
+  "RECTIFICATION",
+  "RESTRICTION",
+  "OBJECTION",
+  "COMPLAINT",
+  "CONTEST_DECISION",
 ] as const;
 export type PrivacyRequestType = (typeof PRIVACY_REQUEST_TYPES)[number];
 
@@ -204,6 +211,12 @@ export const PRIVACY_REQUEST_TYPE_LABEL: Record<PrivacyRequestType, string> = {
   DELETION: "Data deletion",
   ACCESS: "Access request",
   MARKETING_DATA: "Marketing data",
+  ERASURE: "Erasure",
+  RECTIFICATION: "Rectification",
+  RESTRICTION: "Restriction",
+  OBJECTION: "Objection",
+  COMPLAINT: "Complaint",
+  CONTEST_DECISION: "Contest a decision",
 };
 
 export const PRIVACY_REQUEST_STATUSES = [

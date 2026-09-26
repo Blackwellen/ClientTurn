@@ -29,6 +29,7 @@ import type {
   SuppressionReason,
   SuppressionRow,
 } from "./compliance-types";
+import { orIlike } from "@/lib/supabase/ilike";
 
 /**
  * The Compliance surface (V4 §44).
@@ -484,9 +485,8 @@ async function searchSuppressions(
 
   const term = filters.suppressionQuery.trim();
   if (term) {
-    query = query.or(
-      `email.ilike.%${term}%,phone_e164.ilike.%${term}%,social_identifier.ilike.%${term}%`,
-    );
+    const or = orIlike(["email", "phone_e164", "social_identifier"], term);
+    if (or) query = query.or(or);
   }
   if (filters.suppressionType === "email") query = query.not("email", "is", null);
   if (filters.suppressionType === "phone") query = query.not("phone_e164", "is", null);

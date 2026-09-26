@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pause, Play, Square } from "lucide-react";
+import { Pause, Play, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/modal";
-import { controlAgent } from "@/lib/agents/actions";
+import { controlAgent, deleteAgent } from "@/lib/agents/actions";
+import { runButton } from "@/lib/agents/policy";
 
 /**
- * Start, pause and stop for one agent.
+ * Start, pause, stop and delete for one agent.
  *
  * Three deliberate properties:
  *
@@ -21,11 +22,33 @@ import { controlAgent } from "@/lib/agents/actions";
  *   * **The server decides.** These controls are a convenience; `controlAgent`
  *     re-checks role, entitlement and plan approval on every call.
  */
-export function AgentControls({ id, status }: { id: string; status: string }) {
+export function AgentControls({
+  id,
+  status,
+  cadence,
+}: {
+  id: string;
+  status: string;
+  cadence: string;
+}) {
+  const primary = runButton({ status, cadence });
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState("");
   const [confirmStop, setConfirmStop] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  const remove = () => {
+    startTransition(async () => {
+      const result = await deleteAgent(id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.push("/app/agents");
+      router.refresh();
+    });
+  };
 
   const run = (command: "run" | "pause" | "stop") => {
     startTransition(async () => {
@@ -44,9 +67,9 @@ export function AgentControls({ id, status }: { id: string; status: string }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Button loading={pending} onClick={() => run("run")}>
+        <Button loading={pending} onClick={() => run("run")} title={primary.hint}>
           <Play className="size-4" aria-hidden />
-          {status === "ACTIVE" ? "Run now" : "Start agent"}
+          {primary.label}
         </Button>
 
         <Button
@@ -68,7 +91,19 @@ export function AgentControls({ id, status }: { id: string; status: string }) {
           <Square className="size-4" aria-hidden />
           Stop
         </Button>
+
+        <Button
+          variant="ghost"
+          className="text-danger-600 hover:text-danger-700"
+          disabled={pending}
+          onClick={() => setConfirmDelete(true)}
+        >
+          <Trash2 className="size-4" aria-hidden />
+          Delete
+        </Button>
       </div>
+
+      <p className="max-w-lg text-[11.5px] text-content-muted">{primary.hint}</p>
 
       {error && (
         <p role="alert" className="max-w-lg text-[12.5px] text-danger-600">
@@ -87,6 +122,21 @@ export function AgentControls({ id, status }: { id: string; status: string }) {
         scope="The agent stops after the work it is currently doing finishes."
         consequence="Prospects it has already found are kept, and so is its history. A stopped agent has to be started again — it will not resume on its schedule."
         confirmLabel="Stop agent"
+        variant="danger"
+        loading={pending}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          remove();
+        }}
+        title="Delete this agent?"
+        scope="The agent, its setup, queue, signals and activity timeline are removed."
+        consequence="The leads, prospects and sourcing runs it produced are kept. If one of its runs is still in progress, stop the agent and wait for it to finish first. This cannot be undone."
+        confirmLabel="Delete agent"
         variant="danger"
         loading={pending}
       />

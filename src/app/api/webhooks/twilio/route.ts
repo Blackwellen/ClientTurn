@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { enqueue } from "@/lib/jobs/queue";
 import { formToRecord, verifyTwilioSignature } from "@/lib/messaging/twilio";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
+import { suppress } from "@/lib/policy/suppression";
+import { twilioErrorSuppression } from "@/lib/messaging/sms-compliance";
+import { stripChannelPrefix } from "@/lib/messaging/types";
 
 export const dynamic = "force-dynamic";
 
@@ -105,13 +109,34 @@ export async function POST(request: Request) {
   }
 
   if (isStatusCallback) {
-    // A delivery receipt is a single local write, not provider I/O.
-    await applyDeliveryStatus(sid, DELIVERY_STATUS[statusValue], payload.ErrorCode);
-    await supabase
-      .from("webhook_events")
-      .update({ status: "processed", processed_at: new Date().toISOString() })
-      .eq("provider", "twilio")
-      .eq("external_event_id", eventId);
+    // A delivery receipt is local writes only, not provider I/O. A failure is
+    // recorded on the inbox row rather than thrown: a 5xx would make Twilio
+    // retry into the unique index above and the event would be acknowledged
+    // unprocessed, losing an opt-out it may carry.
+    let failure: string | null = null;
+    try {
+      await applyDeliveryStatus(
+        sid,
+        DELIVERY_STATUS[statusValue],
+        payload.ErrorCode,
+        payload.To,
+      );
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    logWriteError(
+      await supabase
+        .from("webhook_events")
+        .update(
+          failure
+            ? { status: "failed", last_error: failure.slice(0, 500) }
+            : { status: "processed", processed_at: new Date().toISOString() },
+        )
+        .eq("provider", "twilio")
+        .eq("external_event_id", eventId),
+      "twilio webhook: record delivery status outcome",
+      { eventId, failure },
+    );
 
     return new Response(EMPTY_TWIML, { status: 200, headers: twimlHeaders });
   }
@@ -129,16 +154,18 @@ async function applyDeliveryStatus(
   providerMessageId: string,
   status: "SENT" | "DELIVERED" | "FAILED",
   errorCode?: string,
+  recipient?: string,
 ) {
   const supabase = createAdminClient();
 
-  const { data: message } = await supabase
+  const { data: message, error: lookupError } = await supabase
     .from("messages")
-    .select("id, business_id, status")
+    .select("id, business_id, status, channel")
     .eq("provider", "twilio")
     .eq("provider_message_id", providerMessageId)
     .maybeSingle();
 
+  if (lookupError) throw lookupError;
   if (!message) return;
 
   const now = new Date().toISOString();
@@ -155,16 +182,49 @@ async function applyDeliveryStatus(
   }
 
   // DELIVERED must never be walked back to SENT by a late-arriving receipt.
-  if (!(message.status === "DELIVERED" && status === "SENT")) {
-    await supabase.from("messages").update(patch).eq("id", message.id);
+  // Read, but only acted on after the suppression below: a failed status
+  // write must not stop a carrier-reported opt-out from being recorded.
+  const statusUpdate =
+    message.status === "DELIVERED" && status === "SENT"
+      ? null
+      : await supabase.from("messages").update(patch).eq("id", message.id);
+
+  const context = {
+    businessId: message.business_id,
+    messageId: message.id,
+    providerMessageId,
+    status,
+  };
+
+  logWriteError(
+    await supabase.from("message_events").insert({
+      business_id: message.business_id,
+      message_id: message.id,
+      event_type: "delivery_status",
+      provider_status: status,
+      error_code: errorCode ?? null,
+      payload: { provider_message_id: providerMessageId } as never,
+    }),
+    "twilio webhook: delivery status event",
+    context,
+  );
+
+  // A failure that is a fact about the recipient — they sent STOP to the
+  // carrier (21610), or the number cannot receive messages (21211, 21614) — is
+  // a suppression, on the one list every send path reads. Otherwise every
+  // later send to them fails the same way, and an opt-out goes unrecorded.
+  const hit = status === "FAILED" ? twilioErrorSuppression(errorCode, message.channel) : null;
+  if (hit && recipient) {
+    await suppress({
+      businessId: message.business_id,
+      channel: hit.channel,
+      reason: hit.reason,
+      source: "PROVIDER_TWILIO",
+      sourceReference: `twilio:${errorCode}:${providerMessageId}`,
+      phone: stripChannelPrefix(recipient),
+    });
   }
 
-  await supabase.from("message_events").insert({
-    business_id: message.business_id,
-    message_id: message.id,
-    event_type: "delivery_status",
-    provider_status: status,
-    error_code: errorCode ?? null,
-    payload: { provider_message_id: providerMessageId } as never,
-  });
+  // Thrown into the caller's catch, which records the inbox row as failed.
+  if (statusUpdate) assertWrite(statusUpdate, "twilio webhook: message delivery status", context);
 }

@@ -179,6 +179,43 @@ describe("V4 row level security", () => {
     await admin.from("jobs").update({state:"completed"}).eq("idempotency_key",`app.ingest:${eventId}`);
   });
 
+  test("a connector-sourced prospect promotes to a lead without a reply, a cold-sourced one still can't", async () => {
+    const [a,b]=tenants;
+    // Connector-sourced: no source_run_id, same shape process_workspace_app_event inserts.
+    const {data:fromConnector,error:e1}=await admin.from("prospects").insert({business_id:b.businessId,first_name:"Connector",email:`connector-${Date.now()}@example.test`,source_provider:"zapier",outreach_eligibility:"REVIEW"}).select("id").single();
+    assert.equal(e1,null);
+    const promoted=await admin.rpc("promote_reviewed_prospect",{p_business_id:b.businessId,p_prospect_id:fromConnector!.id,p_user_id:b.userId});
+    assert.equal(promoted.error,null,promoted.error?.message);
+    assert.ok(promoted.data);
+    const {data:lead}=await admin.from("leads").select("id,status,relationship_type").eq("id",promoted.data).single();
+    assert.equal(lead?.status,"NEW");
+    // The actual point of promotion: relationship_type must clear the warm-channel
+    // policy gate (src/lib/policy/channel-policy.ts canSend -- excludes only
+    // UNKNOWN and FOUND_BY_US), not the value the routine used to hardcode.
+    assert.equal(lead?.relationship_type,"IMPORTED");
+    const {data:permission}=await admin.from("contact_permissions").select("relationship_type,consent_status").eq("subject_type","LEAD").eq("subject_id",promoted.data).single();
+    assert.equal(permission?.relationship_type,"IMPORTED");
+
+    // Cold-sourced (Find Leads search): has source_run_id, never replied -> still refused.
+    // source_run_id carries a real FK to sourcing_runs (0027), so a genuine run is needed.
+    const {data:run,error:eRun}=await admin.from("sourcing_runs").insert({business_id:b.businessId}).select("id").single();
+    assert.equal(eRun,null);
+    const {data:coldSourced,error:e2}=await admin.from("prospects").insert({business_id:b.businessId,first_name:"Cold",email:`cold-${Date.now()}@example.test`,source_provider:"find_leads",source_run_id:run!.id,outreach_eligibility:"REVIEW"}).select("id").single();
+    assert.equal(e2,null);
+    const refused=await admin.rpc("promote_reviewed_prospect",{p_business_id:b.businessId,p_prospect_id:coldSourced!.id,p_user_id:b.userId});
+    assert.ok(refused.error);
+    assert.match(refused.error!.message,/Record engagement before promoting/);
+
+    // The same cold-sourced prospect, once they reply, promotes with
+    // THEY_CONTACTED_US -- not FOUND_BY_US, which src/lib/policy/types.ts
+    // documents as "the one answer that must never produce a Lead".
+    await admin.from("prospects").update({replied_at:new Date().toISOString(),status:"REPLIED"}).eq("id",coldSourced!.id);
+    const nowPromoted=await admin.rpc("promote_reviewed_prospect",{p_business_id:b.businessId,p_prospect_id:coldSourced!.id,p_user_id:b.userId});
+    assert.equal(nowPromoted.error,null,nowPromoted.error?.message);
+    const {data:repliedLead}=await admin.from("leads").select("relationship_type").eq("id",nowPromoted.data).single();
+    assert.equal(repliedLead?.relationship_type,"THEY_CONTACTED_US");
+  });
+
   test("customer agents cannot be read across workspaces or started directly", async () => {
     const [a,b]=tenants;
     const {data:agent,error}=await admin.from("agents").insert({business_id:a.businessId,name:"Isolation test",agent_type:"SOURCING"}).select("id").single();assert.equal(error,null);

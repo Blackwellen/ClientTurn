@@ -33,6 +33,10 @@ export const TASK_TYPES = [
   // response schema: a turn either asks for a tool or answers in prose, and the
   // loop in `copilot/loop.ts` — not a schema — decides which happened.
   "copilot_turn",
+  // The 30-second handoff brief (Phase 3.4). Mini tier, one call per handoff,
+  // over the structured Lead Brief only -- never the transcript -- and
+  // validated to introduce no number, date or name the brief lacks.
+  "handoff_brief",
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -87,6 +91,12 @@ export const conversationSummarySchema = z.object({
   key_points: z.array(z.string()).default([]),
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
+
+/** The 30-second handoff brief: plain sentences, validated after parsing. */
+export const handoffBriefSchema = z.object({
+  brief: z.string().max(900),
+});
+export type HandoffBriefResult = z.infer<typeof handoffBriefSchema>;
 
 /**
  * The Search Agent's turn (V4 10.6). It proposes a *patch* to the structured
@@ -260,6 +270,7 @@ export const SCHEMAS: Record<TaskType, z.ZodType<unknown>> = {
   social_message: socialMessageSchema,
   variant_generation: variantGenerationSchema,
   website_contacts: websiteContactsSchema,
+  handoff_brief: handoffBriefSchema,
 };
 
 /**

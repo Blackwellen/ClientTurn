@@ -4,6 +4,8 @@
  * client (or a React Server Component marker) into scope.
  */
 
+import type { OutboundTemplate } from "./whatsapp-templates.ts";
+
 export type Channel =
   | "sms"
   | "whatsapp"
@@ -223,6 +225,15 @@ export type SendRequest = {
   subject?: string | null;
   /** Email only. Marketing mail must carry a working unsubscribe. */
   unsubscribeUrl?: string | null;
+  /**
+   * WhatsApp only: the approved template to send instead of free text, chosen
+   * at send time because the 24-hour window had closed (brief §45).
+   */
+  template?: OutboundTemplate | null;
+  /** Email only: the sender identity the From address comes from (§43). */
+  senderIdentity?: { displayName: string | null; email: string | null; replyTo?: string | null } | null;
+  /** Email only: TRANSACTIONAL or MARKETING (§43). */
+  messageClass?: "TRANSACTIONAL" | "MARKETING" | null;
 };
 
 export type SendResult =
@@ -334,18 +345,51 @@ const STOP_KEYWORDS = new Set([
   "remove",
 ]);
 
-/** Deterministic match only — opt-out must never depend on interpretation. */
-export function isOptOutKeyword(body: string): boolean {
-  const cleaned = body
+function cleanKeyword(body: string): string {
+  return body
     .trim()
     .toLowerCase()
     .replace(/^["'“”‘’]+|["'“”‘’.!?]+$/g, "")
     .replace(/\s+/g, " ");
-  return STOP_KEYWORDS.has(cleaned);
+}
+
+/** Deterministic match only — opt-out must never depend on interpretation. */
+export function isOptOutKeyword(body: string): boolean {
+  return STOP_KEYWORDS.has(cleanKeyword(body));
+}
+
+/**
+ * How far an opt-out reaches (design 03 §5, Phase 0 follow-up).
+ *
+ * A bare carrier keyword ("STOP", "UNSUBSCRIBE", ...) texted on SMS or
+ * WhatsApp is about that channel: it is what the carrier itself honours, and
+ * it is what START on the same channel reverses. Everything else -- a
+ * plain-English "stop contacting me", STOPALL, or STOP typed in an email or a
+ * DM -- is about every channel. Deterministic, like the keyword match itself.
+ */
+export function optOutScope(channel: Channel, body: string): "ALL" | "SMS" | "WHATSAPP" {
+  const carrier = optInChannelFor(channel);
+  if (!carrier || !isOptOutKeyword(body)) return "ALL";
+  if (cleanKeyword(body) === "stopall") return "ALL";
+  return carrier;
 }
 
 const START_KEYWORDS = new Set(["start", "unstop", "yes join", "resubscribe"]);
 
 export function isOptInKeyword(body: string): boolean {
   return START_KEYWORDS.has(body.trim().toLowerCase().replace(/[.!?]$/, ""));
+}
+
+/**
+ * The suppression channel a START keyword may re-permit, or null when START
+ * means nothing on this channel.
+ *
+ * START is a carrier keyword: it answers an SMS/WhatsApp STOP and nothing else.
+ * "Start" typed in an email or a DM is an ordinary reply, and must never lift
+ * a suppression — least of all on another channel.
+ */
+export function optInChannelFor(channel: Channel): "SMS" | "WHATSAPP" | null {
+  if (channel === "sms") return "SMS";
+  if (channel === "whatsapp") return "WHATSAPP";
+  return null;
 }

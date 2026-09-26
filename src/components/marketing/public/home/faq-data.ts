@@ -35,7 +35,7 @@ export const HOME_FAQS: HomeFaq[] = [
   {
     icon: CreditCard,
     q: "Do I need a credit card to start?",
-    a: `No. You can start with a ${TRIAL_DAYS}-day free trial with no card. You can connect your sources, configure your messages and questions, and watch the whole flow run before you pay anything.`,
+    a: `Yes, but nothing is charged for ${TRIAL_DAYS} days. Stripe checks the card when you start the trial; the first payment is taken when it ends, and you can cancel before then. You can connect your sources, configure your messages and questions, and watch the whole flow run before you pay anything.`,
   },
   {
     icon: Zap,
@@ -45,7 +45,7 @@ export const HOME_FAQS: HomeFaq[] = [
   {
     icon: Plug,
     q: "What lead sources and integrations are supported?",
-    a: "Ad platforms, messaging, calendar and CRM connections cover the tools most teams already run — Meta and Google lead forms, Twilio SMS and WhatsApp, Google Calendar and Calendly, HubSpot, Zoho and Salesforce. Alongside those, systems like Pipedrive, Attio, folk, Clay, Zapier, Instantly and Smartlead send contacts in through a signed inbound endpoint we host. The integrations section on this page lists every one with its current state.",
+    a: "Ad platforms, messaging, calendar and CRM connections cover the tools most teams already run — Meta and Google lead forms, Twilio SMS and WhatsApp, Google Calendar and Calendly, HubSpot, Zoho and Salesforce. Alongside those, systems like Pipedrive and Zapier send contacts in through a signed inbound endpoint we host. The integrations section on this page lists every one with its current state.",
   },
   {
     icon: Users,

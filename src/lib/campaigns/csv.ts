@@ -1,7 +1,11 @@
-import "server-only";
+/**
+ * CSV parsing and row validation for reactivation imports. Pure (no
+ * `server-only`, relative imports with `.ts`) so the rules are unit tested
+ * directly; only the server actions call it.
+ */
 import { z } from "zod";
-import { normalisePhone } from "@/lib/messaging/provider";
-import type { ImportMapping, ImportPreview, ImportRowError } from "./types";
+import { normalisePhone } from "../messaging/types.ts";
+import type { ImportMapping, ImportPreview, ImportRowError } from "./types.ts";
 
 export const MAX_IMPORT_ROWS = 5000;
 
@@ -60,7 +64,7 @@ const UK_POSTCODE =
 const rowSchema = z.object({
   first_name: z.string().trim().max(80).optional(),
   last_name: z.string().trim().max(80).optional(),
-  phone: z.string().trim().min(6).max(24),
+  phone: z.string().trim().min(6).max(24).optional(),
   email: z.email().max(160).optional(),
   service: z.string().trim().max(120).optional(),
   postcode: z
@@ -75,8 +79,9 @@ export type ValidatedImportRow = {
   row: number;
   firstName: string | null;
   lastName: string | null;
-  phone: string;
-  phoneNormalized: string;
+  /** Null when the row has only an email. */
+  phone: string | null;
+  phoneNormalized: string | null;
   email: string | null;
   service: string | null;
   postcode: string | null;
@@ -145,8 +150,14 @@ export function validateImport(
       return;
     }
 
-    const normalized = normalisePhone(parsed.data.phone);
-    if (!normalized || !/^\+\d{10,15}$/.test(normalized)) {
+    // A row needs one way to reach the person: a usable mobile, an email, or
+    // both. Which one a campaign uses is decided by its channel, later.
+    const phone = parsed.data.phone ?? null;
+    const email = parsed.data.email ? parsed.data.email.trim().toLowerCase() : null;
+    const normalized = phone ? normalisePhone(phone) : null;
+    const phoneUsable = Boolean(normalized && /^\+\d{10,15}$/.test(normalized));
+
+    if (phone && !phoneUsable && !email) {
       errors.push({
         row: number,
         field: "phone",
@@ -154,23 +165,33 @@ export function validateImport(
       });
       return;
     }
-    if (seen.has(normalized)) {
+    if (!phoneUsable && !email) {
       errors.push({
         row: number,
-        field: "phone",
+        field: "row",
+        message: "No mobile number or email",
+      });
+      return;
+    }
+
+    const key = phoneUsable ? `phone:${normalized}` : `email:${email}`;
+    if (seen.has(key)) {
+      errors.push({
+        row: number,
+        field: phoneUsable ? "phone" : "email",
         message: "Duplicate of an earlier row in this file",
       });
       return;
     }
-    seen.add(normalized);
+    seen.add(key);
 
     rows.push({
       row: number,
       firstName: parsed.data.first_name ?? null,
       lastName: parsed.data.last_name ?? null,
-      phone: parsed.data.phone,
-      phoneNormalized: normalized,
-      email: parsed.data.email ?? null,
+      phone: phoneUsable ? phone : null,
+      phoneNormalized: phoneUsable ? normalized : null,
+      email,
       service: parsed.data.service ?? null,
       postcode: parsed.data.postcode ?? null,
     });
@@ -198,7 +219,7 @@ export function toPreview(result: ValidationResult): ImportPreview {
       row: row.row,
       firstName: row.firstName ?? "",
       lastName: row.lastName ?? "",
-      phone: row.phoneNormalized,
+      phone: row.phoneNormalized ?? "",
       email: row.email ?? "",
       service: row.service ?? "",
       postcode: row.postcode ?? "",

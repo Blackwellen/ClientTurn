@@ -102,7 +102,7 @@ const STATUS_TONE: Record<string, { label: string; tone: "success" | "warning" |
   {
     HEALTHY: { label: "Connected", tone: "success" },
     DEGRADED: { label: "Having trouble", tone: "warning" },
-    ACTION_REQUIRED: { label: "Action required", tone: "danger" },
+    ACTION_REQUIRED: { label: "Reconnect required", tone: "danger" },
     DISCONNECTED: { label: "Not connected", tone: "neutral" },
     TESTING: { label: "Testing", tone: "neutral" },
   };

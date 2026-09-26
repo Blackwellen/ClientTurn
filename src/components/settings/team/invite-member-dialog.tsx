@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { FormField, Input, Select } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { inviteMember } from "@/lib/settings/actions";
-import { ASSIGNABLE_ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/settings/types";
+import { inviteMemberAction } from "@/lib/settings/team-actions";
+import { assignableRolesFor, INVITE_TTL_DAYS } from "@/lib/team/rules";
+import { ROLE_DESCRIPTIONS, ROLE_LABELS, type BusinessRole } from "@/lib/settings/types";
 
 export function InviteMemberDialog({
   open,
@@ -16,13 +17,17 @@ export function InviteMemberDialog({
   atSeatLimit,
   seatLimit,
   planName,
+  actorRole,
 }: {
   open: boolean;
   onClose: () => void;
   atSeatLimit: boolean;
   seatLimit: number;
   planName: string;
+  actorRole: BusinessRole;
 }) {
+  // Mirrors the server rule: only the owner can create an admin.
+  const roles = assignableRolesFor({ role: actorRole });
   const router = useRouter();
   const { toast } = useToast();
   const [email, setEmail] = React.useState("");
@@ -34,14 +39,14 @@ export function InviteMemberDialog({
     event.preventDefault();
     setPending(true);
     setError(null);
-    const result = await inviteMember({ email, role });
+    const result = await inviteMemberAction({ email, role });
     setPending(false);
 
     if (result.ok) {
       toast({
         variant: "success",
         title: "Invitation sent",
-        description: "They appear as Invited until they accept.",
+        description: result.warning ?? `They appear as Invited until they accept. The invitation lapses after ${INVITE_TTL_DAYS} days.`,
       });
       onClose();
       router.refresh();
@@ -80,8 +85,8 @@ export function InviteMemberDialog({
           </p>
           <p className="text-[13px] text-content-muted">
             Your {planName} plan includes {seatLimit}{" "}
-            {seatLimit === 1 ? "user" : "users"}. Upgrade, or remove someone, to
-            invite another person.
+            {seatLimit === 1 ? "seat" : "seats"}. Upgrade, or remove someone or
+            revoke an open invitation, to invite another person.
           </p>
           <Link
             href="/app/settings?section=billing"
@@ -120,7 +125,7 @@ export function InviteMemberDialog({
               value={role}
               onChange={(event) => setRole(event.target.value)}
             >
-              {ASSIGNABLE_ROLES.map((value) => (
+              {roles.map((value) => (
                 <option key={value} value={value}>
                   {ROLE_LABELS[value]}
                 </option>
@@ -128,9 +133,14 @@ export function InviteMemberDialog({
             </Select>
           </FormField>
 
+          {actorRole !== "owner" && (
+            <p className="text-[12px] text-content-subtle">
+              Only the owner can invite or promote an admin.
+            </p>
+          )}
           <p className="text-[12px] text-content-subtle">
-            Ownership cannot be granted by invitation. Only the current owner can
-            transfer it.
+            Ownership cannot be granted by invitation. Once they have joined, the
+            owner can transfer it with Make owner in their row&apos;s menu.
           </p>
         </form>
       )}

@@ -10,6 +10,8 @@ import {
 } from "./account";
 import { htmlToPlainText, sanitizeEmailHtml } from "./rich-text";
 import { loadEmailCredentials } from "./store";
+import { oneClickUnsubscribeUrl } from "./unsubscribe-links";
+import { resolveFromAddress, type SenderIdentityInput } from "./from-address";
 
 /**
  * Outbound email through the workspace's own SMTP server.
@@ -98,6 +100,12 @@ export type EmailSendRequest = {
   unsubscribeUrl?: string | null;
   /** Idempotency key, echoed as the Message-ID so a resend is detectable. */
   sendKey: string;
+  /**
+   * The sender identity this message is from (Phase 3.5). Controls the From
+   * name, and the From address when it is on the mailbox's own domain; see
+   * `resolveFromAddress`. Absent = the mailbox's own From.
+   */
+  senderIdentity?: SenderIdentityInput | null;
 };
 
 export type EmailSendResult =
@@ -177,12 +185,13 @@ export async function sendEmail(
   }
 
   const { config } = credentials;
-  const id = messageId(request.sendKey, config.fromEmail);
+  const from = resolveFromAddress(config, request.senderIdentity);
+  const id = messageId(request.sendKey, from.email);
 
   try {
     const info = await transporterFor(config, credentials.smtpPassword).sendMail({
-      from: formatAddress(config.fromName, config.fromEmail),
-      replyTo: config.replyTo ?? undefined,
+      from: formatAddress(from.name ?? config.fromName, from.email),
+      replyTo: from.replyTo ?? undefined,
       to,
       subject: request.subject,
       ...buildBodies(request.html, request.unsubscribeUrl),
@@ -190,8 +199,11 @@ export async function sendEmail(
       headers: request.unsubscribeUrl
         ? {
             // RFC 8058: lets a mail client show its own unsubscribe button,
-            // which is what keeps a sender out of the spam folder.
-            "List-Unsubscribe": `<${request.unsubscribeUrl}>`,
+            // which is what keeps a sender out of the spam folder. The client
+            // POSTs to this URL, so it is the route handler, not the page —
+            // the page only confirms on GET, because scanners prefetch GETs.
+            // The visible footer link above stays on the page.
+            "List-Unsubscribe": `<${oneClickUnsubscribeUrl(request.unsubscribeUrl)}>`,
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
             "Auto-Submitted": "auto-generated",
           }

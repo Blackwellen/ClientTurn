@@ -1,4 +1,5 @@
 import { getAffiliateAccount, listReferralPage } from "@/lib/affiliates/portal";
+import { csvCell } from "@/lib/csv";
 import { formatMinor } from "@/lib/affiliates/types";
 import {
   PAID_STATE_LABEL,
@@ -38,7 +39,7 @@ export async function GET() {
     "Commission",
   ];
 
-  const lines = [header.map(escape).join(",")];
+  const lines = [header.map(csvCell).join(",")];
 
   for (const row of page.rows) {
     lines.push(
@@ -53,7 +54,7 @@ export async function GET() {
         row.attributionExpiresAt?.slice(0, 10) ?? "",
         formatMinor(row.commissionMinor, currency),
       ]
-        .map(escape)
+        .map(csvCell)
         .join(","),
     );
   }
@@ -65,10 +66,4 @@ export async function GET() {
       "cache-control": "no-store",
     },
   });
-}
-
-/** Quotes a field, and defuses anything a spreadsheet would treat as a formula. */
-function escape(value: string): string {
-  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
-  return `"${safe.replace(/"/g, '""')}"`;
 }

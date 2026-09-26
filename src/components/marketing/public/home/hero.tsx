@@ -71,8 +71,8 @@ export function Hero() {
             </div>
 
             <p className="pub-small mt-6">
-              {TRIAL_DAYS}-day free trial <span aria-hidden className="px-2">&middot;</span> No card
-              required
+              {TRIAL_DAYS}-day free trial <span aria-hidden className="px-2">&middot;</span> Nothing
+              charged until it ends
             </p>
           </div>
 

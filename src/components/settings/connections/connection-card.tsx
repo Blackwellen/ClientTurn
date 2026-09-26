@@ -12,6 +12,7 @@ import {
   AVAILABILITY_META,
   accountReference,
   connectionActions,
+  metaTokenRenewal,
   type ProviderCardModel,
 } from "@/lib/integrations/catalog";
 import { testConnection } from "@/lib/settings/actions";
@@ -34,14 +35,20 @@ export function ConnectionCard({
   model,
   canManage,
   onOpenSetup,
+  tokenExpiresAt = null,
 }: {
   model: ProviderCardModel;
   canManage: boolean;
   onOpenSetup: (model: ProviderCardModel) => void;
+  /** Meta only: when its non-renewable token expires. */
+  tokenExpiresAt?: string | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [testing, setTesting] = React.useState(false);
+  // Read once on mount: the clock is impure during render.
+  const [now] = React.useState(() => new Date());
+  const renewal = model.connected ? metaTokenRenewal(tokenExpiresAt, now) : null;
 
   const { definition, integration, block } = model;
   const actions = connectionActions(model);
@@ -77,6 +84,11 @@ export function ConnectionCard({
           <Badge tone={meta.tone} dot>
             {meta.label}
           </Badge>
+          {definition.beta && (
+            <Badge tone="info" dense>
+              Beta
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -111,6 +123,27 @@ export function ConnectionCard({
         <p className="flex items-start gap-1.5 rounded-lg border border-danger-100 bg-danger-50 px-2.5 py-2 text-[12px] leading-[1.45] text-danger-700">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>{integration.lastErrorMessage}</span>
+        </p>
+      )}
+
+      {renewal &&
+        (renewal.warn || renewal.expired) &&
+        // The health check writes the same warning as the last error; say it once.
+        !integration?.lastErrorMessage?.startsWith("Meta access") && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-warning-100 bg-warning-50 px-2.5 py-2 text-[12px] leading-[1.45] text-warning-700">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>
+            {renewal.expired
+              ? "Meta access has expired. Reconnect to keep receiving leads."
+              : `Meta access expires in ${renewal.daysLeft} day${renewal.daysLeft === 1 ? "" : "s"}. Reconnect to renew it.`}
+          </span>
+        </p>
+      )}
+
+      {definition.caveat && !model.connected && !block && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-warning-100 bg-warning-50 px-2.5 py-2 text-[12px] leading-[1.45] text-warning-700">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>{definition.caveat}</span>
         </p>
       )}
 

@@ -6,7 +6,6 @@ import {
   CalendarClock,
   CircleAlert,
   Mail,
-  Phone,
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -14,13 +13,12 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import {
   AGENT_TYPE_DEFINITIONS,
-  agentStatusLabel,
-  agentStatusTone,
   autonomyLabel,
   cadenceLabel,
   SOURCE_DEFINITIONS,
   type AgentListRow,
 } from "@/lib/agents/types";
+import { agentRunState } from "@/lib/agents/policy";
 
 /**
  * One agent, as a card.
@@ -36,6 +34,8 @@ import {
  */
 export function AgentCard({ agent }: { agent: AgentListRow }) {
   const definition = AGENT_TYPE_DEFINITIONS[agent.agentType];
+  const runState = agentRunState(agent);
+  const sources = agent.agentType === "SOURCING" || agent.agentType === "COMBINED";
   const needsPerson = agent.blocked > 0 || agent.pendingReviewCount > 0;
   const waiting = agent.blocked + agent.pendingReviewCount;
 
@@ -66,8 +66,8 @@ export function AgentCard({ agent }: { agent: AgentListRow }) {
           <Bot className="size-5" />
         </span>
 
-        <Badge tone={agentStatusTone(agent.status)} dot>
-          {agentStatusLabel(agent.status)}
+        <Badge tone={runState.tone} dot>
+          {runState.label}
         </Badge>
       </div>
 
@@ -91,7 +91,7 @@ export function AgentCard({ agent }: { agent: AgentListRow }) {
         <Metric label="In queue" sub="now" value={agent.queued} />
       </dl>
 
-      {agent.enabledSources.length > 0 && (
+      {sources && agent.enabledSources.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">
           {agent.enabledSources.slice(0, 3).map((key) => (
             <Badge key={key} tone="neutral" dense>
@@ -113,17 +113,10 @@ export function AgentCard({ agent }: { agent: AgentListRow }) {
             {cadenceLabel(agent.cadence)}
           </span>
 
-          {/* Enrichment is shown as icons because it is the setting people most
-              often need to confirm at a glance, and the two carry different
-              obligations. */}
-          {agent.enrichEmail && (
-            <Tooltip content="Finds and verifies a work email address">
-              <Mail className="size-3.5" aria-label="Email enrichment on" />
-            </Tooltip>
-          )}
-          {agent.enrichPhone && (
-            <Tooltip content="Looks up a business phone number. Finding a number does not grant permission to call or text it.">
-              <Phone className="size-3.5" aria-label="Phone enrichment on" />
+          {/* Sourcing finds a verified work email and never a phone number. */}
+          {sources && (
+            <Tooltip content="Finds and verifies a work email address. Never collects phone numbers.">
+              <Mail className="size-3.5" aria-label="Finds a verified work email" />
             </Tooltip>
           )}
 

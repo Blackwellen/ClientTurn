@@ -18,7 +18,7 @@ import {
 import { Mail, MessageSquare, Phone } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/form";
+import { Checkbox, Textarea } from "@/components/ui/form";
 import {
   CHANNEL_LABELS,
   CHANNEL_PERMISSION_LABELS,
@@ -260,6 +260,30 @@ export function PermissionStep({
               <p className="text-[12px] text-danger-600">{errors.evidence}</p>
             )}
           </div>
+        </section>
+
+        <section>
+          <label
+            htmlFor={`${id}-whatsapp`}
+            className="flex cursor-pointer items-start gap-2.5"
+          >
+            <Checkbox
+              id={`${id}-whatsapp`}
+              className="mt-0.5"
+              checked={Boolean(value.whatsappOptIn)}
+              onChange={(event) => onChange({ whatsappOptIn: event.target.checked })}
+            />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-content">
+                They opted in to WhatsApp
+              </span>
+              <span className="mt-0.5 block text-[12px] text-content-muted">
+                Tick only if they agreed to be messaged on WhatsApp at the mobile
+                number entered. It is recorded with today&apos;s date and this
+                lead&apos;s source.
+              </span>
+            </span>
+          </label>
         </section>
 
         <section>

@@ -31,7 +31,7 @@ const SUGGESTIONS: { icon: React.ComponentType<{ className?: string }>; label: s
     icon: Sparkles,
     label: "Add intent signals",
     message:
-      "Add buying-intent signals for roof repair, maintenance and building works from the last 90 days.",
+      "Add buying-intent signals from the last 90 days: new funding, hiring for marketing or sales roles, or a website relaunch.",
   },
   {
     icon: Ban,
@@ -40,8 +40,8 @@ const SUGGESTIONS: { icon: React.ComponentType<{ className?: string }>; label: s
   },
   {
     icon: Users,
-    label: "Target facilities managers",
-    message: "Also target facilities managers and operations directors, not just property managers.",
+    label: "Target more roles",
+    message: "Also target operations directors and heads of marketing, not just founders and managing directors.",
   },
   {
     icon: MapPin,

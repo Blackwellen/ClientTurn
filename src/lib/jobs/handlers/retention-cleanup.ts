@@ -2,6 +2,7 @@ import "server-only";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { enforceRetention, workspacesWithRetention } from "@/lib/data-rights/retention";
 import { parsePayload } from "./parse";
 import { retentionCleanupPayload } from "./payloads";
 
@@ -91,6 +92,38 @@ export async function handleRetentionCleanup(job: ClaimedJob) {
   const admin = createAdminClient();
 
   await purgeOperationalData();
+
+  // Each workspace's own retain_*_days (Settings -> Data controls). Same
+  // executor and same candidate query as the dry run shown in settings, so
+  // the preview and the enforcement cannot disagree. One workspace failing
+  // does not stop the rest; the next daily run picks it up again.
+  const workspaces = payload.businessId
+    ? [payload.businessId]
+    : await workspacesWithRetention();
+  for (const businessId of workspaces) {
+    try {
+      const run = await enforceRetention(businessId);
+      if (run.leadsAnonymised + run.prospectsAnonymised + run.rawEventsRedacted === 0) continue;
+      await recordAudit({
+        businessId,
+        actorType: "system",
+        action: "data_rights.retention_enforced",
+        entityType: "business",
+        entityId: businessId,
+        metadata: {
+          leads_anonymised: run.leadsAnonymised,
+          prospects_anonymised: run.prospectsAnonymised,
+          raw_events_redacted: run.rawEventsRedacted,
+          failures: run.failures,
+        },
+      });
+    } catch (error) {
+      console.error("[retention] workspace enforcement failed", {
+        businessId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   const cutoff = daysAgo(payload.retentionDays ?? CLOSED_WORKSPACE_DAYS);
 

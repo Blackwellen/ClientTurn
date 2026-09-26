@@ -11,6 +11,7 @@ import {
   ALLOCATION_CHANNELS,
   MAX_OVERAGE_CAP_MINOR,
   effectiveDailyCap,
+  planDailyCaps,
   validateAllocation,
   validateOverage,
   type Allocation,
@@ -165,11 +166,7 @@ export async function saveDailyCaps(input: unknown): Promise<Result<undefined>> 
     .filter((sender) => sender.warmState !== "BLOCKED")
     .reduce((sum, sender) => sum + sender.dailySendCap, 0);
 
-  const planCaps: Record<AllocationChannel, number> = {
-    email: Math.max(50, Math.round(monthlyAllowance / 20)),
-    sms: Math.max(20, Math.round(monthlyAllowance / 80)),
-    whatsapp: Math.max(20, Math.round(monthlyAllowance / 80)),
-  };
+  const planCaps: Record<AllocationChannel, number> = planDailyCaps(monthlyAllowance);
 
   const clamped: Record<string, number> = {};
   for (const channel of ALLOCATION_CHANNELS) {

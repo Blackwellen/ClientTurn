@@ -5,8 +5,7 @@ import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { enqueue } from "@/lib/jobs/queue";
-import { recordPermission } from "@/lib/policy/service";
+import { ingestLead } from "@/lib/ingest/service";
 import { companyDedupeKey } from "@/lib/prospects/dedupe";
 import { assessContactability } from "./contactability";
 import { findDuplicates } from "./duplicate-check";
@@ -431,77 +430,119 @@ export async function createManualLead(
     .join("")
     .slice(0, 4000);
 
-  const { data: lead, error } = await admin
-    .from("leads")
-    .insert({
-      business_id: workspace.businessId,
-      first_name: contact.firstName,
-      last_name: contact.lastName,
-      company_name: company,
-      email,
-      // `phone` is the messaging destination; a landline is never one.
-      phone: mobile ?? null,
-      phone_normalized: mobile ?? null,
-      telephone: telephone ?? null,
-      postcode,
-      service_id: service.id,
-      source_id: sourceId,
-      status: routing.initialStatus,
-      assigned_user_id: assigneeId,
-      needs_attention: routing.needsAttention,
-      attention_reason: routing.needsAttention
-        ? routing.attentionReason || "manual_flag"
-        : null,
-      // A lead with no follow-up must not have an automation quietly waiting.
-      automation_active: startFollowUp,
-      human_takeover: !startFollowUp,
-      notes,
-      estimated_value: parseEstimatedValue(enquiry.estimatedValue),
-      conversion_goal_id: goal?.id ?? null,
-      conversion_goal_type: enquiry.conversionGoal,
-      intake_method: enquiry.source,
-      intake_detail: enquiry.sourceDetail || null,
-      created_via: "MANUAL_WIZARD",
-      created_by_user_id: workspace.userId,
-      relationship_type: permission.relationship,
-      subscriber_type: company ? "CORPORATE" : "INDIVIDUAL",
-    })
-    .select("id")
-    .single();
-
-  if (error || !lead) {
+  // The one intake path (design 03 §1): the same identity resolution,
+  // suppression check, permission record, touch and lead.process every other
+  // source gets. The wizard's own routing rides along as insert-only columns.
+  // Suppression is REFUSE here -- a person typing a contact in is told it
+  // "cannot be added", never shown a lead created for someone who opted out.
+  let ingested: Awaited<ReturnType<typeof ingestLead>>;
+  try {
+    ingested = await ingestLead(
+      {
+        businessId: workspace.businessId,
+        source: {
+          type: "MANUAL",
+          provider: sourceProviderSlug(enquiry.source),
+          caller: { type: "USER", id: workspace.userId },
+        },
+        person: {
+          firstName: contact.firstName || undefined,
+          lastName: contact.lastName || undefined,
+          email: email ?? undefined,
+          // `phone` is the messaging destination; a landline is never one.
+          phone: mobile ?? undefined,
+          companyName: company ?? undefined,
+          postcode: postcode ?? undefined,
+        },
+        relationship: permission.relationship,
+        serviceId: service.id,
+        // WhatsApp consent only means something for a mobile they gave.
+        ...(mobile && permission.whatsappOptIn ? { consent: { whatsapp: true } } : {}),
+      },
+      {
+        onSuppressed: "REFUSE",
+        // A landline-only record is a valid manual lead: it has a contact
+        // point, just not a messaging one.
+        allowWithoutContactPoint: Boolean(telephone),
+        insertExtras: {
+          telephone: telephone ?? null,
+          source_id: sourceId,
+          status: routing.initialStatus,
+          assigned_user_id: assigneeId,
+          needs_attention: routing.needsAttention,
+          attention_reason: routing.needsAttention
+            ? routing.attentionReason || "manual_flag"
+            : null,
+          // A lead with no follow-up must not have an automation quietly waiting.
+          automation_active: startFollowUp,
+          human_takeover: !startFollowUp,
+          notes,
+          estimated_value: parseEstimatedValue(enquiry.estimatedValue),
+          conversion_goal_id: goal?.id ?? null,
+          conversion_goal_type: enquiry.conversionGoal,
+          intake_method: enquiry.source,
+          intake_detail: enquiry.sourceDetail || null,
+          created_via: "MANUAL_WIZARD",
+          created_by_user_id: workspace.userId,
+          subscriber_type: company ? "CORPORATE" : "INDIVIDUAL",
+        },
+        leadSourceId: sourceId,
+        permission: {
+          detail: enquiry.sourceDetail || null,
+          consentStatus:
+            permission.relationship === "EXPLICIT_MARKETING_CONSENT" &&
+            permission.evidence.trim()
+              ? "GRANTED"
+              : "UNKNOWN",
+          evidence: permission.evidence || null,
+          source: `add_lead_wizard:${enquiry.source}`,
+          subscriberType: company ? "CORPORATE" : "INDIVIDUAL",
+          country: "GB",
+          recordedBy: workspace.userId,
+        },
+        process: {
+          serviceName: service.name,
+          sourceName: enquiry.sourceDetail || `Manual (${enquiry.source})`,
+          priority: 10,
+        },
+      },
+    );
+  } catch {
     return { status: "ERROR", error: "The lead could not be created." };
   }
 
-  /* 10 — permission evidence, assignment and the audit trail -------------- */
+  if (ingested.outcome === "REJECTED") {
+    return {
+      status: "ERROR",
+      error:
+        "This contact is suppressed or has an invalid address. Resolve that before adding them.",
+    };
+  }
+  if (ingested.outcome === "INVALID" || !ingested.leadId) {
+    return { status: "ERROR", error: "Add at least one way to contact them." };
+  }
+  if (ingested.outcome === "MERGED" || ingested.outcome === "DUPLICATE") {
+    // The duplicate check above found nothing, so this is a race: someone
+    // else added the same person a moment ago. Their record stands.
+    return {
+      status: "ERROR",
+      error:
+        "A lead with this email or mobile was added a moment ago, so this one was not created. Search for them in Leads.",
+    };
+  }
+  const lead = { id: ingested.leadId };
+
+  /* 10 — assignment and the audit trail --------------------------------- */
   //
   // Past this point the lead exists. A failure in any of the steps below is
   // logged and surfaced as a warning: deleting a real lead because a
   // bookkeeping write failed would be the worse outcome.
 
   const warnings: string[] = [];
-
-  try {
-    await recordPermission({
-      businessId: workspace.businessId,
-      subject: { type: "LEAD", id: lead.id },
-      relationshipType: permission.relationship,
-      relationshipDetail: enquiry.sourceDetail || null,
-      consentStatus:
-        permission.relationship === "EXPLICIT_MARKETING_CONSENT" &&
-        permission.evidence.trim()
-          ? "GRANTED"
-          : "UNKNOWN",
-      consentEvidence: permission.evidence || null,
-      consentSource: `add_lead_wizard:${enquiry.source}`,
-      subscriberType: company ? "CORPORATE" : "INDIVIDUAL",
-      country: "GB",
-      email,
-      phone: mobile ?? telephone,
-      recordedBy: workspace.userId,
-    });
-  } catch {
-    warnings.push("The permission record could not be saved.");
+  if (ingested.outcome === "REVIEW") {
+    warnings.push(
+      "This mobile number already belongs to another lead with a different email, so the two have been flagged for review.",
+    );
   }
 
   if (assigneeId) {
@@ -542,6 +583,8 @@ export async function createManualLead(
       source: enquiry.source,
       source_detail: enquiry.sourceDetail || null,
       relationship_type: permission.relationship,
+      // The WhatsApp opt-in's date and source: recorded now, in this wizard.
+      whatsapp_opt_in: Boolean(mobile && permission.whatsappOptIn),
       classification: assessment.classification,
       channels: Object.fromEntries(
         Object.entries(assessment.channels).map(([key, value]) => [
@@ -561,42 +604,20 @@ export async function createManualLead(
   });
 
   /* 11 — the same orchestration inbound leads use ------------------------ */
+  // lead.process was queued by ingestLead(), keyed by this touch.
 
-  try {
-    await enqueue(
-      "lead.process",
-      {
-        leadId: lead.id,
-        serviceName: service.name,
-        source: {
-          provider: "manual" as const,
-          sourceName: enquiry.sourceDetail || `Manual (${enquiry.source})`,
-        },
+  if (startFollowUp) {
+    await recordAudit({
+      businessId: workspace.businessId,
+      actorUserId: workspace.userId,
+      action: "lead.follow_up_started",
+      entityType: "lead",
+      entityId: lead.id,
+      metadata: {
+        channels: permittedMessagingChannels(assessment),
+        via: "add_lead_wizard",
       },
-      {
-        businessId: workspace.businessId,
-        priority: 10,
-        idempotencyKey: `lead.process:${lead.id}`,
-      },
-    );
-    if (startFollowUp) {
-      await recordAudit({
-        businessId: workspace.businessId,
-        actorUserId: workspace.userId,
-        action: "lead.follow_up_started",
-        entityType: "lead",
-        entityId: lead.id,
-        metadata: {
-          channels: permittedMessagingChannels(assessment),
-          via: "add_lead_wizard",
-        },
-      });
-    }
-  } catch {
-    // The lead is real and correct; only its routing did not start.
-    warnings.push(
-      "The lead was created but follow-up could not be queued. Open the lead to retry.",
-    );
+    });
   }
 
   refresh();

@@ -21,12 +21,25 @@ import {
 export const SERVICE_OPERATIONS = [
   /* -------------------------------------------------------------- leads
    *
-   * `lead.create` is deliberately absent. Creating a lead means deduplication,
-   * capturing a relationship for the contactability engine, and starting
-   * follow-up — the Add Lead wizard does all three, and declaring a thinner
-   * version here would offer callers a capability that quietly skips them.
-   * It joins the catalogue when it is ported whole.
+   * `lead.create` is ingestLead() (src/lib/ingest), the one intake path every
+   * source uses: identity resolution, suppression, the permission record, the
+   * touch and lead.process all come with it, so nothing is skipped. It is
+   * offered to the API only. The UI has the Add Lead wizard (which calls the
+   * same function with its own routing), MCP keeps its `create_lead` tool
+   * (also ingestLead), and neither Copilot nor an unattended agent creates
+   * leads. It never starts follow-up: a lead created over the API is recorded
+   * and qualified, and a person chooses to message it.
    */
+  {
+    name: "lead.create",
+    domain: "lead",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record an inbound lead, deduplicated against existing ones",
+    entityType: "lead",
+    callers: ["API"],
+  },
   {
     name: "lead.get",
     domain: "lead",
@@ -90,6 +103,22 @@ export const SERVICE_OPERATIONS = [
     summary: "Flag a lead for attention",
     entityType: "lead",
   },
+  /*
+   * Adds WHATSAPP to the lead's permission scope, which is what lets a
+   * template reach them outside the 24-hour window. The date, source and
+   * detail are the evidence and land in the audit row. A person's statement
+   * about consent: not offered to Copilot or an unattended agent.
+   */
+  {
+    name: "lead.record_whatsapp_opt_in",
+    domain: "lead",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record that a lead opted in to WhatsApp",
+    entityType: "lead",
+    callers: ["UI", "MCP", "API"],
+  },
   {
     name: "lead.archive",
     domain: "lead",
@@ -112,6 +141,107 @@ export const SERVICE_OPERATIONS = [
     summary: "Restore an archived lead",
     entityType: "lead",
     callers: ["UI", "COPILOT", "MCP"],
+  },
+
+  /* -------------------------------------------------------- data rights
+   *
+   * Phase 6. Four different acts, deliberately four operations, because the
+   * product must never blur them: archive (above) hides and keeps everything;
+   * suppress stops contact and keeps everything; anonymise removes the
+   * person's details and keeps the record; delete (erase) removes the record
+   * and keeps only pseudonymous billing/audit rows and a hashed suppression.
+   *
+   * None of suppress / anonymise / delete / export is reachable by an
+   * autonomous agent or by Copilot. Suppress is DESTRUCTIVE rather
+   * than a reversible write because a workspace cannot lift it itself: only
+   * ClientTurn support can, with a recorded reason. Export is a READ, but it
+   * hands over everything held on a person, so it is admin-only, recorded in
+   * data_rights_actions, and not offered to Copilot, whose output lands in a
+   * model's context.
+   */
+  {
+    name: "lead.suppress",
+    domain: "lead",
+    risk: "DESTRUCTIVE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Add a lead's addresses to the do-not-contact list",
+    effect:
+      "Every address held for this lead is added to the do-not-contact list on the chosen channel and follow-up stops. The lead and its history are kept. Only ClientTurn support can lift the entry. With reason LEGAL it is a restriction of processing on every channel.",
+    entityType: "lead",
+    // Excludes COPILOT (and AGENT, as every DESTRUCTIVE op does). Copilot holds
+    // no authority over the suppression list in either direction -- the
+    // standing rule tests/copilot.test.ts and v4-expansion.test.ts enforce.
+    // The conversation agent has its own supervised opt-out path.
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "lead.anonymise",
+    domain: "lead",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Anonymise a lead",
+    effect:
+      "The lead's name, contact details, notes, message text, qualification answers and AI summaries are removed and follow-up stops. The lead's status, dates and source attribution are kept, billing and audit entries are kept, and any do-not-contact entry is kept as a one-way hash. This cannot be undone.",
+    entityType: "lead",
+    // Excludes COPILOT for the same reason as lead.delete: an irreversible
+    // erasure that also rewrites suppression rows is a person's decision.
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "lead.delete",
+    domain: "lead",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Erase a lead",
+    effect:
+      "The lead is anonymised, then its record, conversations, bookings, scores, notes and permissions are removed. Billing, usage and audit records are kept with ids that no longer identify anyone, and any do-not-contact entry is kept as a one-way hash so the person is not contacted again. Optionally also removes the person from a connected CRM. This cannot be undone.",
+    entityType: "lead",
+    // Owner or admin in a person's hands only. Copilot excluded: erasure is a
+    // legal act a person decides on, not a chat suggestion to approve.
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "lead.export",
+    domain: "lead",
+    risk: "READ",
+    minimumRole: "admin",
+    scope: "leads:read",
+    summary: "Export everything held on a lead",
+    entityType: "lead",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "privacy_request.list",
+    domain: "privacy_request",
+    risk: "READ",
+    minimumRole: "admin",
+    scope: "business:read",
+    summary: "List data-subject requests and their deadlines",
+    entityType: "privacy_request",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "privacy_request.create",
+    domain: "privacy_request",
+    risk: "SAFE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Record a data-subject request the workspace received",
+    entityType: "privacy_request",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "privacy_request.update",
+    domain: "privacy_request",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Acknowledge, progress or close a data-subject request",
+    entityType: "privacy_request",
+    callers: ["UI", "COPILOT", "MCP", "API"],
   },
 
   /* ------------------------------------------------------------- agents
@@ -222,6 +352,19 @@ export const SERVICE_OPERATIONS = [
     scope: "agents:write",
     summary: "Stop an agent",
     entityType: "agent",
+  },
+  {
+    name: "agent.delete",
+    domain: "agent",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "agents:write",
+    summary: "Delete an agent",
+    effect:
+      "The agent, its setup, queue, signals and activity timeline are removed. The leads, prospects and sourcing runs it produced are kept; they simply no longer point at an agent. Refused while one of its runs is still in progress. This cannot be undone.",
+    entityType: "agent",
+    // A person decides; Copilot and the conversation agent never delete.
+    callers: ["UI", "MCP", "API"],
   },
 
   /* --------------------------------------------------- conversation agent
@@ -386,8 +529,58 @@ export const SERVICE_OPERATIONS = [
     risk: "REVERSIBLE_WRITE",
     minimumRole: "member",
     scope: "leads:write",
-    summary: "Mark an appointment attended, cancelled or a no-show",
+    summary: "Confirm or decline a requested time, or mark an appointment attended, cancelled or a no-show",
     entityType: "booking",
+  },
+
+  /* ----------------------------------------------------- opportunities
+   *
+   * Decision Q3: WON/LOST, value, stage and reason live on the opportunity,
+   * and the lead's status is its projection. Moving an open opportunity is an
+   * ordinary reversible write. Closing it is not: it changes the lead's
+   * status, feeds every won/lost report, and is pushed to the connected CRM as
+   * closed-won or closed-lost -- so it needs a person, and no autonomous agent
+   * decides a deal is won or lost.
+   */
+  {
+    name: "opportunity.list",
+    domain: "opportunity",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "List opportunities, optionally for one lead or one stage",
+    entityType: "opportunity",
+  },
+  {
+    name: "opportunity.get",
+    domain: "opportunity",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Read one opportunity: stage, value, outcome and reason",
+    entityType: "opportunity",
+  },
+  {
+    name: "opportunity.set_stage",
+    domain: "opportunity",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Move an open opportunity to a different stage",
+    entityType: "opportunity",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "opportunity.close",
+    domain: "opportunity",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Close an opportunity as won or lost, with the reason",
+    effect:
+      "The opportunity is recorded as won or lost with your reason, the lead's status changes to match, follow-up for the lead stops, and the outcome is sent to your connected CRM.",
+    entityType: "opportunity",
+    callers: ["UI", "COPILOT", "MCP", "API"],
   },
 
   /* --------------------------------------------------------- campaigns
@@ -456,6 +649,19 @@ export const SERVICE_OPERATIONS = [
     // agent nor Copilot is the thing that starts it.
     callers: ["UI", "MCP"],
   },
+  {
+    name: "campaign.add_lead",
+    domain: "campaign",
+    // Adding is not sending: the row waits until a person launches or resumes
+    // the campaign (both BULK_EXTERNAL and confirmed), and the send loop
+    // re-checks suppression and consent before each message.
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Add a lead to a draft, scheduled or paused reactivation campaign",
+    entityType: "campaign",
+    callers: ["UI", "MCP"],
+  },
 
   /* --------------------------------------------------------- prospects */
   {
@@ -499,6 +705,21 @@ export const SERVICE_OPERATIONS = [
     summary: "Reject a prospect so it is not contacted",
     entityType: "prospect",
   },
+  {
+    // The writer the LinkedIn adapter's ingested-list route reads. The
+    // customer's own Sales Navigator or LinkedIn export, uploaded by them:
+    // nothing here touches LinkedIn. Phone columns are discarded, never stored.
+    // UI and API only: an import is a person handing over their own file, not
+    // something an agent or a chat assistant does on its own initiative.
+    name: "prospect.import_linkedin_list",
+    domain: "prospect",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "prospects:write",
+    summary: "Import your own Sales Navigator or LinkedIn list export (CSV)",
+    entityType: null,
+    callers: ["UI", "API"],
+  },
 
   /* ------------------------------------------------ business and metrics */
   {
@@ -536,6 +757,403 @@ export const SERVICE_OPERATIONS = [
     scope: "business:read",
     summary: "Read the qualification questions and rules this workspace applies",
     entityType: null,
+  },
+
+  /* ------------------------------------------------ revenue engine (Phase 5)
+   *
+   * Reads of what the engine decided (score, contactability, funnel, AI
+   * usage), a draft that is never sent, and the duplicate queue.
+   *
+   * `message.draft` is the one `message.*` operation that is not EXTERNAL: it
+   * writes a DRAFT message row, which the send worker never claims, so nothing
+   * leaves the building. Sending that draft is still `message.send`, with its
+   * own confirmation. The agent is excluded -- it has its own supervised draft
+   * path in lib/agent.
+   *
+   * `merge_candidate.resolve` is DESTRUCTIVE from the workspace's side: a
+   * merge moves one person's conversations onto another record, and only
+   * ClientTurn support can undo it (it is recorded with a before-snapshot in
+   * merge_events so they can).
+   */
+  {
+    name: "lead.score_explain",
+    domain: "lead",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Explain a lead's current score: grade, dimensions, why and what is missing",
+    entityType: "lead",
+  },
+  {
+    name: "lead.contactability",
+    domain: "lead",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Whether a lead may be contacted on each channel, and why",
+    entityType: "lead",
+  },
+  {
+    name: "message.draft",
+    domain: "message",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Write a draft message to a lead for a person to review; it is not sent",
+    entityType: "message",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "funnel.get",
+    domain: "funnel",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "analytics:read",
+    summary: "The source-to-won funnel for a period, with step rates and sample sizes",
+    entityType: null,
+  },
+  {
+    name: "ai_usage.get",
+    domain: "ai_usage",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "analytics:read",
+    summary: "AI spend this month against the workspace's ceiling, by task",
+    entityType: null,
+  },
+  {
+    name: "merge_candidate.list",
+    domain: "merge_candidate",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "leads:read",
+    summary: "List possible duplicate leads waiting for a decision",
+    entityType: "merge_candidate",
+  },
+  /* ----------------------------------------------- lead page (Phase 5b)
+   *
+   * The actions the lead detail page offers that had no operation of their
+   * own. `lead.rescore` only queues the deterministic scorer, so it is a safe
+   * write. Taking a conversation over is the safe direction and is open to
+   * every caller. Resuming follow-up restarts automated messages to a person,
+   * so it is a person's decision: neither Copilot nor an agent can undo a
+   * takeover.
+   */
+  {
+    name: "lead.rescore",
+    domain: "lead",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Re-score a lead now from what is currently known about it",
+    entityType: "lead",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "lead.takeover",
+    domain: "lead",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Take a lead's conversation over from automated follow-up",
+    entityType: "lead",
+  },
+  {
+    name: "lead.resume_follow_up",
+    domain: "lead",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Hand a lead back to automated follow-up after a takeover",
+    entityType: "lead",
+    callers: ["UI", "MCP", "API"],
+  },
+
+  /* ------------------------------------------- AI & selling settings (§74)
+   *
+   * How the workspace sells and how much AI it may spend doing it. None of
+   * these is reachable by an unattended agent: an agent that could edit its
+   * own budget or risk tolerance could widen the limits it runs under (the
+   * same reason as `agent.configure`). Budgets are further closed to Copilot,
+   * whose own spend they cap.
+   */
+  {
+    name: "sales_settings.get",
+    domain: "sales_settings",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read how this workspace sells: classification, motions, methods and brand voice",
+    entityType: "business",
+  },
+  {
+    name: "sales_settings.update",
+    domain: "sales_settings",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change how this workspace sells: classification, motions, methods and brand voice",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "ai_budget.update",
+    domain: "ai_budget",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Set this workspace's AI spending limits",
+    entityType: "business",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "legitimate_interest.save",
+    domain: "legitimate_interest",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Record or update a legitimate interests assessment",
+    entityType: "legitimate_interest_assessment",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "merge_candidate.resolve",
+    domain: "merge_candidate",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Merge a possible duplicate pair, or dismiss it",
+    effect:
+      "On merge, the other lead's touches, conversations and messages move to the kept lead, blank fields are filled, and the other lead is archived. Only ClientTurn support can undo it. Dismiss keeps both.",
+    entityType: "merge_candidate",
+    callers: ["UI", "COPILOT", "MCP"],
+  },
+  /* ------------------------------ channels and booking (§29, §43, §45, §57)
+   *
+   * Configuration writes behind the Settings surfaces. None of them sends
+   * anything: switching a CRM pull on records contacts (RECORD_ONLY, never
+   * messaged), a template mapping is used only when the WhatsApp window has
+   * closed and the policy engine allows the send, and a meeting type changes
+   * how a booking is shaped and routed. The agent is excluded from each --
+   * these are a person's decisions about how the workspace behaves.
+   */
+  {
+    name: "crm_pull.list",
+    domain: "crm_pull",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Which connected CRMs pull new contacts in, and how the last pull went",
+    entityType: "integration",
+  },
+  {
+    name: "crm_pull.set",
+    domain: "crm_pull",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Switch importing new contacts from a connected CRM on or off",
+    entityType: "integration",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "whatsapp_template.list",
+    domain: "whatsapp_template",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "The approved WhatsApp templates and which follow-up steps use them",
+    entityType: "whatsapp_template",
+  },
+  {
+    name: "whatsapp_template.sync",
+    domain: "whatsapp_template",
+    risk: "SAFE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Refresh the WhatsApp template list from the provider",
+    entityType: "whatsapp_template",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "whatsapp_template.map_step",
+    domain: "whatsapp_template",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Choose the approved template a WhatsApp follow-up step sends after the 24-hour window",
+    entityType: "whatsapp_template",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "meeting_type.list",
+    domain: "meeting_type",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "The kinds of meeting leads can book, with duration and who takes them",
+    entityType: "meeting_type",
+  },
+  {
+    name: "meeting_type.save",
+    domain: "meeting_type",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Create or change a meeting type: duration, buffer, calendar and rep routing",
+    entityType: "meeting_type",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "meeting_type.archive",
+    domain: "meeting_type",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Stop offering a meeting type; existing bookings keep it",
+    entityType: "meeting_type",
+    callers: ["UI", "MCP", "API"],
+  },
+
+  /* ------------------------------------------------------ team (§8.15)
+   *
+   * Who can reach the workspace, and with what role. The guardrails are the
+   * pure rules in src/lib/team/rules.ts: there is always an owner, nobody
+   * edits their own role, only the owner manages admins. An unattended agent
+   * never touches membership, and Copilot may read the team but not change it
+   * -- granting access is a person's decision, made on purpose. Inviting is
+   * EXTERNAL because it emails an outside address that then gains access, so
+   * an MCP client parks it for a person rather than doing it on its own.
+   */
+  {
+    name: "member.list",
+    domain: "member",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "List the workspace's team members, their roles and any open invitations",
+    entityType: "business_member",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "member.invite",
+    domain: "member",
+    risk: "EXTERNAL",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Invite someone to the workspace with a role",
+    effect:
+      "An invitation is emailed to that address. Once they accept, they can sign in to this workspace with the role you chose, and they take up a seat on your plan.",
+    entityType: "business_member",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "member.resend_invite",
+    domain: "member",
+    risk: "EXTERNAL",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Send an open invitation again and restart its expiry",
+    effect: "The invitation email is sent again and stays valid for another 14 days.",
+    entityType: "business_member",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "member.set_role",
+    domain: "member",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change a team member's role",
+    entityType: "business_member",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "member.remove",
+    domain: "member",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Remove a team member, or revoke an invitation",
+    effect:
+      "They lose access to this workspace immediately, including any API keys and connected assistants acting as them. Their open leads, conversations and handovers go to the person you chose, or become unassigned. Their history stays on every record.",
+    entityType: "business_member",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "member.transfer_ownership",
+    domain: "member",
+    risk: "DESTRUCTIVE",
+    minimumRole: "owner",
+    scope: "business:write",
+    summary: "Hand ownership of the workspace to another member",
+    effect:
+      "They become the owner, with control of billing and the team. You become an admin, and only the new owner can give ownership back.",
+    entityType: "business_member",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "scoring_weights.update",
+    domain: "scoring_weights",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Set or reset how much each dimension counts in this workspace's lead score",
+    entityType: "business",
+    // A person's decision about how leads are ranked: not Copilot's.
+    callers: ["UI", "MCP", "API"],
+  },
+  // Governed experiments (§§62-63, 0131). Workspace-level only; a result is
+  // read by a person, and nothing rewrites copy automatically.
+  {
+    name: "experiment.list",
+    domain: "experiment",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "campaigns:read",
+    summary: "List this workspace's follow-up and reactivation experiments",
+    entityType: "experiment",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "experiment.results",
+    domain: "experiment",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "campaigns:read",
+    summary: "Show an experiment's results, with confidence intervals",
+    entityType: "experiment",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "experiment.create",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Create a draft A/B experiment for a follow-up sequence or reactivation campaign",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "experiment.start",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Start a draft experiment",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "experiment.stop",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Stop a running experiment",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API"],
   },
 ] as const satisfies readonly ServiceDeclaration[];
 

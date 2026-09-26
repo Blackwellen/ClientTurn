@@ -19,7 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/cn";
-import { formatCount, formatMoneyMinor, stepTiming, stepTitle } from "@/lib/outreach/campaign-draft";
+import { formatCount, stepTiming, stepTitle } from "@/lib/outreach/campaign-draft";
+import { formatMoneyMinor } from "@/lib/outreach/types";
 import { gradeTone } from "@/lib/prospects/types";
 import type {
   AudienceFilter,

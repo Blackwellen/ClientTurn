@@ -69,7 +69,7 @@ export function InboxView({
   hrefFor: (conversationId: string) => string;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-tour="inbox">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader
           title="Inbox"
@@ -78,6 +78,7 @@ export function InboxView({
         />
         <Link
           href="/app/settings?section=connections"
+          data-tour="inbox-manage-channels"
           className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-9 shrink-0 items-center rounded-md border px-3.5 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           Manage channels
@@ -141,7 +142,7 @@ function ChannelRail({
       : (counts[key]?.unread ?? 0);
 
   return (
-    <aside className="border-b border-line bg-surface-sunken/50 p-3 lg:border-b-0 lg:border-r">
+    <aside className="border-b border-line bg-surface-sunken/50 p-3 lg:border-b-0 lg:border-r" data-tour="inbox-channels">
       <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-muted">
         Channels
       </p>
@@ -228,7 +229,7 @@ function ConversationList({
   hrefFor: (id: string) => string;
 }) {
   return (
-    <section className="flex min-w-0 flex-col border-b border-line lg:border-b-0 lg:border-r">
+    <section className="flex min-w-0 flex-col border-b border-line lg:border-b-0 lg:border-r" data-tour="inbox-conversations">
       {/* Channel answers "where is it". These answer "does it need me", which
           is the question somebody actually opens an inbox with. */}
       <nav
@@ -349,7 +350,7 @@ function ThreadPane({
   if (!selected) {
     const definition = CHANNEL_DEFINITIONS[channel];
     return (
-      <section className="flex flex-1 flex-col items-center justify-center p-10 text-center">
+      <section className="flex flex-1 flex-col items-center justify-center p-10 text-center" data-tour="inbox-thread">
         <span
           aria-hidden
           className="mb-4 flex size-11 items-center justify-center rounded-xl border border-line bg-surface-sunken text-content-muted"
@@ -402,7 +403,7 @@ function ThreadPane({
   const replyState = replyWindow(selected.channel, selected.lastInboundAt);
 
   return (
-    <section className="flex min-w-0 flex-col">
+    <section className="flex min-w-0 flex-col" data-tour="inbox-thread">
       <header className="flex items-start justify-between gap-3 border-b border-line p-4">
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={selected.displayName} src={selected.avatarUrl} size="md" />

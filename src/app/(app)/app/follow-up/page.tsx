@@ -36,7 +36,11 @@ export default async function FollowUpPage({
         size="lg"
         title={FOLLOW_UP_PAGE_TITLE}
         description={FOLLOW_UP_VIEW_META[filters.view].description}
-        action={<SegmentedViewSwitch value={filters.view} />}
+        action={
+          <div data-tour="follow-up-view-switch">
+            <SegmentedViewSwitch value={filters.view} />
+          </div>
+        }
       />
 
       {filters.view === "qualification" ? (

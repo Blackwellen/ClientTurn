@@ -6,15 +6,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { runCopilotTool } from "@/lib/copilot/actions";
-import { COPILOT_TOOLS, type ToolDeclaration } from "@/lib/copilot/types";
+import {
+  COPILOT_CANNOT,
+  COPILOT_TOOLS,
+  confirmedToolSummaries,
+  joinList,
+  type ToolDeclaration,
+} from "@/lib/copilot/types";
 import { ConfirmToolDialog } from "./confirm-tool-dialog";
 
 /**
  * The Actions tab (V4 §28.6).
  *
  * Lists exactly what Copilot can do, which is as much a safety feature as a
- * convenience: a customer can see the whole surface, and can see that it does
- * not include sending outreach, enabling overage, or editing a locked fact.
+ * convenience: a customer can see the whole surface, what it can never do
+ * (`COPILOT_CANNOT`, checked against the registry by a test) and which
+ * high-impact actions it can take only after a confirmation (derived from the
+ * catalogue, so the list cannot drift from it).
  *
  * Actions needing an argument this panel cannot supply — a campaign to pause,
  * a lead to assign — are shown but not runnable from here; they are offered in
@@ -58,11 +66,18 @@ export function CopilotActions({ sessionId }: { sessionId: string | null }) {
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
       <div className="flex gap-2.5 rounded-lg border border-info-100 bg-info-50/70 px-3 py-2.5">
         <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-info-600" />
-        <p className="text-[12px] leading-[1.45] text-content-secondary">
-          Copilot runs the same actions the app does, with your permissions. It
-          cannot send outreach, change budgets, enable overage, contact a
-          suppressed prospect, or edit a locked business fact.
-        </p>
+        <div className="space-y-1.5 text-[12px] leading-[1.45] text-content-secondary">
+          <p>
+            Copilot runs the same actions the app does, with your permissions. It
+            cannot {joinList(COPILOT_CANNOT.map((item) => item.label))}.
+          </p>
+          <p>Only after you confirm each one, it can:</p>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {confirmedToolSummaries().map((summary) => (
+              <li key={summary}>{summary}</li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <Section title="Read" description="Copilot can look these up for you.">

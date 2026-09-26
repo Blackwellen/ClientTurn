@@ -20,10 +20,17 @@ import {
  *
  * The order is deliberate and each step exists for a reason:
  *
- *   1. **Rate limit unauthenticated attempts first**, keyed by address. This is
- *      the bucket that makes guessing a key impractical, and it has to come
- *      before the database lookup or guessing costs us a query per guess.
- *   2. **Resolve the key**, which re-reads the owner's live membership.
+ *   1. **Resolve the key.** A single indexed lookup by digest, and it re-reads
+ *      the owner's live membership.
+ *   2. **Only a key that failed to resolve is charged against the shared,
+ *      per-address "guessing" bucket** (20/min). A key that resolved skips it
+ *      entirely and is governed only by its own per-key bucket below — the
+ *      guessing bucket exists to make guessing impractical, not to cap a real
+ *      customer's real traffic. Charging every request against it regardless
+ *      of outcome, as an earlier version of this file did, meant a legitimate
+ *      integration doing more than 20 req/min from one address — ordinary for
+ *      a B2B customer behind a shared corporate NAT or proxy — was throttled
+ *      to the guessing budget instead of the 300/min its key is meant to have.
  *   3. **Rate limit by key**, so one customer's runaway loop cannot degrade
  *      anyone else.
  *   4. **Check the scope, then the role.** Both, not either: the scope is what
@@ -157,20 +164,7 @@ export function withApiKey<Route = unknown>(
       return response;
     };
 
-    /* -------------------------------------------- 1. unauthenticated bound */
-
-    const guessLimit = await checkRateLimit("api:unauthenticated", ip);
-    if (!guessLimit.allowed) {
-      return finish(
-        errorResponse("rate_limited", "Too many requests.", requestId, {
-          retry_after: guessLimit.retryAfterSeconds,
-        }),
-        "RATE_LIMITED",
-        { businessId: null, keyId: null },
-      );
-    }
-
-    /* --------------------------------------------------- 2. resolve the key */
+    /* --------------------------------------------------- 1. resolve the key */
 
     const resolution = await authenticateApiKey(
       request.headers.get("authorization"),
@@ -178,6 +172,20 @@ export function withApiKey<Route = unknown>(
     );
 
     if (!resolution.ok) {
+      // Only a credential that did NOT resolve is charged against the shared
+      // per-address bucket — see the module doc for why a resolved key must
+      // never touch it.
+      const guessLimit = await checkRateLimit("api:unauthenticated", ip);
+      if (!guessLimit.allowed) {
+        return finish(
+          errorResponse("rate_limited", "Too many requests.", requestId, {
+            retry_after: guessLimit.retryAfterSeconds,
+          }),
+          "RATE_LIMITED",
+          { businessId: null, keyId: null },
+        );
+      }
+
       // One message for every refusal. Telling a caller that their key exists
       // but expired, or exists but is blocked by IP, is telling someone holding
       // a stolen key exactly what they are holding.
@@ -347,8 +355,4 @@ export function serviceFailureToApiError(failure: {
 }
 
 /** Parses and bounds a `limit` query parameter. */
-export function parseLimit(value: string | null, fallback = 25, max = 100) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(Math.max(Math.trunc(parsed), 1), max);
-}
+export { parseLimit } from "./limit";

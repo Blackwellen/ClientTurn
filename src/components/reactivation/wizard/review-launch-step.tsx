@@ -21,7 +21,12 @@ import {
   type AudiencePreview,
 } from "@/lib/campaigns/types";
 import { estimateMessages } from "@/lib/campaigns/reactivation-audience";
-import { sanitizeEmailHtml } from "@/lib/email/rich-text";
+import { htmlToPlainText, sanitizeEmailHtml } from "@/lib/email/rich-text";
+import { withOptOutWording } from "@/lib/messaging/sms-compliance";
+import {
+  CHANNEL_CONNECT_HINT,
+  type CampaignTemplateOption,
+} from "@/lib/campaigns/reactivation-channels";
 import {
   CHANNEL_LABELS,
   launchChecklist,
@@ -68,6 +73,9 @@ export function ReviewLaunchStep({
   messageValid,
   timingValid,
   revalidationNotice,
+  optOutWording = "",
+  whatsappTemplates = [],
+  aiPersonalize = false,
 }: {
   state: WizardState;
   preview: AudiencePreview | null;
@@ -80,14 +88,26 @@ export function ReviewLaunchStep({
   timingValid: boolean;
   /** Set when the recalculated audience differs from the Step 1 estimate. */
   revalidationNotice: string | null;
+  /** The workspace's opt-out line, appended to every SMS and WhatsApp. */
+  optOutWording?: string;
+  whatsappTemplates?: CampaignTemplateOption[];
+  /** AI personalisation will be requested for this campaign. */
+  aiPersonalize?: boolean;
 }) {
   const eligible = preview?.eligible ?? 0;
   const scheduled = scheduledInstant(state);
 
   // An email is one message however long it is; only a text is billed by
   // segment, so counting segments on an email would inflate the estimate.
+  // The opt-out line is part of every text sent, so it is part of the count.
+  const withOptOut = (body: string) =>
+    withOptOutWording(body, { channel: state.channel, wording: optOutWording });
   const segmentsFor = (body: string) =>
-    state.channel === "email" ? 1 : segmentInfo(body).segments;
+    state.channel === "email" ? 1 : segmentInfo(withOptOut(body)).segments;
+  const template =
+    state.channel === "whatsapp"
+      ? (whatsappTemplates.find((option) => option.id === state.whatsappTemplateId) ?? null)
+      : null;
 
   const totals = estimateMessages({
     eligible,
@@ -101,6 +121,7 @@ export function ReviewLaunchStep({
     providerConnected,
     messageValid,
     timingValid,
+    suppressedTotal: !loading && preview ? preview.suppressedTotal : null,
   });
 
   const suppression = preview
@@ -155,6 +176,15 @@ export function ReviewLaunchStep({
                 />
                 <SummaryRow label="Primary service" value={serviceName} />
                 <SummaryRow label="Channel" value={CHANNEL_LABELS[state.channel]} />
+                {template && (
+                  <SummaryRow label="WhatsApp template" value={template.name} />
+                )}
+                {state.channel !== "email" && (
+                  <SummaryRow
+                    label="AI personalisation"
+                    value={aiPersonalize ? "On" : "Off"}
+                  />
+                )}
                 <SummaryRow
                   label="Tags"
                   value={splitTags(state.tags).join(", ") || "None"}
@@ -283,7 +313,7 @@ export function ReviewLaunchStep({
                 />
               ) : (
                 <p className="text-content whitespace-pre-wrap px-3.5 py-3 text-[13px] leading-relaxed">
-                  {previewTemplate(state.initialMessage, businessName)}
+                  {withOptOut(previewTemplate(state.initialMessage, businessName))}
                 </p>
               )}
             </div>
@@ -294,14 +324,16 @@ export function ReviewLaunchStep({
                   <MessageSquare className="text-content-muted size-4" aria-hidden />
                   <span>
                     <strong className="font-medium">Follow-up:</strong>{" "}
-                    {CHANNEL_LABELS[state.followUpChannel]},{" "}
+                    {CHANNEL_LABELS[state.channel]},{" "}
                     {state.followUpDelayDays} day
                     {state.followUpDelayDays === 1 ? "" : "s"} after the initial
                     message.
                   </span>
                 </p>
                 <p className="text-content-muted mt-1.5 whitespace-pre-wrap text-[12px] leading-relaxed">
-                  {previewTemplate(state.followUpMessage, businessName)}
+                  {state.channel === "email"
+                    ? htmlToPlainText(previewTemplate(state.followUpMessage, businessName))
+                    : withOptOut(previewTemplate(state.followUpMessage, businessName))}
                 </p>
               </div>
             )}
@@ -337,7 +369,7 @@ export function ReviewLaunchStep({
               {eligible === 0
                 ? "no eligible contacts match this audience."
                 : !providerConnected
-                  ? "no messaging provider is connected."
+                  ? CHANNEL_CONNECT_HINT[state.channel].replace(/ before you launch\.$/, ".").replace(/^./, (c) => c.toLowerCase())
                   : !messageValid
                     ? "the message needs attention."
                     : "the schedule needs attention."}{" "}
@@ -418,6 +450,18 @@ export function ReviewLaunchStep({
               The campaign will not launch if there are no eligible contacts.
             </li>
             <li>Sends respect your quiet hours.</li>
+            {state.channel !== "email" && (
+              <li>
+                Every text ends with your opt-out line. Anyone who replies STOP
+                is not messaged on this channel again unless they reply START.
+              </li>
+            )}
+            {state.channel === "whatsapp" && (
+              <li>
+                Anyone who has not messaged you in the last 24 hours receives
+                the approved template, not your free-text message.
+              </li>
+            )}
             <li>
               The follow-up only sends to contacts who have not replied, booked
               or opted out.

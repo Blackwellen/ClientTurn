@@ -19,6 +19,7 @@ import type {
   CustomerSort,
   UsageCell,
 } from "./types";
+import { orIlike } from "@/lib/supabase/ilike";
 
 /**
  * Customers is a cross-tenant operational table, so the joins it needs cannot
@@ -114,14 +115,12 @@ async function candidateIds(
       supabase
         .from("profiles")
         .select("id, first_name, last_name")
-        .or(
-          `email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`,
-        )
+        .or(orIlike(["email", "first_name", "last_name"], search) ?? "id.not.is.null")
         .limit(500),
       supabase
         .from("businesses")
         .select("id")
-        .or(`name.ilike.%${search}%,website.ilike.%${search}%`)
+        .or(orIlike(["name", "website"], search) ?? "id.not.is.null")
         .limit(CANDIDATE_CAP),
     ]);
 
@@ -354,6 +353,11 @@ const AUDIT_LABELS: Record<string, string> = {
   "member.invited": "Team member invited",
   "member.invite_accepted": "Team member joined",
   "member.removed": "Team member removed",
+  "member.invite": "Team member invited",
+  "member.resend_invite": "Invitation resent",
+  "member.set_role": "Team member role changed",
+  "member.remove": "Team member removed",
+  "member.transfer_ownership": "Workspace ownership transferred",
   "billing.plan_changed": "Plan changed",
   "integration.connected": "Connection added",
   "integration.disconnected": "Connection removed",

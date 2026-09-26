@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { IconTile } from "@/components/admin/ui";
-import { formatDate, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatNumber } from "@/lib/admin/format";
+import { formatDate, formatRelative } from "@/lib/dates";
 import {
   POLICY_CHANNEL_LABEL,
   POLICY_STANCE_LABEL,
@@ -302,7 +303,7 @@ export function PolicyDetailDrawer({
                   <div className="min-w-0">
                     <p className="text-[12.5px] text-content">{change.summary}</p>
                     <p className="text-[11.5px] text-content-subtle">
-                      {formatRelative(change.at)}
+                      {formatRelative(change.at, { style: "ago" })}
                     </p>
                   </div>
                 </li>

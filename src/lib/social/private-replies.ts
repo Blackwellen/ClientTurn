@@ -8,8 +8,12 @@ import {
   type MetaChannel,
 } from "@/lib/messaging/types";
 import { checkSuppression } from "@/lib/policy/suppression";
-import { renderSocialTemplate } from "@/lib/outreach/social-copy";
+import { MAX_PRIVATE_REPLY_CHARS, renderSocialTemplate } from "@/lib/outreach/social-copy";
+import { loadSocialDisclosurePlan } from "@/lib/outreach/social-disclosure";
+import { appendDisclosure } from "@/lib/compliance/source-disclosure";
 import { recordAudit } from "@/lib/audit";
+import { evaluate } from "@/lib/policy/service";
+import { isPromotional } from "@/lib/policy/promotional-content";
 
 /**
  * The one message Meta permits to somebody who commented but never wrote to us.
@@ -194,7 +198,7 @@ export async function sendOnePrivateReply(input: {
     };
   }
 
-  const body =
+  const composedBody =
     input.body?.trim() ||
     renderSocialTemplate({
       kind: "PRIVATE_REPLY",
@@ -215,6 +219,59 @@ export async function sendOnePrivateReply(input: {
         },
       },
     });
+
+  // Article 14(3)(b). A commenter's details came from their own engagement
+  // (FIRST_PARTY), so usually nothing is owed. If anything else has since been
+  // recorded against them -- an enrichment, a register lookup -- this reply is
+  // the first communication and has to say where that came from. Owed and not
+  // buildable is a skip with the reason, before the one reply is claimed.
+  const disclosure = await loadSocialDisclosurePlan({
+    businessId,
+    prospectId: candidate.prospectId,
+    maxLength: MAX_PRIVATE_REPLY_CHARS,
+  });
+  if (disclosure.kind === "PARK") {
+    return { status: "SKIPPED", prospectId: candidate.prospectId, reason: disclosure.gap };
+  }
+  const body =
+    disclosure.kind === "APPEND"
+      ? appendDisclosure(composedBody, disclosure.line, MAX_PRIVATE_REPLY_CHARS)
+      : composedBody;
+
+  // The full policy check at send time (brief §98, defect B2): opt-out,
+  // suppression, workspace state and the individual-subscriber rules, not
+  // suppression alone. A comment on the business's post is public engagement,
+  // not a request for marketing by DM, so where the record gives no basis to
+  // market -- or only a conversational one -- the reply must not promote
+  // (docs/revenue-engine/00 §6.1).
+  const verdict = await evaluate({
+    businessId,
+    subject: {
+      type: "PROSPECT",
+      id: candidate.prospectId,
+      social: socialAddress(channel, candidate.externalId),
+    },
+    channel: "SOCIAL",
+    campaignType: "WARM",
+    permissionOnly: true,
+  });
+
+  const conversational =
+    verdict.outcome === "REQUIRE_CONSENT" ||
+    (verdict.outcome === "ALLOWED" &&
+      (verdict.requirements?.includes("NON_PROMOTIONAL_ONLY") ?? false));
+
+  if (verdict.outcome !== "ALLOWED" && !conversational) {
+    return { status: "SKIPPED", prospectId: candidate.prospectId, reason: verdict.message };
+  }
+  if (conversational && isPromotional(body)) {
+    return {
+      status: "SKIPPED",
+      prospectId: candidate.prospectId,
+      reason:
+        "They commented publicly but have not asked to hear about your services, so a promotional reply was not sent.",
+    };
+  }
 
   // Claim the one reply before spending it. See the note above on ordering:
   // the conditional `is null` makes this the atomic claim, so two workers

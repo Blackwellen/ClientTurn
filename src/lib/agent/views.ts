@@ -51,6 +51,23 @@ export type HandoffSummaryView = {
   unresolvedIssue: string | null;
   sentiment: string | null;
   summary: string | null;
+  /** The 30-second brief (Phase 3.4); null until the brief job has run. */
+  quickBrief: { text: string; source: "model" | "deterministic" } | null;
+  /** The deterministic Lead Brief, trimmed to what the drawer shows. */
+  leadBrief: HandoffLeadBriefView | null;
+};
+
+/** The parts of the Lead Brief (lib/handoff/brief.ts) the handoff card shows. */
+export type HandoffLeadBriefView = {
+  score: { total: number; grade: string; why: string } | null;
+  tags: string[];
+  answers: { question: string; value: string; known: boolean; evidence: string | null }[];
+  objections: { key: string; evidence: string }[];
+  promises: string[];
+  nextStep: string | null;
+  approach: { method: string; closeTarget: string; reason: string } | null;
+  unanswered: string[];
+  meeting: { startsAt: string | null; status: string } | null;
 };
 
 export type HandoffRow = {

@@ -30,7 +30,8 @@ import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { ErrorDetailPanel } from "./error-detail-panel";
 import { setErrorStatus } from "@/lib/admin/actions";
-import { formatChange, formatNumber, formatRelative } from "@/lib/admin/format";
+import { formatChange, formatNumber } from "@/lib/admin/format";
+import { formatRelative } from "@/lib/dates";
 import {
   ADMIN_RANGES,
   ADMIN_RANGE_COMPARISON,
@@ -414,7 +415,7 @@ export function SystemErrorsView({
                           <SeverityBadge severity={row.severity} />
                         </td>
                         <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {formatRelative(row.lastSeen)}
+                          {formatRelative(row.lastSeen, { style: "ago" })}
                         </td>
                         <td className="lr-tabular px-3 py-2 text-[12.5px] whitespace-nowrap text-content-accent">
                           {row.reference}

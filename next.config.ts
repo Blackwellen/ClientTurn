@@ -52,6 +52,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Help articles are markdown read from disk at runtime (src/lib/help/disk.ts)
+  // so published overrides and revalidation work without a rebuild. The file
+  // tracer cannot see a directory read built from process.cwd(), so the
+  // folder is included explicitly for every server function.
+  outputFileTracingIncludes: {
+    // Screenshot headers are read for width/height so figures reserve space.
+    "/**": ["./content/help/**/*.md", "./public/help/screenshots/**/*"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -28,6 +28,7 @@ import {
   setRowClassification,
   type ImportReview,
 } from "@/lib/imports/actions";
+import { Select } from "@/components/ui/form";
 
 /**
  * The lead import wizard (V4 §7).
@@ -354,7 +355,7 @@ export function ImportWizard() {
                 <span className="w-32 shrink-0 text-[12.5px] text-content-secondary">
                   {field.label}
                 </span>
-                <select
+                <Select
                   value={mapping[field.key] ?? ""}
                   onChange={(event) =>
                     setMapping((current) => ({
@@ -363,7 +364,7 @@ export function ImportWizard() {
                         event.target.value === "" ? undefined : Number(event.target.value),
                     }))
                   }
-                  className={cn(INPUT, "h-9 flex-1 py-0")}
+                  className="w-auto min-w-48 flex-1"
                 >
                   <option value="">Not in this file</option>
                   {headers.map((header, index) => (
@@ -371,7 +372,7 @@ export function ImportWizard() {
                       {header || `Column ${index + 1}`}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             ))}
           </div>

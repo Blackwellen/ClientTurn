@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAiBehaviour } from "@/lib/ai-settings/queries";
+import { createHash } from "node:crypto";
 import { runTask } from "@/lib/ai/model-router";
 import type { ResearchSummaryResult } from "@/lib/ai/schemas";
 import { keepCitedClaims } from "../research-policy";
@@ -163,6 +164,12 @@ export async function generateResearchSummary(
     businessId,
     context,
     maxOutputTokens: 700,
+    // The prospect plus the exact evidence set: a retried or double-clicked
+    // request is charged once, and new evidence makes it a new summary.
+    correlationId: `research:${prospectId}:${createHash("sha256")
+      .update(evidence.map((item) => item.id).join(","))
+      .digest("hex")
+      .slice(0, 32)}`,
     // A workspace with no AI tokens degrades to "no summary", exactly as one
     // with the toggle off does. It is a billing state, not an error.
     onUnavailable: () => ({ claims: [], insufficient_evidence: true }),
@@ -172,6 +179,15 @@ export async function generateResearchSummary(
     return {
       ok: false,
       error: "Your workspace has no AI tokens left this period.",
+    };
+  }
+  // The budget manager declined the spend (a ceiling, or the prospect's value
+  // does not justify it). The fallback would read as "no evidence", which is
+  // not what happened, so say so instead.
+  if (result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN") {
+    return {
+      ok: false,
+      error: "This workspace's AI budget does not cover a research summary right now.",
     };
   }
   if (!result.data) {

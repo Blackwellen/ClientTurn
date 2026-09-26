@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { workspaceEngagement } from "./engagement";
+import { POSITIVE_MESSAGE_REPLY_CLASSIFICATIONS } from "@/lib/agent/types";
 import {
   buildFunnel,
   metricValue,
@@ -210,7 +211,7 @@ async function messageCounts(
       base().eq("direction", "inbound"),
       base()
         .eq("direction", "inbound")
-        .in("reply_classification", ["POSITIVE_INTEREST", "NEUTRAL_QUESTION"]),
+        .in("reply_classification", [...POSITIVE_MESSAGE_REPLY_CLASSIFICATIONS]),
       base().eq("direction", "inbound").not("reply_classification", "is", null),
     ]);
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { checkSuppression } from "@/lib/policy/suppression";
 import type { PolicyChannel } from "@/lib/policy/types";
@@ -15,6 +16,7 @@ import { normaliseEmail } from "@/lib/email/account";
 import { isPlatformChannel, normalisePhone, type Channel } from "@/lib/messaging/types";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { emitAutomationEvent } from "@/lib/automation/events";
+import { createHash } from "node:crypto";
 import { runTask } from "@/lib/ai/model-router";
 import type { ReplyPlan } from "@/lib/ai/schemas";
 import {
@@ -22,6 +24,7 @@ import {
   type AgentChannel,
   type AgentOperatingMode,
 } from "@/lib/agent/types";
+import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 
 export type NotificationType =
   | "handover"
@@ -51,7 +54,6 @@ function resolveAgentChannels(raw: string[] | null | undefined): AgentChannel[] 
   if (!raw?.length) return [];
   return AGENT_CHANNELS.filter((channel) => raw.includes(channel));
 }
-const ACTIVE_SUBSCRIPTION = new Set(["TRIALING", "ACTIVE", "PAST_DUE"]);
 
 export type BusinessContext = {
   businessId: string;
@@ -98,6 +100,14 @@ export type BusinessContext = {
     integrationFailure: boolean;
     campaignComplete: boolean;
   };
+  /** Independent of `notify` above, which governs in-app notifications only. */
+  slackNotify: {
+    newLead: boolean;
+    handover: boolean;
+    booking: boolean;
+    warmProspect: boolean;
+    digest: boolean;
+  };
   subscriptionActive: boolean;
 };
 
@@ -106,7 +116,7 @@ export async function loadBusinessContext(
 ): Promise<BusinessContext | null> {
   const admin = createAdminClient();
 
-  const [business, settings, subscription, aiSettings, entitlements] = await Promise.all([
+  const [business, settings, aiSettings, entitlements] = await Promise.all([
     admin
       .from("businesses")
       .select("id, name, phone, timezone, status")
@@ -115,11 +125,6 @@ export async function loadBusinessContext(
     admin
       .from("business_settings")
       .select("*")
-      .eq("business_id", businessId)
-      .maybeSingle(),
-    admin
-      .from("subscriptions")
-      .select("status")
       .eq("business_id", businessId)
       .maybeSingle(),
     admin
@@ -182,10 +187,18 @@ export async function loadBusinessContext(
       integrationFailure: settingsRow?.notify_integration_failure ?? true,
       campaignComplete: settingsRow?.notify_campaign_complete ?? true,
     },
-    // No subscription row is a workspace mid-provisioning, not a lapsed one.
-    subscriptionActive: subscription.data
-      ? ACTIVE_SUBSCRIPTION.has(subscription.data.status)
-      : true,
+    slackNotify: {
+      newLead: settingsRow?.slack_notify_new_lead ?? true,
+      handover: settingsRow?.slack_notify_handover ?? true,
+      booking: settingsRow?.slack_notify_booking ?? true,
+      warmProspect: settingsRow?.slack_notify_warm_prospect ?? true,
+      digest: settingsRow?.slack_digest_enabled ?? false,
+    },
+    // From the lifecycle rules (8.10), not the raw status: an ended trial, a
+    // workspace that never added a card, and a cancelled subscription stop
+    // sending. A dunning pause ("restricted") is not an end -- the send gate
+    // defers those messages rather than aborting the automations behind them.
+    subscriptionActive: entitlements.access !== "read_only",
   };
 }
 
@@ -210,10 +223,14 @@ export type LeadRecord = {
   first_replied_at: string | null;
   first_contacted_at: string | null;
   unsubscribe_token: string;
+  /** Origin markers: set when the lead came from our own outreach (strategy.ts leadDirection). */
+  promoted_from_prospect_id?: string | null;
+  sourcing_run_id?: string | null;
+  relationship_type?: string | null;
 };
 
 export const LEAD_COLUMNS =
-  "id, business_id, first_name, last_name, phone, phone_normalized, email, postcode, service_id, source_id, status, qualification_state, opted_out, automation_active, human_takeover, needs_attention, is_test, first_replied_at, first_contacted_at, unsubscribe_token";
+  "id, business_id, first_name, last_name, phone, phone_normalized, email, postcode, service_id, source_id, status, qualification_state, opted_out, automation_active, human_takeover, needs_attention, is_test, first_replied_at, first_contacted_at, unsubscribe_token, promoted_from_prospect_id, sourcing_run_id, relationship_type";
 
 export async function loadLead(leadId: string): Promise<LeadRecord | null> {
   const admin = createAdminClient();
@@ -413,6 +430,17 @@ export async function queueOutboundMessage(input: {
   sendKey: string;
   runAt?: Date;
   enqueueSend?: boolean;
+  /** Email: the sender identity the From address comes from (§43). */
+  senderIdentityId?: string | null;
+  /** Email: TRANSACTIONAL or MARKETING (§43). */
+  messageClass?: "TRANSACTIONAL" | "MARKETING" | null;
+  /**
+   * WhatsApp: the approved template this step sends if the 24-hour window has
+   * closed by send time, with its variables resolved now (§45).
+   */
+  whatsappTemplate?: { templateId: string; variables: Record<string, string> } | null;
+  /** §61 outcome features (0131 `messages.features`); dropped on a lagging schema. */
+  features?: Record<string, unknown> | null;
 }): Promise<string | null> {
   const admin = createAdminClient();
 
@@ -423,9 +451,21 @@ export async function queueOutboundMessage(input: {
   );
   if (!conversationId) return null;
 
-  const { data, error } = await admin
-    .from("messages")
-    .insert({
+  // 0127 columns, not yet in the generated types.
+  const channelExtras: Record<string, unknown> = {};
+  if (input.channel === "email" && input.messageClass) channelExtras.message_class = input.messageClass;
+  if (input.channel === "whatsapp" && input.whatsappTemplate) {
+    channelExtras.whatsapp_template_id = input.whatsappTemplate.templateId;
+    channelExtras.template_variables = input.whatsappTemplate.variables;
+  }
+  if (input.features) channelExtras.features = input.features;
+
+  const insertRow = (extras: Record<string, unknown>) =>
+    admin
+      .from("messages")
+      .insert({
+      ...(extras as Record<string, never>),
+      sender_identity_id: input.channel === "email" ? (input.senderIdentityId ?? null) : null,
       business_id: input.businessId,
       conversation_id: conversationId,
       lead_id: input.leadId,
@@ -442,6 +482,19 @@ export async function queueOutboundMessage(input: {
     })
     .select("id")
     .single();
+
+  let { data, error } = await insertRow(channelExtras);
+  // Before 0131: drop only the features, keeping the 0127 columns.
+  if (error && isSchemaLag(error) && "features" in channelExtras) {
+    const { features: _features, ...withoutFeatures } = channelExtras;
+    void _features;
+    ({ data, error } = await insertRow(withoutFeatures));
+  }
+  // A release that reaches the database before migration 0127 must still
+  // queue the message: the class and template are re-derived at send time.
+  if (error && isSchemaLag(error) && Object.keys(channelExtras).length > 0) {
+    ({ data, error } = await insertRow({}));
+  }
 
   let messageId = data?.id ?? null;
 
@@ -479,7 +532,30 @@ export async function stopAutomationRuns(
   reason: string,
 ) {
   const admin = createAdminClient();
-  const { data } = await admin
+
+  // Phase 3.1: a booking reminder is exempt from "booked" and "replied" -- it
+  // exists because the lead booked, and a lead replying "see you then" must
+  // not cancel it. Every other reason (opt-out, takeover, won/lost) stops it.
+  let exemptVersionIds: string[] = [];
+  if (reason === "booked" || reason === "replied") {
+    const { data: reminder, error: reminderError } = await admin
+      .from("automation_definitions")
+      .select("id, automation_versions(id)")
+      .eq("business_id", businessId)
+      .eq("type", "booking_reminder")
+      .maybeSingle();
+    // Failing to read the exemption must not stop the other sequences, and
+    // must not spare the reminder either: fall back to stopping everything.
+    logWriteError({ error: reminderError }, "automation_runs.stop: read reminder", { businessId, leadId });
+    exemptVersionIds = (
+      (reminder as { automation_versions?: { id: string }[] | null } | null)?.automation_versions ?? []
+    ).map((version) => version.id);
+  }
+
+  // Every stop path (opt-out, booking, reply, takeover) relies on this write.
+  // A silent failure leaves the sequence running against someone who asked it
+  // to stop, so the error is thrown for the caller's job to retry.
+  let stopQuery = admin
     .from("automation_runs")
     .update({
       state: "STOPPED",
@@ -489,8 +565,13 @@ export async function stopAutomationRuns(
     })
     .eq("business_id", businessId)
     .eq("lead_id", leadId)
-    .eq("state", "ACTIVE")
-    .select("id");
+    .eq("state", "ACTIVE");
+  if (exemptVersionIds.length > 0) {
+    stopQuery = stopQuery.not("version_id", "in", `(${exemptVersionIds.join(",")})`);
+  }
+  const result = await stopQuery.select("id");
+  assertWrite(result, "automation_runs.stop", { businessId, leadId, reason });
+  const { data } = result;
 
   for (const run of data ?? []) {
     await emitAutomationEvent({
@@ -519,6 +600,11 @@ export async function restyleMessage(
     baseMessage: string;
     requiredSubstrings?: string[];
     maxLength?: number;
+    /**
+     * Stable id for this restyle -- the outbound send key or the inbound
+     * message id -- so a retried job is billed once.
+     */
+    correlationId?: string | null;
   },
 ): Promise<string> {
   if (!business.aiAssistEnabled || !business.aiSettings.allowAiReply) {
@@ -527,7 +613,7 @@ export async function restyleMessage(
 
   const context =
     `Tone: ${business.aiSettings.tone}. Length: ${business.aiSettings.replyLength}.\n` +
-    `Restyle this exact message for a UK home-service SMS/WhatsApp reply. ` +
+    `Restyle this exact message as a short reply from the business to a lead. ` +
     `Keep every fact, name, link and instruction — only adjust wording and tone.\n` +
     `Message: ${input.baseMessage}`;
 
@@ -535,9 +621,16 @@ export async function restyleMessage(
     taskType: "reply_generation",
     businessId: business.businessId,
     leadId: input.leadId,
+    stage: "ENGAGED",
     conversationId: input.conversationId ?? null,
     context,
     maxOutputTokens: 150,
+    // Without an explicit id, the lead plus the exact base message identify
+    // the call: a retry restyles the same text for the same lead.
+    correlationId: `restyle:${input.leadId}:${
+      input.correlationId ??
+      createHash("sha256").update(input.baseMessage).digest("hex").slice(0, 32)
+    }`,
   }).catch(() => null);
 
   const candidate = result?.data?.message?.trim();
@@ -550,7 +643,38 @@ export async function restyleMessage(
     if (!candidate.includes(required)) return input.baseMessage;
   }
 
+  // The same style lint the agent runs (clichés, em dashes, "just", one
+  // question, the workspace's forbidden phrases and prohibited claims). No
+  // retry here: a failing restyle falls back to the deterministic text.
+  if (!(await passesStyleLint(business, candidate))) return input.baseMessage;
+
   return candidate;
+}
+
+/**
+ * Lints AI-written copy against the workspace's style rules. Imported lazily:
+ * agent/context.ts imports this module, so a static import would be circular.
+ * A failure to load the workspace rules still applies the generic lint.
+ */
+export async function passesStyleLint(
+  business: BusinessContext,
+  candidate: string,
+): Promise<boolean> {
+  const { lintStyle } = await import("@/lib/agent/validate");
+  let rules: { forbiddenPhrases: string[]; prohibitedClaims: string[] } = {
+    forbiddenPhrases: [],
+    prohibitedClaims: [],
+  };
+  try {
+    const { loadStyleRules } = await import("@/lib/agent/context");
+    rules = await loadStyleRules(business);
+  } catch (error) {
+    console.error("[style-lint] could not load workspace rules", {
+      businessId: business.businessId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return lintStyle(candidate, rules).length === 0;
 }
 
 export async function queueNotification(input: {
@@ -580,9 +704,19 @@ export async function flagForAttention(input: {
   title: string;
   body?: string;
   takeover?: boolean;
+  /**
+   * Overrides the generic `Needs attention: ${title}` Slack line. The agent's
+   * handover carries a real summary (qualification, sentiment, key answers)
+   * that is worth more to a team than the bare title — every other caller
+   * here is a deterministic rule with nothing richer to say, so they leave
+   * this unset.
+   */
+  slackText?: string;
+  /** Interactive buttons (Acknowledge/Resolve) for a handoff-backed alert. */
+  slackBlocks?: unknown[];
 }) {
   const admin = createAdminClient();
-  await admin
+  const flagWrite = await admin
     .from("leads")
     .update({
       needs_attention: true,
@@ -593,6 +727,12 @@ export async function flagForAttention(input: {
     })
     .eq("id", input.leadId)
     .eq("business_id", input.businessId);
+  // A takeover that did not persist leaves the AI talking after it told the
+  // lead a person would pick up, so that case throws. A bare attention flag
+  // is only a prompt for the team, and is logged.
+  const flagContext = { businessId: input.businessId, leadId: input.leadId, reason: input.reason };
+  if (input.takeover) assertWrite(flagWrite, "leads.takeover", flagContext);
+  else logWriteError(flagWrite, "leads.needs_attention", flagContext);
 
   if (input.takeover) {
     await stopAutomationRuns(input.businessId, input.leadId, "human_takeover");
@@ -616,11 +756,24 @@ export async function flagForAttention(input: {
     dedupeKey: `lead_attention:${input.leadId}:${input.reason}`,
   });
 
-  await enqueue(
-    "notification.slack",
-    { businessId: input.businessId, leadId: input.leadId, text: `Needs attention: ${input.title}` },
-    { businessId: input.businessId },
-  );
+  const { data: slackPrefs } = await admin
+    .from("business_settings")
+    .select("slack_notify_handover")
+    .eq("business_id", input.businessId)
+    .maybeSingle();
+
+  if (slackPrefs?.slack_notify_handover ?? true) {
+    await enqueue(
+      "notification.slack",
+      {
+        businessId: input.businessId,
+        leadId: input.leadId,
+        text: input.slackText ?? `Needs attention: ${input.title}`,
+        blocks: input.slackBlocks,
+      },
+      { businessId: input.businessId },
+    );
+  }
 
   // The same fact, sent outward. This is the event most customers wire to a
   // pager or a shared inbox, because it is the one that means a person has to

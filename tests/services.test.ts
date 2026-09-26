@@ -340,11 +340,26 @@ describe("caller authority", () => {
     }
   });
 
+  test("a draft is not a send", () => {
+    // The exemption above, held to its terms: drafting stays a safe write
+    // that says it is not sent, the agent keeps its own supervised draft path,
+    // and sending the draft is still `message.send`, which is gated.
+    const draft = serviceOperation("message.draft");
+    assert.ok(draft, "message.draft is not in the catalogue");
+    assert.equal(draft!.risk, "SAFE_WRITE");
+    assert.match(draft!.summary, /not sent/);
+    assert.equal(callerAllowed(draft!, "AGENT"), false);
+    assert.equal(requiresConfirmation(serviceOperation("message.send")!.risk), true);
+  });
+
   test("anything that contacts a person needs that person's confirmation", () => {
     // Derived rather than listed, so a new outbound operation is caught by
     // existing rules instead of needing to be remembered.
     for (const operation of ALL_OPERATIONS) {
-      const contactsSomeone = /^(message\.|campaign\.(launch|resume))/.test(
+      // `message.draft` is the one message operation that contacts nobody: it
+      // writes a DRAFT row the send worker never claims. The test below pins
+      // that exemption so it cannot quietly widen.
+      const contactsSomeone = /^(message\.(?!draft$)|campaign\.(launch|resume))/.test(
         operation.name,
       );
       if (!contactsSomeone) continue;

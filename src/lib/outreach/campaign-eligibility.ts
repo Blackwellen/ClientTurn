@@ -1,4 +1,5 @@
 import { gradesAtOrAbove, type CampaignDraft, type Grade } from "./campaign-draft.ts";
+import { coldSendRefusedForOrigin } from "../find-leads/email-origin.ts";
 
 /**
  * Who a campaign may contact (V4 section 16.11).
@@ -95,6 +96,10 @@ export type EligibilityCandidate = {
   suppressed: boolean;
   /** True when the company or domain is on the campaign's exclusion list. */
   companyExcluded: boolean;
+  /** §26: where the address came from (0131); absent = unknown, not guessed. */
+  emailOrigin?: string | null;
+  /** prospects.verification_status (VALID / INVALID / ...). */
+  verificationStatus?: string | null;
 };
 
 /**
@@ -135,6 +140,14 @@ export function evaluateEligibility(
   }
   if (!candidate.email) {
     return { outcome: "EXCLUDED", reasonCode: "NO_EMAIL", reason: "No email address" };
+  }
+  // §26: never send solely because an address was guessed.
+  if (coldSendRefusedForOrigin({ origin: candidate.emailOrigin, verificationStatus: candidate.verificationStatus })) {
+    return {
+      outcome: "REVIEW",
+      reasonCode: "GUESSED_EMAIL",
+      reason: "The address was guessed from a name pattern and has not been verified",
+    };
   }
   if (audience.exclusions.existingCustomers && candidate.isExistingCustomer) {
     return {

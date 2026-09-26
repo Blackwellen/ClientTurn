@@ -5,6 +5,9 @@ import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
+import { needsCheckout } from "@/lib/billing/lifecycle";
+import { getBillingNotice } from "@/lib/billing/limits-service";
+import { BillingBanner } from "@/components/billing/billing-banner";
 import { primaryNavFor } from "@/lib/app/nav";
 import { getWorkspaceHealth, onboardingIncomplete } from "@/lib/app/health";
 import { AppShell } from "@/components/app/app-shell";
@@ -28,6 +31,12 @@ export default async function AppLayout({
 }) {
   const workspace = await requireWorkspace();
 
+  // Card-first trial (8.10): nothing in the app is usable until Stripe has
+  // confirmed a subscription (verified card, terms accepted). A trial that
+  // ended without one lands in the same place.
+  const entitlements = await getEntitlements(workspace.businessId);
+  if (needsCheckout(entitlements.state)) redirect("/start-trial");
+
   if (onboardingIncomplete(workspace)) redirect("/onboarding");
 
   const cookieStore = await cookies();
@@ -35,7 +44,7 @@ export default async function AppLayout({
 
   const supabase = await createClient();
 
-  const [profileResult, notificationsResult, entitlements, v4Entitlements, health] =
+  const [profileResult, notificationsResult, v4Entitlements, health, billingNotice] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -51,9 +60,9 @@ export default async function AppLayout({
         .eq("user_id", workspace.userId)
         .order("created_at", { ascending: false })
         .limit(50),
-      getEntitlements(workspace.businessId),
       getV4Entitlements(workspace.businessId),
       getWorkspaceHealth(workspace),
+      getBillingNotice(workspace.businessId, entitlements).catch(() => null),
     ]);
 
   const profile = profileResult.data;
@@ -67,8 +76,14 @@ export default async function AppLayout({
       <AppShell
         initialCollapsed={initialCollapsed}
         businessName={workspace.businessName}
-        planLabel={PLAN_LABELS[entitlements.plan] ?? entitlements.plan}
-        plan={entitlements.plan}
+        planLabel={
+          entitlements.state === "TRIALING" && entitlements.selectedPlan !== "trial"
+            ? `${PLAN_LABELS[entitlements.selectedPlan] ?? entitlements.selectedPlan} · trial`
+            : (PLAN_LABELS[entitlements.plan] ?? entitlements.plan)
+        }
+        // The upgrade ladder starts from the tier chosen at checkout, so a
+        // Growth trial is offered Pro, not Starter.
+        plan={entitlements.selectedPlan}
         // Only an owner can open Billing, so only an owner is offered the
         // upgrade prompt in the rail.
         canManageBilling={hasRole(workspace.role, "owner")}
@@ -87,6 +102,12 @@ export default async function AppLayout({
           avatarUrl: profile?.avatar_url,
         }}
       >
+        {billingNotice ? (
+          <BillingBanner
+            notice={billingNotice}
+            canManageBilling={hasRole(workspace.role, "owner")}
+          />
+        ) : null}
         {children}
       </AppShell>
     </ToastProvider>

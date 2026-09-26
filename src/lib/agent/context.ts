@@ -14,8 +14,15 @@ import "server-only";
  * qualification question is included rather than the whole question set.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { wrapUntrustedContent } from "@/lib/ai/safety";
+import {
+  DISABLED_AUTHORITY,
+  parseAuthority,
+  type CommercialAuthority,
+} from "@/lib/commercial/authority";
+import { motionAllowsDirectClose } from "@/lib/opportunities/stages";
 import {
   loadBusinessContext,
   loadLead,
@@ -24,8 +31,22 @@ import {
   type BusinessContext,
   type LeadRecord,
 } from "@/lib/jobs/handlers/shared";
-import { loadQuestions, nextQuestion, type QuestionRecord } from "@/lib/jobs/handlers/qualify";
+import {
+  loadAdaptiveSelection,
+  loadQuestions,
+  primaryMotion,
+  type QuestionRecord,
+  type SalesProfile,
+} from "@/lib/jobs/handlers/qualify";
+import type { KnownQuestion, StopReason } from "@/lib/qualification/next-question";
+import { loadOpportunityMemory } from "@/lib/opportunities/memory-service";
+import { renderOpportunityMemory, type OpportunityMemory } from "@/lib/opportunities/memory";
+import { loadSellingPreferencesOrDefault } from "@/lib/settings/ai-selling-queries";
+import { buildOfferCard, buildVoiceProfile, type MemoryFactRow, type OfferCard, type OfferCardInput } from "./offer-card";
+import { logWriteError } from "@/lib/supabase/write-result";
 import { availabilityIsQueryable } from "./availability";
+import { meetingTypeForLead } from "@/lib/bookings/meeting-type-store";
+import { bookingShape } from "@/lib/bookings/meeting-types";
 import type { WeekHours } from "./availability/slots";
 import { parseBusinessHours } from "@/lib/settings/types";
 import { resolveLifecycle } from "./lifecycle";
@@ -117,16 +138,37 @@ export type ConversationContext = {
 };
 
 export type QualificationContext = {
+  /** The adaptive next question (lib/qualification/next-question.ts). */
   nextQuestion: QuestionRecord | null;
+  /**
+   * The question put to the lead on an earlier turn, while it is still
+   * unanswered. A reply is recorded against THIS, not against whatever the
+   * selector would ask next.
+   */
+  currentQuestion: QuestionRecord | null;
+  /** Set when there is no next question: why questioning stopped. */
+  stopReason: StopReason | null;
+  thresholdMet: boolean;
+  /** Everything known: answered, and inferred from lead details or facts. */
+  known: KnownQuestion[];
+  /** Inferred answers with no answer row yet; the orchestrator records them. */
+  inferred: KnownQuestion[];
   answered: { question: string; value: string }[];
+  /** Questions still worth asking. Zero once the decision threshold is met. */
   outstanding: number;
 };
+
+export type SalesContext = SalesProfile;
 
 export type BookingContext = {
   /** calendly | google_calendar | handover */
   mode: string;
   bookingUrl: string | null;
-  /** A live (scheduled) booking, if the lead already has one. */
+  /**
+   * A live booking, if the lead already has one: `scheduled` (confirmed) or
+   * `pending` (a requested time awaiting the business's confirmation, B10).
+   * Check `status` before calling it booked.
+   */
   liveBooking: { id: string; startsAt: string | null; status: string } | null;
   /**
    * Whether a connected, healthy calendar can be asked for real availability.
@@ -138,6 +180,13 @@ export type BookingContext = {
   businessHours: WeekHours;
   appointmentDurationMinutes: number;
   bookingBufferMinutes: number;
+  /**
+   * The meeting type this lead's booking uses (§57), when the workspace has
+   * any. Its duration and buffer are already applied to the two fields above;
+   * its calendar, when set, is where availability is read. Null = the
+   * workspace's single calendar and business_settings, as before.
+   */
+  meetingType: { id: string; name: string; calendarIntegrationId: string | null } | null;
 };
 
 export type AgentContext = {
@@ -149,6 +198,21 @@ export type AgentContext = {
   qualification: QualificationContext;
   booking: BookingContext;
   lifecycle: LifecycleState;
+  /** The workspace's archetype and primary motion (migration 0121). */
+  sales: SalesContext;
+  /**
+   * What this lead's opportunity has established (§48, 0131): goals, pains,
+   * stakeholders, objections, commitments. Null = no opportunity or no memory.
+   */
+  opportunityMemory: OpportunityMemory | null;
+  /** One voice profile + offer card, budgeted, for the stable prompt prefix. */
+  offer: OfferCard;
+  /**
+   * Direct close (decision Q2, Phase 3.2). `directClose` is true only when the
+   * workspace enabled it AND its motion closes by checkout; only then is the
+   * approved list shown to the model.
+   */
+  commerce?: { authority: CommercialAuthority; directClose: boolean };
 };
 
 // ----------------------------------------------------------------- loaders
@@ -258,56 +322,240 @@ async function loadConversation(
   };
 }
 
-async function loadQualification(
-  businessId: string,
-  lead: LeadRecord,
-): Promise<QualificationContext> {
-  const admin = createAdminClient();
-  const [questions, answers] = await Promise.all([
-    loadQuestions(businessId),
-    admin
-      .from("qualification_answers")
-      .select("question_id, answer_value, answer_text")
-      .eq("business_id", businessId)
-      .eq("lead_id", lead.id),
-  ]);
+async function loadQualification(input: {
+  businessId: string;
+  lead: LeadRecord;
+  salesProfile: SalesProfile;
+  serviceName: string | null;
+  currentQuestionId: string | null;
+}): Promise<QualificationContext> {
+  const questions = await loadQuestions(input.businessId);
+  const selection = await loadAdaptiveSelection({
+    businessId: input.businessId,
+    lead: input.lead,
+    questions,
+    salesProfile: input.salesProfile,
+    serviceName: input.serviceName,
+    currentQuestionId: input.currentQuestionId,
+  });
 
-  const answeredIds = new Set(
-    (answers.data ?? [])
-      .filter((row) => row.answer_value !== null)
-      .map((row) => row.question_id),
-  );
-
-  const byId = new Map(questions.map((question) => [question.id, question]));
-  const applicable = questions.filter(
-    (question) => question.serviceId === null || question.serviceId === lead.service_id,
-  );
+  const knownIds = new Set(selection.known.map((entry) => entry.questionId));
+  const current = input.currentQuestionId
+    ? (questions.find((question) => question.id === input.currentQuestionId) ?? null)
+    : null;
 
   return {
-    nextQuestion: nextQuestion(questions, answeredIds, lead.service_id),
-    answered: (answers.data ?? [])
-      .filter((row) => row.answer_value !== null)
-      .map((row) => ({
-        question: byId.get(row.question_id)?.questionText ?? row.question_id,
-        value: row.answer_value as string,
-      })),
-    outstanding: applicable.filter((question) => !answeredIds.has(question.id)).length,
+    nextQuestion: selection.question,
+    // Only while it is unanswered and still applies to this lead.
+    currentQuestion:
+      current &&
+      !knownIds.has(current.id) &&
+      (current.serviceId === null || current.serviceId === input.lead.service_id)
+        ? current
+        : null,
+    stopReason: selection.stopReason,
+    thresholdMet: selection.thresholdMet,
+    known: selection.known,
+    inferred: selection.inferred,
+    answered: selection.known
+      .filter((entry) => entry.source === "ANSWER")
+      .map((entry) => ({ question: entry.questionText, value: entry.value })),
+    outstanding: selection.ranked.length,
   };
+}
+
+/**
+ * Re-reads the qualification picture after this turn recorded an answer, so
+ * the model is given the question that comes AFTER the one just answered.
+ */
+export async function refreshQualification(
+  context: AgentContext,
+  lead: LeadRecord,
+): Promise<QualificationContext> {
+  return loadQualification({
+    businessId: context.business.businessId,
+    lead,
+    salesProfile: context.sales,
+    serviceName: context.workspace.services.find((service) => service.id === lead.service_id)?.name ?? null,
+    currentQuestionId: context.conversation.currentQuestionId,
+  });
+}
+
+// ------------------------------------------------------- voice and offer
+
+type VoiceRows = {
+  profile: {
+    archetype_key: string | null;
+    sales_motions: unknown;
+    outreach_tone: string | null;
+    outreach_value_proposition: string | null;
+    outreach_key_messages: string | null;
+    outreach_proof_points: string | null;
+    outreach_avoid: string | null;
+    outreach_call_to_action: string | null;
+    outreach_claim_restrictions: string | null;
+  } | null;
+  playbook: { tone: string | null; prohibited_claims: unknown } | null;
+};
+
+/**
+ * The profile and default playbook rows the voice is built from. A failed
+ * read is logged and treated as "nothing configured": the claim validators
+ * still bind, so a missing voice degrades wording, never safety.
+ */
+async function readVoiceRows(businessId: string): Promise<VoiceRows> {
+  const admin = createAdminClient();
+  const [profile, playbook] = await Promise.all([
+    admin
+      .from("business_profiles")
+      // archetype_key / sales_motions (0121) post-date the generated types.
+      .select(
+        ("archetype_key, sales_motions, outreach_tone, outreach_value_proposition, outreach_key_messages, " +
+          "outreach_proof_points, outreach_avoid, outreach_call_to_action, outreach_claim_restrictions") as "business_id",
+      )
+      .eq("business_id", businessId)
+      .maybeSingle(),
+    admin
+      .from("business_playbooks")
+      .select("tone, prohibited_claims")
+      .eq("business_id", businessId)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  logWriteError(profile, "business_profiles.voice read", { businessId });
+  logWriteError(playbook, "business_playbooks.voice read", { businessId });
+  return {
+    profile: (profile.data ?? null) as unknown as VoiceRows["profile"],
+    playbook: playbook.data ?? null,
+  };
+}
+
+function offerInput(
+  business: BusinessContext,
+  rows: VoiceRows,
+  services: ServiceFact[],
+  facts: MemoryFactRow[],
+): OfferCardInput {
+  return {
+    businessName: business.name,
+    businessDescription: business.aiSettings.businessDescription,
+    aiTone: business.aiSettings.tone,
+    replyLength: business.aiSettings.replyLength,
+    outreach: {
+      tone: rows.profile?.outreach_tone ?? null,
+      valueProposition: rows.profile?.outreach_value_proposition ?? null,
+      keyMessages: rows.profile?.outreach_key_messages ?? null,
+      proofPoints: rows.profile?.outreach_proof_points ?? null,
+      avoid: rows.profile?.outreach_avoid ?? null,
+      callToAction: rows.profile?.outreach_call_to_action ?? null,
+      claimRestrictions: rows.profile?.outreach_claim_restrictions ?? null,
+    },
+    playbook: rows.playbook
+      ? { tone: rows.playbook.tone, prohibitedClaims: rows.playbook.prohibited_claims }
+      : null,
+    signature: business.messageSignature,
+    services: services.map((service) => ({
+      name: service.name,
+      description: service.description,
+      publicPriceText: service.publicPriceText,
+    })),
+    facts,
+    now: new Date(),
+  };
+}
+
+async function loadVoiceAndOffer(
+  business: BusinessContext,
+  services: ServiceFact[],
+): Promise<{ offer: OfferCard; sales: SalesContext }> {
+  const admin = createAdminClient();
+  const [rows, facts, preferences] = await Promise.all([
+    readVoiceRows(business.businessId),
+    admin
+      .from("business_memory_facts")
+      .select("fact_key, value_json, source_type, confidence, verified_by_user, locked, valid_from, valid_to")
+      .eq("business_id", business.businessId)
+      .order("fact_key", { ascending: true }),
+    loadSellingPreferencesOrDefault(business.businessId),
+  ]);
+  logWriteError(facts, "business_memory_facts.offer read", { businessId: business.businessId });
+
+  const factRows: MemoryFactRow[] = (facts.data ?? []).map((row) => ({
+    key: row.fact_key,
+    value: row.value_json,
+    sourceType: row.source_type,
+    confidence: row.confidence === null ? null : Number(row.confidence),
+    verifiedByUser: row.verified_by_user,
+    locked: row.locked,
+    validFrom: row.valid_from,
+    validTo: row.valid_to,
+  }));
+
+  return {
+    offer: buildOfferCard({
+      ...offerInput(business, rows, services, factRows),
+      // Tone examples only, labelled as such inside the card's budget.
+      examples: { good: preferences.goodExamples, bad: preferences.badExamples },
+    }),
+    sales: {
+      archetypeKey: rows.profile?.archetype_key ?? null,
+      motion: primaryMotion(rows.profile?.sales_motions),
+      preferences,
+    },
+  };
+}
+
+/**
+ * Just the lintable workspace rules, for the non-agent paths that restyle or
+ * personalise copy with AI (restyleMessage, reactivation copy).
+ */
+export async function loadStyleRules(
+  business: BusinessContext,
+): Promise<{ forbiddenPhrases: string[]; prohibitedClaims: string[] }> {
+  const rows = await readVoiceRows(business.businessId);
+  const voice = buildVoiceProfile(offerInput(business, rows, [], []));
+  return { forbiddenPhrases: voice.forbiddenPhrases, prohibitedClaims: voice.prohibitedClaims };
+}
+
+/**
+ * How the prompt describes the lead's live booking. A `pending` request must
+ * never be presented as booked (B10, "never say a meeting is booked until the
+ * provider confirms it").
+ */
+export function bookingContextLine(liveBooking: BookingContext["liveBooking"]): string {
+  if (!liveBooking) return "This lead has no booking.";
+  const when = liveBooking.startsAt ?? "an unspecified date";
+  if (liveBooking.status === "pending") {
+    return (
+      `This lead has REQUESTED ${when}. It is NOT booked: it is awaiting confirmation ` +
+      "from the team. Never say it is booked or confirmed; say it has been requested " +
+      "and the team will confirm it. Do not offer or book another time unless the lead asks to change it."
+    );
+  }
+  return `This lead already has a booking on ${when}.`;
 }
 
 async function loadBooking(
   business: BusinessContext,
   leadId: string,
+  serviceId: string | null,
 ): Promise<BookingContext> {
   const admin = createAdminClient();
 
-  const [booking, settings, queryable] = await Promise.all([
+  const [booking, settings, queryable, meetingType] = await Promise.all([
     admin
       .from("bookings")
       .select("id, starts_at, status")
       .eq("business_id", business.businessId)
       .eq("lead_id", leadId)
-      .eq("status", "scheduled")
+      // A `pending` request (B10) holds its slot like a booking, so the agent
+      // must not try to book the lead again -- but it is NOT a booking, and
+      // the prompt says so. A confirmed booking wins when both exist
+      // ("scheduled" sorts after "pending", hence descending).
+      .in("status", ["scheduled", "pending"])
+      .order("status", { ascending: false })
       .order("starts_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
@@ -317,7 +565,16 @@ async function loadBooking(
       .eq("business_id", business.businessId)
       .maybeSingle(),
     availabilityIsQueryable(business.businessId, business.bookingMode),
+    meetingTypeForLead(business.businessId, serviceId),
   ]);
+
+  const shape = bookingShape(
+    {
+      durationMinutes: settings.data?.appointment_duration_minutes ?? 60,
+      bufferMinutes: settings.data?.booking_buffer_minutes ?? 0,
+    },
+    meetingType,
+  );
 
   return {
     mode: business.bookingMode,
@@ -327,8 +584,15 @@ async function loadBooking(
       : null,
     availabilityQueryable: queryable,
     businessHours: parseBusinessHours(settings.data?.business_hours) as WeekHours,
-    appointmentDurationMinutes: settings.data?.appointment_duration_minutes ?? 60,
-    bookingBufferMinutes: settings.data?.booking_buffer_minutes ?? 0,
+    appointmentDurationMinutes: shape.durationMinutes,
+    bookingBufferMinutes: shape.bufferMinutes,
+    meetingType: meetingType
+      ? {
+          id: meetingType.id,
+          name: meetingType.name,
+          calendarIntegrationId: meetingType.calendarIntegrationId,
+        }
+      : null,
   };
 }
 
@@ -349,14 +613,28 @@ export async function assembleContext(input: {
 
   if (!business || !lead || lead.business_id !== input.businessId) return null;
 
-  const [services, conversation, qualification, booking] = await Promise.all([
+  const [services, conversation, booking] = await Promise.all([
     loadServices(input.businessId),
     loadConversation(input.businessId, input.conversationId, input.channel),
-    loadQualification(input.businessId, lead),
-    loadBooking(business, lead.id),
+    loadBooking(business, lead.id, lead.service_id ?? null),
   ]);
 
   const serviceName = services.find((service) => service.id === lead.service_id)?.name ?? null;
+
+  // Second stage: the question selector needs the motion (from the profile),
+  // the service name and the question asked last turn.
+  const [{ offer, sales }, authority, opportunityMemory] = await Promise.all([
+    loadVoiceAndOffer(business, services),
+    loadCommercialAuthority(input.businessId),
+    loadOpportunityMemory(input.businessId, lead.id),
+  ]);
+  const qualification = await loadQualification({
+    businessId: input.businessId,
+    lead,
+    salesProfile: sales,
+    serviceName,
+    currentQuestionId: conversation.currentQuestionId,
+  });
 
   // Where a reply would go. On Messenger and Instagram the address belongs to
   // the thread, not to the lead: the same person can hold a Messenger thread
@@ -453,7 +731,31 @@ export async function assembleContext(input: {
     qualification,
     booking,
     lifecycle,
+    sales,
+    opportunityMemory,
+    offer,
+    commerce: {
+      authority,
+      directClose: authority.enabled && motionAllowsDirectClose(sales.motion),
+    },
   };
+}
+
+/**
+ * The workspace's commercial authority (0125). A missing row, a read failure
+ * or a malformed row all mean "disabled": the safe default for money.
+ */
+async function loadCommercialAuthority(businessId: string): Promise<CommercialAuthority> {
+  const { data, error } = await (createAdminClient() as unknown as SupabaseClient)
+    .from("commercial_authority")
+    .select("enabled, approved_checkout_links, max_discount_percent, requires_human_above_value_minor")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (error) {
+    logWriteError({ error }, "agent: read commercial authority", { businessId });
+    return DISABLED_AUTHORITY;
+  }
+  return parseAuthority(data);
 }
 
 // ------------------------------------------------------------ prompt block
@@ -464,42 +766,52 @@ export async function assembleContext(input: {
  * wrapped as untrusted data. Nothing from a lead is ever concatenated into a
  * labelled policy field.
  */
+export function renderStableBlock(context: AgentContext): string {
+  const { workspace } = context;
+
+  const business = [
+    "BUSINESS CONTEXT",
+    workspace.allowedPostcodePrefixes.length
+      ? `Configured service-area postcode prefixes: ${workspace.allowedPostcodePrefixes.join(", ")}`
+      : "Service area: not configured as postcodes. Do not promise coverage.",
+    workspace.quietHoursLabel ? `Quiet hours: ${workspace.quietHoursLabel}` : null,
+    workspace.answerServiceQuestions
+      ? null
+      : "This workspace does not want general service questions answered. Hand those to a person.",
+    workspace.handoverInstruction ? `Handover rule: ${workspace.handoverInstruction}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // The offer card carries the name, description, services, published prices,
+  // voice and the never-say rules; see offer-card.ts.
+  return `${context.offer.text}\n\n${business}`;
+}
+
+/**
+ * The volatile part: the strategy for this turn, the lead, qualification,
+ * booking and the conversation. Changes every turn, so it goes last, after
+ * `renderStableBlock` (which is sent as `stableContext`).
+ */
 export function renderContextBlock(
   context: AgentContext,
-  extra: { latestMessage: string | null; confirmedSlots: string[]; correction?: string },
+  extra: {
+    latestMessage: string | null;
+    confirmedSlots: string[];
+    correction?: string;
+    /** Rendered by strategy.ts buildStrategyBlock. */
+    strategy?: string;
+  },
 ): string {
-  const { workspace, leadContext, conversation, qualification, booking } = context;
-
-  const priceLines = workspace.services
-    .filter((service) => service.publicPriceText)
-    .map((service) => `- ${service.name}: ${service.publicPriceText}`);
+  const { leadContext, conversation, qualification, booking } = context;
 
   const blocks: string[] = [];
 
-  blocks.push(
-    [
-      "BUSINESS CONTEXT",
-      `Name: ${workspace.businessName}`,
-      workspace.businessDescription ? `About: ${workspace.businessDescription}` : null,
-      workspace.services.length
-        ? `Services offered: ${workspace.services.map((service) => service.name).join(", ")}`
-        : "Services offered: none configured",
-      priceLines.length
-        ? `Published prices you MAY quote:\n${priceLines.join("\n")}`
-        : "Published prices: none. You may not state any price.",
-      workspace.allowedPostcodePrefixes.length
-        ? `Configured service-area postcode prefixes: ${workspace.allowedPostcodePrefixes.join(", ")}`
-        : "Service area: not configured as postcodes. Do not promise coverage.",
-      workspace.quietHoursLabel ? `Quiet hours: ${workspace.quietHoursLabel}` : null,
-      `Tone: ${workspace.tone}. Reply length: ${workspace.replyLength}.`,
-      workspace.answerServiceQuestions
-        ? null
-        : "This workspace does not want general service questions answered. Hand those to a person.",
-      workspace.handoverInstruction ? `Handover rule: ${workspace.handoverInstruction}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
+  if (extra.strategy) blocks.push(extra.strategy);
+
+  // Compact opportunity memory instead of more raw history (§48).
+  const memoryBlock = renderOpportunityMemory(context.opportunityMemory ?? null);
+  if (memoryBlock) blocks.push(memoryBlock);
 
   blocks.push(
     [
@@ -512,6 +824,7 @@ export function renderContextBlock(
     ].join("\n"),
   );
 
+  const inferred = qualification.known.filter((entry) => entry.inferred);
   blocks.push(
     [
       "QUALIFICATION STATE",
@@ -520,15 +833,15 @@ export function renderContextBlock(
             .map((answer) => `${answer.question} = ${answer.value}`)
             .join("; ")}`
         : "Nothing answered yet.",
-      qualification.nextQuestion
-        ? `Next unresolved question to ask: ${qualification.nextQuestion.questionText}` +
-          (qualification.nextQuestion.options.length
-            ? ` (acceptable answers: ${qualification.nextQuestion.options
-                .map((option) => option.label)
-                .join(", ")})`
-            : "")
-        : "No further questions are configured.",
-    ].join("\n"),
+      inferred.length
+        ? `Inferred from the lead's details, not asked (never ask these; do not present them as something the lead told you): ${inferred
+            .map((entry) => `${entry.questionText} = ${entry.value}`)
+            .join("; ")}`
+        : null,
+      // The next question itself is in the strategy block.
+    ]
+      .filter(Boolean)
+      .join("\n"),
   );
 
   blocks.push(
@@ -538,14 +851,30 @@ export function renderContextBlock(
       booking.bookingUrl
         ? `Booking link you MAY send verbatim: ${booking.bookingUrl}`
         : "No booking link is configured.",
-      booking.liveBooking
-        ? `This lead already has a booking on ${booking.liveBooking.startsAt ?? "an unspecified date"}.`
-        : "This lead has no booking.",
+      bookingContextLine(booking.liveBooking),
       extra.confirmedSlots.length
         ? `CONFIRMED SLOTS you may offer: ${extra.confirmedSlots.join(", ")}`
         : "CONFIRMED SLOTS: none. You may not name any time.",
     ].join("\n"),
   );
+
+  if (context.commerce?.directClose) {
+    const { authority } = context.commerce;
+    blocks.push(
+      [
+        "DIRECT CLOSE (approved checkout links)",
+        "If the lead is ready to buy one of these, propose PROPOSE_CHECKOUT with its checkout_link_id. " +
+          "Do not write the URL; the system appends it. If you state the price, use the price text exactly. " +
+          "Never say anything has been bought, ordered or paid.",
+        ...authority.approved_checkout_links.map(
+          (link) => `- ${link.id}: ${link.label} (${link.product}) - ${link.price_text}`,
+        ),
+        authority.max_discount_percent > 0
+          ? `You may offer at most ${authority.max_discount_percent}% off, only if the lead asks.`
+          : "Never offer a discount.",
+      ].join("\n"),
+    );
+  }
 
   if (conversation.summary) {
     blocks.push(`CONVERSATION SUMMARY (earlier history)\n${conversation.summary}`);

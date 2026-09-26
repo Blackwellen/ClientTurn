@@ -46,6 +46,7 @@ export function LeadQuickFilters({
   if (view === "table") {
     return (
       <div
+        data-tour="leads-quick-filters"
         role="group"
         aria-label="Quick filters"
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
@@ -65,7 +66,8 @@ export function LeadQuickFilters({
 
   return (
     <div
-      role="group"
+      data-tour="leads-quick-filters"
+        role="group"
       aria-label="Quick filters"
       className={cn(
         "inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-xl",

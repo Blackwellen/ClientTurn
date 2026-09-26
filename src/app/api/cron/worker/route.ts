@@ -7,6 +7,7 @@ import { handleJob } from "@/lib/jobs/registry";
 import "@/lib/jobs/register";
 import { scheduleEmailPolls } from "@/lib/jobs/handlers/email-poll";
 import { scheduleAgents } from "@/lib/agents/scheduler";
+import { scheduleCrmPullSweep } from "@/lib/jobs/handlers/crm-pull";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -76,6 +77,9 @@ export async function GET(request: Request) {
   await scheduleAgents();
   await scheduleOutreachTick();
   await scheduleSocialTick();
+  // Opt-in CRM pull (§29): one sweep per fifteen-minute bucket, which queues a
+  // pull for each integration whose pull is switched on.
+  await scheduleCrmPullSweep();
 
   const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
   let claimed = 0;

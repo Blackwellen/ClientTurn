@@ -2,7 +2,8 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getEntitlements, getPeriodUsage } from "@/lib/billing/entitlements";
-import { PLANS, TRIAL_ENTITLEMENTS, type PlanId } from "@/lib/billing/plans";
+import { PLANS, TRIAL, allowancesFor, type PlanId } from "@/lib/billing/plans";
+import { getPendingPlanChange } from "@/lib/billing/checkout";
 import { createDownloadUrl } from "@/lib/storage/r2";
 import {
   parseBusinessHours,
@@ -58,7 +59,7 @@ export async function getMessagingSettings(
     supabase
       .from("business_settings")
       .select(
-        "default_channel, fallback_channel, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, message_signature, opt_out_wording, service_area_description, business_hours",
+        "default_channel, fallback_channel, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, message_signature, opt_out_wording, service_area_description, business_hours, slack_notify_new_lead, slack_notify_handover, slack_notify_booking, slack_notify_warm_prospect, slack_digest_enabled",
       )
       .eq("business_id", businessId)
       .maybeSingle(),
@@ -90,7 +91,20 @@ export async function getMessagingSettings(
       slackConfig && typeof slackConfig.channel_id === "string"
         ? slackConfig.channel_id
         : null,
+    slackNotifyNewLead: data?.slack_notify_new_lead ?? true,
+    slackNotifyHandover: data?.slack_notify_handover ?? true,
+    slackNotifyBooking: data?.slack_notify_booking ?? true,
+    slackNotifyWarmProspect: data?.slack_notify_warm_prospect ?? true,
+    slackDigestEnabled: data?.slack_digest_enabled ?? false,
   };
+}
+
+function calendlyEventTypeOf(rows: { provider_type: string; config: unknown }[]): string | null {
+  const config = rows.find((row) => row.provider_type === "calendly")?.config as
+    | { event_type_uri?: unknown }
+    | null
+    | undefined;
+  return typeof config?.event_type_uri === "string" ? config.event_type_uri : null;
 }
 
 export async function getBookingSettings(
@@ -107,7 +121,7 @@ export async function getBookingSettings(
       .maybeSingle(),
     supabase
       .from("integrations")
-      .select("provider_type, status")
+      .select("provider_type, status, config")
       .eq("business_id", businessId)
       .in("provider_type", ["calendly", "google_calendar"]),
   ]);
@@ -126,6 +140,7 @@ export async function getBookingSettings(
     bookingBufferMinutes: settingsResult.data?.booking_buffer_minutes ?? 0,
     calendlyConnected: connected.has("calendly"),
     googleCalendarConnected: connected.has("google_calendar"),
+    calendlyEventTypeUri: calendlyEventTypeOf(integrationsResult.data ?? []),
   };
 }
 
@@ -207,7 +222,7 @@ export async function listServices(businessId: string): Promise<ServiceRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("services")
-    .select("id, name, description, average_value, active, position")
+    .select("id, name, description, average_value, active, position, pricing_visibility, public_price_text")
     .eq("business_id", businessId)
     .order("position", { ascending: true })
     .order("created_at", { ascending: true });
@@ -219,6 +234,8 @@ export async function listServices(businessId: string): Promise<ServiceRow[]> {
     averageValue: row.average_value === null ? null : Number(row.average_value),
     active: row.active,
     position: row.position,
+    pricingVisibility: (row.pricing_visibility ?? "QUOTE_REQUIRED") as ServiceRow["pricingVisibility"],
+    publicPriceText: row.public_price_text ?? null,
   }));
 }
 
@@ -241,15 +258,50 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
       .in("status", ["active", "invited"]),
   ]);
 
-  const usage = await getPeriodUsage(businessId, entitlements.periodStart);
+  const since = entitlements.periodStart ?? new Date(Date.now() - 30 * 864e5).toISOString();
+  const [usage, segmentsResult, pendingPlanChange] = await Promise.all([
+    getPeriodUsage(businessId, entitlements.periodStart),
+    // The SMS allowance is counted in segments (`sms_outbound_segment`), the
+    // same meter limits-service enforces against -- not in messages sent.
+    admin.rpc("sum_usage_events", {
+      p_business_id: businessId,
+      p_metric: "sms_outbound_segment",
+      p_since: since,
+    }),
+    getPendingPlanChange(businessId),
+  ]);
+  if (segmentsResult.error) {
+    console.error("[billing view] sms segment usage read failed", {
+      businessId,
+      message: segmentsResult.error.message,
+    });
+  }
   const subscription = subscriptionResult.data;
+  // payment_method_* (0129) post-date the generated types; read separately so
+  // a database without the migration still renders Billing.
+  const cardResult = await (admin as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("subscriptions")
+    .select("payment_method_brand, payment_method_last4")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  const card = (cardResult.error ? null : cardResult.data) as
+    | { payment_method_brand: string | null; payment_method_last4: string | null }
+    | null;
 
-  const planId = entitlements.plan as PlanId;
+  // During a trial the page shows the tier chosen at checkout (what will be
+  // charged); the limits shown are the trial's, which are what apply.
+  const shownPlan = entitlements.state === "TRIALING" ? entitlements.selectedPlan : entitlements.plan;
+  const planId = shownPlan as PlanId;
   const definition = planId === "trial" ? null : (PLANS[planId] ?? null);
 
   return {
-    plan: entitlements.plan,
+    plan: shownPlan,
+    state: entitlements.state,
     status: entitlements.status,
+    paymentMethod:
+      card?.payment_method_last4
+        ? { brand: card.payment_method_brand ?? "card", last4: card.payment_method_last4 }
+        : null,
     billingInterval: subscription?.billing_interval ?? null,
     currentPeriodStart: subscription?.current_period_start ?? null,
     currentPeriodEnd: subscription?.current_period_end ?? null,
@@ -260,13 +312,16 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     userLimit: entitlements.userLimit,
     seatsUsed: seatResult.count ?? 0,
     leadsUsed: usage.leads,
-    messagesUsed: usage.messages,
-    messageAllowance:
-      definition?.smsSegmentAllowance ?? TRIAL_ENTITLEMENTS.smsSegmentAllowance,
+    messagesSent: usage.messages,
+    // Null when the read failed: the card says so rather than showing 0.
+    smsSegmentsUsed: segmentsResult.error ? null : Number(segmentsResult.data ?? 0),
+    smsSegmentAllowance: allowancesFor(entitlements.plan).smsSegmentAllowance,
+    pendingPlanChange,
     monthlyPrice: definition?.monthlyPrice ?? null,
+    yearlyPrice: definition?.yearlyPrice ?? null,
     planFeatures: definition?.features ?? [
-      "14-day trial",
-      `${TRIAL_ENTITLEMENTS.leadLimit} leads`,
+      `${TRIAL.days}-day trial`,
+      `${TRIAL.leadLimit} leads`,
       "New-lead follow-up and qualification",
     ],
   };

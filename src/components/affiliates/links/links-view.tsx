@@ -29,6 +29,7 @@ import { ALLOWED_DESTINATIONS } from "@/lib/affiliates/types";
 import { formatPercent } from "@/lib/affiliates/programme";
 import type { LinkMetrics } from "@/lib/affiliates/analytics";
 import type { PortalPromoCode, PromoOffer } from "@/lib/affiliates/portal";
+import { Select } from "@/components/ui/form";
 
 /**
  * The links workspace (V4 §31).
@@ -140,18 +141,18 @@ export function LinksView({
                 >
                   Select link
                 </label>
-                <select
+                <Select
                   id="qr-link"
                   value={selected?.linkId ?? ""}
                   onChange={(event) => setSelectedLinkId(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-[9px] border border-line bg-surface px-3 text-[13.5px] text-content"
+                  className="mt-1 h-10 w-full rounded-[9px] text-[13.5px]"
                 >
                   {links.map((link) => (
                     <option key={link.linkId} value={link.linkId}>
                       {link.label}
                     </option>
                   ))}
-                </select>
+                </Select>
 
                 {selected && (
                   <div className="mt-3 flex flex-wrap items-start gap-4">
@@ -220,21 +221,21 @@ export function LinksView({
                 className="h-9 w-[190px] rounded-[9px] border border-line bg-surface pl-8 pr-3 text-[13px] text-content placeholder:text-content-subtle"
               />
             </div>
-            <select
+            <Select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
               aria-label="Filter by status"
-              className="h-9 rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content"
+              className="h-9 rounded-[9px] text-[13px]"
             >
               <option value="all">All status</option>
               <option value="converting">Converting</option>
               <option value="idle">No clicks yet</option>
-            </select>
-            <select
+            </Select>
+            <Select
               value={campaignFilter}
               onChange={(event) => setCampaignFilter(event.target.value)}
               aria-label="Filter by campaign"
-              className="h-9 rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content"
+              className="h-9 rounded-[9px] text-[13px]"
             >
               <option value="all">All campaigns</option>
               {campaigns.map((campaign) => (
@@ -242,7 +243,7 @@ export function LinksView({
                   {campaign}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         }
       >
@@ -368,18 +369,18 @@ function LinkGenerator({
     >
       <div className="space-y-3 px-4 pb-4">
         <Field label="Destination page" htmlFor="destination">
-          <select
+          <Select
             id="destination"
             value={destination}
             onChange={(event) => setDestination(event.target.value)}
-            className="h-10 w-full rounded-[9px] border border-line bg-surface px-3 text-[13.5px] text-content"
+            className="h-10 w-full rounded-[9px] text-[13.5px]"
           >
             {ALLOWED_DESTINATIONS.map((entry) => (
               <option key={entry.path} value={entry.path}>
                 {entry.label} (clientturn.com{entry.path === "/" ? "" : entry.path})
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field
@@ -492,11 +493,11 @@ function UtmBuilder({
             />
           </Field>
           <Field label="Medium" htmlFor="utm-medium">
-            <select
+            <Select
               id="utm-medium"
               value={medium}
               onChange={(event) => setMedium(event.target.value)}
-              className="h-9 w-full rounded-[9px] border border-line bg-surface px-2 text-[13px] text-content"
+              className="h-9 w-full rounded-[9px] text-[13px]"
             >
               {["social", "email", "referral", "cpc", "content", "video"].map(
                 (option) => (
@@ -505,7 +506,7 @@ function UtmBuilder({
                   </option>
                 ),
               )}
-            </select>
+            </Select>
           </Field>
           <Field label="Campaign" htmlFor="utm-campaign">
             <input
@@ -614,18 +615,18 @@ function PromoCodes({
           >
             Choose an approved offer
           </label>
-          <select
+          <Select
             id="promo-offer"
             value={offerId}
             onChange={(event) => setOfferId(event.target.value)}
-            className="mt-1 h-9 w-full rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content"
+            className="mt-1 h-9 w-full rounded-[9px] text-[13px]"
           >
             {offers.map((offer) => (
               <option key={offer.id} value={offer.id}>
                 {offer.name} — {offer.description}
               </option>
             ))}
-          </select>
+          </Select>
           <p className="mt-2 text-[11.5px] leading-relaxed text-content-muted">
             The discount comes from the offer. Your code is issued with your own
             prefix so it is always attributable to you.

@@ -71,7 +71,7 @@ export function HeroVisual() {
                 <CtaLink placement="hero_primary" size="lg">Start your free trial <ArrowUpRight size={17} aria-hidden /></CtaLink>
                 <Link href="#how-it-works" className="ct-text-link">See how it works <ArrowDown size={15} aria-hidden /></Link>
               </div>
-              <p className="ct-trial-note">14 days free <span>·</span> No card required <span>·</span> Built for UK trades</p>
+              <p className="ct-trial-note">14 days free <span>·</span> Nothing charged for 14 days <span>·</span> Built for UK trades</p>
             </div>
             <div className="ct-chapter ct-chapter-1">
               <p className="ct-eyebrow">01 / START THE CONVERSATION</p>

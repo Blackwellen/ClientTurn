@@ -148,12 +148,17 @@ function SignalRow({ signal, canManage }: { signal: Signal; canManage: boolean }
             size="sm"
             variant="secondary"
             onClick={launch}
-            disabled={pending || !active || launched}
+            // A signal with no configured source would run and find nothing.
+            disabled={pending || !active || launched || Boolean(signal.needs)}
           >
             <Play aria-hidden className="size-3.5" />
             {launched ? "Queued" : "Launch now"}
           </Button>
         </div>
+      )}
+
+      {signal.needs && (
+        <p className="w-full text-[11.5px] text-warning-700">{signal.needs}</p>
       )}
 
       {(error || health.tone !== "healthy") && (

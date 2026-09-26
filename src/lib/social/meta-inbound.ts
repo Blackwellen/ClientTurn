@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { metaSendingAccount } from "@/lib/messaging/meta";
+import { ingestLead } from "@/lib/ingest/service";
 import { platformIdFrom, type InboundMessage, type MetaChannel } from "@/lib/messaging/types";
 
 /**
@@ -216,41 +217,32 @@ export async function resolveSocialThread(
       : null;
   }
 
-  const { data: lead, error } = await admin
-    .from("leads")
-    .insert({
-      business_id: businessId,
-      // The platform id, not the display name: this is what makes a
-      // redelivered webhook collide on the unique index rather than create a
-      // second lead.
-      external_id: `meta:${channel}:${senderId}`,
-      first_name: firstName ?? prospect?.first_name ?? null,
-      last_name: lastName ?? prospect?.last_name ?? null,
-      status: "NEW",
-      // No `source` column is set: `leads.source_id` is a foreign key to a
-      // configured lead source, and inventing one for an inbound DM would
-      // create a source row nobody configured. Where the enquiry came from is
-      // recorded on the conversation's channel and in `external_id`, both of
-      // which are exact.
-    })
-    .select("id")
-    .single();
+  // The one intake path (design 03 §1). A DM carries no email or phone, so
+  // the thread address is the identity: it is the provider record id (and the
+  // legacy external id), which is what makes a redelivered webhook a
+  // DUPLICATE of the first delivery rather than a second lead. RECORD_ONLY:
+  // the conversation flow that received this message works it from here.
+  const result = await ingestLead(
+    {
+      businessId,
+      source: {
+        type: "SOCIAL_DM",
+        provider: "meta_dm",
+        providerRecordId: `${channel}:${senderId}`,
+        caller: { type: "SYSTEM", id: "meta_inbound" },
+      },
+      person: {
+        firstName: firstName ?? prospect?.first_name ?? undefined,
+        lastName: lastName ?? prospect?.last_name ?? undefined,
+      },
+    },
+    {
+      externalId: `meta:${channel}:${senderId}`,
+      permission: { detail: `Sent a ${channel} direct message to the business` },
+    },
+  );
 
-  let leadId = lead?.id ?? null;
-
-  if (error?.code === "23505") {
-    // A concurrent delivery won the race. Its lead is the right one.
-    const { data: raced } = await admin
-      .from("leads")
-      .select("id")
-      .eq("business_id", businessId)
-      .eq("external_id", `meta:${channel}:${senderId}`)
-      .maybeSingle();
-    leadId = raced?.id ?? null;
-  } else if (error) {
-    throw error;
-  }
-
+  const leadId = result.leadId;
   if (!leadId) return null;
 
   if (prospect) {
@@ -271,7 +263,12 @@ export async function resolveSocialThread(
 
   if (!conversationId) return null;
 
-  return { businessId, leadId, conversationId, created: true };
+  return {
+    businessId,
+    leadId,
+    conversationId,
+    created: result.outcome !== "DUPLICATE" && result.outcome !== "MERGED",
+  };
 }
 
 async function createThread(input: {

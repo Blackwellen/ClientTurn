@@ -1,4 +1,5 @@
 import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
 import { getLiveAccessToken, type OAuthConfig } from "@/lib/integrations/oauth";
@@ -34,6 +35,44 @@ registerOAuthProvider("slack", {
   },
 });
 
+/**
+ * Verifies Slack's `v0=` signature on an Interactivity payload
+ * (https://docs.slack.dev/authentication/verifying-requests-from-slack).
+ * One signing secret for the whole platform, not per-workspace: this is
+ * ClientTurn's own Slack app, installed into many customer workspaces via
+ * OAuth — every customer's interactive click arrives at the same endpoint,
+ * signed with the same app-level secret, same as Meta's app-secret HMAC.
+ *
+ * The 5-minute timestamp tolerance is Slack's own documented replay window;
+ * `verifyMetaHmac` next to this has no equivalent because Meta's scheme
+ * carries no timestamp at all.
+ */
+export function verifySlackSignature(params: {
+  signature: string | null;
+  timestamp: string | null;
+  rawBody: string;
+}): boolean {
+  const signingSecret = serverEnv.slack.signingSecret;
+  if (!signingSecret) return false;
+
+  const { signature, timestamp, rawBody } = params;
+  if (!signature?.startsWith("v0=") || !timestamp) return false;
+
+  const providedHex = signature.slice("v0=".length);
+  if (!/^[0-9a-f]+$/i.test(providedHex) || providedHex.length % 2 !== 0) return false;
+
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 5 * 60) return false;
+
+  const expected = createHmac("sha256", signingSecret)
+    .update(`v0:${timestamp}:${rawBody}`, "utf8")
+    .digest();
+  const received = Buffer.from(providedHex, "hex");
+
+  if (received.length !== expected.length) return false;
+  return timingSafeEqual(received, expected);
+}
+
 export class SlackChannelNotConfiguredError extends Error {
   constructor() {
     super("Slack is connected but no channel is set.");
@@ -44,9 +83,12 @@ export class SlackChannelNotConfiguredError extends Error {
 export async function postSlackMessage({
   integrationId,
   text,
+  blocks,
 }: {
   integrationId: string;
   text: string;
+  /** Block Kit blocks — e.g. interactive buttons. `text` remains the fallback/notification copy. */
+  blocks?: unknown[];
 }): Promise<void> {
   const config = getConfig();
   if (!config) throw new Error("Slack is not configured on this platform.");
@@ -75,7 +117,7 @@ export async function postSlackMessage({
       authorization: `Bearer ${accessToken}`,
       "content-type": "application/json; charset=utf-8",
     },
-    body: JSON.stringify({ channel: channelId, text }),
+    body: JSON.stringify({ channel: channelId, text, ...(blocks ? { blocks } : {}) }),
   });
 
   const json = (await response.json().catch(() => ({}))) as {

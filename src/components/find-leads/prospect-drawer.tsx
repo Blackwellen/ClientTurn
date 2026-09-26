@@ -31,6 +31,8 @@ import { cn } from "@/lib/cn";
 import {
   approveProspectAction,
   promoteProspectToLeadAction,
+  PROMOTION_RELATIONSHIP_CHOICES,
+  type PromotionRelationshipChoice,
 } from "@/lib/find-leads/actions";
 import {
   enrichProspectContactAction,
@@ -48,6 +50,7 @@ import {
   prospectDisplayName,
   prospectStatusLabel,
   prospectStatusTone,
+  promotionBlockedReason,
   roleLabel,
   scoreFactorLabel,
   verificationLabel,
@@ -907,7 +910,10 @@ function ResearchView({ detail }: { detail: ProspectDetail }) {
 
       {detail.intentEvents.length > 0 && (
         <section className="rounded-xl border border-line bg-surface p-4 shadow-xs">
-          <h3 className="mb-2.5 text-[13px] font-semibold text-content">Intent evidence</h3>
+          <h3 className="text-[13px] font-semibold text-content">Why this lead</h3>
+          <p className="mb-2.5 mt-0.5 text-[11.5px] text-content-muted">
+            The buying signals behind this prospect: what was seen, where, and when.
+          </p>
           <ul className="space-y-2">
             {detail.intentEvents.slice(0, 8).map((event) => (
               <li
@@ -1269,6 +1275,7 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
   const { toast } = useToast();
   const [pending, startTransition] = React.useTransition();
   const [suppressOpen, setSuppressOpen] = React.useState(false);
+  const [promoteOpen, setPromoteOpen] = React.useState(false);
 
   const prospect = detail.prospect;
   const eligible = prospect.outreach_eligibility === "ELIGIBLE";
@@ -1307,13 +1314,17 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
         ? "Contactability has not been confirmed for this prospect"
         : undefined;
 
-  const promoteReason = promoted
-    ? "This prospect is already a lead"
-    : suppressed
-      ? "A suppressed prospect cannot be promoted"
-      : !engaged
-        ? "Promote once the prospect has replied or you have qualified them yourself"
-        : undefined;
+  // The same rule the database applies, so the button never offers a
+  // promotion `promote_reviewed_prospect` would refuse.
+  const promoteReason =
+    promotionBlockedReason({
+      promotedToLeadId: prospect.promoted_to_lead_id,
+      outreachEligibility: prospect.outreach_eligibility,
+      status: prospect.status,
+      repliedAt: prospect.replied_at,
+      sourceRunId: prospect.source_run_id,
+      hasInboundMessage: detail.messages.some((m) => m.direction === "inbound"),
+    }) ?? undefined;
 
   return (
     <>
@@ -1333,14 +1344,21 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
           size="sm"
           variant="secondary"
           loading={pending}
-          disabled={promoted || suppressed || pending}
+          disabled={Boolean(promoteReason) || pending}
           title={promoteReason}
-          onClick={() =>
-            run(
-              () => promoteProspectToLeadAction(prospect.id),
-              "Promoted to a lead. Its conversation and sourcing history travel with it.",
-            )
-          }
+          onClick={() => {
+            // A reply is an observed fact and needs no human confirmation.
+            // Anything else is this action asserting a relationship on the
+            // business's behalf, so it asks first, the same way Add Lead does.
+            if (engaged) {
+              run(
+                () => promoteProspectToLeadAction(prospect.id),
+                "Promoted to a lead. Its conversation and sourcing history travel with it.",
+              );
+            } else {
+              setPromoteOpen(true);
+            }
+          }}
         >
           {promoted ? "Already a lead" : "Promote to lead"}
         </Button>
@@ -1388,6 +1406,13 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
       <SuppressDialog
         open={suppressOpen}
         onClose={() => setSuppressOpen(false)}
+        prospectId={prospect.id}
+        name={prospectDisplayName(prospect)}
+      />
+
+      <PromoteDialog
+        open={promoteOpen}
+        onClose={() => setPromoteOpen(false)}
         prospectId={prospect.id}
         name={prospectDisplayName(prospect)}
       />
@@ -1482,6 +1507,90 @@ function SuppressDialog({
         <p className="text-[12px] text-content-muted">
           The record is kept, not deleted — deleting it would let the next search find and
           contact them again.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Confirms how the business actually knows this prospect before it becomes a
+ * Lead. Only shown when there is no recorded reply — a reply is an observed
+ * fact and promotes straight through. This mirrors the Add Lead wizard's
+ * relationship step (permission-step.tsx) rather than duplicating it: no
+ * evidence field, no channel preview, because the choices offered here are
+ * already the ones that need neither.
+ */
+function PromoteDialog({
+  open,
+  onClose,
+  prospectId,
+  name,
+}: {
+  open: boolean;
+  onClose: () => void;
+  prospectId: string;
+  name: string;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [relationship, setRelationship] = React.useState<PromotionRelationshipChoice>("IMPORTED");
+  const [pending, startTransition] = React.useTransition();
+
+  const submit = () => {
+    startTransition(async () => {
+      const result = await promoteProspectToLeadAction(prospectId, relationship);
+      if (!result.ok) {
+        toast({ variant: "error", title: result.error ?? "That did not work." });
+        return;
+      }
+      toast({ variant: "success", title: `${name} is now a lead.` });
+      onClose();
+      router.refresh();
+    });
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={pending ? () => {} : onClose}
+      title="Promote to lead"
+      description="How does the business actually know this person? This becomes part of their contact record."
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button size="sm" loading={pending} onClick={submit}>
+            Promote
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="promote-relationship">Relationship</Label>
+          <Select
+            id="promote-relationship"
+            value={relationship}
+            onChange={(event) =>
+              setRelationship(event.target.value as PromotionRelationshipChoice)
+            }
+          >
+            {PROMOTION_RELATIONSHIP_CHOICES.map((choice) => (
+              <option key={choice} value={choice}>
+                {relationshipLabel(choice)}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <p className="text-[12px] text-content-muted">
+          This prospect has no recorded reply, so promoting it is a statement
+          that the business already knows this person some other way —
+          imported from a connected tool, an existing customer, or similar.
+          Follow-up still respects suppression and channel policy from here.
         </p>
       </div>
     </Modal>

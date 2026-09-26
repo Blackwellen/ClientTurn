@@ -1,0 +1,40 @@
+{
+  "id": "ecommerce-send-me-info",
+  "scenario": "§91 send me info",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "whatsapp",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Which product were you looking at?"
+    },
+    {
+      "role": "lead",
+      "text": "send me some info"
+    }
+  ],
+  "facts": {
+    "allowedUrls": [
+      "https://shop.example.com/range"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "candidates": [
+      {
+        "text": "Here is our product range: https://shop.example.com/range",
+        "valid": true
+      },
+      {
+        "text": "Here you go: https://bit.ly/deal-now",
+        "valid": false,
+        "codes": [
+          "UNAPPROVED_LINK"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1
+    }
+  }
+}
