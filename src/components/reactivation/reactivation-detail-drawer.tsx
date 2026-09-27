@@ -47,6 +47,7 @@ import {
 } from "@/lib/campaigns/reactivation-types";
 import { CampaignIcon, CampaignStatusBadge } from "./campaign-icon";
 import { CampaignEditDialog } from "./campaign-edit-dialog";
+import { CampaignExperimentPanel } from "./campaign-experiment-panel";
 import {
   CAMPAIGN_CONFIRM_COPY,
   useCampaignAction,
@@ -330,6 +331,13 @@ export function ReactivationDetailDrawer({
                 {campaign.updatedByName ? " by " + campaign.updatedByName : ""}
               </Field>
               <Field label="Send window">{campaign.sendWindow}</Field>
+              {campaign.channelMode && (
+                <Field label="Channel">
+                  {campaign.channelMode === "cost_aware"
+                    ? "Cost-aware: email first for leads who have not engaged, SMS otherwise"
+                    : "Always SMS"}
+                </Field>
+              )}
               <Field label="Audience">{campaign.audienceLabel}</Field>
               <Field label="Estimated size">
                 {campaign.estimatedAudienceSize.toLocaleString("en-GB")} leads
@@ -642,6 +650,13 @@ export function ReactivationDetailDrawer({
               </p>
             </Panel>
           </div>
+
+          <CampaignExperimentPanel
+            campaignId={campaign.id}
+            campaignStatus={campaign.status}
+            experiment={campaign.experiment}
+            canManage={canManage}
+          />
         </TabPanel>
 
         {/* ------------------------------------------------- activity --- */}

@@ -36,6 +36,18 @@ import { archetypeFor, SCORING_PROFILES } from "../sales-library/archetypes.ts";
 import { combineWeights } from "../sales-library/motions.ts";
 import { normaliseSicCode } from "../sales-library/classify.ts";
 import { splitList } from "../agent/offer-card.ts";
+import {
+  POLICY_KEY_PATTERN,
+  WORKSPACE_POLICY_KEY,
+  policyChangeOnlyNarrows,
+  qualificationPolicySchema,
+  type EscalationCondition,
+  type OfferDisqualifier,
+  type PolicyAutonomy,
+  type Predicate,
+  type QiDimensionKey,
+  type QualificationPolicy,
+} from "../qualification-intelligence/types.ts";
 
 /* ------------------------------------------------------------ preferences */
 
@@ -62,13 +74,17 @@ export const RESEARCH_DEPTH_COPY: Record<ResearchDepth, { label: string; descrip
 export const RISK_TOLERANCE_COPY: Record<RiskTolerance, { label: string; description: string }> = {
   CAUTIOUS: {
     label: "Cautious",
-    description: "Hand the conversation to a person whenever the assistant is not clearly confident it read the reply right.",
+    description: "Ask the lead to clarify whenever the assistant is not clearly confident it read the reply right.",
   },
-  BALANCED: { label: "Balanced", description: "Hand over when the assistant's confidence is low, or on a sensitive topic." },
+  BALANCED: {
+    label: "Balanced",
+    description:
+      "Recommended. Ask the lead to clarify when a reply is unclear, and pass the conversation to a person only as a last resort.",
+  },
   ASSERTIVE: {
     label: "Assertive",
     description:
-      "Same safety floor as Balanced: the assistant never acts below it, so low confidence and the hard rules still hand over.",
+      "Same safety floor as Balanced: the assistant never acts on a reply it could not read, and the hard rules still hand over.",
   },
 };
 
@@ -482,4 +498,184 @@ export function defaultScoringWeights(archetypeKey: string | null, motion: Sales
 export function parseScoringWeights(raw: unknown): DimensionWeights | null {
   const parsed = scoringWeightsSchema.safeParse(raw);
   return parsed.success ? (parsed.data as DimensionWeights) : null;
+}
+
+/* ----------------------------------------------------- qualification policy */
+
+/**
+ * The Qualification policy card (design §B.18 / §20): one
+ * `workspace_sales_overrides` row per scope, kind QUALIFICATION_POLICY, key
+ * '*' (the workspace) or 'service:<uuid>' (one offer). The payload is the
+ * frozen contract's `qualificationPolicySchema`; this file adds only the
+ * update envelope and the rules about who may change what.
+ *
+ *   * Widening is the Settings page's alone. Every other caller (Copilot, an
+ *     MCP client, the API) may only narrow: `policyChangeOnlyNarrows` (CD-18).
+ *   * `engineMode` (CD-9) belongs on '*' only, is shown to owners and admins
+ *     only, and is changed only from the app.
+ */
+export const policyScopeSchema = z
+  .string()
+  .regex(POLICY_KEY_PATTERN, "The scope is '*' for the workspace or 'service:<id>' for one offer.");
+
+export const POLICY_UPDATE_MODES = ["merge", "replace"] as const;
+
+export const qualificationPolicyUpdateSchema = z.object({
+  scope: policyScopeSchema,
+  policy: qualificationPolicySchema,
+  /**
+   * merge: the keys given replace the stored ones, the rest are kept.
+   * replace: the payload becomes exactly what is given (the Settings form).
+   */
+  mode: z.enum(POLICY_UPDATE_MODES).default("merge"),
+});
+
+export type QualificationPolicyUpdate = z.infer<typeof qualificationPolicyUpdateSchema>;
+
+/** Reads a stored payload; anything malformed reads as the empty policy (defaults apply). */
+export function parseQualificationPolicy(raw: unknown): QualificationPolicy {
+  const parsed = qualificationPolicySchema.safeParse(raw ?? {});
+  return parsed.success ? parsed.data : {};
+}
+
+export function mergeQualificationPolicy(
+  before: QualificationPolicy,
+  patch: QualificationPolicy,
+  mode: (typeof POLICY_UPDATE_MODES)[number],
+): QualificationPolicy {
+  const next = mode === "replace" ? { ...patch } : { ...before, ...patch };
+  // Empty lists are stored as absent, so "nothing forbidden" has one shape.
+  for (const key of Object.keys(next) as (keyof QualificationPolicy)[]) {
+    const value = next[key];
+    if (value === undefined || (Array.isArray(value) && value.length === 0)) delete next[key];
+  }
+  return next;
+}
+
+export type PolicyCaller = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM";
+
+/**
+ * Why a policy change is refused for this caller, or null. The narrow-only
+ * rule itself is the contract's pure function; this adds the scope and caller
+ * rules around it.
+ */
+export function policyChangeProblem(input: {
+  scope: string;
+  before: QualificationPolicy;
+  after: QualificationPolicy;
+  caller: PolicyCaller;
+}): { code: "INVALID_INPUT" | "FORBIDDEN_SCOPE"; message: string } | null {
+  const { scope, before, after, caller } = input;
+  if (scope !== WORKSPACE_POLICY_KEY && after.engineMode !== undefined) {
+    return { code: "INVALID_INPUT", message: "The engine mode is set for the whole workspace, not for one offer." };
+  }
+  if (caller !== "UI" && (before.engineMode ?? null) !== (after.engineMode ?? null)) {
+    return { code: "FORBIDDEN_SCOPE", message: "The engine mode can only be changed in Settings, by an owner or admin." };
+  }
+  if (caller !== "UI" && !policyChangeOnlyNarrows(before, after)) {
+    return {
+      code: "FORBIDDEN_SCOPE",
+      message:
+        "From here the qualification policy can only be made stricter: forbid a question, require a dimension, add an escalation condition or a disqualifier, or lower the autonomy cap. Make any other change in Settings, AI & selling.",
+    };
+  }
+  return null;
+}
+
+/** Owners and admins see (and set) the engine mode; everyone else sees the effect only. */
+export function canSeeEngineMode(role: string): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** A policy as a reader outside the admin roles may see it. */
+export function policyForRole(policy: QualificationPolicy, role: string): QualificationPolicy {
+  if (canSeeEngineMode(role)) return policy;
+  const rest = { ...policy };
+  delete rest.engineMode;
+  return rest;
+}
+
+export const POLICY_AUTONOMY_COPY: Record<PolicyAutonomy, string> = {
+  OFF: "Off: the assistant does not reply",
+  SUGGEST_ONLY: "Suggest only: drafts for a person to send",
+  AUTO_REPLY: "Auto-reply: replies on its own",
+};
+
+export const ESCALATION_CONDITION_COPY: Record<EscalationCondition, string> = {
+  HIGH_VALUE: "The deal is above the human-closer value",
+  LOW_CONFIDENCE: "The assistant is not confident it read the reply right",
+  CONFLICTING_MATERIAL_FACT: "Two answers disagree on something that matters",
+  INFERRED_DISQUALIFIER: "A disqualifier looks likely but is only inferred",
+  READY_TO_BUY_NOT_ALLOWED: "The lead is ready to buy but a direct close is not allowed",
+  REPEATED_DEFLECTION: "The lead keeps deflecting the same question",
+};
+
+/** The settings form's disqualifier rows, turned into the contract's shape. */
+export const DISQUALIFIER_OPS = ["equals", "in", "lt", "gt"] as const;
+export type DisqualifierOp = (typeof DISQUALIFIER_OPS)[number];
+
+export const DISQUALIFIER_OP_COPY: Record<DisqualifierOp, string> = {
+  equals: "is",
+  in: "is one of",
+  lt: "is less than",
+  gt: "is more than",
+};
+
+export type DisqualifierDraft = {
+  dimension: QiDimensionKey;
+  op: DisqualifierOp;
+  value: string;
+  reason: string;
+  reviewInstead: boolean;
+  suppress: boolean;
+};
+
+export function disqualifierFromDraft(draft: DisqualifierDraft): OfferDisqualifier | string {
+  const value = draft.value.trim();
+  if (!value) return "Give the value that disqualifies.";
+  let when: Predicate;
+  if (draft.op === "lt" || draft.op === "gt") {
+    const n = Number(value.replace(/[,£]/g, ""));
+    if (!Number.isFinite(n)) return "A 'less than' or 'more than' rule needs a number.";
+    when = { op: draft.op, dimension: draft.dimension, value: n };
+  } else if (draft.op === "in") {
+    const values = value.split(",").map((v) => v.trim()).filter(Boolean);
+    if (values.length === 0) return "List the values, separated by commas.";
+    when = { op: "in", dimension: draft.dimension, values };
+  } else {
+    when = { op: "equals", dimension: draft.dimension, value };
+  }
+  return {
+    dimension: draft.dimension,
+    when,
+    reason: draft.reason.trim(),
+    reviewInstead: draft.reviewInstead,
+    suppress: draft.suppress,
+  };
+}
+
+/** A stored disqualifier, back into the form's row (unsupported shapes are kept read-only). */
+export function draftFromDisqualifier(d: OfferDisqualifier): DisqualifierDraft | null {
+  const w = d.when;
+  const base = { dimension: d.dimension, reason: d.reason, reviewInstead: d.reviewInstead, suppress: d.suppress };
+  if (w.op === "equals") return { ...base, op: "equals", value: w.value };
+  if (w.op === "in") return { ...base, op: "in", value: w.values.join(", ") };
+  if (w.op === "lt" || w.op === "gt") return { ...base, op: w.op, value: String(w.value) };
+  return null;
+}
+
+/** A plain-language line for one disqualifier. */
+export function describeDisqualifier(d: OfferDisqualifier, label: (dimension: string) => string): string {
+  const w = d.when;
+  const subject = label(d.dimension);
+  const clause =
+    w.op === "equals"
+      ? `is "${w.value}"`
+      : w.op === "in"
+        ? `is one of ${w.values.map((v) => `"${v}"`).join(", ")}`
+        : w.op === "lt" || w.op === "lte" || w.op === "gt" || w.op === "gte"
+          ? `${w.op.startsWith("l") ? "is less than" : "is more than"} ${w.value}`
+          : "matches a custom rule";
+  const effect = d.reviewInstead ? "send for review" : d.suppress ? "disqualify and stop contact" : "disqualify";
+  return `${subject} ${clause}: ${effect}. ${d.reason}`;
 }

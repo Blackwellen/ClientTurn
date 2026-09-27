@@ -62,6 +62,8 @@ A write scope does not include reading. A key with only `leads:write` can change
 - [Creating leads with the API](/help/developers/api-create-leads) covers `POST /api/v1/leads`.
 - [Reading and updating leads](/help/developers/api-reading-and-updating-leads) covers the rest.
 
+`GET /api/v1` needs no key. It returns the API's index, generated from the same lists the API enforces: every endpoint above (including `POST /api/v1/leads` and its outcomes), every permission, and every webhook event. It is a quick way to check the service is up when a key is failing.
+
 Start with `GET /api/v1/me`. It returns the workspace, the key's permissions and the live role behind it, so if a later call is refused you can see which of the three is the reason.
 
 ## Rate limits

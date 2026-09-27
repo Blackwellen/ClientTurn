@@ -4,7 +4,14 @@ summary: Create an agent step by step, choose its sources, limits, schedule and 
 category: ai-agents
 keywords: [new agent, create agent, agent wizard, daily limit, monthly limit, schedule, approval, review everything, sources, start agent]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/setting-up-an-agent-1.png
+    alt: "The Limits step with Approval, Schedule, Daily limit and Monthly limit"
+    caption: "Approval, schedule and limits are ceilings the agent cannot raise for itself"
+  - src: /help/screenshots/ai-agents/setting-up-an-agent-2.png
+    alt: "An agent page header with Start agent, Pause, Stop and Delete"
+    caption: "Agent controls: start or run now, pause, stop and delete"
 ---
 
 ## Before you start

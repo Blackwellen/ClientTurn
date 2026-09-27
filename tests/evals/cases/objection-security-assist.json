@@ -1,0 +1,47 @@
+{
+  "id": "objection-security-assist",
+  "scenario": "§94 objection: security (assist, AI keeps going)",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Who else would be involved in evaluating this?"
+    },
+    {
+      "role": "lead",
+      "text": "We'd need you to complete our security questionnaire first."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "SECURITY",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "A colleague has been asked to send the approved information"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Of course, a colleague will send over our security information for the questionnaire. In the meantime, who else on your side would be involved in the decision?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "We're fully SOC 2 certified and it's all seamless.",
+        "valid": false,
+        "codes": [
+          "STYLE_AI_TELL"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

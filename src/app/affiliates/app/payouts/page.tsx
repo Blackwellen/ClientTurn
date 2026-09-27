@@ -22,7 +22,7 @@ import {
   TaxInfoCard,
 } from "@/components/affiliates/payouts/payouts-view";
 
-export const metadata: Metadata = { title: "Payouts | ClientTurn" };
+export const metadata: Metadata = { title: "Payouts" };
 export const dynamic = "force-dynamic";
 
 /**

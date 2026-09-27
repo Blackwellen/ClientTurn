@@ -20,8 +20,8 @@ import {
  *
  * Its value for this product is the same signal Meta gives: a business paying
  * for reach has budget and is trying to grow. Its weakness is coverage —
- * TikTok advertisers skew consumer-facing, so it will find a roofing firm
- * marketing to homeowners far more reliably than a commercial property manager.
+ * TikTok advertisers skew consumer-facing, so it will find a DTC ecommerce
+ * brand far more reliably than an accountancy practice or a B2B SaaS company.
  * The waterfall handles that by ranking it after the general sources rather
  * than by pretending the coverage is even.
  */

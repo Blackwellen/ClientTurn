@@ -503,7 +503,10 @@ export const PROVIDER_LAWFUL_BASIS: Record<string, LawfulBasis> = {
   apollo: "LICENSED_B2B",
   hunter: "LICENSED_B2B",
   clearbit: "LICENSED_B2B",
-  linkedin_sales_navigator: "LICENSED_B2B",
+  // The customer's own imported list (their LinkedIn Connections export or a
+  // CSV they own). Not licensed data: supplied by them, on a basis they hold.
+  linkedin_sales_navigator: "CUSTOMER_ASSERTED",
+  linkedin_list_import: "CUSTOMER_ASSERTED",
   "google-places": "PUBLISHED_BY_SUBJECT",
   google_places: "PUBLISHED_BY_SUBJECT",
   website_intent: "PUBLISHED_BY_SUBJECT",
@@ -514,8 +517,6 @@ export const PROVIDER_LAWFUL_BASIS: Record<string, LawfulBasis> = {
   "tiktok-commercial-content": "PUBLIC_REGISTER",
   meta_engagement: "FIRST_PARTY_ENGAGEMENT",
   "meta-engagement": "FIRST_PARTY_ENGAGEMENT",
-  linkedin_engagement: "FIRST_PARTY_ENGAGEMENT",
-  "linkedin-engagement": "FIRST_PARTY_ENGAGEMENT",
   import: "CUSTOMER_ASSERTED",
   manual: "CUSTOMER_ASSERTED",
   user: "CUSTOMER_ASSERTED",

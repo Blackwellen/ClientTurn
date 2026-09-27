@@ -101,10 +101,18 @@ export async function GET(request: Request) {
   enqueued.push("whatsapp.template_sync");
 
   // Failed-payment recovery (8.10): each failed subscription invoice is
-  // retried at most once a day for up to 30 days and stops once paid; then
-  // messaging overage is added to the customer's next invoice (8.13).
+  // retried at most once a day for up to 30 days and stops once paid.
+  // There is no messaging overage any more (8.37): a send past the allowance
+  // and top-up credit is refused, not billed, so nothing new reaches
+  // `usage_overage_events`. The job's overage step only drains rows recorded
+  // before that change and is a no-op on an empty table.
   await enqueue("billing.daily", {}, { idempotencyKey: `billing-daily:${dateKey}`, maxAttempts: 3 });
   enqueued.push("billing.daily");
+
+  // Admin -> Economics margin alerts: month-to-date or projected month-end
+  // margin below 75%, raised at most once per workspace per month.
+  await enqueue("economics.margin_check", {}, { idempotencyKey: `economics-margin-check:${dateKey}` });
+  enqueued.push("economics.margin_check");
 
   if (isFirstOfMonth) {
     await enqueue(

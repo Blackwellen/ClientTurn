@@ -1,26 +1,24 @@
 import { z } from "zod";
 
 /**
- * Sales Navigator's lead and account filters, as part of the search plan.
+ * LinkedIn's lead and account filters, as part of the search plan.
  *
- * Pure -- no `server-only` -- because the plan editor, the Sales Navigator
- * link builder, the partner-API mapping and the ingested-list filter all read
- * it, and the rules are tested without a network.
+ * Pure -- no `server-only` -- because the plan editor, the "Search LinkedIn"
+ * link and the imported-list filter all read it, and the rules are tested
+ * without a network.
  *
- * The vocabularies below are LinkedIn's own, as Sales Navigator shows them.
- * Every field is optional and empty by default, so a plan written before this
- * block existed parses to exactly the search it always was.
+ * The vocabularies below are LinkedIn's own, as its search and Sales Navigator
+ * show them. Every field is optional and empty by default, so a plan written
+ * before this block existed parses to exactly the search it always was.
  *
- * What these filters can drive depends on what the workspace has:
+ * These filters are the customer's own targeting. ClientTurn does not search
+ * LinkedIn: there is no server-side LinkedIn search it may lawfully run, and it
+ * never drives the customer's session or scrapes. They are used in two ways:
  *
- *   * **A SNAP partner token**: they go to the partner search, mapped in
- *     `snapFilterParams` below.
- *   * **No token** (the normal case -- LinkedIn is not accepting new SNAP
- *     partners): LinkedIn permits no server-side search, and we never drive the
- *     customer's session or scrape. The customer opens the same search in their
- *     own Sales Navigator (`sales-navigator-url.ts`), exports it, and imports
- *     the file (`linkedin-import.ts`). The title and seniority filters are then
- *     applied again to the imported rows (`matchesIngestedLead`).
+ *   * shown as a list the customer applies by hand in LinkedIn or Sales
+ *     Navigator, with a plain "Search LinkedIn" keyword link (`linkedinSearchUrl`);
+ *   * applied to the customer's own imported list (`matchesIngestedLead`),
+ *     where the title and seniority filters narrow what a run picks up.
  */
 
 /* ------------------------------------------------------------ vocabularies */
@@ -178,9 +176,8 @@ export function hasLinkedinFilters(filters: LinkedinFilters): boolean {
 /**
  * The filters as label/value lines.
  *
- * This is the fallback that always works. The Sales Navigator link format is
- * undocumented and may change; a list a person can read and re-enter by hand
- * does not depend on it.
+ * This is how the filters reach LinkedIn: a person applies them by hand in
+ * LinkedIn or Sales Navigator. No undocumented link format is relied on.
  */
 export function linkedinFilterLines(filters: LinkedinFilters): { label: string; value: string }[] {
   const lines: { label: string; value: string }[] = [];
@@ -224,53 +221,30 @@ export function linkedinFiltersText(filters: LinkedinFilters): string {
     .join("\n");
 }
 
-/* ------------------------------------------------ SNAP partner mapping */
+/* --------------------------------------------------- search LinkedIn link */
 
 /**
- * The filters as SNAP partner-search parameters.
- *
- * **UNVERIFIED until a partner account is live.** LinkedIn does not publish
- * the lead- or account-search request format for SNAP (the public Microsoft
- * Learn pages cover Analytics and Sync services only, and LinkedIn states it
- * is not accepting new SNAP partners). The facet names below are the ones
- * Sales Navigator's own search uses (REGION, SENIORITY_LEVEL, FUNCTION, ...),
- * which is the best available guess, not a documented contract. Everything
- * that depends on the guess is in this one function, so correcting it when a
- * partner account exists is a one-place change, and nothing else in the
- * product assumes these names are right.
- *
- * Returns query-string pairs; the adapter appends them to its request.
+ * The standard LinkedIn people-search URL, exactly as the browser shows it,
+ * with keywords only. No facet ids and no Sales Navigator URL: those formats
+ * are undocumented, and a link built on a guess would silently open the wrong
+ * search. The filters themselves are applied by hand from the copyable list.
  */
-export function snapFilterParams(
-  filters: LinkedinFilters,
-  search: "LEAD" | "ACCOUNT",
-): [string, string][] {
-  const facets: [string, string[]][] = [];
-  const add = (facet: string, values: string[]) => {
-    if (values.length) facets.push([facet, values]);
-  };
+export const LINKEDIN_PEOPLE_SEARCH = "https://www.linkedin.com/search/results/people/";
 
-  add("REGION", filters.geography);
-  add("INDUSTRY", filters.industries);
-  add("COMPANY_HEADCOUNT", filters.headcountBands);
-  add("COMPANY_TYPE", filters.companyTypes);
-  const { minPct, maxPct } = filters.headcountGrowth;
-  if (minPct !== null || maxPct !== null) {
-    add("COMPANY_HEADCOUNT_GROWTH", [`${minPct ?? ""}..${maxPct ?? ""}`]);
-  }
+export function linkedinSearchKeywords(input: {
+  titles: string[];
+  industries: string[];
+  keywords?: string;
+}): string {
+  const terms = [...input.titles.slice(0, 3), ...input.industries.slice(0, 2)];
+  if (input.keywords) terms.unshift(input.keywords);
+  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].join(" ").slice(0, 200);
+}
 
-  if (search === "LEAD") {
-    add("SENIORITY_LEVEL", filters.seniorities);
-    add("FUNCTION", filters.functions);
-    add("CURRENT_TITLE", filters.titlesInclude);
-    add("CURRENT_TITLE_EXCLUDED", filters.titlesExclude);
-    add("YEARS_IN_CURRENT_POSITION", filters.yearsInCurrentPosition);
-    add("YEARS_AT_CURRENT_COMPANY", filters.yearsAtCurrentCompany);
-    if (filters.changedJobsPast90Days) add("RECENTLY_CHANGED_JOBS", ["true"]);
-    if (filters.postedOnLinkedinPast30Days) add("POSTED_ON_LINKEDIN", ["true"]);
-  }
-
-  return facets.map(([facet, values]) => [`filters.${facet}`, values.join("|")]);
+export function linkedinSearchUrl(keywords: string): string {
+  return keywords
+    ? `${LINKEDIN_PEOPLE_SEARCH}?keywords=${encodeURIComponent(keywords)}`
+    : LINKEDIN_PEOPLE_SEARCH;
 }
 
 /* -------------------------------------------- filtering imported rows */
@@ -282,7 +256,7 @@ export function snapFilterParams(
  * plan's seniority filter is applied by reading the title. Conservative: a
  * title that says nothing recognisable returns null, and a null seniority is
  * kept rather than dropped (see `matchesIngestedLead`), because the customer
- * already chose these people in Sales Navigator.
+ * already chose these people by putting them on their own list.
  */
 export function inferSeniority(title: string | null | undefined): LinkedinSeniority | null {
   const t = ` ${(title ?? "").toLowerCase()} `;

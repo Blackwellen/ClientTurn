@@ -1,30 +1,39 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, existsSync } from "node:fs";
 
 import {
+  LINKEDIN_PEOPLE_SEARCH,
   emptyLinkedinFilters,
   inferSeniority,
   linkedinFilterLines,
   linkedinFiltersSchema,
   linkedinFiltersText,
+  linkedinSearchKeywords,
+  linkedinSearchUrl,
   matchesIngestedLead,
-  snapFilterParams,
   type LinkedinFilters,
 } from "../src/lib/find-leads/linkedin-filters.ts";
 import {
-  SALES_NAVIGATOR_PEOPLE_SEARCH,
-  buildSalesNavigatorSearchUrl,
-} from "../src/lib/find-leads/sales-navigator-url.ts";
-import { mapColumns, parseLinkedinExport } from "../src/lib/find-leads/linkedin-import.ts";
+  importSubscriberType,
+  mapColumns,
+  parseLinkedinExport,
+  personCompanyKey,
+  profileKey,
+  resolveImportDomain,
+  workEmailDomain,
+} from "../src/lib/find-leads/linkedin-import.ts";
+import { lawfulBasisFor } from "../src/lib/find-leads/contact-legality.ts";
 import { emptyPlan, parsePlan, planSummaryLines } from "../src/lib/find-leads/plan.ts";
 
 /**
- * Sales Navigator filters, the deep link, and the customer's own export.
+ * LinkedIn filters, the "Search LinkedIn" link, and the customer's own list.
  *
  * The rules that matter: an old plan parses to the same search it always was;
- * the link builder never guesses an id it does not hold and says what it left
- * out; an imported file never keeps a phone number; and the plan's title and
- * seniority filters apply to imported rows too.
+ * nothing relies on an undocumented LinkedIn URL or API; an imported file never
+ * keeps a phone number; a list without a website column still becomes
+ * prospects, with the domain resolved in a fixed order that never trusts a
+ * freemail domain; and re-imports are idempotent.
  */
 
 function filters(patch: Partial<LinkedinFilters>): LinkedinFilters {
@@ -82,69 +91,36 @@ describe("linkedin filters in the plan", () => {
   });
 });
 
-describe("SNAP partner mapping (unverified names, one place)", () => {
-  test("empty filters add no parameters", () => {
-    assert.deepEqual(snapFilterParams(emptyLinkedinFilters(), "LEAD"), []);
-  });
-
-  test("lead-only facets are not sent on an account search", () => {
-    const f = filters({ seniorities: ["VP"], headcountBands: ["51-200"], changedJobsPast90Days: true });
-    const lead = Object.fromEntries(snapFilterParams(f, "LEAD"));
-    const account = Object.fromEntries(snapFilterParams(f, "ACCOUNT"));
-    assert.equal(lead["filters.SENIORITY_LEVEL"], "VP");
-    assert.equal(lead["filters.RECENTLY_CHANGED_JOBS"], "true");
-    assert.equal(account["filters.COMPANY_HEADCOUNT"], "51-200");
-    assert.equal(account["filters.SENIORITY_LEVEL"], undefined);
-  });
-});
-
-describe("Sales Navigator deep link", () => {
-  test("no filters opens the plain search page", () => {
-    const link = buildSalesNavigatorSearchUrl(emptyLinkedinFilters());
-    assert.equal(link.url, SALES_NAVIGATOR_PEOPLE_SEARCH);
-    assert.deepEqual(link.applied, []);
-  });
-
-  test("known facets are encoded with Sales Navigator's ids", () => {
-    const link = buildSalesNavigatorSearchUrl(
-      filters({
-        seniorities: ["DIRECTOR"],
-        headcountBands: ["11-50", "10001+"],
-        functions: ["Marketing", "Customer Success and Support"],
-        yearsInCurrentPosition: ["LESS_THAN_1"],
-        changedJobsPast90Days: true,
-      }),
+describe("no guesswork about LinkedIn", () => {
+  test("the only link is LinkedIn's standard people search, with keywords only", () => {
+    assert.equal(linkedinSearchUrl(""), LINKEDIN_PEOPLE_SEARCH);
+    const keywords = linkedinSearchKeywords({ titles: ["Head of Marketing"], industries: ["Web design"], keywords: "" });
+    assert.equal(keywords, "Head of Marketing Web design");
+    assert.equal(
+      linkedinSearchUrl(keywords),
+      "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Marketing%20Web%20design",
     );
-    assert.ok(link.url.startsWith(`${SALES_NAVIGATOR_PEOPLE_SEARCH}?query=(filters:List(`));
-    assert.ok(link.url.includes("(type:SENIORITY_LEVEL,values:List((id:220,text:Director,selectionType:INCLUDED)))"));
-    assert.ok(link.url.includes("(id:C,text:11-50,selectionType:INCLUDED)"));
-    assert.ok(link.url.includes("(id:I,text:10001%2B,selectionType:INCLUDED)"));
-    assert.ok(link.url.includes("(id:15,text:Marketing,selectionType:INCLUDED)"));
-    assert.ok(link.url.includes("(id:26,text:Customer%20Success%20and%20Support"));
-    assert.ok(link.url.includes("(type:YEARS_IN_CURRENT_POSITION,values:List((id:1,"));
-    assert.ok(link.url.includes("(type:RECENTLY_CHANGED_JOBS,values:List((id:RPC,"));
   });
 
-  test("text that would break the structure is escaped", () => {
-    const link = buildSalesNavigatorSearchUrl(
-      filters({ titlesInclude: ["Head (Growth), EMEA"], titlesExclude: ["Intern"], keywords: "a:b" }),
-    );
-    assert.ok(link.url.includes("text:Head%20%28Growth%29%2C%20EMEA,selectionType:INCLUDED"));
-    assert.ok(link.url.includes("(text:Intern,selectionType:EXCLUDED)"));
-    assert.ok(link.url.endsWith("keywords:a%3Ab)"));
-    // Balanced brackets: nothing in a value closed the structure early.
-    const query = link.url.split("?query=")[1];
-    assert.equal((query.match(/\(/g) ?? []).length, (query.match(/\)/g) ?? []).length);
+  test("the partner-API mapping and the Sales Navigator URL builder are gone", () => {
+    assert.equal(existsSync(new URL("../src/lib/find-leads/sales-navigator-url.ts", import.meta.url)), false);
+    const provider = readFileSync(new URL("../src/lib/find-leads/server/providers/linkedin-sales-navigator.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(provider, /salesApi|snapToken|api\.linkedin\.com/);
+    assert.doesNotMatch(provider, /COMPANY_SEARCH/);
+    const env = readFileSync(new URL("../src/lib/env.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(env, /LINKEDIN_SNAP_ACCESS_TOKEN|LINKEDIN_COMMUNITY_MANAGEMENT_APPROVED/);
   });
 
-  test("filters needing ids we do not hold are left out and named, never guessed", () => {
-    const link = buildSalesNavigatorSearchUrl(
-      filters({ geography: ["United Kingdom", "Leeds"], industries: ["Software Development"], companyTypes: ["PRIVATELY_HELD"] }),
-    );
-    assert.ok(link.url.includes("(id:101165590,text:United%20Kingdom"));
-    assert.ok(!link.url.includes("Leeds"));
-    assert.ok(!link.url.includes("Software"));
-    assert.deepEqual(link.notApplied.sort(), ["Company type", "Geography", "Industry"]);
+  test("the LinkedIn engagement prospect source is removed", () => {
+    assert.equal(existsSync(new URL("../src/lib/find-leads/server/providers/linkedin-engagement.ts", import.meta.url)), false);
+    const registry = readFileSync(new URL("../src/lib/find-leads/server/providers/registry.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(registry, /linkedin-engagement|linkedinEngagementProvider/);
+    assert.equal(lawfulBasisFor("linkedin_engagement"), "UNKNOWN");
+  });
+
+  test("an imported list is the customer's own data, not licensed data", () => {
+    assert.equal(lawfulBasisFor("linkedin_sales_navigator"), "CUSTOMER_ASSERTED");
+    assert.equal(lawfulBasisFor("linkedin_list_import"), "CUSTOMER_ASSERTED");
   });
 });
 
@@ -174,8 +150,8 @@ describe("filtering imported rows", () => {
   });
 });
 
-describe("importing the customer's own export", () => {
-  test("common exporter headers map, and phone columns are named as discarded", () => {
+describe("importing the customer's own list", () => {
+  test("common headers map, and phone columns are named as discarded", () => {
     const { mapping, discarded } = mapColumns([
       "First Name", "Last Name", "Job Title", "Company Name", "Company Website", "LinkedIn URL", "Location", "Email", "Phone Number", "Mobile",
     ]);
@@ -188,31 +164,30 @@ describe("importing the customer's own export", () => {
   test("a phone number never appears in a parsed row", () => {
     const csv = [
       "First Name,Last Name,Title,Company,Website,Profile URL,Phone",
-      "Ana,Silva,Head of Marketing,Northgate Studio,https://www.northgate.studio/about,https://www.linkedin.com/sales/lead/ACwAA123,+44 7700 900123",
+      "Ana,Silva,Head of Marketing,Northgate Studio,https://www.northgate.studio/about,https://www.linkedin.com/in/ana-silva,+44 7700 900123",
     ].join("\n");
     const result = parseLinkedinExport(csv);
     assert.equal(result.problem, null);
     assert.equal(result.rows.length, 1);
-    assert.equal(result.surface, "SALES_NAVIGATOR");
+    assert.equal(result.surface, "CUSTOMER_LIST");
     assert.equal(result.rows[0].companyDomain, "northgate.studio");
     assert.ok(!JSON.stringify(result.rows).includes("7700"));
     assert.deepEqual(result.discardedColumns, ["Phone"]);
   });
 
-  test("a standard-account export is recorded as STANDARD, and a full name is split", () => {
-    const csv = "Name,Position,Company,Domain,URL\nSam Lee Jones,Founder,Acme,acme.co.uk,https://www.linkedin.com/in/samlee\n";
-    const result = parseLinkedinExport(csv);
-    assert.equal(result.surface, "STANDARD");
-    assert.equal(result.rows[0].firstName, "Sam");
-    assert.equal(result.rows[0].lastName, "Lee Jones");
-  });
-
-  test("LinkedIn's own export preamble is skipped to the real header", () => {
-    const csv = "Notes:\n\"When exporting your connection data...\"\n\nFirst Name,Last Name,URL,Email Address,Company,Company Website,Position\nJo,Bloggs,https://www.linkedin.com/in/jo,jo@acme.co.uk,Acme,acme.co.uk,CTO\n";
+  test("LinkedIn's own Connections export is recognised, preamble skipped, no website needed", () => {
+    const csv = "Notes:\n\"When exporting your connection data...\"\n\nFirst Name,Last Name,URL,Email Address,Company,Position,Connected On\nJo,Bloggs,https://www.linkedin.com/in/jo,jo@acme.co.uk,Acme,CTO,01 Sep 2026\nSam,Lee,https://www.linkedin.com/in/samlee,,Beta Studio,Founder,02 Sep 2026\n";
     const result = parseLinkedinExport(csv);
     assert.equal(result.problem, null);
-    assert.equal(result.rows.length, 1);
-    assert.equal(result.rows[0].email, "jo@acme.co.uk");
+    assert.equal(result.surface, "LINKEDIN_CONNECTIONS");
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows[1].companyDomain, null);
+  });
+
+  test("a full name is split", () => {
+    const result = parseLinkedinExport("Name,Position,Company\nSam Lee Jones,Founder,Acme\n");
+    assert.equal(result.rows[0].firstName, "Sam");
+    assert.equal(result.rows[0].lastName, "Lee Jones");
   });
 
   test("every row is validated: bad rows are reported, good rows kept", () => {
@@ -220,17 +195,18 @@ describe("importing the customer's own export", () => {
       "First Name,Last Name,Company,Website,LinkedIn URL,Email",
       "Ana,Silva,Acme,acme.co.uk,https://www.linkedin.com/in/ana,",
       ",,Acme,acme.co.uk,,",
-      "Bo,Ng,Beta,,,",
+      "Bo,Ng,,,,",
       "Cy,Ro,Gamma,gamma.io,https://example.com/cy,",
       "Di,Po,Delta,delta.io,,not-an-email",
+      "Ed,Wu,Echo,,,",
     ].join("\n");
     const result = parseLinkedinExport(csv);
-    assert.equal(result.rows.length, 1);
+    assert.equal(result.rows.length, 2);
     assert.deepEqual(
       result.errors.map((e) => [e.row, e.message]),
       [
         [3, "No name"],
-        [4, "No company website or domain"],
+        [4, "No company"],
         [5, "Not a LinkedIn profile URL"],
         [6, "Not an email address"],
       ],
@@ -241,5 +217,69 @@ describe("importing the customer's own export", () => {
     const result = parseLinkedinExport("foo,bar\n1,2\n");
     assert.ok(result.problem);
     assert.equal(result.rows.length, 0);
+  });
+});
+
+describe("resolving the company's domain", () => {
+  test("order: website column, then work email, then unresolved", () => {
+    assert.deepEqual(resolveImportDomain({ companyDomain: "acme.co.uk", email: "jo@other.io" }), {
+      domain: "acme.co.uk",
+      resolution: "WEBSITE_COLUMN",
+    });
+    assert.deepEqual(resolveImportDomain({ companyDomain: null, email: "jo@beta.studio" }), {
+      domain: "beta.studio",
+      resolution: "WORK_EMAIL",
+    });
+    assert.deepEqual(resolveImportDomain({ companyDomain: null, email: null }), {
+      domain: null,
+      resolution: "UNRESOLVED",
+    });
+  });
+
+  test("a freemail domain is never taken as the company's", () => {
+    assert.equal(workEmailDomain("jo.bloggs@gmail.com"), null);
+    assert.equal(workEmailDomain("jo@hotmail.co.uk"), null);
+    assert.deepEqual(resolveImportDomain({ companyDomain: null, email: "jo@outlook.com" }), {
+      domain: null,
+      resolution: "UNRESOLVED",
+    });
+    // A freemail domain typed in a website column is dropped too.
+    const result = parseLinkedinExport("First Name,Last Name,Company,Website\nJo,Bloggs,Acme,gmail.com\n");
+    assert.equal(result.rows[0].companyDomain, null);
+  });
+
+  test("a row with no domain at all is still a valid prospect row", () => {
+    const result = parseLinkedinExport("First Name,Last Name,Company\nJo,Bloggs,Acme Studio\n");
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.rows.length, 1);
+    assert.equal(resolveImportDomain(result.rows[0]).resolution, "UNRESOLVED");
+  });
+});
+
+describe("re-imports stay idempotent", () => {
+  test("the profile URL is the first key, normalised", () => {
+    assert.equal(profileKey("https://www.linkedin.com/in/Jo-Bloggs/?trk=abc"), "in/jo-bloggs");
+    assert.equal(profileKey("http://uk.linkedin.com/in/jo-bloggs"), "in/jo-bloggs");
+    assert.equal(profileKey("https://example.com/in/jo"), null);
+    assert.equal(profileKey(null), null);
+  });
+
+  test("name + company is the fallback key, by domain when known", () => {
+    const a = personCompanyKey({ firstName: "Jo", lastName: "Bloggs", companyDomain: null, companyName: "Acme Ltd" });
+    const b = personCompanyKey({ firstName: "jo", lastName: "BLOGGS", companyDomain: null, companyName: "Acme Limited" });
+    assert.ok(a);
+    assert.equal(a, b);
+    assert.notEqual(a, personCompanyKey({ firstName: "Jo", lastName: "Bloggs", companyDomain: "acme.co.uk", companyName: "Acme" }));
+    assert.equal(personCompanyKey({ firstName: null, lastName: null, companyDomain: "a.io", companyName: null }), null);
+  });
+});
+
+describe("subscriber type of an imported prospect", () => {
+  test("the strictest wins, and no email is UNKNOWN", () => {
+    assert.equal(importSubscriberType("INDIVIDUAL", "CORPORATE"), "INDIVIDUAL");
+    assert.equal(importSubscriberType("CORPORATE", "PARTNERSHIP"), "PARTNERSHIP");
+    assert.equal(importSubscriberType("CORPORATE", "CORPORATE"), "CORPORATE");
+    assert.equal(importSubscriberType("UNKNOWN", "CORPORATE"), "UNKNOWN");
+    assert.equal(importSubscriberType("CORPORATE", null), "CORPORATE");
   });
 });

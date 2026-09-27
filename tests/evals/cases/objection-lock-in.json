@@ -1,0 +1,51 @@
+{
+  "id": "objection-lock-in",
+  "scenario": "§94 objection: contract lock-in (no hand-over)",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "How are you handling support today?"
+    },
+    {
+      "role": "lead",
+      "text": "We're tied into a contract with our current IT company until March."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "LOCK_IN",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Tied into a contract",
+        "Shape: acknowledge"
+      ],
+      "mustExclude": [
+        "REQUEST_HANDOVER; do not answer"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Makes sense. When does it come up for renewal? I can get back in touch well before then so you've time to compare.",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Sign today and we'll cover your exit fees. This offer ends today.",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

@@ -317,7 +317,9 @@ describe("product tour covers Agents, Find Leads and Analytics (item 28)", () =>
 
   test("the runner uses the skip logic", () => {
     const runner = read("src", "components", "tour", "product-tour.tsx");
-    assert.match(runner, /adjacentStepIndex\(tour\.steps, index, 1, isPresent\)/);
+    // Forward navigation skips absent steps (the runner holds the active tour
+    // in state since the section tours, so the names may differ).
+    assert.match(runner, /adjacentStepIndex\([\w.]*steps, [\w.]*index, 1, isPresent\)/);
     assert.match(runner, /availablePosition\(/);
   });
 });

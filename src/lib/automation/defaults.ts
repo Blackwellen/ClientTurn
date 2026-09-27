@@ -23,7 +23,7 @@ export const NEW_LEAD_SEQUENCE: DefaultStep[] = [
     channel: "sms",
     label: "Immediately",
     template:
-      "Hi {{first_name}}, thanks for your enquiry with {{business_name}} about {{service_name}}. Are you the homeowner?",
+      "Hi {{first_name}}, thanks for your enquiry with {{business_name}} about {{service_name}}. What prompted you to get in touch?",
   },
   {
     position: 1,
@@ -31,7 +31,7 @@ export const NEW_LEAD_SEQUENCE: DefaultStep[] = [
     channel: "sms",
     label: "10 minutes later",
     template:
-      "Just checking you got my message about your {{service_name}} enquiry — happy to answer any questions.",
+      "Just checking you got my message about your {{service_name}} enquiry. Happy to answer any questions.",
   },
   {
     position: 2,
@@ -47,7 +47,7 @@ export const NEW_LEAD_SEQUENCE: DefaultStep[] = [
     channel: "sms",
     label: "1 day later",
     template:
-      "Morning {{first_name}} — {{business_name}} here. Would you like me to get you booked in for a look?",
+      "Morning {{first_name}}, {{business_name}} here. Would a short call this week help? I can send over a couple of times.",
   },
   {
     position: 4,
@@ -55,7 +55,7 @@ export const NEW_LEAD_SEQUENCE: DefaultStep[] = [
     channel: "sms",
     label: "3 days later",
     template:
-      "Last one from me, {{first_name}}. If you'd still like a quote on your {{service_name}}, just reply and I'll sort it. {{business_phone}}",
+      "Last one from me, {{first_name}}. If {{service_name}} is still on your list, just reply and I'll pick it up. {{business_phone}}",
   },
 ];
 

@@ -27,13 +27,25 @@ export const DOMAIN_EVENT_TYPES = [
   "contact.suppressed",
   "integration.failed",
   "ai.escalated",
+  // Qualification intelligence (design 08 §B.5): emitted by lead.score only
+  // when the intent state changes. Public, but deliberately NOT in RESCORE_ON,
+  // so an intent change can never re-trigger the assessment that caused it.
+  "lead.intent_changed",
 ] as const;
 
 /**
  * Internal events: facts the engine reacts to (re-scoring) that are not part
  * of the public contract, so they are never forwarded to a customer webhook.
  */
-export const INTERNAL_EVENT_TYPES = ["reply.classified", "qualification.answered"] as const;
+export const INTERNAL_EVENT_TYPES = [
+  "reply.classified",
+  "qualification.answered",
+  // From opportunities/service.ts whenever an open opportunity moves stage.
+  "opportunity.stage_changed",
+  // From the intent.sweep job: a lead's intent decay boundary (valid_until,
+  // a stated timeframe, a NOT_NOW resume date) has passed. "Silence" is this.
+  "intent.decay_due",
+] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 export type InternalEventType = (typeof INTERNAL_EVENT_TYPES)[number];
@@ -79,9 +91,21 @@ export function exceedsCausationDepth(depth: number): boolean {
 /* -------------------------------------------------------------- re-score */
 
 /**
- * Events after which a lead is re-scored (design 04 §2 triggers), in one
- * place. `lead.scored` and `score.changed` are deliberately absent: scoring
- * must never trigger scoring.
+ * Events after which a lead is re-scored and re-assessed (design 04 §2
+ * triggers; design 08 §B.5 recalculation triggers), in one place. The
+ * lead.score job runs the whole assessment: signals -> intent -> score ->
+ * tags -> NBA -> one lead_assessments row.
+ *
+ *   new activity / new form     lead.touched
+ *   reply / objection           reply.classified
+ *   qualification answer        qualification.answered
+ *   booking                     meeting.*
+ *   opt-out                     contact.*
+ *   opportunity change          opportunity.created / .stage_changed / .won / .lost
+ *   silence, expired timeframe  intent.decay_due (the intent.sweep job)
+ *
+ * `lead.scored`, `score.changed` and `lead.intent_changed` are deliberately
+ * absent: scoring must never trigger scoring.
  */
 export const RESCORE_ON: readonly AnyEventType[] = [
   "lead.touched",
@@ -93,6 +117,11 @@ export const RESCORE_ON: readonly AnyEventType[] = [
   "meeting.no_show",
   "contact.unsubscribed",
   "contact.suppressed",
+  "opportunity.created",
+  "opportunity.stage_changed",
+  "opportunity.won",
+  "opportunity.lost",
+  "intent.decay_due",
 ];
 
 /**

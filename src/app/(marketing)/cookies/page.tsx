@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/cookies" },
   openGraph: {
-    title: "Cookie Policy · ClientTurn",
+    title: "Cookie Policy",
     description,
     url: "/cookies",
     siteName: "ClientTurn",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Cookie Policy · ClientTurn",
+    title: "Cookie Policy",
     description,
   },
 };

@@ -17,7 +17,10 @@ import {
   discountOffers,
   type CheckoutLink,
 } from "../commercial/authority.ts";
+import { trackedTokenFor, trackingParamFor } from "../payments/tracking.ts";
 import type { AgentChannel } from "./types.ts";
+import type { QaCode } from "../qualification-intelligence/types.ts";
+import { humanStyleFailures, type HumanStyleCode } from "./human-style.ts";
 
 export type ValidationFacts = {
   channel: AgentChannel;
@@ -51,6 +54,27 @@ export type ValidationFacts = {
     maxDiscountPercent: number;
     checkoutLinks: CheckoutLink[];
   } | null;
+  /**
+   * Pre-send question QA (qualification-intelligence/qa.ts, design 08 §16),
+   * supplied by the orchestrator with the turn's NBA and fact state bound in.
+   * Its REJECT findings join the ordinary failures, so they take the same
+   * one-retry -> handover path. Absent = no question QA (engine OFF).
+   */
+  extraChecks?: (body: string) => { code: QaCode; detail: string; correction: string }[];
+  /**
+   * The business's earlier messages in this conversation (any order). A
+   * question that repeats one of their questions word for word, or nearly,
+   * is rejected (QA_REPEAT): the lead has already seen it. Absent = no check.
+   */
+  priorOutbound?: string[];
+  /**
+   * The engine planned an explicit VERIFY of a stale fact this turn. Checking
+   * an old answer may share most of its words with the question that first
+   * got it, so a near-duplicate is allowed; a word-for-word repeat never is.
+   */
+  verifyingStaleFact?: boolean;
+  /** The lead's first name: the human-style lint allows it once (human-style.ts). */
+  leadFirstName?: string | null;
 };
 
 export type ValidationFailure = {
@@ -74,7 +98,8 @@ export type ValidationCode =
   | "UNSUPPORTED_DISCOUNT"
   | "PURCHASE_CLAIM"
   | "CHECKOUT_PRICE_MISMATCH"
-  | StyleCode;
+  | StyleCode
+  | QaCode;
 
 export type StyleCode =
   | "STYLE_CLICHE"
@@ -83,7 +108,10 @@ export type StyleCode =
   | "STYLE_MULTIPLE_QUESTIONS"
   | "STYLE_FORBIDDEN_PHRASE"
   | "STYLE_PROHIBITED_CLAIM"
-  | "STYLE_PRESSURE";
+  | "STYLE_PRESSURE"
+  // The "sounds like AI" lint (human-style.ts). STYLE_EM_DASHES above is
+  // raised there too, now for any em or en dash used as a dash.
+  | HumanStyleCode;
 
 export type ValidationResult =
   | { ok: true; body: string }
@@ -131,8 +159,10 @@ const SLA_CLAIM_PATTERN =
 const INTERNAL_DISCLOSURE_PATTERN =
   /\b(?:system\s+prompt|my\s+instructions\s+are|api[\s_-]?key|access[\s_-]?token|service[\s_-]?role|supabase|azure\s+openai|prompt\s+registry|tool\s+schema|business_id|conversation_id)\b/i;
 
+// Transparency (owner decision 2026-09-27): the assistant never claims or
+// implies to be a person, however it is asked.
 const HUMAN_CLAIM_PATTERN =
-  /\b(?:i(?:'m| am)\s+(?:not\s+a\s+(?:bot|robot|machine|computer)|a\s+(?:real\s+)?(?:human|person))|(?:no|nope),?\s+i(?:'m| am)\s+not\s+a\s+(?:bot|robot))\b/i;
+  /\b(?:i(?:'m| am)\s+(?:not\s+(?:a\s+|an\s+)?(?:bot|robot|machine|computer|ai|chatbot|automated)|a\s+(?:real\s+)?(?:human|person))|(?:no|nope),?\s+i(?:'m| am)\s+not\s+a\s+(?:bot|robot)|you(?:'re| are)\s+(?:talking|speaking|chatting)\s+(?:to|with)\s+a\s+(?:real\s+)?(?:human|person)|this\s+is\s+a\s+real\s+(?:human|person))\b/i;
 
 const URL_PATTERN = /https?:\/\/[^\s<>"')]+|(?:^|\s)(?:www\.)[^\s<>"')]+/gi;
 
@@ -316,9 +346,22 @@ export function validateResponse(
   }
 
   // ---- links
+  //
+  // A tracked checkout link (payments/tracking.ts) is admitted only when its
+  // base is an approved checkout link that THIS turn allows, and the one
+  // difference is that link's own tracking parameter carrying a well-formed
+  // token. Any other added parameter, a different parameter name, or a base
+  // that is not allowed this turn is UNAPPROVED_LINK as before.
   const allowed = new Set(facts.allowedUrls.map(normaliseUrl));
+  const trackedAllowed = (raw: string): boolean =>
+    Boolean(commercial?.enabled) &&
+    (commercial?.checkoutLinks ?? []).some(
+      (link) =>
+        allowed.has(normaliseUrl(link.url)) &&
+        trackedTokenFor(raw.trim(), link.url, trackingParamFor(link)) !== null,
+    );
   for (const raw of trimmed.match(URL_PATTERN) ?? []) {
-    if (!allowed.has(normaliseUrl(raw))) {
+    if (!allowed.has(normaliseUrl(raw)) && !trackedAllowed(raw)) {
       failures.push({
         code: "UNAPPROVED_LINK",
         detail: `"${raw.trim()}" is not an approved link.`,
@@ -348,6 +391,28 @@ export function validateResponse(
 
   // ---- style and QA lint (design doc 04 §5, brief §49)
   failures.push(...lintStyle(trimmed, facts));
+
+  // ---- no repeated question (golden eval `book-meeting-one-word-reply`: a
+  // verbatim repeat of the question the lead just answered was accepted).
+  const repeat = repeatedQuestion(trimmed, facts.priorOutbound ?? [], { allowNearDuplicate: facts.verifyingStaleFact === true });
+  if (repeat) {
+    failures.push({
+      code: "QA_REPEAT",
+      detail: `${repeat.exact ? "Repeats" : "Nearly repeats"} an earlier question: "${repeat.prior}".`,
+      correction: "That question was already asked in this conversation. Do not ask it again; move the conversation on, or ask something new in new words.",
+    });
+  }
+
+  // ---- question QA (design 08 §16). Codes already reported above are not
+  // repeated (TOO_LONG, STYLE_MULTIPLE_QUESTIONS, QA_REPEAT).
+  if (facts.extraChecks) {
+    const reported = new Set<string>(failures.map((failure) => failure.code));
+    for (const extra of facts.extraChecks(trimmed)) {
+      if (reported.has(extra.code)) continue;
+      reported.add(extra.code);
+      failures.push(extra);
+    }
+  }
 
   return failures.length > 0 ? { ok: false, failures } : { ok: true, body: trimmed };
 }
@@ -409,8 +474,11 @@ export function pressureIn(text: string): string[] {
   return PRESSURE_PATTERNS.filter((entry) => entry.pattern.test(value)).map((entry) => entry.label);
 }
 
-/** More than this many em dashes reads as machine-written. */
-export const MAX_EM_DASHES = 2;
+/**
+ * Owner rule (2026-09-27): no em or en dashes used as dashes at all. They
+ * make it obvious it is AI. Enforced by human-style.ts (STYLE_EM_DASHES).
+ */
+export const MAX_EM_DASHES = 0;
 /** This many or more "just"s reads as hedging. */
 export const MAX_JUST = 2;
 
@@ -423,15 +491,88 @@ export const MAX_JUST = 2;
 const INTERROGATIVE_CLAUSE =
   /(^|[.!]\s+|\n)\s*(could you|can you|would you|will you|do you|did you|are you|is it|is there|have you)\b[^.!?\n]*(?=[.\n]|$)/gi;
 
+/** The text with every link removed: a URL's "?" is never a question. */
+export function withoutUrls(body: string): string {
+  return body.replace(URL_PATTERN, " ");
+}
+
 /**
  * Counts the questions a message asks: every "?"-terminated sentence, plus
  * interrogative clauses written without one ("Could you tell me your postcode.").
  * Multiple "?" in one sentence ("Really??") count once.
  */
-export function countQuestions(body: string): number {
+export function countQuestions(raw: string): number {
+  // A link's query string ("...?client_reference_id=...") is not a question.
+  const body = withoutUrls(raw);
   const marked = (body.match(/[^?]*\?+/g) ?? []).filter((part) => part.replace(/\?+/g, "").trim()).length;
   const unmarked = (body.match(INTERROGATIVE_CLAUSE) ?? []).length;
   return marked + unmarked;
+}
+
+/** The question sentences of a message: "?"-terminated, plus unmarked interrogative clauses. */
+export function questionParts(raw: string): string[] {
+  const body = withoutUrls(raw);
+  const marked = (body.match(/[^.!?\n]*\?+/g) ?? []).map((part) => part.trim()).filter((part) => part.replace(/\?+/g, "").trim());
+  const unmarked = (body.match(INTERROGATIVE_CLAUSE) ?? []).map((part) => part.replace(/^[.!\s]+/, "").trim());
+  return [...marked, ...unmarked];
+}
+
+/** Lower-case words of a question, punctuation and apostrophes dropped. */
+export function questionTokens(text: string): string[] {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9£\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Openers that do not change what a question asks ("Great, ...", "Thanks. ..."). */
+const QUESTION_OPENERS = new Set(["great", "thanks", "thank", "you", "ok", "okay", "perfect", "lovely", "brilliant", "cheers", "sure", "so", "and", "also", "just", "quickly", "hi", "hello", "again"]);
+
+function stripOpeners(tokens: string[]): string[] {
+  let start = 0;
+  while (start < tokens.length - 1 && QUESTION_OPENERS.has(tokens[start])) start += 1;
+  return tokens.slice(start);
+}
+
+/** Near-duplicate thresholds: overlap of the smaller set, and Jaccard, over word sets. */
+export const REPEAT_OVERLAP_MIN = 0.8;
+export const REPEAT_JACCARD_MIN = 0.6;
+const REPEAT_MIN_WORDS = 4;
+
+/**
+ * Whether the draft asks a question the business already asked in this
+ * conversation: the same words once normalised (exact), or a high overlap of
+ * words (near). `allowNearDuplicate` (a VERIFY of a stale fact) lets a
+ * near-duplicate through, never an exact repeat. Pure; exported for tests.
+ */
+export function repeatedQuestion(
+  body: string,
+  priorOutbound: readonly string[],
+  options: { allowNearDuplicate?: boolean } = {},
+): { prior: string; draft: string; exact: boolean } | null {
+  const priors = priorOutbound.flatMap(questionParts).map((q) => ({ q, tokens: stripOpeners(questionTokens(q)) }));
+  if (priors.length === 0) return null;
+  for (const draft of questionParts(body)) {
+    const tokens = stripOpeners(questionTokens(draft));
+    if (tokens.length === 0) continue;
+    const draftSet = new Set(tokens);
+    for (const prior of priors) {
+      if (prior.tokens.length === 0) continue;
+      if (prior.tokens.join(" ") === tokens.join(" ")) return { prior: prior.q, draft, exact: true };
+      if (options.allowNearDuplicate) continue;
+      const priorSet = new Set(prior.tokens);
+      if (Math.min(priorSet.size, draftSet.size) < REPEAT_MIN_WORDS) continue;
+      let shared = 0;
+      for (const token of draftSet) if (priorSet.has(token)) shared += 1;
+      const overlap = shared / Math.min(priorSet.size, draftSet.size);
+      const jaccard = shared / (priorSet.size + draftSet.size - shared);
+      if (overlap >= REPEAT_OVERLAP_MIN && jaccard >= REPEAT_JACCARD_MIN) return { prior: prior.q, draft, exact: false };
+    }
+  }
+  return null;
 }
 
 function includesPhrase(haystack: string, phrase: string): boolean {
@@ -449,7 +590,14 @@ function includesPhrase(haystack: string, phrase: string): boolean {
  */
 export function lintStyle(
   body: string,
-  options: { forbiddenPhrases?: string[]; prohibitedClaims?: string[] } = {},
+  options: {
+    forbiddenPhrases?: string[];
+    prohibitedClaims?: string[];
+    /** For the human-style lint: chat channels get the list and sign-off rules. */
+    channel?: string | null;
+    leadFirstName?: string | null;
+    priorOutbound?: readonly string[];
+  } = {},
 ): ValidationFailure[] {
   const failures: ValidationFailure[] = [];
   const text = body.normalize("NFKC");
@@ -463,15 +611,16 @@ export function lintStyle(
     });
   }
 
-  // NFKC leaves U+2014 alone; count the raw character.
-  const emDashes = (body.match(/\u2014/g) ?? []).length;
-  if (emDashes > MAX_EM_DASHES) {
-    failures.push({
-      code: "STYLE_EM_DASHES",
-      detail: `${emDashes} em dashes (max ${MAX_EM_DASHES}).`,
-      correction: "Use full stops or commas instead of em dashes.",
-    });
-  }
+  // No emojis, no em or en dashes used as dashes, and nothing else that
+  // reads as automated (human-style.ts). A draft failing only these is
+  // regenerated once, then repaired (compose-policy.ts).
+  failures.push(
+    ...humanStyleFailures(body, {
+      channel: options.channel ?? null,
+      leadFirstName: options.leadFirstName ?? null,
+      priorOutbound: options.priorOutbound ?? [],
+    }),
+  );
 
   const justs = (text.match(/\bjust\b/gi) ?? []).length;
   if (justs > MAX_JUST) {

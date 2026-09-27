@@ -46,7 +46,7 @@ export function PromotionPanel() {
   return (
     <AppSurface
       title="Prospect to lead"
-      subtitle="Peninsula Estates · South Coast roofing — Q4"
+      subtitle="Loomwell Goods · North West ecommerce — Q4"
       actions={
         <Badge tone={promoted ? "lime" : "green"} dot>
           {promoted ? "Lead · engaged" : "Engaged"}
@@ -65,11 +65,11 @@ export function PromotionPanel() {
       {/* ------------------------------------------------- entity header */}
       <div className="fl-entity" style={{ padding: 0, paddingBottom: 14 }}>
         <span aria-hidden className="fl-logo" style={{ width: 34, height: 34 }}>
-          PE
+          LG
         </span>
         <div>
           <div className="flex items-center gap-2">
-            <strong>Peninsula Estates</strong>
+            <strong>Loomwell Goods</strong>
             {/* The chip is the only thing that changes identity. */}
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -85,7 +85,7 @@ export function PromotionPanel() {
               </motion.span>
             </AnimatePresence>
           </div>
-          <small>peninsula-estates.co.uk · Bournemouth, UK · 11–50 emp</small>
+          <small>loomwellgoods.example · Manchester, UK · 11–50 emp</small>
         </div>
         <div className="fl-entity-actions">
           <div className="fl-fit-block">
@@ -170,7 +170,7 @@ export function PromotionPanel() {
               <Send size={13} />
             </span>
             <div>
-              <strong>South Coast roofing — Q4</strong>
+              <strong>North West ecommerce — Q4</strong>
               <small>
                 {promoted
                   ? "Step 1 of 4 · email · retained on the lead"
@@ -232,7 +232,7 @@ export function PromotionPanel() {
             </motion.ul>
             <p className="fl-note-line">
               Status: engaged · qualification ready · follow-up on the warm lead
-              policy · conversion goal site visit.
+              policy · conversion goal discovery call.
             </p>
           </>
         ) : (

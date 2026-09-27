@@ -106,7 +106,7 @@ export async function loadProviderExtras(input: {
     };
   }
 
-  /* ---- LinkedIn: which organisation, and whether page engagement is on ---- */
+  /* ---- LinkedIn: which organisation ---- */
   const linkedin = byType.get("linkedin_ads");
   if (linkedin) {
     const config = (linkedin.config ?? {}) as { organizations?: unknown };
@@ -122,7 +122,6 @@ export async function loadProviderExtras(input: {
       linkedin: {
         organizations,
         selectedId: linkedin.external_account_id,
-        pageEngagementEnabled: serverEnv.linkedinAds.communityManagementApproved === "true",
       },
     };
   }

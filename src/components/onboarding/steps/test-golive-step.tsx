@@ -24,7 +24,7 @@ const HEALTH_ROWS: { key: string; label: string; icon: React.ComponentType<{ cla
   { key: "lead_source", label: "Meta Leads", icon: Wifi },
   { key: "messaging", label: "Messaging", icon: MessageCircle },
   { key: "qualification", label: "Qualification", icon: Filter },
-  { key: "booking", label: "Booking System", icon: Calendar },
+  { key: "booking", label: "Booking", icon: Calendar },
 ];
 
 const JOURNEY_STAGES = [
@@ -300,7 +300,7 @@ export function TestGoLiveStep({
           </p>
           <p className="mt-1 text-[12.5px] text-[#96a1b3]">
             {allReady
-              ? "Your ClientTurn setup is configured and tested."
+              ? "Every required step is configured. The test lead is optional."
               : `Still needed: ${blocking.map((c) => c.label.toLowerCase()).join(", ")}.`}
           </p>
           <ul className="mt-2.5 space-y-1">

@@ -452,10 +452,21 @@ export async function getDashboardData(
     id: string;
     services: { average_value: number | null } | null;
   }[];
-  const estimatedPipeline = pipelineRows.reduce(
-    (total, row) => total + Number(row.services?.average_value ?? 0),
-    0,
-  );
+  // Several interests (08 §B.20, 0144): each further interest a lead holds is
+  // its own open opportunity and adds its own value. Before 0144 the column
+  // does not exist and nothing is added.
+  const extraInterests = await supabase
+    .from("opportunities")
+    .select("value, interest_source")
+    .eq("business_id", businessId)
+    .eq("outcome", "OPEN")
+    .in("interest_source" as never, ["MESSAGE", "FORM", "MANUAL"] as never)
+    .limit(LEAD_LIMIT);
+  const extraPipeline = extraInterests.error
+    ? 0
+    : ((extraInterests.data ?? []) as unknown as { value: number | null }[]).reduce((total, row) => total + Number(row.value ?? 0), 0);
+  const estimatedPipeline =
+    pipelineRows.reduce((total, row) => total + Number(row.services?.average_value ?? 0), 0) + extraPipeline;
 
   const sourceMap = new Map<string, SourceSnapshotRow>();
   for (const row of currentRows) {
@@ -731,20 +742,28 @@ export async function getHealthStripData(
     {
       key: "followup",
       label: "Follow-up",
+      // A published sequence that is switched off sends nothing, so it must
+      // not read "active" (8.7).
       status: followUp.published
-        ? "healthy"
+        ? followUp.enabled
+          ? "healthy"
+          : "warning"
         : followUp.enabled
           ? "warning"
           : "error",
       statusLabel: followUp.published
-        ? "Published"
+        ? followUp.enabled
+          ? "Published"
+          : "Switched off"
         : followUp.enabled
           ? "Not published"
           : "Not set up",
       detail: followUp.published
-        ? followUp.steps === 0
-          ? "No steps enabled"
-          : `${countLabel(followUp.steps, "step")} sequence active`
+        ? !followUp.enabled
+          ? "Sequence published but switched off"
+          : followUp.steps === 0
+            ? "No steps enabled"
+            : `${countLabel(followUp.steps, "step")} sequence active`
         : "Publish a sequence to start following up",
       href: "/app/follow-up",
     },

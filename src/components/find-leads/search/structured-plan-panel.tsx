@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Crosshair,
   Flag,
+  GitMerge,
   Layers,
   UserSearch,
   Radar,
@@ -32,8 +33,10 @@ import {
 } from "@/lib/find-leads/plan";
 import { linkedinFilterLines } from "@/lib/find-leads/linkedin-filters";
 import type { SignalFeed } from "@/lib/find-leads/signals";
-import { LinkedinFiltersEditor, SalesNavigatorHandoff } from "./linkedin-filters-editor";
+import { LinkedinFiltersEditor, LinkedinHandoff } from "./linkedin-filters-editor";
 import { SignalsEditor } from "./signals-editor";
+import { SegmentEditor } from "./segment-editor";
+import { segmentSummary } from "@/lib/find-leads/intent-segments";
 
 /**
  * The structured search plan panel (V4 §10.8).
@@ -52,6 +55,7 @@ type RowKey =
   | "roles"
   | "intent"
   | "signals"
+  | "segment"
   | "linkedin"
   | "exclusions"
   | "grade"
@@ -66,6 +70,7 @@ const ROW_ICONS: Record<RowKey, React.ComponentType<{ className?: string }>> = {
   roles: UserCheck,
   intent: Zap,
   signals: Radar,
+  segment: GitMerge,
   linkedin: UserSearch,
   exclusions: Ban,
   grade: ShieldCheck,
@@ -79,15 +84,15 @@ export function StructuredPlanPanel({
   onChange,
   disabled,
   liveFeeds = [],
-  linkedinPartner = false,
+  sessionId = null,
 }: {
   plan: SearchPlan;
   onChange: (next: SearchPlan) => void;
   disabled: boolean;
   /** Free signal feeds live for this workspace; decides what is offered. */
   liveFeeds?: SignalFeed[];
-  /** True when a SNAP partner token is configured. */
-  linkedinPartner?: boolean;
+  /** The search session, recorded as context on imported prospects. */
+  sessionId?: string | null;
 }) {
   const [editing, setEditing] = React.useState<RowKey | null>(null);
 
@@ -134,6 +139,11 @@ export function StructuredPlanPanel({
       key: "signals",
       label: "Signals",
       value: signalsLabel(plan.signals).join("\n") || "None",
+    },
+    {
+      key: "segment",
+      label: "Combination",
+      value: plan.segment ? segmentSummary(plan.segment) : "None",
     },
     {
       key: "linkedin",
@@ -228,7 +238,7 @@ export function StructuredPlanPanel({
         rowKey={editing}
         plan={plan}
         liveFeeds={liveFeeds}
-        linkedinPartner={linkedinPartner}
+        sessionId={sessionId}
         canImport={!disabled}
         onClose={() => setEditing(null)}
         onSave={(next) => {
@@ -264,7 +274,7 @@ function PlanEditDialog({
   rowKey,
   plan,
   liveFeeds,
-  linkedinPartner,
+  sessionId,
   canImport,
   onClose,
   onSave,
@@ -272,7 +282,7 @@ function PlanEditDialog({
   rowKey: RowKey | null;
   plan: SearchPlan;
   liveFeeds: SignalFeed[];
-  linkedinPartner: boolean;
+  sessionId: string | null;
   canImport: boolean;
   onClose: () => void;
   onSave: (plan: SearchPlan) => void;
@@ -294,6 +304,7 @@ function PlanEditDialog({
     roles: "Decision maker",
     intent: "Intent",
     signals: "Buying signals",
+    segment: "Combine signals",
     linkedin: "LinkedIn filters",
     exclusions: "Exclusions",
     grade: "Minimum grade",
@@ -482,21 +493,30 @@ function PlanEditDialog({
           />
         )}
 
+        {rowKey === "segment" && (
+          <SegmentEditor
+            value={draft.segment}
+            live={liveFeeds}
+            onChange={(segment) => setDraft({ ...draft, segment })}
+          />
+        )}
+
         {rowKey === "linkedin" && (
           <div className="space-y-4">
             <LinkedinFiltersEditor
               value={draft.linkedin}
               onChange={(linkedin) => setDraft({ ...draft, linkedin })}
             />
-            <SalesNavigatorHandoff
+            <LinkedinHandoff
               // Titles fall back to the plan's decision-maker roles, so the
-              // link opens a useful search before any LinkedIn filter is set.
+              // search opens something useful before any filter is set.
               filters={
                 draft.linkedin.titlesInclude.length > 0
                   ? draft.linkedin
                   : { ...draft.linkedin, titlesInclude: draft.decisionMakerRoles }
               }
-              partnerConfigured={linkedinPartner}
+              industries={draft.industries}
+              sessionId={sessionId}
               canImport={canImport}
             />
           </div>

@@ -6,8 +6,12 @@ import {
   subscriberTypeForRegistryEntry,
 } from "@/lib/policy/subscriber-classification";
 import {
+  anyRegisterWant,
   filingCategoriesFor,
+  needsOfficers,
+  needsProfile,
   registerSignals,
+  registerWantsForTypes,
   type ChFiling,
   type ChOfficer,
   type ChProfile,
@@ -271,14 +275,19 @@ async function fetchIntent(input: {
   if (!apiKey) return unconfigured<IntentResult>();
 
   const kinds = new Set(input.wants?.kinds ?? []);
+  // The original kind flags, plus whatever catalogue types were asked for.
+  const typed = registerWantsForTypes(input.wants?.types ?? []);
   const wants: RegisterWants = {
-    funding: kinds.has("FUNDING"),
-    leadership: kinds.has("JOB_CHANGE"),
-    incorporation: kinds.has("NEW_COMPANY"),
-    officeMove: kinds.has("EXPANSION"),
+    ...typed,
+    funding: kinds.has("FUNDING") || typed.funding,
+    leadership: kinds.has("JOB_CHANGE") || typed.leadership,
+    incorporation: kinds.has("NEW_COMPANY") || typed.incorporation,
+    officeMove: kinds.has("EXPANSION") || typed.officeMove,
   };
+  const seniorTypes = (input.wants?.types ?? []).filter((type) => type.startsWith("SENIOR_HIRE_"));
+  const functions = new Set(input.wants?.roleFunctions ?? []);
   const empty = { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
-  if (!wants.funding && !wants.leadership && !wants.incorporation && !wants.officeMove) return empty;
+  if (!anyRegisterWant(wants)) return empty;
 
   const wanted = new Set(input.domains);
   const targets = (input.companies ?? []).filter(
@@ -297,7 +306,7 @@ async function fetchIntent(input: {
     const number = encodeURIComponent(company.registrationId);
 
     let profile: ChProfile | null = null;
-    if (wants.incorporation || wants.leadership) {
+    if (needsProfile(wants)) {
       // The profile's creation date also tells a founding board from a change.
       const result = await providerJson<ChProfile>({ url: `${API}/company/${number}`, headers });
       if (!result.ok && result.code === "PROVIDER_RATE_LIMIT") {
@@ -307,7 +316,7 @@ async function fetchIntent(input: {
     }
 
     let officers: ChOfficer[] = [];
-    if (wants.leadership) {
+    if (needsOfficers(wants)) {
       const result = await providerJson<{ items?: ChOfficer[] }>({
         url: `${API}/company/${number}/officers?items_per_page=50&order_by=appointed_on`,
         headers,
@@ -315,13 +324,15 @@ async function fetchIntent(input: {
       if (!result.ok && result.code === "PROVIDER_RATE_LIMIT") {
         return providerFailure<IntentResult>(result.code, Date.now() - started);
       }
-      // Only the role and the dates are read. Names are never copied out of
-      // the response, so they cannot reach storage.
+      // Only the role, the dates and the stated occupation title are read.
+      // Names are never copied out of the response, so they cannot reach
+      // storage.
       if (result.ok) {
         officers = (result.data.items ?? []).map((item) => ({
           officer_role: item.officer_role,
           appointed_on: item.appointed_on,
           resigned_on: item.resigned_on,
+          occupation: item.occupation,
         }));
       }
     }
@@ -346,7 +357,10 @@ async function fetchIntent(input: {
       wants,
       now,
       freshnessDays: input.freshnessDays,
+      seniorTypes: seniorTypes.length > 0 ? seniorTypes : undefined,
     })) {
+      // A senior appointment in a function nobody asked about is not wanted.
+      if (signal.roleFunction && functions.size > 0 && !functions.has(signal.roleFunction)) continue;
       records.push({
         category: null,
         domain: company.domain,
@@ -359,6 +373,8 @@ async function fetchIntent(input: {
           reference: signal.reference,
           observedAt: signal.observedAt,
           snippet: signal.snippet,
+          intentType: signal.intentType,
+          ...(signal.roleFunction ? { roleFunction: signal.roleFunction } : {}),
         },
       });
     }

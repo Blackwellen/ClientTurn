@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Calculator, CircleDollarSign, Gauge, Info, TriangleAlert } from "lucide-react";
+import { Calculator, CircleDollarSign, Gauge, Info } from "lucide-react";
 import { Input, Switch } from "@/components/ui/form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -22,7 +21,8 @@ const THINGS_TO_KNOW = [
   "Limits help protect deliverability and your sender reputation",
   "Provider costs are estimates and may vary by data provider",
   "You'll be notified before any limits are reached",
-  "Auto overage and optimisation are disabled by default",
+  "There is no overage: at a limit the campaign stops until the next period",
+  "Optimisation is off by default",
 ] as const;
 
 /**
@@ -30,8 +30,9 @@ const THINGS_TO_KNOW = [
  *
  * Every ceiling on this screen came from the server. The inputs are requests,
  * clamped on the way in and re-checked at launch, so a hand-edited value can
- * never buy more than the plan allows. The two switches at the bottom are the
- * only ones in the wizard that can cost money, and both are off.
+ * never buy more than the plan allows. There is no overage (owner decision,
+ * 2026-09-27): at a limit the campaign stops, so no switch here can let it
+ * run past one. The draft's `autoOverage` field stays false and is not shown.
  */
 export function BudgetStep({
   draft,
@@ -162,33 +163,12 @@ export function BudgetStep({
           }
         />
 
-        <ToggleRow
-          label="Auto overage"
-          description="Allow this campaign to continue if limits are reached."
-          checked={budget.autoOverage}
-          disabled={!ceilings.overageAvailable}
-          onChange={(autoOverage) => setBudget({ autoOverage })}
-          error={errors.autoOverage}
-          note={
-            ceilings.overageAvailable ? (
-              <NoteBox icon={TriangleAlert} tone="warning">
-                Off by default. Turn on to allow automatic overage charges when limits are
-                reached.
-              </NoteBox>
-            ) : (
-              <NoteBox icon={TriangleAlert} tone="warning">
-                Additional usage is switched off for this account, so this cannot be enabled
-                here.{" "}
-                <Link
-                  href="/app/settings?section=billing"
-                  className="font-medium underline underline-offset-2"
-                >
-                  Billing &amp; Usage
-                </Link>
-              </NoteBox>
-            )
-          }
-        />
+        <div className="py-4">
+          <NoteBox icon={Info} tone="info">
+            There is no overage. When a limit is reached, this campaign stops until the
+            next period, or until you upgrade your plan.
+          </NoteBox>
+        </div>
 
         <ToggleRow
           label="Auto optimize"
@@ -198,7 +178,7 @@ export function BudgetStep({
           note={
             <NoteBox icon={Info} tone="info">
               Off by default for budget-affecting behaviour. If enabled, optimisation will
-              remain within your set limits — it can never raise spend, enable overage or
+              remain within your set limits — it can never raise spend, go past a limit or
               weaken contact rules.
             </NoteBox>
           }

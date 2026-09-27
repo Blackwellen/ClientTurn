@@ -1,0 +1,46 @@
+{
+  "id": "msp-02-price-question",
+  "archetype": "MSP",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "The lead opens with a price question; the agent answers first and asks at most one question.",
+  "turns": [
+    {
+      "lead": "How much do you charge per user for managed IT?",
+      "expect": {
+        "actionIn": [
+          "ANSWER",
+          "ANSWER_AND_ASK"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      },
+      "candidate": {
+        "text": "How many staff would we be looking after? Pricing depends on the setup.",
+        "qaOk": false,
+        "codes": [
+          "QA_QUESTION_FIRST"
+        ]
+      }
+    },
+    {
+      "lead": "We're 25 people in one office in Leeds.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "COMPANY_SIZE"
+        ],
+        "notAsked": [
+          "COMPANY_SIZE",
+          "LOCATION"
+        ]
+      }
+    }
+  ]
+}

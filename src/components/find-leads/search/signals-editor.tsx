@@ -11,6 +11,8 @@ import {
 } from "@/lib/find-leads/signals";
 import type { IntentEvidenceKind } from "@/lib/find-leads/intent-evidence";
 import { TECH_FINGERPRINTS, type TechnologyKey } from "@/lib/find-leads/website-signals";
+import { ROLE_FUNCTIONS, ROLE_FUNCTION_NEEDS, intentType } from "@/lib/find-leads/intent-catalogue";
+import { IntentTypePicker } from "@/components/find-leads/intent/intent-type-picker";
 
 /**
  * The structured buying signals a search fetches.
@@ -158,6 +160,68 @@ export function SignalsEditor({
           Detected from the scripts and assets each company&rsquo;s own site loads.
         </p>
       </fieldset>
+
+      <div>
+        <p className="mb-1 text-[12px] font-medium text-content-secondary">More buying signals</p>
+        <p className="mb-2.5 text-[11.5px] text-content-muted">
+          Each is found only where a free, lawful source backs it. A named round such as Series A
+          comes from the company&rsquo;s own announcement; Companies House only shows that money
+          went in.
+        </p>
+        <IntentTypePicker
+          selected={value.intentTypes}
+          live={live}
+          onToggle={(id) =>
+            onChange({
+              ...value,
+              intentTypes: value.intentTypes.includes(id)
+                ? value.intentTypes.filter((type) => type !== id)
+                : [...value.intentTypes, id].slice(0, 40),
+            })
+          }
+        />
+      </div>
+
+      {value.intentTypes.some((id) => intentType(id).hasRoleFunction) && (
+        <fieldset>
+          <legend className="mb-1.5 text-[12px] font-medium text-content-secondary">
+            Only roles in these functions
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            {ROLE_FUNCTIONS.map((fn) => {
+              const on = value.roleFunctions.includes(fn);
+              return (
+                <button
+                  key={fn}
+                  type="button"
+                  aria-pressed={on}
+                  title={ROLE_FUNCTION_NEEDS[fn].needs}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      roleFunctions: on
+                        ? value.roleFunctions.filter((item) => item !== fn)
+                        : [...value.roleFunctions, fn],
+                    })
+                  }
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[12px] font-medium",
+                    on
+                      ? "border-accent-500 bg-accent-50 text-content-accent"
+                      : "border-line bg-surface text-content-muted hover:text-content",
+                  )}
+                >
+                  {ROLE_FUNCTION_NEEDS[fn].label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-[11.5px] text-content-muted">
+            None chosen means every function. Hiring a marketing manager suggests agency support;
+            hiring developers suggests a studio or contractors.
+          </p>
+        </fieldset>
+      )}
 
       <p className="rounded-lg bg-surface-sunken px-3 py-2.5 text-[12px] leading-relaxed text-content-secondary">
         Every signal records its source, date and the text that matched, and shows it as

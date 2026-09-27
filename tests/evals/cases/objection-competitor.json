@@ -1,0 +1,50 @@
+{
+  "id": "objection-competitor",
+  "scenario": "§94 objection: competitor",
+  "motion": "DIRECT_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "What's the site doing for you now?"
+    },
+    {
+      "role": "lead",
+      "text": "We're also getting quotes from other agencies."
+    }
+  ],
+  "approvedClaims": [
+    "Fixed-price quotes with no hourly billing"
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "COMPETITOR",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Sensible to compare. We quote fixed prices with no hourly billing, which is worth checking with anyone you speak to. What matters most to you in choosing?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Great question! The other agencies can't match us — trust me.",
+        "valid": false,
+        "codes": [
+          "STYLE_EM_DASHES"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

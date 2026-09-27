@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/affiliates" },
   openGraph: {
-    title: `${affiliatesTitle} · ClientTurn`,
+    title: `${affiliatesTitle}`,
     description: affiliatesDescription,
     url: "/affiliates",
     siteName: "ClientTurn",
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${affiliatesTitle} · ClientTurn`,
+    title: `${affiliatesTitle}`,
     description: affiliatesDescription,
   },
 };

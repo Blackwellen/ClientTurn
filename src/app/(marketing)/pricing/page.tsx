@@ -16,12 +16,11 @@ import {
   PLANS,
   TRIAL_DAYS,
   ANNUAL_DISCOUNT_PERCENT,
-  SMS_OVERAGE_BUNDLES,
+  SMS_CREDIT_BUNDLES,
+  MESSAGE_CREDIT_BUNDLES,
 } from "@/lib/billing/plans";
-import {
-  SOURCING_ALLOWANCES,
-  AUTOMATIC_OVERAGE_DEFAULT_ON,
-} from "@/lib/billing/sourcing-allowances";
+import { SOURCING_ALLOWANCES } from "@/lib/billing/sourcing-allowances";
+import { WHATSAPP_TOKENS_PER_MESSAGE, whatsappTokenCoverage } from "@/lib/billing/whatsapp-tokens";
 import {
   PublicContainer,
   PublicCard,
@@ -51,9 +50,21 @@ import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/publi
 import { PlanGrid } from "@/components/marketing/public/pricing/plan-grid";
 import { PlanComparison } from "@/components/marketing/public/pricing/comparison";
 import { Columns } from "@/components/marketing/public/charts";
+import { VoicePricingBand } from "@/components/marketing/public/revenue/voice-pricing";
+import {
+  PRO_WITH_VOICE_MONTHLY_GBP,
+  VOICE_ADDON,
+  VOICE_MINUTE_PACKS,
+  VOICE_NUMBER_MONTHLY_GBP,
+  VOICE_PACKS_FROM_GBP,
+  VOICE_TRIAL_NOTE,
+  PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN,
+  gbp,
+  packSummary,
+} from "@/lib/marketing/voice-offer";
 
-const title = "Pricing";
-const description = `ClientTurn plans from £${PLANS.starter.monthlyPrice} a month. Clear monthly allowances for inbound leads, verified prospects, communications and users, with a ${TRIAL_DAYS}-day free trial. A card is required to start; nothing is charged until the trial ends.`;
+const title = "Pricing: AI Sales Agent, Voice and Quotes";
+const description = `ClientTurn plans from £${PLANS.starter.monthlyPrice} a month. Pro with the AI Voice Sales Agent is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} with ${VOICE_ADDON.includedMinutes} minutes, or prepaid minute packs from ${gbp(VOICE_PACKS_FROM_GBP)}. Quotes and payments on every paid plan. ${TRIAL_DAYS}-day trial.`;
 const path = "/pricing";
 
 const siteUrl = (
@@ -61,33 +72,59 @@ const siteUrl = (
 ).replace(/\/$/, "");
 
 /**
- * Real self-serve plan prices from the plan catalogue, not invented numbers.
- * No aggregateRating — there is no approved review corpus to cite.
+ * Real self-serve plan prices from the plan catalogue and the voice offer
+ * constants, not invented numbers. No aggregateRating: there is no approved
+ * review corpus to cite.
  */
 const productJsonLd = {
   "@context": "https://schema.org",
-  "@type": "Product",
+  "@type": "SoftwareApplication",
   name: "ClientTurn",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
   description,
   url: `${siteUrl}${path}`,
-  brand: { "@type": "Brand", name: "ClientTurn" },
-  offers: [PLANS.starter, PLANS.growth, PLANS.pro]
-    .filter((plan) => plan.monthlyPrice !== null)
-    .map((plan) => ({
+  offers: [
+    ...[PLANS.starter, PLANS.growth, PLANS.pro]
+      .filter((plan) => plan.monthlyPrice !== null)
+      .map((plan) => ({
+        "@type": "Offer",
+        name: `ClientTurn ${plan.name}`,
+        price: plan.monthlyPrice,
+        priceCurrency: "GBP",
+        url: `${siteUrl}${path}`,
+        availability: "https://schema.org/InStock",
+        category: "SaaS subscription",
+      })),
+    {
       "@type": "Offer",
-      name: `ClientTurn ${plan.name}`,
-      price: plan.monthlyPrice,
+      name: "ClientTurn Pro with Voice",
+      description: `Pro with the AI Voice Sales Agent: ${VOICE_ADDON.includedMinutes} minutes a month and a dedicated UK number.`,
+      price: PRO_WITH_VOICE_MONTHLY_GBP,
       priceCurrency: "GBP",
-      url: `${siteUrl}${path}`,
+      url: `${siteUrl}${path}#voice-pricing`,
       availability: "https://schema.org/InStock",
       category: "SaaS subscription",
+    },
+    ...VOICE_MINUTE_PACKS.map((pack) => ({
+      "@type": "Offer",
+      name: `Voice minute pack, ${pack.minutes} minutes`,
+      price: pack.priceGbp,
+      priceCurrency: "GBP",
+      url: `${siteUrl}${path}#voice-pricing`,
+      availability: "https://schema.org/InStock",
+      category: "Prepaid add-on",
     })),
+  ],
 };
 
 export const metadata: Metadata = {
   title,
   description,
   keywords: [
+    "AI sales agent pricing UK",
+    "AI voice agent for B2B pricing",
+    "quote to cash software UK",
     "lead management software pricing",
     "lead generation software pricing",
     "AI prospecting software pricing",
@@ -96,7 +133,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
     url: path,
     siteName: "ClientTurn",
@@ -105,14 +142,32 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
   },
 };
 
 const NUMBER = new Intl.NumberFormat("en-GB");
 
+const SMS_FROM = SMS_CREDIT_BUNDLES[0];
+const WHATSAPP_FROM = MESSAGE_CREDIT_BUNDLES.filter(
+  (bundle) => bundle.channel === "whatsapp",
+).sort((a, b) => a.priceGbp - b.priceGbp)[0];
+const WHATSAPP_FROM_COVERS = whatsappTokenCoverage(WHATSAPP_FROM.credits);
+
 const FAQS: FaqItem[] = [
+  {
+    q: "How much does the AI Voice Sales Agent cost?",
+    a: `Pro with Voice is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month and includes ${VOICE_ADDON.includedMinutes} minutes of AI calls a month and a dedicated UK number. Don't need voice? Pro is ${gbp(PLANS.pro.monthlyPrice as number)}. On ${PLANS.starter.name} and ${PLANS.growth.name}, voice is a prepaid add-on: minute packs (${packSummary()}) plus a dedicated number at ${gbp(VOICE_NUMBER_MONTHLY_GBP)} a month. Premium voices add ${gbp(PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN)} a minute. Included minutes don't roll over, packs never expire, and there is no overage. ${VOICE_TRIAL_NOTE}`,
+  },
+  {
+    q: "Who does the voice agent call?",
+    a: "Only leads who asked for a call or agreed to be called on your form, inside calling hours in their own time zone. It opens every call by saying it is an AI assistant calling from your business. It never makes cold calls.",
+  },
+  {
+    q: "Are quotes, signatures and invoices extra?",
+    a: "No. Branded quotes, a simple electronic signature with an audit trail, and invoices with payment links are part of every paid plan. Payments are taken through your own Stripe account, so Stripe's processing fees apply there and ClientTurn takes no share of the payment.",
+  },
   {
     q: "Is there a free trial?",
     a: `Yes — ${TRIAL_DAYS} days. A card is required to start and is checked by Stripe, but nothing is charged until the trial ends, and you can cancel before then. You can connect a lead source, configure your follow-up and qualification and watch the whole flow run before you pay anything. Trial workspaces have smaller allowances than any paid plan, and sourcing and cold email are off during the trial.`,
@@ -135,7 +190,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: "What happens if I exceed an allowance?",
-    a: `Automatic overage is ${AUTOMATIC_OVERAGE_DEFAULT_ON ? "on" : "off"} by default. You are warned as you approach a limit, and when you reach it the affected activity stops rather than continuing to bill you. You can then upgrade, buy additional capacity, or wait for the next period. Nothing runs past a limit unless you have explicitly turned automatic overage on and set a monthly cap.`,
+    a: `There is no overage, so you are never billed after the fact. You are warned as you approach a limit, and when you reach it the affected activity stops rather than continuing to bill you. For SMS and WhatsApp you can keep going with prepaid top-up credit, bought in fixed bundles; everything else waits for the next period or an upgrade.`,
   },
   {
     q: "How does sourcing usage work?",
@@ -143,7 +198,11 @@ const FAQS: FaqItem[] = [
   },
   {
     q: "How do communication allowances work?",
-    a: `Each plan includes a monthly email allowance and a number of UK SMS segments. A long SMS is billed as more than one segment, which is why the allowance is counted in segments rather than messages. WhatsApp is available from ${PLANS.growth.name} upward and needs an approved business sender. Additional SMS credits can be bought in bundles from £${SMS_OVERAGE_BUNDLES[0].priceGbp} for ${NUMBER.format(SMS_OVERAGE_BUNDLES[0].credits)} segments.`,
+    a: `By default the first message to a new lead goes instantly by SMS when they gave a mobile number, and the follow-up after it goes by email from your own connected mailbox, which is not counted against an SMS allowance. Each plan includes a number of UK SMS segments sized for that first text to every lead (${NUMBER.format(PLANS.starter.smsSegmentAllowance)} on ${PLANS.starter.name}, ${NUMBER.format(PLANS.growth.smsSegmentAllowance)} on ${PLANS.growth.name}, ${NUMBER.format(PLANS.pro.smsSegmentAllowance)} on ${PLANS.pro.name}). A long SMS is billed as more than one segment, which is why the allowance is counted in segments rather than messages. Additional SMS credits can be bought in prepaid bundles from £${SMS_FROM.priceGbp} for ${NUMBER.format(SMS_FROM.credits)} segments. WhatsApp is a paid add-on from ${PLANS.growth.name} upward, with no included messages: it is paid in prepaid WhatsApp tokens (from £${WHATSAPP_FROM.priceGbp} for ${NUMBER.format(WHATSAPP_FROM.credits)} tokens, about ${NUMBER.format(WHATSAPP_FROM_COVERS.replies)} conversation replies or ${NUMBER.format(WHATSAPP_FROM_COVERS.marketing)} marketing messages; a reply or utility template uses ${WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} tokens and a marketing template ${WHATSAPP_TOKENS_PER_MESSAGE.MARKETING}), with no monthly WhatsApp platform fee, and needs an approved business sender. Find Leads plans also include a monthly outbound email allowance for cold outreach.`,
+  },
+  {
+    q: "Can I get a refund on top-up credit?",
+    a: "Top-up credit is prepaid and does not expire. A purchase can be refunded only if none of its credit has been used; once any of it has been used, that purchase is non-refundable. Credit is used oldest purchase first, has no cash value and cannot be transferred. The same applies to WhatsApp tokens: they are units of use, not money, with no cash value, and cannot be exchanged or transferred.",
   },
   {
     q: "Are taxes included?",
@@ -282,6 +341,11 @@ export default function PricingPage() {
               <PlanGrid />
           </Band>
 
+          {/* -------------------------------------------- voice and quotes --- */}
+          <Band id="voice-pricing" aria-labelledby="voice-pricing-heading">
+            <VoicePricingBand />
+          </Band>
+
           {/* ------------------------------------------------ usage rules --- */}
           <Band aria-labelledby="pricing-usage">
               <SectionEyebrow className="mb-5">Usage explained</SectionEyebrow>
@@ -325,8 +389,9 @@ export default function PricingPage() {
                   <GlyphTile icon={Mail} size={38} glyph={18} />
                   <h3 className="mt-4">Communications</h3>
                   <p>
-                    Email, SMS and — from {PLANS.growth.name} — WhatsApp, sent
-                    through connected providers. Every send passes permission,
+                    A first text to every lead by SMS, follow-up email from
+                    your own mailbox and — from {PLANS.growth.name}, as a paid
+                    add-on — WhatsApp. Every send passes permission,
                     contactability and compliance checks first.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">
@@ -384,11 +449,12 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <p className="pub-lead mt-5">
-                    Each plan includes a monthly email allowance and a number of
-                    UK SMS segments, with WhatsApp available from{" "}
-                    {PLANS.growth.name}. A long SMS costs more than one segment,
-                    which is why the allowance is counted that way rather than in
-                    messages.
+                    Each plan includes enough UK SMS segments for an instant
+                    first text to every lead, and follow-up email goes from your
+                    own connected mailbox. WhatsApp is a paid add-on from{" "}
+                    {PLANS.growth.name}, paid per message in prepaid WhatsApp tokens. A
+                    long SMS costs more than one segment, which is why the
+                    allowance is counted that way rather than in messages.
                   </p>
                   <ul className="pub-ticks">
                     <li>
@@ -401,17 +467,24 @@ export default function PricingPage() {
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        Additional SMS credits are sold in fixed bundles — from £
-                        {SMS_OVERAGE_BUNDLES[0].priceGbp} for{" "}
-                        {NUMBER.format(SMS_OVERAGE_BUNDLES[0].credits)} segments —
-                        so a top-up is never open-ended.
+                        Additional SMS credits are sold in fixed prepaid bundles
+                        — from £{SMS_FROM.priceGbp} for{" "}
+                        {NUMBER.format(SMS_FROM.credits)} segments — so a top-up
+                        is never open-ended.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        WhatsApp needs an approved business sender and approved
-                        templates for first contact. That is part of setup.
+                        WhatsApp has no included messages and no monthly
+                        platform fee: it is paid per message in prepaid WhatsApp
+                        tokens — {WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} for a
+                        conversation reply or utility template,{" "}
+                        {WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} for a marketing
+                        template, from £{WHATSAPP_FROM.priceGbp} for{" "}
+                        {NUMBER.format(WHATSAPP_FROM.credits)} tokens. It needs
+                        an approved business sender and approved templates for
+                        first contact. Tokens have no cash value.
                       </span>
                     </li>
                   </ul>
@@ -467,15 +540,15 @@ export default function PricingPage() {
               </Reveal>
   
               <Reveal className="pub-column">
-                <div aria-labelledby="pricing-overage">
+                <div aria-labelledby="pricing-limits">
                   <div className="pub-cell-row">
                     <GlyphTile icon={Wallet} size={44} glyph={20} />
                     <div>
                       <SectionEyebrow className="mb-3">
-                        Overage and limits
+                        Limits and top-ups
                       </SectionEyebrow>
                       <h2
-                        id="pricing-overage"
+                        id="pricing-limits"
                         className="pub-h2 !text-[clamp(1.5rem,2vw,2rem)]"
                       >
                         Stay in control.
@@ -483,13 +556,12 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <p className="pub-lead mt-5">
-                    Automatic overage is{" "}
+                    There is{" "}
                     <strong className="text-[var(--pub-text)]">
-                      {AUTOMATIC_OVERAGE_DEFAULT_ON ? "on" : "off"} by default
+                      no overage
                     </strong>
-                    . A limit you did not agree to is not a limit — so reaching
-                    one stops the activity rather than quietly billing you for
-                    more.
+                    . Reaching a limit stops the activity rather than quietly
+                    billing you for more.
                   </p>
                   <ul className="pub-ticks">
                     <li>
@@ -508,8 +580,9 @@ export default function PricingPage() {
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        If you do turn overage on, you set a monthly spend cap
-                        with it.
+                        For SMS, prepaid top-up credit is the only way past the
+                        allowance; WhatsApp runs on prepaid WhatsApp tokens. Nothing is charged beyond what you
+                        have bought.
                       </span>
                     </li>
                   </ul>
@@ -620,7 +693,7 @@ export default function PricingPage() {
                 {
                   icon: <Wallet className="size-4" />,
                   title: "No surprise bills",
-                  body: "Overage off by default, no minimum term.",
+                  body: "No overage, prepaid top-ups only, no minimum term.",
                 },
               ]}
             />

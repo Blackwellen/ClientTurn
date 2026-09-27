@@ -6,7 +6,7 @@ import { AuthCard } from "@/components/auth/auth-card";
 import { ResendVerification } from "@/app/(auth)/verify-email/resend-verification";
 
 export const metadata: Metadata = {
-  title: "Verify your email | ClientTurn partners",
+  title: "Verify your partner email",
   description: "Confirm your email address to finish your partner application.",
   robots: { index: false, follow: false },
 };

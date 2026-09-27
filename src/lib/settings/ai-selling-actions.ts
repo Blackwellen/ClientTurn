@@ -10,11 +10,13 @@ import {
   EDITABLE_BUDGET_SCOPES,
   liaSchema,
   parseBudgetForm,
+  qualificationPolicyUpdateSchema,
   salesSettingsUpdateSchema,
   scoringWeightsSchema,
   type EditableBudgetScope,
 } from "./ai-selling";
 import { SIC_SYSTEM } from "./ai-selling-queries";
+import type { ObjectionPreview } from "@/lib/agent/objection-preview";
 
 /**
  * Server actions for Settings -> AI & selling. Every write runs a registry
@@ -177,6 +179,30 @@ export async function searchIndustryCodesAction(query: unknown): Promise<Industr
   return [...found.values()].slice(0, 25);
 }
 
+/* ------------------------------------------------- qualification policy */
+
+/**
+ * Saves one scope of the qualification policy (the workspace, or one offer)
+ * exactly as the form shows it. From Settings the policy may be widened as
+ * well as narrowed; the operation still validates, checks the subscription
+ * and audits the before and after.
+ */
+export async function saveQualificationPolicyAction(input: unknown): Promise<SettingsActionResult> {
+  const parsed = qualificationPolicyUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: issue ? `${issue.path.join(".") || "policy"}: ${issue.message}` : "Check the policy and try again." };
+  }
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation(
+    "qualification.policy_update",
+    { ...parsed.data, mode: "replace" },
+    context(workspace),
+  );
+  return finish(result, "Qualification policy saved.");
+}
+
 /* ------------------------------------------------------ scoring weights */
 
 export async function saveScoringWeightsAction(input: unknown): Promise<SettingsActionResult> {
@@ -188,4 +214,41 @@ export async function saveScoringWeightsAction(input: unknown): Promise<Settings
   if (!workspace) return { ok: false, error: DENIED };
   const result = await runOperation("scoring_weights.update", parsed.data, context(workspace));
   return finish(result, parsed.data.weights ? "Scoring weights saved." : "Scoring weights reset to the default.");
+}
+
+/* -------------------------------------------------------------- objections */
+
+// Settings -> AI & selling -> Objections. Each write runs a registry
+// operation (`sales_objections.*`), so Copilot and MCP change the same rows
+// with the same checks (no emojis, dashes or pressure in the business's own
+// words) and the same audit trail.
+
+export async function saveObjectionAction(input: unknown): Promise<SettingsActionResult> {
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation("sales_objections.save", input, context(workspace));
+  return finish(result, "Objection saved.");
+}
+
+export async function removeObjectionAction(input: unknown): Promise<SettingsActionResult> {
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation("sales_objections.remove", input, context(workspace));
+  return finish(result, "Objection removed. The library playbook applies again.");
+}
+
+export async function saveReassuranceAction(input: unknown): Promise<SettingsActionResult> {
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation("sales_objections.save_reassurance", input, context(workspace));
+  return finish(result, "Reassurance saved.");
+}
+
+/** "Try it": offline, no AI spend. Anyone who can see the settings may try it. */
+export async function previewObjectionAction(input: unknown): Promise<SettingsActionResult<ObjectionPreview>> {
+  const workspace = await actor("viewer");
+  if (!workspace) return { ok: false, error: "Sign in to try an objection." };
+  const result = await runOperation<ObjectionPreview>("sales_objections.preview", input, context(workspace));
+  if (!result.success) return { ok: false, error: result.message };
+  return { ok: true, message: "Preview ready.", data: result.data };
 }

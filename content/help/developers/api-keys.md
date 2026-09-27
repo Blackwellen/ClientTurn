@@ -4,7 +4,11 @@ summary: Create a key, choose what it may do, restrict where it can be used from
 category: developers
 keywords: [api, api key, bearer token, authorization, scopes, permissions, rest, ip allowlist, expiry, revoke, ct_live, ct_test]
 order: 1
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/developers/api-keys-1.png
+    alt: "The New API key dialog with the permissions list, the expiry and the allowed addresses field"
+    caption: "Give a key only the permissions it needs, an expiry and, if you can, the addresses it may be used from"
 ---
 
 ## Create a key

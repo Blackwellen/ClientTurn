@@ -25,6 +25,7 @@ import {
   parseEstimatedValue,
   permittedMessagingChannels,
   sourceProviderSlug,
+  subscriberTypeFromCompanyName,
   type ContactabilityAssessment,
   type CreateLeadOutcome,
   type DuplicateMatch,
@@ -91,6 +92,7 @@ export async function checkLeadDuplicates(input: {
 /* ---------------------------------------------------- contactability check */
 
 export async function checkContactability(input: {
+  company?: string;
   email: string;
   mobile: string;
   telephone: string;
@@ -484,7 +486,9 @@ export async function createManualLead(
           intake_detail: enquiry.sourceDetail || null,
           created_via: "MANUAL_WIZARD",
           created_by_user_id: workspace.userId,
-          subscriber_type: company ? "CORPORATE" : "INDIVIDUAL",
+          // Only an incorporation suffix proves a corporate subscriber (PECR);
+          // a trading name could be a sole trader. Same rule as the preview.
+          subscriber_type: subscriberTypeFromCompanyName(company),
         },
         leadSourceId: sourceId,
         permission: {
@@ -496,7 +500,7 @@ export async function createManualLead(
               : "UNKNOWN",
           evidence: permission.evidence || null,
           source: `add_lead_wizard:${enquiry.source}`,
-          subscriberType: company ? "CORPORATE" : "INDIVIDUAL",
+          subscriberType: subscriberTypeFromCompanyName(company),
           country: "GB",
           recordedBy: workspace.userId,
         },
@@ -711,16 +715,17 @@ export async function createProspectFromWizard(input: {
       first_name: parsed.data.firstName || null,
       last_name: parsed.data.lastName || null,
       email: normaliseEmail(parsed.data.email),
-      phone_e164:
-        normalisePhoneValue(parsed.data.mobile) ??
-        normalisePhoneValue(parsed.data.telephone),
+      // No phone number is kept for a found contact. Cold outreach is email
+      // only, and SMS/WhatsApp go only to a mobile the person gave on a form
+      // themselves (CLAUDE.md resolved conflict 6), so a number here would be
+      // personal data held for a purpose the product does not have.
       status: "DISCOVERED",
       // Nothing about being typed by hand makes a found contact contactable.
       outreach_eligibility: "REVIEW",
       eligibility_reason:
         "Added by hand as a found contact. Cold-outreach policy applies before any message.",
       source_provider: "manual_prospect",
-      subscriber_type: company ? "CORPORATE" : "UNKNOWN",
+      subscriber_type: subscriberTypeFromCompanyName(company),
     })
     .select("id")
     .single();

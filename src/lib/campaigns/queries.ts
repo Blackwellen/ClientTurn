@@ -176,7 +176,7 @@ export async function resolveAudience(
   if (filter.markedLost) query = query.eq("status", "LOST");
   if (filter.notBooked) query = query.is("booked_at", null);
 
-  const [{ data }, suppressedContacts, totalResult] = await Promise.all([
+  const [{ data, error: leadsError }, suppressedContacts, totalResult] = await Promise.all([
     query,
     // The one list (0069). Read in bulk rather than per contact, because an
     // audience is resolved for thousands of leads in a single pass.
@@ -189,6 +189,13 @@ export async function resolveAudience(
       .eq("business_id", businessId)
       .eq("is_test", false),
   ]);
+
+  // A failed read must not look like an empty audience: "no one matches"
+  // would be a wrong answer, and a launch on it would send to nobody while
+  // reporting success. Callers turn this into a retry or a clear message.
+  if (leadsError) {
+    throw new Error(`Could not read the audience for ${businessId}: ${leadsError.message}`);
+  }
 
   const leads = (data ?? []) as unknown as AudienceLeadRow[];
   const context: EligibilityContext = {

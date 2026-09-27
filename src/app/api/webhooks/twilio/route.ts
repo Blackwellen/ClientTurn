@@ -3,7 +3,7 @@ import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { enqueue } from "@/lib/jobs/queue";
-import { formToRecord, verifyTwilioSignature } from "@/lib/messaging/twilio";
+import { formToRecord, verifyTwilioSignature } from "@/lib/twilio/signature";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 import { suppress } from "@/lib/policy/suppression";
 import { twilioErrorSuppression } from "@/lib/messaging/sms-compliance";

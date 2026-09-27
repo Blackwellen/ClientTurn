@@ -73,6 +73,10 @@ export const RATE_LIMITS = {
   // Confirming a request from its emailed link. Generous for a real person,
   // tight enough that token guessing is pointless on top of 256-bit tokens.
   "privacy:verify": { limit: 20, windowSeconds: 600 },
+  // The public quote page's POSTs (/q/[token]/sign and /view), per address.
+  // A real signer needs two or three; the token is 256 bits, so this only
+  // bounds hammering, never guessing.
+  "quote:public": { limit: 30, windowSeconds: 600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

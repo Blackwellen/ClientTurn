@@ -145,7 +145,7 @@ export function CampaignEditDialog({
           <Input
             id="campaign-tags"
             value={tags}
-            placeholder="Seasonal, Roofing, Past Quotes"
+            placeholder="Seasonal, Past enquiries"
             onChange={(event) => setTags(event.target.value)}
           />
           <p className="mt-1 text-[12px] text-content-subtle">

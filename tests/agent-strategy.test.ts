@@ -303,9 +303,13 @@ describe("style and QA lint", () => {
     });
   }
 
-  test("more than two em dashes", () => {
-    assert.deepEqual(codes("Thanks — that helps — noted."), []);
-    assert.ok(codes("Thanks — that helps — noted — cheers.").includes("STYLE_EM_DASHES"));
+  // Owner rule 2026-09-27 (was: more than two). Any em or en dash used as a
+  // dash is rejected; an en dash in a number range is not a dash.
+  test("any em or en dash used as a dash", () => {
+    assert.deepEqual(codes("Thanks, that helps. Noted."), []);
+    assert.ok(codes("Thanks — that helps.").includes("STYLE_EM_DASHES"));
+    assert.ok(codes("Thanks – that helps.").includes("STYLE_EM_DASHES"));
+    assert.deepEqual(codes("We're open 9–5 on weekdays."), []);
   });
 
   test('"just" three or more times', () => {
@@ -371,5 +375,91 @@ describe("prompts", () => {
       const version = Number(new RegExp(`${task}: (\\d+)`).exec(registry)?.[1] ?? 0);
       assert.ok(version >= 2, `${task} is at v${version}`);
     }
+  });
+});
+
+// ------------------------------------------- engine-planned turns (design 08)
+
+import { buildNbaStrategyBlock } from "../src/lib/agent/strategy.ts";
+import { TURN_FIXTURES, nbaFixture } from "./fixtures/qi-turn-fixtures.ts";
+import { NBA_STRATEGY_BLOCK_MAX_TOKENS } from "../src/lib/qualification-intelligence/types.ts";
+
+describe("NBA strategy block: the agent and the engine share one source of truth", () => {
+  for (const fixture of TURN_FIXTURES) {
+    test(`${fixture.id}: strategy nextQuestionId equals the NBA question_intent`, () => {
+      const block = buildNbaStrategyBlock(fixture.legacy, fixture.nba, { booking: "SLOTS" });
+      assert.equal(block.record.nextQuestionId, fixture.nba.question_intent?.question_id ?? null);
+      assert.equal(block.record.questionIntentKey ?? null, fixture.nba.question_intent?.key ?? null);
+      assert.equal(block.record.nbaAction, fixture.nba.next_action);
+      if (fixture.nba.question_intent) {
+        // The one planned question, verbatim, and no other question text.
+        assert.ok(block.text.includes(fixture.nba.question_intent.rendering));
+        assert.equal((block.text.match(/\?/g) ?? []).length, (fixture.nba.question_intent.rendering.match(/\?/g) ?? []).length);
+      } else {
+        assert.doesNotMatch(block.text, /ask only this/i);
+      }
+      // The legacy plan's own question never leaks into an engine-planned turn.
+      const legacyQuestion = fixture.legacy.selection.question?.questionText;
+      if (legacyQuestion && legacyQuestion !== fixture.nba.question_intent?.rendering) {
+        assert.ok(!block.text.includes(legacyQuestion));
+      }
+    });
+  }
+
+  test("method names never reach the prompt, and the block stays within budget", () => {
+    for (const fixture of TURN_FIXTURES) {
+      const text = buildNbaStrategyBlock(fixture.legacy, fixture.nba, { booking: "SLOTS" }).text;
+      assert.doesNotMatch(text, /SPIN|Challenger|MEDDPICC|BANT|GPCT/);
+      assert.ok(Math.ceil(text.length / 4) <= NBA_STRATEGY_BLOCK_MAX_TOKENS);
+    }
+  });
+
+  test("a close tells the model how the booking is taken this turn", () => {
+    const [fixture] = TURN_FIXTURES.filter((f) => f.id === "studio-threshold-met-book");
+    const route = (booking: Parameters<typeof buildNbaStrategyBlock>[2]["booking"]) =>
+      buildNbaStrategyBlock(fixture.legacy, fixture.nba, { booking }).text;
+    assert.match(route("SLOTS"), /SEND_BOOKING_OPTIONS/);
+    assert.match(route("LINK"), /booking link/);
+    assert.match(route("ASK_PREFERRED_TIME"), /which day and time/);
+    assert.match(route("TEAM_FOLLOW_UP"), /team will be in touch/);
+  });
+
+  test("a CTA_BOOK may carry its one gating question", () => {
+    const gated = nbaFixture({
+      next_action: "CTA_BOOK",
+      rule: "R7_BOOKING_READY",
+      intent_state: "BOOKING_READY",
+      question_intent: {
+        key: "LOCATION.POSTCODE",
+        dimension: "LOCATION",
+        purpose: "DISQUALIFY_CHECK",
+        question_id: null,
+        wording_family: "postcode",
+        rendering: "Which postcode is the property in?",
+      },
+    });
+    const block = buildNbaStrategyBlock(TURN_FIXTURES[0].legacy, gated, { booking: "SLOTS" });
+    assert.match(block.text, /Before that, ask only this, in natural wording: Which postcode is the property in\?/);
+    assert.equal(block.record.questionIntentKey, "LOCATION.POSTCODE");
+    assert.equal(block.record.nextQuestionId, null);
+  });
+
+  test("manual booking mode: the legacy close asks for a day and time (story H3)", () => {
+    const manual = strategy({
+      selection: { question: null, stopReason: "THRESHOLD_MET", known: [] },
+      bookingAvailable: false,
+      manualBooking: true,
+    });
+    assert.match(manual.text, /which day and time suits them/);
+    const none = strategy({ selection: { question: null, stopReason: "THRESHOLD_MET", known: [] }, bookingAvailable: false });
+    assert.match(none.text, /offer for the team to follow up/);
+  });
+
+  test("prompts: agent_decision follows the strategy block's move; answer_extraction is multi-dimension", () => {
+    assert.match(PROMPT_BODIES.agent_decision, /objective or move/);
+    assert.match(PROMPT_BODIES.answer_extraction, /evidence_span copied word for word/);
+    const registry = readFileSync(new URL("../src/lib/ai/prompt-registry.ts", import.meta.url), "utf8");
+    assert.match(registry, /agent_decision: 4/);
+    assert.match(registry, /answer_extraction: 2/);
   });
 });

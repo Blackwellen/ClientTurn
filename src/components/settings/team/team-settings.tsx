@@ -172,7 +172,7 @@ export function TeamSettings({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card>
           <CardHeader>
             <SectionHeader
@@ -193,7 +193,7 @@ export function TeamSettings({
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Email</TableHead>
+                  <TableHead className="hidden md:table-cell xl:hidden 2xl:table-cell">Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden lg:table-cell">Joined</TableHead>
@@ -231,13 +231,13 @@ export function TeamSettings({
                                 </Badge>
                               )}
                             </p>
-                            <p className="truncate text-[12px] text-content-muted md:hidden">
+                            <p className="truncate text-[12px] text-content-muted md:hidden xl:block 2xl:hidden">
                               {member.email}
                             </p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">
+                      <TableCell className="hidden md:table-cell xl:hidden 2xl:table-cell">
                         <span className="text-content-muted">{member.email}</span>
                       </TableCell>
                       <TableCell>
@@ -281,7 +281,7 @@ export function TeamSettings({
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <span className="text-content-muted">
+                        <span className="whitespace-nowrap text-content-muted">
                           {member.status === "invited" ? "—" : formatDate(member.joinedAt)}
                         </span>
                       </TableCell>

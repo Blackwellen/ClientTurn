@@ -2,9 +2,9 @@
 title: "Webhooks: being told the moment something happens"
 summary: The event catalogue, the payload envelope, how to verify the signature, and how retries and failures work
 category: developers
-keywords: [webhooks, events, signature, hmac, signing secret, clientturn-signature, retries, delivery log, endpoint, event catalogue, verify]
+keywords: [webhooks, events, signature, hmac, signing secret, clientturn-signature, retries, retrying, gave up, delivery log, endpoint, event catalogue, verify, opportunity.won, opportunity.lost, opportunity.created]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 A webhook endpoint is an HTTPS address on your server that ClientTurn POSTs to whenever an event you subscribed to happens. To add one, follow [Setting up a webhook](/help/developers/setting-up-a-webhook).
@@ -85,7 +85,10 @@ An event appears here only if ClientTurn actually sends it.
 | `meeting.no_show` | A meeting was marked as a no-show |
 | `contact.unsubscribed` | A person opted out, on one channel or all of them |
 | `contact.suppressed` | An address or number was blocked for another reason: a bounce, a complaint, an invalid number or a manual block |
-| `ai.escalated` | The conversation assistant handed a lead to a person |
+| `opportunity.created` | A lead became a sales opportunity. Carries the lead, the starting stage and the sales motion |
+| `opportunity.won` | An opportunity was closed as won. Carries the lead and the reason given |
+| `opportunity.lost` | An opportunity was closed as lost. Carries the lead and the reason given |
+| `ai.escalated` | The conversation assistant handed a lead to a person, or asked a person for help in the background while it keeps the conversation (an assist request, such as confirming a price or the brief for a booked meeting). Read the hand-over in the app to tell which |
 
 ## What `data` contains
 
@@ -98,6 +101,8 @@ For the events delivered through ClientTurn's event outbox, `data` also carries 
 | `reply.received` | `message_id`, `lead_id`, `channel`, `classification` (often null when the reply first arrives) |
 | `meeting.*` | `booking_id`, `lead_id`, `provider`, `status`, `previous_status`, `starts_at`, `ends_at` |
 | `contact.unsubscribed`, `contact.suppressed` | `lead_id` (when the address belongs to a lead), `suppression_id`, `channel` (`ALL` or one channel), `reason`, `source` |
+| `opportunity.created` | `lead_id`, `stage`, `motion` |
+| `opportunity.won`, `opportunity.lost` | `lead_id`, `reason` |
 | `ai.escalated` | `handoff_id`, `lead_id`, `conversation_id`, `reason`, `priority` |
 
 The **Test** button sends a separate event type, `endpoint.test`, never a fake `lead.created`, so your handler can tell a drill from the real thing.
@@ -109,12 +114,12 @@ Use the event `id` (also in `clientturn-event-id`) to make your handler idempote
 ## Retries and failures
 
 - Answer with any `2xx` within 10 seconds to acknowledge.
-- A failed delivery is retried up to six more times, after 30 seconds, 5 minutes, 30 minutes, 2 hours, 8 hours and 12 hours. After that it is marked **Gave up**.
+- A failed delivery is retried up to six more times, after 30 seconds, 5 minutes, 30 minutes, 2 hours, 8 hours and 12 hours: seven attempts in all, over about 22.6 hours. While it is waiting for the next attempt, the delivery shows **Retrying**. After the last attempt it is marked **Gave up**.
 - A `4xx` answer is not retried, except `408` and `429`, because repeating a request your server rejected will not change the answer.
 - Redirects are not followed. Point the endpoint at the final address.
 - After 20 failed deliveries in a row, the endpoint is switched off automatically and marked **Disabled**, with the reason. Fix the problem and switch it back on.
 
-The **Recent deliveries** log under your endpoints shows what was sent, what your server answered and when the next attempt is due. Your own software can read the same log with [`GET /api/v1/events`](/help/developers/api-reading-and-updating-leads).
+The **Recent deliveries** log under your endpoints shows each delivery's status (**Queued**, **Retrying**, **Delivered**, **Gave up** or **Cancelled**), what was sent, what your server answered and when the next attempt is due. Your own software can read the same log with [`GET /api/v1/events`](/help/developers/api-reading-and-updating-leads).
 
 ## The signing secret
 

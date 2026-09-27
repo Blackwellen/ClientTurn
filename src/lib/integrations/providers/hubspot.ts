@@ -330,7 +330,7 @@ async function push(params: {
   integrationId: string;
   lead: CrmLeadInput;
   linkedExternalId?: string | null;
-}): Promise<{ externalContactId: string; externalDealId?: string | null }> {
+}): Promise<{ externalContactId: string; externalDealId?: string | null; additionalDealIds?: Record<string, string> }> {
   const token = await getStoredToken(params.integrationId);
 
   const admin = createAdminClient();
@@ -374,7 +374,24 @@ async function push(params: {
     }
   }
 
-  return { externalContactId: contactId, externalDealId: dealId };
+  // Several interests (0144): each other interest is its own deal on the
+  // same contact. One failing never fails the push of the lead's own deal;
+  // it is retried with the next push.
+  const additionalDealIds: Record<string, string> = {};
+  for (const extra of params.lead.additionalOpportunities ?? []) {
+    try {
+      additionalDealIds[extra.id] = await upsertDeal(
+        token,
+        { ...params.lead, opportunity: extra },
+        contactId,
+        params.lead.additionalDealIds?.[extra.id] ?? null,
+      );
+    } catch (error) {
+      console.error("[hubspot] interest deal push failed", { opportunityId: extra.id, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { externalContactId: contactId, externalDealId: dealId, additionalDealIds };
 }
 
 /**

@@ -402,3 +402,51 @@ export async function recentComplaints(
     .filter((row) => Boolean(row.email))
     .map((row) => ({ email: String(row.email), createdAt: row.created_at }));
 }
+
+/** Voice calls share the central suppression boundary, including platform and expiry rules. */
+export async function checkVoiceSuppression(businessId: string, destination?: string | null): Promise<{ suppressed: boolean; voiceOptedOut: boolean }> {
+  // Suppression for calls: a VOICE or ALL entry for the number, this workspace or platform-wide.
+  let suppressed = false;
+  let voiceOptedOut = false;
+  const phone = destination ? normalisePhone(destination) : null;
+  if (phone) {
+    const { data: hits, error } = await createAdminClient()
+      .from("suppression_entries")
+      .select("channel, expires_at, business_id")
+      .eq("phone_e164", phone)
+      .in("channel", ["VOICE", "ALL"])
+      .or(`business_id.eq.${businessId},business_id.is.null`);
+    // A failed lookup is never read as "not suppressed".
+    if (error) throw new Error(`voice suppression lookup failed: ${error.message}`);
+    const now = Date.now();
+    const live = ((hits ?? []) as { channel: string; expires_at: string | null }[]).filter((h) => !h.expires_at || Date.parse(h.expires_at) > now);
+    suppressed = live.length > 0;
+    voiceOptedOut = live.some((h) => h.channel === "VOICE");
+  }
+
+  return { suppressed, voiceOptedOut };
+}
+
+/** Persist a voice opt-out, failing closed on deployments awaiting the VOICE migration. */
+export async function recordVoiceSuppression(input: { businessId: string; phone?: string | null; callId: string }): Promise<void> {
+  const phone = input.phone ? normalisePhone(input.phone) : null;
+  if (!phone) return;
+  const base = {
+    business_id: input.businessId,
+    phone_e164: phone,
+    reason: "OPT_OUT",
+    source: "VOICE_CALL",
+    source_reference: `voice_call:${input.callId}`,
+    note: "Asked on an AI call not to be called again.",
+  };
+  const { error } = await createAdminClient().from("suppression_entries").insert({ ...base, channel: "VOICE" });
+  if (!error || error.code === "23505") return;
+  // 0157 not applied (the VOICE channel is refused by the CHECK): suppress
+  // every channel rather than keep calling. Over-suppression is the safe side.
+  if (error.code === "23514") {
+    const fallback = await createAdminClient().from("suppression_entries").insert({ ...base, channel: "ALL", note: "Asked on an AI call not to be called again (all channels until the VOICE opt-out is available)." });
+    if (!fallback.error || fallback.error.code === "23505") return;
+    throw new Error(`voice opt-out: ${fallback.error.message}`);
+  }
+  throw new Error(`voice opt-out: ${error.message}`);
+}

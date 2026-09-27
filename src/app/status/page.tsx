@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
   alternates: { canonical: "/status" },
   openGraph: {
-    title: "System Status · ClientTurn",
+    title: "System Status",
     description: statusDescription,
     url: "/status",
     siteName: "ClientTurn",
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "System Status · ClientTurn",
+    title: "System Status",
     description: statusDescription,
   },
 };

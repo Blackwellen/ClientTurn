@@ -19,6 +19,10 @@ import {
   tokensPerPound,
   type TokenSummary,
 } from "@/lib/billing/tokens";
+import {
+  REFUND_STATE_LABEL,
+  type RefundState,
+} from "@/lib/billing/refundability";
 
 export type TokenMeterStatus = TokenSummary & {
   periodStart: string;
@@ -35,6 +39,11 @@ export type TokenPurchaseRow = {
   currency: string;
   status: string;
   createdAt: string;
+  /**
+   * FIFO refund state (refundability.ts): refundable only while none of the
+   * pack's tokens have been used. Refunds are issued by the owner in Stripe.
+   */
+  refundState?: RefundState;
 };
 
 /**
@@ -189,13 +198,16 @@ export function AiTokenMeter({
                     <Zap className="size-3.5" />
                     {pending === pack.key ? "Opening…" : "Buy"}
                   </Button>
+                  <p className="text-muted mt-1 text-[11px]">Non-refundable once any credit is used.</p>
                 </div>
               ))}
             </div>
           )}
           <p className="text-muted mt-2 text-[11.5px]">
-            Topped-up tokens never expire and carry over between periods. There is no
-            automatic overage — you are never billed for going over without buying first.
+            Topped-up tokens are prepaid, never expire and carry over between periods.
+            You are never billed for AI use you have not paid for. A pack can be refunded
+            only while none of its tokens have been used; your included allowance is always
+            used before topped-up tokens.
           </p>
         </div>
 
@@ -215,17 +227,26 @@ export function AiTokenMeter({
                     £{(purchase.amountMinor / 100).toFixed(2)} ·{" "}
                     {new Date(purchase.createdAt).toLocaleDateString("en-GB")}
                   </span>
-                  <Badge
-                    tone={
-                      purchase.status === "PAID"
-                        ? "success"
-                        : purchase.status === "PENDING"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
-                    {purchase.status.toLowerCase()}
-                  </Badge>
+                  <span className="flex items-center gap-1.5">
+                    <Badge
+                      tone={
+                        purchase.status === "PAID"
+                          ? "success"
+                          : purchase.status === "PENDING"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {purchase.status.toLowerCase()}
+                    </Badge>
+                    {purchase.status === "PAID" &&
+                      (purchase.refundState === "refundable" ||
+                        purchase.refundState === "in_use") && (
+                        <Badge tone="neutral">
+                          {REFUND_STATE_LABEL[purchase.refundState]}
+                        </Badge>
+                      )}
+                  </span>
                 </li>
               ))}
             </ul>

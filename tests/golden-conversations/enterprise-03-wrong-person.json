@@ -1,0 +1,22 @@
+{
+  "id": "enterprise-03-wrong-person",
+  "archetype": "ENTERPRISE_SAAS",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "story": "The wrong person replies; the agent does not keep qualifying them.",
+  "origin": "OUTBOUND",
+  "turns": [
+    {
+      "lead": "I'm not the right person for this, I'm in finance not operations.",
+      "expect": {
+        "actionIn": [
+          "NO_ACTION",
+          "DISQUALIFY",
+          "ESCALATE",
+          "WAIT"
+        ],
+        "questionDimension": null
+      }
+    }
+  ]
+}

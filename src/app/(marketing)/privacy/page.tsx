@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/privacy" },
   openGraph: {
-    title: "Privacy Policy · ClientTurn",
+    title: "Privacy Policy",
     description,
     url: "/privacy",
     siteName: "ClientTurn",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Privacy Policy · ClientTurn",
+    title: "Privacy Policy",
     description,
   },
 };

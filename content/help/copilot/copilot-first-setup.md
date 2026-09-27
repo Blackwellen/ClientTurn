@@ -1,13 +1,17 @@
 ---
 title: Your first Copilot session
-summary: The Meet Copilot step at the start of workspace setup, what it shows you, and how to pick it up later if you skip it
+summary: The Meet Copilot step in workspace setup, what it shows you, and how to pick it up later if you skip it
 category: copilot
 keywords: [meet copilot, onboarding, first question, setup, skip for now, getting started with copilot]
 order: 5
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/copilot/copilot-first-setup-1.png
+    alt: "The Meet Copilot onboarding step with the permissions panel, suggested questions and Skip for now"
+    caption: "Ask Copilot a question if you like, or skip for now"
 ---
 
-Setting up a new workspace starts with **Meet Copilot**, the first of six setup steps. It takes a minute and introduces the assistant you will use across the product.
+**Meet Copilot** is the second of six setup steps, straight after you name your workspace. It is optional, takes a minute, and introduces the assistant you will use across the product.
 
 ## What the step shows
 
@@ -26,7 +30,7 @@ Pick a suggestion or write your own. The suggestions are read-only questions, so
 - "Which leads need attention?"
 - "What can you do for me, and what will you always ask before doing?"
 
-Once Copilot has answered, **Continue** becomes available.
+Asking is optional: **Continue** is available whether or not you ask.
 
 ## Skipping the step
 

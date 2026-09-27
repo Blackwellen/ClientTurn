@@ -11,8 +11,10 @@ import {
   MapPin,
   MoreVertical,
   Settings2,
+  Tags,
   Trash2,
 } from "lucide-react";
+import { QuestionMappingDialog } from "./question-mapping-dialog";
 import { Input, Select, Switch } from "@/components/ui/form";
 import { IconButton } from "@/components/ui/button";
 import {
@@ -85,6 +87,7 @@ export function QuestionRow({
   const rowId = `question-${question.key}`;
   const summary = describeRouting(question);
   const Icon = RULE_ICON[summary.kind];
+  const [mappingOpen, setMappingOpen] = React.useState(false);
 
   function changeType(next: ResponseType) {
     // Switching to a choice type with no options would leave the question
@@ -223,6 +226,14 @@ export function QuestionRow({
               <DropdownItem icon={Settings2} onSelect={onConfigureRouting}>
                 Configure routing
               </DropdownItem>
+              <DropdownItem
+                icon={Tags}
+                disabled={!question.id}
+                description={question.id ? "Which detail it answers" : "Publish it first"}
+                onSelect={() => setMappingOpen(true)}
+              >
+                Map to a detail
+              </DropdownItem>
               <DropdownItem icon={Copy} onSelect={onDuplicate}>
                 Duplicate
               </DropdownItem>
@@ -298,6 +309,16 @@ export function QuestionRow({
             </span>
           </span>
         </button>
+      )}
+
+      {question.id && mappingOpen && (
+        <QuestionMappingDialog
+          open
+          onClose={() => setMappingOpen(false)}
+          questionId={question.id}
+          questionText={question.questionText}
+          canEdit={canEdit}
+        />
       )}
     </li>
   );

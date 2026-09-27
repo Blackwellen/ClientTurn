@@ -4,7 +4,14 @@ summary: Write your questions, choose an answer type, route each answer to conti
 category: qualifying
 keywords: [qualification questions, create question, question types, yes no, single choice, timing, number, postcode, free text, routing rule, required question, publish, draft, service-specific questions]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/qualifying/setting-up-qualification-questions-1.png
+    alt: "The qualification questions editor with question text, answer type, Required and Publish changes marked"
+    caption: "Write your questions, choose the answer type and whether it is required, then publish"
+  - src: /help/screenshots/qualifying/setting-up-qualification-questions-2.png
+    alt: "The question rules dialog with the answer options and where each answer goes"
+    caption: "Send each answer to continue, review or not qualified, then save the rules"
 ---
 
 Your questions live in **Follow-Up**, on the **Qualification** view. Owners and admins can edit them. Nothing is asked of a lead until you publish.

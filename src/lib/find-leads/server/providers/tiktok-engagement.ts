@@ -368,8 +368,8 @@ export const tiktokEngagementProvider: SourcingProvider = {
   /**
    * Off until somebody has seen it work.
    *
-   * The Meta and LinkedIn engagement adapters report `true` here because their
-   * credential is per workspace and their payloads are documented. This one
+   * The Meta engagement adapter reports `true` here because its
+   * credential is per workspace and its payloads are documented. This one
    * differs on the second count: the comment object's commenter identity could
    * not be confirmed from any fetchable source (see the module header), and a
    * source that silently yields nothing is worse than one that is plainly

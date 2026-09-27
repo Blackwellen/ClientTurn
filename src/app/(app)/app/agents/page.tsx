@@ -4,7 +4,7 @@ import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getAgentCounts, listAgents } from "@/lib/agents/queries";
 import { AgentsView } from "@/components/agents/agents-view";
 
-export const metadata: Metadata = { title: "Agents · ClientTurn" };
+export const metadata: Metadata = { title: "Agents" };
 export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {

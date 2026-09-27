@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { PROMOTION_RELATIONSHIP_CHOICES } from "./types";
 import { requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
@@ -873,28 +874,9 @@ export async function approveProspectAction(
   return ok({ status: "APPROVED" });
 }
 
-/**
- * The relationship types a reviewer may assert when promoting a prospect that
- * has no recorded reply (a connector push, a manual add, an import). Mirrors
- * the Add Lead wizard's card set (`RELATIONSHIP_CHOICES` in
- * leads/add-lead/types.ts) plus `IMPORTED`, minus the two values that would
- * be a lie or a no-op here: `FOUND_BY_US` (the promotion routine already
- * refuses this — it's the one answer that must never describe a Lead) and
- * `EXPLICIT_MARKETING_CONSENT` (that claim needs the evidence field the add-
- * lead wizard captures; this action has nowhere to record it, so asserting it
- * here would be an unevidenced compliance claim).
- */
-export const PROMOTION_RELATIONSHIP_CHOICES = [
-  "THEY_CONTACTED_US",
-  "EXISTING_CUSTOMER",
-  "REFERRAL",
-  "REQUESTED_INFORMATION",
-  "EXISTING_BUSINESS_RELATIONSHIP",
-  "IMPORTED",
-  "OTHER",
-] as const;
-
-export type PromotionRelationshipChoice = (typeof PROMOTION_RELATIONSHIP_CHOICES)[number];
+// PROMOTION_RELATIONSHIP_CHOICES lives in ./types: a "use server" module may
+// export only async functions, and exporting the array here made every server
+// action on the Find Leads page fail with a 500 (8.7).
 
 /**
  * Prospect → Lead promotion (V4 §11.19).

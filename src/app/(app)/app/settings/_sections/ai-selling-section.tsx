@@ -7,9 +7,11 @@ import { runOperation } from "@/lib/services";
 import {
   listLias,
   loadBudgetView,
+  loadQualificationPolicyView,
   loadSalesSettings,
   loadScoringWeightsView,
   loadSenderHealth,
+  loadWorkspaceObjections,
 } from "@/lib/settings/ai-selling-queries";
 import { ScoringWeightsCard } from "@/components/settings/ai-selling/scoring-weights-card";
 import { ReadOnlyNotice } from "@/components/settings/notices";
@@ -20,14 +22,16 @@ import { BrandCard } from "@/components/settings/ai-selling/brand-card";
 import { ChannelsCard } from "@/components/settings/ai-selling/channels-card";
 import { ComplianceCard } from "@/components/settings/ai-selling/compliance-card";
 import { SectionLoadError } from "@/components/settings/ai-selling/section-load-error";
+import { QualificationPolicyCard } from "@/components/settings/ai-selling/qualification-policy-card";
+import { ObjectionsCard } from "@/components/settings/ai-selling/objections-card";
 
 /**
  * Settings -> AI & selling (brief §74).
  *
- * Seven cards in the order a workspace sets them up: how much the assistant may
- * do, how much it may spend, how this business sells, how leads are scored,
- * how it sounds, which channels it sends on, and the compliance record behind
- * contacting people.
+ * Cards in the order a workspace sets them up: how much the assistant may do,
+ * how much it may spend, how this business sells, how leads are scored, how it
+ * sounds, the objections it hears and its own answers, which channels it sends
+ * on, and the compliance record behind contacting people.
  *
  * Each card loads independently and fails independently: a failed budget read
  * shows an error in the budget card and leaves the rest usable. Owners and
@@ -77,6 +81,8 @@ export async function AiSellingSection() {
     settle(() => listLias(workspace.businessId)),
     settle(() => loadSenderHealth(workspace.businessId)),
   ]);
+  const policy = await settle(() => loadQualificationPolicyView(workspace.businessId, workspace.role));
+  const objections = await settle(() => loadWorkspaceObjections(workspace.businessId));
   const weights = sales.ok
     ? await settle(() =>
         loadScoringWeightsView(workspace.businessId, sales.value.archetypeKey, sales.value.salesMotions[0] ?? null),
@@ -113,6 +119,19 @@ export async function AiSellingSection() {
         <SectionLoadError title="Sales behaviour" />
       )}
 
+      {policy.ok ? (
+        <QualificationPolicyCard
+          // Remount after a save so every scope shows what was stored.
+          key={JSON.stringify([policy.value.workspace, policy.value.offers.map((o) => o.policy), policy.value.engineMode])}
+          view={policy.value}
+          canManage={canManage}
+          subscriptionActive={entitlements.active}
+          agentMode={behaviour.ok ? behaviour.value.agentMode : null}
+        />
+      ) : (
+        <SectionLoadError title="Qualification policy" />
+      )}
+
       {sales.ok && weights.ok ? (
         <ScoringWeightsCard
           // Remount after a save so the sliders show what was stored.
@@ -130,6 +149,17 @@ export async function AiSellingSection() {
         <BrandCard brand={sales.value.brand} preferences={sales.value.preferences} canManage={canManage} />
       ) : (
         <SectionLoadError title="Brand" />
+      )}
+
+      {objections.ok ? (
+        <ObjectionsCard
+          // Remount after a save so the editor shows what was stored.
+          key={JSON.stringify(objections.value)}
+          set={objections.value}
+          canManage={canManage}
+        />
+      ) : (
+        <SectionLoadError title="Objections" />
       )}
 
       {senders.ok ? <ChannelsCard health={senders.value} /> : <SectionLoadError title="Channels" />}

@@ -6,7 +6,8 @@ import { SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Select, Switch } from "@/components/ui/form";
-import { LEAD_STATUS } from "@/components/ui/badge";
+import { INTENT_STATE, LEAD_STATUS, NBA_ACTION } from "@/components/ui/badge";
+import { INTENT_STATES, NBA_ACTIONS } from "@/lib/qualification-intelligence/types";
 import {
   DATE_RANGES,
   LEAD_STATUSES,
@@ -26,6 +27,9 @@ type Draft = {
   assignee: string;
   range: string;
   attention: boolean;
+  intent: string[];
+  nextAction: string[];
+  strongIncomplete: boolean;
 };
 
 function toDraft(filters: LeadFilters): Draft {
@@ -38,6 +42,9 @@ function toDraft(filters: LeadFilters): Draft {
     assignee: filters.assignee ?? "",
     range: filters.range,
     attention: Boolean(filters.attention),
+    intent: filters.intent ? [...filters.intent] : [],
+    nextAction: filters.nextAction ? [...filters.nextAction] : [],
+    strongIncomplete: Boolean(filters.strongIncomplete),
   };
 }
 
@@ -134,7 +141,7 @@ export function LeadFilterButton({
     };
   }, [open]);
 
-  const toggle = (key: "status" | "service" | "source", id: string) =>
+  const toggle = (key: "status" | "service" | "source" | "intent" | "nextAction", id: string) =>
     setDraft((current) => ({
       ...current,
       [key]: current[key].includes(id)
@@ -152,6 +159,9 @@ export function LeadFilterButton({
       assignee: draft.assignee || null,
       range: draft.range === "all" ? null : draft.range,
       attention: draft.attention ? "1" : null,
+      intent: draft.intent.length ? draft.intent.join(",") : null,
+      nextAction: draft.nextAction.length ? draft.nextAction.join(",") : null,
+      strongIncomplete: draft.strongIncomplete ? "1" : null,
     });
     setOpen(false);
   };
@@ -166,6 +176,9 @@ export function LeadFilterButton({
       assignee: "",
       range: "all",
       attention: false,
+      intent: [],
+      nextAction: [],
+      strongIncomplete: false,
     });
   };
 
@@ -202,6 +215,10 @@ export function LeadFilterButton({
           aria-label="Filter leads"
           className={cn(
             "absolute left-0 top-[calc(100%+6px)] z-40 w-[min(560px,calc(100vw-2rem))]",
+            // Nine filter groups now (intent and next action added): cap the height
+            // so the panel scrolls inside itself instead of running off a laptop
+            // screen (8.7).
+            "max-h-[max(20rem,calc(100dvh-20rem))] overflow-y-auto overscroll-contain",
             "rounded-xl border border-line bg-surface p-4 shadow-lg",
             "animate-[lr-fade-in_var(--lr-duration-base)_var(--lr-ease)]",
           )}
@@ -232,6 +249,24 @@ export function LeadFilterButton({
                 selected={draft.service}
                 onToggle={(id) => toggle("service", id)}
                 emptyLabel="No services configured yet."
+              />
+            </Group>
+
+            <Group label="Buying intent">
+              <CheckList
+                items={INTENT_STATES.map((state) => ({ id: state, label: INTENT_STATE[state].label }))}
+                selected={draft.intent}
+                onToggle={(id) => toggle("intent", id)}
+                emptyLabel="No intent states"
+              />
+            </Group>
+
+            <Group label="Next best action">
+              <CheckList
+                items={NBA_ACTIONS.map((action) => ({ id: action, label: NBA_ACTION[action].label }))}
+                selected={draft.nextAction}
+                onToggle={(id) => toggle("nextAction", id)}
+                emptyLabel="No actions"
               />
             </Group>
 
@@ -323,7 +358,18 @@ export function LeadFilterButton({
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line-subtle pt-3">
+          <div className="mt-4 border-t border-line-subtle pt-3">
+            <span className="flex items-center gap-2 text-[13px] text-content-secondary">
+              <Switch
+                checked={draft.strongIncomplete}
+                onCheckedChange={(next) => setDraft((c) => ({ ...c, strongIncomplete: next }))}
+                label="Strong intent, qualification incomplete"
+              />
+              Strong intent, qualification incomplete
+            </span>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-line-subtle pt-3">
             <span className="flex items-center gap-2 text-[13px] text-content-secondary">
               <Switch
                 checked={draft.attention}

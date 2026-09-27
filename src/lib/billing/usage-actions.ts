@@ -9,11 +9,9 @@ import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { loadSenderHealth } from "@/lib/outreach/campaigns/sender";
 import {
   ALLOCATION_CHANNELS,
-  MAX_OVERAGE_CAP_MINOR,
   effectiveDailyCap,
   planDailyCaps,
   validateAllocation,
-  validateOverage,
   type Allocation,
   type AllocationChannel,
 } from "./usage-allocation";
@@ -23,8 +21,9 @@ import {
  *
  * Every value the browser sends is treated as a *request*, not a setting. The
  * server re-derives the ceiling from plan entitlements and sender health and
- * clamps to it, so a hand-crafted request cannot raise a daily cap, exceed the
- * account's overage maximum, or store an allocation that does not total 100%.
+ * clamps to it, so a hand-crafted request cannot raise a daily cap or store an
+ * allocation that does not total 100%. There is no overage setting: nothing
+ * here can increase what the customer is charged (owner, 2026-09-27).
  *
  * Billing is owner-and-admin territory; a member cannot change what the
  * workspace spends.
@@ -201,84 +200,6 @@ export async function saveDailyCaps(input: unknown): Promise<Result<undefined>> 
     entityType: "customer_usage_allocation",
     entityId: row.id,
     metadata: { daily_caps: clamped, requested: parsed.data },
-  });
-
-  revalidatePath("/app/settings");
-  return ok(undefined);
-}
-
-/* ---------------------------------------------------------------- overage */
-
-const overageSchema = z.object({
-  enabled: z.boolean(),
-  capMinor: z.number().int().min(0).max(MAX_OVERAGE_CAP_MINOR),
-  /** The customer typed the confirmation phrase in the dialog. */
-  confirmed: z.boolean(),
-});
-
-/**
- * Automatic overage.
- *
- * Off by default and only ever switched on by an explicit, confirmed action:
- * this is the one setting on the page that can increase what the customer is
- * charged, so it is never a silent toggle.
- */
-export async function saveOverage(input: unknown): Promise<Result<undefined>> {
-  const parsed = overageSchema.safeParse(input);
-  if (!parsed.success) return fail("That overage setting is not valid.");
-
-  const workspace = await requireBillingAdmin();
-  if (!workspace) return fail("Only an owner or admin can change billing settings.");
-
-  if (parsed.data.enabled && !parsed.data.confirmed) {
-    return fail("Confirm that you understand overage charges before enabling it.");
-  }
-
-  const v4 = await getV4Entitlements(workspace.businessId);
-  const accountMaxMinor = v4.allowances.email_sent.overageAllowed ? 500_00 : 0;
-
-  if (parsed.data.enabled && accountMaxMinor === 0) {
-    return fail("Overage is not available on your current plan.");
-  }
-
-  const issues = validateOverage({
-    enabled: parsed.data.enabled,
-    capMinor: parsed.data.capMinor,
-    accountMaxMinor,
-  });
-  if (issues.length > 0) return fail(issues[0].message);
-
-  const row = await upsertPeriodRow(workspace.businessId, workspace.userId);
-  if (!row) return fail("That change could not be saved.");
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("customer_usage_allocations")
-    .update({
-      overage_enabled: parsed.data.enabled,
-      // Turning overage off zeroes the cap, so re-enabling it is a fresh,
-      // deliberate decision rather than a resurrected old number.
-      overage_cap_minor: parsed.data.enabled ? parsed.data.capMinor : 0,
-      updated_by: workspace.userId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", row.id)
-    .eq("business_id", workspace.businessId);
-
-  if (error) return fail("That change could not be saved.");
-
-  await recordAudit({
-    businessId: workspace.businessId,
-    actorUserId: workspace.userId,
-    action: parsed.data.enabled
-      ? "billing.overage_changed"
-      : "billing.spend_cap_changed",
-    entityType: "customer_usage_allocation",
-    entityId: row.id,
-    metadata: {
-      enabled: parsed.data.enabled,
-      cap_minor: parsed.data.enabled ? parsed.data.capMinor : 0,
-    },
   });
 
   revalidatePath("/app/settings");

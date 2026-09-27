@@ -32,6 +32,10 @@ export type AuditAction =
   | "automation.draft_discarded"
   | "automation.quiet_hours_changed"
   | "automation.timezone_changed"
+  | "automation.channel_budget_changed"
+  | "automation.contact_frequency_changed"
+  | "reengagement.trigger_fired"
+  | "reengagement.trigger_skipped"
   | "automation.test_message_sent"
   | "ai_settings.updated"
   | "qualification.question_saved"
@@ -72,6 +76,11 @@ export type AuditAction =
   | "billing.credits_purchase_started"
   | "billing.credits_purchased"
   | "billing.credits_refunded"
+  // Voice purchases (OD-2): minute packs and the dedicated-number item.
+  | "billing.voice_pack_purchase_started"
+  | "billing.voice_pack_purchased"
+  | "billing.voice_number_added"
+  | "billing.upgrade_suggestions_changed"
   | "admin.impersonation"
   | "admin.workspace_suspended"
   | "admin.workspace_unsuspended"
@@ -262,6 +271,14 @@ export type AuditAction =
   | "booking.rescheduled"
   | "commercial_authority.updated"
   | "checkout.proposed"
+  // The direct-sale loop (0143): payments confirmed from the customer's own
+  // Stripe or order webhook, and the endpoints that receive them.
+  | "payment.received"
+  | "payment.confirmed"
+  | "payments.endpoint_created"
+  | "payments.secret_saved"
+  | "payments.secret_rotated"
+  | "payments.endpoint_toggled"
   | "handoff.brief_generated"
   | "crm.note_pushed"
   | "inmail.recorded"
@@ -271,7 +288,31 @@ export type AuditAction =
   // Revenue engine Phase 5: the duplicate queue. A merge or its undo from the
   // admin System view; the workspace path audits as merge_candidate.resolve.
   | "admin.merge_candidate_resolved"
-  | "admin.merge_reverted";
+  | "admin.merge_reverted"
+  // Quote-to-cash (P2). The staff-side acts audit under their service
+  // operation names (quote.send, invoice.issue ...); these are the acts with
+  // no operation behind them: the customer on the public page, and the jobs.
+  | "quote.customer_viewed"
+  | "quote.customer_accepted"
+  | "quote.customer_signed"
+  | "quote.pdf_rendered"
+  | "quote.expired"
+  | "quote.nudged"
+  | "invoice.issued_automatically"
+  | "invoice.reminded"
+  | "invoice.marked_overdue"
+  // Voice P2. The staff-side acts audit under their service operation names
+  // (voice.request_call, voice.number_request ...); these are the jobs' acts
+  // and the provider callbacks, with no operation behind them.
+  | "voice.call_queued"
+  | "voice.call_placed"
+  | "voice.call_cancelled"
+  | "voice.call_completed"
+  | "voice.pack_credited"
+  | "number.activated"
+  | "number.needs_attention"
+  | "number.bundle_rejected"
+  | "number.release_scheduled";
 
 /**
  * The full audit vocabulary.

@@ -147,15 +147,29 @@ describe("H. Add Lead wizard: Harbour Advisory (consultancy, manual booking)", (
   });
 
   test("H3 handover booking mode: what happens at the close", async () => {
-    await check({ id: "H3", flow: "Booking (handover mode)", scenario: "booking_mode handover, threshold met", expected: "a pending booking request (flow map 9: 'Manual -> pending row, staff Confirm / Decline')", fix: "no 'manual' booking_mode exists (0001 check: calendly/google_calendar/handover); in handover mode the agent hands over (PROVIDER_FAILURE) instead of recording a pending request -- doc 07 section 9 overstates; decide which is intended" }, async () => {
+    // Engine in its default mode (SHADOW: QI_RELEASE_GATES_PASSED is false), so
+    // this is the LEGACY turn. At the threshold the agent asks "which day and
+    // time?" (BOOKING_OPTIONS_SENT, preferredTimeAsked=1); the pending request
+    // is created from the lead's ANSWER, exactly as in Q5 (engine LIVE).
+    await check({ id: "H3", flow: "Booking (handover mode, engine SHADOW = legacy turn)", scenario: "booking_mode handover, threshold met, lead then names a time", expected: "fixed 'which day and time?' at the threshold, then a PENDING booking for the stated time (flow map 9: 'Manual -> pending row, staff Confirm / Decline'); lead told 'requested', not BOOKED" }, async () => {
       assert.ok(S.leadId, "no lead from H1");
       await H.leadSays(person.phone, "Thanks for calling back.");
       await H.leadSays(person.phone, "We want to find where our operations are leaking margin, that's what we're looking to achieve.");
-      await H.leadSays(person.phone, "We'd want to start next month.");
+      const t3 = await H.leadSays(person.phone, "We'd want to start next month.");
+      const asked = await H.latestRun(S.leadId);
+      const askedDecision = (asked?.decision_json ?? {}) as { preferredTimeAsked?: number; qi?: { accounting?: { engine_mode?: string } } };
+      assert.equal(asked?.outcome, "BOOKING_OPTIONS_SENT", `threshold turn ${asked?.outcome}`);
+      assert.equal(askedDecision.preferredTimeAsked, 1, `threshold turn did not ask for a time: ${JSON.stringify(asked?.decision_json).slice(0, 300)}`);
+      // Not Q5's "Tuesday at 2pm": bookings_one_active_per_slot_idx allows one
+      // active booking per workspace slot, and this pending request stays open.
+      const t4 = await H.leadSays(person.phone, "Wednesday at 11am works for me");
       const last = await H.latestRun(S.leadId);
-      const { data: bookings } = await admin.from("bookings").select("status").eq("lead_id", S.leadId);
-      assert.equal(bookings?.[0]?.status, "pending", `bookings=${JSON.stringify(bookings)}; last run ${last?.outcome} ${(last?.decision_json as { reason?: string } | null)?.reason}`);
-      return "pending";
+      const { data: bookings } = await admin.from("bookings").select("status, provider").eq("lead_id", S.leadId);
+      assert.equal(bookings?.[0]?.status, "pending", `bookings=${JSON.stringify(bookings)}; last run ${last?.outcome} ${JSON.stringify(last?.decision_json).slice(0, 300)}`);
+      const lead = await H.leadRow(S.leadId);
+      assert.notEqual(lead.status, "BOOKED", "a pending request marked the lead BOOKED");
+      assert.ok(t4.replies.length >= 1 && t4.replies.every((r) => !/\bbooked\b/i.test(r) || /not confirmed/i.test(r)), `reply: ${JSON.stringify(t4.replies)}`);
+      return `engine ${askedDecision.qi?.accounting?.engine_mode ?? "?"}; threshold turn asked "${(t3.replies[0] ?? "").slice(0, 60)}"; booking ${bookings![0].status}/${bookings![0].provider}; lead ${lead.status}; reply "${(t4.replies[0] ?? "").slice(0, 60)}"`;
     });
   });
 
@@ -164,12 +178,16 @@ describe("H. Add Lead wizard: Harbour Advisory (consultancy, manual booking)", (
       assert.ok(S.leadId, "no lead from H1");
       await admin.from("business_settings").update({ booking_mode: "google_calendar" }).eq("business_id", H.mustWorld().businessId);
       await connect("google_calendar", { config: { calendarId: "primary" } });
-      // After the agent's hand-off in H3, "resume follow-up" does not give the
-      // conversation back to the agent (recorded as H3b). H4 uses a fresh lead.
+      // H3b (engine SHADOW = legacy turn; Q4 is the same with the engine LIVE):
+      // the lead asks for a person, the agent hands off, a person resumes
+      // follow-up, and the agent must answer again. H4 then uses a fresh lead.
+      const handed = await H.leadSays(person.phone, "Can I speak to a real person please?");
+      const handRun = await H.latestRun(S.leadId);
       const resumed = await runOp("lead.resume_follow_up", { leadId: S.leadId });
       const probe = await H.leadSays(person.phone, "Are you still there?");
       const probeRun = await H.latestRun(S.leadId);
-      K.record({ id: "H3b", flow: "Hand-off release", scenario: "agent hand-off, then lead.resume_follow_up, then an inbound reply", expected: "the agent answers again (or the UI names the step that releases the conversation)", actual: `resume ${resumed.success ? "ok" : "failed"}; next inbound -> ${probeRun?.status}/${probeRun?.error_code}; replies=${probe.replies.length}`, result: probeRun?.error_code === "HUMAN_OWNS_CONVERSATION" ? "FAIL" : "PASS", evidence: "conversation owner stays human after an agent hand-off; X5 shows manual takeover does resume", fix: "decide: lead.resume_follow_up should also release conversation ownership / resolve the open agent_handoffs row, or the UI must say resolving the hand-off is the step" });
+      const handedOff = handRun?.outcome === "HANDOVER_CREATED";
+      K.record({ id: "H3b", flow: "Hand-off release (engine SHADOW)", scenario: "lead asks for a person -> agent hand-off, then lead.resume_follow_up, then an inbound reply", expected: "the agent answers again (not HUMAN_OWNS_CONVERSATION)", actual: `hand-off ${handRun?.outcome} (acks ${handed.replies.length}); resume ${resumed.success ? "ok" : "failed"}; next inbound -> ${probeRun?.outcome}/${probeRun?.error_code ?? "-"}; replies=${probe.replies.length}`, result: handedOff && resumed.success && probeRun?.error_code !== "HUMAN_OWNS_CONVERSATION" && probe.replies.length >= 1 ? "PASS" : "FAIL", evidence: "conversation_agent_runs outcome/error_code for the hand-off and the probe turn; SMS fake outbox", fix: handedOff ? undefined : "the hand-off request did not create a hand-off; H3b not exercised" });
       const { createManualLead } = await import("../../src/lib/leads/add-lead/actions.ts");
       const { data: service } = await admin.from("services").select("id").eq("business_id", H.mustWorld().businessId).eq("active", true).single();
       const fresh = { email: H.testEmail("harriet.cole"), phone: H.dramaPhone() };

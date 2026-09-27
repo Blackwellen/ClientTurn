@@ -332,7 +332,7 @@ export function HeroFlowMap({ className }: { className?: string }) {
             <span className="pub-node-dot" style={{ width: u(6), height: u(6) }} />
           </div>
           <p className="text-[var(--pub-text-secondary)]" style={{ fontSize: u(10), marginTop: u(6) }}>
-            Roof replacement
+            Website rebuild
           </p>
         </NodeCard>
 
@@ -441,9 +441,9 @@ export function HeroFlowMap({ className }: { className?: string }) {
           y={OUTBOUND_Y}
           width={CARD_W}
         >
-          <CompanyRow name="Smith Construction" />
-          <CompanyRow name="Riverside Homes" />
-          <CompanyRow name="Oakwood Developments" />
+          <CompanyRow name="Loomwell Goods" />
+          <CompanyRow name="Parcel & Pine" />
+          <CompanyRow name="Copperleaf Apparel" />
         </NodeCard>
 
         <NodeCard
@@ -455,7 +455,7 @@ export function HeroFlowMap({ className }: { className?: string }) {
           width={CARD_W}
         >
           <CheckRow label="Email" />
-          <CheckRow label="Phone" />
+          <CheckRow label="Incorporated" />
           <CheckRow label="Company" />
           <CheckRow label="Decision maker" last />
         </NodeCard>
@@ -472,7 +472,7 @@ export function HeroFlowMap({ className }: { className?: string }) {
             className="text-[var(--pub-text-secondary)]"
             style={{ fontSize: u(10.5), lineHeight: 1.5 }}
           >
-            Hi there, We help contractors win more high-value projects&hellip;
+            Hi there, We help ecommerce brands build stores that convert&hellip;
           </p>
         </NodeCard>
 

@@ -25,10 +25,13 @@ import {
   EVIDENCE_KIND_CATEGORY_NAME,
   EVIDENCE_KIND_LABELS,
   EVIDENCE_SIGNAL_TYPE,
+  categoryKeywords,
   kindsForCategory,
   type IntentEvidenceKind,
 } from "@/lib/find-leads/intent-evidence";
-import { recordIntentSignal } from "@/lib/find-leads/server/intent-record";
+import { recordIntentSignal, segmentEvidenceFor } from "@/lib/find-leads/server/intent-record";
+import { detectingSources, intentType } from "@/lib/find-leads/intent-catalogue";
+import { evaluateSegment } from "@/lib/find-leads/intent-segments";
 import {
   EVIDENCE_KIND_FEED,
   SIGNAL_FEED_NEEDS,
@@ -1740,10 +1743,8 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
 
   type CategoryRow = NonNullable<typeof categoryRows>[number];
   const shapeOf = (row: CategoryRow) => {
-    const configured = row.keywords_entities as { keywords?: unknown } | null;
-    const keywords = Array.isArray(configured?.keywords)
-      ? configured.keywords.filter((k): k is string => typeof k === "string")
-      : [];
+    // The builder saves `terms`, older rows `keywords`: both are read.
+    const keywords = categoryKeywords(row.keywords_entities);
     const signalTypes = Array.isArray(row.signal_types)
       ? (row.signal_types as unknown[]).filter((t): t is string => typeof t === "string")
       : [];
@@ -1784,13 +1785,23 @@ async function matchIntent(context: RunContext): Promise<StageSummary> {
 
   // Register signals need the free Companies House key. Say so, rather than
   // letting the run report "no signals" when nothing was ever looked for.
-  const registerKinds = wants.kinds.filter((kind) => EVIDENCE_KIND_FEED[kind] === "COMPANIES_HOUSE");
-  if (registerKinds.length > 0 && !providersFor("INTENT", context.unhealthy).some((p) => p.key === "companies_house")) {
+  // Only what the register alone can answer: a catalogue type with a website
+  // source still runs without the key, so it is not listed.
+  const typedKinds = new Set((wants.types ?? []).map((id) => intentType(id).evidenceKind));
+  const registerLabels = [
+    ...wants.kinds
+      .filter((kind) => EVIDENCE_KIND_FEED[kind] === "COMPANIES_HOUSE" && !typedKinds.has(kind))
+      .map((kind) => EVIDENCE_KIND_LABELS[kind]),
+    ...(wants.types ?? [])
+      .filter((id) => detectingSources(intentType(id)).every((source) => source.source === "COMPANIES_HOUSE"))
+      .map((id) => intentType(id).label),
+  ];
+  if (registerLabels.length > 0 && !providersFor("INTENT", context.unhealthy).some((p) => p.key === "companies_house")) {
     await raiseIssue(context, {
       severity: "WARNING",
       code: "INTENT_REGISTER_UNCONFIGURED",
       message: "Companies House signals were not checked.",
-      detail: `${registerKinds.map((kind) => EVIDENCE_KIND_LABELS[kind]).join(", ")} ${registerKinds.length === 1 ? "comes" : "come"} from the Companies House register. ${SIGNAL_FEED_NEEDS.COMPANIES_HOUSE}`,
+      detail: `${registerLabels.join(", ")} ${registerLabels.length === 1 ? "comes" : "come"} from the Companies House register. ${SIGNAL_FEED_NEEDS.COMPANIES_HOUSE}`,
       requiresUserAction: true,
     });
   }
@@ -1978,6 +1989,14 @@ async function prepareOutreach(context: RunContext): Promise<StageSummary> {
     ? await prospectsWithLiveIntent(context)
     : new Set<string>();
 
+  // A combination segment is a further gate: the prospect's recorded
+  // evidence must satisfy it ("raised funds AND hiring a marketing role").
+  const segment = context.plan.segment;
+  const segmentEvidence = segment
+    ? await segmentEvidenceFor(context.businessId, prospects.map((prospect) => prospect.id))
+    : new Map();
+  const segmentNow = new Date();
+
   let ready = 0;
 
   for (const prospect of prospects) {
@@ -1987,7 +2006,9 @@ async function prepareOutreach(context: RunContext): Promise<StageSummary> {
     // one that can hold back an otherwise perfect record, deliberately.
     const gradeOk = meetsMinimumGrade(grade, context.minimumGrade);
     const eligible = prospect.outreach_eligibility === "ELIGIBLE";
-    const intentOk = !context.plan.intent.required || withIntent.has(prospect.id);
+    const intentOk =
+      (!context.plan.intent.required || withIntent.has(prospect.id)) &&
+      (!segment || evaluateSegment(segment, segmentEvidence.get(prospect.id) ?? [], segmentNow).matched);
 
     if (gradeOk && eligible && intentOk && prospect.status !== "SUPPRESSED") {
       ready += 1;

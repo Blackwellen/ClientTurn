@@ -79,11 +79,11 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Meta Lead Ads",
     category: "leads",
     summary:
-      "Delivers every new lead from your Facebook and Instagram lead forms into Client Turn within seconds.",
+      "Delivers every new lead from your Facebook and Instagram lead forms into ClientTurn within seconds.",
     accountLabel: "Business account",
     requiredEnv: ["META_APP_ID", "META_APP_SECRET"],
     disconnectConsequence:
-      "New leads from your Facebook and Instagram forms stop arriving. Leads already in Client Turn are kept, and follow-up for them continues.",
+      "New leads from your Facebook and Instagram forms stop arriving. Leads already in ClientTurn are kept, and follow-up for them continues.",
     configurable: true,
   },
   {
@@ -181,7 +181,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     accountLabel: "Calendar",
     requiredEnv: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
     disconnectConsequence:
-      "Qualified leads are no longer offered calendar slots, and new appointments are not written to your calendar. Existing bookings stay in Client Turn.",
+      "Qualified leads are no longer offered calendar slots, and new appointments are not written to your calendar. Existing bookings stay in ClientTurn.",
     configurable: true,
   },
   {
@@ -210,7 +210,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Resend email",
     category: "email",
     summary:
-      "Client Turn's own system email: team invitations, handover alerts and failure warnings. Not your campaigns — those send from the mailbox you connect above.",
+      "ClientTurn's own system email: team invitations, handover alerts and failure warnings. Not your campaigns — those send from the mailbox you connect above.",
     accountLabel: "Sending domain",
     requiredEnv: ["RESEND_API_KEY"],
     disconnectConsequence:
@@ -224,7 +224,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Google Ads",
     category: "leads",
     summary:
-      "Delivers leads from your Google Ads Lead Form extensions into Client Turn.",
+      "Delivers leads from your Google Ads Lead Form extensions into ClientTurn.",
     accountLabel: "Google Ads account",
     // serverEnv.googleAds falls back to the plain Google OAuth client.
     // No developer token requirement: Google sunset developer tokens on
@@ -239,7 +239,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       "GOOGLE_ADS_CLIENT_SECRET|GOOGLE_CLIENT_SECRET",
     ],
     disconnectConsequence:
-      "New leads from your Google Ads lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
+      "New leads from your Google Ads lead forms stop arriving. Leads already in ClientTurn keep their follow-up.",
     configurable: true,
   },
   {
@@ -253,7 +253,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     // ad account (tracker 8.24 #15), so the card says so.
     beta: true,
     summary:
-      "Delivers leads from your TikTok Lead Generation ads into Client Turn.",
+      "Delivers leads from your TikTok Lead Generation ads into ClientTurn.",
     accountLabel: "TikTok for Business account",
     // TikTok calls these `client_key`/`client_secret`. The older
     // `TIKTOK_APP_ID`/`TIKTOK_APP_SECRET` spelling still satisfies the check.
@@ -262,7 +262,7 @@ export const PROVIDERS: ProviderDefinition[] = [
       "TIKTOK_CLIENT_SECRET|TIKTOK_APP_SECRET",
     ],
     disconnectConsequence:
-      "New leads from your TikTok lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
+      "New leads from your TikTok lead forms stop arriving. Leads already in ClientTurn keep their follow-up.",
     configurable: true,
   },
   {
@@ -275,11 +275,11 @@ export const PROVIDERS: ProviderDefinition[] = [
     caveat:
       "LinkedIn releases lead form responses only to apps it has approved for its Lead Sync API. Until that approval covers your account, the connection succeeds but no leads arrive.",
     summary:
-      "Delivers leads from your LinkedIn Lead Gen Forms ads into Client Turn.",
+      "Delivers leads from your LinkedIn Lead Gen Forms ads into ClientTurn.",
     accountLabel: "LinkedIn ad account",
     requiredEnv: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
     disconnectConsequence:
-      "New leads from your LinkedIn lead forms stop arriving. Leads already in Client Turn keep their follow-up.",
+      "New leads from your LinkedIn lead forms stop arriving. Leads already in ClientTurn keep their follow-up.",
     configurable: true,
   },
   {
@@ -309,7 +309,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     accountLabel: "HubSpot portal",
     requiredEnv: [],
     disconnectConsequence:
-      "Leads stop being pushed to HubSpot. Nothing in Client Turn itself changes.",
+      "Leads stop being pushed to HubSpot. Nothing in ClientTurn itself changes.",
     configurable: true,
   },
   {
@@ -324,7 +324,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     accountLabel: "Zoho CRM account",
     requiredEnv: ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET"],
     disconnectConsequence:
-      "Leads stop being pushed to Zoho CRM. Nothing in Client Turn itself changes.",
+      "Leads stop being pushed to Zoho CRM. Nothing in ClientTurn itself changes.",
     configurable: true,
   },
   {
@@ -335,11 +335,11 @@ export const PROVIDERS: ProviderDefinition[] = [
     name: "Salesforce",
     category: "crm",
     summary:
-      "Pushes qualified leads into Salesforce as Leads, and adds an Opportunity once a lead has one in Client Turn.",
+      "Pushes qualified leads into Salesforce as Leads, and adds an Opportunity once a lead has one in ClientTurn.",
     accountLabel: "Salesforce org",
     requiredEnv: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
     disconnectConsequence:
-      "Leads stop being pushed to Salesforce. Nothing in Client Turn itself changes.",
+      "Leads stop being pushed to Salesforce. Nothing in ClientTurn itself changes.",
     configurable: true,
   },
 ];
@@ -396,7 +396,7 @@ export type ProviderCardModel = {
 
 /** The exact wording the Connections design uses for an unconnectable provider. */
 export const NOT_AVAILABLE_REASON =
-  "Client Turn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.";
+  "ClientTurn does not yet hold the provider credentials this connection needs, so it cannot be connected from here.";
 
 /**
  * Whether an unconnected `workspace` provider should be blocked as "not yet
@@ -664,8 +664,6 @@ export type ProviderExtras = {
   linkedin?: {
     organizations: { id: string; name: string }[];
     selectedId: string | null;
-    /** Community Management API approved: company-page engagement is on. */
-    pageEngagementEnabled: boolean;
   };
   crm?: {
     lastPushAt: string | null;

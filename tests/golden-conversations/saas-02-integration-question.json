@@ -1,0 +1,42 @@
+{
+  "id": "saas-02-integration-question",
+  "archetype": "B2B_SAAS",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "email",
+  "story": "The lead asks whether it integrates with HubSpot; the agent answers before asking anything.",
+  "turns": [
+    {
+      "lead": "Does it integrate with HubSpot?",
+      "expect": {
+        "actionIn": [
+          "ANSWER",
+          "ANSWER_AND_ASK",
+          "ESCALATE"
+        ]
+      },
+      "candidate": {
+        "text": "It connects through the published integrations listed on our site. What would you mainly want it to handle for your team?",
+        "qaOk": true
+      }
+    },
+    {
+      "lead": "Mostly lead routing for our sales team",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_SIGNUP",
+          "ESCALATE",
+          "INFORM"
+        ],
+        "known": [
+          "USE_CASE"
+        ],
+        "notAsked": [
+          "USE_CASE",
+          "BUDGET"
+        ]
+      }
+    }
+  ]
+}

@@ -185,6 +185,20 @@ export function Coachmark({
   }, [step, routeKey, reduced]);
 
   /* ----------------------------------------------------- place the caption */
+  // The caption's size is CSS-transitioned, so a measurement taken in the same
+  // commit can be the old size (on the first step, the full-width sheet it
+  // starts as). Re-measure whenever it actually resizes; otherwise the caption
+  // stayed floating and the leader line pointed at where the sheet would have
+  // been, missing the caption entirely (8.7).
+  const [sizeTick, setSizeTick] = React.useState(0);
+  React.useEffect(() => {
+    const pop = popRef.current;
+    if (!pop || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setSizeTick((tick) => tick + 1));
+    observer.observe(pop);
+    return () => observer.disconnect();
+  }, []);
+
   React.useLayoutEffect(() => {
     const pop = popRef.current;
     if (!pop || viewport.width === 0) return;
@@ -198,7 +212,7 @@ export function Coachmark({
         preferred: step.placement,
       }),
     );
-  }, [target, viewport, step, searching]);
+  }, [target, viewport, step, searching, sizeTick]);
 
   /* ------------------------------------------------------ keyboard + focus */
   React.useEffect(() => {

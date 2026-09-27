@@ -18,6 +18,7 @@ import {
   createSubscriptionCheckout,
 } from "@/lib/billing/checkout";
 import { resolvePlanInterval } from "@/lib/billing/plan-change";
+import { recordUpsellConversion } from "@/lib/billing/upsell-service";
 import {
   assertUploadAllowed,
   createUploadUrl,
@@ -766,6 +767,14 @@ export async function startPlanCheckout(input: {
   // create a second, parallel subscription.
   const change = await changeSubscriptionPlan(workspace, plan);
   if (change.ok) {
+    if (change.mode !== "scheduled") {
+      // Analytics only: an immediate upgrade after an upsell click.
+      await recordUpsellConversion({
+        businessId: workspace.businessId,
+        offer: "tier_upgrade",
+        ref: `tier:${workspace.businessId}:${plan}:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
     refresh("/app/settings");
     const outcome = change.mode === "scheduled" ? "scheduled" : "changed";
     return { ok: true, url: `/app/settings?section=billing&plan=${outcome}` };

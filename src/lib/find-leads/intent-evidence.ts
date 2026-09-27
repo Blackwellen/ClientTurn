@@ -20,7 +20,23 @@
  * Companies House register. None depends on a paid data vendor.
  */
 
-/** What was observed. Stored in the evidence summary and the dedupe key. */
+import {
+  DEFAULT_TYPE_FOR_KIND,
+  ROLE_FUNCTIONS,
+  intentType,
+  intentTypesForCategory,
+  isIntentTypeId,
+  type IntentTypeId,
+  type RoleFunction,
+} from "./intent-catalogue.ts";
+
+/**
+ * What was observed. Stored in the evidence summary and the dedupe key.
+ *
+ * These are the coarse kinds a category files evidence under. The finer
+ * catalogue type (`intent-catalogue.ts`: SERIES_A, NEW_OFFICE, ...) travels on
+ * the evidence as `intentType`.
+ */
 export const INTENT_EVIDENCE_KINDS = [
   /** A share allotment (SH01) on the register: new capital went in. */
   "FUNDING",
@@ -36,6 +52,10 @@ export const INTENT_EVIDENCE_KINDS = [
   "TECHNOLOGY",
   /** A configured keyword on the site, or a recent news/press post. */
   "WEBSITE_MENTION",
+  /** A growth announcement: launch, rebrand, relaunch, award, partnership, new region. */
+  "GROWTH",
+  /** A dated trigger: a tender, a filing deadline, an anniversary, accounts growth. */
+  "TRIGGER_EVENT",
 ] as const;
 export type IntentEvidenceKind = (typeof INTENT_EVIDENCE_KINDS)[number];
 
@@ -47,6 +67,8 @@ export const EVIDENCE_KIND_LABELS: Record<IntentEvidenceKind, string> = {
   EXPANSION: "Moved registered office",
   TECHNOLOGY: "Uses a technology you target",
   WEBSITE_MENTION: "Mentioned on their website",
+  GROWTH: "Growth announcement",
+  TRIGGER_EVENT: "Trigger event",
 };
 
 /**
@@ -67,7 +89,26 @@ export const EVIDENCE_SIGNAL_TYPE: Record<
   HIRING: "JOB_POSTING",
   TECHNOLOGY: "COMPANY_WEBSITE",
   WEBSITE_MENTION: "COMPANY_WEBSITE",
+  GROWTH: "COMPANY_WEBSITE",
+  TRIGGER_EVENT: "COMPANY_REGISTRY",
 };
+
+/**
+ * The signal type for one piece of evidence, from where it actually came.
+ *
+ * A kind can now be evidenced by more than one source (a funding round from a
+ * press page, an allotment from the register), so the source decides and the
+ * kind is only the fallback.
+ */
+export function evidenceSignalType(
+  evidence: Pick<IntentEvidence, "kind" | "source">,
+): "COMPANY_REGISTRY" | "COMPANY_WEBSITE" | "JOB_POSTING" {
+  const source = evidence.source.toLowerCase();
+  if (source.includes("companies house")) return "COMPANY_REGISTRY";
+  if (source.includes("careers")) return "JOB_POSTING";
+  if (source.includes("website")) return evidence.kind === "HIRING" ? "JOB_POSTING" : "COMPANY_WEBSITE";
+  return EVIDENCE_SIGNAL_TYPE[evidence.kind];
+}
 
 /** The evidence one signal carries. Every field is shown to the customer. */
 export type IntentEvidence = {
@@ -80,6 +121,10 @@ export type IntentEvidence = {
   observedAt: string;
   /** The text that matched, truncated. Never a person's name from the register. */
   snippet: string;
+  /** The catalogue type, where the detector knows it. */
+  intentType?: IntentTypeId | null;
+  /** The business function of a role, for hiring and appointments. */
+  roleFunction?: RoleFunction | null;
 };
 
 export const MAX_SNIPPET = 160;
@@ -100,7 +145,10 @@ export function truncateSnippet(text: string, max: number = MAX_SNIPPET): string
  * second, because that is the proof.
  */
 export function evidenceSummary(evidence: IntentEvidence): string {
-  const label = EVIDENCE_KIND_LABELS[evidence.kind];
+  const label =
+    evidence.intentType && isIntentTypeId(evidence.intentType)
+      ? intentType(evidence.intentType).label
+      : EVIDENCE_KIND_LABELS[evidence.kind];
   const snippet = truncateSnippet(evidence.snippet);
   const line = snippet
     ? `${label} (${evidence.source}): "${snippet}"`
@@ -185,6 +233,8 @@ const KIND_VOCABULARY: Record<Exclude<IntentEvidenceKind, "WEBSITE_MENTION">, Re
   NEW_COMPANY: /\b(incorporat(ed|ion)|newly formed|new (company|business)|start-?ups?|founded|launch(ed)?)\b/i,
   EXPANSION: /\b(expan(d|sion|ding)|new (office|location|premises|site)|relocat(e|ed|ion)|mov(e|ed|ing) office)\b/i,
   TECHNOLOGY: /\b(tech(nology|nologies)?|stack|platform|shopify|woocommerce|wordpress|webflow|hubspot|salesforce|intercom|stripe|magento|bigcommerce|squarespace|wix|zendesk|segment|klaviyo|mailchimp)\b/i,
+  GROWTH: /\b(product launch|launch(es|ed)?|rebrand(ed|ing)?|new (brand|website|product|market)|relaunch(ed)?|awards?|accreditation|partnerships?|international expansion)\b/i,
+  TRIGGER_EVENT: /\b(tenders?|rfp|procurement|deadline|anniversary|renewal|accounts (due|growth))\b/i,
 };
 
 export type CategoryShape = {
@@ -204,6 +254,8 @@ export function kindsForCategory(category: CategoryShape): IntentEvidenceKind[] 
     if (pattern.test(text)) kinds.add(kind);
   }
   if ((category.signalTypes ?? []).includes("JOB_POSTING")) kinds.add("HIRING");
+  // A category started from the catalogue collects its type's kind.
+  for (const type of intentTypesForCategory(category)) kinds.add(intentType(type).evidenceKind);
 
   return INTENT_EVIDENCE_KINDS.filter((kind) => kinds.has(kind));
 }
@@ -221,4 +273,79 @@ export const EVIDENCE_KIND_CATEGORY_NAME: Record<IntentEvidenceKind, string> = {
   EXPANSION: "Moved or expanded premises",
   TECHNOLOGY: "Uses a technology you target",
   WEBSITE_MENTION: "Mentioned on their website",
+  GROWTH: "Growth announcement",
+  TRIGGER_EVENT: "Trigger event",
 };
+
+/* ------------------------------------------------------------ dedupe key */
+
+/**
+ * The key one fact collapses to, per prospect.
+ *
+ * Evidence of a kind's default type (what was recorded before the catalogue)
+ * keeps the old key exactly, so re-seeing an old filing is still a duplicate.
+ * A finer type, or a role function, is appended as `t=TYPE/FUNCTION`, which
+ * is also how a segment reads the type back from a stored event.
+ */
+export function intentDedupeKey(input: {
+  domain: string;
+  evidence: Pick<IntentEvidence, "kind" | "reference" | "intentType" | "roleFunction">;
+  sourceUrl: string | null;
+  observedAt: string;
+  prospectId: string;
+}): string {
+  const parts = [
+    input.domain,
+    input.evidence.kind,
+    input.evidence.reference ?? input.sourceUrl ?? "",
+    input.observedAt.slice(0, 10),
+    input.prospectId,
+  ];
+  const type = input.evidence.intentType ?? null;
+  const fn = input.evidence.roleFunction ?? null;
+  if ((type && type !== DEFAULT_TYPE_FOR_KIND[input.evidence.kind]) || fn) {
+    parts.push(`t=${type ?? DEFAULT_TYPE_FOR_KIND[input.evidence.kind] ?? ""}${fn ? `/${fn}` : ""}`);
+  }
+  return parts.join(":");
+}
+
+/** The catalogue type and role function a stored dedupe key records. */
+export function parseIntentDedupeKey(key: string): {
+  kind: IntentEvidenceKind | null;
+  intentType: IntentTypeId | null;
+  roleFunction: RoleFunction | null;
+} {
+  const parts = key.split(":");
+  const kind = (INTENT_EVIDENCE_KINDS as readonly string[]).includes(parts[1] ?? "")
+    ? (parts[1] as IntentEvidenceKind)
+    : null;
+  const last = parts[parts.length - 1] ?? "";
+  if (last.startsWith("t=")) {
+    const [type, fn] = last.slice(2).split("/");
+    return {
+      kind,
+      intentType: isIntentTypeId(type) ? type : null,
+      roleFunction: (ROLE_FUNCTIONS as readonly string[]).includes(fn ?? "") ? (fn as RoleFunction) : null,
+    };
+  }
+  return { kind, intentType: kind ? (DEFAULT_TYPE_FOR_KIND[kind] ?? null) : null, roleFunction: null };
+}
+
+/**
+ * The keywords stored on an intent category.
+ *
+ * The category builder saves `{ terms: [...] }` while the sourcing run used to
+ * read `{ keywords: [...] }`, so a customer's keywords never reached a run.
+ * Both shapes are read.
+ */
+export function categoryKeywords(blob: unknown): string[] {
+  const value = (blob && typeof blob === "object" ? blob : {}) as Record<string, unknown>;
+  const out: string[] = [];
+  for (const key of ["terms", "keywords"]) {
+    const list = value[key];
+    if (Array.isArray(list)) {
+      for (const item of list) if (typeof item === "string" && item.trim()) out.push(item.trim());
+    }
+  }
+  return [...new Set(out)];
+}

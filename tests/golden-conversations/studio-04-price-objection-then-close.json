@@ -1,0 +1,51 @@
+{
+  "id": "studio-04-price-objection-then-close",
+  "archetype": "CREATIVE_WEB_STUDIO",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "A price objection is met with a question, never a discount; when the lead asks for the next step the agent should close on a call, not qualify further.",
+  "turns": [
+    {
+      "lead": "We need a new website for our agency, the current one is slow and doesn't bring in leads.",
+      "expect": {
+        "actionIn": [
+          "ASK"
+        ],
+        "questionDimension": "USE_CASE"
+      },
+      "candidate": {
+        "text": "A slow site that doesn't bring in leads is fixable. What would you mainly want the new one to do for you?",
+        "qaOk": true,
+        "styleOk": true
+      }
+    },
+    {
+      "lead": "Honestly your prices look a bit steep for us.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "INFORM"
+        ]
+      },
+      "candidate": {
+        "text": "Certainly! I completely understand — price matters!",
+        "qaOk": true,
+        "styleOk": false,
+        "styleCodes": [
+          "STYLE_AI_TELL",
+          "STYLE_EM_DASHES",
+          "STYLE_EXCLAMATION"
+        ]
+      }
+    },
+    {
+      "lead": "Ok that makes sense, what's the next step?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ]
+      }
+    }
+  ]
+}

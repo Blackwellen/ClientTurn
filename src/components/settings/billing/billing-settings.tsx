@@ -37,6 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { UpgradeNowButton } from "@/components/billing/upgrade-now-button";
 import { SectionHeader } from "@/components/app/page-header";
 import { formatDate, formatGbp } from "@/lib/dates";
 import {
@@ -261,7 +262,7 @@ export function BillingSettings({
       : "Not started yet";
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid gap-4 grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-4">
         <Card>
           <CardHeader>
@@ -347,7 +348,23 @@ export function BillingSettings({
                 ) : null}
 
                 <div className="space-y-2 pt-1">
-                  {upgradeTarget && (
+                  {trialing ? (
+                    <>
+                      {/* In a trial the upgrade is instant: the trial ends today on
+                          the card already on file (billing.end_trial_now), with
+                          the plan switchable in the dialog. No new checkout. */}
+                      <UpgradeNowButton
+                        label="Upgrade now: start your plan today"
+                        size="md"
+                        fullWidth
+                      />
+                      <p className="text-[12px] text-content-muted">
+                        Ends your trial today and charges the card on file for {planLabel(billing.plan)}, or another
+                        plan you choose. You see the amount before anything is charged.
+                      </p>
+                    </>
+                  ) : null}
+                  {upgradeTarget && !trialing && (
                     <Button
                       fullWidth
                       size="md"
@@ -604,29 +621,8 @@ export function BillingSettings({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <SectionHeader icon={CreditCard} title="Need to make changes?" tone="danger" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-[13px] text-content-muted">
-              Manage your subscription, payment method and invoices in the secure
-              Stripe customer portal.
-            </p>
-            <Button
-              fullWidth
-              size="sm"
-              variant="secondary"
-              loading={portalPending}
-              disabled={!billing.hasStripeCustomer}
-              onClick={onPortal}
-            >
-              <ExternalLink className="size-3.5" aria-hidden />
-              Open Stripe portal
-            </Button>
-          </CardContent>
-        </Card>
-
+        {/* The "Need to make changes?" card opened the same Stripe portal as
+            Manage billing (Stripe) in the plan card; one control is kept (8.8). */}
         <Card>
           <CardHeader>
             <SectionHeader icon={CircleHelp} title="Billing help" tone="info" />

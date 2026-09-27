@@ -88,14 +88,10 @@ export function LeadCard({
         <h3 className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-6 text-content">
           {name}
         </h3>
-        {/* Uppercased here rather than in the status map: the mapping stays the
-            single source of truth for label and colour, this is presentation. */}
-        <StatusBadge
-          kind="lead"
-          value={row.status}
-          dot={false}
-          className="shrink-0 uppercase tracking-[0.02em]"
-        />
+        {/* Dense and sentence case, as everywhere else the lead status shows:
+            the wide uppercase badge truncated names like "Tom Aldri..." in the
+            four-column grid at 1440px (8.7). */}
+        <StatusBadge kind="lead" value={row.status} dot={false} dense className="shrink-0" />
         <LeadRowActions
           leadId={row.id}
           leadName={name}

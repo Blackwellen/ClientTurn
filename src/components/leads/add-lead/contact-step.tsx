@@ -404,7 +404,7 @@ export function ContactStep({
           icon={MapPin}
           tone="neutral"
           title="Address"
-          description="Add the property or business location (optional)."
+          description="Where the business is based. The postcode is required; the full address is optional."
         >
           <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
             <FormField

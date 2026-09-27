@@ -340,6 +340,8 @@ export function ReactivationWizard({
           sendMode: state.sendMode,
           scheduledAt: scheduled ? scheduled.toISOString() : undefined,
           sendRatePerMinute: 20,
+          channelMode: state.channel === "sms" ? (state.channelMode ?? "cost_aware") : "sms",
+          sendTiming: state.sendTiming ?? "best_time",
           // Off unless chosen, never on email, and only offered when AI
           // assist is on for the workspace (re-checked at send time).
           aiPersonalize:
@@ -518,7 +520,8 @@ export function ReactivationWizard({
 
       {/* ----------------------------------------------------- footer --- */}
       <div className="bg-surface/95 border-line-subtle fixed inset-x-0 bottom-0 z-20 border-t backdrop-blur lg:left-[var(--lr-sidebar-width,0px)]">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
+        {/* sm:pr-24 keeps Continue clear of the floating support button (8.7). */}
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-3 sm:pl-6 sm:pr-24">
           <Button variant="secondary" onClick={cancel} disabled={submitting}>
             Cancel
           </Button>

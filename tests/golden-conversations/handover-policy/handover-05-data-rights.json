@@ -1,0 +1,10 @@
+{
+  "id": "handover-05-data-rights",
+  "story": "A subject access request is a data-rights request: a person handles it.",
+  "turns": [
+    {
+      "lead": "Under GDPR I would like a copy of all the personal data you hold about me.",
+      "expect": { "disposition": "HANDOVER", "trigger": "DATA_RIGHTS_REQUEST", "reason": "POLICY", "was": "CONTINUE" }
+    }
+  ]
+}

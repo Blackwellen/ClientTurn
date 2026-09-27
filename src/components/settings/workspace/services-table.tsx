@@ -143,7 +143,7 @@ export function ServicesTable({
             <EmptyState
               icon={Wrench}
               title="No services yet"
-              description="Client Turn cannot qualify a lead until it knows what you sell."
+              description="ClientTurn cannot qualify a lead until it knows what you sell."
               action={
                 canManage ? (
                   <Button

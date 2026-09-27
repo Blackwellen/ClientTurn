@@ -1,0 +1,22 @@
+{
+  "id": "handover-04-two-failed-clarifications",
+  "story": "The AI asks twice in other words and still gets no usable answer. The third unusable reply goes to a person.",
+  "question": { "text": "What do you need help with?", "responseType": "single_choice", "options": ["Website Design", "Website Build", "Ecommerce Website"] },
+  "turns": [
+    {
+      "lead": "stuff",
+      "answer": { "matched": false },
+      "expect": { "disposition": "CLARIFY", "attempt": 1, "was": "HANDOVER" }
+    },
+    {
+      "lead": "things for the business",
+      "answer": { "matched": false },
+      "expect": { "disposition": "CLARIFY", "attempt": 2, "was": "HANDOVER" }
+    },
+    {
+      "lead": "you know, the usual",
+      "answer": { "matched": false },
+      "expect": { "disposition": "HANDOVER", "trigger": "REPEATED_CLARIFICATION_FAILURE", "reason": "LOW_CONFIDENCE", "was": "HANDOVER" }
+    }
+  ]
+}

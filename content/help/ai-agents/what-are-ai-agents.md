@@ -4,7 +4,11 @@ summary: The four kinds of background agent (sourcing, booking, re-engagement an
 category: ai-agents
 keywords: [agents, sourcing agent, booking agent, re-engagement agent, combined agent, background worker, automation, ai agent types]
 order: 5
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/what-are-ai-agents-1.png
+    alt: "Step 1 of creating an agent with the four agent type cards"
+    caption: "Choose what the agent does: sourcing, booking, re-engagement, or all three"
 ---
 
 An agent is a background worker you configure once and leave running. It works to a schedule, inside limits you set, and records everything it does. You manage agents from **Agents** in the sidebar.

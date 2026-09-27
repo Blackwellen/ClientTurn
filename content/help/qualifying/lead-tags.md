@@ -4,7 +4,11 @@ summary: The tags ClientTurn adds to leads automatically, the rule behind each o
 category: qualifying
 keywords: [tags, labels, auto tags, hot lead, high fit, poor fit, high intent, budget confirmed, decision maker, enterprise potential, nurture, not now, booked, no show, gone quiet, needs human, wrong person, needs info, opted out]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/qualifying/lead-tags-1.png
+    alt: "A tag badge on the lead page with its tooltip giving the reason and when it was set"
+    caption: "Hover over a tag to see why it was set and when"
 ---
 
 Tags are short labels shown under a lead's name. ClientTurn sets them automatically from the lead's score, its status and the replies it has sent. You do not type them in. Each tag has a fixed rule, and hovering over a tag shows the reason it was set and when.

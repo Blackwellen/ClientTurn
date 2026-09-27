@@ -4,7 +4,11 @@ summary: Select several leads and assign, re-status, re-score, add to a campaign
 category: finding-leads
 keywords: [bulk, select all, multiple leads, mass update, bulk assign, bulk archive, export csv, actions menu, bulk edit]
 order: 130
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/bulk-actions-on-leads-1.png
+    alt: "The Leads page with five leads selected and the grouped Actions menu open"
+    caption: "Select leads, then every bulk action is in one grouped Actions menu"
 ---
 
 ## Select leads

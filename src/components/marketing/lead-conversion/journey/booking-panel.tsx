@@ -62,8 +62,8 @@ export function BookingPanel() {
                 <b>James Carter</b>
                 <Pill tone="qualified">Qualified</Pill>
               </div>
-              <p>New kitchen enquiry</p>
-              <small>james@carterbuild.co.uk · 07812 345 678</small>
+              <p>New website rebuild enquiry</p>
+              <small>james@carterco.example · 07700 900123</small>
             </div>
 
             <div className="lcp-dest">

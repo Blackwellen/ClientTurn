@@ -1,0 +1,20 @@
+{
+  "id": "continue-03-review-rule",
+  "story": "A configured review rule fires on a matched answer. The REVIEW verdict is recorded and a person is asked to look at it in the background; the AI keeps the conversation going.",
+  "question": { "text": "What is your budget for this project?", "responseType": "single_choice", "options": ["Under £5k", "£5k to £20k", "Over £20k"] },
+  "turns": [
+    {
+      "lead": "Under £5k",
+      "answer": { "matched": true },
+      "verdict": { "result": "REVIEW", "reasons": [{ "code": "rule_review", "onQuestion": true }] },
+      "model": { "proposed_action": "ASK_NEXT_QUESTION", "confidence": 0.9, "message": "Thanks. When are you hoping to launch?" },
+      "expect": { "disposition": "CONTINUE", "assist": "QUALIFICATION_REVIEW", "was": "HANDOVER", "validates": true }
+    },
+    {
+      "lead": "Ideally before Christmas",
+      "verdict": { "result": "REVIEW", "reasons": [{ "code": "rule_review", "onQuestion": false }] },
+      "model": { "proposed_action": "REPLY", "confidence": 0.9, "message": "Thanks, that is useful to know." },
+      "expect": { "disposition": "CONTINUE", "assist": "QUALIFICATION_REVIEW", "was": "HANDOVER", "validates": true }
+    }
+  ]
+}

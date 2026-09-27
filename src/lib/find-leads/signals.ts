@@ -27,6 +27,13 @@ import {
 } from "./intent-evidence.ts";
 import { TECH_FINGERPRINTS, type TechnologyKey } from "./website-signals.ts";
 import type { SearchPlan } from "./plan.ts";
+import {
+  intentType,
+  intentTypesForCategory,
+  type IntentTypeId,
+  type RoleFunction,
+} from "./intent-catalogue.ts";
+import { segmentTypes } from "./intent-segments.ts";
 
 export const SIGNAL_KINDS = [
   "ENGAGEMENT",
@@ -86,6 +93,7 @@ export const SIGNAL_FEEDS = [
   "COMPANIES_HOUSE",
   "OWN_SOCIAL_ACCOUNTS",
   "COMPANY_SEARCH",
+  "PLACES",
 ] as const;
 export type SignalFeed = (typeof SIGNAL_FEEDS)[number];
 
@@ -93,8 +101,10 @@ export type SignalFeed = (typeof SIGNAL_FEEDS)[number];
 export const SIGNAL_FEED_PROVIDERS: Record<SignalFeed, string[]> = {
   COMPANY_WEBSITE: ["website_signals"],
   COMPANIES_HOUSE: ["companies_house"],
-  OWN_SOCIAL_ACCOUNTS: ["meta_engagement", "linkedin_engagement", "tiktok_engagement"],
+  OWN_SOCIAL_ACCOUNTS: ["meta_engagement", "tiktok_engagement"],
   COMPANY_SEARCH: ["google_places", "meta_ad_library", "tiktok_commercial_content"],
+  // Business listings: corroborates a location, never dates it.
+  PLACES: ["google_places"],
 };
 
 /** What to connect when a feed is missing. Written for a customer. */
@@ -102,8 +112,9 @@ export const SIGNAL_FEED_NEEDS: Record<SignalFeed, string> = {
   COMPANY_WEBSITE: "Nothing to connect: this reads companies' own public websites.",
   COMPANIES_HOUSE:
     "Needs a Companies House API key. It is free from developer.company-information.service.gov.uk.",
-  OWN_SOCIAL_ACCOUNTS: "Needs a connected Facebook, Instagram, LinkedIn or TikTok account.",
+  OWN_SOCIAL_ACCOUNTS: "Needs a connected Facebook, Instagram or TikTok account.",
   COMPANY_SEARCH: "Needs a company search source, such as Google Places.",
+  PLACES: "Needs a Google Places key.",
 };
 
 /**
@@ -165,6 +176,14 @@ export function signalKindForPlan(plan: SearchPlan): SignalKind {
   if (signals.hiringRoles.length > 0) return "HIRING";
   if (signals.leadershipChanges) return "JOB_CHANGE";
   if (signals.technologies.length > 0) return "WEBSITE_SIGNAL";
+  const typed = [...signals.intentTypes, ...segmentTypes(plan.segment)];
+  if (typed.length > 0) {
+    const group = intentType(typed[0]).group;
+    if (group === "FUNDING") return "FUNDING";
+    if (group === "HIRING") return "HIRING";
+    if (group === "PEOPLE") return "JOB_CHANGE";
+    return "WEBSITE_SIGNAL";
+  }
   if (plan.intent.categories.length > 0) return "KEYWORD";
   return "ICP_TOP";
 }
@@ -182,6 +201,10 @@ export function requestedEvidenceKinds(plan: SearchPlan): IntentEvidenceKind[] {
   if (signals.recentlyIncorporated) kinds.push("NEW_COMPANY");
   if (signals.officeMoves) kinds.push("EXPANSION");
   if (signals.technologies.length > 0) kinds.push("TECHNOLOGY");
+  for (const id of [...signals.intentTypes, ...segmentTypes(plan.segment)]) {
+    const entry = intentType(id);
+    if (entry.sources.length > 0 && !kinds.includes(entry.evidenceKind)) kinds.push(entry.evidenceKind);
+  }
   return kinds;
 }
 
@@ -194,6 +217,8 @@ export const EVIDENCE_KIND_FEED: Record<IntentEvidenceKind, SignalFeed> = {
   HIRING: "COMPANY_WEBSITE",
   TECHNOLOGY: "COMPANY_WEBSITE",
   WEBSITE_MENTION: "COMPANY_WEBSITE",
+  GROWTH: "COMPANY_WEBSITE",
+  TRIGGER_EVENT: "COMPANIES_HOUSE",
 };
 
 /**
@@ -292,10 +317,38 @@ export function nextRunLabel(nextRunAt: string | null, now: Date = new Date()): 
 export function intentWantsFor(
   plan: SearchPlan,
   categories: CategoryShape[],
-): { kinds: IntentEvidenceKind[]; hiringRoles: string[]; technologies: TechnologyKey[] } {
+): {
+  kinds: IntentEvidenceKind[];
+  hiringRoles: string[];
+  technologies: TechnologyKey[];
+  types: IntentTypeId[];
+  roleFunctions: RoleFunction[];
+} {
   const kinds = new Set<IntentEvidenceKind>(requestedEvidenceKinds(plan));
   const roles = new Set(plan.signals.hiringRoles);
   const technologies = new Set<TechnologyKey>(plan.signals.technologies);
+
+  // Catalogue types: named on the plan, used by its segment, or named by a
+  // category (a category started from the catalogue). The legacy toggles stay
+  // kinds, which the register adapter reads as before, so an older plan
+  // fetches exactly what it always did.
+  const types = new Set<IntentTypeId>([...plan.signals.intentTypes, ...segmentTypes(plan.segment)]);
+  for (const category of categories) intentTypesForCategory(category).forEach((id) => types.add(id));
+
+  // Role functions narrow role-carrying types only when every one of them is
+  // narrowed: one un-narrowed hiring condition wants every function.
+  const functions = new Set<RoleFunction>(plan.signals.roleFunctions);
+  let unnarrowed = plan.signals.roleFunctions.length === 0 &&
+    plan.signals.intentTypes.some((id) => intentType(id).hasRoleFunction);
+  for (const condition of plan.segment?.conditions ?? []) {
+    const roleTypes = condition.types.some((id) => intentType(id).hasRoleFunction);
+    if (!roleTypes) continue;
+    if (condition.roleFunction) functions.add(condition.roleFunction);
+    else unnarrowed = true;
+  }
+  if (categories.some((category) => intentTypesForCategory(category).some((id) => intentType(id).hasRoleFunction))) {
+    unnarrowed = true;
+  }
 
   for (const category of categories) {
     for (const kind of kindsForCategory(category)) {
@@ -316,9 +369,16 @@ export function intentWantsFor(
     }
   }
 
+  for (const id of types) {
+    const entry = intentType(id);
+    if (entry.sources.length > 0) kinds.add(entry.evidenceKind);
+  }
+
   return {
     kinds: INTENT_EVIDENCE_KINDS.filter((kind) => kinds.has(kind)),
     hiringRoles: [...roles].slice(0, 20),
     technologies: [...technologies],
+    types: [...types].filter((id) => intentType(id).sources.length > 0),
+    roleFunctions: unnarrowed ? [] : [...functions],
   };
 }

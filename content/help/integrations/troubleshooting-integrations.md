@@ -17,13 +17,19 @@ The **Connection health** summary at the top of **Settings → Connections** sho
 |---|---|---|
 | **Connected** | Working | Nothing |
 | **Healthy** | Run by ClientTurn on your behalf (SMS, WhatsApp, system email) and working | Nothing to connect |
-| **Needs attention** | Working, but recent checks had problems | Read the error on the card, then **Test connection** |
+| **Needs attention** | Working, but recent checks had problems | Read the error on the card, then **Test connection**. If it persists, choose **Reconnect** |
 | **Reconnect required** | The provider refused ClientTurn's access | Choose **Reconnect** and sign in again |
 | **Not connected** | Available, not set up | Choose **Connect** |
 | **Not on your plan** | Your plan does not include it | **Compare plans** |
 | **Not yet available** | This deployment does not yet hold the credentials the connection needs | Contact support if you need it |
 
-Your mailbox card uses its own wording: **Having trouble** or **Action required** when the mail server is refusing ClientTurn.
+A card marked **Beta** (currently TikTok Lead Generation) works but has not yet been proven against a live account. Check that your first lead arrives.
+
+Your mailbox card uses its own wording: **Having trouble** when recent sends or checks had problems, and **Reconnect required** when the mail server is refusing ClientTurn.
+
+## After you connect
+
+When a sign-in connection brings you back to **Settings → Connections**, a message says whether it worked. **That connection did not complete** means nothing was connected: the sign-in was cancelled, a permission was declined or the sign-in link expired. Choose **Connect** again.
 
 ## Test a connection
 
@@ -33,6 +39,7 @@ Choose **Test connection** on the card, or in its **Manage** panel. It checks th
 
 - The access was revoked in the provider's own settings, or the person who connected it lost their role there.
 - The provider's token expired and could not be refreshed. Salesforce sessions, for example, follow your org's session policy.
+- **Meta** access lasts about 60 days and Meta never renews it automatically. The Meta card warns you from 10 days before it expires; reconnect before then to keep leads arriving. See [Connecting Meta](/help/integrations/connecting-meta).
 - For a token you pasted (HubSpot), the token was deleted or its scopes changed. Disconnect and connect again with a new token.
 
 ## Inbound contact connections

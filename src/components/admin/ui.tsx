@@ -332,7 +332,9 @@ export function UsageCellView({
         <p className="lr-tabular text-[12.5px] text-content">
           {formatNumber(usage.used)}
         </p>
-        <p className="text-[11.5px] text-content-subtle">Unlimited</p>
+        <p className="text-[11.5px] text-content-subtle">
+          {usage.countOnly ? "This period" : "Unlimited"}
+        </p>
       </div>
     );
   }

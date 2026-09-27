@@ -19,7 +19,7 @@ import { loadSenderHealth } from "@/lib/outreach/campaigns/sender";
 import { emptyDraft, type WizardStepKey } from "@/lib/outreach/campaign-draft";
 import { CampaignWizard } from "@/components/find-leads/campaigns/wizard/campaign-wizard";
 
-export const metadata: Metadata = { title: "New acquisition campaign · ClientTurn" };
+export const metadata: Metadata = { title: "New acquisition campaign" };
 export const dynamic = "force-dynamic";
 
 /** Identical on all six steps, per the wizard design. */

@@ -7,6 +7,8 @@ import {
   ARCHETYPES,
   archetypeFor,
   qualificationPlan,
+  qualificationProfileFor,
+  QUALIFICATION_PROFILES,
   SCORING_PROFILES,
 } from "../src/lib/sales-library/archetypes.ts";
 import {
@@ -305,9 +307,16 @@ describe("objections", () => {
     }
   });
 
-  test("security, compliance, procurement and contract always hand over", () => {
-    for (const key of ["SECURITY", "COMPLIANCE", "PROCUREMENT", "CONTRACT"] as const) {
+  // Owner decision 2026-09-27 (human hand-over is the last resort): legal and
+  // contract questions still always hand over; security documents and
+  // procurement steps became a background assist (was: all four hand over).
+  test("compliance and contract always hand over; security and procurement are always an assist", () => {
+    for (const key of ["COMPLIANCE", "CONTRACT"] as const) {
       assert.equal(OBJECTIONS[key].handover.always, true, key);
+    }
+    for (const key of ["SECURITY", "PROCUREMENT"] as const) {
+      assert.equal(OBJECTIONS[key].handover.always, false, key);
+      assert.equal(OBJECTIONS[key].assist?.always, true, key);
     }
   });
 
@@ -325,7 +334,8 @@ describe("objections", () => {
     assert.equal(matchObjection("I'd need to check with my director")[0]?.key, "AUTHORITY");
     const security = matchObjection("We'd need you to complete our security questionnaire");
     assert.equal(security[0]?.key, "SECURITY");
-    assert.equal(security[0]?.handoverRequired, true);
+    assert.equal(security[0]?.handoverRequired, false, "a colleague sends the documents; the AI keeps going");
+    assert.equal(security[0]?.assistRequired, true);
     assert.deepEqual(matchObjection(""), []);
     assert.deepEqual(matchObjection("Thursday at 2pm works"), []);
   });
@@ -405,5 +415,49 @@ describe("method router", () => {
 
   test("an objection turn narrows the question style", () => {
     assert.equal(chooseMethod({ ...base, dealSizeBand: "MID", stage: "OBJECTION" }).questionStyle, "ONE_DIRECT_QUESTION");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Qualification Intelligence (08 §B.7, CD-7, A2): deliberate updates.
+// ---------------------------------------------------------------------------
+
+describe("qualification intelligence additions to the library", () => {
+  test("26 dimension keys: the six added ones are in the library and the catalogue", () => {
+    assert.equal(QUALIFICATION_DIMENSION_KEYS.length, 26);
+    for (const key of ["OUTCOME", "AVAILABILITY", "DISSATISFACTION", "TECHNICAL_REQUIREMENTS", "IMPLEMENTATION_READINESS", "PURCHASE_READINESS"] as const) {
+      assert.ok(QUALIFICATION_DIMENSION_KEYS.includes(key), key);
+      assert.ok(QUALIFICATION_CATALOGUE[key].label.length > 0, key);
+    }
+    assert.equal(LIBRARY_VERSION, "sl-2026.09.3", "a content change bumps the library version");
+  });
+
+  test("a motion never forbids, or gates on, what its own threshold needs", () => {
+    for (const motion of Object.values(MOTIONS)) {
+      const threshold = [...motion.decisionThreshold.allOf, ...motion.decisionThreshold.anyOf];
+      for (const key of motion.neverAsk) assert.ok(!threshold.includes(key), `${motion.key} never asks threshold ${key}`);
+      for (const key of [...motion.neverAsk, ...motion.bookingGate]) assert.ok(QUALIFICATION_DIMENSION_KEYS.includes(key));
+    }
+    assert.ok(MOTIONS.LOCAL_SERVICE.neverAsk.includes("STAKEHOLDERS"), "no enterprise checklist on a local job");
+    assert.ok(MOTIONS.LOCAL_SERVICE.neverAsk.includes("BUDGET"), "no budget before a quote");
+  });
+
+  test("the ICP archetypes ask about the new dimensions where they matter", () => {
+    const keys = (key: string) => archetypeFor(key)!.qualification.map((d) => d.key);
+    assert.ok(keys("MSP").includes("DISSATISFACTION"));
+    assert.ok(keys("B2B_SAAS").includes("TECHNICAL_REQUIREMENTS"));
+    assert.ok(keys("MARKETING_AGENCY").includes("OUTCOME"));
+    assert.ok(keys("CREATIVE_WEB_STUDIO").includes("TECHNICAL_REQUIREMENTS"));
+    assert.ok(keys("ENTERPRISE_SAAS").includes("IMPLEMENTATION_READINESS"));
+  });
+
+  test("qualification profiles reference real archetypes and never require what they never ask", () => {
+    for (const [key, profile] of Object.entries(QUALIFICATION_PROFILES)) {
+      assert.ok(archetypeFor(key), key);
+      assert.equal(profile.archetypeKey, key);
+      for (const d of profile.requiredDimensions) assert.ok(!profile.neverAsk.includes(d), `${key}: ${d}`);
+      for (const hint of profile.disqualifierHints) assert.ok(QUALIFICATION_DIMENSION_KEYS.includes(hint.dimension));
+    }
+    for (const archetype of ARCHETYPES) assert.ok(qualificationProfileFor(archetype).customerType, archetype.key);
   });
 });

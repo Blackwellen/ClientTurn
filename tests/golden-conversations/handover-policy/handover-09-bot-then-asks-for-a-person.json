@@ -1,0 +1,30 @@
+{
+  "id": "handover-09-bot-then-asks-for-a-person",
+  "story": "The AI answers \"are you a bot?\" honestly and keeps going; only when the lead then asks for a person does it hand over.",
+  "turns": [
+    {
+      "lead": "Is this a real person?",
+      "model": {
+        "proposed_action": "REPLY",
+        "confidence": 0.9,
+        "message": "No, I am Acme Studio's AI assistant. A person from the team can join if you would like."
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "HANDOVER",
+        "disclose": true,
+        "validates": true
+      }
+    },
+    {
+      "lead": "Yes please, I'd like to speak to a person.",
+      "expect": {
+        "disposition": "HANDOVER",
+        "trigger": "HUMAN_REQUESTED",
+        "reason": "HUMAN_REQUESTED",
+        "was": "HANDOVER"
+      }
+    }
+  ]
+}

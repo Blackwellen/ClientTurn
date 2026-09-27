@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { loadReengagementSettings } from "@/lib/reengagement/service";
+import { ContactFrequencyCard } from "./contact-frequency-card";
 import {
   getAutomation,
   getQuietHours,
@@ -54,12 +56,13 @@ export async function FollowUpView({
   filters: FollowUpFilters;
   currentParams: Record<string, string | string[] | undefined>;
 }) {
-  const [automations, quietHours, sendContext, channelContext] =
+  const [automations, quietHours, sendContext, channelContext, reengagement] =
     await Promise.all([
       listAutomations(businessId),
       getQuietHours(businessId, timezone),
       getTestSendContext(businessId),
       getFollowUpChannelContext(businessId),
+      loadReengagementSettings(businessId),
     ]);
 
   // Unwired types (nothing enrols into them) are hidden rather than offered.
@@ -158,6 +161,9 @@ export async function FollowUpView({
           context={{
             available: channelContext.available,
             fallbackEnabled: channelContext.fallbackEnabled,
+            channelStrategy: channelContext.channelStrategy,
+            followUpSmsCap: channelContext.followUpSmsCap,
+            conversationSmsDailyCeiling: channelContext.conversationSmsDailyCeiling,
             senderAvailable: channelContext.senderAvailable,
             senderIssue: channelContext.senderIssue,
             policyAllows: channelContext.policyAllows,
@@ -182,6 +188,13 @@ export async function FollowUpView({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="space-y-4">
             <QuietHoursCard quietHours={quietHours} canEdit={canEdit} />
+            <ContactFrequencyCard
+              caps={reengagement.caps}
+              notNowEnabled={reengagement.notNowEnabled}
+              noShowEnabled={reengagement.noShowEnabled}
+              winBackEnabled={reengagement.winBackEnabled}
+              canEdit={canEdit}
+            />
             <StopConditionsPanel
               quietHoursLabel={
                 quietHours.enabled

@@ -33,6 +33,8 @@ So an assistant with only `leads:read` sees the lead read tools and nothing else
 | Connections | `connector.list`, `connector.get`, `connector.replay_event`, `connector.dismiss_event`, `connector.disconnect`, `crm_pull.list`, `crm_pull.set` |
 | Workspace | `business.get_profile`, `business.get_status`, `analytics.summary`, `funnel.get`, `ai_usage.get`, `qualification.list_questions`, `member.list`, `meeting_type.list` |
 
+`lead.get` returns the lead together with `recent_activity`: its last 20 messages on any channel, newest first, so the assistant can see the conversation without a second call.
+
 The exact list your assistant sees depends on its permissions and your role.
 
 ## What runs straight away, and what waits

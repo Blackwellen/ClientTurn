@@ -148,7 +148,7 @@ export function BookingForm({
           <SectionHeader
             icon={Clock3}
             title="Appointment shape"
-            description="Used when Client Turn offers times and when it writes a booking."
+            description="Used when ClientTurn offers times and when it writes a booking."
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -190,7 +190,7 @@ export function BookingForm({
             <FormField
               label="Buffer between appointments (minutes)"
               htmlFor="booking-buffer"
-              hint="Travel or write-up time held after each appointment."
+              hint="Preparation or write-up time held after each appointment."
             >
               <Input
                 id="booking-buffer"

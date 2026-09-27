@@ -4,7 +4,11 @@ summary: The two kinds of AI in ClientTurn, the conversation assistant and backg
 category: ai-agents
 keywords: [agents, ai, conversation assistant, sourcing agent, schedule, limits, draft, mcp, overview]
 order: 1
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/ai-agents-setup-1.png
+    alt: "The Agents page with a draft and a paused agent and the New agent button"
+    caption: "Agents start as drafts; each card shows its status, and New agent starts the setup"
 ---
 
 There are two different things called agents in ClientTurn, and it is worth keeping them apart.

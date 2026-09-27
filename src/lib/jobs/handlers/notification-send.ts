@@ -6,6 +6,9 @@ import { serverEnv } from "@/lib/env";
 import { loadBusinessContext, type BusinessContext } from "./shared";
 import { parsePayload } from "./parse";
 import { notificationSendPayload } from "./payloads";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { consumeSystemEmail } from "@/lib/email/system-email-budget";
+import { SUBSCRIPTION_WELCOME_KIND, subscriptionWelcomeEmail } from "@/lib/email/subscription-welcome";
 
 type Payload = ReturnType<typeof notificationSendPayload.parse>;
 
@@ -221,8 +224,68 @@ async function sendEmail(
   }
 }
 
+/**
+ * The one-off subscription welcome email (docs/upsell-plan.md): to the owner
+ * only, built from the plan as it is NOW (re-read, not trusted from the
+ * payload), counted against the daily system email cap like every other
+ * notification copy. Queued once per Stripe subscription by
+ * subscription-sync `queueSubscriptionWelcome`.
+ */
+async function sendSubscriptionWelcome(payload: Payload) {
+  const entitlements = await getEntitlements(payload.businessId);
+  // Cancelled, or back in a trial, since it was queued: nothing to welcome.
+  if (entitlements.state !== "ACTIVE" || entitlements.plan === "trial") return;
+
+  const admin = createAdminClient();
+  const { data: owner } = await admin
+    .from("business_members")
+    .select("user_id")
+    .eq("business_id", payload.businessId)
+    .eq("status", "active")
+    .eq("role", "owner")
+    .limit(1)
+    .maybeSingle();
+  if (!owner?.user_id) return;
+  const [person] = await recipients(payload.businessId, owner.user_id);
+  if (!person) return;
+
+  const email = subscriptionWelcomeEmail({
+    plan: entitlements.plan,
+    siteUrl: serverEnv.siteUrl,
+    firstName: person.first_name ?? null,
+  });
+
+  const { error } = await admin.from("notifications").insert({
+    business_id: payload.businessId,
+    user_id: person.id,
+    type: "billing",
+    severity: "info",
+    title: email.subject,
+    body: email.summary,
+    link_url: "/app/settings?section=billing",
+    entity_type: null,
+    entity_id: null,
+  });
+  if (error) throw error;
+
+  if (!person.email) return;
+  const budget = await consumeSystemEmail({ businessId: payload.businessId, plan: entitlements.plan });
+  if (!budget.allowed) {
+    console.warn("[notification-send] daily system-email cap reached; welcome email skipped", {
+      businessId: payload.businessId,
+      cap: budget.cap,
+    });
+    return;
+  }
+  await sendEmail(person.email, email.subject, email.text, undefined, email.html);
+}
+
 export async function handleNotificationSend(job: ClaimedJob) {
   const payload = parsePayload(notificationSendPayload, job.payload);
+  if (payload.kind === SUBSCRIPTION_WELCOME_KIND) {
+    await sendSubscriptionWelcome(payload);
+    return;
+  }
   const resolved = resolve(payload);
 
   if (!resolved) {
@@ -263,8 +326,23 @@ export async function handleNotificationSend(job: ClaimedJob) {
   const text = `${resolved.body ?? resolved.title}\n\n${link}`;
   const html = resolved.html?.(link);
 
+  // System email goes through Resend, which we pay for: a daily cap per
+  // workspace bounds it (economics.md §9). At the cap the in-app rows above
+  // stand and only the email copy is skipped. An unreadable plan counts as a
+  // trial, the smallest cap.
+  const plan = await getEntitlements(payload.businessId)
+    .then((entitlements) => entitlements.plan)
+    .catch(() => "trial");
   for (const person of people) {
     if (!person.email) continue;
+    const budget = await consumeSystemEmail({ businessId: payload.businessId, plan });
+    if (!budget.allowed) {
+      console.warn("[notification-send] daily system-email cap reached; email copy skipped", {
+        businessId: payload.businessId,
+        cap: budget.cap,
+      });
+      break;
+    }
     await sendEmail(person.email, resolved.title, text, resolved.from, html);
   }
 }

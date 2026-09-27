@@ -8,19 +8,28 @@ import {
 } from "../prospects/dedupe.ts";
 
 /**
- * The customer's own LinkedIn / Sales Navigator list, imported from a CSV.
+ * The customer's own list, imported from a CSV: LinkedIn's export of their
+ * own 1st-degree connections, or any list they own (a CRM export, an event
+ * list, a spreadsheet).
  *
  * Pure: column mapping, row validation, domain resolution and the dedupe
  * keys. The write is the service operation `prospect.import_linkedin_list`,
  * which creates a prospect for every valid row straight away.
  *
- * ## Why this is lawful when scraping is not
+ * ## What is and is not supported
  *
- * The customer ran the search in their own account, chose the people, and
- * exported the file with a tool of their choosing, or LinkedIn's own
- * "Connections" data export. What reaches us is their list, uploaded by them.
- * We never hold LinkedIn credentials, never drive a session, never fetch a
- * LinkedIn page.
+ * LinkedIn offers members a native export of their own connections (Settings
+ * → Data privacy → Get a copy of your data → Connections.csv). That file is
+ * the customer's own data, and it is supported. Sales Navigator has no native
+ * export, and LinkedIn prohibits extensions that scrape it, so this module
+ * does not describe, detect or encourage such files. We never hold LinkedIn
+ * credentials, never drive a session, never fetch a LinkedIn page.
+ *
+ * A 1st-degree connection is a relationship, not consent to marketing. The
+ * write records it as ACCEPTED_SOCIAL_CONNECTION, which the policy engine
+ * already limits to a non-promotional opener for individual-type subscribers
+ * (sole traders, partnerships, personal addresses). Any other list is recorded
+ * as IMPORTED, which needs consent for individuals.
  *
  * ## What is kept and what is not
  *
@@ -51,7 +60,12 @@ import {
 
 export const MAX_LINKEDIN_IMPORT_ROWS = 5_000;
 
-export const LINKEDIN_SURFACES = ["SALES_NAVIGATOR", "STANDARD"] as const;
+/**
+ * What kind of list a file is. LINKEDIN_CONNECTIONS is LinkedIn's own export
+ * of the member's 1st-degree connections; CUSTOMER_LIST is anything else the
+ * customer owns.
+ */
+export const LINKEDIN_SURFACES = ["LINKEDIN_CONNECTIONS", "CUSTOMER_LIST"] as const;
 export type LinkedinSurface = (typeof LINKEDIN_SURFACES)[number];
 
 type Field =
@@ -65,7 +79,7 @@ type Field =
   | "location"
   | "email";
 
-/** Header spellings seen in Sales Navigator exporters and LinkedIn's own export. */
+/** Header spellings seen in LinkedIn's Connections export and common CRM exports. */
 const HEADER_ALIASES: Record<Field, string[]> = {
   firstName: ["firstname", "first", "givenname", "forename"],
   lastName: ["lastname", "last", "surname", "familyname"],
@@ -73,7 +87,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   roleTitle: ["title", "jobtitle", "position", "currenttitle", "currentposition", "role", "headline"],
   companyName: ["company", "companyname", "currentcompany", "organization", "organisation", "account", "accountname", "employer"],
   companyDomain: ["companydomain", "domain", "companywebsite", "website", "companyurl", "websiteurl", "corporatewebsite"],
-  linkedinUrl: ["linkedinurl", "profileurl", "linkedinprofile", "linkedinprofileurl", "salesnavigatorurl", "salesnavurl", "leadurl", "url", "linkedin", "personlinkedinurl"],
+  linkedinUrl: ["linkedinurl", "profileurl", "linkedinprofile", "linkedinprofileurl", "url", "linkedin", "personlinkedinurl"],
   location: ["location", "geography", "region", "city", "personlocation"],
   email: ["email", "emailaddress", "workemail", "businessemail", "professionalemail"],
 };
@@ -120,7 +134,7 @@ const optionalText = (max: number) =>
     .transform((value) => (value === "" ? null : value))
     .nullable();
 
-const LINKEDIN_PROFILE = /^https?:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/(in|sales\/lead|sales\/people)\/[^\s]+$/i;
+const LINKEDIN_PROFILE = /^https?:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s]+$/i;
 
 export const linkedinImportRowSchema = z
   .object({
@@ -201,7 +215,7 @@ export function resolveImportDomain(row: {
  */
 export function profileKey(url: string | null | undefined): string | null {
   if (!url) return null;
-  const match = url.trim().match(/linkedin\.com\/(in|sales\/lead|sales\/people)\/([^/?#\s]+)/i);
+  const match = url.trim().match(/linkedin\.com\/(in)\/([^/?#\s]+)/i);
   if (!match) return null;
   let slug = match[2];
   try {
@@ -263,14 +277,12 @@ export type LinkedinImportResult = {
 };
 
 /**
- * Which surface a file came from. A Sales Navigator lead URL is the one
- * reliable tell; otherwise it is recorded as a standard-account export, which
- * is the honest default.
+ * Which kind of list a file is. LinkedIn's Connections export has a
+ * "Connected On" column, which nothing else in this vocabulary uses; any
+ * other file is recorded as the customer's own list, the honest default.
  */
-export function detectSurface(rows: { linkedinUrl: string | null }[]): LinkedinSurface {
-  return rows.some((row) => row.linkedinUrl && /linkedin\.com\/sales\//i.test(row.linkedinUrl))
-    ? "SALES_NAVIGATOR"
-    : "STANDARD";
+export function detectSurface(headers: string[]): LinkedinSurface {
+  return headers.some((header) => key(header) === "connectedon") ? "LINKEDIN_CONNECTIONS" : "CUSTOMER_LIST";
 }
 
 function splitFullName(full: string): { first: string; last: string } {
@@ -284,7 +296,7 @@ export function parseLinkedinExport(
   surfaceHint: LinkedinSurface | null = null,
 ): LinkedinImportResult {
   const empty = (problem: string): LinkedinImportResult => ({
-    surface: surfaceHint ?? "STANDARD",
+    surface: surfaceHint ?? "CUSTOMER_LIST",
     rows: [],
     errors: [],
     discardedColumns: [],
@@ -343,7 +355,7 @@ export function parseLinkedinExport(
   });
 
   return {
-    surface: surfaceHint ?? detectSurface(rows),
+    surface: surfaceHint ?? detectSurface(table[headerIndex]),
     rows,
     errors,
     discardedColumns: discarded,

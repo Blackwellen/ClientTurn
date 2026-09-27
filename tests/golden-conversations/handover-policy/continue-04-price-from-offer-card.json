@@ -1,0 +1,17 @@
+{
+  "id": "continue-04-price-from-offer-card",
+  "story": "A price question is answered from the approved offer card. A second question about a price that is not published becomes a background request for a colleague to confirm it, and the AI keeps going.",
+  "settings": { "publishedPriceText": ["£95 per month"] },
+  "turns": [
+    {
+      "lead": "How much is the website care plan?",
+      "model": { "proposed_action": "ANSWER_AND_ASK", "confidence": 0.9, "message": "The care plan is £95 per month and covers hosting, updates and backups. Is ongoing support what you are after?" },
+      "expect": { "disposition": "CONTINUE", "assist": null, "was": "HANDOVER", "validates": true }
+    },
+    {
+      "lead": "And what would a full rebuild cost?",
+      "model": { "proposed_action": "REQUEST_HANDOVER", "confidence": 0.88, "handover_reason": "PRICING_NOT_CONFIGURED", "message": "A rebuild is priced on scope, so I have asked a colleague to confirm a figure for you. Roughly how many pages does the current site have?" },
+      "expect": { "disposition": "CONTINUE", "assist": "CONFIRM_PRICE", "was": "HANDOVER", "validates": true }
+    }
+  ]
+}

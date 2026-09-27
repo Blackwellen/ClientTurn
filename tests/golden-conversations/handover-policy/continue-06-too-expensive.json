@@ -1,0 +1,39 @@
+{
+  "id": "continue-06-too-expensive",
+  "story": "Generic price pushback is a price objection the AI handles with the playbook (value, what is included, scope options). No discount is asked for and nothing is handed over.",
+  "settings": {
+    "publishedPriceText": [
+      "£95 per month"
+    ]
+  },
+  "turns": [
+    {
+      "lead": "Honestly that's too expensive for us.",
+      "model": {
+        "proposed_action": "REPLY",
+        "confidence": 0.9,
+        "message": "Thanks for being straight with me. The care plan is £95 per month and covers hosting, updates and backups, so there is nothing extra to pay for those. Is it the overall price, or how it compares with something else you have seen?"
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "CONTINUE",
+        "validates": true
+      }
+    },
+    {
+      "lead": "It's more than we pay now, that's all.",
+      "model": {
+        "proposed_action": "ANSWER_AND_ASK",
+        "confidence": 0.88,
+        "message": "That makes sense. The plan includes monthly updates and daily backups, which many cheaper plans leave out. Would it help to compare what your current plan covers?"
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "CONTINUE",
+        "validates": true
+      }
+    }
+  ]
+}

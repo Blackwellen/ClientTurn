@@ -20,17 +20,19 @@ export type NavItem = {
  * The eight primary Platform Admin destinations, in the order the approved
  * shell shows them. Nothing else is a top-level admin domain: Jobs and
  * Compliance are views inside System, and the billing/economics split is
- * deliberate — Billing is the subscription and invoice ledger, Usage & Margins
- * is the cost-and-contribution view over the same customers.
+ * deliberate — Billing is the subscription and invoice ledger, Economics is
+ * the revenue, cost and margin view over the same customers.
  */
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  // Placed with Overview: the V3 Admin shell is Overview, Customers, System,
+  // and Economics is the owner's revenue-and-margin overview of the platform.
+  { href: "/admin/economics", label: "Economics", icon: Coins },
   { href: "/admin/customers", label: "Customers", icon: Building2 },
   { href: "/admin/support", label: "Support", icon: LifeBuoy },
   { href: "/admin/affiliates", label: "Affiliates", icon: Handshake },
   { href: "/admin/system", label: "System", icon: ServerCog },
   { href: "/admin/billing", label: "Billing", icon: CreditCard },
-  { href: "/admin/economics", label: "Usage & Margins", icon: Coins },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -45,7 +47,7 @@ const TITLES: [string, string][] = [
   ["/admin/affiliates", "Affiliates"],
   ["/admin/system", "System"],
   ["/admin/billing", "Billing"],
-  ["/admin/economics", "Usage & Margins"],
+  ["/admin/economics", "Economics"],
   ["/admin/settings", "Platform Settings"],
 ];
 

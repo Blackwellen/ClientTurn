@@ -171,3 +171,30 @@ describe("Copilot role gating", () => {
     }
   });
 });
+
+/* ------------------------------------------- qualification intelligence */
+
+describe("Copilot and the qualification engine (§21)", () => {
+  test("Copilot can explain a lead's qualification and re-run it", () => {
+    for (const name of ["qualification.status", "qualification.unknowns", "qualification.explain", "qualification.intent", "qualification.requalify"]) {
+      assert.ok(copilotTool(name), `${name} is not a Copilot tool`);
+    }
+  });
+
+  test("Copilot can correct a fact and narrow the policy, without a confirmation dialog", () => {
+    const fact = copilotTool("qualification.set_fact");
+    const policy = copilotTool("qualification.policy_update");
+    assert.equal(fact?.kind, "WRITE");
+    assert.equal(fact?.scope, "member");
+    assert.equal(policy?.kind, "WRITE");
+    assert.equal(policy?.scope, "admin");
+    assert.equal(policy?.requiresConfirmation, false);
+    // The narrow-only rule, not a dialog, is what bounds it (CD-18).
+    assert.match(policy?.summary ?? "", /stricter/);
+  });
+
+  test("overriding intent or the next action is not Copilot's", () => {
+    assert.equal(copilotTool("qualification.override_intent"), undefined);
+    assert.equal(copilotTool("qualification.override_nba"), undefined);
+  });
+});

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ArrowLeft, Bot } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getAgent,
   getAgentActivity,
@@ -33,7 +34,7 @@ import {
   SourcesTab,
 } from "@/components/agents/agent-tabs";
 
-export const metadata: Metadata = { title: "Agent · ClientTurn" };
+export const metadata: Metadata = { title: "Agent" };
 export const dynamic = "force-dynamic";
 
 export default async function AgentPage({
@@ -75,8 +76,11 @@ export default async function AgentPage({
       ? getAgentActivity(workspace.businessId, id, tab === "activity" ? 100 : 10)
       : Promise.resolve([]),
     tab === "leads" ? getAgentLeads(workspace.businessId, id) : Promise.resolve([]),
+    // Service role, scoped to the workspace and this agent: members have no
+    // column grant on sourcing_runs.agent_id, so the member-session read
+    // failed and every agent page showed "Agents could not be loaded" (8.7).
     needsRuns
-      ? supabase
+      ? createAdminClient()
           .from("sourcing_runs")
           .select("id, title, status, target_verified")
           .eq("business_id", workspace.businessId)

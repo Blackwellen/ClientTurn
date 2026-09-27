@@ -637,6 +637,27 @@ export function MessageTimingStep({
               </div>
             )}
 
+            {state.channel === "sms" && (
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-content text-[13px] font-medium">
+                    Email first for leads who have not engaged
+                  </p>
+                  <p className="text-content-muted mt-0.5 text-[12px]">
+                    On by default. Leads who have never replied get this message by
+                    email from your connected mailbox when they have an address, which
+                    uses no SMS credit. Leads who have replied or shown real interest
+                    still get SMS. Turn off to send SMS to everyone.
+                  </p>
+                </div>
+                <Switch
+                  checked={(state.channelMode ?? "cost_aware") === "cost_aware"}
+                  onCheckedChange={(value) => patch({ channelMode: value ? "cost_aware" : "sms" })}
+                  label="Email first for leads who have not engaged"
+                />
+              </div>
+            )}
+
             {isTexting && aiPersonalizeAvailable && (
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -826,6 +847,23 @@ export function MessageTimingStep({
                 </div>
               </div>
             )}
+
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-content text-[13px] font-medium">Send at each lead&apos;s best time</p>
+                <p className="text-content-muted mt-0.5 text-[12px]">
+                  On by default. Each lead gets the message at the hour they have
+                  replied in before, or your leads&apos; most common reply hour, or
+                  Tuesday to Thursday at 10am. Always inside your quiet hours, and
+                  within two weeks. Turn off to send as soon as possible.
+                </p>
+              </div>
+              <Switch
+                checked={(state.sendTiming ?? "best_time") === "best_time"}
+                onCheckedChange={(value) => patch({ sendTiming: value ? "best_time" : "immediate" })}
+                label="Send at each lead's best time"
+              />
+            </div>
 
             {fieldErrors.schedule && (
               <p role="alert" className="text-danger-600 text-[12px]">

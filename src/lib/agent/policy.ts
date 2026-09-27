@@ -331,8 +331,23 @@ export type ToolGateSnapshot = {
     availabilityConfirmed: boolean;
     optOutRecognised: boolean;
     bookingEnabled: boolean;
+    /**
+     * The qualification engine (LIVE) judged the lead booking-ready on the
+     * turn that offered the booking: NBA CTA_BOOK with no gating question
+     * left, goal B, the workspace's required and gating dimensions known, no
+     * disqualifying verdict (qi-turn.ts engineBookingReadiness).
+     */
+    engineBookingReady?: boolean;
   };
 };
+
+/**
+ * Lifecycles in which the engine's booking-readiness stands in for a
+ * QUALIFIED lifecycle. Everything else is excluded on purpose: REVIEW and
+ * NOT_QUALIFIED (the rules said no or need a person), HANDED_OVER (a person
+ * owns it), SUPPRESSED, WON and LOST (terminal).
+ */
+export const ENGINE_BOOKABLE_LIFECYCLES: readonly LifecycleState[] = ["NEW", "CONTACTED", "ENGAGED", "QUALIFYING"];
 
 export type ToolGateResult =
   | { allowed: true }
@@ -389,7 +404,12 @@ export function evaluateToolGate(snapshot: ToolGateSnapshot): ToolGateResult {
   }
   if (need.requiresQualifiedState) {
     const permitted: LifecycleState[] = ["QUALIFIED", "BOOKING_PENDING", "BOOKED"];
-    if (!permitted.includes(snapshot.lifecycle)) {
+    // A booking-ready lead is not made to finish qualifying first (brief:
+    // "booking-ready users aren't over-qualified"). The engine's readiness is
+    // deterministic (rules over confirmed facts, never the model) and every
+    // other requirement still applies: confirmed availability, contactability.
+    const engineReady = facts.engineBookingReady === true && ENGINE_BOOKABLE_LIFECYCLES.includes(snapshot.lifecycle);
+    if (!permitted.includes(snapshot.lifecycle) && !engineReady) {
       return {
         allowed: false,
         status: "DENIED_POLICY",

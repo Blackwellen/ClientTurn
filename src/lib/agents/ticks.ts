@@ -6,6 +6,8 @@ import { evaluate } from "@/lib/policy/service";
 import { enqueue } from "@/lib/jobs/queue";
 import { resumeFollowUpBlock } from "@/lib/leads/resume-rule";
 import { AgentBlocked, chooseReengagementChannel } from "./policy";
+import { channelUsable } from "@/lib/integrations/platform-channels";
+import { platformConfigured } from "@/lib/integrations/queries";
 
 /**
  * Booking and re-engagement agent ticks.
@@ -237,7 +239,7 @@ export async function runReengagementTick(agent: AgentRow): Promise<TickResult> 
     );
   const channel = chooseReengagementChannel({
     mailbox: healthy("imap_smtp"),
-    sms: healthy("twilio_sms"),
+    sms: channelUsable(integrations ?? [], ["twilio_sms"], platformConfigured("twilio_sms")),
   });
 
   if (!channel) {

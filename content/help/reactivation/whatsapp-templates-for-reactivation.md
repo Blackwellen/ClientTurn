@@ -4,12 +4,12 @@ summary: Why WhatsApp reactivation needs a template approved by Meta, how templa
 category: reactivation
 keywords: [whatsapp template, approved template, message template, 24-hour window, service window, twilio content, meta template, template variables, sync templates, whatsapp campaign, whatsapp opt-in]
 order: 50
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 WhatsApp only allows a business to send free-form messages within 24 hours of the person's last message to it. Reactivation is, by definition, to people who have not messaged you recently. So a WhatsApp reactivation message is almost always sent as a **template** that Meta has approved in advance.
 
-WhatsApp needs the Growth plan or above and a connected WhatsApp sender in **Settings → Connections**.
+WhatsApp is a paid add-on on Growth and above, paid per message in prepaid WhatsApp tokens. A reactivation message is usually a marketing template, which uses 5 tokens. It also needs a connected WhatsApp sender in **Settings → Connections**.
 
 ## Get templates into ClientTurn
 

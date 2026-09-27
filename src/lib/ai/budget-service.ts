@@ -176,7 +176,9 @@ export async function checkSpend(input: CheckSpendInput): Promise<CheckSpendResu
     ]);
 
     let remaining = {};
-    if (budgets && budgets.rows.length > 0) {
+    // With a lead, the LEAD token cap (DEFAULT_LEAD_TOKEN_CEILING) applies
+    // even when no ai_budgets row exists, so the snapshot is read for it.
+    if (budgets && (budgets.rows.length > 0 || leadId !== null)) {
       const since = monthStart(new Date()).toISOString();
       const { data, error } = await db.rpc("ai_spend_snapshot", {
         target_business_id: input.businessId,

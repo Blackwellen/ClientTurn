@@ -4,7 +4,11 @@ summary: Push qualified leads and bookings into your HubSpot CRM as contacts and
 category: integrations
 keywords: [hubspot, crm, service key, private app, token, contacts, deals, sync, hubspot crm]
 order: 30
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/integrations/connecting-hubspot-1.png
+    alt: "The HubSpot connect panel with the access token field and the token permissions list including the read scopes"
+    caption: "Paste the Service Key token, with the read and write scopes listed, then choose Connect"
 ---
 
 HubSpot connects with a token you create in your own HubSpot account. There is no HubSpot sign-in redirect.
@@ -13,7 +17,7 @@ HubSpot connects with a token you create in your own HubSpot account. There is n
 
 1. In ClientTurn, open **Settings → Connections**, find **HubSpot** under **CRM** and choose **Connect**.
 2. In another tab, open your HubSpot account and go to **Settings → Integrations → Service Keys**. (HubSpot used to call these Private Apps; the menu was renamed but the token works the same way.)
-3. Create a key with these scopes:
+3. Create a key with these scopes (the HubSpot card's panel in ClientTurn lists them too, under **Token permissions**):
    - `crm.objects.contacts.read` and `crm.objects.contacts.write`
    - `crm.objects.deals.read` and `crm.objects.deals.write`
    - optionally `crm.objects.owners.read`, which lets imported contacts be assigned to the right person in ClientTurn
@@ -35,7 +39,7 @@ Once connected, you can switch on **Import contacts from HubSpot** in **Settings
 
 ## Replacing the token
 
-Stored tokens are never shown again. To replace one, open the card's **Manage** panel, choose **Disconnect HubSpot**, then connect again with the new token. If HubSpot revokes the token, the card shows **Reconnect required**.
+Stored tokens are never shown again. To replace one, open the card's **Manage** panel, choose **Disconnect HubSpot**, then connect again with the new token. Disconnecting switches **Import contacts from HubSpot** off, so switch it on again afterwards if you use it. If HubSpot revokes the token, the card shows **Reconnect required**.
 
 ## Related
 

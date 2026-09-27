@@ -70,7 +70,7 @@ import {
 /* ------------------------------------------------------------------ shell */
 
 describe("admin shell navigation", () => {
-  // V4 section 46 adds Usage & Margins. The list is still asserted exactly:
+  // V4 section 46 adds Usage & Margins, now "Economics", placed with Overview. The list is still asserted exactly:
   // the rule this test protects is that the rail only ever links to routes that
   // exist, so a destination appears here the moment its page ships and not
   // before.
@@ -79,18 +79,18 @@ describe("admin shell navigation", () => {
       ADMIN_NAV.map((item) => item.href),
       [
         "/admin",
+        "/admin/economics",
         "/admin/customers",
         "/admin/support",
         "/admin/affiliates",
         "/admin/system",
         "/admin/billing",
-        "/admin/economics",
         "/admin/settings",
       ],
     );
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.label),
-      ["Overview", "Customers", "Support", "Affiliates", "System", "Billing", "Usage & Margins", "Settings"],
+      ["Overview", "Economics", "Customers", "Support", "Affiliates", "System", "Billing", "Settings"],
     );
     for (const { href } of ADMIN_NAV) {
       const segment = href.replace(/^\/admin\/?/, "");

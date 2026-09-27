@@ -174,8 +174,11 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
         ))}
       </svg>
 
-      {/* The same data, readable. Visually hidden, fully available. */}
-      <table className="sr-only">
+      {/* The same data, readable. Visually hidden, fully available. The
+          wrapper is what is hidden: a <table> ignores sr-only's 1px width and
+          widened the page on phones (8.7). */}
+      <div className="sr-only">
+      <table>
         <caption>Daily totals for the selected period.</caption>
         <thead>
           <tr>
@@ -198,6 +201,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -79,7 +79,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
     url: path,
     siteName: "ClientTurn",
@@ -88,7 +88,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
   },
 };
@@ -487,9 +487,9 @@ export default function HowItWorksPage() {
                         </thead>
                         <tbody className="text-[var(--pub-text-secondary)]">
                           {[
-                            ["Roofing Q4", 124, 32, "26%"],
-                            ["Facilities managers", 98, 18, "18%"],
-                            ["Commercial builders", 76, 12, "16%"],
+                            ["Ecommerce brands Q4", 124, 32, "26%"],
+                            ["SaaS founders", 98, 18, "18%"],
+                            ["Professional services", 76, 12, "16%"],
                           ].map(([name, contacted, replied, booked]) => (
                             <tr
                               key={String(name)}

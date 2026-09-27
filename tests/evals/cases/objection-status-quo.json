@@ -1,0 +1,48 @@
+{
+  "id": "objection-status-quo",
+  "scenario": "§94 objection: status quo",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "How are you handling follow-up at the moment?"
+    },
+    {
+      "role": "lead",
+      "text": "Honestly what we have works fine for now."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "STATUS_QUO",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge",
+        "one clarifying question"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Good to hear it's working. If you could change one thing about how it runs today, what would it be?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Your competitors are already using this, so why wouldn't you?",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

@@ -58,7 +58,45 @@ export type JobType =
   // Syncs the WhatsApp approved-template registry (brief §45).
   | "whatsapp.template_sync"
   // Daily failed-payment retries and overage billing (Phase 8.10, 8.13).
-  | "billing.daily";
+  | "billing.daily"
+  // Reverses the UNUSED credit of a refunded top-up (SMS credit, WhatsApp tokens or
+  // an AI token pack), queued by the Stripe `charge.refunded` webhook.
+  | "billing.refund_reverse"
+  // Qualification intelligence (design 08 §B.5): every six hours, re-assess
+  // the leads whose intent decay boundary has passed. Batch-limited.
+  | "intent.sweep"
+  // Admin -> Economics: once a day, raise an admin alert for any workspace
+  // whose month-to-date or projected month-end margin is below 75%.
+  | "economics.margin_check"
+  // The direct-sale loop (0143): a verified payment from the customer's own
+  // Stripe or an order-paid webhook, and one abandoned-checkout nudge check.
+  | "payment.confirm"
+  | "checkout.nudge"
+  // Intent-driven re-engagement (reengagement/triggers.ts): one job per
+  // trigger (a NOT_NOW resume, a stated deadline, a no-show, a lost deal),
+  // re-reading state before it acts, and an hourly sweep that plans any the
+  // domain-event consumer missed.
+  | "reengage.trigger"
+  | "reengage.sweep"
+  // Quote-to-cash (P2): the PDF of a frozen revision, the expiry at its
+  // valid-until, the "not opened / not accepted yet" reminder (through the
+  // re-engagement frequency guard), and invoice issue + payment reminders.
+  | "quote.render_pdf"
+  | "quote.expire"
+  | "quote.nudge"
+  | "invoice.issue"
+  | "invoice.remind"
+  // Voice (phase P2, lib/jobs/handlers/voice.ts over lib/voice/runtime-core.ts):
+  // dial one queued call, apply a stored provider event, post-process a
+  // finished call, copy its recording to R2, plan the retry or fallback, and
+  // drive a dedicated number's provisioning or release.
+  | "voice.dial"
+  | "voice.webhook_ingest"
+  | "voice.post_call"
+  | "voice.recording_fetch"
+  | "voice.retry"
+  | "voice.number_provision"
+  | "voice.number_release";
 
 export type EnqueueOptions = {
   businessId?: string | null;

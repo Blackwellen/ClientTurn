@@ -5,8 +5,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SALES_MOTIONS, SCORE_DIMENSIONS, type SalesMotion } from "@/lib/sales-library/types";
 import { scoreLead as runScoreEngine, type LeadFact, type LeadScoreResult } from "./lead-score";
 import { deriveTags, LEAD_TAGS, type DerivedTag, type TagLifecycle } from "./tags";
-import { answerFeatures, pricingRequestedFact } from "./answer-features";
+import {
+  answerFeatures,
+  conflictingScoreDimensions,
+  factAnswers,
+  needStatedFact,
+  pricingRequestedFact,
+  type ScoredAnswer,
+} from "./answer-features";
 import { inferDimension, type QuestionRecord } from "@/lib/qualification/next-question";
+import type { IntentAssessment, QualificationFact } from "@/lib/qualification-intelligence/types";
 
 /**
  * Lead scoring, server side (design doc 04 §2).
@@ -22,7 +30,24 @@ import { inferDimension, type QuestionRecord } from "@/lib/qualification/next-qu
  *
  * Facts, not personal data: the engine sees booleans, bands and counts. Names,
  * email addresses, phone numbers and message bodies never leave this file.
+ *
+ * Qualification intelligence (design 08 §B.14): when the lead.score job ran
+ * the intent engine first (engine mode SHADOW or LIVE), it passes the
+ * assessment and the lead's facts here. INTENT then comes from the intent
+ * score (one fact, `intent_assessment`), a NEGATIVE / NOT_NOW state is the
+ * refusal / deferral veto (instead of "the latest classification"), the fact
+ * store's answers feed timing, budget, authority and need alongside the
+ * configured answers, conflicting facts are reported per dimension, and the
+ * completeness is carried on the score. Without it, scoring is exactly as
+ * before.
  */
+
+/** What the intent engine hands the score (qualification-intelligence/service.ts). */
+export type ScoreIntelligence = {
+  intent: IntentAssessment;
+  facts: QualificationFact[];
+  completeness: number;
+};
 
 /**
  * Tables and the RPC from migration 0121 post-date the last
@@ -226,6 +251,7 @@ export async function scoreLead(
   businessId: string,
   leadId: string,
   triggerEvent: string,
+  intelligence?: ScoreIntelligence | null,
 ): Promise<ScoreLeadOutcome | null> {
   const client = db();
   const now = new Date();
@@ -336,9 +362,11 @@ export async function scoreLead(
   const questionById = new Map(
     ((questions.data ?? []) as { id: string; question_text: string; response_type: string }[]).map((row) => [row.id, row]),
   );
+  const factScored: ScoredAnswer[] = intelligence ? factAnswers(intelligence.facts, now) : [];
   facts.push(
-    ...answerFeatures(
-      answerRows.map((row) => {
+    ...answerFeatures([
+      ...factScored,
+      ...answerRows.map((row) => {
         const question = questionById.get(row.question_id);
         return {
           dimension: question
@@ -357,8 +385,12 @@ export async function scoreLead(
           confidence: row.confidence,
         };
       }),
-    ),
+    ]),
   );
+  if (intelligence) {
+    const need = needStatedFact(intelligence.facts, now);
+    if (need) facts.push(need);
+  }
 
   /* ---- messages */
   const messageRows = (messages.data ?? []) as {
@@ -409,8 +441,26 @@ export async function scoreLead(
     });
   }
   // Only the *latest* classification can veto: someone who said "not now" in
-  // March and "let's book" in May is not a refusal.
-  const latest = classified[0];
+  // March and "let's book" in May is not a refusal. With the intent engine,
+  // its state is the veto instead: it already applied that rule across every
+  // signal, not only classifications (intent.ts precedence rules 1-3).
+  const latest = intelligence ? undefined : classified[0];
+  if (intelligence) {
+    const { intent } = intelligence;
+    facts.push({
+      feature: "intent_assessment",
+      value: intent.score / 100,
+      source: "intent_assessment",
+      observedAt: now.toISOString(),
+      confidence: intent.confidence,
+    });
+    if (intent.state === "NEGATIVE") {
+      facts.push({ feature: "not_interested", value: true, source: "intent_assessment", confidence: Math.max(0.8, intent.confidence) });
+    }
+    if (intent.state === "NOT_NOW") {
+      facts.push({ feature: "not_now", value: true, source: "intent_assessment", confidence: Math.max(0.8, intent.confidence) });
+    }
+  }
   if (latest && REFUSAL.has(latest.reply_classification as string)) {
     facts.push({
       feature: "not_interested",
@@ -453,7 +503,14 @@ export async function scoreLead(
 
   /* ---- score, tag, record */
   const weightOverrides = await loadWeightOverride(client, businessId, archetypeKey);
-  const result = runScoreEngine({ facts, archetypeKey, motion, weightOverrides });
+  const result = runScoreEngine({
+    facts,
+    archetypeKey,
+    motion,
+    weightOverrides,
+    conflictingDimensions: intelligence ? conflictingScoreDimensions(intelligence.facts) : null,
+    completeness: intelligence ? intelligence.completeness : null,
+  });
 
   const lifecycle: TagLifecycle = {
     status: lead.status,
@@ -464,7 +521,13 @@ export async function scoreLead(
     lastInboundAt,
     lastOutboundAt,
   };
-  const tags = deriveTags({ score: result, lifecycle, replyClassifications: classifications, now });
+  const tags = deriveTags({
+    score: result,
+    lifecycle,
+    replyClassifications: classifications,
+    now,
+    intentState: intelligence ? intelligence.intent.state : null,
+  });
 
   const { data: recorded, error: recordError } = await client.rpc("record_lead_score", {
     p_business_id: businessId,

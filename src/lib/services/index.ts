@@ -18,12 +18,19 @@ import "./operations/agents";
 import "./operations/workspace";
 import "./operations/data-rights";
 import "./operations/opportunities";
+import "./operations/payments";
 import "./operations/revenue";
 import "./operations/channels";
 import "./operations/selling";
+import "./operations/objections";
 import "./operations/experiments";
 import "./operations/team";
 import "./operations/prospect-imports";
+import "./operations/qualification";
+import "./operations/billing";
+import "./operations/catalogue";
+import "./operations/quotes";
+import "./operations/invoices";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

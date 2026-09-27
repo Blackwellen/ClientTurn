@@ -281,3 +281,54 @@ describe("tags", () => {
     assert.deepEqual(deriveTags(ctx), deriveTags(ctx));
   });
 });
+
+describe("ls-v2: one qualification score (design 08 §B.14)", () => {
+  const now = new Date("2026-09-25T12:00:00Z");
+
+  test("with no archetype the brief's QUALIFICATION_DEFAULT shape applies", () => {
+    const result = scoreLead({ facts: [], archetypeKey: "NOT_A_THING" });
+    assert.equal(result.profileKey, "QUALIFICATION_DEFAULT");
+    assert.equal(result.weights.NEED, 20);
+    assert.equal(result.weights.TIMING, 15);
+    // An archetype keeps its own shape.
+    assert.notEqual(scoreLead({ facts: [], archetypeKey: "B2B_SAAS" }).profileKey, "QUALIFICATION_DEFAULT");
+  });
+
+  test("the intent assessment IS the INTENT dimension; the booleans become evidence", () => {
+    const result = scoreLead({
+      facts: [
+        { feature: "booking_intent", value: true, source: "reply_classification" },
+        { feature: "intent_assessment", value: 0.2, source: "intent_assessment", confidence: 0.7 },
+      ],
+    });
+    const intent = result.dimensions.find((d) => d.dimension === "INTENT")!;
+    assert.equal(intent.score, Math.round(intent.max * 0.2 * 100) / 100);
+    assert.equal(intent.confidence, 0.7);
+    assert.ok(intent.evidence.some((e) => e.feature === "booking_intent"), "the boolean is still explained");
+    // Without it, the boolean MAX applies as before.
+    const legacy = scoreLead({ facts: [{ feature: "booking_intent", value: true, source: "reply_classification" }] });
+    assert.equal(legacy.dimensions.find((d) => d.dimension === "INTENT")!.score, legacy.dimensions.find((d) => d.dimension === "INTENT")!.max);
+  });
+
+  test("every dimension reports a status from the facts", () => {
+    const result = scoreLead({ facts: strongB2BFacts, archetypeKey: "B2B_SAAS" });
+    for (const d of result.dimensions) assert.ok(["KNOWN_POSITIVE", "KNOWN_NEGATIVE", "UNKNOWN", "CONFLICTING"].includes(d.status), d.dimension);
+    assert.ok(result.dimensions.every((d) => d.status === "KNOWN_POSITIVE"));
+    const empty = scoreLead({ facts: [] });
+    assert.ok(empty.dimensions.every((d) => d.status === "UNKNOWN"), "nothing known is UNKNOWN, never KNOWN_NEGATIVE");
+  });
+
+  test("tags read the intent state when the engine ran", () => {
+    const score = scoreLead({ facts: [] });
+    const tags = (intentState: string | null, replies: string[] = []) =>
+      deriveTags({ score, lifecycle: lifecycle(), replyClassifications: replies, now, intentState }).map((t) => t.tag);
+    assert.ok(tags("BOOKING_READY").includes("HIGH_INTENT"));
+    assert.ok(!tags("NEGATIVE").includes("HIGH_INTENT"));
+    assert.ok(tags("NOT_NOW").includes("NOT_NOW"));
+    // The engine lifted an old NOT_NOW: the latest classification no longer tags it.
+    assert.ok(!tags("MEDIUM", ["NOT_NOW"]).includes("NOT_NOW"));
+    // No engine: unchanged behaviour.
+    assert.ok(tags(null, ["NOT_NOW"]).includes("NOT_NOW"));
+    assert.match(TAG_RULE_VERSION, /^lt-v2/);
+  });
+});

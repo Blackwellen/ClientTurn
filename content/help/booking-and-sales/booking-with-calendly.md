@@ -14,8 +14,11 @@ With Calendly, qualified leads are sent your Calendly link and book the time the
 1. Open **Settings → Connections** and find **Calendly** under **Booking**.
 2. Choose **Connect** and sign in to Calendly.
 3. Open **Settings → Workspace**. Under **How qualified leads book**, choose **Calendly**.
-4. In **Booking link**, paste the Calendly link you want leads to use. It must start with `https://`.
-5. Choose **Save booking settings**.
+4. In **Calendly event type**, paste the address of the event type you want leads booked into. Open the event type in Calendly and copy its page address, which looks like `https://calendly.com/event_types/…`. The assistant uses it to offer real times from that event type.
+5. In **Booking link**, paste the Calendly link you want leads to use. It must start with `https://`.
+6. Choose **Save booking settings**.
+
+Without an event type, the assistant cannot read your Calendly availability: it sends your booking link instead, or hands the lead to a person.
 
 ## What happens
 

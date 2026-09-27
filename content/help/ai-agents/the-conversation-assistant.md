@@ -4,7 +4,14 @@ summary: How the assistant that answers your leads is set up, what the AI decide
 category: ai-agents
 keywords: [ai assistant, reply agent, suggest replies, reply automatically, auto reply, handover, tone, agent mode, conversation ai, drafts]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/the-conversation-assistant-1.png
+    alt: "A suggested reply in the inbox with Send, Edit and Discard"
+    caption: "A suggested reply waits for you: send it, edit it or discard it; nothing is sent until you do"
+  - src: /help/screenshots/ai-agents/the-conversation-assistant-2.png
+    alt: "The AI assistant card in Workspace settings with the mode, channels and hand-over options"
+    caption: "Start with Suggest replies: choose what the assistant may do, its channels and when a person takes over"
 ---
 
 The conversation assistant reads replies from your leads and answers them: it qualifies them against your questions, answers questions about your services from what you have configured, offers booking, and hands anything it should not handle to your team. It is **off by default** in every workspace.
@@ -16,10 +23,10 @@ The conversation assistant reads replies from your leads and answers them: it qu
 3. Under **What the assistant may do**, choose one:
    - **Off** — replies follow your configured follow-up and qualification steps only.
    - **Suggest replies** — the assistant drafts a reply and notifies you. Nothing is sent until someone approves it.
-   - **Reply automatically** — the assistant answers, qualifies and offers booking on its own, and passes anything it should not handle to your team.
+   - **Reply automatically** — the assistant answers, qualifies and books on its own. It asks your team for help in the background when it needs a fact confirmed, and passes the conversation over only as a last resort. See [The handoff brief](/help/booking-and-sales/handoff-brief).
 4. Under **Channels**, tick where it may reply: **SMS**, **WhatsApp** or **Email**. A channel that is not connected is marked **(not connected)**.
 5. Under **When to involve a person**:
-   - **Hand over when qualification needs review** (recommended): a reply your rules cannot decide goes to your team instead of getting a guess.
+   - **Hand over when qualification needs review** (off by default): when your rules mark a lead **Review**, the assistant flags it for your team and keeps the conversation going, without offering a booking until the review is cleared. It never guesses the result. Tick this to pass these conversations to your team instead.
    - **Answer questions about your services**: only from what you have configured. It never quotes a price you have not published, and never promises a time or an area.
 6. Choose a **Tone**: professional, friendly or direct. It stays concise on SMS and WhatsApp either way.
 7. Optionally add an **Extra handover rule**, such as a service or a job size that should always go to a person.
@@ -40,11 +47,15 @@ The AI understands language and proposes. ClientTurn's rules decide, authorise a
 | Suggests a value for one of your qualification questions | Whether that value is valid, and the qualification result |
 | Chooses among a fixed set of next steps | Whether that step is carried out |
 
-Some messages never reach the AI at all. "Stop", "wrong number", a complaint, an emergency or "can I speak to a person?" is recognised first and handled by fixed rules: an opt-out suppresses and stops everything queued; the others hand over to your team.
+Some messages never reach the AI at all. "Stop", "wrong number", a complaint or legal threat, an emergency or "can I speak to a person?" is recognised first and handled by fixed rules: an opt-out suppresses and stops everything queued; the others hand over to your team.
+
+"Are you a bot?" is answered honestly: the assistant says it is your business's AI assistant and that a person can join if the lead would like, then carries on. It hands over only if they then ask for a person, and it never claims or implies to be human.
+
+When a reply is unclear, or matches none of your answer options, the assistant asks again in other words, up to twice, before passing the conversation on. See [The handoff brief](/help/booking-and-sales/handoff-brief) for every reason a person gets involved.
 
 ## What it will never say
 
-Every draft is checked before it is sent. A draft is rejected, rewritten once and otherwise handed to a person if it:
+Every draft is checked before it is sent. A draft is rejected and rewritten, up to three attempts, and otherwise handed to a person, if it:
 
 - mentions an amount of money you have not published;
 - offers a specific time that did not come from your calendar;

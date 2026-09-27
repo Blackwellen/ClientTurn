@@ -88,12 +88,31 @@ export const SUBPROCESSORS: SubProcessor[] = [
     entity: "Twilio Ireland Limited and Twilio Inc. (United States)",
     name: "Twilio",
     purpose:
-      "Delivery of outbound SMS and WhatsApp messages and receipt of inbound replies, including delivery receipts and opt-out keywords.",
-    data: "Recipient phone number, message body, timestamps, delivery status, and the content of inbound replies.",
+      "Delivery of outbound SMS and WhatsApp messages and receipt of inbound replies, including delivery receipts and opt-out keywords. Where a customer turns on the AI Voice Sales Agent, also the dedicated phone number and the telephone connection for its calls.",
+    data: "Recipient phone number, message body, timestamps, delivery status, and the content of inbound replies; for voice, call metadata (numbers, times, duration) and the call audio in transit.",
     location: "Ireland and United States",
     transfer: "EU Standard Contractual Clauses with the UK Addendum.",
     role: "core",
     optional: false,
+  },
+  {
+    // Added 27 September 2026 for the AI Voice Sales Agent. Entity, hosting
+    // and location are as Retell AI publishes them (retellai.com/legal and
+    // docs.retellai.com/general/compliance); not yet confirmed against a
+    // signed DPA. Its own LLM and text-to-speech sub-processors are listed on
+    // its trust centre (trust.retellai.com/subprocessors) and must be checked
+    // before the first live call (gap map Risk R2).
+    entity: "Retell AI, Inc. (United States)",
+    name: "Retell AI",
+    purpose:
+      "Runs the AI Voice Sales Agent's calls: speech recognition, the voice, and the real-time connection between the call and ClientTurn's agent. Only used when a customer turns voice on.",
+    data: "The lead's phone number, the live call audio, the call transcript and, where the customer turns recording on, the call recording.",
+    location:
+      "United States, hosted on Amazon Web Services (as stated by Retell AI; Retell states it does not currently operate services within the EU). To be confirmed in our DPA with Retell.",
+    transfer:
+      "To be confirmed: UK International Data Transfer Addendum to the EU Standard Contractual Clauses, under Retell AI's data processing agreement.",
+    role: "core",
+    optional: true,
   },
   {
     entity: "Plus Five Five, Inc. trading as Resend (United States)",
@@ -185,6 +204,11 @@ export const SUBPROCESSOR_CHANGES: { date: string; change: string }[] = [
     date: "5 September 2026",
     change:
       "First publication of the register. Every provider listed above was in place from the start of the service.",
+  },
+  {
+    date: "27 September 2026",
+    change:
+      "Added Retell AI for the optional AI Voice Sales Agent, and extended Twilio's role to the phone number and call connection for voice. Neither processes call data unless a customer turns voice on.",
   },
 ];
 

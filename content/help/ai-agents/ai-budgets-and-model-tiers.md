@@ -4,7 +4,11 @@ summary: What limits how much AI your workspace uses, what happens when a limit 
 category: ai-agents
 keywords: [ai budget, ai spend, cost, limits, tokens, model tier, research depth, ai usage, ceiling, per lead, running out]
 order: 30
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/ai-budgets-and-model-tiers-1.png
+    alt: "The AI budget card with spend this month, the plan ceiling and the workspace monthly ceiling"
+    caption: "Spend this month, the plan ceiling and your own limits"
 ---
 
 ## The short version

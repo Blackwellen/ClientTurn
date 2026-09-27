@@ -1,0 +1,47 @@
+{
+  "id": "objection-authority",
+  "scenario": "§94 objection: authority",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Would a 20 minute call next week help?"
+    },
+    {
+      "role": "lead",
+      "text": "I'd need to run it past my MD first."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "AUTHORITY",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Of course. Would a short summary you can forward be useful, or would a call with both of you be easier?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Certainly! I'd be happy to assist. Please don't hesitate to reach out.",
+        "valid": false,
+        "codes": [
+          "STYLE_AI_TELL"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

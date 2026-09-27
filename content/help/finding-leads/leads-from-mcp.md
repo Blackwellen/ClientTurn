@@ -4,7 +4,11 @@ summary: How an AI assistant connected over MCP can record a warm lead with the 
 category: finding-leads
 keywords: [mcp, claude, ai assistant, create_lead, codex, gemini, model context protocol, assistant leads]
 order: 100
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/leads-from-mcp-1.png
+    alt: "A lead's Attribution tab showing its source as AI assistant"
+    caption: "Leads added by an AI assistant are marked with their source"
 ---
 
 An AI assistant connected to your workspace over MCP (for example Claude) can add a lead for you: "Add Priya Shah from Example Studio, she emailed us asking for a quote." It uses the `create_lead` tool, which runs the same intake path as every other source.
@@ -21,6 +25,7 @@ To connect an assistant, see [Connecting an AI assistant](/help/developers/conne
 ## What the tool refuses
 
 - **A contact the assistant found.** Anything that is not a warm relationship is refused with an explanation: a person you found belongs in Find Leads as a prospect and is reviewed before contact.
+- **A referral without evidence.** For `REFERRAL`, the assistant must say who referred the person and when, in at least 20 characters. Without it the tool refuses and says what is missing.
 - **A suppressed contact.** If the address or number is on your suppression list, nothing is stored and the assistant is told it cannot be added.
 - **A duplicate.** If a lead with the same email or phone already exists, nothing new is created and the existing lead's ID is returned. This makes a retried request safe.
 

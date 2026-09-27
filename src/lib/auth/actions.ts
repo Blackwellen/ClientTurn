@@ -129,6 +129,13 @@ export async function signUp(
   const throttled = await limited("auth:signup");
   if (throttled) return throttled;
 
+  // The plan picked on /pricing rides along to the trial checkout, where it is
+  // pre-selected (8.29). An allow-list, not a pass-through: it lands in a URL.
+  const pickedPlan = str(formData, "plan");
+  const trialPath = ["starter", "growth", "pro"].includes(pickedPlan)
+    ? `/start-trial?plan=${pickedPlan}`
+    : "/start-trial";
+
   const supabase = await createClient();
   const origin = await originUrl();
 
@@ -136,7 +143,7 @@ export async function signUp(
     email: input.email,
     password: input.password,
     options: {
-      emailRedirectTo: `${origin}/auth/callback?next=/start-trial`,
+      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(trialPath)}`,
       data: {
         first_name: input.firstName,
         last_name: input.lastName,
@@ -225,7 +232,7 @@ export async function signUp(
   }
 
   // Card and terms first (8.10); onboarding follows once Stripe confirms.
-  return { ok: true, redirectTo: "/start-trial" };
+  return { ok: true, redirectTo: trialPath };
 }
 
 export async function signIn(

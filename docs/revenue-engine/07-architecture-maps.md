@@ -47,7 +47,7 @@ flowchart TD
 | Zapier / Pipedrive / webhook | `api/apps/[id]/events` → `process_workspace_app_event` | prospects (RPC) | install + event id |
 | Meta DMs | `social/meta-inbound.ts` | `ingestLead` (thread id is the identity) | thread id |
 | Find Leads sourcing | `jobs/handlers/sourcing-run.ts` | prospects; promotion via `promote_reviewed_prospect` (links rather than duplicates) | company dedupe key, email |
-| LinkedIn / Sales Navigator | ASSISTED only: tasks, deep links, InMail credit log | — | — |
+| LinkedIn | ASSISTED only: manual sending (tasks, InMail credit log by account tier). Intake is Lead Gen Forms (row above) plus the customer's own list import (`prospect.import_linkedin_list`: their Connections.csv or any CSV they own → prospects). No LinkedIn search, no engagement sourcing, no Sales Navigator deep links | prospects (import) | LinkedIn profile URL, then name + company, then email |
 
 ## 3. Identity resolution (§103.3)
 
@@ -178,8 +178,19 @@ flowchart TD
   GEV -->|ok| CONF[scheduled, lead BOOKED, reminders start,<br/>opportunity → MEETING_BOOKED, 'booked' text]
   GEV -->|fail| REQ['requested, someone will confirm' + handover]
   MODE -->|Calendly| LINK[Send booking link; webhook creates booking;<br/>reschedule = one transition]
-  MODE -->|Manual| MP[pending row, staff Confirm / Decline]
+  MODE -->|"Manual: booking_mode 'handover', or no readable calendar and no link"| ASKT[Ask one question: which day and time?]
+  ASKT --> PARSE[Parse the reply deterministically,<br/>workspace timezone]
+  PARSE -->|one day + one time| MP[pending row, 'requested, someone will confirm';<br/>staff Confirm / Decline]
+  PARSE -->|ambiguous, first time| ASKT
+  PARSE -->|ambiguous twice| HO[Handover]
 ```
+
+The Manual branch is booking_mode `handover` (and a Google workspace whose calendar
+cannot be read, when no booking link is configured): there are no offered slots, so
+the lead's own stated time is held as a PENDING booking (owner decision, 00 §6). It
+was previously a PROVIDER_FAILURE handover with no booking row (story H3). Code:
+`agent/orchestrator.ts` `askPreferredTime` / `handlePreferredTimeReply`,
+`agent/availability/preferred-time.ts`.
 
 ## 10. Direct close (§103.11)
 

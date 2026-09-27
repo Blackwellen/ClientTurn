@@ -6,7 +6,6 @@ import { clearbitProvider } from "./clearbit";
 import { companiesHouseProvider } from "./companies-house";
 import { googlePlacesProvider } from "./google-places";
 import { hunterProvider } from "./hunter";
-import { linkedinEngagementProvider } from "./linkedin-engagement";
 import { linkedinSalesNavigatorProvider } from "./linkedin-sales-navigator";
 import { metaAdLibraryProvider } from "./meta-ad-library";
 import { metaEngagementProvider } from "./meta-engagement";
@@ -30,7 +29,6 @@ const PROVIDERS: SourcingProvider[] = [
   // messaged or commented is a better prospect than any stranger a paid
   // database will sell you.
   metaEngagementProvider,
-  linkedinEngagementProvider,
   tiktokEngagementProvider,
   // Then the free public advertiser registries: businesses currently paying
   // for reach, which is a real signal of budget and intent.

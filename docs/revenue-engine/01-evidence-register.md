@@ -41,7 +41,7 @@ science. §7 of this register is where that line is drawn.
 > **Correction (2026-09-26).** The rows below concern *sending*: automation, invitations and messages. LinkedIn can also bring leads *in*, through two sanctioned routes:
 >
 > - **Lead Gen Forms**, read through the Marketing API by an app with the right lead-sync permission. These are inbound leads, including the email the member submitted.
-> - **Company-page engagement**, read through the Community Management API, which needs LinkedIn's approval. It covers comments and reactions on the organisation's *own* posts. It returns member URNs and never email addresses.
+> - ~~**Company-page engagement**, read through the Community Management API~~. **Withdrawn 2026-09-26:** LinkedIn's Restricted Uses forbid using member data to identify sales prospects or create leads, so the engagement source was removed. Sales Navigator has no native export and scraping extensions are prohibited; the supported own-data route is the member's native Connections.csv export. The SNAP partner search (closed to new partners, request format unpublished) was also removed.
 >
 > Earlier wording that implied LinkedIn is send-assist only was wrong about inbound. The business-story run (tracker 8.18) is re-checking exactly which permissions each route needs, and whether member names come back, against current Microsoft Learn documentation.
 

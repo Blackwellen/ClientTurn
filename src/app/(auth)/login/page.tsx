@@ -4,7 +4,7 @@ import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Sign in | ClientTurn",
+  title: "Sign in",
   description: "Sign in to your ClientTurn workspace.",
 };
 

@@ -300,8 +300,8 @@ export type CopilotActionRow = {
 export const EXAMPLE_PROMPTS = [
   "Find another 100 companies similar to this month's converted customers.",
   "Which leads need attention?",
-  "Why is the Hotels campaign outperforming Property Managers?",
-  "Draft a new permitted email campaign for facilities managers.",
+  "Which lead source brought the most qualified leads this month?",
+  "Draft a new permitted email campaign for SaaS companies in Manchester.",
   "Show prospects with recent expansion intent.",
   "Pause Campaign B.",
   "Summarize this lead and recommend the next action.",

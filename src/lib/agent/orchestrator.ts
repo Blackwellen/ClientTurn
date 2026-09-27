@@ -12,8 +12,15 @@ import "server-only";
  *
  * The model appears in exactly one place in that list, and everything before
  * and after it is deterministic. A model that returns nothing usable, or is
- * unavailable entirely, degrades the turn to a clarification or a handover --
- * never to silence, and never to a guess.
+ * unavailable entirely, degrades the turn to a deterministic next question, a
+ * clarification or (last) a handover -- never to silence, and never to a
+ * guess.
+ *
+ * Hand-over policy (owner decision 2026-09-27, ./handover-policy.ts): the AI
+ * carries the conversation and completes the sale whenever it lawfully and
+ * safely can. A person takes the conversation only for a last resort; for
+ * everything else a person is asked to do one thing in the background
+ * (`raiseAssist`, an ASSIST_REQUEST) and the turn carries on.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -30,7 +37,36 @@ import {
   renderStableBlock,
   type AgentContext,
 } from "./context";
-import { buildStrategyBlock, leadDirection, type Strategy } from "./strategy";
+import {
+  buildNbaStrategyBlock,
+  buildStrategyBlock,
+  estimateTokens,
+  leadDirection,
+  type NbaBookingRoute,
+  type Strategy,
+} from "./strategy";
+import {
+  buildTurnAccounting,
+  disqualifyFollowThrough,
+  engineBookingReadiness,
+  isReplyTrigger,
+  planFor,
+  qaContextFromNba,
+  runQiRecord,
+  shadowDiffers,
+  type LegacyDecision,
+  type QiTurn,
+} from "./qi-turn";
+import { prepareQiTurn, recordQiDisposition } from "./qi-runtime";
+import { withInterestFocus } from "./interest-focus";
+import { runQuestionQa, qaFailures } from "@/lib/qualification-intelligence/qa";
+import { gradeQuestion } from "@/lib/qualification-intelligence/grade";
+import type { NextBestAction, QaCode } from "@/lib/qualification-intelligence/types";
+import { evaluateSend } from "@/lib/jobs/send-core";
+import { leadState } from "@/lib/jobs/handlers/shared";
+import type { StopReason as SendStopReason } from "@/lib/automation/scheduler";
+import { parsePreferredTime, preferredTimeQuestion } from "./availability/preferred-time";
+import { planBookingRoute } from "@/lib/bookings/confirmation";
 import { buildMessageFeatures } from "@/lib/learning/features";
 import { logWriteError } from "@/lib/supabase/write-result";
 import {
@@ -45,13 +81,38 @@ import {
   classifyDeterministic,
   classifyHeuristic,
   detectInjectionAttempt,
+  isBotQuestion,
 } from "./classification";
 import { modeIsSilent, resolveMode } from "./lifecycle";
 import { evaluateRunGate, evaluateSendGate } from "./policy";
 import { correctionPrompt, validateResponse, type ValidationFacts } from "./validate";
+import { isCallOnlyRequest } from "./closing";
+import { reengagementReasonLine, reengagementReasonOf } from "@/lib/reengagement/triggers";
+import { nextComposeStep } from "./compose-policy";
+import { fixHumanStyle } from "./human-style";
+import { parseChannelPreference, shouldAskChannelPreference } from "./channel-preference";
+import { markChannelPreferenceAsked, readChannelPreference, recordChannelPreference } from "./channel-preference-store";
+import { objectionRaisedBefore } from "./strategy";
+import { customIntentKey, QIE_ENGINE_VERSION, UNMAPPED_DIMENSION } from "@/lib/qualification-intelligence/types";
+import { inferDimension, questionPrompt, type QuestionRecord } from "@/lib/qualification/next-question";
+import {
+  assistAfterBooking,
+  assistLine,
+  clarifyingQuestion,
+  policyOnAnswer,
+  policyOnCompose,
+  policyOnDecision,
+  policyOnMessage,
+  discountGuidance,
+  disclosureGuidance,
+  type ClarificationState,
+  type PolicyDecision,
+} from "./handover-policy";
+import { matchObjection } from "@/lib/sales-library/objections";
 import type { TaskSkippedReason } from "@/lib/ai/model-router";
 import type { SpendStage } from "@/lib/ai/budget";
 import {
+  abandonedSettingsOf,
   checkoutGate,
   checkoutMessage,
   DISABLED_AUTHORITY,
@@ -59,6 +120,10 @@ import {
   type CheckoutLink,
 } from "@/lib/commercial/authority";
 import { motionAllowsDirectClose } from "@/lib/opportunities/stages";
+import { trackCheckoutLink } from "@/lib/payments/attempts";
+import { loadAttemptForNudge, db as paymentsDb } from "@/lib/payments/store";
+import { checkoutNudgeOf, checkoutNudgeSendKey } from "@/lib/payments/nudge-event";
+import { nudgeGuidance } from "@/lib/payments/abandoned";
 import { latestLeadOpportunity } from "@/lib/opportunities/service";
 import {
   applySuppression,
@@ -68,6 +133,7 @@ import {
   proposeCheckout,
   recordQualificationAnswer,
   recordReplyClassification,
+  requestAssist,
   requestHumanHandover,
   sendBookingLink,
   sendMessage,
@@ -83,7 +149,6 @@ import {
   AGENT_TURN_LOCK_SECONDS,
   agentDecisionSchema,
   confidenceDecision,
-  confidenceVerdictForTolerance,
   isExtractableField,
   MAX_AGENT_STEPS,
   replyClassificationFor,
@@ -91,6 +156,7 @@ import {
   type AgentDecision,
   type AgentEvent,
   type AgentOutcome,
+  type AssistReason,
   type HandoverReason,
   type LeadIntent,
 } from "./types";
@@ -154,12 +220,37 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
   // Runs before the model and outranks it. A binding verdict short-circuits
   // the whole turn: no model call, no negotiation.
   const latestMessage = event.text?.trim() || null;
-  const binding = latestMessage ? classifyDeterministic(latestMessage) : null;
+  const deterministic = latestMessage ? classifyDeterministic(latestMessage) : null;
   const heuristic = latestMessage ? classifyHeuristic(latestMessage) : null;
   const injection = latestMessage ? detectInjectionAttempt(latestMessage) : null;
 
-  const provisionalIntent: LeadIntent =
-    binding?.intent ?? heuristic?.intent ?? (event.eventType === "LEAD_CREATED" ? "SERVICE_ENQUIRY" : "UNKNOWN");
+  // "Can you give me a call?" is a warm close, not a hand-over (elite-closer
+  // brief): when a booking route exists the turn offers bookable call times
+  // through the ordinary booking flow. The classifier still reads it as
+  // HUMAN_REQUEST (so a workspace with the agent off still hears about it),
+  // and an explicit ask for a person, or no way to book, still hands over.
+  const callClose =
+    deterministic?.intent === "HUMAN_REQUEST" && isCallOnlyRequest(latestMessage) && nbaBookingRoute(context) !== "TEAM_FOLLOW_UP";
+  const binding = callClose ? null : deterministic;
+
+  const provisionalIntent: LeadIntent = callClose
+    ? "BOOKING_REQUEST"
+    : binding?.intent ?? heuristic?.intent ?? (event.eventType === "LEAD_CREATED" ? "SERVICE_ENQUIRY" : "UNKNOWN");
+
+  // Contact-channel preference (0147): read for the turn; a call request
+  // records "phone"; an answer to the one-time question is parsed and stored.
+  const preference = await readChannelPreference(context.business.businessId, context.lead.id);
+  if (callClose && preference.preference !== "phone") {
+    await recordChannelPreference(context.business.businessId, context.lead.id, "phone");
+    preference.preference = "phone";
+  } else if (!preference.preference && preference.askedAt && latestMessage) {
+    const answered = parseChannelPreference(latestMessage, channel);
+    if (answered) {
+      await recordChannelPreference(context.business.businessId, context.lead.id, answered);
+      preference.preference = answered;
+    }
+  }
+  context.sales.channelPreference = preference;
 
   const mode = resolveMode({
     lifecycle: context.lifecycle,
@@ -185,6 +276,9 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
   // reason) whichever way the turn ends, and rendered for the model.
   const strategy = strategyFor(context, mode, channel, latestMessage);
   run.strategy = strategy.record;
+  if (strategy.record.channelPreferenceAsked) {
+    await markChannelPreferenceAsked(context.business.businessId, context.lead.id);
+  }
 
   // ---- claim the conversation turn -------------------------------------
   // Two inbound messages arriving together must not produce two replies.
@@ -199,6 +293,11 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
     return skipped("Another turn is already running on this conversation.");
   }
 
+  // The engine's record is read when the run closes, whichever branch ends
+  // the turn (CD-14): decision_json.qi = { nba, interpretation, accounting }.
+  const stats = newTurnStats(estimateTokens(strategy.text));
+  run.qi = () => qiRunRecord(stats);
+
   try {
     return await executeTurn({
       event,
@@ -211,6 +310,7 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
       heuristic,
       injection,
       strategy,
+      stats,
     });
   } finally {
     await releaseTurn(context.conversation.conversationId, turnSeq);
@@ -230,15 +330,86 @@ type ExecuteInput = {
   heuristic: ReturnType<typeof classifyHeuristic>;
   injection: string | null;
   strategy: Strategy;
+  /**
+   * Lines the hand-over policy adds to whatever strategy block the turn ends
+   * up with (a discount ask, "are you a bot?"). Kept apart because the
+   * strategy is rebuilt after qualification and for the engine's NBA.
+   */
+  guidance?: string[];
+  /** Per-turn tallies for the engine's accounting, shared by every branch. */
+  stats: TurnStats;
 };
 
-function strategyFor(
+/**
+ * What the turn did, for decision_json.qi.accounting. Mutated as the turn
+ * runs; read once, when the run closes.
+ */
+type TurnStats = {
+  /** The engine's view of the turn; null = engine OFF (no qi record). */
+  qi: QiTurn | null;
+  modelCalls: number;
+  strategyTokens: number;
+  qaFindings: QaCode[];
+  questionGrade: number | null;
+  shadowDiffers: boolean | null;
+};
+
+function newTurnStats(strategyTokens: number): TurnStats {
+  return { qi: null, modelCalls: 0, strategyTokens, qaFindings: [], questionGrade: null, shadowDiffers: null };
+}
+
+function qiRunRecord(stats: TurnStats): Record<string, unknown> | null {
+  const qi = stats.qi;
+  if (!qi) return null;
+  const record = runQiRecord({
+    nba: qi.nba,
+    interpretation: qi.interpretation,
+    accounting: buildTurnAccounting({
+      mode: qi.mode,
+      nba: qi.nba,
+      modelCalled: stats.modelCalls > 0,
+      shadowDiffers: stats.shadowDiffers,
+      strategyBlockTokens: stats.strategyTokens,
+      interpretationTokens: qi.interpretationTokens,
+      qaFindings: stats.qaFindings,
+      questionGrade: stats.questionGrade,
+    }),
+  });
+  if (!record) console.error("[agent] decision_json.qi failed its schema; not stored", { action: qi.nba.next_action });
+  return record as Record<string, unknown> | null;
+}
+
+/**
+ * Story I3: predicts what the send guard (send-core.ts) will do with the
+ * reply this turn is about to queue, so a reply that would only be stopped is
+ * never composed and the run records the true result. A reply to the lead's
+ * own message is `agent` origin (not bound by the follow-up switch); any
+ * other trigger is the agent reaching out, which `automation_active` governs.
+ */
+function predictAgentSend(context: AgentContext, event: AgentEvent): SendStopReason | null {
+  const decision = evaluateSend({
+    lead: leadState(context.lead),
+    channel: {
+      subscriptionActive: context.business.subscriptionActive,
+      integrationHealthy: true,
+      contactSuppressed: !context.leadContext.contactable,
+    },
+    // Quiet hours reschedule, they never stop: the send gate handles them.
+    quietHours: { ...context.business.quietHours, enabled: false },
+    origin: "agent",
+  });
+  if (decision.action === "abort") return decision.reason;
+  if (!isReplyTrigger(event.eventType) && !context.lead.automation_active) return "paused";
+  return null;
+}
+
+function strategyInput(
   context: AgentContext,
   mode: ReturnType<typeof resolveMode>,
   channel: AgentChannel,
   latestMessage: string | null,
-): Strategy {
-  return buildStrategyBlock({
+) {
+  return {
     mode,
     motion: context.sales.motion,
     archetypeKey: context.sales.archetypeKey,
@@ -251,10 +422,331 @@ function strategyFor(
     latestMessage,
     hasApprovedInsight: context.offer.hasApprovedClaims,
     bookingAvailable: Boolean(context.booking.bookingUrl) || context.booking.availabilityQueryable,
+    manualBooking: manualBooking(context),
     preferredMethods: context.sales.preferences?.preferredMethods,
     direction: leadDirection(context.lead),
     stakeholderCount: context.opportunityMemory?.stakeholders.length ?? 0,
+    // Elite-closer brief: the business's own objections, the reframe on a
+    // repeated objection, the call close, the motion's close route and the
+    // one-time channel question.
+    workspaceObjections: context.sales.objections,
+    objectionSeenBefore: objectionRaisedBefore(latestMessage, priorLeadMessages(context, latestMessage)),
+    callRequested: isCallOnlyRequest(latestMessage) && nbaBookingRoute(context) !== "TEAM_FOLLOW_UP",
+    bookingRoute: nbaBookingRoute(context),
+    askChannelPreference: shouldAskChannelPreference({
+      mode,
+      inboundCount: context.conversation.recentMessages.filter((message) => message.role === "lead").length,
+      alreadyAsked: Boolean(context.sales.channelPreference?.askedAt),
+      preference: context.sales.channelPreference?.preference ?? null,
+      // The strategy adds the line only on a turn that asks nothing else.
+      turnHasQuestion: false,
+      channel,
+    }),
+  };
+}
+
+/** The lead's earlier messages in the window, without the one being answered. */
+function priorLeadMessages(context: AgentContext, latestMessage: string | null): string[] {
+  return context.conversation.recentMessages
+    .filter((message) => message.role === "lead" && message.body.trim() !== (latestMessage ?? "").trim())
+    .map((message) => message.body);
+}
+
+function strategyFor(
+  context: AgentContext,
+  mode: ReturnType<typeof resolveMode>,
+  channel: AgentChannel,
+  latestMessage: string | null,
+): Strategy {
+  return buildStrategyBlock(strategyInput(context, mode, channel, latestMessage));
+}
+
+// ------------------------------------------------------ booking routes
+
+/**
+ * Manual booking mode (story H3, docs/revenue-engine/00 §6): no calendar can
+ * be read and no booking link is configured, so a booking is a PENDING
+ * request for the time the lead asks for, confirmed or declined by a person.
+ * Calendly never books this way (the lead books on Calendly).
+ */
+function manualBooking(context: AgentContext): boolean {
+  return (
+    !context.booking.availabilityQueryable &&
+    !context.booking.bookingUrl &&
+    !context.booking.liveBooking &&
+    planBookingRoute({ bookingMode: context.business.bookingMode, calendarUsable: false }) === "pending"
+  );
+}
+
+function nbaBookingRoute(context: AgentContext): NbaBookingRoute {
+  if (context.booking.availabilityQueryable) return "SLOTS";
+  if (context.booking.bookingUrl) return "LINK";
+  return manualBooking(context) ? "ASK_PREFERRED_TIME" : "TEAM_FOLLOW_UP";
+}
+
+/** This turn is about booking: the lead asked, or the engine decided to close. */
+function bookingIsThePlan(input: ExecuteInput): boolean {
+  return input.mode === "BOOKING_ASSISTANCE" || input.strategy.record.nbaAction === "CTA_BOOK";
+}
+
+async function readAvailability(input: ExecuteInput) {
+  const { context } = input;
+  return getCalendarAvailability(toolContext(input, null), {
+    date: null,
+    dayPart: null,
+    timezone: context.business.timezone,
+    availability: {
+      bookingMode: context.business.bookingMode,
+      businessHours: context.booking.businessHours,
+      appointmentDurationMinutes: context.booking.appointmentDurationMinutes,
+      bookingBufferMinutes: context.booking.bookingBufferMinutes,
+      calendarIntegrationId: context.booking.meetingType?.calendarIntegrationId ?? null,
+    },
   });
+}
+
+// --------------------------------------------------- engine-planned turns
+
+/**
+ * Engine LIVE: acts on an NBA that needs no composed message. Returns null
+ * when a message is needed (the caller hands the model the NBA strategy).
+ * Zero-token decisions never reach the model (design 08 §B.16).
+ */
+async function actOnNba(input: ExecuteInput, qi: QiTurn): Promise<TurnResult | null> {
+  const { context, run } = input;
+  const plan = planFor(qi.nba, { manual: manualBooking(context) });
+  const intent = input.heuristic?.intent ?? "UNKNOWN";
+
+  switch (plan.kind) {
+    case "COMPOSE":
+      return null;
+    case "ESCALATE":
+      return handover(input, qi.nba.handover_reason ?? "NO_NEXT_QUESTION", qi.nba.reason);
+    case "ASK_PREFERRED_TIME":
+      // Recorded now, on the turn the engine planned the booking, and read
+      // back when the lead answers: the pending request is then created on
+      // the engine's readiness even if the lifecycle is not yet QUALIFIED.
+      return askPreferredTime(input, 1, engineBookingReadiness(qi.nba, qi.bookingGate).ready);
+    case "SILENT": {
+      const tools = toolContext(input, null);
+      if (plan.stopFollowUp) {
+        await stopFollowUp(tools, { reason: plan.action === "DISQUALIFY" ? "not_qualified" : "no_interest" });
+      }
+      // An offer disqualifier marked suppress: a person confirms the
+      // suppression (never the agent), and the handover stops every further
+      // AI turn and all outreach until they do. Nothing is sent to the lead.
+      if (disqualifyFollowThrough(qi.nba).askPersonToSuppress) {
+        await askPersonToConfirmSuppression(input, qi.nba);
+      }
+      await recordQiDisposition({ context, nba: qi.nba });
+      await maybeRefreshSummary(context, run.id);
+      await closeRun(run, {
+        status: "COMPLETED",
+        outcome: plan.action === "DISQUALIFY" ? "QUALIFICATION_UPDATED" : "NO_ACTION",
+        intent,
+        replyClassification: replyClassificationFor(intent),
+        decision: {
+          mode: input.mode,
+          nba: plan.action,
+          rule: qi.nba.rule,
+          resumeAt: plan.resumeAt,
+          suppressionConfirmationRequested: disqualifyFollowThrough(qi.nba).askPersonToSuppress,
+        },
+      });
+      return {
+        outcome: plan.action === "DISQUALIFY" ? "QUALIFICATION_UPDATED" : "NO_ACTION",
+        runId: run.id,
+        detail: qi.nba.reason,
+      };
+    }
+  }
+}
+
+/** The QA and grading context for a draft of this turn. */
+/** The engine (LIVE) planned an explicit VERIFY of a fact that has gone stale. */
+function verifiesStaleFact(qi: QiTurn | null | undefined): boolean {
+  const planned = qi?.mode === "LIVE" ? qi.nba.question_intent : null;
+  if (!planned || planned.purpose !== "VERIFY") return false;
+  return qi!.dimensions.some((entry) => entry.dimension === planned.dimension && entry.stale === true);
+}
+
+function qaContextFor(input: ExecuteInput, qi: QiTurn) {
+  return qaContextFromNba({
+    nba: qi.nba,
+    channel: input.channel,
+    stage: qi.stage,
+    dimensions: qi.dimensions,
+    forbiddenIntents: qi.forbiddenIntents,
+    inbound: input.latestMessage,
+    interpretation: qi.interpretation,
+    recentOutbound: qi.recentOutbound,
+    customerType: qi.customerType,
+    companion: qi.interests?.companion ?? null,
+  });
+}
+
+/** MessageFeatures v2 question fields, on a message the engine planned (LIVE). */
+/**
+ * MessageFeatures v2 question fields for the reply being sent. Written on
+ * every message that asks a question, whatever the engine mode, because the
+ * engine's ask history (repetition risk, the one sticky re-ask) is read from
+ * them. Engine LIVE: the NBA's question intent and state. Otherwise: the
+ * configured question the legacy plan asked, as its `custom:<id>` intent.
+ */
+function questionFeatures(input: ExecuteInput, decision: AgentDecision) {
+  const qi = input.stats.qi;
+  if (!qi || qi.mode !== "LIVE") {
+    const legacyAsks =
+      decision.proposed_action === "ASK_NEXT_QUESTION" || decision.proposed_action === "ANSWER_AND_ASK";
+    const question = input.context.qualification.nextQuestion;
+    if (!legacyAsks || !question || question.id !== input.strategy.record.nextQuestionId) return null;
+    return {
+      questionIntent: customIntentKey(question.id),
+      dimension: inferDimension(question) ?? UNMAPPED_DIMENSION,
+      wordingFamily: null,
+      questionPosition: null,
+      intentState: qi?.nba.intent_state ?? null,
+      goal: qi?.nba.current_goal ?? null,
+      offerId: input.context.lead.service_id ?? null,
+      nbaAction: null,
+      strategyVersion: null,
+    };
+  }
+  const q = qi.nba.question_intent;
+  const asks = qi.nba.next_action === "ASK" || qi.nba.next_action === "ANSWER_AND_ASK" || (qi.nba.next_action === "CTA_BOOK" && q !== null);
+  return {
+    questionIntent: asks ? (q?.key ?? null) : null,
+    dimension: asks ? (q?.dimension ?? null) : null,
+    wordingFamily: asks ? (qi.experiment?.wordingFamily ?? q?.wording_family ?? null) : null,
+    questionPosition: asks ? qi.questionPosition : null,
+    intentState: qi.nba.intent_state,
+    goal: qi.nba.current_goal,
+    offerId: qi.offerId,
+    nbaAction: qi.nba.next_action,
+    strategyVersion: QIE_ENGINE_VERSION,
+  };
+}
+
+// ------------------------------------------- manual booking (story H3)
+
+/**
+ * Asks the lead which day and time suits them: one question, fixed wording,
+ * no model call. Recorded as BOOKING_OPTIONS_SENT with `preferredTimeAsked`
+ * so the next reply is parsed as their answer. The second attempt gives an
+ * example; after it, a person takes over.
+ */
+async function askPreferredTime(input: ExecuteInput, attempt: 1 | 2, engineBookingReady = false): Promise<TurnResult> {
+  const { context, run } = input;
+  const body = preferredTimeQuestion(context.leadContext.firstName, attempt);
+  const delivered = await deliverFixed(input, body, `agent-preferred-time:${run.id}`);
+
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome === "FAILED" || delivered.outcome === "NO_ACTION" ? delivered.outcome : "BOOKING_OPTIONS_SENT",
+    intent: input.heuristic?.intent ?? "BOOKING_REQUEST",
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: { mode: input.mode, action: "ASK_PREFERRED_TIME", preferredTimeAsked: attempt, offeredSlots: [], engineBookingReady },
+  });
+
+  return {
+    outcome: delivered.outcome === "FAILED" || delivered.outcome === "NO_ACTION" ? delivered.outcome : "BOOKING_OPTIONS_SENT",
+    runId: run.id,
+    detail: attempt === 1 ? "Asked for a preferred day and time." : "Asked once more for a day and time.",
+  };
+}
+
+/**
+ * The attempt number when the previous turn on this conversation asked for a
+ * preferred time and the lead is now answering it; null otherwise. Only the
+ * latest earlier run counts, and only for 72 hours.
+ */
+async function loadPreferredTimeAsk(
+  conversationId: string | null,
+  currentRunId: string,
+): Promise<{ attempt: 1 | 2; engineBookingReady: boolean } | null> {
+  if (!conversationId) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("conversation_agent_runs")
+    .select("id, decision_json, created_at")
+    .eq("conversation_id", conversationId)
+    .neq("id", currentRunId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  if (Date.now() - Date.parse(data.created_at) > 72 * 60 * 60 * 1000) return null;
+  const asked = (data.decision_json ?? {}) as { preferredTimeAsked?: unknown; engineBookingReady?: unknown };
+  if (asked.preferredTimeAsked !== 1 && asked.preferredTimeAsked !== 2) return null;
+  return { attempt: asked.preferredTimeAsked, engineBookingReady: asked.engineBookingReady === true };
+}
+
+/**
+ * The lead answered "which day and time?". A concrete time is held as a
+ * pending booking (createBooking's manual route) and the lead is told it is
+ * requested, never booked. Anything else is asked once more, then handed over.
+ */
+async function handlePreferredTimeReply(
+  input: ExecuteInput,
+  asked: { attempt: 1 | 2; engineBookingReady: boolean },
+): Promise<TurnResult> {
+  const { attempt, engineBookingReady } = asked;
+  const { context } = input;
+  const parsed = parsePreferredTime(input.latestMessage ?? "", {
+    now: new Date(),
+    timezone: context.business.timezone,
+    durationMinutes: context.booking.appointmentDurationMinutes,
+  });
+  if (parsed.kind === "slot") {
+    // The time is the lead's own words, parsed by rules, and the booking it
+    // creates is PENDING until a person confirms it: that is the availability
+    // create_booking is armed with in manual mode (decision Q1).
+    return confirmBooking(input, { confidence: 1 }, parsed.slot, { engineBookingReady });
+  }
+  if (attempt >= 2) {
+    // Asked twice, still unreadable: the last resort (handover-policy.ts).
+    return handover(input, "POLICY", "The lead's preferred day and time could not be read after asking twice.", {
+      trigger: "REPEATED_CLARIFICATION_FAILURE",
+    });
+  }
+  return askPreferredTime(input, 2, engineBookingReady);
+}
+
+/**
+ * Sends a fixed, deterministic line through the same send gate as a composed
+ * reply (draft under SUGGEST_ONLY, queue in quiet hours, deny when blocked).
+ */
+async function deliverFixed(
+  input: ExecuteInput,
+  body: string,
+  sendKey: string,
+): Promise<{ outcome: AgentOutcome; errorCode: string | null }> {
+  const { context } = input;
+  const gate = evaluateSendGate({
+    agentMode: context.business.agent.mode,
+    channel: input.channel,
+    contactSuppressed: !context.leadContext.contactable,
+    hasDestination: Boolean(context.leadContext.contactable),
+    providerHealthy: true,
+    lastInboundAt: context.leadContext.lastInboundAt,
+    socialConnectionState: context.leadContext.socialConnectionState,
+    quietHours: context.business.quietHours,
+    now: new Date(),
+  });
+  const tools = toolContext(input, null);
+  if (gate.decision === "DENY") return { outcome: "NO_ACTION", errorCode: gate.code };
+  if (gate.decision === "DRAFT") {
+    const drafted = await draftMessage(tools, { body, sendKey });
+    return { outcome: drafted.ok ? "MESSAGE_DRAFTED" : "FAILED", errorCode: null };
+  }
+  const sent = await sendMessage(tools, {
+    body,
+    sendKey,
+    runAt: gate.decision === "QUEUE" ? gate.runAt : undefined,
+  });
+  return { outcome: sent.ok ? (gate.decision === "QUEUE" ? "MESSAGE_QUEUED" : "MESSAGE_SENT") : "FAILED", errorCode: null };
 }
 
 async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
@@ -281,6 +773,13 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
     return handleBindingVerdict(input, input.binding.intent);
   }
 
+  // ---- abandoned-checkout nudge (the direct-sale loop) -----------------
+  // A FOLLOW_UP_DUE turn queued by the checkout.nudge job. Its own branch:
+  // the model writes the reminder, the same validator checks it with the
+  // same tracked link, and the send guard decides at send time.
+  const checkoutNudge = checkoutNudgeOf(event);
+  if (checkoutNudge) return nudgeTheCheckout(input, checkoutNudge);
+
   if (modeIsSilent(input.mode)) {
     await closeRun(run, {
       status: "COMPLETED",
@@ -291,15 +790,79 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
     return { outcome: "NO_ACTION", runId: run.id, detail: "Nothing to say in this mode." };
   }
 
-  // ---- objections that are always a person's job -----------------------
-  // Security, legal, contract and procurement (objection library). Decided
-  // here, before the model, rather than hoping the model proposes it.
-  if (input.strategy.objection?.handoverRequired) {
-    return handover(
-      input,
-      "POLICY",
-      `The lead raised a ${input.strategy.objection.label.toLowerCase()} question that a person must answer.`,
-    );
+  // ---- last resorts in the lead's own words (handover-policy.ts) ---------
+  // Decided here, before the model, rather than hoping the model proposes it:
+  // a data-rights request, a discount or price concession outside the
+  // approved offer, and a legal or contract question (objection library)
+  // hand over. A security or procurement step is a background assist and the
+  // conversation carries on. Objection playbooks are only matched when the
+  // turn is handling an objection, as before: "our contract ends in March" is
+  // not a contract question.
+  // What the previous turn left for this one: a clarification in progress, or
+  // an out-of-policy discount ask the assistant already answered.
+  const previousTurn = await loadPreviousTurn(context.conversation.conversationId, run.id);
+  const previousClarification = previousTurn.clarification;
+
+  const onMessage = policyOnMessage({
+    text: input.latestMessage,
+    bindingIntent: null,
+    objectionKeys:
+      input.strategy.objection && input.latestMessage ? matchObjection(input.latestMessage).map((match) => match.key) : [],
+    commercial: commercialPolicy(context),
+    previousDiscountDemand: previousTurn.discountDemand,
+    botQuestion: input.latestMessage ? isBotQuestion(input.latestMessage) : false,
+  });
+  if (onMessage.kind === "HANDOVER") return handoverFor(input, onMessage);
+  if (onMessage.kind === "CONTINUE") {
+    // A discount ask is answered within the approved maximum; an ask beyond
+    // it is remembered, so insisting next turn hands over. "Are you a bot?"
+    // is answered honestly, and the conversation carries on.
+    const guidance: string[] = [];
+    if (onMessage.discount) {
+      guidance.push(discountGuidance(onMessage.discount));
+      if (!onMessage.discount.withinPolicy) run.marks = { ...(run.marks ?? {}), discountDemand: true };
+    }
+    if (onMessage.disclose) guidance.push(disclosureGuidance(context.workspace.businessName));
+    if (guidance.length) input = { ...input, guidance };
+  }
+
+  // ---- a planned re-engagement check-in: say why we are writing ----------
+  // The trigger queued the reason as structured facts (the lead's own resume
+  // date, the date they gave, the missed meeting, the loss reason). One line
+  // on whatever plan the turn ends up with, legacy or engine.
+  const reengagement = event.eventType === "FOLLOW_UP_DUE" ? reengagementReasonOf(event.payload) : null;
+  if (reengagement) {
+    input = { ...input, guidance: [...(input.guidance ?? []), reengagementReasonLine(reengagement)] };
+    run.marks = { ...(run.marks ?? {}), reengagement: reengagement.trigger };
+  }
+
+  // ---- story I3: would the reply even be sent? --------------------------
+  // Predicted before any model call, so a reply the send guard would only
+  // stop is never composed (or paid for), and the run records NO_ACTION with
+  // the reason instead of claiming MESSAGE_SENT.
+  const stopped = predictAgentSend(context, event);
+  if (stopped) {
+    await closeRun(run, {
+      status: "COMPLETED",
+      outcome: "NO_ACTION",
+      intent: input.heuristic?.intent ?? "UNKNOWN",
+      errorCode: `STOPPED_${stopped.toUpperCase()}`,
+      decision: { mode: input.mode, blocked: stopped },
+    });
+    return { outcome: "NO_ACTION", runId: run.id, detail: `The reply would be stopped by the send guard (${stopped}).` };
+  }
+
+  if (onMessage.kind === "CONTINUE" && onMessage.assist) {
+    await raiseAssist(input, onMessage.assist, onMessage.detail ?? "A colleague provides this in the background.");
+  }
+
+  // ---- story H3: the lead is answering "which day and time?" -------------
+  // Manual booking mode has no offered slots; the lead's own stated time is
+  // parsed deterministically and held as a pending booking for a person to
+  // confirm. Checked before anything else reads the reply as an answer.
+  if (input.latestMessage) {
+    const asked = await loadPreferredTimeAsk(context.conversation.conversationId, run.id);
+    if (asked !== null) return handlePreferredTimeReply(input, asked);
   }
 
   // ---- record what this reply answers, before the model call ------------
@@ -312,58 +875,156 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
     qualificationChanged =
       (await recordInferredAnswers(context.business.businessId, context.lead.id, context.qualification.inferred)) > 0;
   }
-  if (input.latestMessage && context.qualification.currentQuestion) {
+  // Whether the reply was a usable answer to the question just asked: the
+  // deterministic matcher refuses a value outside the configured options
+  // (VALUE_NOT_ACCEPTED), which is an unusable answer to clarify, never a
+  // reason to hand over on its own.
+  const askedQuestion = context.qualification.currentQuestion;
+  let answerMatched: boolean | null = null;
+  if (input.latestMessage && askedQuestion) {
     const stored = await recordQualificationAnswer(tools, {
-      question: context.qualification.currentQuestion,
+      question: askedQuestion,
       reply: input.latestMessage,
       value: input.latestMessage,
     });
     qualificationChanged = qualificationChanged || stored.ok;
+    answerMatched = stored.ok ? true : stored.code === "VALUE_NOT_ACCEPTED" ? false : null;
   }
 
+
   let qualificationResult: string | null = null;
+  let qualificationReasons: { code: string; questionId?: string }[] = [];
+  let engineStop: "NOT_QUALIFIED" | null = null;
   if (qualificationChanged) {
     const refreshed = (await loadLead(context.lead.id)) ?? context.lead;
     const { output } = await applyQualification(context.business, refreshed);
     qualificationResult = output.result;
+    qualificationReasons = output.reasons.map((reason) => ({ code: reason.code, questionId: reason.questionId }));
 
-    // The engine, not the model, decides. A REVIEW result that the workspace
-    // has configured for human review ends the turn here.
-    if (output.result === "REVIEW" && context.business.agent.handoverOnReview) {
-      return handover(input, "QUALIFICATION_REVIEW", "Qualification needs a person to review.");
-    }
+    // The engine, not the model, decides the verdict. A REVIEW is recorded
+    // and (below, once the qualification engine has recorded the turn)
+    // flagged for a person while the conversation carries on; only a
+    // workspace that opted in to hand-over on review stops here.
     if (output.result === "NOT_QUALIFIED") {
-      await stopFollowUp(tools, { reason: "not_qualified" });
-      await closeRun(run, {
-        status: "COMPLETED",
-        outcome: "QUALIFICATION_UPDATED",
-        intent: input.heuristic?.intent ?? "UNKNOWN",
-        replyClassification: replyClassificationFor(input.heuristic?.intent ?? "UNKNOWN"),
-        qualificationAfter: output.result,
-        decision: { qualification: output.result },
-      });
-      return {
-        outcome: "QUALIFICATION_UPDATED",
-        runId: run.id,
-        detail: "The lead did not meet the workspace's rules.",
+      engineStop = "NOT_QUALIFIED";
+    } else {
+      // Re-read the picture and re-plan: the next question has moved on.
+      const lead = { ...refreshed, qualification_state: output.result };
+      context = {
+        ...context,
+        lead,
+        qualification: await refreshQualification(context, lead, input.mode),
       };
+      const strategy = strategyFor(context, input.mode, input.channel, input.latestMessage);
+      run.strategy = strategy.record;
+      input.stats.strategyTokens = estimateTokens(strategy.text);
+      input = { ...input, context, strategy };
     }
+  }
 
-    // Re-read the picture and re-plan: the next question has moved on.
-    const lead = { ...refreshed, qualification_state: output.result };
-    context = {
-      ...context,
-      lead,
-      qualification: await refreshQualification(context, lead),
+  // ---- the qualification engine (design 08, Wave 2) ----------------------
+  // interpret() writes the reply back (facts and signals, source_ref = the
+  // inbound message, CD-15), the lead is re-assessed and the NBA computed.
+  // OFF: null, and the turn below is the legacy turn unchanged. SHADOW: the
+  // NBA is stored beside the legacy decision and nothing changes. LIVE: the
+  // turn acts on the NBA. A failure inside the engine is logged and the turn
+  // continues on the legacy path; it never costs the lead their reply.
+  const legacy: LegacyDecision = {
+    nextQuestionId: input.strategy.record.nextQuestionId,
+    agentMode: input.mode,
+    stoppedQualifying: input.strategy.record.stopReason !== null,
+  };
+  const qi = await prepareQiTurn({
+    context,
+    event,
+    latestMessage: input.latestMessage,
+    channel: input.channel,
+    stage: input.strategy.record.stage,
+    legacy,
+    engineVerdict: qualificationResult,
+  });
+  input.stats.qi = qi;
+  if (qi?.mode === "SHADOW") input.stats.shadowDiffers = shadowDiffers(qi.nba, legacy);
+
+  // ---- the answer and the verdict (handover-policy.ts) -------------------
+  // An unusable answer is asked again in other words (twice at most, then a
+  // person); a REVIEW verdict is flagged for a person in the background.
+  if (engineStop !== "NOT_QUALIFIED") {
+    const onAnswer = policyOnAnswer({
+      text: input.latestMessage,
+      answer:
+        askedQuestion && answerMatched !== null
+          ? { questionId: askedQuestion.id, matched: answerMatched, structured: askedQuestion.responseType !== "text" }
+          : null,
+      verdict: qualificationResult
+        ? { result: qualificationResult as "PENDING" | "QUALIFIED" | "NOT_QUALIFIED" | "REVIEW", reasons: qualificationReasons }
+        : null,
+      handoverOnReview: context.business.agent.handoverOnReview,
+      previousClarification,
+    });
+    if (onAnswer.kind === "HANDOVER") return handoverFor(input, onAnswer);
+    if (onAnswer.kind === "CLARIFY") return clarify(input, onAnswer, askedQuestion);
+    if (onAnswer.assist) {
+      await raiseAssist(input, onAnswer.assist, onAnswer.detail ?? "Qualification needs a person to check.");
+    }
+  }
+  if (engineStop === "NOT_QUALIFIED") {
+    await stopFollowUp(tools, { reason: "not_qualified" });
+    await closeRun(run, {
+      status: "COMPLETED",
+      outcome: "QUALIFICATION_UPDATED",
+      intent: input.heuristic?.intent ?? "UNKNOWN",
+      replyClassification: replyClassificationFor(input.heuristic?.intent ?? "UNKNOWN"),
+      qualificationAfter: qualificationResult,
+      decision: { qualification: qualificationResult },
+    });
+    return {
+      outcome: "QUALIFICATION_UPDATED",
+      runId: run.id,
+      detail: "The lead did not meet the workspace's rules.",
     };
-    const strategy = strategyFor(context, input.mode, input.channel, input.latestMessage);
+  }
+
+  if (qi?.mode === "LIVE" && qi.interests) {
+    // Several interests (08 §B.20): this turn sells ONE offer. Its motion,
+    // its checkout link and its meeting type apply to the gates below.
+    context = withInterestFocus(context, qi.interests);
+    input = { ...input, context };
+    run.marks = { ...(run.marks ?? {}), interests: qi.interests.record };
+  }
+  if (qi?.mode === "LIVE") {
+    const acted = await actOnNba(input, qi);
+    if (acted) return acted;
+    // The NBA carried on past something a person should see (a REVIEW, a
+    // specialist step, a ready buyer's order details): ask them in the
+    // background. The strategy block tells the model what to say about it.
+    if (qi.nba.assist_reason) await raiseAssist(input, qi.nba.assist_reason, qi.nba.reason);
+    // A message is needed: the model is handed the NBA's plan, not the full one.
+    const strategy = buildNbaStrategyBlock(strategyInput(context, input.mode, input.channel, input.latestMessage), qi.nba, {
+      booking: nbaBookingRoute(context),
+      interestLines: qi.interests?.strategyLines,
+    });
     run.strategy = strategy.record;
-    input = { ...input, context, strategy };
+    input.stats.strategyTokens = estimateTokens(strategy.text);
+    input = { ...input, strategy };
+    if (strategy.record.channelPreferenceAsked) {
+      await markChannelPreferenceAsked(context.business.businessId, context.lead.id);
+    }
+  }
+
+  // ---- slots before the model, when booking is the plan -------------------
+  // The model can only name a time it has been shown. When this turn is about
+  // booking and a calendar can be read, the real slots are fetched first and
+  // put in front of the model, so its one call can offer them.
+  let prefetched: { labels: string[]; slots: Slot[] } | null = null;
+  if (bookingIsThePlan(input) && context.booking.availabilityQueryable && !context.booking.liveBooking) {
+    const early = await readAvailability(input);
+    if (early.ok && early.data.slots.length > 0) prefetched = { labels: early.data.labels, slots: early.data.slots };
   }
 
   // ---- the model proposes ----------------------------------------------
-  const proposal = await proposeDecision(input, null);
-  const decision = proposal.decision;
+  const proposal = await proposeDecision(input, null, prefetched?.labels ?? []);
+  let decision = proposal.decision;
 
   if (!decision) {
     // The budget manager decided a person should answer this live
@@ -373,31 +1034,46 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
         input,
         "BUDGET_EXCEEDED",
         "The assistant's spend limit for this conversation was reached, so a person should reply.",
+        { trigger: "BUDGET_EXCEEDED" },
       );
     }
-    // The model was unavailable or returned nothing usable. Fail safe:
-    // a person, not a guess.
-    return handover(input, "LOW_CONFIDENCE", "The assistant could not interpret this reply.");
+    // The model was unavailable or returned nothing usable. Never a guess:
+    // carry on deterministically with the next configured question when
+    // there is one the lead has not just been asked; a person only when
+    // there is no way to continue.
+    const next = context.qualification.nextQuestion;
+    if (next && next.id !== askedQuestion?.id) return askQuestionFixed(input, next);
+    return handover(input, "LOW_CONFIDENCE", "The assistant could not interpret this reply and had no question to continue with.", {
+      trigger: "MODEL_UNAVAILABLE",
+    });
   }
 
   // A binding verdict has already returned above, so the model's intent is
-  // the only one still in play here.
-  const intent = decision.intent;
-  // Risk tolerance (Settings -> AI & selling) can only raise the handover
-  // floor: CAUTIOUS hands over anything short of ACT confidence.
-  const verdict = confidenceVerdictForTolerance(decision.confidence, context.sales.preferences?.riskTolerance);
-
-  if (verdict === "HANDOVER") {
-    return handover(input, "LOW_CONFIDENCE", "The reply was too unclear to answer safely.");
-  }
+  // the only one still in play here. Risk tolerance (Settings -> AI &
+  // selling) can only raise the clarify floor; a reply the model could not
+  // read is clarified, and a hand-over the model proposes is honoured only
+  // for a last resort (handover-policy.ts).
+  const onDecision = policyOnDecision({
+    proposedAction: decision.proposed_action,
+    handoverReason: decision.handover_reason,
+    confidence: decision.confidence,
+    riskTolerance: context.sales.preferences?.riskTolerance,
+    previousClarification,
+  });
+  if (onDecision.kind === "HANDOVER") return handoverFor(input, onDecision);
+  if (onDecision.kind === "CLARIFY") return clarify(input, onDecision, null);
 
   if (decision.proposed_action === "REQUEST_HANDOVER") {
-    return handover(
-      input,
-      decision.handover_reason ?? "OUT_OF_SCOPE",
-      "The assistant judged this needs a person.",
-    );
+    // Not a last resort: a colleague confirms the detail in the background
+    // and the conversation carries on.
+    const assist = onDecision.assist ?? "CONFIRM_DETAIL";
+    await raiseAssist(input, assist, decision.handover_reason ? `The assistant asked a colleague to help (${decision.handover_reason}).` : "The assistant asked a colleague to help.");
+    const carried = await carryOnAfterAssist(input, decision, prefetched?.labels ?? []);
+    if (!carried) return deliverAssistLine(input, assist, decision);
+    decision = carried;
   }
+
+  const intent = decision.intent;
 
   // ---- accept extractions ----------------------------------------------
   await applyExtractions(input, decision);
@@ -415,36 +1091,43 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
   // asking the model which one it thinks they meant. That is what makes
   // arming create_booking safe at all.
   const offered = await loadOfferedSlots(context.conversation.conversationId);
-  if (offered.length > 0 && input.latestMessage) {
-    const chosen = matchOfferedSlot(input.latestMessage, offered);
-    if (chosen) return confirmBooking(input, decision, chosen);
+  if (offered.slots.length > 0 && input.latestMessage) {
+    const chosen = matchOfferedSlot(input.latestMessage, offered.slots);
+    if (chosen) return confirmBooking(input, decision, chosen, { engineBookingReady: offered.engineBookingReady });
   }
 
   // ---- availability, if the model asked for it -------------------------
   let confirmedSlots: string[] = [];
   let offeredSlots: Slot[] = [];
   if (
+    (decision.proposed_action === "CHECK_AVAILABILITY" || decision.proposed_action === "SEND_BOOKING_OPTIONS") &&
+    context.lifecycle === "REVIEW"
+  ) {
+    // The rules have not cleared this lead (REVIEW), so no time is offered
+    // that the booking gate would then refuse. A person confirms the next
+    // step in the background; the conversation stays with the assistant.
+    await raiseAssist(input, "QUALIFICATION_REVIEW", "The lead wants to book while qualification is under review.");
+    return deliverAssistLine(input, "QUALIFICATION_REVIEW", decision);
+  }
+  if (
     decision.proposed_action === "CHECK_AVAILABILITY" ||
     decision.proposed_action === "SEND_BOOKING_OPTIONS"
   ) {
-    const availability = await getCalendarAvailability(tools, {
-      date: null,
-      dayPart: null,
-      timezone: context.business.timezone,
-      availability: {
-        bookingMode: context.business.bookingMode,
-        businessHours: context.booking.businessHours,
-        appointmentDurationMinutes: context.booking.appointmentDurationMinutes,
-        bookingBufferMinutes: context.booking.bookingBufferMinutes,
-        calendarIntegrationId: context.booking.meetingType?.calendarIntegrationId ?? null,
-      },
-    });
+    const availability = prefetched
+      ? ({ ok: true as const, data: { slots: prefetched.slots, labels: prefetched.labels, provider: "prefetched" } })
+      : await readAvailability(input);
     if (availability.ok && availability.data.slots.length > 0) {
       // `labels` are the human strings the reply may quote. The raw slots are
       // objects, and letting them reach the validator would compare a message
       // against "[object Object]" and pass anything.
       confirmedSlots = availability.data.labels;
       offeredSlots = availability.data.slots;
+      // The model must see the times it offers. When they were not in front
+      // of it on the first call, it is asked once more with them.
+      if (!prefetched) {
+        const withSlots = await proposeDecision(input, null, confirmedSlots, "slots");
+        if (withSlots.decision?.message) decision = withSlots.decision;
+      }
     } else if (availability.ok) {
       // The calendar answered, and the answer was "nothing free". That is a
       // real fact and earns a real reply, not a fallback link.
@@ -453,15 +1136,19 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
       // No live calendar, but a link exists: that is the configured booking
       // method for this workspace, so use it rather than stalling.
       return sendTheBookingLink(input, decision);
+    } else if (manualBooking(context)) {
+      // Story H3: no calendar and no link is manual booking mode, not a
+      // failure. Ask for the lead's preferred time and hold it as pending.
+      return askPreferredTime(input, 1);
     } else {
-      return handover(input, "PROVIDER_FAILURE", "Booking could not be arranged automatically.");
+      return handover(input, "PROVIDER_FAILURE", "Booking could not be arranged automatically.", { trigger: "PROVIDER_FAILURE" });
     }
   }
 
   // ---- compose and validate --------------------------------------------
   const composed = await composeValidated(input, decision, confirmedSlots);
   if (!composed) {
-    return handover(input, "OUT_OF_SCOPE", "A safe reply could not be composed.");
+    return handover(input, "OUT_OF_SCOPE", "A safe reply could not be composed.", { trigger: "VALIDATOR_REJECTED" });
   }
 
   // ---- decide how the message leaves -----------------------------------
@@ -515,6 +1202,9 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
         archetype: input.strategy.record.archetypeKey,
         motion: input.strategy.record.motion,
         method: input.strategy.record.method,
+        experimentId: input.stats.qi?.mode === "LIVE" ? (input.stats.qi.experiment?.id ?? null) : null,
+        arm: input.stats.qi?.mode === "LIVE" ? (input.stats.qi.experiment?.arm ?? null) : null,
+        question: questionFeatures(input, decision),
       }),
     });
     outcome = sent.ok
@@ -535,10 +1225,12 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
   // ask it is cleared, so a later reply cannot be recorded against a question
   // the conversation has moved past.
   if (context.conversation.conversationId) {
+    const nbaAsks = input.strategy.record.nbaAction === "ASK" || input.strategy.record.nbaAction === "ANSWER_AND_ASK";
+    const modelAsks =
+      decision.proposed_action === "ASK_NEXT_QUESTION" || decision.proposed_action === "ANSWER_AND_ASK";
+    // Engine LIVE: the NBA chose to ask, and QA held the draft to that question.
     const asked =
-      (decision.proposed_action === "ASK_NEXT_QUESTION" ||
-        decision.proposed_action === "ANSWER_AND_ASK") &&
-      input.strategy.record.nextQuestionId
+      (input.strategy.record.nbaAction ? nbaAsks : modelAsks) && input.strategy.record.nextQuestionId
         ? input.strategy.record.nextQuestionId
         : null;
     const clear = !asked && !context.qualification.nextQuestion && context.conversation.currentQuestionId;
@@ -574,6 +1266,11 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
       // Recorded so the next turn matches a confirmation against exactly what
       // was offered, rather than re-querying and possibly drifting.
       offeredSlots,
+      // The engine's booking-readiness on the turn the times were offered.
+      engineBookingReady:
+        offeredSlots.length > 0 && input.stats.qi?.mode === "LIVE"
+          ? engineBookingReadiness(input.stats.qi.nba, input.stats.qi.bookingGate).ready
+          : false,
     },
   });
 
@@ -695,7 +1392,7 @@ async function handover(
   input: ExecuteInput,
   reason: HandoverReason,
   detail: string,
-  options: { acknowledged?: boolean } = {},
+  options: { acknowledged?: boolean; trigger?: string } = {},
 ): Promise<TurnResult> {
   const { context, run } = input;
   const tools = toolContext(input, null);
@@ -749,10 +1446,240 @@ async function handover(
     intent: summary.intent as LeadIntent,
     replyClassification: replyClassificationFor(summary.intent as LeadIntent),
     lifecycleAfter: "HANDED_OVER",
-    decision: { reason, injectionAttempt: input.injection },
+    decision: { reason, trigger: options.trigger ?? null, injectionAttempt: input.injection },
   });
 
   return { outcome: "HANDOVER_CREATED", runId: run.id, detail };
+}
+
+/** A last-resort hand-over decided by the policy (handover-policy.ts). */
+function handoverFor(input: ExecuteInput, decision: Extract<PolicyDecision, { kind: "HANDOVER" }>): Promise<TurnResult> {
+  return handover(input, decision.reason, decision.detail, { trigger: decision.trigger });
+}
+
+/**
+ * An ASSIST_REQUEST: a person confirms one fact or does one task in the
+ * background, is notified, and the conversation stays with the assistant.
+ * Idempotent per reason within a turn. Never throws: an assist that could not
+ * be recorded costs a notification, never the lead's reply.
+ */
+async function raiseAssist(input: ExecuteInput, reason: AssistReason, detail: string): Promise<void> {
+  const { context, run } = input;
+  run.assists = run.assists ?? [];
+  if (run.assists.includes(reason)) return;
+  run.assists.push(reason);
+  const summary: HandoverSummary = {
+    intent: input.binding?.intent ?? input.heuristic?.intent ?? "UNKNOWN",
+    service: context.leadContext.serviceName,
+    qualificationStatus: context.lead.qualification_state,
+    keyAnswers: context.qualification.answered.slice(0, 6),
+    bookingIntent: input.heuristic?.intent === "BOOKING_REQUEST" || input.heuristic?.intent === "BOOKING_CHANGE",
+    unresolvedIssue: detail.slice(0, 500),
+    sentiment: "neutral",
+    summary: buildHandoverNarrative(context, detail),
+  };
+  try {
+    await requestAssist(toolContext(input, null), { reason, summary });
+  } catch (error) {
+    console.error("[agent] assist request failed", { runId: run.id, reason, error: error instanceof Error ? error.message : error });
+  }
+}
+
+/** The workspace's direct-close authority, as the hand-over policy reads it. */
+function commercialPolicy(context: AgentContext): { enabled: boolean; maxDiscountPercent: number } | null {
+  const authority = context.commerce?.authority;
+  if (!authority) return null;
+  return { enabled: authority.enabled, maxDiscountPercent: authority.max_discount_percent ?? 0 };
+}
+
+/**
+ * What the latest earlier run on this conversation left, within 72 hours:
+ * the clarification it made (the chain the hand-over policy counts; a turn in
+ * between that was not a clarification resets it) and whether it answered an
+ * out-of-policy discount ask (insisting now hands over).
+ */
+async function loadPreviousTurn(
+  conversationId: string | null,
+  currentRunId: string,
+): Promise<{ clarification: ClarificationState; discountDemand: boolean }> {
+  const none = { clarification: null, discountDemand: false };
+  if (!conversationId) return none;
+  const { data } = await createAdminClient()
+    .from("conversation_agent_runs")
+    .select("id, decision_json, created_at")
+    .eq("conversation_id", conversationId)
+    .neq("id", currentRunId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return none;
+  if (Date.now() - Date.parse(data.created_at) > 72 * 60 * 60 * 1000) return none;
+  const decision = (data.decision_json ?? {}) as { clarification?: { point?: unknown; attempt?: unknown }; discountDemand?: unknown };
+  const c = decision.clarification;
+  return {
+    clarification:
+      c && typeof c.point === "string" && typeof c.attempt === "number" ? { point: c.point, attempt: c.attempt } : null,
+    discountDemand: decision.discountDemand === true,
+  };
+}
+
+/**
+ * One clarifying question, fixed wording, no model call (handover-policy.ts
+ * clarifyingQuestion). The conversation pointer is left on the question
+ * being clarified, so the next reply is matched against it again. Recorded
+ * as `decision_json.clarification`, which the next turn reads to count.
+ */
+async function clarify(
+  input: ExecuteInput,
+  decision: Extract<PolicyDecision, { kind: "CLARIFY" }>,
+  question: QuestionRecord | null,
+): Promise<TurnResult> {
+  const { context, run } = input;
+  const body = clarifyingQuestion({
+    question:
+      decision.point === "reply" || !question
+        ? null
+        : {
+            questionText: question.questionText,
+            responseType: question.responseType,
+            options: question.options.map((option) => ({ label: option.label ?? option.value, value: option.value })),
+          },
+    attempt: decision.attempt,
+    firstName: context.leadContext.firstName,
+  });
+  const delivered = await deliverFixed(input, body, `agent-clarify:${run.id}`);
+  const intent = input.heuristic?.intent ?? "UNKNOWN";
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome,
+    intent,
+    replyClassification: replyClassificationFor(intent),
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: {
+      mode: input.mode,
+      action: "CLARIFY",
+      clarification: { point: decision.point, attempt: decision.attempt },
+    },
+  });
+  return { outcome: delivered.outcome, runId: run.id, detail: `Asked the lead to clarify (${decision.attempt} of 2).` };
+}
+
+/**
+ * The model's reply could not be used (no model output): ask the next
+ * configured question verbatim, and point the conversation at it so the
+ * answer is matched. Zero-token, deterministic.
+ */
+async function askQuestionFixed(input: ExecuteInput, question: QuestionRecord): Promise<TurnResult> {
+  const { context, run } = input;
+  const delivered = await deliverFixed(input, questionPrompt(question), `agent-question:${run.id}`);
+  if (context.conversation.conversationId && (delivered.outcome === "MESSAGE_SENT" || delivered.outcome === "MESSAGE_QUEUED")) {
+    logWriteError(
+      await createAdminClient()
+        .from("conversations")
+        .update({ current_question_id: question.id })
+        .eq("id", context.conversation.conversationId)
+        .eq("business_id", context.business.businessId),
+      "agent: set current question (fixed)",
+      { businessId: context.business.businessId, conversationId: context.conversation.conversationId },
+    );
+  }
+  const intent = input.heuristic?.intent ?? "UNKNOWN";
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome,
+    intent,
+    replyClassification: replyClassificationFor(intent),
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: { mode: input.mode, action: "ASK_FIXED_QUESTION", questionId: question.id, reason: "MODEL_UNAVAILABLE" },
+  });
+  return { outcome: delivered.outcome, runId: run.id, detail: "Asked the next configured question (no model output)." };
+}
+
+/** The correction the model gets when it proposed a hand-over that is not a last resort. */
+const CARRY_ON_CORRECTION =
+  "Do not hand this conversation over. A colleague has been asked to confirm the detail you cannot answer. " +
+  "Write the reply yourself: answer what you can from the offer card, say in one short clause that a colleague " +
+  "will confirm that detail (promise no time, price or outcome), then carry on with the plan.";
+
+/**
+ * After an assist, the conversation carries on: the model's own words when it
+ * wrote any, otherwise one more proposal with the carry-on correction. Null
+ * when there is still nothing usable to send.
+ */
+async function carryOnAfterAssist(input: ExecuteInput, decision: AgentDecision, confirmedSlots: string[]): Promise<AgentDecision | null> {
+  if (decision.message?.trim()) return { ...decision, proposed_action: "REPLY" };
+  const again = await proposeDecision(input, CARRY_ON_CORRECTION, confirmedSlots, "assist");
+  const next = again.decision;
+  if (!next?.message?.trim()) return null;
+  const onAgain = policyOnDecision({
+    proposedAction: next.proposed_action,
+    handoverReason: next.handover_reason,
+    confidence: next.confidence,
+    riskTolerance: input.context.sales.preferences?.riskTolerance,
+    previousClarification: null,
+  });
+  if (onAgain.kind !== "CONTINUE") return null;
+  return next.proposed_action === "REQUEST_HANDOVER" ? { ...next, proposed_action: "REPLY" } : next;
+}
+
+/**
+ * The fixed line for an assist when the model has nothing usable to say:
+ * it promises a colleague, never a time, a price or an outcome. The
+ * conversation stays with the assistant.
+ */
+async function deliverAssistLine(input: ExecuteInput, reason: AssistReason, decision: Confident | null): Promise<TurnResult> {
+  const { context, run } = input;
+  const delivered = await deliverFixed(input, assistLine(reason, context.leadContext.firstName), `agent-assist:${run.id}`);
+  const intent = input.heuristic?.intent ?? "UNKNOWN";
+  await maybeRefreshSummary(context, run.id);
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome,
+    intent,
+    intentConfidence: decision?.confidence,
+    replyClassification: replyClassificationFor(intent),
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: { mode: input.mode, action: "ASSIST_AND_CONTINUE", assist: reason },
+  });
+  return { outcome: delivered.outcome, runId: run.id, detail: `A colleague was asked to help (${reason}); the assistant carries on.` };
+}
+
+/**
+ * The engine disqualified the lead on an offer rule marked `suppress`.
+ * Suppression is a confirmed human or registry action, never the agent's, so
+ * a person is asked to confirm it: the conversation is handed over (which the
+ * run gate reads, so no further AI turn runs and nothing more is spent) and
+ * the team is notified through the handover's attention flag. Unlike
+ * handover(), nothing is sent to the lead.
+ */
+async function askPersonToConfirmSuppression(input: ExecuteInput, nba: NextBestAction): Promise<void> {
+  const { context } = input;
+  const tools = toolContext(input, null);
+  const detail =
+    `The qualification engine disqualified this lead (${nba.reason}) on a rule marked to suppress. ` +
+    "Follow-up and campaign sends are stopped and the assistant will not reply. Please confirm whether to suppress this contact.";
+  const summary: HandoverSummary = {
+    intent: input.binding?.intent ?? input.heuristic?.intent ?? "UNKNOWN",
+    service: context.leadContext.serviceName,
+    qualificationStatus: context.lead.qualification_state,
+    keyAnswers: context.qualification.answered.slice(0, 6),
+    bookingIntent: false,
+    unresolvedIssue: detail,
+    sentiment: "neutral",
+    summary: buildHandoverNarrative(context, detail),
+  };
+  const handed = await requestHumanHandover(tools, { reason: "POLICY", summary });
+  if (handed.ok) {
+    await emitAutomationEvent({
+      businessId: context.business.businessId,
+      leadId: context.lead.id,
+      eventType: "lead.human_takeover",
+      payload: { reason: "confirm_suppression" },
+    });
+  }
 }
 
 function acknowledgementFor(reason: HandoverReason): string {
@@ -760,10 +1687,10 @@ function acknowledgementFor(reason: HandoverReason): string {
     return "I'm sorry you've had that experience. I'll pass this straight to the team so someone can look into it.";
   }
   if (reason === "EMERGENCY") {
-    return "Thanks for letting us know — I'll get someone from the team onto this as a priority. If anyone is in danger, please call the emergency services first.";
+    return "Thanks for letting us know. I'll get someone from the team onto this as a priority. If anyone is in danger, please call the emergency services first.";
   }
   if (reason === "HUMAN_REQUESTED") {
-    return "Of course — I'll get someone from the team to pick this up.";
+    return "Of course. I'll get someone from the team to pick this up.";
   }
   return "Thanks. I'll get someone from the team to pick this up.";
 }
@@ -836,26 +1763,41 @@ async function proposeTheCheckout(input: ExecuteInput, decision: AgentDecision):
   });
 
   if (!gate.allowed) {
-    return handover(input, "READY_TO_BUY", `The lead looks ready to buy. ${gate.detail}`);
+    // The assistant may not send this link (direct close off, the motion, an
+    // unapproved link, the value ceiling). A colleague sends the details in
+    // the background and the conversation stays with the assistant.
+    await raiseAssist(input, "SEND_ORDER_DETAILS", `The lead looks ready to buy. ${gate.detail}`);
+    return deliverAssistLine(input, "SEND_ORDER_DETAILS", decision);
   }
 
-  const body = await composeValidated(input, decision, [], gate.link);
+  // The direct-sale loop: the link carries this send's opaque tracking token
+  // (payments/tracking.ts), added BEFORE composing so the validator checks the
+  // exact text that goes out. Untracked when 0143 is not applied.
+  const sendKey = `agent-checkout:${run.id}`;
+  const link = await trackCheckoutLink({ sendKey, link: gate.link });
+
+  const body = await composeValidated(input, decision, [], link);
   if (!body) {
     return handover(
       input,
       "READY_TO_BUY",
       "The lead looks ready to buy, but a safe checkout message could not be composed.",
+      { trigger: "VALIDATOR_REJECTED" },
     );
   }
 
   const sent = await proposeCheckout(toolContext(input, decision.confidence), {
     body,
-    sendKey: `agent-checkout:${run.id}`,
-    link: gate.link,
+    sendKey,
+    link,
+    // Several interests: the checkout moves THAT offer's opportunity, on
+    // THAT offer's motion (the context is already focused on it).
+    serviceId: input.stats.qi?.interests?.primary.serviceId ?? null,
+    motion: input.stats.qi?.interests ? input.context.sales.motion : null,
   });
 
   if (!sent.ok) {
-    return handover(input, "TOOL_FAILURE", "The checkout link could not be sent.");
+    return handover(input, "TOOL_FAILURE", "The checkout link could not be sent.", { trigger: "PROVIDER_FAILURE" });
   }
 
   await closeRun(run, {
@@ -873,6 +1815,99 @@ async function proposeTheCheckout(input: ExecuteInput, decision: AgentDecision):
   });
 
   return { outcome: "MESSAGE_SENT", runId: run.id, detail: "Checkout link sent." };
+}
+
+// ---------------------------------------------------- checkout nudge
+
+/**
+ * One abandoned-checkout reminder (payments/abandoned.ts). Re-reads the
+ * attempt first: paid, expired, a different lead, an already-sent nudge or a
+ * link no longer approved ends the turn with nothing sent. The model writes
+ * the words with the nudge guidance; `composeValidated` checks them with the
+ * same tracked link the lead already has (and only its approved price text).
+ * A reminder that cannot be composed safely is skipped, not handed over: a
+ * reminder is optional, and the lead has the link already.
+ */
+async function nudgeTheCheckout(
+  input: ExecuteInput,
+  nudge: { attemptId: string; nudge: number },
+): Promise<TurnResult> {
+  const { context, run } = input;
+  const done = async (detail: string): Promise<TurnResult> => {
+    await closeRun(run, {
+      status: "COMPLETED",
+      outcome: "NO_ACTION",
+      intent: "UNKNOWN",
+      decision: { action: "CHECKOUT_NUDGE", attemptId: nudge.attemptId, nudge: nudge.nudge, skipped: detail },
+    });
+    return { outcome: "NO_ACTION", runId: run.id, detail };
+  };
+
+  const attempt = await loadAttemptForNudge(nudge.attemptId).catch(() => null);
+  if (!attempt || attempt.business_id !== context.business.businessId || attempt.lead_id !== context.lead.id) {
+    return done("The checkout attempt is gone.");
+  }
+  if (attempt.status === "PAID" || attempt.status === "EXPIRED") return done(`The checkout is ${attempt.status.toLowerCase()}.`);
+  if (nudge.nudge <= attempt.nudges_sent) return done("That reminder was already sent.");
+
+  const authority = context.commerce?.authority ?? DISABLED_AUTHORITY;
+  const approved = authority.enabled
+    ? authority.approved_checkout_links.find((candidate) => candidate.id === attempt.link_id)
+    : undefined;
+  if (!approved || !attempt.sent_url.startsWith("https://")) return done("The checkout link is no longer approved.");
+  const link = { ...approved, tracked_url: attempt.sent_url };
+  const settings = abandonedSettingsOf(authority);
+
+  const guided: ExecuteInput = {
+    ...input,
+    guidance: [
+      ...(input.guidance ?? []),
+      ...nudgeGuidance({
+        nudge: nudge.nudge,
+        maxNudges: settings.max_nudges,
+        product: approved.product,
+        priceText: approved.price_text,
+        hoursSinceSent: (Date.now() - new Date(attempt.sent_at).getTime()) / 3_600_000,
+      }),
+    ],
+  };
+
+  const proposal = await proposeDecision(guided, null);
+  if (!proposal.decision?.message) {
+    return done(proposal.skippedReason ? `No model call: ${proposal.skippedReason}.` : "No reminder was composed.");
+  }
+
+  const body = await composeValidated(guided, proposal.decision, [], link);
+  if (!body) return done("No reminder passed the validator.");
+
+  const sent = await sendMessage(toolContext(input, proposal.decision.confidence), {
+    body: checkoutMessage(body, link),
+    sendKey: checkoutNudgeSendKey(attempt.id, nudge.nudge),
+    subject: `Your ${approved.product}`.slice(0, 150),
+    // A reminder the lead did not ask for: marketing mail, with unsubscribe.
+    messageClass: "MARKETING",
+  });
+  if (!sent.ok) return done("The reminder could not be queued.");
+
+  logWriteError(
+    await paymentsDb()
+      .from("checkout_attempts")
+      .update({ nudges_sent: nudge.nudge, last_nudged_at: new Date().toISOString() })
+      .eq("id", attempt.id)
+      .lt("nudges_sent", nudge.nudge),
+    "agent: record checkout nudge",
+    { attemptId: attempt.id },
+  );
+
+  await closeRun(run, {
+    status: "COMPLETED",
+    outcome: "MESSAGE_SENT",
+    intent: proposal.decision.intent,
+    intentConfidence: proposal.decision.confidence,
+    lifecycleAfter: context.lifecycle,
+    decision: { action: "CHECKOUT_NUDGE", attemptId: attempt.id, nudge: nudge.nudge, checkoutLinkId: approved.id },
+  });
+  return { outcome: "MESSAGE_SENT", runId: run.id, detail: `Checkout reminder ${nudge.nudge} sent.` };
 }
 
 // ---------------------------------------------------------------- model
@@ -906,13 +1941,17 @@ function spendStage(context: AgentContext): SpendStage {
 async function proposeDecision(
   input: ExecuteInput,
   correction: string | null,
+  /** Real calendar slots the model may offer this turn (never invented). */
+  confirmedSlots: string[] = [],
+  pass: "first" | "retry" | "retry2" | "slots" | "assist" = correction ? "retry" : "first",
 ): Promise<Proposal> {
   const context = renderContextBlock(input.context, {
     latestMessage: input.latestMessage,
-    confirmedSlots: [],
+    confirmedSlots,
     correction: correction ?? undefined,
-    strategy: input.strategy.text,
+    strategy: [input.strategy.text, ...(input.guidance ?? [])].join("\n"),
   });
+  input.stats.modelCalls += 1;
 
   const result = await runTask<AgentDecision>({
     taskType: "agent_decision",
@@ -926,7 +1965,7 @@ async function proposeDecision(
     maxOutputTokens: 400,
     // Keyed on the run so a retried job is charged once. The retry after a
     // validation failure is a genuinely second call and carries its own key.
-    idempotencyKey: `agent:${input.run.id}:${correction ? "retry" : "first"}`,
+    idempotencyKey: `agent:${input.run.id}:${pass}`,
     // Writes this call's tokens and cost onto the conversation_agent_runs row.
     agentRunId: input.run.id,
     // Phase 4 budget manager: an opportunity gets the opportunity ceiling.
@@ -941,9 +1980,10 @@ async function proposeDecision(
 }
 
 /**
- * Composes the outbound text and runs it past the validator. One retry, then
- * the caller hands over -- a second failure means the model cannot say this
- * safely, and repeating the attempt only burns budget.
+ * Composes the outbound text and runs it past the validator. Up to
+ * MAX_VALIDATOR_REJECTIONS drafts (handover-policy.ts: three), each retry
+ * carrying the validator's corrections; after the third rejection the caller
+ * hands over -- the model cannot say this safely.
  */
 async function composeValidated(
   input: ExecuteInput,
@@ -976,22 +2016,71 @@ async function composeValidated(
           checkoutLinks: authority.approved_checkout_links,
         }
       : null,
+    // No word-for-word (or near) repeat of a question already sent on this
+    // thread; only an engine-planned VERIFY of a stale fact may come close.
+    priorOutbound: input.context.conversation.recentMessages
+      .filter((message) => message.role === "business")
+      .map((message) => message.body),
+    verifyingStaleFact: verifiesStaleFact(input.stats.qi),
+    // Human-style lint: the lead's name once at most (human-style.ts).
+    leadFirstName: input.context.lead.first_name ?? null,
+  };
+
+  // Pre-send question QA (design 08 §16): every draft of an engine-planned
+  // turn is checked against the NBA and the fact state. LIVE: a rejection
+  // takes the same retry -> handover path as any validator failure. SHADOW:
+  // the draft is the legacy one; QA and the grade are recorded, never acted on.
+  const qa = input.stats.qi ? qaContextFor(input, input.stats.qi) : null;
+  if (qa && input.stats.qi?.mode === "LIVE") {
+    facts.extraChecks = (body) => {
+      const result = runQuestionQa(body, qa);
+      input.stats.qaFindings.push(...result.findings.map((finding) => finding.code));
+      return qaFailures(result);
+    };
+  }
+  const record = (body: string) => {
+    if (!qa) return;
+    if (input.stats.qi?.mode === "SHADOW") {
+      input.stats.qaFindings.push(...runQuestionQa(body, qa).findings.map((finding) => finding.code));
+    }
+    input.stats.questionGrade = gradeQuestion(body, qa)?.total ?? null;
   };
 
   // With a checkout, the text validated is the text sent: words + the URL.
   const render = (text: string) => (checkout ? checkoutMessage(text, checkout) : text);
 
-  const first = decision.message?.trim() ?? "";
-  const firstCheck = validateResponse(render(first), facts);
-  if (firstCheck.ok) return checkout ? first : firstCheck.body;
-
-  const retry = await proposeDecision(input, correctionPrompt(firstCheck.failures));
-  if (!retry.decision?.message) return null;
-
-  const second = retry.decision.message.trim();
-  const secondCheck = validateResponse(render(second), facts);
-  if (!secondCheck.ok) return null;
-  return checkout ? second : secondCheck.body;
+  let draft = decision.message?.trim() ?? "";
+  let rejections = 0;
+  let fixTried = false;
+  const passes = ["retry", "retry2"] as const;
+  for (;;) {
+    const check = validateResponse(render(draft), facts);
+    if (check.ok) {
+      record(draft);
+      return checkout ? draft : check.body;
+    }
+    rejections += 1;
+    // A draft failing only the human-style rules (an emoji, a dash, a stock
+    // phrase) is regenerated once, then repaired deterministically and
+    // re-validated: no third model call, never a hand-over (compose-policy.ts).
+    const step = nextComposeStep({ codes: check.failures.map((failure) => failure.code), rejections, fixTried });
+    if (step === "FIX") {
+      fixTried = true;
+      rejections -= 1;
+      draft = fixHumanStyle(draft, { channel: input.channel, leadFirstName: facts.leadFirstName, priorOutbound: facts.priorOutbound });
+      continue;
+    }
+    // Repaired, and only polish is left (a repeated opener, say): every claim
+    // check passed, so it is sent rather than costing a call or a hand-over.
+    if (step === "SEND_FIXED") {
+      record(draft);
+      return draft;
+    }
+    if (step === "HANDOVER" || policyOnCompose(rejections) === "HANDOVER") return null;
+    const retry = await proposeDecision(input, correctionPrompt(check.failures), confirmedSlots, passes[rejections - 1] ?? "retry2");
+    if (!retry.decision?.message) return null;
+    draft = retry.decision.message.trim();
+  }
 }
 
 // ----------------------------------------------------------- extractions
@@ -1090,8 +2179,9 @@ async function applyExtractions(
  * Offers go stale: after 24 hours the times are re-checked rather than booked
  * from memory, because the calendar has had a day to change underneath them.
  */
-async function loadOfferedSlots(conversationId: string | null): Promise<Slot[]> {
-  if (!conversationId) return [];
+async function loadOfferedSlots(conversationId: string | null): Promise<{ slots: Slot[]; engineBookingReady: boolean }> {
+  const none = { slots: [] as Slot[], engineBookingReady: false };
+  if (!conversationId) return none;
 
   const admin = createAdminClient();
   const { data } = await admin
@@ -1103,19 +2193,20 @@ async function loadOfferedSlots(conversationId: string | null): Promise<Slot[]> 
     .limit(1)
     .maybeSingle();
 
-  if (!data) return [];
-  if (Date.now() - Date.parse(data.created_at) > 24 * 60 * 60 * 1000) return [];
+  if (!data) return none;
+  if (Date.now() - Date.parse(data.created_at) > 24 * 60 * 60 * 1000) return none;
 
-  const decision = (data.decision_json ?? {}) as { offeredSlots?: unknown };
-  if (!Array.isArray(decision.offeredSlots)) return [];
+  const decision = (data.decision_json ?? {}) as { offeredSlots?: unknown; engineBookingReady?: unknown };
+  if (!Array.isArray(decision.offeredSlots)) return none;
 
-  return decision.offeredSlots.filter(
+  const slots = decision.offeredSlots.filter(
     (slot): slot is Slot =>
       typeof slot === "object" &&
       slot !== null &&
       typeof (slot as Slot).startsAt === "string" &&
       typeof (slot as Slot).label === "string",
   );
+  return { slots, engineBookingReady: decision.engineBookingReady === true };
 }
 
 /**
@@ -1135,15 +2226,22 @@ async function loadOfferedSlots(conversationId: string | null): Promise<Slot[]> 
  */
 async function confirmBooking(
   input: ExecuteInput,
-  decision: AgentDecision,
+  decision: Confident,
   slot: Slot,
+  offer: { engineBookingReady?: boolean } = {},
 ): Promise<TurnResult> {
   const { context, run } = input;
 
   // The slot came from a real calendar and was offered by this runtime, which
-  // is precisely what `requiresConfirmedAvailability` asserts.
+  // is precisely what `requiresConfirmedAvailability` asserts. The engine's
+  // booking-readiness, recorded on the turn that offered the booking, stands
+  // in for a QUALIFIED lifecycle (policy.ts; the lifecycle is re-read this
+  // turn, so a lead disqualified, handed over or suppressed since is refused).
   const base = toolContext(input, decision.confidence);
-  const tools = { ...base, facts: { ...base.facts, availabilityConfirmed: true } };
+  const tools = {
+    ...base,
+    facts: { ...base.facts, availabilityConfirmed: true, engineBookingReady: offer.engineBookingReady === true },
+  };
   const firstName = context.leadContext.firstName;
 
   const booked = await createBooking(tools, {
@@ -1174,6 +2272,14 @@ async function confirmBooking(
   }
 
   const confirmed = booked.data.outcome === "confirmed";
+  // A meeting that closes through a person (ENTERPRISE, goal E) carries the
+  // hand-off brief: the meeting is the hand-off, and the conversation stays
+  // with the assistant until it (owner decision 2026-09-27).
+  const brief = assistAfterBooking({
+    motion: context.sales.motion,
+    goal: input.stats.qi?.nba.current_goal ?? null,
+  });
+  if (brief) await raiseAssist(input, brief, `Meeting ${confirmed ? "booked" : "requested"} for ${slot.label}.`);
   const body = confirmed
     ? bookingReplyText({ kind: "confirmed", firstName, slotLabel: slot.label, invited: booked.data.invited })
     : bookingReplyText({ kind: "pending", firstName, slotLabel: slot.label });
@@ -1218,7 +2324,7 @@ async function confirmBooking(
  */
 async function offerAlternativeSlots(
   input: ExecuteInput,
-  decision: AgentDecision,
+  decision: Confident,
   taken: Slot,
 ): Promise<TurnResult> {
   const { context, run } = input;
@@ -1279,7 +2385,7 @@ async function offerAlternativeSlots(
  */
 async function requestedAndHandedOver(
   input: ExecuteInput,
-  decision: AgentDecision,
+  decision: Confident,
   slot: Slot,
   detail: string,
 ): Promise<TurnResult> {
@@ -1345,7 +2451,7 @@ async function requestedAndHandedOver(
  */
 async function sendLinkForSlot(
   input: ExecuteInput,
-  decision: AgentDecision,
+  decision: Confident,
   slot: Slot,
 ): Promise<TurnResult> {
   const { context, run } = input;
@@ -1389,28 +2495,19 @@ async function sendLinkForSlot(
  */
 async function offerNothingAvailable(
   input: ExecuteInput,
-  decision: AgentDecision,
+  decision: Confident,
 ): Promise<TurnResult> {
-  const tools = toolContext(input, decision.confidence);
-
-  // Queued before the handover below, but dispatched by the worker after it,
-  // so it travels as a handover acknowledgement: as a plain agent message the
-  // guard would refuse it for the takeover. It already tells the lead a person
-  // is coming, so the handover does not send a second acknowledgement.
-  const sent = await sendMessage(tools, {
-    body:
-      "I could not find anything free in the next couple of weeks. " +
-      "I will get someone from the team to sort a time with you.",
-    sendKey: `agent-no-slots:${input.run.id}`,
-    origin: "agent_handover",
-  });
-
-  return handover(input, "POLICY", "No calendar availability inside the booking window.", {
-    acknowledged: sent.ok,
-  });
+  // The calendar answered honestly and had nothing free: a colleague
+  // arranges a time in the background and the conversation stays with the
+  // assistant (was a hand-over).
+  await raiseAssist(input, "ARRANGE_TIME", "No calendar availability inside the booking window.");
+  return deliverAssistLine(input, "ARRANGE_TIME", decision);
 }
 
 // -------------------------------------------------------------- plumbing
+
+/** What the booking steps read from a decision: its confidence only. */
+type Confident = Pick<AgentDecision, "confidence">;
 
 function toolContext(input: ExecuteInput, confidence: number | null): ToolContext {
   return {

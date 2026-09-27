@@ -49,7 +49,7 @@ import {
   Td,
 } from "@/components/affiliates/portal-ui";
 
-export const metadata: Metadata = { title: "Affiliate Performance | ClientTurn" };
+export const metadata: Metadata = { title: "Affiliate Performance" };
 export const dynamic = "force-dynamic";
 
 /**

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INTENT_STATES, NBA_ACTIONS } from "../qualification-intelligence/types.ts";
 
 export const LEAD_STATUSES = [
   "NEW",
@@ -118,6 +119,15 @@ export const leadFilterSchema = z.object({
     .transform((value) => value === "1")
     .optional()
     .catch(undefined),
+  /* qualification intelligence (0134): the lead's denormalised assessment */
+  intent: multi(INTENT_STATES),
+  nextAction: multi(NBA_ACTIONS),
+  /** Strong intent (high, ready to book, ready to buy) but qualification incomplete. */
+  strongIncomplete: z
+    .enum(["1", "0"])
+    .transform((value) => value === "1")
+    .optional()
+    .catch(undefined),
 
   q: z.string().trim().max(120).optional().catch(undefined),
   range: z.enum(["7d", "30d", "90d", "custom", "all"]).default("all").catch("all"),
@@ -157,6 +167,9 @@ export function parseLeadFilters(
     campaign: first(params.campaign),
     assignee: first(params.assignee),
     attention: first(params.attention),
+    intent: first(params.intent),
+    nextAction: first(params.nextAction),
+    strongIncomplete: first(params.strongIncomplete),
     q: first(params.q),
     range: first(params.range),
     from: first(params.from),
@@ -223,6 +236,9 @@ export function hasActiveFilters(filters: LeadFilters) {
       filters.campaign ||
       filters.assignee ||
       filters.attention ||
+      filters.intent?.length ||
+      filters.nextAction?.length ||
+      filters.strongIncomplete ||
       filters.q ||
       (filters.range && filters.range !== "all"),
   );
@@ -237,6 +253,9 @@ export function activeFilterCount(filters: LeadFilters) {
   if (filters.campaign) count += 1;
   if (filters.assignee) count += 1;
   if (filters.attention) count += 1;
+  if (filters.intent?.length) count += 1;
+  if (filters.nextAction?.length) count += 1;
+  if (filters.strongIncomplete) count += 1;
   if (filters.range !== "all") count += 1;
   return count;
 }

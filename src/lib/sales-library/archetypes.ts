@@ -26,6 +26,7 @@ import { resolveQualification } from "./qualification-dimensions.ts";
 import { MOTIONS } from "./motions.ts";
 import type {
   Archetype,
+  QualificationProfile,
   ArchetypeGroup,
   DealSizeBand,
   ObjectionKey,
@@ -256,6 +257,7 @@ export const ARCHETYPES: Archetype[] = [
       "TIMING",
       "AUTHORITY",
       "BUDGET",
+      { key: "TECHNICAL_REQUIREMENTS", question: "Does it need to connect to any tools you already use?" },
     ],
   }),
   archetype({
@@ -286,6 +288,7 @@ export const ARCHETYPES: Archetype[] = [
       { key: "USE_CASE", question: "What are you hoping to get done with it first?" },
       { key: "TEAM_SIZE", question: "Is this just for you, or for a team?" },
       "CURRENT_SOLUTION",
+      { key: "TECHNICAL_REQUIREMENTS", question: "Is there anything it would need to plug into?" },
     ],
   }),
   archetype({
@@ -308,6 +311,8 @@ export const ARCHETYPES: Archetype[] = [
       "COMPLIANCE_REQUIREMENTS",
       "TIMING",
       "BUDGET",
+      { key: "TECHNICAL_REQUIREMENTS", question: "Which systems would it need to integrate with?" },
+      "IMPLEMENTATION_READINESS",
     ],
   }),
   archetype({
@@ -355,6 +360,7 @@ export const ARCHETYPES: Archetype[] = [
       { key: "CURRENT_SOLUTION", question: "Who looks after your IT today?" },
       { key: "TIMING", question: "When does your current arrangement come up for renewal?" },
       "AUTHORITY",
+      { key: "DISSATISFACTION", question: "How has your current IT support been for you?" },
     ],
   }),
   archetype({
@@ -432,6 +438,7 @@ export const ARCHETYPES: Archetype[] = [
       { key: "TIMING", question: "When would you want someone to start?" },
       { key: "BUDGET", question: "Is there a monthly budget you're working to?" },
       "AUTHORITY",
+      { key: "OUTCOME", question: "What result would make this worthwhile for you?" },
     ],
   }),
   archetype({
@@ -494,6 +501,7 @@ export const ARCHETYPES: Archetype[] = [
       { key: "TIMING", question: "Is there a launch date you're working towards?" },
       { key: "BUDGET", question: "Do you have a budget range in mind for the build?" },
       "AUTHORITY",
+      { key: "TECHNICAL_REQUIREMENTS", question: "Is there a platform you'd want it built on, or are you open?" },
     ],
   }),
   archetype({
@@ -528,6 +536,7 @@ export const ARCHETYPES: Archetype[] = [
       { key: "CURRENT_SOLUTION", question: "Do you have an accountant at the moment?" },
       { key: "USE_CASE", question: "Is there a particular deadline or issue driving this?" },
       "TIMING",
+      { key: "DISSATISFACTION", question: "Is anything prompting a change from how it's handled now?" },
     ],
   }),
   archetype({
@@ -1352,4 +1361,234 @@ export function qualificationPlan(archetype: Archetype, motion: SalesMotion): Qu
     }
   }
   return [...own, ...resolveQualification(extra)];
+}
+
+/* ------------------------------------------------ qualification profiles */
+
+type ProfileInput = Omit<QualificationProfile, "archetypeKey" | "disqualifierHints" | "incumbentTerms" | "neverAsk" | "gatingDimensions"> &
+  Partial<Pick<QualificationProfile, "disqualifierHints" | "incumbentTerms" | "neverAsk" | "gatingDimensions">>;
+
+function qp(archetypeKey: string, input: ProfileInput): QualificationProfile {
+  return {
+    archetypeKey,
+    neverAsk: [],
+    gatingDimensions: [],
+    incumbentTerms: [],
+    disqualifierHints: [],
+    ...input,
+  };
+}
+
+/**
+ * Complete profiles for the supported business types (08 §B.7), B2B first
+ * (CLAUDE.md resolved conflict 5): SaaS, MSP and IT, agencies, web and design
+ * studios, professional services (accountants first), ecommerce. The roofer
+ * profile is kept as the LOCAL_SERVICE reference fixture: service, location,
+ * timing and property, and never authority, stakeholders or budget before a
+ * quote.
+ *
+ * Every disqualifier hint is a REVIEW trigger (a person decides), never an
+ * automatic disqualification: disqualifying on library defaults would be
+ * automated profiling the workspace never chose (design §D3).
+ */
+export const QUALIFICATION_PROFILES: Record<string, QualificationProfile> = Object.fromEntries(
+  [
+    // ------------------------------------------------------------ software
+    qp("B2B_SAAS", {
+      customerType: "B2B",
+      pricingModel: "SUBSCRIPTION",
+      billing: "RECURRING",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["USE_CASE"],
+      gatingDimensions: ["TEAM_SIZE"],
+      incumbentTerms: ["tool", "platform", "software", "system", "spreadsheet"],
+      targetStaff: { min: 5 },
+    }),
+    qp("PLG_SAAS", {
+      customerType: "B2B",
+      pricingModel: "SUBSCRIPTION",
+      billing: "RECURRING",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["USE_CASE"],
+      neverAsk: ["BUDGET", "STAKEHOLDERS", "DECISION_PROCESS", "AUTHORITY"],
+      incumbentTerms: ["tool", "app", "software", "spreadsheet"],
+    }),
+    qp("ENTERPRISE_SAAS", {
+      customerType: "B2B",
+      pricingModel: "SUBSCRIPTION",
+      billing: "RECURRING",
+      cycleComplexity: "COMPLEX",
+      requiredDimensions: ["PROBLEM", "STAKEHOLDERS"],
+      gatingDimensions: ["COMPANY_SIZE"],
+      incumbentTerms: ["vendor", "platform", "system", "incumbent"],
+      disqualifierHints: [{ dimension: "COMPANY_SIZE", op: "lt", value: 50, reason: "Below the enterprise size this offer is built for." }],
+      targetStaff: { min: 250 },
+    }),
+    // ------------------------------------------------------------ IT
+    qp("MSP", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["COMPANY_SIZE"],
+      gatingDimensions: ["COMPANY_SIZE"],
+      incumbentTerms: ["it provider", "it support", "it company", "msp", "it guy", "it person", "support company"],
+      disqualifierHints: [{ dimension: "COMPANY_SIZE", op: "lt", value: 5, reason: "Fewer staff than managed support is priced for." }],
+      targetStaff: { min: 5, max: 250 },
+    }),
+    qp("IT_CONSULTANCY", {
+      customerType: "B2B",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["PROBLEM"],
+      incumbentTerms: ["consultant", "it provider", "in-house it", "partner"],
+    }),
+    qp("CYBERSECURITY", {
+      customerType: "B2B",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["PROBLEM"],
+      gatingDimensions: ["COMPANY_SIZE"],
+      incumbentTerms: ["security provider", "it provider", "msp", "soc"],
+    }),
+    // ------------------------------------------------------------ agencies
+    qp("MARKETING_AGENCY", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["PROBLEM"],
+      incumbentTerms: ["agency", "freelancer", "marketer", "in-house", "consultant"],
+    }),
+    qp("ADVERTISING_AGENCY", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["PROBLEM"],
+      incumbentTerms: ["agency", "freelancer", "in-house", "media buyer"],
+    }),
+    qp("SEO_AGENCY", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["PROBLEM"],
+      incumbentTerms: ["seo agency", "agency", "freelancer", "in-house"],
+    }),
+    qp("CREATIVE_WEB_STUDIO", {
+      customerType: "B2B",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["PROJECT_SCOPE"],
+      gatingDimensions: ["PROJECT_SCOPE"],
+      incumbentTerms: ["web designer", "developer", "agency", "freelancer", "studio"],
+    }),
+    // --------------------------------------------- professional services
+    qp("ACCOUNTING", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["SERVICE_NEEDED"],
+      neverAsk: ["STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS"],
+      incumbentTerms: ["accountant", "accountants", "bookkeeper", "tax adviser", "tax advisor"],
+    }),
+    qp("BOOKKEEPING", {
+      customerType: "B2B",
+      pricingModel: "RETAINER",
+      billing: "RECURRING",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["USE_CASE"],
+      neverAsk: ["STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS"],
+      incumbentTerms: ["bookkeeper", "accountant"],
+    }),
+    qp("LAW_FIRM", {
+      customerType: "BOTH",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "CONSIDERED",
+      requiredDimensions: ["USE_CASE"],
+      incumbentTerms: ["solicitor", "solicitors", "lawyer", "law firm"],
+    }),
+    qp("MANAGEMENT_CONSULTING", {
+      customerType: "B2B",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "COMPLEX",
+      requiredDimensions: ["PROBLEM"],
+      incumbentTerms: ["consultant", "consultancy", "adviser", "advisor"],
+    }),
+    qp("RECRUITMENT", {
+      customerType: "B2B",
+      pricingModel: "FROM",
+      billing: "ONE_OFF",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["HIRING_NEED"],
+      incumbentTerms: ["recruiter", "agency", "agencies", "in-house"],
+    }),
+    // ------------------------------------------------------------ ecommerce
+    qp("ECOMMERCE", {
+      customerType: "B2C",
+      pricingModel: "FIXED",
+      billing: "ONE_OFF",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["PRODUCT_INTEREST"],
+      neverAsk: ["AUTHORITY", "STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS", "BUDGET", "COMPANY_SIZE"],
+      incumbentTerms: ["brand", "shop", "supplier"],
+    }),
+    qp("SUBSCRIPTION_ECOMMERCE", {
+      customerType: "B2C",
+      pricingModel: "SUBSCRIPTION",
+      billing: "RECURRING",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["PRODUCT_INTEREST"],
+      neverAsk: ["AUTHORITY", "STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS", "BUDGET", "COMPANY_SIZE"],
+      incumbentTerms: ["subscription", "brand", "box"],
+    }),
+    // ------------------------------------------------ local service fixture
+    qp("ROOFER", {
+      customerType: "BOTH",
+      pricingModel: "QUOTE",
+      billing: "ONE_OFF",
+      cycleComplexity: "SIMPLE",
+      requiredDimensions: ["SERVICE_NEEDED", "LOCATION"],
+      neverAsk: ["AUTHORITY", "STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS", "BUDGET", "COMPANY_SIZE", "TEAM_SIZE"],
+      gatingDimensions: ["LOCATION"],
+      incumbentTerms: ["roofer", "builder"],
+    }),
+  ].map((entry) => [entry.archetypeKey, entry]),
+);
+
+/** Family defaults by motion, for archetypes without a hand-written profile. */
+const MOTION_PROFILE_DEFAULTS: Record<SalesMotion, ProfileInput> = {
+  BOOK_MEETING_B2B: { customerType: "B2B", pricingModel: "QUOTE", billing: "RECURRING", cycleComplexity: "CONSIDERED", requiredDimensions: [] },
+  DIRECT_B2B: { customerType: "B2B", pricingModel: "QUOTE", billing: "ONE_OFF", cycleComplexity: "SIMPLE", requiredDimensions: [] },
+  LOCAL_SERVICE: {
+    customerType: "BOTH",
+    pricingModel: "QUOTE",
+    billing: "ONE_OFF",
+    cycleComplexity: "SIMPLE",
+    requiredDimensions: [],
+    neverAsk: ["AUTHORITY", "STAKEHOLDERS", "DECISION_PROCESS", "SUCCESS_METRICS", "BUDGET"],
+    gatingDimensions: ["LOCATION"],
+  },
+  HIGH_TICKET_B2C: { customerType: "B2C", pricingModel: "QUOTE", billing: "ONE_OFF", cycleComplexity: "CONSIDERED", requiredDimensions: [] },
+  ECOMMERCE_DIRECT: { customerType: "B2C", pricingModel: "FIXED", billing: "ONE_OFF", cycleComplexity: "SIMPLE", requiredDimensions: [] },
+  SAAS_SELF_SERVE: { customerType: "B2B", pricingModel: "SUBSCRIPTION", billing: "RECURRING", cycleComplexity: "SIMPLE", requiredDimensions: [] },
+  ENTERPRISE: { customerType: "B2B", pricingModel: "QUOTE", billing: "RECURRING", cycleComplexity: "COMPLEX", requiredDimensions: [] },
+};
+
+/**
+ * The archetype's qualification profile: its hand-written one, or the family
+ * default of its primary motion. Never null: an unknown archetype gets the
+ * BOOK_MEETING_B2B default (the ICP's commonest motion).
+ */
+export function qualificationProfileFor(archetype: Archetype | null): QualificationProfile {
+  if (archetype && QUALIFICATION_PROFILES[archetype.key]) return QUALIFICATION_PROFILES[archetype.key];
+  const motion = archetype?.defaultMotions[0] ?? "BOOK_MEETING_B2B";
+  return qp(archetype?.key ?? FALLBACK_ARCHETYPE_KEY, MOTION_PROFILE_DEFAULTS[motion]);
 }

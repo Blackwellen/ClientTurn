@@ -13,6 +13,10 @@ import { countQuestions, validateResponse, type ValidationFacts } from "../src/l
 import type { LifecycleState } from "../src/lib/agent/types.ts";
 import { MOTIONS } from "../src/lib/sales-library/motions.ts";
 import type { EvalCase, EvalToolGate } from "./evals/types.ts";
+import { matchObjection } from "../src/lib/sales-library/objections.ts";
+import { parseWorkspaceObjectionRows } from "../src/lib/sales-library/workspace-objections.ts";
+import { buildStrategyBlock } from "../src/lib/agent/strategy.ts";
+import { gradeReply } from "../src/lib/agent/reply-grader.ts";
 import { LIVE_MODE, loadLiveRunner } from "./evals/live-hook.ts";
 
 /**
@@ -70,6 +74,9 @@ function validationFacts(evalCase: EvalCase): ValidationFacts {
     bookingConfirmed: facts.bookingConfirmed ?? false,
     allowedUrls: facts.allowedUrls ?? [],
     serviceAreaConfirmed: facts.serviceAreaConfirmed ?? false,
+    // The agent's earlier turns: a repeated question is rejected (QA_REPEAT).
+    priorOutbound: evalCase.turns.filter((turn) => turn.role === "agent").map((turn) => turn.text),
+    prohibitedClaims: facts.prohibitedClaims ?? [],
   };
 }
 
@@ -132,6 +139,35 @@ for (const evalCase of cases) {
       }
     });
 
+    if (expectations.objection !== undefined) {
+      test(`objection playbook: ${expectations.objection ?? "none"}`, () => {
+        assert.equal(matchObjection(leadText)[0]?.key ?? null, expectations.objection);
+      });
+    }
+
+    if (expectations.strategy) {
+      const plan = expectations.strategy;
+      test(`strategy (${plan.mode}) carries the right move`, () => {
+        const block = buildStrategyBlock({
+          mode: plan.mode,
+          motion: evalCase.motion,
+          archetypeKey: null,
+          channel: evalCase.channel,
+          selection: { question: null, stopReason: "THRESHOLD_MET", known: [] },
+          latestMessage: leadText,
+          hasApprovedInsight: (evalCase.approvedClaims ?? []).length > 0,
+          bookingAvailable: plan.bookingRoute === "SLOTS" || plan.bookingRoute === "LINK",
+          bookingRoute: plan.bookingRoute,
+          callRequested: plan.callRequested,
+          workspaceObjections: parseWorkspaceObjectionRows(evalCase.workspaceObjections ?? []),
+        });
+        for (const phrase of plan.mustInclude) assert.ok(block.text.includes(phrase), `missing "${phrase}" in:\n${block.text}`);
+        for (const phrase of plan.mustExclude ?? []) assert.ok(!block.text.includes(phrase), `unexpected "${phrase}"`);
+        // The plan never tells the model to pressure: no deadline, scarcity or urgency words.
+        assert.doesNotMatch(block.text, /\b(act now|last chance|limited (spots|places)|ends today|hurry)\b/i);
+      });
+    }
+
     if (expectations.injectionDetected !== undefined) {
       test("injection is detected for the audit trail and changes nothing else", () => {
         assert.equal(detectInjectionAttempt(leadText) !== null, expectations.injectionDetected);
@@ -167,6 +203,15 @@ for (const evalCase of cases) {
         if (result.ok) {
           // One question at most in anything that would be sent.
           assert.ok(countQuestions(candidate.text) <= 1);
+          if (candidate.gradeAtLeast !== undefined) {
+            const grade = gradeReply(candidate.text, {
+              channel: evalCase.channel,
+              inbound: leadText,
+              objection: Boolean(expectations.objection),
+              approvedClaims: evalCase.approvedClaims ?? [],
+            });
+            assert.ok(grade.pass && grade.total >= candidate.gradeAtLeast, `graded ${grade.total}: ${JSON.stringify(grade.scores)}`);
+          }
         }
         assert.equal(repeatsQuestion(evalCase, candidate.text), candidate.repeatsQuestion ?? false);
       });
@@ -196,5 +241,42 @@ describe("live model (EVAL_LIVE=1)", { skip: !LIVE_MODE && "set EVAL_LIVE=1 to r
         assert.equal(result.reply, null, `${evalCase.id}: replied after an opt-out`);
       }
     }
+  });
+});
+
+// ---------------------------------------------- question QA (design 08 §16)
+
+import { runQuestionQa } from "../src/lib/qualification-intelligence/qa.ts";
+
+describe("eval candidates under pre-send question QA", () => {
+  // With no NBA (engine OFF, or a case with no planned question) only the
+  // plan-independent checks can fire: intrusive, form-like, channel, two
+  // questions, ignoring the lead's own question. An accepted eval reply must
+  // pass them too, so QA never rejects what the guardrail corpus calls good.
+  for (const evalCase of cases) {
+    const leadText = lastLeadTurn(evalCase);
+    for (const [index, candidate] of (evalCase.expectations.candidates ?? []).entries()) {
+      if (!candidate.valid || candidate.knownGap) continue;
+      test(`${evalCase.id} candidate ${index + 1}: accepted reply passes question QA`, () => {
+        const qa = runQuestionQa(candidate.text, {
+          channel: evalCase.channel,
+          stage: "ENGAGED",
+          intentState: "MEDIUM",
+          engineVerdict: "PENDING",
+          nbaAction: null,
+          plannedQuestion: null,
+          dimensions: [],
+          forbiddenIntents: [],
+          inbound: leadText,
+          recentOutbound: [],
+        });
+        assert.equal(qa.ok, true, JSON.stringify(qa.findings));
+      });
+    }
+  }
+
+  test("the golden conversations extend this corpus with multi-turn qualification paths", () => {
+    const golden = readdirSync(path.join(process.cwd(), "tests", "golden-conversations")).filter((f) => f.endsWith(".json"));
+    assert.ok(golden.length >= 21, `${golden.length} golden conversations`);
   });
 });

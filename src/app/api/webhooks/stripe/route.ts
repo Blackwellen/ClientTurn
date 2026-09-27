@@ -6,6 +6,7 @@ import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { stripe } from "@/lib/billing/stripe";
 import { recordAudit } from "@/lib/audit";
 import { creditTokenPurchase } from "@/lib/billing/token-service";
+import { recordTopUpTermsAcceptance } from "@/lib/billing/terms-acceptance";
 import {
   applyStripeSubscription,
   applySubscriptionCheckout,
@@ -21,6 +22,8 @@ import {
   reverseCommission,
 } from "@/lib/affiliates/commissions";
 import { enqueue } from "@/lib/jobs/queue";
+import { recordUpsellConversion } from "@/lib/billing/upsell-service";
+import { applyVoicePackCheckout } from "@/lib/billing/voice-webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -188,6 +191,9 @@ async function applyEvent(event: Stripe.Event) {
     // Each is a no-op for the others' sessions (keyed on metadata.kind).
     await applyTokenCheckout(event);
     await applyMessageCreditCheckout(event);
+    await applyWhatsappUpsellConversion(event);
+    // Voice minute packs (OD-2): credits minutes, keyed on the session id.
+    await applyVoicePackCheckout(event);
     if (event.type === "checkout.session.completed") {
       await applySubscriptionCheckout(event.data.object as Stripe.Checkout.Session, {
         eventId: event.id,
@@ -199,7 +205,9 @@ async function applyEvent(event: Stripe.Event) {
   if (event.type === "charge.refunded") {
     // A refund can be a token top-up, a message-credit top-up or a
     // subscription payment that earned an affiliate commission. All are
-    // attempted; each is a no-op for the others' charges.
+    // attempted; each is a no-op for the others' charges. A top-up refund
+    // only marks the purchase and queues `billing.refund_reverse`, which
+    // reverses the purchase's UNUSED credit off the request path.
     await applyTokenRefund(event);
     await applyMessageCreditRefund(event);
     await applyAffiliateRefund(event);
@@ -382,7 +390,13 @@ async function businessForInvoice(
 async function applyAffiliateRefund(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
   // Top-ups are handled by their own refund handlers and never earn commission.
-  if (charge.metadata?.kind === "ai_tokens" || charge.metadata?.kind === "message_credits") return;
+  if (
+    charge.metadata?.kind === "ai_tokens" ||
+    charge.metadata?.kind === "message_credits" ||
+    charge.metadata?.kind === "voice_pack"
+  ) {
+    return;
+  }
 
   const invoiceId = invoiceIdOf(charge);
   if (!invoiceId) return;
@@ -491,6 +505,15 @@ async function applyTokenCheckout(event: Stripe.Event) {
   if (!purchase) return;
 
   const credited = await creditTokenPurchase(purchase.id);
+  // Analytics only: credited to an upsell when it follows a click on one.
+  await recordUpsellConversion({
+    businessId: purchase.business_id,
+    offer: "ai_token_pack",
+    ref: `ai_tokens:${purchase.id}`,
+  });
+  // The top-up terms (clause 9.9: non-refundable once any credit is used)
+  // accepted at Checkout, stored with the purchase's session.
+  await recordTopUpTermsAcceptance(session, purchase.business_id);
 
   await recordAudit({
     businessId: purchase.business_id,
@@ -508,40 +531,95 @@ async function applyTokenCheckout(event: Stripe.Event) {
 }
 
 /**
- * A refunded top-up is marked REFUNDED but the tokens are NOT clawed back.
- * Reversing an allowance a workspace may already have spent would put them
- * into a negative balance they cannot clear, and support can adjust the
- * balance deliberately if that is genuinely wanted.
+ * `charge.refunded` for an AI token pack (the owner refunded it in Stripe).
+ *
+ * Owner policy 2026-09-27: top-up credit is non-refundable once any of it is
+ * used, and a refund reverses ONLY the pack's unused tokens. This is the
+ * ack-fast half: mark the purchase REFUNDED and queue
+ * `billing.refund_reverse`, which does the reversal (FIFO, never below zero)
+ * off the request path. Replay-safe: the status move is conditional, the job
+ * is keyed on the purchase and Stripe's cumulative refunded amount, and the
+ * reversal RPC keys its ledger row on the same pair.
  */
 async function applyTokenRefund(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
-  if (charge.metadata?.kind !== "ai_tokens") return;
-
-  const purchaseId = charge.metadata?.purchase_id;
+  const purchaseId = await tokenPurchaseForCharge(charge);
   if (!purchaseId) return;
 
   const supabase = createAdminClient();
-  const refundUpdate = await supabase
-    .from("ai_token_purchases")
-    .update({ status: "REFUNDED" })
-    .eq("id", purchaseId)
-    .eq("status", "PAID")
-    .select("id, business_id")
-    .maybeSingle();
-  assertWrite(refundUpdate, "stripe webhook: mark token purchase refunded", {
-    eventId: event.id,
-    purchaseId,
-  });
-  const purchase = refundUpdate.data;
+  assertWrite(
+    await supabase
+      .from("ai_token_purchases")
+      .update({ status: "REFUNDED" })
+      .eq("id", purchaseId)
+      .eq("status", "PAID"),
+    "stripe webhook: mark token purchase refunded",
+    { eventId: event.id, purchaseId },
+  );
 
-  if (!purchase) return;
+  // Re-read rather than trusting the update: a retry of an event whose first
+  // attempt already moved the status must still queue the reversal.
+  const { data: purchase, error } = await supabase
+    .from("ai_token_purchases")
+    .select("id, business_id, status")
+    .eq("id", purchaseId)
+    .maybeSingle();
+  if (error) throw new Error(`token purchase read failed: ${error.message}`);
+  if (!purchase || purchase.status !== "REFUNDED") return;
+
+  const amountRefundedMinor = Number(charge.amount_refunded ?? 0);
+  await enqueue(
+    "billing.refund_reverse",
+    { kind: "ai_tokens", purchaseId: purchase.id, amountRefundedMinor },
+    {
+      businessId: purchase.business_id,
+      idempotencyKey: `billing.refund_reverse:ai_tokens:${purchase.id}:${amountRefundedMinor}`,
+    },
+  );
 
   await recordAudit({
     businessId: purchase.business_id,
     actorUserId: null,
+    actorType: "provider",
     action: "billing.tokens_refunded",
     entityType: "ai_token_purchase",
     entityId: purchase.id,
-    metadata: { stripe_event: event.type, tokensClawedBack: false },
+    metadata: { stripe_event: event.type, amountRefundedMinor, unusedTokenReversal: "queued" },
   });
+}
+
+/**
+ * The token purchase a refunded charge paid for: from the charge metadata
+ * copied off the PaymentIntent, else by the PaymentIntent id recorded when the
+ * purchase was paid. A charge tagged for anything else is not ours.
+ */
+async function tokenPurchaseForCharge(charge: Stripe.Charge): Promise<string | null> {
+  if (charge.metadata?.kind === "ai_tokens" && charge.metadata.purchase_id) {
+    return charge.metadata.purchase_id;
+  }
+  if (charge.metadata?.kind) return null;
+  const paymentIntent =
+    typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+  if (!paymentIntent) return null;
+  const { data } = await createAdminClient()
+    .from("ai_token_purchases")
+    .select("id")
+    .eq("stripe_payment_intent_id", paymentIntent)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/**
+ * A paid WhatsApp token pack, credited to an upsell when it follows a click on
+ * one (upsell-moments `attributePurchase`). Analytics only and never throws;
+ * the pack itself is credited by `applyMessageCreditCheckout`.
+ */
+async function applyWhatsappUpsellConversion(event: Stripe.Event) {
+  if (event.type !== "checkout.session.completed") return;
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (session.metadata?.kind !== "message_credits" || session.payment_status !== "paid") return;
+  const businessId = session.metadata?.business_id;
+  const purchaseId = session.metadata?.purchase_id;
+  if (!businessId || !purchaseId || !session.metadata?.bundle_key?.startsWith("whatsapp")) return;
+  await recordUpsellConversion({ businessId, offer: "whatsapp_tokens", ref: `message_credits:${purchaseId}` });
 }

@@ -27,7 +27,7 @@ import { loadInMailPanel } from "@/lib/outreach/inmail-queries";
 import { SequencePlan } from "@/components/find-leads/social/sequence-plan";
 import { SocialFunnelPanel } from "@/components/find-leads/social/social-funnel";
 import { SignalsPanel } from "@/components/find-leads/social/signals-panel";
-import { listSignals } from "@/lib/find-leads/server/signals";
+import { listSignals, liveSignalFeeds } from "@/lib/find-leads/server/signals";
 import { loadSocialFunnel } from "@/lib/outreach/social-funnel";
 import { loadDataControls } from "@/lib/compliance/queries";
 import { ProspectDrawerHost } from "@/components/find-leads/prospect-drawer-host";
@@ -35,7 +35,7 @@ import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
 import type { ViewMode } from "@/components/ui/view-toggle";
 
-export const metadata: Metadata = { title: "Find Leads · ClientTurn" };
+export const metadata: Metadata = { title: "Find Leads" };
 export const dynamic = "force-dynamic";
 
 const VIEW_COOKIE = "ct-find-leads-list-mode";
@@ -187,7 +187,9 @@ export default async function FindLeadsPage({
           ) : null
         }
         intent={
-          intentData ? <IntentView data={intentData} canManage={canManage} /> : null
+          intentData ? (
+            <IntentView data={intentData} canManage={canManage} liveFeeds={liveSignalFeeds()} />
+          ) : null
         }
         campaigns={
           campaignData ? <CampaignsView data={campaignData} canManage={canManage} /> : null

@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Select } from "@/components/ui/select";
 
 /**
  * Dense dark-surface primitives for the onboarding wizard. These are
@@ -71,24 +72,22 @@ export const OTextarea = React.forwardRef<
   );
 });
 
+/**
+ * The styled listbox (`@/components/ui/select`), not the platform `<select>`:
+ * a native select opens the operating system's own list, which ignores the
+ * theme and reads as a grey block on this dark flow. The listbox copies the
+ * `.ct-force-dark` scope onto its layer (`themeClassFor`) and keeps the native
+ * API, so callers are unchanged.
+ */
 export function OSelect({
   className,
   children,
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
-      <select
-        className={cn(CONTROL_BASE, "appearance-none pr-9", className)}
-        {...props}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        className="pointer-events-none absolute top-1/2 right-3 size-3.5 -translate-y-1/2 text-[#7a8698]"
-        aria-hidden
-      />
-    </div>
+    <Select className={cn(CONTROL_BASE, "w-full", className)} {...props}>
+      {children}
+    </Select>
   );
 }
 
@@ -213,7 +212,7 @@ export function OBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-medium",
+        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-medium",
         BADGE_TONES[tone],
         className,
       )}

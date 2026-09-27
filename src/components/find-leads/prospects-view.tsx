@@ -133,6 +133,10 @@ export function ProspectsView({
     {
       key: "prospect",
       header: "Prospect",
+      // Fixed like the rest: with an auto width, table-fixed gave this column
+      // whatever the others left, which at 1440px was nothing, so the names
+      // vanished and "Prospect" printed over "Fit". Now the table scrolls (8.7).
+      width: "240px",
       render: (row) => <ProspectIdentityCell row={row} />,
     },
     {

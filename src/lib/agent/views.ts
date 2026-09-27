@@ -13,6 +13,8 @@
 import type {
   AgentOutcome,
   AgentRunStatus,
+  AssistReason,
+  EscalationKind,
   HandoverPriority,
   HandoverReason,
   LeadIntent,
@@ -75,6 +77,14 @@ export type HandoffRow = {
   leadId: string;
   leadName: string;
   conversationId: string | null;
+  /**
+   * HANDOVER: a person has the conversation. ASSIST_REQUEST: a person is asked
+   * to do one thing in the background while the assistant carries on (owner
+   * decision 2026-09-27). Rows written before then are all HANDOVER.
+   */
+  kind: EscalationKind;
+  /** The assist's own reason, on an ASSIST_REQUEST. */
+  assistReason: AssistReason | null;
   reason: HandoverReason;
   reasonLabel: string;
   priority: HandoverPriority;

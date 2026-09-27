@@ -39,11 +39,34 @@ export const ANCHORS = {
   integrations: "/#integrations",
   industries: "/#industries",
   faq: "/#faq",
+  revenueJourney: "/#revenue-journey",
+  voiceAgent: "/#voice-agent",
+  quotesPayments: "/#quotes-and-payments",
 } as const;
 
 /* --------------------------------------------------------- mega menus --- */
 
 const PRODUCT_MENU: MegaColumn[] = [
+  {
+    heading: "Sell and close",
+    links: [
+      {
+        label: "AI Voice Sales Agent",
+        href: ANCHORS.voiceAgent,
+        description: "Calls leads who asked for a call, qualifies and books or quotes.",
+      },
+      {
+        label: "Quotes and payments",
+        href: ANCHORS.quotesPayments,
+        description: "Branded quotes, simple e-signature and invoices paid via your Stripe.",
+      },
+      {
+        label: "The revenue journey",
+        href: ANCHORS.revenueJourney,
+        description: "One AI sales agent from first enquiry to paid invoice.",
+      },
+    ],
+  },
   {
     heading: "Convert leads",
     links: [
@@ -118,19 +141,19 @@ const PRODUCT_MENU: MegaColumn[] = [
 
 const SOLUTIONS_MENU: MegaColumn[] = [
   {
-    heading: "Home improvement",
+    heading: "Digital & technology",
     links: [
-      { label: "Roofing", href: ANCHORS.industries },
-      { label: "Kitchens", href: ANCHORS.industries },
-      { label: "Windows & doors", href: ANCHORS.industries },
+      { label: "Agencies", href: ANCHORS.industries },
+      { label: "Web & design studios", href: ANCHORS.industries },
+      { label: "SaaS & technology", href: ANCHORS.industries },
     ],
   },
   {
-    heading: "Trade & property",
+    heading: "Commerce & services",
     links: [
-      { label: "Landscaping", href: ANCHORS.industries },
-      { label: "Plumbing", href: ANCHORS.industries },
-      { label: "Builders", href: ANCHORS.industries },
+      { label: "Ecommerce", href: ANCHORS.industries },
+      { label: "Accountants", href: ANCHORS.industries },
+      { label: "Law firms", href: ANCHORS.industries },
     ],
   },
   {
@@ -157,6 +180,8 @@ const RESOURCES_MENU: MegaColumn[] = [
   {
     heading: "Trust",
     links: [
+      { label: "Compliance", href: "/compliance", description: "How PECR and UK GDPR are applied to every message." },
+      { label: "AI call compliance", href: "/compliance#voice-calls", description: "Consent, disclosure and calling hours for AI calls." },
       { label: "Privacy notice", href: "/privacy", description: "What we process, and why." },
       { label: "Sub-processors", href: "/sub-processors", description: "Every third party in the chain." },
       { label: "Terms of service", href: "/terms", description: "The contract behind a subscription." },
@@ -180,6 +205,8 @@ export const PRIMARY_NAV: NavItem[] = [
 /* ------------------------------------------------------------- footer --- */
 
 export const FOOTER_PRODUCT: NavLink[] = [
+  { label: "AI Voice Sales Agent", href: ANCHORS.voiceAgent },
+  { label: "Quotes and payments", href: ANCHORS.quotesPayments },
   { label: "Lead Conversion", href: "/product/lead-conversion" },
   { label: "Lead Management", href: ANCHORS.capabilities },
   { label: "Find Leads", href: "/product/find-leads" },
@@ -192,12 +219,12 @@ export const FOOTER_PRODUCT: NavLink[] = [
 ];
 
 export const FOOTER_SOLUTIONS: NavLink[] = [
-  { label: "Roofing", href: ANCHORS.industries },
-  { label: "Kitchens", href: ANCHORS.industries },
-  { label: "Windows & doors", href: ANCHORS.industries },
-  { label: "Landscaping", href: ANCHORS.industries },
-  { label: "Plumbing", href: ANCHORS.industries },
-  { label: "Builders", href: ANCHORS.industries },
+  { label: "Agencies", href: ANCHORS.industries },
+  { label: "Web & design studios", href: ANCHORS.industries },
+  { label: "SaaS & technology", href: ANCHORS.industries },
+  { label: "Ecommerce", href: ANCHORS.industries },
+  { label: "Accountants", href: ANCHORS.industries },
+  { label: "Law firms", href: ANCHORS.industries },
   { label: "All industries", href: ANCHORS.industries },
 ];
 
@@ -212,6 +239,7 @@ export const FOOTER_RESOURCES: NavLink[] = [
 
 export const FOOTER_COMPANY: NavLink[] = [
   { label: "Pricing", href: "/pricing" },
+  { label: "Voice pricing", href: "/pricing#voice-pricing" },
   { label: "Enterprise", href: "/enterprise" },
   { label: "Contact sales", href: "/contact-sales" },
   { label: "Log in", href: "/login" },
@@ -225,6 +253,7 @@ export const FOOTER_PARTNERS: NavLink[] = [
 ];
 
 export const FOOTER_LEGAL: NavLink[] = [
+  { label: "Compliance", href: "/compliance" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Cookie policy", href: "/cookies" },

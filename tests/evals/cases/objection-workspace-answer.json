@@ -1,0 +1,82 @@
+{
+  "id": "objection-workspace-answer",
+  "scenario": "§94 objection: the business's own approved answer",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "What's prompted you to look at a new site?"
+    },
+    {
+      "role": "lead",
+      "text": "We're mid-rebrand so it feels too early."
+    }
+  ],
+  "facts": {
+    "prohibitedClaims": [
+      "guarantee a 300% uplift"
+    ]
+  },
+  "workspaceObjections": [
+    {
+      "key": "custom:mid-rebrand",
+      "payload": {
+        "label": "Mid-rebrand",
+        "phrases": [
+          "mid-rebrand",
+          "rebranding"
+        ],
+        "response": "We often start during a rebrand, so the new site launches with the new look rather than weeks after.",
+        "reassuranceIds": [
+          "case-rebrand"
+        ],
+        "enabled": true
+      }
+    },
+    {
+      "key": "*",
+      "payload": {
+        "assets": [
+          {
+            "id": "case-rebrand",
+            "kind": "CASE_STUDY",
+            "text": "We rebuilt Northwind's site alongside their 2025 rebrand"
+          }
+        ]
+      }
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "strategy": {
+      "mode": "QUALIFICATION",
+      "mustInclude": [
+        "The business's own answer",
+        "We often start during a rebrand",
+        "Reassurance you may use"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Makes sense. We often start during a rebrand, so the new site launches with the new look rather than weeks after. Would a quick call to see how that would fit your timeline help?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "We guarantee a 300% uplift or your money back.",
+        "valid": false,
+        "codes": [
+          "STYLE_PROHIBITED_CLAIM"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

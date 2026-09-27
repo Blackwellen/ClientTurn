@@ -308,7 +308,9 @@ export function QualificationEditor({
         <div
           className={cn(
             "border-line bg-surface/95 sticky bottom-0 z-20 -mx-4 mt-4 border-t px-4 py-3 backdrop-blur",
-            "sm:-mx-6 sm:px-6",
+            // Right padding clears the floating support button, which otherwise
+            // sits on top of Publish changes (8.7).
+            "sm:-mx-6 sm:pl-6 sm:pr-24",
           )}
         >
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">

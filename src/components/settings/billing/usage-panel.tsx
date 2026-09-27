@@ -13,17 +13,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input, Switch } from "@/components/ui/form";
-import { ConfirmDialog } from "@/components/ui/modal";
+import { Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { cn } from "@/lib/cn";
 import { formatMetric } from "@/lib/analytics/v4-metrics";
-import {
-  saveAllocation,
-  saveDailyCaps,
-  saveOverage,
-} from "@/lib/billing/usage-actions";
+import { saveAllocation, saveDailyCaps } from "@/lib/billing/usage-actions";
 import {
   ALLOCATION_CHANNELS,
   CHANNEL_LABEL,
@@ -52,7 +47,7 @@ const SLIDER_TONE: Record<AllocationChannel, string> = {
 };
 
 /**
- * Billing & Usage: allocation, caps, overage and history (V4 §27).
+ * Billing & Usage: allocation, caps, top-ups and history (V4 §27).
  *
  * Two things this panel is careful about.
  *
@@ -61,9 +56,9 @@ const SLIDER_TONE: Record<AllocationChannel, string> = {
  * which is what the estimates express — and they are labelled as estimates,
  * because segmentation and retries mean the ledger is the authority.
  *
- * **Overage is never a quiet toggle.** It is the one control here that can
- * increase a bill, so switching it on requires a confirmation that states the
- * effect, and the cap is re-validated against the account ceiling server-side.
+ * **There is no overage** (owner, 2026-09-27): nothing here can increase a
+ * bill. Past an allowance the only way on is prepaid top-up credit, bought
+ * deliberately from Message credits.
  */
 export function UsagePanel({
   usage,
@@ -75,10 +70,6 @@ export function UsagePanel({
   const { toast } = useToast();
   const [allocation, setAllocation] = React.useState<Allocation>(usage.allocation);
   const [caps, setCaps] = React.useState(usage.dailyCaps);
-  const [overageOpen, setOverageOpen] = React.useState(false);
-  const [overageCap, setOverageCap] = React.useState(
-    usage.overageCapMinor > 0 ? String(usage.overageCapMinor / 100) : "",
-  );
   const [pending, setPending] = React.useState<string | null>(null);
 
   const total = allocationTotal(allocation);
@@ -317,105 +308,33 @@ export function UsagePanel({
           </CardContent>
         </Card>
 
-        {/* ----------------------------------------------- overage + channels */}
+        {/* ----------------------------------------------- top-ups + channels */}
         <div className="min-w-0 space-y-4">
           <Card>
-            <CardHeader className="items-center border-b-0 px-5 pt-5 pb-0">
+            <CardHeader className="border-b-0 px-5 pt-5 pb-0">
               <SectionHeader
-                title="Overage control"
-                description="Allow automatic overage when you reach your limits."
+                title="When an allowance runs out"
+                description="There are no extra charges past your plan. Top-up credit is the only way to send more."
                 dense
               />
-              <Switch
-                checked={usage.overageEnabled}
-                disabled={!canManage}
-                tone="success"
-                size="lg"
-                label="Allow automatic overage"
-                onCheckedChange={(next) => {
-                  if (next) setOverageOpen(true);
-                  else
-                    void run("overage", () =>
-                      saveOverage({ enabled: false, capMinor: 0, confirmed: true }),
-                    );
-                }}
-              />
             </CardHeader>
-
             <CardContent className="space-y-3 px-5 pt-3.5 pb-5">
-              <div
-                className={cn(
-                  "flex gap-2.5 rounded-lg border px-3 py-2.5",
-                  usage.overageEnabled
-                    ? "border-info-100 bg-info-50/70"
-                    : "border-warning-100 bg-warning-50/70",
-                )}
-              >
-                <TriangleAlert
-                  aria-hidden
-                  className={cn(
-                    "mt-0.5 size-4 shrink-0",
-                    usage.overageEnabled ? "text-info-600" : "text-warning-600",
-                  )}
-                />
-                <div className="min-w-0">
-                  <p className="text-[12.5px] font-semibold text-content">
-                    {usage.overageEnabled ? "Overage is on" : "Overage is off"}
-                  </p>
-                  <p className="mt-0.5 text-[12px] leading-[1.45] text-content-muted">
-                    {usage.overageEnabled
-                      ? `Up to £${(usage.overageCapMinor / 100).toLocaleString("en-GB")} of additional spend may be charged this month.`
-                      : "A banner warns you when a messaging allowance reaches 80% and again when it is used up, and you are notified when AI tokens reach 80% and 95%. At a limit that activity stops; no additional charges are made."}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="overage-cap"
-                  className="block text-[12.5px] font-medium text-content"
-                >
-                  Monthly additional spend cap
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-[13px] text-content-muted">£</span>
-                  <Input
-                    id="overage-cap"
-                    type="number"
-                    min={0}
-                    max={usage.accountMaxOverageMinor / 100}
-                    value={overageCap}
-                    disabled={!canManage || !usage.overageEnabled}
-                    placeholder="500"
-                    onChange={(event) => setOverageCap(event.target.value)}
-                    className="h-9 text-[12.5px]"
-                  />
-                </div>
-                <p className="mt-1 text-[11.5px] text-content-muted">
-                  {usage.accountMaxOverageMinor > 0
-                    ? `Maximum additional spend per month when overage is enabled: £${(usage.accountMaxOverageMinor / 100).toLocaleString("en-GB")}.`
-                    : "Overage is not available on your current plan."}
+              <div className="flex gap-2.5 rounded-lg border border-info-100 bg-info-50/70 px-3 py-2.5">
+                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-info-600" />
+                <p className="min-w-0 text-[12px] leading-[1.45] text-content-muted">
+                  Owners and admins are notified, and a banner appears, when SMS or WhatsApp reaches
+                  75% and 90% of what you have (allowance plus top-up credit) and when it runs out, with
+                  the bundle that covers the rest of the period. At zero that channel stops: automated
+                  steps and AI replies go by email where the lead has an address, otherwise the lead
+                  is passed to your team. AI tokens notify at 80% and 95%.
                 </p>
               </div>
-
-              {canManage && usage.overageEnabled && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={pending === "cap"}
-                  onClick={() =>
-                    run("cap", () =>
-                      saveOverage({
-                        enabled: true,
-                        capMinor: Math.round(Number(overageCap || 0) * 100),
-                        confirmed: true,
-                      }),
-                    )
-                  }
-                >
-                  Save spend cap
-                </Button>
-              )}
+              <a
+                href="#message-credits"
+                className="inline-flex h-8 items-center rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium text-content hover:bg-surface-hover"
+              >
+                Buy message credits
+              </a>
             </CardContent>
           </Card>
 
@@ -520,26 +439,6 @@ export function UsagePanel({
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={overageOpen}
-        onClose={() => setOverageOpen(false)}
-        loading={pending === "overage"}
-        variant="warning"
-        title="Turn on automatic overage?"
-        scope={`Up to £${Number(overageCap || 0).toLocaleString("en-GB")} of additional spend per month`}
-        consequence="When an allowance runs out, ClientTurn will keep working and charge for the extra usage, up to the cap you set. Sending stops at the cap. You can switch this off at any time."
-        confirmLabel="Enable overage"
-        onConfirm={async () => {
-          await run("overage", () =>
-            saveOverage({
-              enabled: true,
-              capMinor: Math.round(Number(overageCap || 0) * 100),
-              confirmed: true,
-            }),
-          );
-          setOverageOpen(false);
-        }}
-      />
     </div>
   );
 }

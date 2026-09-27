@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   decideSpend,
+  DEFAULT_LEAD_TOKEN_CEILING,
   estimateCostMinor,
   expectedValueMinor,
   remainingFromBudgets,
@@ -254,4 +255,62 @@ test("cost estimate uses the tier's prices in pence", () => {
     Math.round(estimateCostMinor(FALLBACK_TIERS[2], { input: 1_000_000, output: 1_000_000 })),
     420,
   );
+});
+
+describe("per-lead token ceiling (DEFAULT_LEAD_TOKEN_CEILING, an abuse ceiling)", () => {
+  const leadRow = { scope: "LEAD" as const, businessId: null, planKey: null, ceilingMinor: 200, ceilingTokens: null };
+  const spend = (leadTokens: number) => ({ workspaceMinor: 0, workspaceTokens: 0, leadMinor: 1, leadTokens });
+
+  test("an abuse ceiling far past any real conversation (~90 turns of ~2,750 tokens)", () => {
+    // Owner rule 2026-09-27: never cap a live conversation with an engaged
+    // lead. A golden conversation has 2.04 model turns; 90 is abuse.
+    assert.equal(DEFAULT_LEAD_TOKEN_CEILING, 250_000);
+    assert.ok(Math.floor(DEFAULT_LEAD_TOKEN_CEILING / 2_750) >= 90);
+  });
+
+  test("a LEAD row without ceiling_tokens gets the default token cap; its £ ceiling is kept", () => {
+    const remaining = remainingFromBudgets({ budgets: [leadRow], plan: null, spend: spend(10_000), hasLead: true });
+    assert.equal(remaining.LEAD?.remainingTokens, 240_000);
+    assert.equal(remaining.LEAD?.remainingMinor, 199);
+  });
+
+  test("a row's own ceiling_tokens wins (a workspace can raise it)", () => {
+    const own = { ...leadRow, businessId: "biz", ceilingTokens: 100_000 };
+    const remaining = remainingFromBudgets({ budgets: [leadRow, own], plan: null, spend: spend(50_000), hasLead: true });
+    assert.equal(remaining.LEAD?.remainingTokens, 50_000);
+  });
+
+  test("applies with no LEAD row at all, and never without a lead", () => {
+    const withLead = remainingFromBudgets({ budgets: [], plan: null, spend: spend(1_000), hasLead: true });
+    assert.deepEqual(withLead.LEAD, { remainingMinor: null, remainingTokens: 249_000 });
+    const noLead = remainingFromBudgets({ budgets: [], plan: null, spend: spend(1_000), hasLead: false });
+    assert.equal(noLead.LEAD, undefined);
+  });
+
+  test("a long engaged conversation still runs; only a runaway past the ceiling goes to a person", () => {
+    const at = (leadTokens: number) =>
+      remainingFromBudgets({ budgets: [leadRow], plan: null, spend: spend(leadTokens), hasLead: true });
+    const early = decide({ taskType: "agent_decision", stage: "ENGAGED", remaining: at(5_500) });
+    assert.equal(early.decision, "TIER_2");
+    // 40 turns in: still answered by the model.
+    const long = decide({ taskType: "agent_decision", stage: "ENGAGED", remaining: at(110_000) });
+    assert.equal(long.decision, "TIER_2");
+    const spent = decide({ taskType: "agent_decision", stage: "ENGAGED", remaining: at(248_000) });
+    assert.equal(spent.decision, "HUMAN");
+    assert.equal(spent.reason, "BUDGET_LEAD");
+  });
+
+  test("the cap never blocks safety classification", () => {
+    const remaining = remainingFromBudgets({ budgets: [leadRow], plan: null, spend: spend(1_000_000), hasLead: true });
+    const result = decide({ taskType: "intent_classification", stage: "ENGAGED", remaining });
+    assert.equal(result.decision, "TIER_1");
+    assert.equal(result.reason, "SAFETY_FLOOR");
+  });
+
+  test("an opportunity is bounded by its own ceiling, not the lead token cap", () => {
+    const opp = { scope: "OPPORTUNITY" as const, businessId: null, planKey: null, ceilingMinor: 1_000, ceilingTokens: null };
+    const remaining = remainingFromBudgets({ budgets: [leadRow, opp], plan: null, spend: spend(300_000), hasLead: true });
+    const result = decide({ taskType: "agent_decision", stage: "OPPORTUNITY", remaining });
+    assert.equal(result.decision, "TIER_2");
+  });
 });

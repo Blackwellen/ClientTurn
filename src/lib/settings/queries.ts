@@ -17,6 +17,8 @@ import {
   type ServiceRow,
   type TeamMemberRow,
 } from "./types";
+import { channelUsable, MESSAGING_CHANNEL_PROVIDERS } from "@/lib/integrations/platform-channels";
+import { platformConfigured } from "@/lib/integrations/queries";
 
 export async function getBusinessProfile(
   businessId: string,
@@ -417,7 +419,7 @@ export async function getGettingStarted(
       id: "services",
       label: "Add your services",
       description:
-        "Client Turn needs at least one service before it can qualify a lead.",
+        "ClientTurn needs at least one service before it can qualify a lead.",
       href: "/app/settings?section=workspace",
       done: (services.count ?? 0) > 0,
     },
@@ -433,7 +435,11 @@ export async function getGettingStarted(
       label: "Connect a messaging channel",
       description: "Follow-up cannot be sent until SMS or WhatsApp is connected.",
       href: "/app/settings?section=connections",
-      done: live.some((row) => row.provider_type.startsWith("twilio")),
+      // SMS and WhatsApp are platform-run: with no workspace row, the
+      // platform sender counts (integrations/platform-channels.ts).
+      done:
+        channelUsable(live, MESSAGING_CHANNEL_PROVIDERS.sms, platformConfigured("twilio_sms")) ||
+        channelUsable(live, MESSAGING_CHANNEL_PROVIDERS.whatsapp, platformConfigured("twilio_whatsapp")),
     },
     {
       id: "qualification",

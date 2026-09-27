@@ -70,10 +70,15 @@ export function ProspectCard({
             <Building2 className="size-3.5 shrink-0 text-content-subtle" aria-hidden />
             <span className="truncate">{row.company.name}</span>
           </div>
-          {row.company.domain && (
+          {row.company.domain ? (
             <div className="flex items-center gap-1.5 text-[12px] text-content-muted">
               <Globe className="size-3.5 shrink-0 text-content-subtle" aria-hidden />
               <span className="truncate">{row.company.domain}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[12px] text-warning-700">
+              <Globe className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">Website unknown</span>
             </div>
           )}
           {location && (

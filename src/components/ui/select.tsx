@@ -113,7 +113,14 @@ export function parseSelectChildren(children: React.ReactNode): Parsed {
 }
 
 const HIDDEN_NATIVE: React.CSSProperties = {
+  // Pinned to its containing block's corner. Left at its static position (just
+  // after the trigger), a Select inside a horizontally scrolling table placed
+  // this 1px box outside the scroller, and it widened the whole page on phones
+  // (8.7). Focus is redirected to the visible trigger, so where it sits is
+  // otherwise irrelevant.
   position: "absolute",
+  top: 0,
+  left: 0,
   width: 1,
   height: 1,
   padding: 0,

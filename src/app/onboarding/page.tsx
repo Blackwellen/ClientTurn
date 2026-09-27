@@ -11,7 +11,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { onboardingIncomplete } from "@/lib/app/health";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { needsCheckout } from "@/lib/billing/lifecycle";
-import { isOnboardingStep, type OnboardingStep } from "@/lib/onboarding/steps";
+import {
+  defaultQualifyQuestions,
+  defaultServicesFor,
+  resolveOnboardingStep,
+  type OnboardingStep,
+} from "@/lib/onboarding/steps";
+import { isUnnamedWorkspace, workspaceNamePlaceholder } from "@/lib/auth/workspace-name";
 import { getActivationChecks } from "@/lib/onboarding/provision";
 import { getTestLeadOutcome } from "@/lib/onboarding/test-lead";
 import { getQualificationConfig } from "@/lib/qualification/queries";
@@ -58,11 +64,14 @@ export default async function OnboardingPage() {
   const entitlements = await getEntitlements(workspace.businessId);
   if (needsCheckout(entitlements.state)) redirect("/start-trial");
 
-  const step: OnboardingStep = isOnboardingStep(workspace.onboardingStep)
-    ? workspace.onboardingStep
-    : "copilot";
+  // Resume where they left off, except that an unnamed workspace always
+  // opens on the business step: the name is the one required input (8.29).
+  const step: OnboardingStep = resolveOnboardingStep(
+    workspace.onboardingStep,
+    isUnnamedWorkspace(workspace.businessName),
+  );
 
-  return <Wizard workspace={workspace} step={step} />;
+  return <Wizard workspace={workspace} step={step} email={user.email ?? ""} />;
 }
 
 function NoWorkspace({ email }: { email: string }) {
@@ -102,9 +111,11 @@ function NoWorkspace({ email }: { email: string }) {
 async function Wizard({
   workspace,
   step,
+  email,
 }: {
   workspace: ActiveWorkspace;
   step: OnboardingStep;
+  email: string;
 }) {
   const supabase = await createClient();
   const admin = createAdminClient();
@@ -199,10 +210,23 @@ async function Wizard({
         }))
   ).slice(0, 8);
 
+  // Recommended B2B questions, built from the workspace's own services, for a
+  // workspace that has none yet (8.29). Publishable as they stand.
+  const recommendedQuestions = defaultQualifyQuestions(
+    services.filter((service) => service.active).map((service) => service.name),
+  ).map((question) => ({
+    questionText: question.questionText,
+    responseType: question.responseType,
+    required: question.required,
+    optionsText: question.options.join(", "),
+    rule: question.rule,
+  }));
+
   const initial: OnboardingInitial = {
     business: {
       business: {
-        name: workspace.businessName,
+        // Never pre-filled: the owner names the workspace by hand (8.29).
+        name: isUnnamedWorkspace(workspace.businessName) ? "" : workspace.businessName,
         industry: business?.industry ?? "",
         website: business?.website ?? "",
         phone: business?.phone ?? "",
@@ -210,6 +234,10 @@ async function Wizard({
       },
       hours: parseBusinessHours(settings?.business_hours),
       serviceAreaDescription: settings?.service_area_description ?? "",
+      namePlaceholder: workspaceNamePlaceholder(email),
+      // Pre-selected for a brand-new workspace; replaced when the industry changes.
+      suggestedDefaults: services.length === 0,
+      defaultServices: defaultServicesFor(business?.industry ?? ""),
       services: services.map((service) => ({
         id: service.id,
         name: service.name,
@@ -231,7 +259,7 @@ async function Wizard({
       steps,
     },
     qualifyBook: {
-      questions: qualificationConfig.questions.map((question) => {
+      questions: qualificationConfig.questions.length === 0 ? recommendedQuestions : qualificationConfig.questions.map((question) => {
         const rule = rulesByQuestion.get(question.id);
         return {
           id: question.id,

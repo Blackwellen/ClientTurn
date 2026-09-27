@@ -1,0 +1,40 @@
+{
+  "id": "enterprise-01-problem-then-stakeholders",
+  "archetype": "ENTERPRISE_SAAS",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "story": "A group operations lead states the problem; stakeholders are asked only once the problem is known.",
+  "turns": [
+    {
+      "lead": "We're evaluating platforms to consolidate reporting across our four sites.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "ESCALATE"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "The problem is every site reports differently and the board can't compare them.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "ESCALATE",
+          "CTA_BOOK"
+        ],
+        "known": [
+          "PROBLEM"
+        ],
+        "notAsked": [
+          "PROBLEM",
+          "BUDGET"
+        ]
+      }
+    }
+  ]
+}

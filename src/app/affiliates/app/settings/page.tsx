@@ -11,7 +11,7 @@ import { parseSettingsSection } from "@/lib/affiliates/nav";
 import { PortalHeader } from "@/components/affiliates/portal-ui";
 import { AffiliateSettingsView } from "@/components/affiliates/settings/settings-view";
 
-export const metadata: Metadata = { title: "Affiliate Settings | ClientTurn" };
+export const metadata: Metadata = { title: "Affiliate Settings" };
 export const dynamic = "force-dynamic";
 
 /**

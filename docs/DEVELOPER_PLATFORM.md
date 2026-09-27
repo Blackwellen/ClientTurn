@@ -278,10 +278,15 @@ waits, and concludes the product is broken.
 | `opportunity.created` | the event outbox, from `opportunities/service.ts` |
 | `opportunity.won` | the event outbox, from `opportunities/service.ts` (closed as won) |
 | `opportunity.lost` | the event outbox, from `opportunities/service.ts` (closed as lost) |
+| `lead.intent_changed` | the event outbox, from the `lead.score` job when the qualification engine's intent state changes |
 
 The three `opportunity.*` payloads carry `lead_id`; `opportunity.created` adds
 `stage` and `motion`, and `won`/`lost` add the `reason` given when it was
 closed. `subject_id` is the opportunity id.
+
+`lead.intent_changed` carries `lead_id`, `intent_state`, `previous_intent_state`,
+`intent_score` (0–100), `next_action`, `qualification_completeness` (0–1) and the
+`engine_version`. It fires only when the state changes, not on every rescore.
 
 #### The event outbox
 
@@ -336,7 +341,7 @@ importantly, absent from all of them if it is not declared.
 
 <!-- mcp-tools:start (generated: node scripts/generate-mcp-tools-doc.mjs) -->
 
-90 tools are declared for MCP clients, across 26 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
+127 tools are declared for MCP clients, across 31 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
 
 | Domain | Tool | Kind | Scope |
 |---|---|---|---|
@@ -365,6 +370,10 @@ importantly, absent from all of them if it is not declared.
 | `campaign` | `campaign.resume` | APPROVAL_GATED | `campaigns:write` |
 | `campaign` | `campaign.launch` | APPROVAL_GATED | `campaigns:write` |
 | `campaign` | `campaign.add_lead` | WRITE | `campaigns:write` |
+| `catalogue` | `catalogue.list` | READ | `business:read` |
+| `catalogue` | `catalogue.upsert_item` | WRITE | `business:write` |
+| `catalogue` | `catalogue.upsert_bundle` | WRITE | `business:write` |
+| `catalogue` | `catalogue.archive` | WRITE | `business:write` |
 | `connector` | `connector.list` | READ | `business:read` |
 | `connector` | `connector.get` | READ | `business:read` |
 | `connector` | `connector.replay_event` | WRITE | `business:write` |
@@ -378,6 +387,12 @@ importantly, absent from all of them if it is not declared.
 | `experiment` | `experiment.start` | WRITE | `campaigns:write` |
 | `experiment` | `experiment.stop` | WRITE | `campaigns:write` |
 | `funnel` | `funnel.get` | READ | `analytics:read` |
+| `invoice` | `invoice.create_from_quote` | APPROVAL_GATED | `leads:write` |
+| `invoice` | `invoice.issue` | APPROVAL_GATED | `leads:write` |
+| `invoice` | `invoice.record_payment` | APPROVAL_GATED | `leads:write` |
+| `invoice` | `invoice.void` | APPROVAL_GATED | `leads:write` |
+| `invoice` | `invoice.credit_note` | APPROVAL_GATED | `leads:write` |
+| `invoice` | `invoice.list` | READ | `leads:read` |
 | `lead` | `lead.get` | READ | `leads:read` |
 | `lead` | `lead.search` | READ | `leads:read` |
 | `lead` | `lead.update` | WRITE | `leads:write` |
@@ -413,6 +428,7 @@ importantly, absent from all of them if it is not declared.
 | `message` | `message.draft` | WRITE | `leads:write` |
 | `opportunity` | `opportunity.list` | READ | `leads:read` |
 | `opportunity` | `opportunity.get` | READ | `leads:read` |
+| `opportunity` | `opportunity.add_interest` | WRITE | `leads:write` |
 | `opportunity` | `opportunity.set_stage` | WRITE | `leads:write` |
 | `opportunity` | `opportunity.close` | APPROVAL_GATED | `leads:write` |
 | `privacy_request` | `privacy_request.list` | READ | `business:read` |
@@ -422,7 +438,33 @@ importantly, absent from all of them if it is not declared.
 | `prospect` | `prospect.get` | READ | `prospects:read` |
 | `prospect` | `prospect.approve` | WRITE | `prospects:write` |
 | `prospect` | `prospect.reject` | WRITE | `prospects:write` |
+| `prospect` | `prospect.set_company_website` | WRITE | `prospects:write` |
 | `qualification` | `qualification.list_questions` | READ | `business:read` |
+| `qualification` | `qualification.status` | READ | `leads:read` |
+| `qualification` | `qualification.unknowns` | READ | `leads:read` |
+| `qualification` | `qualification.explain` | READ | `leads:read` |
+| `qualification` | `qualification.intent` | READ | `leads:read` |
+| `qualification` | `qualification.requalify` | WRITE | `leads:write` |
+| `qualification` | `qualification.set_fact` | WRITE | `leads:write` |
+| `qualification` | `qualification.override_intent` | WRITE | `leads:write` |
+| `qualification` | `qualification.override_nba` | WRITE | `leads:write` |
+| `qualification` | `qualification.policy_get` | READ | `business:read` |
+| `qualification` | `qualification.policy_update` | WRITE | `business:write` |
+| `quote` | `quote.calculate` | READ | `leads:read` |
+| `quote` | `quote.create` | WRITE | `leads:write` |
+| `quote` | `quote.update_draft` | WRITE | `leads:write` |
+| `quote` | `quote.submit_for_approval` | WRITE | `leads:write` |
+| `quote` | `quote.send` | APPROVAL_GATED | `leads:write` |
+| `quote` | `quote.revise` | WRITE | `leads:write` |
+| `quote` | `quote.withdraw` | APPROVAL_GATED | `leads:write` |
+| `quote` | `quote.get` | READ | `leads:read` |
+| `quote` | `quote.list` | READ | `leads:read` |
+| `quote_settings` | `quote_settings.get` | READ | `business:read` |
+| `sales_objections` | `sales_objections.list` | READ | `business:read` |
+| `sales_objections` | `sales_objections.save` | WRITE | `business:write` |
+| `sales_objections` | `sales_objections.remove` | WRITE | `business:write` |
+| `sales_objections` | `sales_objections.save_reassurance` | WRITE | `business:write` |
+| `sales_objections` | `sales_objections.preview` | READ | `business:read` |
 | `sales_settings` | `sales_settings.get` | READ | `business:read` |
 | `sales_settings` | `sales_settings.update` | WRITE | `business:write` |
 | `scoring_weights` | `scoring_weights.update` | WRITE | `business:write` |
@@ -491,6 +533,126 @@ expire; nothing issues new ones from the UI.
   credential that made it.
 
 ---
+
+## Payment confirmation (the direct-sale loop)
+
+When the assistant closes a sale with an approved checkout link (Settings →
+Business Profile → Selling: direct close), ClientTurn learns that the lead paid
+from one of two per-workspace inbound endpoints. Both are set up in
+**Settings → Connections → Payments**. Code: `src/lib/payments/`,
+`src/app/api/webhooks/payments/`, migration 0143.
+
+Both follow the webhook rule: verify the signature → write `webhook_events`
+(unique on provider + `<endpoint id>:<event id>`) → queue `payment.confirm` →
+acknowledge. Nothing calls a provider and nothing touches a lead inside the
+request. Payments are also unique per (workspace, provider, order id) in
+`checkout_payments`, so a redelivery or a second event for the same order never
+applies twice.
+
+### Tracked links
+
+Every checkout link the assistant sends carries one extra query parameter: an
+opaque token (24 characters from `A–Z a–z 0–9 - _`, HMAC-derived from the send,
+never the lead id) that names a `checkout_attempts` row.
+
+| Link | Parameter | Comes back as |
+|---|---|---|
+| Stripe Payment Link (`https://buy.stripe.com/...`) | `client_reference_id` | `client_reference_id` on the Checkout Session |
+| Anything else | `ct_ref` by default, or the link's own **Tracking parameter** | `reference` in the order-paid body, **only if your shop passes it through** |
+
+Be clear-eyed about the second row. A plain Shopify or WooCommerce product page
+drops unknown query parameters. The reference survives only where the shop
+carries it into the order (for example a Shopify cart permalink with
+`attributes[ct_ref]`, a WooCommerce plugin that saves URL parameters to order
+meta, or Paddle `custom_data`) and your order webhook sends it back. Without it
+the payment falls back to an email match, which is a REVIEW match and is never
+applied automatically.
+
+The response validator admits a tracked URL only when its base is an approved
+link allowed on that turn and the only difference is that link's tracking
+parameter with a well-formed token.
+
+### Stripe (the customer's own account, no Connect)
+
+```
+POST /api/webhooks/payments/stripe/<endpoint id>
+Stripe-Signature: t=<unix>,v1=<hex>
+```
+
+Add the URL shown in Settings as a webhook endpoint in **your** Stripe account
+(Developers → Webhooks) with the events `checkout.session.completed`,
+`checkout.session.async_payment_succeeded` and `invoice.paid`, then paste the
+endpoint's signing secret (`whsec_…`) into the card. It is sealed with
+`CREDENTIAL_ENCRYPTION_KEY` and never shown again. Verification is Stripe's
+scheme (HMAC-SHA256 over `t.rawBody`, any `v1` may match, 5 minutes'
+tolerance). A delivery with no saved secret is refused.
+
+| Event | Used as |
+|---|---|
+| `checkout.session.completed` (`payment_status` `paid` or `no_payment_required`) | the payment; `client_reference_id` is the token; a subscription session's order id is the subscription id |
+| `checkout.session.async_payment_succeeded` | the same, once a delayed method clears |
+| `invoice.paid` | a subscription's first invoice collapses onto its session (same order id) and adds the interval; later invoices are renewals, matched by subscription id; zero-amount invoices are ignored |
+
+This endpoint is separate from `/api/webhooks/stripe`, which is ClientTurn's
+own billing account.
+
+### Order paid (Shopify, WooCommerce, GoCardless, Paddle, Zapier)
+
+```
+POST /api/webhooks/payments/order-paid/<endpoint id>
+Content-Type: application/json
+X-ClientTurn-Timestamp: <unix seconds>
+X-ClientTurn-Signature: hex(HMAC-SHA256(secret, `${timestamp}.${rawBody}`))
+```
+
+The same signing scheme as the inbound contact endpoint (five minutes each
+way). The secret (`ctop_…`) is generated in the card and shown once; rotating it
+stops the old one immediately.
+
+```json
+{
+  "order_id": "1001",                 // required, your order id (idempotency key)
+  "amount": 49.99,                    // required, MAJOR units: number or "49.99"
+  "currency": "GBP",                  // required, three letters
+  "reference": "AbCdEfGhIjKlMnOpQrStUvWx", // optional, the tracking value from the link
+  "email": "buyer@example.com",       // optional, used only for a REVIEW match
+  "recurring": true,                  // optional
+  "interval": "month",                // optional: day | week | month | year
+  "subscription_id": "sub_123",       // optional, lets renewals follow the first payment
+  "event_id": "evt-1",                // optional, defaults to order_id
+  "source": "shopify",                // optional: shopify | woocommerce | gocardless | paddle | zapier | other
+  "paid_at": "2026-09-27T10:00:00Z"   // optional
+}
+```
+
+Responses: `202 {accepted, order_id, status: "queued" | "duplicate"}`; `400`
+invalid JSON or body (the message names the field); `401` bad or stale
+signature; `404` unknown endpoint; `413` over 16 KB; `415` not JSON.
+
+Shopify and WooCommerce cannot compute this signature from their own webhook
+settings. Send the request from Zapier (a Code step can compute the HMAC), Make,
+or a small function of your own.
+
+### What happens on payment
+
+`payment.confirm` (`src/lib/payments/confirm.ts`), re-reading every row:
+
+1. Match: the token → that checkout attempt (certain); a known subscription →
+   the lead it already belongs to (a renewal); exactly one live lead with the
+   email → **REVIEW** (recorded, the owner is told, nothing applied until a
+   person confirms it); otherwise **UNMATCHED** (kept and shown for linking,
+   never dropped).
+2. Apply (certain matches, and a person's link): the attempt becomes PAID; on
+   the lead's first payment the open opportunity takes the amount (MRR for a
+   subscription) and closes WON through `closeOpportunity`, which stops the
+   lead's automation and emits `opportunity.won` (now carrying a `payment`
+   object: `amount_minor`, `currency`, `recurring`, `interval`, `mrr_minor`,
+   `payment_id`) to webhooks and the CRM push; the thank-you is queued on the
+   normal send path. A renewal is recorded as revenue only.
+
+A person links a REVIEW or UNMATCHED payment with the `payment.link_to_lead`
+operation (UI only, EXTERNAL, owner/admin, confirmed and audited), which queues
+the same apply.
 
 ## The Zapier app
 

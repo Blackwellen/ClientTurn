@@ -31,14 +31,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     description: category.description,
     alternates: { canonical: path },
     openGraph: {
-      title: `${title} · ClientTurn`,
+      title: `${title}`,
       description: category.description,
       url: path,
       siteName: "ClientTurn",
       locale: "en_GB",
       type: "website",
     },
-    twitter: { card: "summary", title: `${title} · ClientTurn`, description: category.description },
+    twitter: { card: "summary", title: `${title}`, description: category.description },
   };
 }
 

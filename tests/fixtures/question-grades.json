@@ -1,0 +1,298 @@
+{
+  "about": "Held-out labels for the /100 question grader (design 08 §C.4). Written BEFORE src/lib/qualification-intelligence/grade.ts existed, from a person's judgement of each question in its structured state. Do not edit a label to make the grader pass: if the grader disagrees, fix the grader's logic or record the disagreement. pass = a reviewer would send this question as written (grade >= 80). critical = the critical failures a reviewer would flag.",
+  "version": "labels-1 (2026-09-26)",
+  "cases": [
+    {
+      "id": "msp-timing-after-problem",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Our current IT provider takes days to answer anything.",
+      "draft": "Sorry to hear that. When are you hoping to have a new provider in place?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "re-asks-confirmed-problem",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We need a new website, the old one is embarrassing.",
+      "draft": "What's prompted you to look at this now?",
+      "label": { "pass": false, "critical": ["ASKS_KNOWN_DIMENSION"] }
+    },
+    {
+      "id": "two-questions-at-once",
+      "channel": "whatsapp", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "TIMING": { "status": "UNKNOWN", "required": true }, "COMPANY_SIZE": { "status": "UNKNOWN" } },
+      "inbound": "Looking for help with our IT support.",
+      "draft": "When do you want to start? And how many staff do you have?",
+      "label": { "pass": false, "critical": ["MULTIPLE_QUESTIONS"] }
+    },
+    {
+      "id": "booking-ready-then-budget",
+      "channel": "sms", "stage": "CLOSING", "intentState": "BOOKING_READY", "engineVerdict": "PENDING",
+      "nba": { "action": "CTA_BOOK", "dimension": null, "purpose": null, "key": null },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "BUDGET": { "status": "UNKNOWN" } },
+      "inbound": "Can we book a call this week?",
+      "draft": "Happy to. Before we do, what budget have you set aside?",
+      "label": { "pass": false, "critical": ["QUALIFIES_WHEN_BOOKING_READY"] }
+    },
+    {
+      "id": "negative-lead-pursued",
+      "channel": "email", "stage": "ENGAGED", "intentState": "NEGATIVE", "engineVerdict": "PENDING",
+      "nba": { "action": "NO_ACTION", "dimension": null, "purpose": null, "key": null },
+      "dimensions": { "CURRENT_SOLUTION": { "status": "UNKNOWN" } },
+      "inbound": "Not interested, thanks.",
+      "draft": "No problem at all. Out of interest, which agency are you using at the moment?",
+      "label": { "pass": false, "critical": ["PURSUES_NEGATIVE_OR_DISQUALIFIED"] }
+    },
+    {
+      "id": "forbidden-budget-intent",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "forbiddenIntents": ["BUDGET.RANGE"],
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true }, "BUDGET": { "status": "UNKNOWN" } },
+      "inbound": "We want to rebuild our booking flow.",
+      "draft": "Thanks for the detail. Roughly what budget have you set aside for this?",
+      "label": { "pass": false, "critical": ["ASKS_FORBIDDEN_INTENT"] }
+    },
+    {
+      "id": "generic-how-can-i-help",
+      "channel": "sms", "stage": "NEW", "intentState": "EXPLORATORY", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "USE_CASE", "purpose": "DISCOVER", "key": "USE_CASE.PRIMARY" },
+      "dimensions": { "USE_CASE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Hi, saw your ad.",
+      "draft": "Thanks for getting in touch! How can I help?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "budget-before-problem",
+      "channel": "sms", "stage": "NEW", "intentState": "LOW", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "PROBLEM", "purpose": "DISCOVER", "key": "PROBLEM.TRIGGER" },
+      "dimensions": { "PROBLEM": { "status": "UNKNOWN", "required": true }, "BUDGET": { "status": "UNKNOWN" } },
+      "inbound": "Hello",
+      "draft": "What budget do you have for the project?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "ignores-the-leads-question",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ANSWER_AND_ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROJECT_SCOPE": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Do you work with Shopify stores?",
+      "draft": "When are you looking to launch?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "verify-inferred-staff",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "COMPANY_SIZE", "purpose": "VERIFY", "key": "SIZE.STAFF_AND_DEVICES" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "COMPANY_SIZE": { "status": "INFERRED", "material": true, "required": true } },
+      "inbound": "Yes that's right.",
+      "draft": "Thanks. Just to check, is it around 40 staff at the moment?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "asks-inferred-location",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "LOCATION": { "status": "INFERRED", "material": false }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "It's for our Leeds office.",
+      "draft": "Great. Where are you based?",
+      "label": { "pass": false, "critical": ["ASKS_KNOWN_DIMENSION"] }
+    },
+    {
+      "id": "clarify-conflicting-timing",
+      "channel": "whatsapp", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "CLARIFY", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "CONFLICTING", "required": true } },
+      "inbound": "Maybe the summer actually.",
+      "draft": "Thanks. You mentioned March earlier and now the summer. Which is closer to when you'd want to start?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "answers-then-asks",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ANSWER_AND_ASK", "dimension": "TEAM_SIZE", "purpose": "DISCOVER", "key": "TEAM_SIZE.USERS" },
+      "dimensions": { "USE_CASE": { "status": "CONFIRMED" }, "TEAM_SIZE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "How long does onboarding usually take?",
+      "draft": "Onboarding is usually spread over a couple of weeks, depending on how many people are set up. How many people on your team would be using it?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "asks-then-answers",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ANSWER_AND_ASK", "dimension": "TEAM_SIZE", "purpose": "DISCOVER", "key": "TEAM_SIZE.USERS" },
+      "dimensions": { "USE_CASE": { "status": "CONFIRMED" }, "TEAM_SIZE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "How long does onboarding usually take?",
+      "draft": "How many people on your team would be using it? Onboarding is usually spread over a couple of weeks.",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "sms-multiple-choice-form",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "PROJECT_SCOPE", "purpose": "DISCOVER", "key": "PROJECT_SCOPE.DELIVERABLES" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "PROJECT_SCOPE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We need some web work done.",
+      "draft": "Which of these is the project scope: a) new website b) redesign c) SEO d) hosting e) something else?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "saas-success-metric-email",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "HIGH", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "SUCCESS_METRICS", "purpose": "DISCOVER", "key": "SUCCESS_METRICS.DEFINITION" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "USE_CASE": { "status": "CONFIRMED" }, "SUCCESS_METRICS": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We're trying to cut the time our support team spends on repeat tickets.",
+      "draft": "That's a common starting point. How would you measure whether it had worked after the first three months?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "intrusive-personal-question",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "It's for my own consultancy.",
+      "draft": "Thanks. Can I ask how old you are?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "low-intent-asked-budget",
+      "channel": "email", "stage": "ENGAGED", "intentState": "LOW", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "PROBLEM", "purpose": "DISCOVER", "key": "PROBLEM.TRIGGER" },
+      "dimensions": { "PROBLEM": { "status": "UNKNOWN", "required": true }, "BUDGET": { "status": "UNKNOWN" } },
+      "inbound": "Just browsing really.",
+      "draft": "No problem. What sort of budget would you be working with?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "exploratory-problem-good",
+      "channel": "whatsapp", "stage": "ENGAGED", "intentState": "EXPLORATORY", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "PROBLEM", "purpose": "DISCOVER", "key": "PROBLEM.TRIGGER" },
+      "dimensions": { "PROBLEM": { "status": "UNKNOWN", "required": true } },
+      "inbound": "What do you charge for SEO?",
+      "draft": "It depends on the size of the site, so I'd rather not guess. What's prompted you to look at SEO right now?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "disqualified-still-asked",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "NOT_QUALIFIED",
+      "nba": { "action": "DISQUALIFY", "dimension": null, "purpose": null, "key": null },
+      "dimensions": { "LOCATION": { "status": "UNKNOWN" } },
+      "inbound": "We're a sole trader, just me.",
+      "draft": "Thanks. Could you tell me your postcode?",
+      "label": { "pass": false, "critical": ["PURSUES_NEGATIVE_OR_DISQUALIFIED"] }
+    },
+    {
+      "id": "purchase-ready-asks-seats",
+      "channel": "email", "stage": "CLOSING", "intentState": "PURCHASE_READY", "engineVerdict": "QUALIFIED",
+      "nba": { "action": "CTA_CHECKOUT", "dimension": null, "purpose": null, "key": null },
+      "dimensions": { "USE_CASE": { "status": "CONFIRMED" }, "TEAM_SIZE": { "status": "UNKNOWN" } },
+      "inbound": "OK let's do it, how do I pay?",
+      "draft": "Great to hear. How many people on your team would be using it?",
+      "label": { "pass": false, "critical": ["QUALIFIES_WHEN_BOOKING_READY"] }
+    },
+    {
+      "id": "booking-ready-one-gating-question",
+      "channel": "sms", "stage": "CLOSING", "intentState": "BOOKING_READY", "engineVerdict": "PENDING",
+      "nba": { "action": "CTA_BOOK", "dimension": "LOCATION", "purpose": "DISQUALIFY_CHECK", "key": "LOCATION.POSTCODE" },
+      "dimensions": { "SERVICE_NEEDED": { "status": "CONFIRMED" }, "LOCATION": { "status": "UNKNOWN", "required": true, "material": true } },
+      "inbound": "Can someone come and look at the roof this week?",
+      "draft": "Happy to arrange that. Which postcode is the property in?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "third-ask-same-question",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "TIMING": { "status": "UNKNOWN", "required": true } },
+      "recentOutbound": [ { "dimension": "TIMING", "answered": false }, { "dimension": "TIMING", "answered": false } ],
+      "inbound": "ok",
+      "draft": "When are you hoping to get started?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "enterprise-authority-too-early",
+      "channel": "email", "stage": "NEW", "intentState": "EXPLORATORY", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "PROBLEM", "purpose": "DISCOVER", "key": "PROBLEM.TRIGGER" },
+      "dimensions": { "PROBLEM": { "status": "UNKNOWN", "required": true }, "AUTHORITY": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Interested in your platform for our group.",
+      "draft": "Thanks for reaching out. Who else is involved in the decision?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "enterprise-authority-in-time",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "HIGH", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "AUTHORITY", "purpose": "DISCOVER", "key": "AUTHORITY.WHO_DECIDES" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "USE_CASE": { "status": "CONFIRMED" }, "AUTHORITY": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Yes, the rollout would cover all four sites.",
+      "draft": "That helps, thank you. Who else would be involved in choosing a provider?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "ecommerce-volume",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "VOLUME", "purpose": "DISCOVER", "key": "VOLUME.MONTHLY_ORDERS" },
+      "dimensions": { "PRODUCT_INTEREST": { "status": "CONFIRMED" }, "VOLUME": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We sell homeware online and need better fulfilment.",
+      "draft": "Thanks, that's useful. Roughly how many orders do you ship each month?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "custom-question-as-planned",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "UNMAPPED", "purpose": "DISCOVER", "key": "custom:6f1d8c1e-2b1a-4c1e-9d1e-1a2b3c4d5e6f", "rendering": "Do you already own a domain name?" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" } },
+      "inbound": "It's a new brand we're launching.",
+      "draft": "Exciting. Do you already own a domain name for it?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "answer-only-turn-asks-anyway",
+      "channel": "sms", "stage": "ENGAGED", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ANSWER", "dimension": null, "purpose": null, "key": null },
+      "dimensions": { "COMPANY_SIZE": { "status": "UNKNOWN" } },
+      "inbound": "Do you offer support at weekends?",
+      "draft": "Support hours are on the offer card we shared. How many staff do you have?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "whatsapp-use-case",
+      "channel": "whatsapp", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "USE_CASE", "purpose": "DISCOVER", "key": "USE_CASE.PRIMARY" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "USE_CASE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "Our sales team is drowning in admin.",
+      "draft": "That sounds draining. What would you mainly want it to do for the team?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "tell-me-more",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We need a new CRM.",
+      "draft": "Could you tell me more about what you need?",
+      "label": { "pass": false, "critical": [] }
+    },
+    {
+      "id": "one-sticky-reask-allowed",
+      "channel": "sms", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "nba": { "action": "ASK", "dimension": "TIMING", "purpose": "DISCOVER", "key": "TIMING.START_WINDOW" },
+      "dimensions": { "PROBLEM": { "status": "CONFIRMED" }, "TIMING": { "status": "UNKNOWN", "required": true } },
+      "recentOutbound": [ { "dimension": "TIMING", "answered": false } ],
+      "inbound": "Sorry, been busy. Still keen though.",
+      "draft": "No worries at all. Roughly when would you want to get started?",
+      "label": { "pass": true, "critical": [] }
+    },
+    {
+      "id": "b2b-personal-finance",
+      "channel": "email", "stage": "QUALIFYING", "intentState": "MEDIUM", "engineVerdict": "PENDING",
+      "customerType": "B2B",
+      "nba": { "action": "ASK", "dimension": "COMPANY_SIZE", "purpose": "DISCOVER", "key": "SIZE.STAFF_AND_DEVICES" },
+      "dimensions": { "COMPANY_SIZE": { "status": "UNKNOWN", "required": true } },
+      "inbound": "We're a small accountancy practice.",
+      "draft": "Thanks. What is your personal income at the moment?",
+      "label": { "pass": false, "critical": [] }
+    }
+  ]
+}

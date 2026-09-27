@@ -55,7 +55,7 @@ export function BusinessLearningSection() {
             <div className="fl-field">
               <span>Website URL</span>
               <div className="fl-field-box">
-                <b>https://example-roofing.co.uk</b>
+                <b>https://example-studio.co.uk</b>
                 <Globe size={13} />
               </div>
             </div>

@@ -86,7 +86,7 @@ export function FindLeadsHeroChat() {
   const checksArmed = stage >= 5;
 
   const request = selectedChip
-    ? `Find ${selectedChip.toLowerCase()} that match my services and may need a commercial roofing contractor.`
+    ? `Find ${selectedChip.toLowerCase()} that match my services and may need a website rebuild.`
     : HERO_REQUEST;
 
   function chooseChip(chip: string) {

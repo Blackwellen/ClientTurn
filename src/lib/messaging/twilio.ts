@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { formToRecord, verifyTwilioSignature } from "@/lib/twilio/signature";
 import { serverEnv } from "@/lib/env";
 import {
   ProviderNotConfiguredError,
@@ -186,39 +186,10 @@ export function twilioStatusCallbackUrl(
 }
 
 /**
- * Canonical Twilio signature: HMAC-SHA1 over the full request URL with every
- * POST parameter appended in sorted key order, base64 encoded.
+ * The request signature and form parsing live in `lib/twilio/signature.ts`,
+ * shared with the voice webhooks. Re-exported so existing imports keep working.
  */
-export function computeTwilioSignature(
-  authToken: string,
-  url: string,
-  params: Record<string, string>,
-): string {
-  const data = Object.keys(params)
-    .sort()
-    .reduce((acc, key) => acc + key + params[key], url);
-  return createHmac("sha1", authToken).update(Buffer.from(data, "utf-8")).digest("base64");
-}
-
-export function verifyTwilioSignature(
-  authToken: string,
-  url: string,
-  params: Record<string, string>,
-  signature: string | null,
-): boolean {
-  if (!signature) return false;
-  const expected = computeTwilioSignature(authToken, url, params);
-  const a = Buffer.from(expected);
-  const b = Buffer.from(signature);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-export function formToRecord(rawBody: string): Record<string, string> {
-  const params = new URLSearchParams(rawBody);
-  const record: Record<string, string> = {};
-  for (const [key, value] of params) record[key] = value;
-  return record;
-}
+export { computeTwilioSignature, verifyTwilioSignature, formToRecord } from "@/lib/twilio/signature";
 
 const STATUS_MAP: Record<string, MessageStatusEvent["status"]> = {
   sent: "SENT",

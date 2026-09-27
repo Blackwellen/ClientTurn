@@ -1,4 +1,5 @@
 import "server-only";
+import { submissionIdFromResourceName } from "@/lib/ingest/google-ads-ids";
 import { randomBytes } from "node:crypto";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -259,13 +260,19 @@ async function ingestSubmission(businessId: string, data: LeadFormSubmissionData
   const email = fieldValue(fields, "EMAIL") ?? null;
   const postcode = fieldValue(fields, "POSTAL_CODE") ?? fieldValue(fields, "ZIP_CODE") ?? null;
 
+  // The webhook identifies a submission by its bare `lead_id`; the search API
+  // by `customers/{cid}/leadFormSubmissionData/{id}`. Recording the trailing id
+  // for both means a submission seen by both paths is one touch, not two.
+  if (!data.resourceName) return;
+  const submissionId = submissionIdFromResourceName(data.resourceName);
+
   const result = await ingestLead(
     {
       businessId,
       source: {
         type: "AD_FORM",
         provider: "google_ads",
-        providerRecordId: data.resourceName,
+        providerRecordId: submissionId,
         formId: data.assetId != null ? String(data.assetId) : undefined,
         campaignId: data.campaignId != null ? String(data.campaignId) : undefined,
         adsetId: data.adGroupId != null ? String(data.adGroupId) : undefined,
@@ -283,7 +290,7 @@ async function ingestSubmission(businessId: string, data: LeadFormSubmissionData
       },
     },
     {
-      externalId: `google_ads:${data.resourceName}`,
+      externalId: `google_ads:${submissionId}`,
       process: { sourceName: "Google Ads Lead Form" },
     },
   );

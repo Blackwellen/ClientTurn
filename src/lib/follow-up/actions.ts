@@ -18,6 +18,9 @@ import { ProviderNotConfiguredError } from "@/lib/messaging/types";
 import { findUnknownMergeFields, renderTemplate } from "@/lib/automation/scheduler";
 import { TIMEZONES } from "@/lib/settings/types";
 import { getTestSendContext } from "./queries";
+import { FOLLOW_UP_CHANNEL_STRATEGIES, SMS_CAP_BOUNDS } from "./channel-strategy";
+import { clampFrequencyCaps, FREQUENCY_CAP_BOUNDS } from "@/lib/reengagement/frequency";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { testSendSchema, type TestSendInput } from "./types";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -67,6 +70,126 @@ export async function saveFollowUpTimezone(input: {
 
   revalidatePath("/app/follow-up");
   revalidatePath("/app/settings?section=workspace");
+  return { ok: true };
+}
+
+const channelBudgetSchema = z.object({
+  strategy: z.enum(FOLLOW_UP_CHANNEL_STRATEGIES),
+  followUpSmsCap: z.coerce
+    .number()
+    .int()
+    .min(SMS_CAP_BOUNDS.followUp.min)
+    .max(SMS_CAP_BOUNDS.followUp.max),
+  conversationSmsDailyCeiling: z.coerce
+    .number()
+    .int()
+    .min(SMS_CAP_BOUNDS.conversation.min)
+    .max(SMS_CAP_BOUNDS.conversation.max),
+});
+
+/**
+ * Channel & SMS budget (economics.md §3): which channel automated steps use,
+ * and how many SMS segments one lead may cost. Enforced server-side at send
+ * time (`billingSendGate`); this only records the workspace's choice.
+ */
+export async function saveFollowUpChannelBudget(input: {
+  strategy: string;
+  followUpSmsCap: number;
+  conversationSmsDailyCeiling: number;
+}): Promise<ActionResult> {
+  const parsed = channelBudgetSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(
+      `Choose a channel option, a follow-up cap of ${SMS_CAP_BOUNDS.followUp.min}-${SMS_CAP_BOUNDS.followUp.max} segments and an AI reply ceiling of ${SMS_CAP_BOUNDS.conversation.min}-${SMS_CAP_BOUNDS.conversation.max}.`,
+    );
+  }
+
+  const workspace = await admin();
+  if (!workspace) return fail("You do not have permission to change the follow-up budget.");
+
+  const { error } = await createAdminClient()
+    .from("business_settings")
+    .update({
+      follow_up_channel_strategy: parsed.data.strategy,
+      follow_up_sms_cap_segments: parsed.data.followUpSmsCap,
+      conversation_sms_daily_ceiling: parsed.data.conversationSmsDailyCeiling,
+    })
+    .eq("business_id", workspace.businessId);
+
+  if (error) return fail("Could not save the follow-up budget.");
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "automation.channel_budget_changed",
+    entityType: "business",
+    entityId: workspace.businessId,
+    metadata: parsed.data,
+  });
+
+  revalidatePath("/app/follow-up");
+  return { ok: true };
+}
+
+const bounded = (key: keyof typeof FREQUENCY_CAP_BOUNDS) =>
+  z.coerce.number().int().min(FREQUENCY_CAP_BOUNDS[key].min).max(FREQUENCY_CAP_BOUNDS[key].max);
+
+const contactFrequencySchema = z
+  .object({
+    perDay: bounded("perDay"),
+    perWeek: bounded("perWeek"),
+    per30Days: bounded("per30Days"),
+    deadAfter: bounded("deadAfter"),
+    notNowEnabled: z.boolean(),
+    noShowEnabled: z.boolean(),
+    winBackEnabled: z.boolean(),
+  })
+  .refine((value) => value.perWeek >= value.perDay && value.per30Days >= value.perWeek, {
+    message: "The weekly limit must be at least the daily one, and the 30-day limit at least the weekly one.",
+  });
+
+/**
+ * Contact frequency & re-engagement (reengagement/frequency.ts): the per-lead
+ * caps on automated touches across every loop, the dead-lead rule, and the
+ * intent-driven triggers. Within safe bounds only; enforced at send time.
+ */
+export async function saveContactFrequency(input: unknown): Promise<ActionResult> {
+  const parsed = contactFrequencySchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(
+      parsed.error.issues[0]?.message ??
+        `Limits must be within ${FREQUENCY_CAP_BOUNDS.perDay.min}-${FREQUENCY_CAP_BOUNDS.perDay.max} a day, ${FREQUENCY_CAP_BOUNDS.perWeek.min}-${FREQUENCY_CAP_BOUNDS.perWeek.max} a week and ${FREQUENCY_CAP_BOUNDS.per30Days.min}-${FREQUENCY_CAP_BOUNDS.per30Days.max} per 30 days.`,
+    );
+  }
+  const workspace = await admin();
+  if (!workspace) return fail("You do not have permission to change contact frequency.");
+
+  const caps = clampFrequencyCaps(parsed.data);
+  const { error } = await createAdminClient()
+    .from("business_settings")
+    .update({
+      contact_cap_daily: caps.perDay,
+      contact_cap_weekly: caps.perWeek,
+      contact_cap_30d: caps.per30Days,
+      dead_lead_after_touches: caps.deadAfter,
+      reengage_not_now_enabled: parsed.data.notNowEnabled,
+      reengage_no_show_enabled: parsed.data.noShowEnabled,
+      win_back_enabled: parsed.data.winBackEnabled,
+    } as never)
+    .eq("business_id", workspace.businessId);
+  if (error) {
+    return fail(isSchemaLag(error) ? "Contact frequency settings are not available on this database yet." : "Could not save contact frequency.");
+  }
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "automation.contact_frequency_changed",
+    entityType: "business",
+    entityId: workspace.businessId,
+    metadata: { ...caps, notNow: parsed.data.notNowEnabled, noShow: parsed.data.noShowEnabled, winBack: parsed.data.winBackEnabled },
+  });
+  revalidatePath("/app/follow-up");
   return { ok: true };
 }
 

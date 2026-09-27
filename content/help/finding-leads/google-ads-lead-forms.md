@@ -29,11 +29,14 @@ On the first check ClientTurn looks back over the previous 24 hours. After that 
 
 Google's lead-form webhook sends each submission to a web address, with a secret key Google calls `google_key`. ClientTurn creates a key for your workspace when you connect Google Ads.
 
-1. In Google Ads, open the lead form asset and find the **Lead delivery option** (webhook integration).
-2. Enter your ClientTurn webhook URL and key.
-3. Use Google's **Send test data** button. Test submissions are marked as test leads in ClientTurn.
+1. In **Settings → Connections**, open the **Google Ads** card's **Manage** panel. Under **Instant delivery (webhook)**, copy the **Webhook URL** and the **Key**. Only owners and admins can see the key.
+2. In Google Ads, open the campaign, then **Assets**, then your lead form.
+3. Under **Lead delivery**, choose **Webhook integration**, paste the webhook URL and the key, and save.
+4. Press **Send test data**. The test lead arrives in ClientTurn marked as a test.
 
-> **Important:** At the time of writing, the webhook address and key are not yet shown on the Google Ads card in Settings. If you want to use the webhook and cannot see them, contact support from the help button and we will provide them. Polling works without the webhook.
+Repeat for each lead form. Polling keeps running as a safety net.
+
+> **Note:** If the panel says no webhook key is stored for the connection, disconnect and reconnect Google Ads to generate one.
 
 How the webhook behaves:
 
@@ -43,7 +46,7 @@ How the webhook behaves:
 
 ## What happens to each lead
 
-Each submission goes through the same intake checks as every other source (see [Lead sources explained](/help/finding-leads/lead-sources-explained)). The form, campaign and Google click ID (GCLID) are recorded for attribution, and speed-to-lead is measured from the time the person submitted the form. A new lead is qualified and enters your follow-up sequence.
+Each submission goes through the same intake checks as every other source (see [Lead sources explained](/help/finding-leads/lead-sources-explained)). The lead is recorded with Google Ads as its source, so source reporting tells it apart from other leads. The form, campaign and Google click ID (GCLID) are recorded for attribution, and speed-to-lead is measured from the time the person submitted the form. A new lead is qualified and enters your follow-up sequence.
 
 ## If leads stop arriving
 

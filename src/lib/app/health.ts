@@ -63,7 +63,7 @@ export const getWorkspaceHealth = cache(
         severity: "warning",
         title: "Setup is not finished",
         description:
-          "Client Turn will not contact new leads until onboarding is complete.",
+          "ClientTurn will not contact new leads until onboarding is complete.",
         actionLabel: "Finish setup",
         actionHref: "/onboarding",
       });

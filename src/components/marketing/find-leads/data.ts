@@ -28,16 +28,16 @@ import { WIZARD_STEPS } from "../../../lib/outreach/campaign-draft.ts";
 /* ------------------------------------------------------------------- hero */
 
 export const HERO_PROMPT_CHIPS = [
-  "Property managers in Bournemouth",
-  "Facilities managers in Hampshire",
-  "Commercial buildings with flat roofs",
-  "Hotels planning refurbishment",
-  "Commercial facilities management",
-  "Multi-site retail operators",
+  "Ecommerce brands in Manchester",
+  "Shopify stores with 10–200 staff",
+  "DTC brands hiring ecommerce roles",
+  "SaaS companies after a funding round",
+  "Professional services firms in the North West",
+  "Multi-brand online retailers",
 ] as const;
 
 export const HERO_REQUEST =
-  "Find property managers within 40 miles of Bournemouth who manage multiple properties and may need a commercial roofing contractor.";
+  "Find ecommerce brands within 40 miles of Manchester with 10–200 staff that may need a Shopify rebuild or site redesign.";
 
 export const HERO_GREETING = "Hi — tell me about the customers you want to find.";
 
@@ -49,14 +49,14 @@ export const HERO_REPLY =
 
 /** The plan summary the hero reply expands into. Mirrors `planSummaryLines`. */
 export const HERO_PLAN: { label: string; value: string[] }[] = [
-  { label: "Industry", value: ["Property management / facilities"] },
-  { label: "Location", value: ["Bournemouth + 40 mile radius"] },
-  { label: "Company", value: ["5+ employees", "Multi-property operators"] },
+  { label: "Industry", value: ["Ecommerce / online retail"] },
+  { label: "Location", value: ["Manchester + 40 mile radius"] },
+  { label: "Company", value: ["10–200 employees", "Own online store"] },
   {
     label: "Decision makers",
-    value: ["Property Manager", "Facilities Manager", "Director"],
+    value: ["Head of Ecommerce", "Marketing Director", "Founder"],
   },
-  { label: "Intent", value: ["Roof repair", "Maintenance", "Renovation"] },
+  { label: "Intent", value: ["Replatforming", "Site redesign", "Ecommerce hiring"] },
   {
     label: "Exclusions",
     value: ["Existing customers", "Competitors", "Suppressed contacts"],
@@ -66,38 +66,38 @@ export const HERO_PLAN: { label: string; value: string[] }[] = [
 ];
 
 export const ACQUISITION_PROFILE: { label: string; value: string[] }[] = [
-  { label: "Business type", value: ["Roofing contractor"] },
+  { label: "Business type", value: ["Web design & development studio"] },
   {
     label: "Services",
-    value: ["Roof repair", "Roof replacement", "Commercial roofing"],
+    value: ["Shopify builds", "Site redesigns", "Conversion optimisation"],
   },
-  { label: "Locations", value: ["Bournemouth", "Dorset", "Hampshire"] },
+  { label: "Locations", value: ["Manchester", "Leeds", "Liverpool"] },
   {
     label: "Target customers",
-    value: ["Property managers", "Facilities teams", "Commercial operators"],
+    value: ["Ecommerce brands", "DTC founders", "Online retailers"],
   },
-  { label: "Conversion goal", value: ["Site visits and quotes"] },
+  { label: "Conversion goal", value: ["Discovery calls and proposals"] },
 ];
 
 export const PREVIOUS_SEARCHES = [
   {
-    title: "Property managers — Bournemouth",
+    title: "Ecommerce brands — Manchester",
     meta: "Draft plan",
     age: "2 days ago",
   },
   {
-    title: "Commercial buildings — Dorset",
+    title: "DTC founders — North West",
     meta: "Plan reviewed",
     age: "5 days ago",
   },
-  { title: "Hotels — South England", meta: "Draft plan", age: "1 week ago" },
+  { title: "SaaS companies — Leeds", meta: "Draft plan", age: "1 week ago" },
   {
-    title: "Facilities management — Hampshire",
+    title: "Professional services — Liverpool",
     meta: "Plan reviewed",
     age: "1 week ago",
   },
   {
-    title: "Multi-site retail — South West",
+    title: "Multi-brand retail — Yorkshire",
     meta: "Draft plan",
     age: "2 weeks ago",
   },
@@ -133,17 +133,17 @@ export const ANALYSIS_STEPS = [
 ] as const;
 
 export const LEARNED_PROFILE: { label: string; value: string[] }[] = [
-  { label: "Business", value: ["Roofing contractor"] },
+  { label: "Business", value: ["Web design & development studio"] },
   {
     label: "Services",
-    value: ["Roof repair", "Roof replacement", "Flat roofing"],
+    value: ["Shopify builds", "Site redesigns", "Conversion optimisation"],
   },
-  { label: "Territories", value: ["Bournemouth", "Dorset", "Hampshire"] },
+  { label: "Territories", value: ["Manchester", "North West", "Remote UK"] },
   {
     label: "Target customers",
-    value: ["Property managers", "Commercial businesses"],
+    value: ["Ecommerce brands", "Online retailers"],
   },
-  { label: "Conversion goal", value: ["Site visit / quote"] },
+  { label: "Conversion goal", value: ["Discovery call / proposal"] },
 ];
 
 /**
@@ -254,79 +254,79 @@ export type DemoProspect = {
 
 export const DEMO_PROSPECTS: DemoProspect[] = [
   {
-    company: "Peninsula Estates",
-    companyMeta: "11–50 · Property management",
-    initials: "PE",
-    contact: "James Carter",
-    role: "Property Manager",
+    company: "Loomwell Goods",
+    companyMeta: "11–50 · DTC homeware",
+    initials: "LG",
+    contact: "Hannah Carter",
+    role: "Head of Ecommerce",
     fit: 92,
     grade: "A",
     intent: "High",
-    location: "Bournemouth",
+    location: "Manchester",
     verification: "Verified",
     eligibility: "Eligible",
-    campaign: "South Coast — Q4",
+    campaign: "North West ecommerce — Q4",
     outreach: "Ready",
     lastActivity: "Sourced 2 hours ago",
   },
   {
-    company: "Dorset Property Group",
-    companyMeta: "10–25 · Property management",
-    initials: "DP",
+    company: "Parcel & Pine",
+    companyMeta: "10–25 · Online retail",
+    initials: "PP",
     contact: "Sophie Williams",
-    role: "Facilities Manager",
+    role: "Ecommerce Manager",
     fit: 88,
     grade: "A",
     intent: "Medium",
-    location: "Poole",
+    location: "Salford",
     verification: "Verified",
     eligibility: "Eligible",
-    campaign: "South Coast — Q4",
+    campaign: "North West ecommerce — Q4",
     outreach: "Ready",
     lastActivity: "Sourced 2 hours ago",
   },
   {
-    company: "Wessex Facilities Ltd",
-    companyMeta: "50–200 · Facilities management",
-    initials: "WF",
+    company: "Tidewater Supply Co.",
+    companyMeta: "50–200 · B2B ecommerce",
+    initials: "TS",
     contact: "Tom Bradley",
     role: "Director",
     fit: 84,
     grade: "B",
     intent: "Medium",
-    location: "Southampton",
+    location: "Stockport",
     verification: "Verified",
     eligibility: "Eligible",
-    campaign: "South Coast — Q4",
+    campaign: "North West ecommerce — Q4",
     outreach: "In outreach",
     lastActivity: "Email sent 1 day ago",
   },
   {
-    company: "BrightBuild Estates",
-    companyMeta: "11–50 · Property management",
-    initials: "BE",
+    company: "Copperleaf Apparel",
+    companyMeta: "11–50 · Fashion ecommerce",
+    initials: "CA",
     contact: "Rachel King",
-    role: "Property Manager",
+    role: "Head of Digital",
     fit: 82,
     grade: "B",
     intent: "Medium",
-    location: "Winchester",
+    location: "Leeds",
     verification: "Verified",
     eligibility: "Eligible",
-    campaign: "South Coast — Q4",
+    campaign: "North West ecommerce — Q4",
     outreach: "Replied",
     lastActivity: "Replied 4 hours ago",
   },
   {
-    company: "Harbour Retail Group",
-    companyMeta: "50–200 · Multi-site retail",
-    initials: "HR",
+    company: "Hollins & Hart",
+    companyMeta: "50–200 · Multi-brand retail",
+    initials: "HH",
     contact: "Mark Stevens",
-    role: "Estates Manager",
+    role: "Digital Director",
     fit: 79,
     grade: "B",
     intent: "High",
-    location: "Portsmouth",
+    location: "Liverpool",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -334,15 +334,15 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     lastActivity: "Sourced 4 hours ago",
   },
   {
-    company: "Coastline Living",
-    companyMeta: "5–20 · Residential lettings",
-    initials: "CL",
+    company: "Fernway Pet Co.",
+    companyMeta: "5–20 · DTC pet supplies",
+    initials: "FP",
     contact: "Daniel Brooks",
-    role: "Operations Manager",
+    role: "Founder",
     fit: 78,
     grade: "B",
     intent: "None",
-    location: "Dorchester",
+    location: "Chester",
     verification: "Verified",
     eligibility: "Review",
     campaign: null,
@@ -350,15 +350,15 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     lastActivity: "Sourced 3 hours ago",
   },
   {
-    company: "Pinnacle Hotels",
-    companyMeta: "10–50 · Hospitality",
-    initials: "PH",
+    company: "Marlow & Finch",
+    companyMeta: "10–50 · Homeware brand",
+    initials: "MF",
     contact: "James Holloway",
-    role: "Maintenance Director",
+    role: "Marketing Director",
     fit: 76,
     grade: "B",
     intent: "Medium",
-    location: "Bath",
+    location: "Warrington",
     verification: "Pending",
     eligibility: "Review",
     campaign: null,
@@ -366,15 +366,15 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     lastActivity: "Sourced 5 hours ago",
   },
   {
-    company: "Summit Home Services",
-    companyMeta: "5–25 · Facilities management",
-    initials: "SH",
+    company: "Brightside Nutrition",
+    companyMeta: "5–25 · Health & wellness DTC",
+    initials: "BN",
     contact: "Oliver Grant",
     role: "Director",
     fit: 74,
     grade: "B",
     intent: "Low",
-    location: "Salisbury",
+    location: "Bolton",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -382,15 +382,15 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     lastActivity: "Sourced 5 hours ago",
   },
   {
-    company: "County Estate Solutions",
-    companyMeta: "10–50 · Property management",
-    initials: "CE",
+    company: "Kiln & Co.",
+    companyMeta: "10–50 · Ceramics ecommerce",
+    initials: "KC",
     contact: "Emily Rogers",
     role: "Operations Director",
     fit: 72,
     grade: "B",
     intent: "Medium",
-    location: "Taunton",
+    location: "Preston",
     verification: "Verified",
     eligibility: "Eligible",
     campaign: null,
@@ -398,15 +398,15 @@ export const DEMO_PROSPECTS: DemoProspect[] = [
     lastActivity: "Sourced 6 hours ago",
   },
   {
-    company: "Southern Heights Estates",
-    companyMeta: "11–50 · Property management",
-    initials: "SE",
+    company: "Northfield Outdoor",
+    companyMeta: "11–50 · Outdoor retail",
+    initials: "NO",
     contact: "Sophie Allen",
     role: "Office Manager",
     fit: 68,
     grade: "C",
     intent: "Low",
-    location: "Exeter",
+    location: "Sheffield",
     verification: "Verified",
     eligibility: "Review",
     campaign: null,
@@ -464,14 +464,14 @@ const FACTOR_DETAIL: Record<
   ICP_FIT: {
     share: 0.97,
     sentence: "Matches your target industry, size and services.",
-    evidence: "Multi-property manager, 11–50 employees, commercial portfolio",
+    evidence: "Online retailer, 11–50 employees, own Shopify store",
     source: "Licensed company data provider",
     freshness: "6 days",
     confidence: "High",
   },
   ROLE_AUTHORITY: {
     share: 0.9,
-    sentence: "Property Manager — a decision-making role.",
+    sentence: "Head of Ecommerce — a decision-making role.",
     evidence: "Role title classified as a decision maker",
     source: "Licensed contact data provider",
     freshness: "6 days",
@@ -479,7 +479,7 @@ const FACTOR_DETAIL: Record<
   },
   GEOGRAPHY: {
     share: 1,
-    sentence: "Inside your service area (Bournemouth, 12 miles).",
+    sentence: "Inside your target area (Manchester, 3 miles).",
     evidence: "Registered address within the plan's radius",
     source: "Plan location resolver",
     freshness: "Today",
@@ -487,17 +487,17 @@ const FACTOR_DETAIL: Record<
   },
   NEED: {
     share: 0.93,
-    sentence: "Recent activity suggests a roofing project starting.",
-    evidence: "Planning application for a roof replacement",
-    source: "Local authority open data",
+    sentence: "Recent activity suggests a site rebuild is being planned.",
+    evidence: "Job posting for a Shopify developer",
+    source: "Public job listing",
     freshness: "2 days",
     confidence: "High",
   },
   INTENT: {
     share: 0.7,
     sentence: "One live signal inside its freshness window.",
-    evidence: "New planning application — extension at 24 Oak Road",
-    source: "Permitted public planning source",
+    evidence: "New job posting — Shopify developer, Manchester",
+    source: "Permitted public job source",
     freshness: "2 days",
     confidence: "High",
   },
@@ -538,20 +538,20 @@ export const DEMO_FACTORS: DemoFactor[] = (
 export const DEMO_SCORE = DEMO_FACTORS.reduce((total, f) => total + f.earned, 0);
 
 export const SCORE_SUBJECT = {
-  company: "Peninsula Estates",
-  initials: "PE",
-  meta: "11–50 employees · Property management",
-  location: "Bournemouth, UK",
-  contact: "James Carter",
-  role: "Property Manager",
+  company: "Loomwell Goods",
+  initials: "LG",
+  meta: "11–50 employees · DTC homeware",
+  location: "Manchester, UK",
+  contact: "Hannah Carter",
+  role: "Head of Ecommerce",
 } as const;
 
 export const SCORE_POSITIVES = [
   "Target industry match",
   "Decision-making role",
-  "Inside service area",
+  "Inside target area",
   "Verified work email",
-  "Recent renovation signal",
+  "Recent replatforming signal",
 ] as const;
 
 export const SCORE_CONCERNS = [
@@ -559,9 +559,9 @@ export const SCORE_CONCERNS = [
 ] as const;
 
 export const EVIDENCE_ROWS = [
-  { label: "Company website", value: "peninsula-estates.co.uk" },
-  { label: "Planning application", value: "Roof replacement · 2 days ago" },
-  { label: "Job postings", value: "Facilities coordinator · 6 days ago" },
+  { label: "Company website", value: "loomwellgoods.example" },
+  { label: "Job posting", value: "Shopify developer · 2 days ago" },
+  { label: "Tech stack", value: "Shopify · detected on site" },
   { label: "Data last verified", value: "3 days ago" },
 ] as const;
 
@@ -569,32 +569,32 @@ export const EVIDENCE_ROWS = [
 
 export const INTENT_EVENTS = [
   {
-    title: "New planning application",
-    detail: "Extension at 24 Oak Road, Bournemouth",
+    title: "Ecommerce role advertised",
+    detail: "Shopify developer, DTC homeware brand, Manchester",
     strength: "High" as const,
     age: "2 hours ago",
   },
   {
-    title: "Facilities manager role advertised",
-    detail: "New Operations Director, multi-site portfolio",
+    title: "New Head of Digital appointed",
+    detail: "Leadership change at a multi-brand retailer",
     strength: "High" as const,
     age: "1 day ago",
   },
   {
     title: "Company expansion announcement",
-    detail: "Third site added to the managed portfolio",
+    detail: "Second brand launched online",
     strength: "Medium" as const,
     age: "2 days ago",
   },
   {
     title: "Website engagement",
-    detail: "Two visits to your commercial roofing page",
+    detail: "Two visits to your Shopify rebuild page",
     strength: "Medium" as const,
     age: "3 days ago",
   },
   {
     title: "Funding round announced",
-    detail: "Growth investment into property services",
+    detail: "Growth investment into a DTC brand",
     strength: "Medium" as const,
     age: "3 days ago",
   },
@@ -617,8 +617,8 @@ export const INTENT_FILTERS = [
  * promise, said shorter; the label itself still comes from the product.
  */
 export const GOAL_BLURBS: Record<string, string> = {
-  BOOK_SITE_VISIT: "Arrange an on-site survey or inspection.",
-  REQUEST_QUOTE: "Invite a prospect to ask for a price.",
+  BOOK_APPOINTMENT: "Get a discovery call in the diary.",
+  REQUEST_QUOTE: "Invite a prospect to ask for a proposal.",
   PHONE_CALL: "Get a call booked with the decision maker.",
 };
 
@@ -633,13 +633,13 @@ export const CAMPAIGN_SEQUENCE = [
   {
     day: "Day 0",
     channel: "Email",
-    subject: "Your upcoming project",
+    subject: "Your store rebuild",
   },
   { day: "Day 3", channel: "Email", subject: "A quick question" },
   {
     day: "Day 7",
     channel: "Email",
-    subject: "Two nearby examples",
+    subject: "Two recent Shopify rebuilds",
   },
   { day: "Day 14", channel: "Email", subject: "Final follow up" },
 ] as const;
@@ -649,7 +649,7 @@ export const CAMPAIGN_LIMITS = [
   { label: "Daily contacts", value: "40" },
   { label: "Monthly contacts", value: "800" },
   { label: "Communication allowance", value: "Within your plan" },
-  { label: "Overage", value: "Blocked" },
+  { label: "At the allowance", value: "Stops, no overage" },
   { label: "Auto Optimize", value: "On" },
   { label: "Review mode", value: "Human review" },
 ] as const;
@@ -669,21 +669,21 @@ export const PROMOTION_CONVERSATION = [
     author: "You",
     initials: "CT",
     when: "Tue 14 Oct, 10:24",
-    body: "Hi James — I saw the recent planning application at Oak Road and wanted to introduce our commercial roofing team.",
+    body: "Hi Hannah — I saw Loomwell is hiring a Shopify developer and wanted to introduce our studio. We rebuild Shopify stores for homeware brands.",
     outbound: true,
   },
   {
-    author: "James Carter",
-    initials: "PE",
+    author: "Hannah Carter",
+    initials: "LG",
     when: "Tue 14 Oct, 11:03",
-    body: "Yes, we're looking at a new flat roof for one of the commercial units. Could you send some information?",
+    body: "Good timing, we're weighing up a rebuild before peak season. Could you send some examples?",
     outbound: false,
   },
   {
     author: "You",
     initials: "CT",
     when: "Tue 14 Oct, 11:15",
-    body: "Of course. I've attached a short brochure and two nearby examples — would a site visit next week suit?",
+    body: "Of course. I've attached two recent Shopify rebuilds — would a 30-minute call next week suit?",
     outbound: true,
   },
 ] as const;

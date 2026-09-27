@@ -4,7 +4,11 @@ summary: The seven things a lead score is built from, what grades A to D mean, h
 category: qualifying
 keywords: [score, lead score, grade, a b c d, dimensions, fit, intent, need, commercial, decision access, timing, engagement, why this score, rescore, score history, protected characteristics, explainable]
 order: 30
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/qualifying/lead-scoring-explained-1.png
+    alt: "The Why this score card with its sentence, dimension bars and evidence, and the Worth finding out list"
+    caption: "Why this score: the sentence, the evidence behind each dimension, and what is worth finding out"
 ---
 
 Every lead gets a score from 0 to 100 and a grade. The score is worked out by fixed arithmetic from facts on record, so the same facts always give the same score. It is not produced by AI, and every point can be traced to a fact.

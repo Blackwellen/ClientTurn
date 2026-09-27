@@ -80,6 +80,17 @@ export type PolicyReasonCode =
   | "BLOCKED_DOMAIN_HEALTH"
   | "BLOCKED_BUSINESS_STATE"
   | "BLOCKED_SOURCE_NOT_PERMITTED"
+  /**
+   * The cross-loop frequency guard (reengagement/frequency.ts): this lead has
+   * had as many automated messages this week / 30 days as the workspace
+   * allows. Automated sends only; a person's message and a reply are exempt.
+   */
+  | "BLOCKED_CONTACT_FREQUENCY"
+  /**
+   * The dead-lead rule: several automated messages in a row unanswered and
+   * intent LOW or below, so automated loops stop until the lead engages.
+   */
+  | "BLOCKED_DEAD_LEAD"
   | "REVIEW_REQUIRED"
   /** Review because the recipient's subscriber type is unresolved or needs a
    *  person; distinct from a provenance review so a contentless connection
@@ -259,6 +270,10 @@ const REASON_SENTENCES: Record<PolicyReasonCode, string> = {
   BLOCKED_BUSINESS_STATE: "This workspace does not have an active subscription.",
   BLOCKED_SOURCE_NOT_PERMITTED:
     "This record came from a source your workspace has not permitted for outreach.",
+  BLOCKED_CONTACT_FREQUENCY:
+    "This lead has already had as many automated messages as your contact-frequency limits allow.",
+  BLOCKED_DEAD_LEAD:
+    "This lead has not responded to several automated messages in a row, so automated follow-up has stopped until they engage.",
   REVIEW_REQUIRED: "This contact needs a human decision before any message is sent.",
   REVIEW_SUBSCRIBER_TYPE:
     "We could not confirm whether this is a business or an individual, so it needs a human decision before any message is sent.",
@@ -376,4 +391,4 @@ export function referralEvidenceSufficient(evidence: string | null | undefined):
   return (evidence ?? "").trim().length >= REFERRAL_EVIDENCE_MIN;
 }
 
-export const REFERRAL_EVIDENCE_MESSAGE = `A referral needs evidence: who referred them and when, in at least ${REFERRAL_EVIDENCE_MIN} characters. Without it the contact is held for review rather than created as a lead.`;
+export const REFERRAL_EVIDENCE_MESSAGE = `A referral needs evidence: who referred them and when, in at least ${REFERRAL_EVIDENCE_MIN} characters. Without it the contact is not created as a lead (Add lead and CSV hold it back for review, the API returns 400 and MCP refuses).`;

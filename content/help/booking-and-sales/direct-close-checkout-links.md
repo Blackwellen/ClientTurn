@@ -4,7 +4,11 @@ summary: Let the assistant send a lead one of your own approved checkout links, 
 category: booking-and-sales
 keywords: [direct close, checkout link, buy now, payment link, self-serve, ecommerce, price text, discount, maximum discount, approved links, sell without a call, signup]
 order: 60
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/booking-and-sales/direct-close-checkout-links-1.png
+    alt: "The Selling direct close card with Allow direct close, maximum discount and an approved checkout link"
+    caption: "Allow direct close, approve each checkout link and its exact price wording, and set a maximum discount"
 ---
 
 For businesses that sell without a call, such as self-serve SaaS or ecommerce, the assistant can close the sale by sending a checkout link. It is **off** until you turn it on, and even then it can only send links you have approved, with the price wording you wrote.
@@ -36,7 +40,7 @@ You can add up to 25 links. Only owners and admins can change these settings.
 - It chooses a link only from your approved list. The link is added to the message by ClientTurn, character for character, so the assistant cannot alter it.
 - It may only repeat your **Price text**. It never invents a price.
 - Any discount in its message is checked against your **Maximum discount (%)**. A discount above it, or a vague one such as "money off" with no figure, is rejected before sending.
-- It never says a purchase has happened. A sale is recorded only when your CRM, a connected system or your team confirms it.
+- It never says a purchase has happened. A sale is recorded only when your Stripe account, your order webhook, your CRM or your team confirms it. See [Payment confirmation and the thank-you](/help/booking-and-sales/payment-confirmation) and [Abandoned checkout follow-up](/help/booking-and-sales/abandoned-checkout).
 - It does not send a link to someone who cannot be messaged on that channel.
 
 When a link is sent, the lead's opportunity moves to the checkout-sent stage. See [Opportunities, won and lost](/help/booking-and-sales/opportunities-and-won-lost).

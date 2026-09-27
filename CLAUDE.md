@@ -43,8 +43,11 @@ algorithms, commercial framing), the **Bible wins** unless listed under "Resolve
    are 100% deterministic and remain the system of record. Azure AI is an *optional assist layer*
    that may only (a) classify an inbound message intent, (b) extract a candidate value for an
    existing configured question. Deterministic rules always make the decision. Low confidence or
-   any unmatched value ⇒ `REVIEW` + human handover. **AI never composes a binding promise, quote,
-   availability or service area.** Gated per plan tier and per workspace toggle; off by default.
+   an unmatched value records a `REVIEW` verdict (AI never decides it); the AI keeps the
+   conversation going with a clarifying question; human hand-over is the last resort, as listed in
+   [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) ("Hand-over policy", owner decision 2026-09-27).
+   **AI never composes a binding promise, quote, availability or service area.** Gated per plan
+   tier and per workspace toggle; off by default.
 2. **Storage.** Bible says Supabase Storage. **Resolution:** Cloudflare R2 for logos and CSV
    imports, accessed only via short-lived signed URLs generated server-side.
 3. **Plans.** Bible defines 3 tiers. **Resolution:** 4 tiers — Starter / Growth / Pro (self-serve

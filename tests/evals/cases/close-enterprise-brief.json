@@ -1,0 +1,54 @@
+{
+  "id": "close-enterprise-brief",
+  "scenario": "§93 close: enterprise, a meeting with a brief",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Who else would be involved in evaluating this?"
+    },
+    {
+      "role": "lead",
+      "text": "Our COO and IT lead. What's the next step?"
+    }
+  ],
+  "facts": {
+    "confirmedSlots": [
+      "Tue 6 Oct, 10:00am",
+      "Wed 7 Oct, 2:00pm"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "strategy": {
+      "mode": "BOOKING_ASSISTANCE",
+      "bookingRoute": "SLOTS",
+      "mustInclude": [
+        "brief of what they've told you"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "The next step is a 30 minute call with your COO and IT lead, and I'll pass on a brief of what you've told me so our specialist comes prepared. I can do Tue 6 Oct, 10:00am or Wed 7 Oct, 2:00pm. Does either work?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Let me delve into this and circle back.",
+        "valid": false,
+        "codes": [
+          "STYLE_AI_TELL",
+          "STYLE_CLICHE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

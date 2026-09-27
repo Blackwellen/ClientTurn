@@ -4,7 +4,11 @@ summary: How agents keep working when nobody is logged in, what can stop a run, 
 category: ai-agents
 keywords: [always on, background, schedule, logged out, cron, pause, stop, delete agent, next run, 24 hours, overnight]
 order: 15
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/agents-run-24-7-1.png
+    alt: "The Delete this agent dialog explaining that leads, prospects and sourcing runs are kept"
+    caption: "Deleting an agent keeps the leads, prospects and sourcing runs it produced"
 ---
 
 ## Nobody needs to be logged in

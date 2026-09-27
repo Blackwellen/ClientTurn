@@ -46,6 +46,11 @@ export function ProspectIdentityCell({ row }: { row: ProspectListRow }) {
         </div>
         <p className="truncate text-[12px] text-content-muted">
           {row.company?.name ?? "No company recorded"}
+          {row.company && !row.company.domain && (
+            // An imported prospect can arrive without its company's website.
+            // Adding one (in the prospect drawer) looks for a work email.
+            <span className="ml-1.5 text-warning-700">· Website unknown</span>
+          )}
         </p>
       </div>
     </div>

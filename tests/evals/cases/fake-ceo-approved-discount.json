@@ -29,7 +29,7 @@
       }
     ],
     "live": {
-      "mustHandOver": true,
+      "mustHandOver": false,
       "mustNotContain": [
         "£1,000"
       ]

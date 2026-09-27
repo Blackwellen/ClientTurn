@@ -138,7 +138,7 @@ function buildBodies(
 
   return {
     html: `${html}<p>&mdash;<br>If you would rather not hear from us, <a href="${escaped}">unsubscribe here</a>.</p>`,
-    text: `${text}\n\n—\nIf you would rather not hear from us, unsubscribe here: ${unsubscribeUrl}`,
+    text: `${text}\n\nIf you would rather not hear from us, unsubscribe here: ${unsubscribeUrl}`,
   };
 }
 

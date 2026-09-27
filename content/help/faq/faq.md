@@ -1,10 +1,14 @@
 ---
 title: Frequently asked questions
-summary: Short answers to the questions people ask most about leads, prospects, the AI, integrations, the API and data protection
+summary: Short answers to the questions people ask most about leads, prospects, the AI, integrations, the API, billing and data protection
 category: faq
-keywords: [faq, questions, answers, common questions, help, how do i, why]
+keywords: [faq, questions, answers, common questions, help, how do i, why, overage, refund, credits]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/faq/faq-1.png
+    alt: "The Help page search results for reconnect"
+    caption: "Search the help centre from the Help page"
 ---
 
 ## Leads and prospects
@@ -51,6 +55,10 @@ No. It is contact data, not permission. Under PECR, sole traders and ordinary pa
 
 No. LinkedIn's terms prohibit that kind of automation. ClientTurn prepares, paces and records LinkedIn outreach, and you send it from your own account. LinkedIn Lead Gen Forms do arrive automatically. See [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
 
+### Can ClientTurn find prospects on LinkedIn?
+
+No. ClientTurn does not search LinkedIn, and it does not turn people who engage with your company page into prospects: LinkedIn's terms forbid using member data to identify sales prospects. You can import your own LinkedIn connections export, or any list you own, as prospects. See [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
+
 ## The AI
 
 ### Is the conversation assistant on by default?
@@ -89,7 +97,7 @@ No. Records ClientTurn itself created in your CRM are recognised and never impor
 
 ### Do I need my own Twilio account?
 
-No. SMS and WhatsApp run through ClientTurn's own Twilio account on your behalf. WhatsApp is not on every plan. See [SMS and WhatsApp](/help/integrations/connecting-twilio-sms-and-whatsapp).
+No. SMS and WhatsApp run through ClientTurn's own Twilio account on your behalf. WhatsApp is a paid add-on on Growth and above, paid per message in prepaid WhatsApp tokens (2 for a reply, 5 for a marketing template), with no monthly WhatsApp platform fee. See [SMS and WhatsApp](/help/integrations/connecting-twilio-sms-and-whatsapp).
 
 ### Can I send email from my own address?
 
@@ -115,14 +123,32 @@ Check the `clientturn-signature` header: an HMAC-SHA256 of the timestamp and the
 
 ### Can I connect Claude or another AI assistant?
 
-Yes. ClientTurn is an MCP server; connect with a workspace API key. Actions with lasting effects wait for a person to approve them. See [Connecting an AI assistant](/help/developers/connect-an-ai-assistant).
+Yes. ClientTurn is an MCP server. In **Settings → Developer → Assistant connections**, choose **New connection**: it issues a key with the permissions you tick, and shows the server URL and a configuration to copy into your assistant. Actions with lasting effects wait for a person to approve them. See [Connecting an AI assistant](/help/developers/connect-an-ai-assistant).
+
+## Billing
+
+### What happens if we go over an allowance?
+
+Nothing is charged: there is no overage on any plan. For SMS and WhatsApp, sending carries on from prepaid [top-up credit or WhatsApp tokens](/help/billing/top-up-credits) if you have bought some, and stops when that is used up too. You are warned at 75%, 90% and 100%, with a recommended bundle to buy. Everything else stops at the allowance until the next period or an upgrade. See [Usage and limits](/help/billing/usage-and-limits).
+
+### Can I get a refund on credits I bought?
+
+Only if none of the credit from that purchase has been used. Once any of it has been used, the purchase is non-refundable. Credit is used oldest purchase first, does not expire, has no cash value and cannot be transferred. **Purchase history** in **Settings → Billing & Usage → Message credits** shows each purchase as **Refundable** or **Non-refundable (credit in use)**. To ask for a refund of an unused purchase, contact support. See [Top-up credits](/help/billing/top-up-credits#refunds).
 
 ## Your account
 
+### Do I need an invitation to sign up?
+
+No. Anyone can create an account, with an email address or with Google. Sign-up does not ask for a business name: you name your workspace in the first setup step. See [Getting started](/help/getting-started/getting-started#creating-your-account).
+
+### Do I have to finish every setup step?
+
+No. Only naming your workspace is required. **Skip to go live** uses recommended settings for everything else, and anything you skipped is listed under **Finish setting up** on the Dashboard. See [Setting up your workspace](/help/getting-started/setting-up-your-workspace).
+
 ### How do I replay the product tour?
 
-Choose **Take the product tour** on the **Help** tab of the round help button at the bottom right, or at the top of the **Help** page.
+Choose **Take the product tour** on the **Help** tab of the round help button at the bottom right, or at the top of the **Help** page. To tour just the page you are on, choose **Tour this page** in the top bar. See [The product tour](/help/getting-started/the-product-tour).
 
 ### Who can change settings?
 
-Owners and admins change workspace settings. Members work leads and messages. Viewers can read leads and reporting. Only the owner can delete the workspace.
+Owners and admins change workspace settings. Only the owner can invite an admin or make someone an admin. Members work leads and messages. Viewers can read leads and reporting. Only the owner can delete the workspace.

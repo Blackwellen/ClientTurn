@@ -98,6 +98,24 @@ export const PRE_REPLY_MAX_TIER: TierNumber = 2;
 /** An upgrade must clear its cost by this factor, not merely beat it. */
 export const UPGRADE_MARGIN = 20;
 
+/**
+ * Per-lead lifetime TOKEN ceiling, applied to the LEAD scope when its ceiling
+ * row sets no `ceiling_tokens` (the platform default row does not).
+ *
+ * An ABUSE ceiling, deliberately not a budget a real conversation meets. The
+ * owner's rule (2026-09-27): cost cutting must never cap or degrade a live
+ * conversation with an engaged lead. A typical agent turn is ~2,750 tokens,
+ * and a golden conversation has 2.04 model turns, so 250,000 (~90 turns) is
+ * far past any genuine sales conversation; it bounds a runaway loop or a lead
+ * spamming the agent. The LEAD £ ceiling (200p, ~1,000 turns at mini) stays as
+ * the money bound. Reaching it hands the lead to a person (HUMAN), never
+ * silence. A workspace can set its own `ceiling_tokens` on its LEAD row.
+ *
+ * An OPPORTUNITY replaces the LEAD scope (applicableScopes), so a qualified
+ * lead is bounded by its opportunity £ ceiling, not by this.
+ */
+export const DEFAULT_LEAD_TOKEN_CEILING = 250_000;
+
 /** Representative deal value per band, GBP (roughly the geometric middle). */
 export const DEAL_VALUE_GBP: Record<DealSizeBand, number> = {
   MICRO: 250,
@@ -370,14 +388,18 @@ export function remainingFromBudgets(input: {
     );
     // A workspace's own row overrides the platform default of the same scope.
     const row = rows.find((b) => b.businessId !== null) ?? rows.find((b) => b.businessId === null);
-    if (!row) continue;
     const leadScoped = scope === "LEAD" || scope === "PRE_REPLY" || scope === "OPPORTUNITY";
     if (leadScoped && !input.hasLead) continue;
+    // The LEAD scope always carries a token cap: the row's, else the default.
+    const ceilingTokens =
+      scope === "LEAD" ? (row?.ceilingTokens ?? DEFAULT_LEAD_TOKEN_CEILING) : (row?.ceilingTokens ?? null);
+    if (!row && ceilingTokens === null) continue;
+    const ceilingMinor = row?.ceilingMinor ?? null;
     const spentMinor = leadScoped ? input.spend.leadMinor : input.spend.workspaceMinor;
     const spentTokens = leadScoped ? input.spend.leadTokens : input.spend.workspaceTokens;
     out[scope] = {
-      remainingMinor: row.ceilingMinor === null ? null : row.ceilingMinor - spentMinor,
-      remainingTokens: row.ceilingTokens === null ? null : row.ceilingTokens - spentTokens,
+      remainingMinor: ceilingMinor === null ? null : ceilingMinor - spentMinor,
+      remainingTokens: ceilingTokens === null ? null : ceilingTokens - spentTokens,
     };
   }
   return out;

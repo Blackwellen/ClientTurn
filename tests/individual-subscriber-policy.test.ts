@@ -193,7 +193,7 @@ test("promotional content is detected deterministically", () => {
 test("a genuine conversational message is not flagged", () => {
   for (const text of [
     "Thanks for connecting, Sam. Good to be in touch.",
-    "Thanks for the comment, Sam — replying here rather than in the thread.\n\nWas there something specific you wanted to know?",
+    "Thanks for the comment, Sam. Replying here rather than in the thread.\n\nWas there something specific you wanted to know?",
     "Congrats on the new studio. How are you finding the move?",
   ]) {
     assert.deepEqual(promotionalFindings(text), [], text);

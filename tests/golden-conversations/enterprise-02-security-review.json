@@ -1,0 +1,22 @@
+{
+  "id": "enterprise-02-security-review",
+  "archetype": "ENTERPRISE_SAAS",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "story": "A security questionnaire request is a person's job.",
+  "turns": [
+    {
+      "lead": "Before we go further our security team needs your SOC 2 report and a completed questionnaire.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER",
+          "ANSWER_AND_ASK"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
-import { ONBOARDING_STEPS, STEP_META, type OnboardingStep } from "@/lib/onboarding/steps";
+import { ONBOARDING_STEPS, STEP_META, isOptionalStep, type OnboardingStep } from "@/lib/onboarding/steps";
 import { OButton } from "./ui";
 import { WizardProgress, WizardProgressMobile } from "./wizard-progress";
 
@@ -35,9 +35,9 @@ function HandwrittenNote({ step }: { step: OnboardingStep }) {
           "You're almost there!"
         ) : (
           <>
-            {ONBOARDING_STEPS.length} simple steps
+            One step to name it.
             <br />
-            to more business.
+            The rest can wait.
           </>
         )}
       </p>
@@ -73,7 +73,7 @@ export function OnboardingShell({
             Set up <span className="text-[var(--auth-lime)]">ClientTurn</span>
           </h1>
           <p className="mt-2.5 max-w-[640px] text-[16px] leading-relaxed text-[#c7d0dc] sm:text-[19px]">
-            Complete these steps to get to a live test lead as quickly as possible.
+            Name your workspace, then go live with the recommended settings or fine-tune each step.
           </p>
         </div>
         <HandwrittenNote step={step} />
@@ -92,6 +92,7 @@ export function OnboardingShell({
         <div className="mb-5">
           <p className="text-[12.5px] font-medium tracking-wide text-[#7a8698] uppercase">
             Step {meta.number} of {ONBOARDING_STEPS.length}
+            {isOptionalStep(step) ? " · Optional" : step === "business" ? " · Required" : ""}
           </p>
           <h2 className="mt-1 text-[26px] font-bold tracking-[-0.01em] text-[#f8fafc] sm:text-[32px]">
             {meta.title}
@@ -117,7 +118,10 @@ export function WizardFooterActions({
   saveExitPending,
   continueDisabledReason,
   isLastStep,
+  onSkipToGoLive,
 }: {
+  /** Offered on every step but the last: recommended settings for the rest. */
+  onSkipToGoLive?: () => void;
   onBack?: () => void;
   backDisabled?: boolean;
   onSaveExit: () => void;
@@ -142,7 +146,17 @@ export function WizardFooterActions({
         {continueDisabledReason && (
           <p className="text-right text-[12.5px] text-[#ffb020]">{continueDisabledReason}</p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onSkipToGoLive && (
+            <OButton
+              variant="secondary"
+              onClick={onSkipToGoLive}
+              disabled={continuePending || saveExitPending || Boolean(continueDisabledReason)}
+              title="Use the recommended settings for every step you have not done, and go to the last step. You can change them all later."
+            >
+              Skip to go live
+            </OButton>
+          )}
           <OButton
             variant="secondary"
             onClick={onSaveExit}

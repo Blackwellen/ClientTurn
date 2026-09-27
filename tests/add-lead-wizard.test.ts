@@ -8,6 +8,7 @@ import {
   blockingDuplicates,
   classifyRelationship,
   companyKey,
+  subscriberTypeFromCompanyName,
   contactabilityCheckSchema,
   conversionDestination,
   createManualLeadSchema,
@@ -525,5 +526,19 @@ describe("add lead — dirty tracking", () => {
     const state = initialAddLeadState();
     state.contact.firstName = "J";
     assert.equal(isDirty(state), true);
+  });
+});
+
+describe("found contacts added by hand (subscriber type)", () => {
+  test("only an incorporation suffix proves a corporate subscriber", () => {
+    assert.equal(subscriberTypeFromCompanyName("Acme Digital Ltd"), "CORPORATE");
+    assert.equal(subscriberTypeFromCompanyName("Acme Digital Limited"), "CORPORATE");
+    assert.equal(subscriberTypeFromCompanyName("Northwind LLP"), "CORPORATE");
+    assert.equal(subscriberTypeFromCompanyName("Brightlabs Ltd."), "CORPORATE");
+    // A trading name could be a sole trader: never assumed corporate.
+    assert.equal(subscriberTypeFromCompanyName("Smith Design"), "UNKNOWN");
+    assert.equal(subscriberTypeFromCompanyName("Ltd Edition Prints Studio"), "UNKNOWN");
+    assert.equal(subscriberTypeFromCompanyName(""), "UNKNOWN");
+    assert.equal(subscriberTypeFromCompanyName(null), "UNKNOWN");
   });
 });

@@ -1,0 +1,29 @@
+{
+  "id": "studio-03-ready-to-start",
+  "archetype": "CREATIVE_WEB_STUDIO",
+  "motion": "DIRECT_B2B",
+  "channel": "email",
+  "story": "A lead who has decided asks to get started; no more qualification.",
+  "turns": [
+    {
+      "lead": "We've seen your portfolio and want to go ahead with a new site, how do we get started?",
+      "expect": {
+        "actionIn": [
+          "CTA_CHECKOUT",
+          "CTA_BOOK",
+          "INFORM",
+          "ANSWER"
+        ],
+        "intentStateIn": [
+          "PURCHASE_READY",
+          "BOOKING_READY",
+          "HIGH"
+        ]
+      },
+      "candidate": {
+        "text": "Great to hear. Before we start, what's the main problem with your current site?",
+        "qaOk": false
+      }
+    }
+  ]
+}

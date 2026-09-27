@@ -147,7 +147,7 @@ export function FollowUpStep({
   const segments = channel === "sms" ? Math.max(1, Math.ceil(openingLength / 160)) : null;
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.15fr_0.85fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.85fr)]">
       <div className="space-y-4">
         <div>
           <OSectionTitle hint="Choose which channel to use for follow-ups.">
@@ -160,7 +160,7 @@ export function FollowUpStep({
                 SMS
               </span>
               <p className="mt-0.5 text-[12.5px] text-[#8c98ab]">
-                Send text messages to leads (most popular)
+                An instant first text; later steps go by email from your mailbox by default
               </p>
             </ORadioCard>
             <ORadioCard
@@ -174,7 +174,7 @@ export function FollowUpStep({
               </span>
               <p className="mt-0.5 text-[12.5px] text-[#8c98ab]">
                 {initial.whatsappAvailable
-                  ? "Send messages via WhatsApp"
+                  ? "Paid add-on, prepaid WhatsApp tokens"
                   : "Requires setup in Settings"}
               </p>
             </ORadioCard>
@@ -189,7 +189,9 @@ export function FollowUpStep({
             <OField label="Phone number">
               <div className="flex h-10 items-center gap-1.5 rounded-[7px] border border-[rgba(150,170,190,0.32)] bg-[#0b141d] pr-1.5 pl-3">
                 <span className="min-w-0 flex-1 truncate text-[13px] text-[#eef2f7]">
-                  {initial.businessPhone || "Not set"}
+                  {/* SMS runs on ClientTurn's number until you add your own, so
+                      "Not set" beside "Connected" read as a contradiction. */}
+                  {initial.businessPhone || (initial.smsConnected ? "ClientTurn's sending number" : "Not set")}
                 </span>
                 <OBadge tone={initial.smsConnected ? "success" : "neutral"} className="shrink-0 px-1.5 whitespace-nowrap">
                   {initial.smsConnected ? "Connected" : "Setup required"}

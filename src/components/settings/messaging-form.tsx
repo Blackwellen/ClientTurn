@@ -270,7 +270,7 @@ export function MessagingForm({
           <SectionHeader
             icon={MessageSquare}
             title="Channels"
-            description="How Client Turn reaches a new lead, and what it falls back to."
+            description="How ClientTurn reaches a new lead, and what it falls back to."
           />
         </CardHeader>
         <CardContent className="space-y-4">

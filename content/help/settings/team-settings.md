@@ -4,7 +4,11 @@ summary: Invite people, choose their role, resend or revoke invitations, remove 
 category: settings
 keywords: [team, invite, invitation, colleague, user, seat, seats, roles, owner, admin, member, viewer, permissions, remove member, transfer ownership, resend invitation, expired invite]
 order: 50
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/settings/team-settings-1.png
+    alt: "The Team members table with Invite member, a role select and the Roles card"
+    caption: "Invite people, set each person's role, and check what each role can do"
 ---
 
 **Settings → Team** lists everyone with access to the workspace and what they can do.
@@ -30,7 +34,7 @@ They get an email and appear in the table straight away with the status **Invite
 
 Invitations expire after **14 days**. An expired one shows **Invite expired**. Use **Resend invitation** from the row's menu to give them another 14 days.
 
-Owners and admins can invite people. Once someone is an admin, only the owner can change their role or remove them.
+Owners and admins can invite members and viewers. Only the owner can invite an admin or make someone an admin, and once someone is an admin, only the owner can change their role or remove them.
 
 ## Seats
 

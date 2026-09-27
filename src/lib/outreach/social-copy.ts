@@ -243,12 +243,12 @@ const TEMPLATES: Record<SocialCopyKind, Record<"LINKEDIN" | "OTHER", string[]>> 
       "Hi {{first_name}}, I work with {{company_type}} on {{service_line}}. Thought it might be worth being connected.",
     ],
     OTHER: [
-      "Hi {{first_name}} — {{business_name}} here. Thought it was worth connecting.",
+      "Hi {{first_name}}, {{business_name}} here. Thought it was worth connecting.",
     ],
   },
   OPENER: {
     LINKEDIN: [
-      "Thanks for connecting, {{first_name}}.\n\nI'll be straight with you — I got in touch because {{business_name}} works with {{company_type}} on {{service_line}}, and {{company_name}} looked like it might be relevant.\n\nIs that something you deal with, or is it someone else's patch?",
+      "Thanks for connecting, {{first_name}}.\n\nI'll be straight with you. I got in touch because {{business_name}} works with {{company_type}} on {{service_line}}, and {{company_name}} looked like it might be relevant.\n\nIs that something you deal with, or is it someone else's patch?",
     ],
     OTHER: [
       "Thanks for the follow, {{first_name}}.\n\n{{business_name}} works with {{company_type}} on {{service_line}}, which is why I got in touch about {{company_name}}.\n\nIs that your area, or should I be speaking to someone else?",
@@ -267,19 +267,19 @@ const TEMPLATES: Record<SocialCopyKind, Record<"LINKEDIN" | "OTHER", string[]>> 
   // more they will say, and their reply is what opens that conversation.
   PRIVATE_REPLY: {
     LINKEDIN: [
-      "Thanks for the comment, {{first_name}} — replying here rather than in the thread.\n\nWas there something specific you wanted to know?",
+      "Thanks for the comment, {{first_name}}. Replying here rather than in the thread.\n\nWas there something specific you wanted to know?",
     ],
     OTHER: [
-      "Thanks for commenting, {{first_name}} — thought I'd reply directly rather than in the thread.\n\nWhat were you after?",
+      "Thanks for commenting, {{first_name}}. Thought I'd reply directly rather than in the thread.\n\nWhat were you after?",
     ],
   },
   FOLLOW_UP: {
     LINKEDIN: [
-      "Hi {{first_name}} — following up on my note above in case it got buried.\n\nIf {{service_line}} isn't something {{company_name}} is looking at, just say and I'll leave it there.",
+      "Hi {{first_name}}, following up on my note above in case it got buried.\n\nIf {{service_line}} isn't something {{company_name}} is looking at, just say and I'll leave it there.",
       "Last one from me, {{first_name}}. I'll assume the timing isn't right and won't chase again.\n\nIf it becomes relevant later, my details are here.",
     ],
     OTHER: [
-      "Hi {{first_name}} — just following up in case my message got buried.\n\nIf it isn't relevant, say so and I'll leave it there.",
+      "Hi {{first_name}}, just following up in case my message got buried.\n\nIf it isn't relevant, say so and I'll leave it there.",
       "Last one from me. I'll assume the timing isn't right and won't chase again.",
     ],
   },
@@ -289,12 +289,12 @@ export type SocialCopyContext = {
   prospect: ProspectMergeSource;
   businessName: string;
   /**
-   * How the business describes who it works with, e.g. "letting agents".
+   * How the business describes who it works with, e.g. "ecommerce brands".
    * Falls back to a phrase that still reads as a sentence, because "I work
-   * with on roofing" is worse than a slightly vague opener.
+   * with on Shopify builds" is worse than a slightly vague opener.
    */
   companyType: string | null;
-  /** What the business does, e.g. "roof repairs". */
+  /** What the business does, e.g. "Shopify builds". */
   serviceLine: string | null;
 };
 

@@ -7,7 +7,7 @@ import { AGENT_TYPES, type AgentType } from "@/lib/agents/types";
 import { AgentWizard } from "@/components/agents/agent-wizard";
 import { PageHeader } from "@/components/app/page-header";
 
-export const metadata: Metadata = { title: "New agent · ClientTurn" };
+export const metadata: Metadata = { title: "New agent" };
 export const dynamic = "force-dynamic";
 
 export default async function NewAgentPage({

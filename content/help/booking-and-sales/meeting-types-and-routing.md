@@ -4,7 +4,11 @@ summary: Give different kinds of meeting their own length, buffer and calendar, 
 category: booking-and-sales
 keywords: [meeting types, discovery call, round robin, specialism, lead owner, assign bookings, rep routing, sales team, duration, buffer, calendar per meeting, default meeting type]
 order: 50
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/booking-and-sales/meeting-types-and-routing-1.png
+    alt: "The New meeting type dialog with duration, who takes the meeting, eligible people and the default option"
+    caption: "Each meeting type has its own length, calendar and routing"
 ---
 
 By default every booking uses one appointment length, one buffer and your booking calendar. Meeting types let you vary those, for example a 15-minute discovery call for one service and a 60-minute consultation for another, and share bookings across your team.

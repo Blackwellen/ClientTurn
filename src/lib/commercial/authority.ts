@@ -15,6 +15,16 @@
  */
 
 import { z } from "zod";
+import {
+  abandonedCheckoutSchema,
+  parseAbandonedSettings,
+  type AbandonedCheckoutSettings,
+} from "../payments/abandoned.ts";
+import {
+  TRACKING_PARAM_PATTERN,
+  trackedTokenFor,
+  trackingParamFor,
+} from "../payments/tracking.ts";
 
 export const CHECKOUT_LINKS_MAX = 25;
 
@@ -35,8 +45,33 @@ export const checkoutLinkSchema = z.object({
   /** Exactly the price wording the agent may repeat, e.g. "£49 per month". */
   price_text: z.string().trim().min(1).max(120),
   currency: z.string().trim().regex(/^[A-Z]{3}$/, "Three-letter currency code, e.g. GBP"),
+  /**
+   * What happens next, in the workspace's own words, sent in the thank-you
+   * once a payment is confirmed (direct-sale loop). Optional: absent, a short
+   * generic thank-you is sent.
+   */
+  onboarding_text: z.string().trim().max(600).optional(),
+  /**
+   * The query parameter the tracking token travels in. Absent: Stripe
+   * Payment Links use `client_reference_id`, anything else `ct_ref`
+   * (payments/tracking.ts).
+   */
+  tracking_param: z
+    .string()
+    .trim()
+    .regex(TRACKING_PARAM_PATTERN, "Letters, numbers and _ - . [ ] only")
+    .optional(),
+  /** For a subscription link: how often it bills, used for MRR when the payment event does not say. */
+  billing_interval: z.enum(["day", "week", "month", "year"]).optional(),
 });
 export type CheckoutLink = z.infer<typeof checkoutLinkSchema>;
+
+/**
+ * An approved link as sent to one lead: the same link, with the URL that
+ * carries this send's tracking token. The validator checks `tracked_url`
+ * against the approved `url` (exactly one added parameter).
+ */
+export type TrackedCheckoutLink = CheckoutLink & { tracked_url: string };
 
 export const commercialAuthoritySchema = z
   .object({
@@ -44,6 +79,8 @@ export const commercialAuthoritySchema = z
     approved_checkout_links: z.array(checkoutLinkSchema).max(CHECKOUT_LINKS_MAX),
     max_discount_percent: z.number().min(0).max(100),
     requires_human_above_value_minor: z.number().int().min(0).nullable(),
+    /** Abandoned-checkout follow-up (0143). Absent = the defaults. */
+    abandoned_checkout: abandonedCheckoutSchema.optional(),
   })
   .superRefine((value, ctx) => {
     const ids = new Set<string>();
@@ -97,7 +134,13 @@ export function parseAuthority(row: unknown): CommercialAuthority {
       ceiling === null || ceiling === undefined || !Number.isFinite(Number(ceiling))
         ? null
         : Number(ceiling),
+    abandoned_checkout: parseAbandonedSettings(raw),
   };
+}
+
+/** The abandoned-checkout settings in force (the defaults when none are stored). */
+export function abandonedSettingsOf(authority: CommercialAuthority): AbandonedCheckoutSettings {
+  return authority.abandoned_checkout ?? parseAbandonedSettings(null);
 }
 
 /* --------------------------------------------------------------- the gate */
@@ -168,6 +211,10 @@ const NUMBER_WORDS: Record<string, number> = {
 
 const DISCOUNT_WORD = /\b(?:off|discount(?:ed)?|reduction|reduced|saving|savings|save|knock(?:ed)?|cheaper|money\s+off)\b/i;
 
+/** A sentence that declines a discount rather than offering one. */
+const DECLINE =
+  /\b(?:can(?:no|')?t|cannot|unable to|not able to|won'?t be able to|am not able to|do not|don'?t)\s+(?:offer|do|give|go to|agree to|apply|discount)\b|\bno\s+discounts?\s+(?:is|are|on|for|available)\b|\bnot\s+(?:able|in a position)\s+to\s+(?:offer|discount|go)\b/;
+
 /**
  * Every discount the text offers, as a percentage.
  *
@@ -182,11 +229,20 @@ const DISCOUNT_WORD = /\b(?:off|discount(?:ed)?|reduction|reduced|saving|savings
  */
 export function discountOffers(text: string): number[] {
   const offers: number[] = [];
-  const sentences = text.normalize("NFKC").split(/(?<=[.!?\n])\s+/);
-  for (const sentence of sentences) {
+  // Clauses, not whole sentences: "I can't do 30% off, but 10% off is
+  // possible" declines one discount and offers another.
+  const clauses = text
+    .normalize("NFKC")
+    .split(/(?<=[.!?\n])\s+/)
+    .flatMap((sentence) => sentence.split(/,?\s+(?:but|however|although|though)\s+|;/i));
+  for (const sentence of clauses) {
     const lower = sentence.toLowerCase();
     if (/\bhalf[\s-]+(?:price|off|the\s+price|priced)\b/.test(lower)) offers.push(50);
     if (!DISCOUNT_WORD.test(lower)) continue;
+    // Declining is not offering (owner decision 2026-09-27: the AI answers a
+    // discount ask itself, so "I can't offer a discount" / "I can't do 30%
+    // off" must be sayable). Only a sentence that says no is skipped.
+    if (DECLINE.test(lower)) continue;
 
     const percents: number[] = [];
     for (const match of lower.matchAll(/(\d+(?:\.\d+)?)\s*(?:%|per\s?cent\b|pc\b)/g)) {
@@ -228,8 +284,16 @@ export function normaliseCheckoutUrl(value: string): string {
  * any price in the message to THAT link's price text.
  */
 export function checkoutLinkIn(text: string, links: CheckoutLink[]): CheckoutLink | null {
-  const urls = (text.match(/https?:\/\/[^\s<>"')]+/gi) ?? []).map(normaliseCheckoutUrl);
-  return links.find((link) => urls.includes(normaliseCheckoutUrl(link.url))) ?? null;
+  const raw = text.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
+  const urls = raw.map(normaliseCheckoutUrl);
+  return (
+    links.find(
+      (link) =>
+        urls.includes(normaliseCheckoutUrl(link.url)) ||
+        // A tracked send of the same link counts as that link.
+        raw.some((candidate) => trackedTokenFor(candidate, link.url, trackingParamFor(link)) !== null),
+    ) ?? null
+  );
 }
 
 /**
@@ -237,9 +301,12 @@ export function checkoutLinkIn(text: string, links: CheckoutLink[]): CheckoutLin
  * approved URL appended by the runtime -- byte for byte the registered one --
  * exactly as the booking link is.
  */
-export function checkoutMessage(body: string, link: CheckoutLink): string {
+export function checkoutMessage(body: string, link: CheckoutLink | TrackedCheckoutLink): string {
   const trimmed = body.trim();
-  return trimmed.includes(link.url) ? trimmed : `${trimmed} ${link.url}`.trim();
+  // A tracked send appends the tracked URL: the approved one plus exactly
+  // this send's token (payments/tracking.ts).
+  const url = "tracked_url" in link && link.tracked_url ? link.tracked_url : link.url;
+  return trimmed.includes(url) ? trimmed : `${trimmed} ${url}`.trim();
 }
 
 /** Minor units from a value in major units (opportunities.value is major). */

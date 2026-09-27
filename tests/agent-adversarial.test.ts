@@ -199,7 +199,8 @@ describe("adversarial: disclosure", () => {
 
   test("allows an honest answer about being automated", () => {
     assert.deepEqual(
-      codes("I'm the automated assistant for the business — I can pass you to the team."),
+      // Owner rule 2026-09-27: no em dashes, so the honest answer is written without one.
+      codes("I'm the automated assistant for the business. I can pass you to the team."),
       [],
     );
   });

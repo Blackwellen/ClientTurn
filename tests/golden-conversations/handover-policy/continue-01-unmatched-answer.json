@@ -1,0 +1,19 @@
+{
+  "id": "continue-01-unmatched-answer",
+  "story": "The default B2B question gets a reply that matches no option. The AI asks again in other words instead of handing over, and the second answer matches.",
+  "question": { "text": "What do you need help with?", "responseType": "single_choice", "options": ["Website Design", "Website Build", "Ecommerce Website"] },
+  "turns": [
+    {
+      "lead": "erm a bit of everything really",
+      "answer": { "matched": false },
+      "expect": { "disposition": "CLARIFY", "attempt": 1, "was": "HANDOVER", "textIncludes": ["Website Design", "Website Build"] }
+    },
+    {
+      "lead": "Website Build",
+      "answer": { "matched": true },
+      "verdict": { "result": "QUALIFIED" },
+      "model": { "proposed_action": "ASK_NEXT_QUESTION", "confidence": 0.92, "message": "Thanks, that helps. When are you looking to get started?" },
+      "expect": { "disposition": "CONTINUE", "assist": null, "validates": true }
+    }
+  ]
+}

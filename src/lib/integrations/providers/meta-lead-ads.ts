@@ -92,7 +92,7 @@ function config(): OAuthConfig | null {
     // capability and none is speculative:
     //
     //   pages_show_list          pick which Page to connect
-    //   pages_read_engagement    read comments and mentions for prospecting
+    //   pages_read_engagement    read comments on the Page's own posts (replies to people who engaged; not a prospect source)
     //   leads_retrieval          read lead-form submissions
     //   pages_manage_metadata    subscribe the Page to our webhook
     //   pages_messaging          send and receive Messenger DMs

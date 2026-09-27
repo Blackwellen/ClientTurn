@@ -36,6 +36,13 @@ export type ChannelReadiness = Record<CampaignChannel, boolean>;
 /** Which campaign channels have a connection that is not disconnected or failed. */
 export function campaignChannelReadiness(
   integrations: readonly { provider_type: string; status: string | null }[],
+  /**
+   * Whether the platform-run sender is configured for each channel. Twilio SMS
+   * and WhatsApp are shared platform connections, so a workspace normally has
+   * no row for them; with no row, the platform sender decides
+   * (integrations/platform-channels.ts).
+   */
+  platform: { sms?: boolean; whatsapp?: boolean } = {},
 ): ChannelReadiness {
   const usable = (channel: CampaignChannel) =>
     integrations.some(
@@ -43,7 +50,15 @@ export function campaignChannelReadiness(
         CAMPAIGN_CHANNEL_PROVIDERS[channel].includes(row.provider_type) &&
         !UNUSABLE_STATUSES.has(row.status ?? ""),
     );
-  return { sms: usable("sms"), whatsapp: usable("whatsapp"), email: usable("email") };
+  const hasOwnRow = (channel: CampaignChannel) =>
+    integrations.some((row) => CAMPAIGN_CHANNEL_PROVIDERS[channel].includes(row.provider_type));
+  const withPlatform = (channel: CampaignChannel, platformReady: boolean) =>
+    hasOwnRow(channel) ? usable(channel) : platformReady;
+  return {
+    sms: withPlatform("sms", platform.sms ?? false),
+    whatsapp: withPlatform("whatsapp", platform.whatsapp ?? false),
+    email: usable("email"),
+  };
 }
 
 export function providerReadyFor(channel: CampaignChannel, readiness: ChannelReadiness): boolean {

@@ -266,7 +266,7 @@ export function AudienceStep({
             className="mt-1.5"
             value={state.campaignName}
             maxLength={80}
-            placeholder="Autumn Roof Check"
+            placeholder="Spring strategy check-in"
             aria-invalid={Boolean(fieldErrors.campaignName)}
             aria-describedby={
               fieldErrors.campaignName ? "campaign-name-error" : undefined
@@ -302,7 +302,7 @@ export function AudienceStep({
             rows={2}
             value={state.description}
             maxLength={280}
-            placeholder="Re-engage past quote requests with a seasonal roof check offer."
+            placeholder="Re-engage past enquiries with an offer of a short strategy review."
             aria-invalid={Boolean(fieldErrors.description)}
             aria-describedby={
               fieldErrors.description
@@ -346,7 +346,7 @@ export function AudienceStep({
               className="mt-1.5"
               value={state.audienceLabel}
               maxLength={160}
-              placeholder="Past quote requests"
+              placeholder="Past enquiries"
               aria-invalid={Boolean(fieldErrors.audienceLabel)}
               onChange={(event) => patch({ audienceLabel: event.target.value })}
             />
@@ -370,7 +370,7 @@ export function AudienceStep({
               id="campaign-tags"
               className="mt-1.5"
               value={state.tags}
-              placeholder="Seasonal, Roofing"
+              placeholder="Seasonal, Past enquiries"
               aria-invalid={Boolean(fieldErrors.tags)}
               onChange={(event) => patch({ tags: event.target.value })}
             />

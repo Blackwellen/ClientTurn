@@ -1,0 +1,21 @@
+{
+  "id": "continue-05-security-questionnaire",
+  "story": "An enterprise buyer asks for a security questionnaire. The strategy tells the model a colleague sends security documents; the model says so and carries on, proposing the hand-over only as a background request. A colleague is asked to send the documents; the conversation stays with the AI (was a hand-over).",
+  "turns": [
+    {
+      "lead": "Before we go further our security team needs your SOC 2 report and a completed questionnaire.",
+      "model": {
+        "proposed_action": "REQUEST_HANDOVER",
+        "confidence": 0.9,
+        "handover_reason": "OUT_OF_SCOPE",
+        "message": "Of course. I have asked a colleague to send the security documents over. In the meantime, who else will be involved in the evaluation?"
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": "CONFIRM_DETAIL",
+        "was": "HANDOVER",
+        "validates": true
+      }
+    }
+  ]
+}

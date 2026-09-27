@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/sub-processors" },
   openGraph: {
-    title: "Sub-processors · ClientTurn",
+    title: "Sub-processors",
     description,
     url: "/sub-processors",
     siteName: "ClientTurn",
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Sub-processors · ClientTurn",
+    title: "Sub-processors",
     description,
   },
 };

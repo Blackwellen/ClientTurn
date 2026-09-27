@@ -87,7 +87,7 @@ export function GoalEditor({
             value={name}
             maxLength={80}
             onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Book a roof survey"
+            placeholder="e.g. Book a discovery call"
             className={INPUT}
           />
         </Field>
@@ -128,7 +128,7 @@ export function GoalEditor({
             <input
               value={destinationValue}
               onChange={(event) => setDestinationValue(event.target.value)}
-              placeholder="https://calendly.com/your-team/survey"
+              placeholder="https://calendly.com/your-team/discovery-call"
               className={INPUT}
             />
           </Field>

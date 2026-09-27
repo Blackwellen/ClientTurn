@@ -30,6 +30,13 @@ import {
 } from "./tokens";
 import type { PlanId } from "./plans";
 import { OVERDRAW_CEILING_RATIO } from "@/lib/ai/tokens";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  aiPurchasedRemaining,
+  attributeUnusedCredit,
+  type RefundState,
+  type TopUpPurchaseInput,
+} from "./refundability";
 
 /**
  * The RPCs added in migration 0116 post-date the last `database.types.ts`
@@ -461,22 +468,93 @@ export function packFor(key: string): (typeof TOKEN_PACKS)[TokenPackKey] | null 
   return key in TOKEN_PACKS ? TOKEN_PACKS[key as TokenPackKey] : null;
 }
 
+/**
+ * Recent token purchases, each with its refund state (owner policy
+ * 2026-09-27: non-refundable once any credit is used). Attribution is FIFO
+ * over ALL credited purchases against the purchased pool still unspent this
+ * period (refundability.ts). A failed read reports nothing as refundable.
+ */
 export async function listTokenPurchases(businessId: string, limit = 10) {
-  const { data } = await createAdminClient()
-    .from("ai_token_purchases")
-    .select("id, pack_key, tokens, amount_minor, currency, status, created_at, credited_at")
-    .eq("business_id", businessId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const admin = createAdminClient();
+  const [{ data }, refundability] = await Promise.all([
+    admin
+      .from("ai_token_purchases")
+      .select("id, pack_key, tokens, amount_minor, currency, status, created_at, credited_at")
+      .eq("business_id", businessId)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    tokenRefundability(businessId).catch(() => null),
+  ]);
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    packKey: row.pack_key,
-    tokens: Number(row.tokens),
-    amountMinor: Number(row.amount_minor),
-    currency: row.currency,
-    status: row.status,
-    createdAt: row.created_at,
-    creditedAt: row.credited_at,
+  return (data ?? []).map((row) => {
+    const fifo = refundability?.get(row.id);
+    const refundState: RefundState =
+      fifo?.state ?? (row.status === "REFUNDED" ? "refunded" : "not_credited");
+    return {
+      id: row.id,
+      packKey: row.pack_key,
+      tokens: Number(row.tokens),
+      amountMinor: Number(row.amount_minor),
+      currency: row.currency,
+      status: row.status,
+      createdAt: row.created_at,
+      creditedAt: row.credited_at,
+      refundable: fifo?.refundable ?? false,
+      refundState,
+      unusedTokens: fifo?.unused ?? 0,
+    };
+  });
+}
+
+async function tokenRefundability(businessId: string) {
+  const balance = await ensureTokenBalance(businessId);
+  // `tokens_reversed` (0142) post-dates the generated types.
+  const { data, error } = await (createAdminClient() as unknown as SupabaseClient)
+    .from("ai_token_purchases")
+    .select("id, tokens, tokens_reversed, status, created_at, credited_at")
+    .eq("business_id", businessId)
+    .in("status", ["PAID", "REFUNDED"]);
+  if (error) return null;
+
+  const purchases: TopUpPurchaseInput[] = ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    credits: Number(row.tokens),
+    reversed: Number(row.tokens_reversed ?? 0),
+    status: String(row.status),
+    createdAt: String(row.created_at),
+    creditedAt: (row.credited_at as string | null) ?? null,
   }));
+  return attributeUnusedCredit(purchases, aiPurchasedRemaining(balance));
+}
+
+/**
+ * The `billing.refund_reverse` job for an AI token pack the owner refunded in
+ * Stripe: reverses only the pack's tokens that are still unused (FIFO), from
+ * the purchased pool of the current period, never below zero. Idempotent on
+ * `refund:<purchase>:<cumulative amount refunded>`. Returns tokens reversed.
+ */
+export async function reverseRefundedTokenPurchase(input: {
+  purchaseId: string;
+  amountRefundedMinor: number;
+}): Promise<number> {
+  const admin = createAdminClient();
+  const { data: purchase, error: readError } = await admin
+    .from("ai_token_purchases")
+    .select("id, business_id, status")
+    .eq("id", input.purchaseId)
+    .maybeSingle();
+  if (readError) throw new Error(`token purchase read failed: ${readError.message}`);
+  // Re-checked now: only a purchase that is (still) refunded is reversed.
+  if (!purchase || purchase.status !== "REFUNDED") return 0;
+
+  const balance = await ensureTokenBalance(purchase.business_id);
+  const refunded = Math.max(Math.floor(input.amountRefundedMinor), 0);
+  const { data, error } = await untypedRpc(admin)("reverse_ai_token_purchase", {
+    target_purchase_id: purchase.id,
+    target_period_start: balance.periodStart,
+    amount_refunded_minor: refunded,
+    idem_key: `refund:${purchase.id}:${refunded}`,
+  });
+  if (error) throw new Error(`reverse_ai_token_purchase failed: ${error.message}`);
+  return Number(data ?? 0);
 }

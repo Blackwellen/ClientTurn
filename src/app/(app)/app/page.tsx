@@ -40,8 +40,10 @@ import { ReactivationPerformanceCard } from "@/components/dashboard/reactivation
 import { RevenueControlSection } from "@/components/dashboard/revenue-control-section";
 import { SetupChecklistCard } from "@/components/dashboard/setup-checklist-card";
 import { getGettingStarted } from "@/lib/settings/queries";
+import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
+import { UpsellMomentMount } from "@/components/billing/upsell-moment-mount";
 
-export const metadata: Metadata = { title: "Dashboard · Client Turn" };
+export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 const UPCOMING_BOOKINGS = 6;
@@ -186,6 +188,10 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-3.5">
+      {/* Trial SMS used up while a lead is texting back: offer the instant upgrade. */}
+      <TrialUpgradePromptMount />
+      {/* One tasteful, snoozable upsell at most (docs/upsell-plan.md). */}
+      <UpsellMomentMount context="dashboard" />
       <DashboardHeader
         greeting={greetingFor(workspace.timezone)}
         businessName={workspace.businessName}

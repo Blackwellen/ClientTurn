@@ -20,6 +20,9 @@ import type {
   WorkspaceMember,
 } from "./types";
 import { orIlike } from "@/lib/supabase/ilike";
+import { INCOMPLETE_BELOW, STRONG_INTENT_STATES } from "@/lib/qualification-intelligence/explain";
+import { channelUsable, MESSAGING_CHANNEL_PROVIDERS } from "@/lib/integrations/platform-channels";
+import { platformConfigured } from "@/lib/integrations/queries";
 
 export * from "./types";
 
@@ -168,6 +171,16 @@ function applyAdvancedFilters(
   if (filters.service?.length) next = next.in("service_id", filters.service);
   if (filters.source?.length) next = next.in("source_id", filters.source);
   if (filters.attention) next = next.eq("needs_attention", true);
+
+  // Qualification intelligence: the lead's denormalised assessment columns,
+  // written only by record_lead_assessment(), so the list agrees with the page.
+  if (filters.intent?.length) next = next.in("intent_state", filters.intent);
+  if (filters.nextAction?.length) next = next.in("next_action", filters.nextAction);
+  if (filters.strongIncomplete) {
+    next = next
+      .in("intent_state", [...STRONG_INTENT_STATES])
+      .lt("qualification_completeness", INCOMPLETE_BELOW);
+  }
 
   if (filters.assignee) {
     next =
@@ -349,8 +362,12 @@ export const getLeadCapabilities = cache(
 
     return {
       // Exactly the two send paths that exist (see lib/integrations/catalog).
-      sms: connected.has("twilio_sms"),
-      whatsapp: connected.has("twilio_whatsapp"),
+      sms: channelUsable(integrations ?? [], MESSAGING_CHANNEL_PROVIDERS.sms, platformConfigured("twilio_sms")),
+      whatsapp: channelUsable(
+        integrations ?? [],
+        MESSAGING_CHANNEL_PROVIDERS.whatsapp,
+        platformConfigured("twilio_whatsapp"),
+      ),
       booking,
       bookingSetupHref: "/app/settings?section=connections",
       messagingSetupHref: "/app/settings?section=connections",

@@ -177,6 +177,9 @@ function HandoverCard({
     <div className="mt-3 rounded-lg border border-warning-300 bg-warning-50/60 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12.5px] font-semibold text-content">{handoff.reasonLabel}</span>
+        {handoff.kind === "ASSIST_REQUEST" && (
+          <Badge tone="accent">Assistant still replying</Badge>
+        )}
         <Badge tone={handoff.priority === "URGENT" ? "danger" : "warning"}>
           {HANDOFF_PRIORITY_LABEL[handoff.priority]}
         </Badge>

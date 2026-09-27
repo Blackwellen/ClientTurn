@@ -1,0 +1,63 @@
+{
+  "id": "saas-01-use-case-to-trial",
+  "archetype": "B2B_SAAS",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "email",
+  "story": "A sales lead describes the use case and team; the agent moves to the sign-up rather than qualifying further.",
+  "turns": [
+    {
+      "lead": "We need something to route inbound leads to the right rep automatically.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_SIGNUP",
+          "ESCALATE",
+          "INFORM"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "STAKEHOLDERS",
+          "DECISION_PROCESS",
+          "USE_CASE"
+        ]
+      }
+    },
+    {
+      "lead": "It's for a sales team of 12 people.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_SIGNUP",
+          "ESCALATE",
+          "INFORM",
+          "CTA_BOOK"
+        ],
+        "known": [
+          "TEAM_SIZE"
+        ],
+        "notAsked": [
+          "TEAM_SIZE",
+          "BUDGET",
+          "USE_CASE"
+        ]
+      }
+    },
+    {
+      "lead": "Sounds good, how do I sign up for the trial?",
+      "expect": {
+        "actionIn": [
+          "CTA_SIGNUP",
+          "INFORM",
+          "ANSWER"
+        ],
+        "intentStateIn": [
+          "PURCHASE_READY",
+          "HIGH"
+        ],
+        "questionDimension": null
+      }
+    }
+  ]
+}

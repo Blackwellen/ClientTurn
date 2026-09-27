@@ -13,12 +13,14 @@
  *      labelled `inferred`, and an inferred value only counts when it passes the
  *      same deterministic matcher a typed reply would (`matchAnswer`), so an
  *      inference can never produce a value the question could not accept.
- *   2. Score what is left:
- *        informationGain × decisionRelevance × commercialValue
- *          − friction − prematurity (stage-adjusted)
+ *   2. Score what is left with the Qualification Intelligence value function
+ *      (qualification-intelligence/question-value.ts, `qv-1`):
+ *        decisionRelevance + informationGain·(1 − pKnown) + salesProgression
+ *          + intentRelevance − friction − repetitionRisk − prematurity − pKnown
  *      using the library dimension each question maps to. Budget is premature
  *      until the problem is stated; authority is premature until the lead has
- *      engaged.
+ *      engaged. A question already asked twice without an answer is dropped:
+ *      the sticky re-ask is limited to one.
  *   3. Stop when the motion's decision threshold is met: enough is known to
  *      take the next commercial step. Optional questions are then dropped.
  *      Required questions are never dropped, because the engine cannot reach a
@@ -37,6 +39,8 @@
 import type { Question } from "./engine.ts";
 import { QUALIFICATION_CATALOGUE } from "../sales-library/qualification-dimensions.ts";
 import { isDecisionThresholdMet, missingForThreshold, MOTIONS } from "../sales-library/motions.ts";
+import { adjustedPrematurity, questionValue } from "../qualification-intelligence/question-value.ts";
+import { MAX_ASKS_PER_INTENT, type IntentState } from "../qualification-intelligence/types.ts";
 import { archetypeFor, qualificationPlan } from "../sales-library/archetypes.ts";
 import type { ConversationStage } from "../sales-library/method-router.ts";
 import type { QualificationDepth } from "../settings/ai-selling.ts";
@@ -68,6 +72,12 @@ export type KnownQuestion = {
   inferred: boolean;
   confidence: number;
   required: boolean;
+  /**
+   * For FACT: where the fact came from (lead_qualification_facts.source, e.g.
+   * FORM for an ad-form answer, MANUAL, ENRICHMENT). Drives the provenance an
+   * inferred answer is recorded with (qualify.ts recordInferredAnswers).
+   */
+  factSource?: string;
 };
 
 /** What the lead record already says, keyed by the dimension it answers. */
@@ -99,7 +109,12 @@ export type ScoredCandidate = {
     commercialValue: number;
     friction: number;
     prematurity: number;
+    /** Always 0 since qv-1: threshold and required weight moved into the terms below. */
     bonus: number;
+    salesProgression: number;
+    intentRelevance: number;
+    repetitionRisk: number;
+    pKnown: number;
   };
 };
 
@@ -122,6 +137,16 @@ export type NextQuestionInput = {
    * STANDARD, the behaviour described at the top of this file.
    */
   depth?: QualificationDepth | null;
+  /**
+   * How often each configured question has been put to the lead, and whether
+   * it was answered. A question asked MAX_ASKS_PER_INTENT (2) times without an
+   * answer is not asked again (08 §B.8: the sticky re-ask is limited to one).
+   */
+  askHistory?: { questionId: string; asked: number; answered?: boolean }[];
+  /** The lead's intent state when an assessment exists (the intentRelevance term). */
+  intentState?: IntentState | null;
+  /** False before the lead's first reply: open questions cost more then. */
+  leadHasReplied?: boolean;
 };
 
 export type NextQuestionResult = {
@@ -146,36 +171,15 @@ export type NextQuestionResult = {
 
 export const MIN_FACT_CONFIDENCE = 0.8;
 
-/** Dimensions that state the problem. Budget before one of these is premature. */
-const PROBLEM_DIMENSIONS: QualificationDimensionKey[] = [
-  "PROBLEM",
-  "USE_CASE",
-  "SERVICE_NEEDED",
-  "PROJECT_SCOPE",
-  "PRODUCT_INTEREST",
-  "SUITABILITY",
-  "HIRING_NEED",
-];
-
-/** Dimensions about who decides. Premature before the lead has engaged. */
-const AUTHORITY_DIMENSIONS: QualificationDimensionKey[] = [
-  "AUTHORITY",
-  "STAKEHOLDERS",
-  "DECISION_PROCESS",
-];
-
 /** A question that maps to no library dimension still has to be ranked. */
 const UNMAPPED = {
   informationGain: 0.6,
   commercialValue: 0.5,
   friction: 0.2,
   prematurity: 0.1,
+  salesProgression: 0.4,
+  intentRelevance: 0.4,
 };
-
-/** Threshold dimensions are what unblocks the close action: asked first. */
-const THRESHOLD_BONUS = 0.15;
-/** The engine needs every required answer before it can reach a verdict. */
-const REQUIRED_BONUS = 0.1;
 
 // --------------------------------------------------------------- matching
 
@@ -267,6 +271,12 @@ const DIMENSION_RULES: { dimension: QualificationDimensionKey; pattern: RegExp }
   { dimension: "USE_CASE", pattern: /\b(use case|use it for|want it to do|looking to (use|achieve))\b/i },
   { dimension: "PRODUCT_INTEREST", pattern: /\b(which product|product (are you|were you))\b/i },
   { dimension: "SERVICE_NEEDED", pattern: /\b(which (of our )?services?|what service|services? (are you|do you need))\b/i },
+  { dimension: "DISSATISFACTION", pattern: /\b(not working|unhappy|frustrat\w*|dissatisf\w*|how has (your|the) current)\b/i },
+  { dimension: "TECHNICAL_REQUIREMENTS", pattern: /\b(integrat\w*|connect to|plug into|work with (any|your)|tech stack)\b/i },
+  { dimension: "AVAILABILITY", pattern: /\b(days (usually )?suit|availability|free for a call)\b/i },
+  { dimension: "IMPLEMENTATION_READINESS", pattern: /\b(get started|onboard\w*|implementation|roll ?out)\b/i },
+  { dimension: "PURCHASE_READINESS", pattern: /\b(ready to (go ahead|buy|proceed)|go ahead if)\b/i },
+  { dimension: "OUTCOME", pattern: /\b(good result|outcome|what would success)\b/i },
   { dimension: "PROBLEM", pattern: /\b(problem|challenge|prompted|goal|pain|trying to (solve|fix))\b/i },
   { dimension: "SUITABILITY", pattern: /\b(suitab\w*|eligib\w*)\b/i },
 ];
@@ -288,9 +298,35 @@ export function inferDimension(question: QuestionRecord): QualificationDimension
 
 // ------------------------------------------------------------- selection
 
-function round4(value: number): number {
-  return Math.round(value * 10_000) / 10_000;
-}
+/** Static progression / intent relevance per dimension (question-intents.ts DYNAMIC_ATTRS). */
+const DYNAMIC: Record<QualificationDimensionKey, { salesProgression: number; intentRelevance: number }> = {
+  PROBLEM: { salesProgression: 0.6, intentRelevance: 0.8 },
+  USE_CASE: { salesProgression: 0.6, intentRelevance: 0.8 },
+  SERVICE_NEEDED: { salesProgression: 0.7, intentRelevance: 0.6 },
+  PROJECT_SCOPE: { salesProgression: 0.6, intentRelevance: 0.6 },
+  LOCATION: { salesProgression: 0.6, intentRelevance: 0.3 },
+  PROPERTY_TYPE: { salesProgression: 0.4, intentRelevance: 0.3 },
+  TIMING: { salesProgression: 0.7, intentRelevance: 0.7 },
+  TEAM_SIZE: { salesProgression: 0.5, intentRelevance: 0.3 },
+  COMPANY_SIZE: { salesProgression: 0.5, intentRelevance: 0.3 },
+  CURRENT_SOLUTION: { salesProgression: 0.5, intentRelevance: 0.6 },
+  AUTHORITY: { salesProgression: 0.5, intentRelevance: 0.4 },
+  BUDGET: { salesProgression: 0.6, intentRelevance: 0.5 },
+  VOLUME: { salesProgression: 0.4, intentRelevance: 0.3 },
+  PRODUCT_INTEREST: { salesProgression: 0.8, intentRelevance: 0.7 },
+  SUITABILITY: { salesProgression: 0.6, intentRelevance: 0.6 },
+  STAKEHOLDERS: { salesProgression: 0.5, intentRelevance: 0.3 },
+  SUCCESS_METRICS: { salesProgression: 0.4, intentRelevance: 0.5 },
+  DECISION_PROCESS: { salesProgression: 0.5, intentRelevance: 0.3 },
+  COMPLIANCE_REQUIREMENTS: { salesProgression: 0.4, intentRelevance: 0.2 },
+  HIRING_NEED: { salesProgression: 0.7, intentRelevance: 0.8 },
+  OUTCOME: { salesProgression: 0.5, intentRelevance: 0.8 },
+  AVAILABILITY: { salesProgression: 0.8, intentRelevance: 0.4 },
+  DISSATISFACTION: { salesProgression: 0.5, intentRelevance: 0.8 },
+  TECHNICAL_REQUIREMENTS: { salesProgression: 0.4, intentRelevance: 0.3 },
+  IMPLEMENTATION_READINESS: { salesProgression: 0.6, intentRelevance: 0.6 },
+  PURCHASE_READINESS: { salesProgression: 0.9, intentRelevance: 0.7 },
+};
 
 function attributesFor(
   dimension: QualificationDimensionKey | null,
@@ -308,33 +344,13 @@ function attributesFor(
     commercialValue: base.commercialValue,
     friction: base.friction,
     prematurity: base.prematurity,
+    ...DYNAMIC[dimension],
   };
 }
 
-/**
- * Stage adjustment of the static prematurity attribute.
- *   * BUDGET is at least 0.8 premature until a problem dimension is known, then
- *     a quarter of its base.
- *   * AUTHORITY-type questions are at least 0.6 premature until the lead has
- *     engaged (any stage after NEW), then about a third of their base.
- *   * Everything else halves once the lead has engaged.
- */
-export function adjustedPrematurity(
-  dimension: QualificationDimensionKey | null,
-  base: number,
-  stage: ConversationStage,
-  known: ReadonlySet<QualificationDimensionKey>,
-): number {
-  const engaged = stage !== "NEW";
-  if (dimension === "BUDGET") {
-    const problemStated = PROBLEM_DIMENSIONS.some((key) => known.has(key));
-    return problemStated ? base * 0.25 : Math.max(base, 0.8);
-  }
-  if (dimension && AUTHORITY_DIMENSIONS.includes(dimension)) {
-    return engaged ? base * 0.35 : Math.max(base, 0.6);
-  }
-  return engaged ? base * 0.5 : base;
-}
+// Moved to qualification-intelligence/question-value.ts; re-exported so every
+// existing import keeps working.
+export { adjustedPrematurity };
 
 function planFor(archetypeKey: string | null | undefined, motion: SalesMotion | null) {
   const archetype = archetypeFor(archetypeKey);
@@ -351,7 +367,7 @@ function inferValue(
   dimension: QualificationDimensionKey | null,
   leadFields: LeadFieldValues,
   facts: MemoryFact[],
-): { source: KnownSource; value: string; confidence: number } | null {
+): { source: KnownSource; value: string; confidence: number; factSource?: string } | null {
   if (dimension) {
     const field = leadFields[dimension];
     if (typeof field === "string" && field.trim()) {
@@ -375,7 +391,7 @@ function inferValue(
   for (const fact of candidates) {
     const matched = matchAnswer(question, fact.value);
     if (matched.value) {
-      return { source: "FACT", value: matched.value, confidence: fact.confidence };
+      return { source: "FACT", value: matched.value, confidence: fact.confidence, factSource: fact.source };
     }
   }
   return null;
@@ -471,6 +487,7 @@ export function selectNextQuestion(input: NextQuestionInput): NextQuestionResult
         inferred: true,
         confidence: inferred.confidence,
         required: question.required,
+        ...(inferred.factSource ? { factSource: inferred.factSource } : {}),
       });
       continue;
     }
@@ -496,7 +513,16 @@ export function selectNextQuestion(input: NextQuestionInput): NextQuestionResult
   const missing = motion ? missingForThreshold(motion, knownDims) : [];
   const outstandingRequired = unknown.filter((entry) => entry.question.required).length;
 
-  const candidates = candidatesForDepth(unknown, {
+  // Sticky re-ask is limited to one (08 §B.8): a question put to the lead
+  // MAX_ASKS_PER_INTENT times without an answer is not asked a third time.
+  const asks = new Map((input.askHistory ?? []).map((entry) => [entry.questionId, entry]));
+  const exhausted = (questionId: string) => {
+    const entry = asks.get(questionId);
+    return !!entry && entry.answered !== true && entry.asked >= MAX_ASKS_PER_INTENT;
+  };
+  const askable = unknown.filter((entry) => !exhausted(entry.question.id));
+
+  const candidates = candidatesForDepth(askable, {
     depth: input.depth ?? "STANDARD",
     hasMotion: motion !== null,
     thresholdMet,
@@ -505,31 +531,50 @@ export function selectNextQuestion(input: NextQuestionInput): NextQuestionResult
     missing: motion ? thresholdTargets(motion, knownDims) : [],
   });
 
+  const valueContext = {
+    stage,
+    intentState: input.intentState ?? null,
+    channel: null,
+    known: knownDims,
+    thresholdMissing: missing,
+    leadHasReplied: input.leadHasReplied,
+    askHistory: (input.askHistory ?? []).map((entry) => ({
+      key: entry.questionId,
+      asked: entry.asked,
+      answered: entry.answered === true,
+    })),
+  };
   const ranked: ScoredCandidate[] = candidates
     .map(({ question, dimension }) => {
       const attrs = attributesFor(dimension, plan, question.required);
-      const prematurity = adjustedPrematurity(dimension, attrs.prematurity, stage, knownDims);
-      const bonus =
-        (dimension && missing.includes(dimension) ? THRESHOLD_BONUS : 0) +
-        (question.required ? REQUIRED_BONUS : 0);
-      const value =
-        attrs.informationGain * attrs.decisionRelevance * attrs.commercialValue -
-        attrs.friction -
-        prematurity +
-        bonus;
+      const terms = questionValue(
+        {
+          key: question.id,
+          dimension: dimension ?? "UNMAPPED",
+          purpose: "DISCOVER",
+          answerType: question.responseType,
+          attrs,
+          required: question.required,
+        },
+        valueContext,
+      );
       return {
         questionId: question.id,
         dimension,
         required: question.required,
         position: question.position,
-        value: round4(value),
+        value: terms.total,
         components: {
-          informationGain: attrs.informationGain,
-          decisionRelevance: attrs.decisionRelevance,
+          informationGain: terms.informationGain,
+          decisionRelevance: terms.decisionRelevance,
           commercialValue: attrs.commercialValue,
-          friction: attrs.friction,
-          prematurity: round4(prematurity),
-          bonus: round4(bonus),
+          friction: terms.friction,
+          prematurity: terms.prematurity,
+          bonus: 0,
+          salesProgression: terms.salesProgression,
+          intentRelevance: terms.intentRelevance,
+          repetitionRisk: terms.repetitionRisk,
+          pKnown: terms.pKnown,
         },
       };
     })

@@ -1,32 +1,42 @@
 import * as React from "react";
 import type { Metadata } from "next";
+import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/admin/guard";
-import { currentPeriod, loadEconomics } from "@/lib/admin/economics";
+import { loadLiveEconomics, loadOpenMarginAlerts } from "@/lib/admin/economics-live";
 import { EconomicsView } from "@/components/admin/economics/economics-view";
 
 export const metadata: Metadata = {
-  title: "Usage & Margins · Platform operations",
+  title: "Economics · Platform operations",
   robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";
 
-const PERIOD_PATTERN = /^\d{4}-\d{2}-01$/;
+const paramsSchema = z.object({
+  period: z.enum(["mtd", "last"]).default("mtd").catch("mtd"),
+});
 
+/**
+ * Admin → Economics. Loading: `loading.tsx`. Error: the (ops) error boundary.
+ * Permission denied: a non-operator is sent to /admin/login by the guard, so
+ * the page never confirms it exists (CLAUDE.md, admin login). Empty and
+ * "read model not installed" are rendered by the view.
+ */
 export default async function EconomicsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // The layout already guards, but this page reads raw provider cost, so it
   // asserts the operator role itself rather than inheriting the assumption.
   await requirePlatformAdmin();
 
-  const params = await searchParams;
-  const period =
-    params.period && PERIOD_PATTERN.test(params.period) ? params.period : currentPeriod();
+  const raw = await searchParams;
+  const { period } = paramsSchema.parse({
+    period: Array.isArray(raw.period) ? raw.period[0] : raw.period,
+  });
 
-  const data = await loadEconomics(period);
+  const [data, alerts] = await Promise.all([loadLiveEconomics(), loadOpenMarginAlerts()]);
 
-  return <EconomicsView data={data} />;
+  return <EconomicsView data={data} periodKey={period} alerts={alerts} />;
 }

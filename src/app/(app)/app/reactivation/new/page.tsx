@@ -19,6 +19,7 @@ import {
   listWorkspaceTemplates,
   whatsAppTransportFor,
 } from "@/lib/messaging/template-registry";
+import { platformConfigured } from "@/lib/integrations/queries";
 
 /**
  * Approved templates on the WhatsApp sender this workspace actually uses. A
@@ -56,7 +57,7 @@ async function approvedWhatsAppTemplates(
 }
 
 export const metadata: Metadata = {
-  title: "Create reactivation campaign · Client Turn",
+  title: "Create reactivation campaign",
 };
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export default async function NewReactivationPage() {
         <WizardHeader />
         <PlanLimitState
           title={`Reactivation campaigns need the ${unlockPlanLabel("campaigns")}`}
-          description="Upgrade to message an old lead list from Client Turn, with opt-outs, suppressions and quiet hours enforced for you."
+          description="Upgrade to message an old lead list from ClientTurn, with opt-outs, suppressions and quiet hours enforced for you."
           action={
             <Link
               href="/app/settings?section=billing"
@@ -172,7 +173,7 @@ export default async function NewReactivationPage() {
 
   // Each channel needs its own connection: an SMS number, WhatsApp, or --
   // for email -- the workspace's own connected mailbox.
-  const providers = campaignChannelReadiness(integrations ?? []);
+  const providers = campaignChannelReadiness(integrations ?? [], { sms: platformConfigured("twilio_sms"), whatsapp: platformConfigured("twilio_whatsapp") });
 
   const defaultChannel = pickDefaultChannel(settings?.default_channel, providers, {
     sms: true,

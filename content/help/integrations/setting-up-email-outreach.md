@@ -4,10 +4,16 @@ summary: Connect your own mailbox over SMTP and IMAP so campaign email sends fro
 category: integrations
 keywords: [email, mailbox, google workspace, gmail, microsoft 365, outlook, imap, smtp, pop3, app password, spf, dkim, dmarc, deliverability, connecting your mailbox]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/integrations/setting-up-email-outreach-1.png
+    alt: "The sending mailbox form with the Google preset, Test connection and Connect mailbox"
+    caption: "Pick your mail provider, test the connection, then connect the mailbox"
 ---
 
 Campaign email is sent from your own address, through your own mail server, so replies come back to your inbox and your domain's reputation is your own. You connect the mailbox once, in **Settings → Connections**, under **Your sending mailbox**.
+
+> **Note:** The **Resend email** card further down the page is ClientTurn's own system email, for team invitations, handover alerts and failure warnings. It never sends your campaigns or your replies to leads.
 
 ## Before you start
 

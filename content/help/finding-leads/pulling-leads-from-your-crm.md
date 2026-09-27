@@ -25,6 +25,8 @@ Once HubSpot, Salesforce or Zoho CRM is connected, ClientTurn can also read new 
 
 Only records added or changed **from that moment on** are imported. Your CRM's history is not backfilled.
 
+Disconnecting the CRM switches its import off. After you reconnect, switch it on again if you still want it.
+
 ## How it runs
 
 - ClientTurn checks each enabled CRM about every 15 minutes, reading a bounded number of records per check so it stays well inside your CRM's API limits. Anything left over is picked up on the next check.

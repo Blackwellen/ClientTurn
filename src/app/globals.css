@@ -476,6 +476,14 @@ body {
   background: color-mix(in oklab, var(--lr-accent-500) 22%, transparent);
 }
 
+/* Native checkboxes and radios that do not use the Checkbox primitive drew in
+   the browser's default blue, off-brand beside the one accent colour (8.7).
+   The primitive sets the same value, so this only brings the stragglers in. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--lr-accent-600);
+}
+
 :focus-visible {
   outline: 2px solid var(--lr-text-accent);
   outline-offset: 2px;

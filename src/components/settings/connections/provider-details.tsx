@@ -377,9 +377,9 @@ function LinkedInDetails({
         </p>
       )}
       <Note>
-        {details.pageEngagementEnabled
-          ? "Company-page engagement is on: people who comment on this organisation's posts appear in Find Leads as prospects, by LinkedIn member id. LinkedIn never provides their email."
-          : "Company-page engagement (people who comment on your posts) needs LinkedIn to approve ClientTurn for its Community Management API, so it is off. Lead Gen Forms are not affected."}
+        ClientTurn reads Lead Gen Form submissions only. People who engage with your company
+        page are not turned into prospects: LinkedIn&rsquo;s terms forbid using member data to
+        identify sales prospects.
       </Note>
     </Section>
   );

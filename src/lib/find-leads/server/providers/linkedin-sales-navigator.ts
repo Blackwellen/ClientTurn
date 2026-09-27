@@ -1,188 +1,54 @@
 import "server-only";
-import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { providerJson, unconfigured } from "./http";
+import { unconfigured } from "./http";
 import { isEmailOrigin } from "../../email-origin";
 import {
   emptyLinkedinFilters,
   matchesIngestedLead,
-  snapFilterParams,
   type LinkedinFilters,
 } from "../../linkedin-filters";
-import {
-  providerFailure,
-  type CompanyCandidate,
-  type ContactCandidate,
-  type ProviderResponse,
-  type SearchWindow,
-  type SourcingProvider,
+import type {
+  CompanyCandidate,
+  ContactCandidate,
+  ProviderResponse,
+  SourcingProvider,
 } from "./types";
 
 /**
- * LinkedIn as a sourcing provider.
+ * The customer's own imported list, as a contact source for sourcing runs.
  *
- * There are two lawful routes and this adapter supports both. Neither is
- * scraping, and the difference between them matters enough to state plainly:
+ * This is the only LinkedIn-related route in sourcing, and it never talks to
+ * LinkedIn. It reads rows the customer imported themselves
+ * (`prospect.import_linkedin_list`): LinkedIn's export of their own
+ * 1st-degree connections, or any list they own.
  *
- *   1. **Partner API (SNAP / Sales Insights).** LinkedIn runs a partner
- *      programme; approved applications get server-to-server access with a
- *      contract behind it. When `LINKEDIN_SNAP_ACCESS_TOKEN` is present this
- *      adapter calls it directly. Note what it returns: company and role data,
- *      and a member's public profile URL. **It does not return email addresses**
- *      — LinkedIn does not sell those through any API, and any tool claiming
- *      otherwise is getting them somewhere else.
+ * What is deliberately not here:
  *
- *   2. **The customer's own session.** The pattern Clay, Surfe and Evaboot use:
- *      the customer opens a list *they* have access to, in *their* logged-in
- *      account, and exports it. Their browser, their account, their data. What
- *      reaches us is an ingested list, and this adapter reads what was
- *      ingested — it never drives a session and holds no LinkedIn credentials.
+ *   * **No LinkedIn search.** LinkedIn's partner search APIs are closed to new
+ *     partners and their request formats are not published, and LinkedIn's
+ *     terms forbid using member data to identify sales prospects. A server-side
+ *     search that guessed at undocumented parameters was removed.
+ *   * **No session automation or scraping**, of LinkedIn or Sales Navigator.
  *
- *      **This works on a standard LinkedIn account, not only Sales Navigator.**
- *      Sales Navigator buys better filters, saved lists and higher view limits,
- *      so it produces bigger and better-targeted exports — but an ordinary
- *      account's search results export the same way, and the ingest path treats
- *      both identically. Each row records which surface it came from, so
- *      provenance stays honest about the difference.
+ * LinkedIn returns no email through any route, so an address here is present
+ * only when the customer's own file carried one, and it is verified before
+ * use like any other.
  *
- * The email is then found by the licensed waterfall — Apollo, Hunter, Clearbit —
- * matching on the LinkedIn URL this adapter supplies. That is exactly how the
- * category works, and it is why the URL is the valuable field here rather than
- * a contact detail LinkedIn was never going to give us.
- *
- * Cost rank 4: contact-grade data, so it runs late, after the cheap
- * company-level sources have already narrowed the set.
+ * The provider key stays `linkedin_sales_navigator` so existing agent source
+ * settings and provenance rows keep working; the name shown is plain.
  */
 
-/* ------------------------------------------------------------ partner API */
-
-type SnapAccountSearch = {
-  elements?: {
-    entityUrn?: string;
-    companyName?: string;
-    website?: string;
-    industry?: string;
-    employeeCount?: number;
-    location?: string;
-  }[];
-  paging?: { start?: number; total?: number };
-};
-
-type SnapLeadSearch = {
-  elements?: {
-    entityUrn?: string;
-    firstName?: string;
-    lastName?: string;
-    currentPositions?: { title?: string; companyName?: string }[];
-    publicProfileUrl?: string;
-  }[];
-};
-
-function snapToken(): string | undefined {
-  return serverEnv.sourcing.linkedinSnapToken;
-}
-
-function hostFrom(url: string | undefined | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(
-      /^www\./,
-      "",
-    );
-  } catch {
-    return null;
-  }
-}
-
-async function searchCompanies(
-  window: SearchWindow,
-): Promise<ProviderResponse<CompanyCandidate>> {
-  const token = snapToken();
-  if (!token) return unconfigured<CompanyCandidate>();
-
-  const industries = window.plan.industries.filter(Boolean);
-  if (industries.length === 0) {
-    return { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
-  }
-
-  const filters = window.plan.linkedin ?? emptyLinkedinFilters();
-  const params = new URLSearchParams({
-    q: "search",
-    keywords: filters.keywords || industries.slice(0, 3).join(" "),
-    count: String(Math.min(Math.max(window.limit, 1), 50)),
-    start: window.cursor ?? "0",
-  });
-  // Unverified parameter names: see `snapFilterParams`.
-  for (const [name, value] of snapFilterParams(filters, "ACCOUNT")) params.append(name, value);
-
-  const response = await providerJson<SnapAccountSearch>({
-    url: `https://api.linkedin.com/v2/salesApiAccountSearch?${params.toString()}`,
-    headers: {
-      authorization: `Bearer ${token}`,
-      "linkedin-version": "202401",
-      "x-restli-protocol-version": "2.0.0",
-    },
-  });
-
-  if (!response.ok) {
-    return providerFailure<CompanyCandidate>(response.code, response.latencyMs);
-  }
-
-  const records: CompanyCandidate[] = [];
-  for (const element of response.data.elements ?? []) {
-    const name = element.companyName?.trim();
-    if (!name) continue;
-
-    records.push({
-      externalId: element.entityUrn ?? null,
-      name,
-      domain: hostFrom(element.website),
-      websiteUrl: element.website ?? null,
-      industry: element.industry ?? null,
-      employeeCount: element.employeeCount ?? null,
-      companySize: null,
-      description: null,
-      location: {
-        country: null,
-        region: element.location ?? null,
-        city: null,
-        postcode: null,
-        lat: null,
-        lon: null,
-      },
-    });
-  }
-
-  const start = Number(window.cursor ?? "0") + records.length;
-  const total = response.data.paging?.total ?? 0;
-
-  return {
-    ok: true,
-    records,
-    costMinor: 0,
-    cursor: start < total ? String(start) : null,
-    latencyMs: response.latencyMs,
-    errorCode: null,
-  };
-}
-
-/* ------------------------------------------------- contacts: API, then list */
+/** Provenance providers the list route reads: the current writer and the first one. */
+const LIST_PROVIDERS = ["linkedin_list_import", "linkedin_sales_navigator"];
 
 /**
- * Reads an ingested LinkedIn list for the companies in this batch.
- *
- * Used when there is no partner token, and it does not care whether the export
- * came from Sales Navigator or a standard account — both land in the same
- * table with a `surface` recorded on each row. The rows were put there by the
- * customer importing their own export (`prospect.import_linkedin_list`), so
- * this is a read of our own table rather than a call to LinkedIn: it costs
- * nothing and cannot fail with an auth error.
+ * Reads the imported list for the companies in this batch.
  *
  * The domain filter is in SQL, through the inner join, so the limit applies to
- * rows that can match. It used to be applied after an unfiltered limit, which
- * meant a workspace with a large import could miss every match for a batch.
- * The plan's title and seniority filters are applied here too: an export is
- * the customer's own selection, but the plan is what this run was asked for.
+ * rows that can match. The plan's title and seniority filters are applied too:
+ * a list is the customer's own selection, but the plan is what this run was
+ * asked for. Rows already turned into prospects at import are skipped, so a
+ * run never creates the same person twice.
  */
 async function readIngestedList(
   businessId: string,
@@ -198,8 +64,9 @@ async function readIngestedList(
     .from("prospect_data_sources")
     .select("value_json, company_id, prospect_companies!inner ( domain )")
     .eq("business_id", businessId)
-    .eq("provider", "linkedin_sales_navigator")
+    .in("provider", LIST_PROVIDERS)
     .eq("field_name", "linkedin_lead")
+    .is("prospect_id", null)
     .in("prospect_companies.domain", wanted)
     .order("obtained_at", { ascending: false })
     // Headroom for the title filter below, which cannot be expressed in SQL
@@ -223,12 +90,10 @@ async function readIngestedList(
     const roleTitle = typeof blob.roleTitle === "string" ? blob.roleTitle : null;
     if (!matchesIngestedLead({ roleTitle }, filters)) continue;
 
-    // An address is present only when the customer's own file carried one.
-    // Never from LinkedIn; kept with the origin recorded at import.
     const email = typeof blob.email === "string" ? blob.email : null;
 
     records.push({
-      externalId: typeof blob.entityUrn === "string" ? blob.entityUrn : null,
+      externalId: null,
       firstName: first,
       lastName: last,
       roleTitle,
@@ -250,96 +115,32 @@ async function findContacts(input: {
   businessId?: string;
   linkedin?: LinkedinFilters;
 }): Promise<ProviderResponse<ContactCandidate>> {
-  const token = snapToken();
-  const filters = input.linkedin ?? emptyLinkedinFilters();
+  if (!input.businessId) return unconfigured<ContactCandidate>();
+
   const domains = input.companies
     .map((company) => company.domain)
     .filter((domain): domain is string => Boolean(domain));
 
-  if (!token) {
-    // No partner contract: fall back to what the customer ingested themselves.
-    if (!input.businessId) return unconfigured<ContactCandidate>();
-    const records = await readIngestedList(input.businessId, domains, input.limit, filters);
-    return { ok: true, records, costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
-  }
-
-  const params = new URLSearchParams({
-    q: "search",
-    keywords: filters.keywords || input.roles.slice(0, 3).join(" "),
-    count: String(Math.min(Math.max(input.limit, 1), 50)),
-  });
-  // Unverified parameter names: see `snapFilterParams`.
-  for (const [name, value] of snapFilterParams(filters, "LEAD")) params.append(name, value);
-
-  const response = await providerJson<SnapLeadSearch>({
-    url: `https://api.linkedin.com/v2/salesApiLeadSearch?${params.toString()}`,
-    headers: {
-      authorization: `Bearer ${token}`,
-      "linkedin-version": "202401",
-      "x-restli-protocol-version": "2.0.0",
-    },
-  });
-
-  if (!response.ok) {
-    return providerFailure<ContactCandidate>(response.code, response.latencyMs);
-  }
-
-  const byName = new Map(
-    input.companies
-      .filter((company) => company.domain)
-      .map((company) => [company.name.toLowerCase(), company.domain!]),
+  const records = await readIngestedList(
+    input.businessId,
+    domains,
+    input.limit,
+    input.linkedin ?? emptyLinkedinFilters(),
   );
-
-  const records: ContactCandidate[] = [];
-  for (const element of response.data.elements ?? []) {
-    const position = element.currentPositions?.[0];
-    const companyDomain = position?.companyName
-      ? (byName.get(position.companyName.toLowerCase()) ?? null)
-      : null;
-
-    // A lead we cannot attach to a company in this batch is not usable — it
-    // would become a prospect with no employer, which nothing downstream can
-    // score or contact.
-    if (!companyDomain) continue;
-
-    records.push({
-      externalId: element.entityUrn ?? null,
-      firstName: element.firstName ?? null,
-      lastName: element.lastName ?? null,
-      roleTitle: position?.title ?? null,
-      // LinkedIn returns no email through any API. This stays null and the
-      // waterfall resolves it from the profile URL.
-      email: null,
-      linkedinUrl: element.publicProfileUrl ?? null,
-      companyExternalId: null,
-      companyDomain,
-    });
-  }
-
-  return {
-    ok: true,
-    records,
-    costMinor: 0,
-    cursor: null,
-    latencyMs: response.latencyMs,
-    errorCode: null,
-  };
+  return { ok: true, records, costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
 }
 
 export const linkedinSalesNavigatorProvider: SourcingProvider = {
   key: "linkedin_sales_navigator",
-  displayName: "LinkedIn",
-  capabilities: ["COMPANY_SEARCH", "CONTACT_DISCOVERY"],
+  displayName: "LinkedIn list import",
+  // Contacts only: the list names people at companies, and never supplies a
+  // company search.
+  capabilities: ["CONTACT_DISCOVERY"],
   costRank: 4,
-  // A partner seat is billed by LinkedIn as a subscription, not per call, and
-  // the ingested-list route is a read of our own table. Neither is metered
-  // per record, so a run is not charged per result.
+  // A read of our own table.
   freeOfCharge: true,
-  // Configured either way: with a partner token the API route is live, and
-  // without one the ingested-list route still works. Reporting "unconfigured"
-  // when a customer has uploaded their own export would hide their own data
-  // from them.
+  // Always available: reporting "unconfigured" when a customer has imported
+  // their own list would hide their own data from them.
   configured: () => true,
-  searchCompanies,
   findContacts,
 };

@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Check, CreditCard, Lock } from "lucide-react";
 import { startTrialCheckout } from "@/lib/billing/checkout-actions";
+import { TRIAL } from "@/lib/billing/plans";
+import { approximateTurns } from "@/lib/billing/tokens";
 
 export type PickerPlan = {
   id: "starter" | "growth" | "pro";
@@ -138,6 +140,14 @@ export function StartTrialPicker({
         Card details are entered on Stripe&apos;s secure checkout and never reach ClientTurn. During the trial,
         trial limits apply whichever plan you choose; the plan&apos;s full limits start with your first payment.
       </p>
+      {trialDays ? (
+        <p className="mt-2 text-[12px] leading-relaxed text-[#96a1b3]">
+          Trial limits: {TRIAL.leadLimit} new leads, {TRIAL.userLimit} user, {TRIAL.smsSegmentAllowance} UK SMS
+          segments and about {approximateTurns(TRIAL.aiTokenAllowance)} AI replies. Follow-up email goes from your
+          own connected mailbox and is not capped by the trial. Reactivation, Find Leads and the WhatsApp add-on
+          are not included in the trial.
+        </p>
+      ) : null}
     </section>
   );
 }

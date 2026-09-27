@@ -82,6 +82,21 @@ function checkValues(constraint: string, sql = SQL): string[] {
   return [...list[1].matchAll(/'([A-Za-z_]+)'/g)].map((m) => m[1]);
 }
 
+/**
+ * The values of a constraint as the LAST migration to (re)define it leaves
+ * it: a later migration may widen a list (0155 widens the signal types).
+ */
+function latestCheckValues(constraint: string): string[] {
+  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  let latest: string | null = null;
+  for (const file of files) {
+    const sql = readFileSync(path.join(MIGRATIONS, file), "utf8").replace(/--.*$/gm, "");
+    if (sql.includes(`add constraint ${constraint}`)) latest = sql;
+  }
+  assert.ok(latest, `constraint ${constraint} not found in any migration`);
+  return checkValues(constraint, latest);
+}
+
 /** The inline `kind ... check (kind in (...))` of an older migration's create table. */
 function inlineKindValues(file: string, table: string): string[] {
   const sql = readFileSync(path.join(MIGRATIONS, file), "utf8");
@@ -98,7 +113,7 @@ const same = (a: readonly string[], b: readonly string[]) => assert.deepEqual([.
 describe("migration CHECK values equal the contract enums", () => {
   test("lead_intent_signals", () => {
     same(checkValues("lead_intent_signals_category_check"), SIGNAL_CATEGORIES);
-    same(checkValues("lead_intent_signals_signal_type_check"), SIGNAL_TYPES);
+    same(latestCheckValues("lead_intent_signals_signal_type_check"), SIGNAL_TYPES);
     same(checkValues("lead_intent_signals_polarity_check"), SIGNAL_POLARITIES);
     same(checkValues("lead_intent_signals_source_check"), SIGNAL_SOURCES);
   });

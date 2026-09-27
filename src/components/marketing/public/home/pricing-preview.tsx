@@ -5,6 +5,13 @@ import { PLANS, TRIAL_DAYS, planOrder, type PlanDefinition } from "@/lib/billing
 import { PublicCta } from "../cta-link";
 import { Arc, Glow, GridTexture, PublicContainer, PublicSection, buttonClass } from "../ui";
 import { Reveal } from "../reveal";
+import {
+  PRO_WITH_VOICE_MONTHLY_GBP,
+  VOICE_TRIAL_NOTE,
+  gbp,
+  planVoiceOffer,
+  publicFeatureLines,
+} from "@/lib/marketing/voice-offer";
 
 /**
  * Pricing preview.
@@ -32,14 +39,22 @@ const CTA_PLACEMENT = {
   enterprise: "pricing_enterprise",
 } as const;
 
-/** The headline allowances a preview card shows. Five at most. */
+/**
+ * The headline allowances a preview card shows. Five at most: four from the
+ * catalogue and the plan's voice offer. A catalogue line that calls anything
+ * "unlimited" is never shown on the public site: nothing is unlimited.
+ */
 function previewFeatures(plan: PlanDefinition): string[] {
-  return plan.features.slice(0, 5);
+  const lines = publicFeatureLines(plan.features);
+  return [...lines.slice(0, 4), planVoiceOffer(plan.id).cardLine];
 }
 
 function priceLabel(plan: PlanDefinition) {
   if (plan.monthlyPrice === null) {
     return { amount: "Custom", suffix: null };
+  }
+  if (plan.id === "pro") {
+    return { amount: gbp(PRO_WITH_VOICE_MONTHLY_GBP), suffix: "/month with Voice" };
   }
   return { amount: `£${plan.monthlyPrice}`, suffix: "/month" };
 }
@@ -54,15 +69,15 @@ function PlanCard({ plan }: { plan: PlanDefinition }) {
       role="listitem"
       className={cn(
         "pub-card relative flex h-full min-w-0 flex-col p-5",
-        // "Most popular" is the catalogue's own `recommended` flag, not a
-        // marketing decision made here.
+        // "Recommended" is the catalogue's own `recommended` flag. It is a
+        // business choice, never a popularity claim.
         plan.recommended &&
           "border-[var(--pub-lime-border)] shadow-[inset_0_1px_0_rgb(255_255_255/0.05),0_0_60px_-20px_rgb(183_243_74/0.7)]",
       )}
     >
       {plan.recommended ? (
         <span className="absolute -top-3 right-5 rounded-full bg-[var(--pub-lime)] px-3 py-1 text-[11px] font-semibold text-[var(--pub-lime-ink)]">
-          Most popular
+          Recommended
         </span>
       ) : null}
 
@@ -172,6 +187,8 @@ export function PricingPreviewSection() {
           {" "}
           {PLANS.starter.leadLimit} to {PLANS.pro.leadLimit.toLocaleString("en-GB")} new leads a
           month depending on plan — are enforced in the product, not just described here.
+          {" "}Pro with the AI Voice Sales Agent is {gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month.{" "}
+          {VOICE_TRIAL_NOTE}
         </p>
       </PublicContainer>
     </PublicSection>

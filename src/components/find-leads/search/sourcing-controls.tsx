@@ -248,7 +248,8 @@ export function SourcingControls({
           Start sourcing run
         </Button>
         <p className="mt-2.5 text-center text-[11px] leading-relaxed text-content-subtle">
-          This will use your plan limits. Overage charges may apply. All sourcing
+          This will use your plan limits. There is no overage: a run stops at your
+          allowance. All sourcing
           complies with our{" "}
           <a
             href="/privacy"

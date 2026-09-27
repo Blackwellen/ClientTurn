@@ -62,9 +62,6 @@ export type UsageOverview = {
   dailyCaps: DailyCaps;
   /** What actually applies after plan, platform and sender-health ceilings. */
   effectiveCaps: DailyCaps;
-  overageEnabled: boolean;
-  overageCapMinor: number;
-  accountMaxOverageMinor: number;
   monthlyAllowance: number;
   limits: {
     sourcing: UsageLimit;
@@ -100,7 +97,7 @@ export async function getUsageOverview(
     admin
       .from("customer_usage_allocations")
       .select(
-        "email_percent, sms_percent, whatsapp_percent, overage_enabled, overage_cap_minor, daily_caps_json",
+        "email_percent, sms_percent, whatsapp_percent, daily_caps_json",
       )
       .eq("business_id", businessId)
       .eq("billing_period", period)
@@ -160,10 +157,6 @@ export async function getUsageOverview(
     estimates: estimateSends(allocation, monthlyAllowance),
     dailyCaps,
     effectiveCaps,
-    // Off unless the customer explicitly switched it on (§27.13).
-    overageEnabled: allocationRow.data?.overage_enabled ?? false,
-    overageCapMinor: Number(allocationRow.data?.overage_cap_minor ?? 0),
-    accountMaxOverageMinor: v4.allowances.email_sent.overageAllowed ? 500_00 : 0,
     monthlyAllowance,
     limits: {
       sourcing: {

@@ -6,9 +6,13 @@ import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import { recordAudit } from "@/lib/audit";
 import { syncReferralLifecycle } from "@/lib/affiliates/lifecycle";
 import { queueNotification } from "@/lib/jobs/handlers/shared";
+import { enqueue } from "@/lib/jobs/queue";
+import { SUBSCRIPTION_WELCOME_KIND, shouldQueueWelcome, welcomeJobKey } from "@/lib/email/subscription-welcome";
 import { stripe, mapSubscriptionStatus, planForPriceId, entitlementsForPlan } from "./stripe";
 import { recordTermsAcceptance } from "./terms-acceptance";
 import { PLANS } from "./plans";
+import { selectPlanItem } from "./subscription-items";
+import { syncVoiceItems, voicePriceIds } from "./voice-subscription-sync";
 
 /**
  * Mirrors a Stripe subscription onto `subscriptions`, from either direction:
@@ -46,7 +50,10 @@ export async function applyStripeSubscription(
   const businessId = subscription.metadata?.business_id;
   if (!businessId) return null;
 
-  const item = subscription.items.data[0];
+  // The plan item by price, never by position: a voice item (OD-2) can sit
+  // anywhere in `items.data` (subscription-items.ts).
+  const items = subscription.items?.data ?? [];
+  const item = selectPlanItem(items, planForPriceId, voicePriceIds()) ?? undefined;
   const priceId = item?.price?.id ?? null;
   const deleted = context.deleted ?? false;
   const plan = planForPriceId(priceId);
@@ -111,7 +118,68 @@ export async function applyStripeSubscription(
     planKey: deleted ? "trial" : plan,
   });
 
+  // Voice items (the Pro voice item, the dedicated number) are mirrored into
+  // `business_entitlement_grants` separately. A failure there is logged and
+  // never breaks the plan mirror above.
+  await syncVoiceItems(subscription, { businessId, deleted, eventId: context.eventId });
+
+  // Active on a paid plan (a trial that converted, or a direct subscribe):
+  // the one welcome email about the plan and its add-ons.
+  if (shouldQueueWelcome({ status, plan, alreadySent: false })) {
+    await queueSubscriptionWelcome({ businessId, subscriptionId: subscription.id, plan });
+  }
+
   return { businessId, status };
+}
+
+/**
+ * Queues the subscription welcome email once per Stripe subscription.
+ *
+ * Two guards: the job's idempotency key (which dedupes the webhook and the
+ * Checkout return page racing each other) and the durable marker row in
+ * `subscription_welcome_emails` (0149), which outlives the purged job row, so
+ * a later `customer.subscription.updated` (a renewal, a plan change, a
+ * recovered payment) never sends it again. Enqueue first, then mark: a failed
+ * mark only means the next event re-enqueues under the same key.
+ */
+export async function queueSubscriptionWelcome(input: {
+  businessId: string;
+  subscriptionId: string;
+  plan: string;
+}): Promise<"queued" | "already_sent"> {
+  const markers = db().from("subscription_welcome_emails");
+  const { data: existing, error: readError } = await markers
+    .select("stripe_subscription_id")
+    .eq("stripe_subscription_id", input.subscriptionId)
+    .maybeSingle();
+  if (readError) {
+    // Unknown is not "not sent": skip rather than risk a second email.
+    console.error("[stripe] welcome marker read failed", { businessId: input.businessId, message: readError.message });
+    return "already_sent";
+  }
+  if (!shouldQueueWelcome({ status: "ACTIVE", plan: input.plan, alreadySent: Boolean(existing) })) {
+    return "already_sent";
+  }
+
+  await enqueue(
+    "notification.send",
+    { kind: SUBSCRIPTION_WELCOME_KIND, businessId: input.businessId },
+    {
+      businessId: input.businessId,
+      idempotencyKey: welcomeJobKey(input.subscriptionId),
+    },
+  );
+  logWriteError(
+    await db()
+      .from("subscription_welcome_emails")
+      .upsert(
+        { stripe_subscription_id: input.subscriptionId, business_id: input.businessId, plan: input.plan },
+        { onConflict: "stripe_subscription_id", ignoreDuplicates: true },
+      ),
+    "stripe: welcome email marker",
+    { businessId: input.businessId },
+  );
+  return "queued";
 }
 
 /** Records the card's brand and last four, for the billing page. */
@@ -230,8 +298,9 @@ export async function notifyTrialEnding(subscription: Stripe.Subscription): Prom
   const businessId = subscription.metadata?.business_id;
   if (!businessId || !subscription.trial_end) return;
 
-  const plan = planForPriceId(subscription.items.data[0]?.price?.id);
-  const price = subscription.items.data[0]?.price;
+  const planItem = selectPlanItem(subscription.items?.data ?? [], planForPriceId, voicePriceIds());
+  const plan = planForPriceId(planItem?.price?.id);
+  const price = planItem?.price;
   const amount =
     price?.unit_amount != null
       ? new Intl.NumberFormat("en-GB", {

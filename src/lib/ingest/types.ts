@@ -177,12 +177,21 @@ export function defaultRelationshipFor(type: IngestSourceType): IngestRelationsh
     : "UNKNOWN";
 }
 
-/** `leads.intake_method` for a new lead (vocabulary: 0038 check). */
+/** Ad networks with their own intake method (0135). Meta is matched by prefix above. */
+const AD_PLATFORM_INTAKE: Record<string, string> = {
+  google_ads: "GOOGLE_ADS",
+  linkedin_ads: "LINKEDIN_ADS",
+  tiktok_ads: "TIKTOK_ADS",
+  microsoft_ads: "MICROSOFT_ADS",
+};
+
+/** `leads.intake_method` for a new lead (vocabulary: 0038 check, widened in 0135). */
 export function intakeMethodFor(type: IngestSourceType, provider: string): string {
   switch (type) {
     case "AD_FORM":
     case "SOCIAL_DM":
-      return provider.startsWith("meta") ? "META" : "OTHER";
+      if (provider.startsWith("meta")) return "META";
+      return AD_PLATFORM_INTAKE[provider] ?? "OTHER";
     case "WEB_FORM":
       return "WEBFORM";
     case "CSV":

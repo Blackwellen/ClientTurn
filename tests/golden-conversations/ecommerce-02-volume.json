@@ -1,0 +1,45 @@
+{
+  "id": "ecommerce-02-volume",
+  "archetype": "ECOMMERCE",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "whatsapp",
+  "story": "The lead shares volume unprompted; it is never asked again.",
+  "turns": [
+    {
+      "lead": "We ship about 2,000 orders a month and need a better courier deal.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_CHECKOUT",
+          "ESCALATE",
+          "INFORM",
+          "ANSWER"
+        ],
+        "known": [
+          "VOLUME"
+        ],
+        "notAsked": [
+          "VOLUME",
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "Mostly small parcels, UK only.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_CHECKOUT",
+          "ESCALATE",
+          "INFORM",
+          "ANSWER"
+        ],
+        "notAsked": [
+          "VOLUME"
+        ]
+      }
+    }
+  ]
+}

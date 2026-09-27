@@ -13,7 +13,16 @@ import { logWriteError } from "@/lib/supabase/write-result";
 import { orIlike } from "@/lib/supabase/ilike";
 import { manualRescoreTrigger } from "@/lib/leads/detail-page";
 import { resumeFollowUpBlock } from "@/lib/leads/resume-rule";
+import {
+  conversationReleasePatch,
+  handoffReleasePatch,
+  OPEN_HANDOFF_STATUSES,
+  RELEASABLE_CONVERSATION_OWNERS,
+} from "@/lib/leads/resume-release";
 import { recordPermission } from "@/lib/policy/service";
+import { leadSearchIntentFilters } from "@/lib/qualification-intelligence/op-schemas";
+import { INCOMPLETE_BELOW, STRONG_INTENT_STATES } from "@/lib/qualification-intelligence/explain";
+import type { IntentState, NbaAction } from "@/lib/qualification-intelligence/types";
 import {
   hasWhatsAppOptIn,
   MAX_OPT_IN_DETAIL,
@@ -61,7 +70,7 @@ import type { HandlerInput, HandlerOutcome } from "../runtime";
  * overwrite when a lead was first won.
  */
 const LEAD_FIELDS =
-  "id, business_id, first_name, last_name, email, phone, phone_normalized, postcode, status, qualification_state, assigned_user_id, needs_attention, attention_reason, automation_active, human_takeover, opted_out, service_id, source_id, archived_at, archived_by, created_at, updated_at, last_contact_at, qualified_at, booked_at, won_at, lost_at";
+  "id, business_id, first_name, last_name, email, phone, phone_normalized, postcode, status, qualification_state, assigned_user_id, needs_attention, attention_reason, automation_active, human_takeover, opted_out, service_id, source_id, archived_at, archived_by, created_at, updated_at, last_contact_at, qualified_at, booked_at, won_at, lost_at, intent_state, intent_score, qualification_completeness, next_action, assessed_at";
 
 type LeadRow = {
   id: string;
@@ -230,6 +239,11 @@ defineOperation("lead.search", {
     /** Archived leads are excluded unless asked for by name. */
     includeArchived: z.boolean().optional(),
     limit: z.number().int().min(1).max(50).optional(),
+    // Qualification intelligence (§B.19): "show strong intent but incomplete
+    // qualification", by intent state, score, completeness or next action.
+    // Read from the lead's denormalised columns, which only
+    // record_lead_assessment() writes, so the list and the Lead page agree.
+    ...leadSearchIntentFilters,
   }),
   async run({
     args,
@@ -240,6 +254,11 @@ defineOperation("lead.search", {
     needsAttention?: boolean;
     includeArchived?: boolean;
     limit?: number;
+    intentStateIn?: IntentState[];
+    minIntentScore?: number;
+    maxCompleteness?: number;
+    nextActionIn?: NbaAction[];
+    strongIntentIncomplete?: boolean;
   }>) {
     const admin = createAdminClient();
     let query = admin
@@ -253,6 +272,16 @@ defineOperation("lead.search", {
     if (args.status) query = query.eq("status", args.status);
     if (args.needsAttention !== undefined) {
       query = query.eq("needs_attention", args.needsAttention);
+    }
+
+    if (args.intentStateIn?.length) query = query.in("intent_state", args.intentStateIn);
+    if (args.minIntentScore !== undefined) query = query.gte("intent_score", args.minIntentScore);
+    if (args.maxCompleteness !== undefined) query = query.lte("qualification_completeness", args.maxCompleteness);
+    if (args.nextActionIn?.length) query = query.in("next_action", args.nextActionIn);
+    if (args.strongIntentIncomplete) {
+      query = query
+        .in("intent_state", [...STRONG_INTENT_STATES])
+        .lt("qualification_completeness", INCOMPLETE_BELOW);
     }
 
     if (args.query) {
@@ -829,6 +858,34 @@ defineOperation("lead.resume_follow_up", {
       attention_reason: null,
     });
 
+    // H3b: an agent hand-off also left the conversation HANDED_OVER and a
+    // hand-off open, and the run gate refuses every turn while a person owns
+    // the conversation. Release both, exactly as "Return to assistant" does
+    // (resume-release.ts); a CLOSED conversation is left closed.
+    const admin = createAdminClient();
+    const releasedAt = new Date().toISOString();
+    const { data: released, error: releaseError } = await admin
+      .from("conversations")
+      .update(conversationReleasePatch(releasedAt, context.userId))
+      .eq("business_id", context.businessId)
+      .eq("lead_id", before.id)
+      .in("owner", [...RELEASABLE_CONVERSATION_OWNERS])
+      .select("id");
+    if (releaseError) {
+      throw new ServiceError("UNAVAILABLE", "The conversation could not be handed back to the assistant. Try again.");
+    }
+    const { data: resolvedHandoffs, error: handoffError } = await admin
+      .from("agent_handoffs")
+      .update(handoffReleasePatch(releasedAt, context.userId))
+      .eq("business_id", context.businessId)
+      .eq("lead_id", before.id)
+      .in("status", [...OPEN_HANDOFF_STATUSES])
+      .select("id");
+    logWriteError({ error: handoffError }, "lead.resume_follow_up: resolve hand-offs", {
+      businessId: context.businessId,
+      leadId: before.id,
+    });
+
     // The next step is re-checked against stop conditions, suppression and
     // quiet hours by the scheduler before anything is sent.
     try {
@@ -837,8 +894,14 @@ defineOperation("lead.resume_follow_up", {
       throw new ServiceError("UNAVAILABLE", "Follow-up could not be restarted. Try again.");
     }
 
+    const outcome = changed(before, after);
     return {
-      ...changed(before, after),
+      ...outcome,
+      after: {
+        ...(outcome.after ?? {}),
+        conversations_released: (released ?? []).length,
+        handoffs_resolved: (resolvedHandoffs ?? []).length,
+      },
       warnings: [
         {
           code: "follow_up_resumed",

@@ -71,8 +71,18 @@ function leadLimitFor(plan: string, snapshot: number | null): number | null {
   return PLANS[plan as Exclude<PlanId, "trial">]?.leadLimit ?? null;
 }
 
-function messageLimitFor(plan: string): number | null {
+function smsLimitFor(plan: string): number | null {
   return PLANS[plan as Exclude<PlanId, "trial">]?.smsSegmentAllowance ?? null;
+}
+
+/**
+ * Messages sent across every channel. There is no single allowance for this
+ * -- SMS is metered in segments, WhatsApp per message, email by daily caps --
+ * so comparing it with the SMS allowance (as this once did) made a busy email
+ * workspace look over its limit. It is a count, and the SMS meter is separate.
+ */
+function messageCount(used: number): UsageCell {
+  return { used, limit: null, ratio: null, countOnly: true };
 }
 
 type Candidate = {
@@ -241,7 +251,7 @@ export async function listCustomers(params: {
       plan,
       subscriptionStatus: sub?.status ?? "TRIALING",
       leadUsage: usageCell(usage.leads, leadLimitFor(plan, sub?.lead_limit ?? null)),
-      messageUsage: usageCell(usage.messages, messageLimitFor(plan)),
+      messageUsage: messageCount(usage.messages),
       connectionHealth: rollUpHealth(healthById.get(candidate.id) ?? []),
       lastActivityAt: activityById.get(candidate.id) ?? null,
     };
@@ -268,7 +278,7 @@ export async function listCustomers(params: {
       case "lead_usage":
         return row.leadUsage.ratio ?? -1;
       case "message_usage":
-        return row.messageUsage.ratio ?? -1;
+        return row.messageUsage.used;
       case "last_activity":
         return row.lastActivityAt ? new Date(row.lastActivityAt).getTime() : 0;
       case "joined":
@@ -457,6 +467,22 @@ export async function getCustomerDetail(
     else messagesUsed = Number(row.quantity ?? 0);
   }
 
+  // The same count billing enforces (limits-service `sum_usage_events`), from
+  // the start of the current period.
+  let smsSegmentsUsed = 0;
+  if (subscription?.current_period_start) {
+    const { data: segments, error: segmentsError } = await supabase.rpc("sum_usage_events", {
+      p_business_id: businessId,
+      p_metric: "sms_outbound_segment",
+      p_since: subscription.current_period_start,
+    });
+    if (segmentsError) {
+      console.error("[admin] SMS segment usage unavailable", { businessId, message: segmentsError.message });
+    } else {
+      smsSegmentsUsed = Number(segments ?? 0);
+    }
+  }
+
   const statuses = (integrations.data ?? []).map((row) => row.status);
 
   return {
@@ -486,7 +512,8 @@ export async function getCustomerDetail(
       leadsUsed,
       leadLimitFor(plan, subscription?.lead_limit ?? null),
     ),
-    messageUsage: usageCell(messagesUsed, messageLimitFor(plan)),
+    messageUsage: messageCount(messagesUsed),
+    smsUsage: usageCell(smsSegmentsUsed, smsLimitFor(plan)),
     userLimit: subscription?.user_limit ?? 0,
     lastActivityAt: events.data?.[0]?.created_at ?? null,
     lastHealthCheckAt: healthCheck.data?.created_at ?? null,

@@ -22,8 +22,10 @@ import type {
   SendResult,
 } from "../messaging/types.ts";
 import type { PolicyReasonCode } from "../policy/types.ts";
+import { normaliseForSms } from "../messaging/sms-segments.ts";
 import type { OutboundTemplate } from "../messaging/whatsapp-templates.ts";
 import type { EmailMessageClass } from "../email/sender-health.ts";
+import type { ReengagementTrigger } from "../reengagement/triggers.ts";
 
 // "agent" behaves like "system" in the guard: a lead having replied does
 // not block the reply owed back to them, while opt-out, suppression and a
@@ -53,6 +55,33 @@ export type SendGuardSnapshot = {
    * and replied stop conditions only. Honoured for `automation` origin alone.
    */
   bookingReminder?: boolean;
+  /**
+   * An intent-driven re-engagement message (reengagement/triggers.ts), marked
+   * by its `reengage:` send key. Honoured for `automation` origin alone. Each
+   * trigger is exempt only from the stop condition its own existence answers:
+   *
+   *   NOT_NOW_RESUME / DEADLINE_PASSED  the lead replied ("try me in March")
+   *                                     -- that reply is why it is sent;
+   *   NO_SHOW_REBOOK / NO_SHOW_NUDGE    replied, and BOOKED (the booking they
+   *                                     missed); a NEW booking cancels the
+   *                                     trigger before it queues anything;
+   *   WIN_BACK                          replied, LOST and paused (closing a
+   *                                     deal switches follow-up off; the
+   *                                     win-back is its own opted-in loop).
+   *
+   * Opt-out, suppression, human takeover, WON, subscription and channel health
+   * bind every trigger, and quiet hours, the policy gate and the frequency
+   * guard all still run.
+   */
+  reengagement?: ReengagementTrigger | null;
+  /**
+   * The thank-you after a confirmed payment (payments/send-keys.ts), marked by
+   * its `payment-thanks:` send key. Honoured for `system` origin alone, and
+   * exempt only from WON (the payment made the lead WON), BOOKED, a reply and
+   * the paused flag (closing the deal switched follow-up off). Opt-out,
+   * suppression, human takeover, channel health and quiet hours all bind.
+   */
+  paymentConfirmation?: boolean;
 };
 
 export type SendDecision =
@@ -121,6 +150,15 @@ export function guardOptedOut(
 function guardedLead(snapshot: SendGuardSnapshot): LeadState {
   const { lead, origin } = snapshot;
 
+  if (origin === "system" && snapshot.paymentConfirmation === true) {
+    return {
+      ...lead,
+      status: lead.status === "WON" || lead.status === "BOOKED" ? "CONTACTED" : lead.status,
+      hasReplied: false,
+      automationActive: true,
+    };
+  }
+
   if (origin === "manual") {
     return {
       ...lead,
@@ -131,7 +169,29 @@ function guardedLead(snapshot: SendGuardSnapshot): LeadState {
     };
   }
 
-  if (origin === "automation") return lead;
+  if (origin === "automation") {
+    switch (snapshot.reengagement ?? null) {
+      case "NOT_NOW_RESUME":
+      case "DEADLINE_PASSED":
+        return { ...lead, hasReplied: false };
+      case "NO_SHOW_REBOOK":
+      case "NO_SHOW_NUDGE":
+        return {
+          ...lead,
+          hasReplied: false,
+          status: lead.status === "BOOKED" ? "CONTACTED" : lead.status,
+        };
+      case "WIN_BACK":
+        return {
+          ...lead,
+          hasReplied: false,
+          automationActive: true,
+          status: lead.status === "LOST" ? "CONTACTED" : lead.status,
+        };
+      default:
+        return lead;
+    }
+  }
 
   // A reactivation campaign is its own explicit decision to message, made by
   // the person who launched it. `automation_active` governs the *follow-up
@@ -148,6 +208,24 @@ function guardedLead(snapshot: SendGuardSnapshot): LeadState {
       ...lead,
       hasReplied: false,
       humanTakeover: false,
+      automationActive: true,
+    };
+  }
+
+  // The conversation agent's reply to a message the lead sent (story I3).
+  // `automation_active` governs *outbound follow-up*; a lead created via the
+  // API or an import starts with it off, and answering them when they write in
+  // is not follow-up. Likewise BOOKED stops a follow-up sequence, but the agent
+  // still helps a booked lead with their booking (POST_BOOKING). The agent is
+  // only ever enqueued by an inbound message (agent/events.ts); a non-reply
+  // trigger keeps the paused meaning in the orchestrator (`isReplyTrigger`).
+  // Opt-out, suppression, human takeover, won/lost, channel health and quiet
+  // hours all still bind.
+  if (origin === "agent") {
+    return {
+      ...lead,
+      status: lead.status === "BOOKED" ? "CONTACTED" : lead.status,
+      hasReplied: false,
       automationActive: true,
     };
   }
@@ -348,8 +426,16 @@ export async function performSend(input: {
   // The template the gate chose, if any, travels with the message from here:
   // the carrier sends it, and markSent records its category for cost (§45).
   // Only WhatsApp may carry one; anything else would be a gate bug, refused.
-  const outbound: OutboundMessageRecord =
+  //
+  // An SMS goes out as plain GSM-7 punctuation. One em dash or curly quote
+  // switches the whole message to UCS-2 (70 characters a segment instead of
+  // 160), which made the default sequence cost 7 segments a lead instead of 5
+  // (economics.md). The sequence templates, campaigns and the agent all pass
+  // through here, so this is the one place it is done for every SMS.
+  const gated: OutboundMessageRecord =
     gate.template && message.channel === "whatsapp" ? { ...message, template: gate.template } : message;
+  const outbound: OutboundMessageRecord =
+    gated.channel === "sms" ? { ...gated, body: normaliseForSms(gated.body) } : gated;
 
   // The claim is the last step before the carrier, after every read that can
   // still refuse, so a refused message never passes through SENDING. Losing

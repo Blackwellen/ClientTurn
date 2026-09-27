@@ -4,7 +4,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { stripe, priceIdFor } from "@/lib/billing/stripe";
+import { stripe, priceIdFor, planForPriceId } from "@/lib/billing/stripe";
+import { selectPlanItem } from "@/lib/billing/subscription-items";
+import { voicePriceIds } from "@/lib/billing/voice-subscription-sync";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { guarded, type AdminActionResult } from "./guarded";
 
@@ -98,7 +100,8 @@ export async function changePlan(input: {
         };
       }
 
-      const item = live.items.data[0];
+      // The plan item by price, never position: a voice item can be first.
+      const item = selectPlanItem(live.items.data, planForPriceId, voicePriceIds());
       if (!item) return { ok: false, error: "That Stripe subscription has no price to change." };
 
       await stripe.subscriptions.update(subscription.stripe_subscription_id, {

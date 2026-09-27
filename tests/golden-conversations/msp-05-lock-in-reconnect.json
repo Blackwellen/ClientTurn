@@ -1,0 +1,29 @@
+{
+  "id": "msp-05-lock-in-reconnect",
+  "archetype": "MSP",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "A lead tied into a contract until March: never a hand-over (LOCK_IN is not a contract-terms question) and never pressure. The engine waits, and the dated NOT_NOW it records (resume ~6 weeks before the renewal, signals.ts lockInReconnectAt) plans the reconnect through the re-engagement triggers.",
+  "turns": [
+    {
+      "lead": "We're tied into a contract with our IT company until March so can't do anything yet.",
+      "expect": {
+        "actionIn": [
+          "WAIT"
+        ],
+        "intentStateIn": [
+          "NOT_NOW"
+        ],
+        "questionDimension": null
+      },
+      "candidate": {
+        "text": "Makes sense. Would it help if I got back in touch in January, so you've time to compare before March?",
+        "qaOk": false,
+        "codes": [
+          "QA_SHOULD_CLOSE"
+        ],
+        "styleOk": true
+      }
+    }
+  ]
+}

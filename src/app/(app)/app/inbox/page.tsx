@@ -11,10 +11,11 @@ import {
   type ThreadMessage,
 } from "@/lib/inbox/types";
 import { InboxView } from "@/components/inbox/inbox-view";
+import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
 import { getConversationAgentState } from "@/lib/agent/queries";
 import type { ConversationAgentState } from "@/lib/agent/views";
 
-export const metadata: Metadata = { title: "Inbox · ClientTurn" };
+export const metadata: Metadata = { title: "Inbox" };
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage({
@@ -133,6 +134,12 @@ export default async function InboxPage({
     // Ownership, any open handover and any suggested reply, in one read so the
     // strip above the thread never renders half-loaded.
     agentState = await getConversationAgentState(workspace.businessId, selected.id);
+
+    // A suggested reply is shown once, in its card with Send, Edit and
+    // Discard. It also appeared again in the thread as a green "DRAFT" bubble
+    // that looked sent (8.8).
+    const draftIds = new Set((agentState?.pendingDrafts ?? []).map((draft) => draft.id));
+    if (draftIds.size > 0) messages = messages.filter((message) => !draftIds.has(message.id));
   }
 
   const hrefFor = (conversationId: string) => {
@@ -147,7 +154,10 @@ export default async function InboxPage({
   };
 
   return (
-    <InboxView
+    <>
+      {/* Trial SMS used up while a lead is texting back; the open thread's lead first. */}
+      <TrialUpgradePromptMount preferLeadId={selected?.leadId ?? null} anyLead />
+      <InboxView
       channel={channel}
       view={view}
       archived={archived}
@@ -160,5 +170,6 @@ export default async function InboxPage({
       canManage={hasRole(workspace.role, "member")}
       hrefFor={hrefFor}
     />
+    </>
   );
 }

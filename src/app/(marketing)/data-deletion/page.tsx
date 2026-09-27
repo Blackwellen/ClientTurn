@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = {
-  title: "Data deletion · ClientTurn",
+  title: "Data deletion",
   description: "Check the status of a data deletion request.",
   // Every URL here is a per-request confirmation code with no canonical
   // content of its own — nothing for a search engine to index, and no

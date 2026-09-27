@@ -2,7 +2,10 @@
  * Story C. LinkedIn Lead Gen Forms via the Lead Sync API (faked to the shape in
  * Microsoft Learn "Lead Sync API", ms.date 2026-07-14).
  * Stackwise IT: a UK managed IT / IT consultancy (IT_CONSULTANCY), motion
- * ENTERPRISE -- map the problem and stakeholders, then hand to a person.
+ * ENTERPRISE -- map the problem and stakeholders, then book the meeting with
+ * a person. Owner decision 2026-09-27 (human hand-over is the last resort):
+ * the meeting IS the hand-off, with the brief attached; the conversation is
+ * not taken from the AI before it (was: a hand-over at the threshold).
  */
 import { describe, test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -14,7 +17,7 @@ const { admin } = H;
 
 export const linkedinCalls: { path: string; rawQuery: string }[] = [];
 
-describe("C. LinkedIn Lead Gen Forms: Stackwise IT (IT consultancy, enterprise hand-off)", () => {
+describe("C. LinkedIn Lead Gen Forms: Stackwise IT (IT consultancy, enterprise meeting with a brief)", () => {
   const S: Record<string, string> = {};
   const person = { first: "Priya", last: "Raman", email: H.testEmail("priya.raman"), phone: H.dramaPhone(), company: "Raman Freight plc", title: "Head of IT" };
   const responseId = `li-${Date.now()}-5`;
@@ -130,8 +133,8 @@ describe("C. LinkedIn Lead Gen Forms: Stackwise IT (IT consultancy, enterprise h
     });
   });
 
-  test("C4 ENTERPRISE: problem + stakeholders + decision process, then hand-off with a brief", async () => {
-    await check({ id: "C4", flow: "Qualification -> handoff brief", scenario: "3 answers meet the ENTERPRISE threshold", expected: "stop asking (budget never asked), agent_handoffs row, human_takeover, handoff.brief summary stored, acknowledgement sent" }, async () => {
+  test("C4 ENTERPRISE: problem + stakeholders + decision process, then a booked meeting with a brief", async () => {
+    await check({ id: "C4", flow: "Qualification -> booked meeting + handoff brief", scenario: "3 answers meet the ENTERPRISE threshold; the lead picks an offered slot", expected: "stop asking (budget never asked), slots offered, booking scheduled, no human_takeover and the conversation still AI_ACTIVE, one agent_handoffs ASSIST_REQUEST (MEETING_BRIEF) with the brief stored" }, async () => {
       assert.ok(S.leadId, "no lead from C1");
       const t1 = await H.leadSays(person.phone, "Hello, yes please get in touch.");
       const t2 = await H.leadSays(person.phone, "Our problem is repeated outages across three depots and no DR plan.");
@@ -140,13 +143,32 @@ describe("C. LinkedIn Lead Gen Forms: Stackwise IT (IT consultancy, enterprise h
       const all = [t1, t2, t3, t4].flatMap((t) => t.replies);
       for (const reply of all) assert.ok(H.questionMarks(reply) <= 1, `two questions: ${reply}`);
       assert.equal(all.filter((r) => /budget/i.test(r)).length, 0, "budget asked after threshold");
-      const { data: handoffs } = await admin.from("agent_handoffs").select("id, reason, status, summary_json").eq("lead_id", S.leadId);
+
+      // The close is a meeting with a person, offered by the AI.
+      const offeredRun = await H.latestRun(S.leadId);
+      const offered = (offeredRun?.decision_json as { offeredSlots?: { label: string }[] } | null)?.offeredSlots ?? [];
+      assert.ok(offered.length > 0, `no slots offered; replies=${JSON.stringify(all)}; last run=${JSON.stringify(offeredRun).slice(0, 400)}`);
+      const pick = offered[0].label;
+      const t5 = await H.leadSays(person.phone, `${pick.split(",").pop()!.trim()} works for me`);
+
+      const { data: bookings } = await admin.from("bookings").select("status, provider, starts_at").eq("lead_id", S.leadId);
+      assert.equal(bookings?.length, 1, `bookings=${JSON.stringify(bookings)} t5=${JSON.stringify(t5).slice(0, 500)}`);
+      assert.equal(bookings![0].status, "scheduled");
+
+      // The meeting is the hand-off: the conversation was never taken away.
       const lead = await H.leadRow(S.leadId);
-      assert.ok((handoffs ?? []).length >= 1, `no handoff; replies=${JSON.stringify(all)}; runs=${JSON.stringify(await H.latestRun(S.leadId)).slice(0, 300)}`);
-      assert.equal(lead.human_takeover, true);
+      assert.equal(lead.human_takeover, false, "the conversation was handed over");
+      const { data: conversation } = await admin.from("conversations").select("owner").eq("lead_id", S.leadId).eq("channel", "sms").maybeSingle();
+      assert.equal(conversation?.owner, "AI_ACTIVE");
+
+      // The brief travels with the meeting, as a background assist.
+      const { data: handoffs } = await admin.from("agent_handoffs").select("id, reason, status, summary_json").eq("lead_id", S.leadId);
+      assert.equal((handoffs ?? []).length, 1, `handoffs=${JSON.stringify(handoffs)}`);
       const summary = handoffs![0].summary_json as Record<string, unknown> | null;
-      assert.ok(summary && Object.keys(summary).length > 0, "handoff brief not written");
-      return `replies=${all.map((r) => JSON.stringify(r.slice(0, 60))).join(" | ")}; handoff ${handoffs![0].reason}/${handoffs![0].status}; brief keys=${Object.keys(summary!).join(",")}`;
+      assert.equal(summary?.kind, "ASSIST_REQUEST");
+      assert.equal(summary?.assistReason, "MEETING_BRIEF");
+      assert.ok(summary?.leadBrief && summary?.quickBrief, `brief not written: keys=${Object.keys(summary ?? {}).join(",")}`);
+      return `replies=${[...all, ...t5.replies].map((r) => JSON.stringify(r.slice(0, 60))).join(" | ")}; picked "${pick}"; booking ${bookings![0].status}/${bookings![0].provider}; takeover=${lead.human_takeover}; owner=${conversation?.owner}; handoff ${handoffs![0].reason}/${handoffs![0].status} kind=${String(summary?.kind)} assist=${String(summary?.assistReason)}; brief keys=${Object.keys(summary!).join(",")}`;
     });
   });
 

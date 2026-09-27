@@ -11,6 +11,46 @@ import { loadReactivationAllowance, resolveAudience } from "@/lib/campaigns/quer
 import { reactivationLimitProblem } from "@/lib/campaigns/reactivation-limit";
 import { audienceFilterSchema } from "@/lib/campaigns/types";
 import { loadBusinessContext, queueNotification } from "./shared";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { bestSendTime } from "@/lib/reengagement/send-time";
+import { workspaceReplyHistogram } from "./reengage";
+
+/**
+ * The campaign's send timing (0146). `best_time` sends each contact at the
+ * hour they have replied in before (else the workspace's, else Tue-Thu
+ * 10:00), within 14 days; `immediate` as fast as the send rate allows. A
+ * database without the column keeps the old behaviour.
+ */
+async function campaignSendTiming(campaignId: string): Promise<"best_time" | "immediate"> {
+  const admin = createAdminClient() as unknown as SupabaseClient;
+  const { data, error } = await admin.from("campaigns").select("send_timing").eq("id", campaignId).maybeSingle();
+  if (error) return "immediate";
+  return (data as { send_timing?: string | null } | null)?.send_timing === "best_time" ? "best_time" : "immediate";
+}
+
+/** Each lead's recent inbound message times, read in chunks. */
+async function replyTimesByLead(businessId: string, leadIds: string[]): Promise<Map<string, string[]>> {
+  const admin = createAdminClient();
+  const out = new Map<string, string[]>();
+  for (let index = 0; index < leadIds.length; index += 200) {
+    const { data, error } = await admin
+      .from("messages")
+      .select("lead_id, created_at")
+      .eq("business_id", businessId)
+      .eq("direction", "inbound")
+      .in("lead_id", leadIds.slice(index, index + 200))
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (error) throw new Error(`Could not read reply history: ${error.message}`);
+    for (const row of data ?? []) {
+      if (!row.lead_id) continue;
+      const list = out.get(row.lead_id) ?? [];
+      if (list.length < 50) list.push(row.created_at);
+      out.set(row.lead_id, list);
+    }
+  }
+  return out;
+}
 import { parsePayload } from "./parse";
 import { campaignExpandPayload } from "./payloads";
 
@@ -147,16 +187,38 @@ export async function handleCampaignExpand(job: ClaimedJob) {
   );
   const start = nextPermittedSendTime(new Date(), business.quietHours);
 
-  const rows = eligibleLeadIds.map((leadId, index) => ({
-    business_id: campaign.business_id,
-    campaign_id: campaign.id,
-    lead_id: leadId,
-    state: "scheduled",
-    next_send_at: nextPermittedSendTime(
-      new Date(start.getTime() + index * intervalMs),
-      business.quietHours,
-    ).toISOString(),
-  }));
+  // Best send time: never earlier than the rate-limited slot, at the lead's
+  // own reply hour where known. Only for contacts this expansion adds.
+  const timing = await campaignSendTiming(campaign.id);
+  const newLeads = eligibleLeadIds.filter((leadId) => !already.has(leadId));
+  const [replies, workspaceHistogram] =
+    timing === "best_time"
+      ? await Promise.all([
+          replyTimesByLead(campaign.business_id, newLeads),
+          workspaceReplyHistogram(campaign.business_id, business.timezone),
+        ])
+      : [new Map<string, string[]>(), null];
+
+  const rows = eligibleLeadIds.map((leadId, index) => {
+    const slot = nextPermittedSendTime(new Date(start.getTime() + index * intervalMs), business.quietHours);
+    const at =
+      timing === "best_time"
+        ? bestSendTime({
+            notBefore: slot,
+            leadReplies: replies.get(leadId) ?? [],
+            workspaceHistogram,
+            timeZone: business.timezone,
+            quietHours: business.quietHours,
+          }).at
+        : slot;
+    return {
+      business_id: campaign.business_id,
+      campaign_id: campaign.id,
+      lead_id: leadId,
+      state: "scheduled",
+      next_send_at: at.toISOString(),
+    };
+  });
 
   for (let index = 0; index < rows.length; index += 200) {
     await admin
@@ -201,18 +263,29 @@ export async function handleCampaignExpand(job: ClaimedJob) {
     return;
   }
 
-  for (let index = 0; index < contacts.length; index += BATCH_SIZE) {
-    const batch = contacts.slice(index, index + BATCH_SIZE);
+  // Batches of up to BATCH_SIZE contacts due within ten minutes of each
+  // other (best-time contacts are spread over days), each run at its LAST
+  // contact's time so nobody is sent before their own slot.
+  const WINDOW_MS = 10 * 60_000;
+  const due = (row: { next_send_at: string | null }) => (row.next_send_at ? Date.parse(row.next_send_at) : Date.now());
+  let batch: typeof contacts = [];
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const runAt = new Date(Math.max(...batch.map(due)));
     await enqueue(
       "campaign.send",
       { campaignId: campaign.id, contactIds: batch.map((row) => row.id) },
       {
         businessId: campaign.business_id,
-        runAt: batch[0].next_send_at
-          ? new Date(batch[0].next_send_at)
-          : new Date(),
+        runAt,
         idempotencyKey: `campaign.send:${campaign.id}:${batch[0].id}`,
       },
     );
+    batch = [];
+  };
+  for (const row of contacts) {
+    if (batch.length >= BATCH_SIZE || (batch.length > 0 && due(row) - due(batch[0]) > WINDOW_MS)) await flush();
+    batch.push(row);
   }
+  await flush();
 }

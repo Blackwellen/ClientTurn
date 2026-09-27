@@ -1,0 +1,31 @@
+{
+  "id": "saas-03-unsubscribe",
+  "archetype": "B2B_SAAS",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "email",
+  "story": "An opt-out mid-flow is final: nothing further is asked.",
+  "turns": [
+    {
+      "lead": "What does it do exactly?",
+      "expect": {
+        "actionIn": [
+          "ANSWER",
+          "ANSWER_AND_ASK",
+          "INFORM"
+        ]
+      }
+    },
+    {
+      "lead": "Please take me off your list.",
+      "expect": {
+        "actionIn": [
+          "NO_ACTION"
+        ],
+        "intentStateIn": [
+          "NEGATIVE"
+        ],
+        "questionDimension": null
+      }
+    }
+  ]
+}

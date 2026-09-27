@@ -114,7 +114,36 @@ function retainedList(body: string): string[] {
   return lists.flatMap((m) => [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]));
 }
 
-const SCRUB = functionBody("data_rights_scrub");
+/**
+ * Bodies of the functions later migrations run from an
+ * `after update of anonymised_at on public.leads` trigger. The scrub sets
+ * `leads.anonymised_at`, so such a trigger removes rows in the same
+ * transaction — it is part of the scrub as far as coverage is concerned
+ * (0134 clears the qualification-intelligence tables this way).
+ */
+function anonymiseTriggerBodies(): string {
+  const all = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .map((f) => stripComments(readFileSync(path.join(MIGRATIONS, f), "utf8")))
+    .join("\n");
+  const fns = [
+    ...all.matchAll(
+      /after update of anonymised_at on public\.leads[\s\S]*?execute function public\.(\w+)\(/gi,
+    ),
+  ].map((m) => m[1]);
+  return fns
+    .map((fn) => {
+      const start = all.lastIndexOf(`create or replace function public.${fn}(`);
+      if (start < 0) return "";
+      const open = all.indexOf("$$", start);
+      const close = all.indexOf("$$", open + 2);
+      return all.slice(open + 2, close);
+    })
+    .join("\n");
+}
+
+const SCRUB = functionBody("data_rights_scrub") + "\n" + anonymiseTriggerBodies();
 const DELETE = functionBody("data_rights_delete");
 
 describe("every table holding personal data about a person has a rule", () => {

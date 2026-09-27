@@ -4,7 +4,17 @@ summary: Describe the businesses you want, approve a search plan, run it, and re
 category: finding-leads
 keywords: [find leads, discover, prospecting, search plan, sourcing run, companies house, website contacts, google places, icp, recurring search, prospects, buying signals, intent, hiring, funding, leadership change, why this lead]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/find-leads-discovery-1.png
+    alt: "The Find Leads Discover view with the box for describing your ideal customer"
+    caption: "Describe your ideal customer in plain English; nothing is spent while the plan is made"
+  - src: /help/screenshots/finding-leads/find-leads-discovery-2.png
+    alt: "A completed sourcing run with its twelve stages, each with a short summary and a time"
+    caption: "Each stage of the sourcing run, what it found and when"
+  - src: /help/screenshots/finding-leads/find-leads-discovery-3.png
+    alt: "A prospect drawer with the verification card and the Approve for outreach and Promote to lead buttons"
+    caption: "Check verification and the company details, then approve for outreach or promote to a lead"
 ---
 
 **Find Leads** searches for companies that match what you sell, checks them, finds a published work contact, and grades each one against your ideal customer. Everything it finds is a **prospect**: nothing is contacted until a person approves it.
@@ -27,7 +37,8 @@ The plan is shown row by row. Choose a row to edit it:
 - **Decision maker** — the roles you want to reach.
 - **Intent** — your workspace's intent categories to look for, and how recent a signal must be.
 - **Signals** — structured buying signals from free public sources (see [Buying signals](#buying-signals) below).
-- **LinkedIn filters** — Sales Navigator's lead and account filters. See [LinkedIn Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
+- **Combination** — signals combined with AND or OR and a recency, such as "raised funds in the last 90 days AND hiring for a marketing role". Only prospects whose evidence matches are marked ready. See [Intent signals explained](/help/finding-leads/intent-signals-explained).
+- **LinkedIn filters** — the LinkedIn lead and account filters you target, applied by hand in LinkedIn and to your own imported list. See [LinkedIn Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
 - **Exclusions** — competitors, and whether to leave out existing customers.
 - **Minimum grade**, **Result target** (how many verified prospects to find), **Review mode** and **Conversion goal**.
 
@@ -51,7 +62,7 @@ ClientTurn uses official APIs, licensed data and the companies' own published pa
 | Google Search | Finding company websites that have no local listing |
 | Companies House | Confirming the company exists, its status and type. A match is what lets ClientTurn treat it as an incorporated business, which matters for PECR. A miss is treated as unknown, never as a sole trader. Also the source of register buying signals |
 | The company's own website | Reading what the company does and any contact published on its team, about or contact pages. An email address is taken only when it appears on the page word for word; ClientTurn never guesses addresses such as first.last@. Also the source of website buying signals |
-| Your own LinkedIn export | People you chose in your own Sales Navigator or LinkedIn account and imported. ClientTurn never searches LinkedIn itself |
+| Your own list | Your LinkedIn Connections export, or any list you own, imported as prospects. ClientTurn never searches LinkedIn itself |
 | Licensed contact data | Finding and verifying a named decision maker's work email at a company already matched |
 
 Every email address is verified before it is used.
@@ -68,6 +79,8 @@ The **Signals** row adds evidence that a company may be buying now. Each signal 
 | Moved registered office | Companies House | An address change (AD01). It is often just a new accountant, so it counts for less |
 | Hiring for these roles | The company's website | A role you name, on a careers or jobs page |
 | Uses these technologies | The company's website | Shopify, WooCommerce, WordPress, Webflow, HubSpot, Salesforce (Pardot), Intercom, Stripe and others, detected from the scripts the site loads |
+
+Under **More buying signals** the same row offers the full catalogue: funding rounds such as seed and Series A, grants, acquisitions, new C-level, VP and Head-of hires, key departures, hiring by function, new offices, rebrands, website relaunches, awards, partnerships, tool changes, public website issues, tenders, filing deadlines and accounts growth. Each is found only where a free source backs it, and a named round such as Series A needs the company's own announcement: a share allotment only shows that money went in. [Intent signals explained](/help/finding-leads/intent-signals-explained) lists every signal, its source and how long it counts.
 
 Your intent categories are also matched against the company's homepage, about, team, careers, news, press and blog pages. Recent posts are found through the site's sitemap. ClientTurn reads the site's robots.txt first and skips any page it disallows.
 
@@ -99,5 +112,6 @@ For a background worker that sources, books and re-engages together, see [What a
 
 ## Related
 
+- [Intent signals explained](/help/finding-leads/intent-signals-explained)
 - [Lead sources explained](/help/finding-leads/lead-sources-explained)
 - [Setting up an agent](/help/ai-agents/setting-up-an-agent)

@@ -124,6 +124,7 @@ const JOB_LABELS: Record<string, string> = {
   "retention.cleanup": "Retention cleanup",
   "cost.rollup_daily": "Daily cost rollup",
   "cost.rollup_monthly": "Monthly cost rollup",
+  "economics.margin_check": "Margin check",
   "crm.push": "CRM sync",
 };
 

@@ -7,7 +7,7 @@ import { getAffiliate } from "@/lib/affiliates/queries";
 import { AffiliateLoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Partner sign in | ClientTurn",
+  title: "Partner sign in",
   description:
     "Sign in to the ClientTurn partner portal to track your referral links, commission and payouts.",
 };

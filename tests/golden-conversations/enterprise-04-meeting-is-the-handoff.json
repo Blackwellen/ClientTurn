@@ -1,0 +1,87 @@
+{
+  "id": "enterprise-04-meeting-is-the-handoff",
+  "archetype": "ENTERPRISE_SAAS",
+  "motion": "ENTERPRISE",
+  "channel": "email",
+  "story": "An enterprise lead is qualified by the AI and closes on a booked meeting with a person. The meeting is the hand-off; the conversation is never taken from the AI before it (owner decision 2026-09-27; the old engine escalated READY_TO_BUY on the last turn).",
+  "turns": [
+    {
+      "lead": "We're looking at options to consolidate reporting across our sites.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "The problem is every site reports differently and the board can't compare them.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "known": [
+          "PROBLEM"
+        ],
+        "notAsked": [
+          "PROBLEM",
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "Success would be one weekly report the board trusts.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "known": [
+          "PROBLEM",
+          "SUCCESS_METRICS"
+        ],
+        "notAsked": [
+          "PROBLEM",
+          "SUCCESS_METRICS",
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "About 400 staff across four sites. This sounds promising: can we book a call with your team next week?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "questionDimension": "STAKEHOLDERS",
+        "notAsked": [
+          "BUDGET"
+        ],
+        "known": [
+          "PROBLEM",
+          "COMPANY_SIZE"
+        ]
+      }
+    },
+    {
+      "lead": "I'm the finance director, and our board signs off after a pilot.",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "known": [
+          "PROBLEM",
+          "STAKEHOLDERS"
+        ],
+        "questionDimension": null,
+        "notAsked": [
+          "BUDGET"
+        ]
+      }
+    }
+  ]
+}

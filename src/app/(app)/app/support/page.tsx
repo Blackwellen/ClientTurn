@@ -6,7 +6,7 @@ import { listTickets } from "@/lib/support/service";
 import { PageHeader } from "@/components/app/page-header";
 import { SupportDeepLink } from "@/components/support/support-deep-link";
 
-export const metadata: Metadata = { title: "Support · ClientTurn" };
+export const metadata: Metadata = { title: "Support" };
 export const dynamic = "force-dynamic";
 
 /**

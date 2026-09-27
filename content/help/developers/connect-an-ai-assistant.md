@@ -2,7 +2,7 @@
 title: Connecting an AI assistant (MCP)
 summary: Let Claude, Codex, Gemini or another MCP client work inside your workspace safely, with the permissions you choose
 category: developers
-keywords: [mcp, model context protocol, ai assistant, claude, claude code, codex, gemini, approvals, tools, mcp server]
+keywords: [mcp, model context protocol, ai assistant, claude, claude code, codex, gemini, cursor, approvals, tools, mcp server, new connection, replace key, issue key, client configuration]
 order: 30
 updated: 2026-09-26
 ---
@@ -11,19 +11,39 @@ ClientTurn is an MCP server. An AI assistant that supports the Model Context Pro
 
 ## Connect the assistant
 
-1. Create an API key in **Settings → Developer → New key**, with only the permissions the assistant needs. See [API keys](/help/developers/api-keys). The same key works for the API and for MCP.
-2. Copy the **MCP endpoint** from **Settings → Developer**. It is your ClientTurn address followed by `/api/mcp`.
-3. Add the server to your assistant with the key as a bearer header.
+The simplest route is an assistant connection. Owners and admins can create one.
 
-In Claude Code, for example:
+1. Open **Settings → Developer**, find **Assistant connections** and choose **New connection**.
+2. Give it a **Name** you will recognise later, such as "Claude on my laptop", tick the **Permissions** it needs, and choose **Create connection**.
+3. **Copy this key now** opens. It shows the **MCP server URL** (your ClientTurn address followed by `/api/mcp`), the **Key**, and a ready-made **Client configuration** you can copy into your assistant's settings. The key is shown only this once; choose **I have copied it** when you have.
+
+What the connection issues is a workspace API key, limited to the permissions you ticked and tied to that connection. It also appears in the **API keys** list, where it can be revoked too. It does not expire on its own.
+
+- **Replace key** on the connection issues a new key and stops the old one working. Use it if the key is lost or may have leaked. A connection with no working key shows **Issue key** instead.
+- Revoking the connection stops its key immediately, and cannot be undone.
+
+The copied configuration looks like this, and suits Claude Desktop, Cursor and most other MCP clients:
+
+```
+{
+  "mcpServers": {
+    "clientturn": {
+      "url": "https://<your ClientTurn address>/api/mcp",
+      "headers": { "Authorization": "Bearer ct_live_…" }
+    }
+  }
+}
+```
+
+In Claude Code you can add it from the command line instead:
 
 ```
 claude mcp add --transport http clientturn https://<your ClientTurn address>/api/mcp --header "Authorization: Bearer ct_live_…"
 ```
 
-Other clients have an equivalent setting for an HTTP MCP server with a custom `Authorization` header.
+You can also use an ordinary key from **Settings → Developer → New key**, with the MCP scopes the assistant needs. See [API keys](/help/developers/api-keys). The same key works for the API and for MCP.
 
-> **Note:** **Settings → Developer** also has an **Assistant connections** panel with **New connection**. It lists assistant connections and holds the requests waiting for your approval. For connecting a client, a workspace API key is the recommended credential, because it does not expire after an hour.
+The **Assistant connections** panel also holds requests waiting for your approval.
 
 ## What the assistant can do
 
@@ -41,7 +61,7 @@ Anything with lasting consequences does not run when the assistant asks. Sending
 
 > **Note:** The assistant is told clearly that nothing has happened, so it cannot report success. When you approve, the action runs on your authority, once; approving twice cannot do it twice.
 
-Every call the assistant makes, and every refusal, is recorded. Revoking the key disconnects it immediately.
+Every call the assistant makes, and every refusal, is recorded. Revoking the key or the connection disconnects it immediately.
 
 ## Related
 

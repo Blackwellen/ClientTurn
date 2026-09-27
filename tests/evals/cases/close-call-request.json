@@ -1,0 +1,58 @@
+{
+  "id": "close-call-request",
+  "scenario": "§93 close: a call request is a warm close, not a hand-over",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "What's the main thing you want the new site to do?"
+    },
+    {
+      "role": "lead",
+      "text": "Can you give me a call to talk it through?"
+    }
+  ],
+  "facts": {
+    "confirmedSlots": [
+      "Tue 6 Oct, 10:00am",
+      "Wed 7 Oct, 2:00pm"
+    ]
+  },
+  "expectations": {
+    "deterministic": {
+      "intent": "HUMAN_REQUEST",
+      "binding": true
+    },
+    "strategy": {
+      "mode": "BOOKING_ASSISTANCE",
+      "bookingRoute": "SLOTS",
+      "callRequested": true,
+      "mustInclude": [
+        "a phone call at two of the confirmed times"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Happy to. I can call you Tue 6 Oct, 10:00am or Wed 7 Oct, 2:00pm. Does either work?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Someone will call you within 10 minutes 👍",
+        "valid": false,
+        "codes": [
+          "UNSUPPORTED_SLA_CLAIM",
+          "STYLE_EMOJI"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

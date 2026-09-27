@@ -388,7 +388,7 @@ export function fixtureDetail(
         enabled: true,
         body:
           "Hi {{first_name}}, it's {{business_name}}. We're booking autumn roof " +
-          "checks in your area — would you like us to take another look at " +
+          "checks in your area. Would you like us to take another look at " +
           "yours? Reply STOP to opt out.",
         sent: fixture.sent,
       },
@@ -399,7 +399,7 @@ export function fixtureDetail(
         timing: "+48 hours, if there is no reply",
         enabled: true,
         body:
-          "Hi {{first_name}}, just checking you saw this — we still have a " +
+          "Hi {{first_name}}, just checking you saw this. We still have a " +
           "couple of slots left this month. {{business_phone}}",
         sent: Math.round(fixture.sent * 0.42),
       },

@@ -14,7 +14,6 @@ Integration connector,HubSpot,hubspot,CRM,src/lib/integrations/providers/hubspot
 Integration connector,Zoho CRM,zoho_crm,CRM,src/lib/integrations/providers/zoho-crm.ts,
 Integration connector,Salesforce,salesforce,CRM,src/lib/integrations/providers/salesforce.ts,OAuth + Lead push adapter built; gated on SALESFORCE_CLIENT_ID/SECRET not yet provisioned
 Sourcing provider,Meta engagement,meta_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/meta-engagement.ts,Free / first-party audience
-Sourcing provider,LinkedIn engagement,linkedin_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/linkedin-engagement.ts,Free / first-party audience
 Sourcing provider,TikTok engagement,tiktok_engagement,SOCIAL_ENGAGEMENT,src/lib/find-leads/server/providers/tiktok-engagement.ts,Free / first-party audience
 Sourcing provider,Google Places,google_places,COMPANY_SEARCH,src/lib/find-leads/server/providers/google-places.ts,
 Sourcing provider,Meta Ad Library,meta_ad_library,COMPANY_SEARCH,src/lib/find-leads/server/providers/meta-ad-library.ts,Free public advertiser registry
@@ -23,7 +22,7 @@ Sourcing provider,Companies House,companies_house,COMPANY_ENRICHMENT,src/lib/fin
 Sourcing provider,Website contacts,website_contacts,CONTACT_DISCOVERY,src/lib/find-leads/server/providers/website-contacts.ts,Own fetcher + AI extraction; free first-party
 Sourcing provider,Hunter.io,hunter,CONTACT_DISCOVERY / EMAIL_VERIFICATION,src/lib/find-leads/server/providers/hunter.ts,Metered
 Sourcing provider,Apollo.io,apollo,COMPANY_SEARCH / CONTACT_DISCOVERY,src/lib/find-leads/server/providers/apollo.ts,Metered
-Sourcing provider,LinkedIn Sales Navigator,linkedin_sales_navigator,COMPANY_SEARCH / CONTACT_DISCOVERY,src/lib/find-leads/server/providers/linkedin-sales-navigator.ts,Metered
+Sourcing provider,LinkedIn list import (customer's own list),linkedin_sales_navigator,CONTACT_DISCOVERY,src/lib/find-leads/server/providers/linkedin-sales-navigator.ts,Free / customer-supplied
 Sourcing provider,Clearbit,clearbit,COMPANY_ENRICHMENT,src/lib/find-leads/server/providers/clearbit.ts,Metered
 Sourcing provider,Website intent signals,website_signals,INTENT / WEBSITE_INTELLIGENCE,src/lib/find-leads/server/providers/website-intent.ts,Metered
 Core platform,Supabase (Postgres + Auth + RLS + Realtime),supabase,Infrastructure,src/lib/supabase/,Project ref losieaikadkadtmezini (eu-west-2)

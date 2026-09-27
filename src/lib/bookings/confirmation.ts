@@ -84,25 +84,25 @@ function listOf(labels: string[]): string {
  * after the provider accepted the event.
  */
 export function bookingReplyText(reply: BookingReply): string {
-  const thanks = reply.firstName ? `Thanks ${reply.firstName} — ` : "Thanks — ";
+  const thanks = reply.firstName ? `Thanks ${reply.firstName}. ` : "Thanks. ";
 
   switch (reply.kind) {
     case "confirmed":
       return (
-        `${thanks}that is booked for ${reply.slotLabel}.` +
+        `${thanks}That's booked for ${reply.slotLabel}.` +
         (reply.invited ? " A calendar invite is on its way to your email." : "")
       );
     case "pending":
       return (
-        `${thanks}I have requested ${reply.slotLabel} for you. ` +
-        "It is not confirmed yet — someone from the team will be in touch to confirm it."
+        `${thanks}I've requested ${reply.slotLabel} for you. ` +
+        "It's not confirmed yet. Someone from the team will be in touch to confirm it."
       );
     case "calendly_link":
       // The configured link is appended by the send_booking_link tool.
-      return `${thanks}to lock in ${reply.slotLabel}, please pick it here:`;
+      return `${thanks}To lock in ${reply.slotLabel}, please pick it here:`;
     case "slot_taken":
       return (
-        `Sorry — ${reply.slotLabel} has just been taken. ` +
+        `Sorry, ${reply.slotLabel} has just been taken. ` +
         `I can do ${listOf(reply.alternatives)}. Which suits you best?`
       );
   }

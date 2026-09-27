@@ -1,0 +1,10 @@
+{
+  "id": "handover-01-asks-for-a-person",
+  "story": "The lead asks to speak to a person. That is a hand-over, immediately.",
+  "turns": [
+    {
+      "lead": "Can I speak to a person please?",
+      "expect": { "disposition": "HANDOVER", "trigger": "HUMAN_REQUESTED", "reason": "HUMAN_REQUESTED", "was": "HANDOVER" }
+    }
+  ]
+}

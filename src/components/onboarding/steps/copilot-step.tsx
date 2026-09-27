@@ -86,11 +86,12 @@ export function CopilotStep({
     onRegisterActions({
       continue: onContinue,
       saveExit: onSaveExit,
-      disabledReason: asked ? undefined : "Ask Copilot one question to continue, or skip for now.",
+      // Optional (8.29): asking a question is a demonstration, not a gate.
+      disabledReason: undefined,
     });
-    // The handlers are stable for the life of the step; only the gate changes.
+    // The handlers are stable for the life of the step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asked]);
+  }, []);
 
   async function ask(text: string) {
     const trimmed = text.trim();

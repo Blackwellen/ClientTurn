@@ -4,7 +4,11 @@ summary: Start a Zap from a new lead, look a lead up, or update one, and send co
 category: integrations
 keywords: [zapier, zap, automation, trigger, new lead, find lead, update lead, webhooks by zapier, client turn app]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/integrations/connecting-zapier-1.png
+    alt: "The New API key dialog with leads:read, leads:write and business:read ticked"
+    caption: "Zapier's key needs only business:read, leads:read and leads:write"
 ---
 
 The ClientTurn app for Zapier (listed as "Client Turn") works through a workspace API key. It can start a Zap when a lead arrives, look a lead up, and update one.

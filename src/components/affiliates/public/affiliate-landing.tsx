@@ -218,7 +218,7 @@ const AUDIENCES = [
   "Consultants and business advisors",
   "Marketing agencies",
   "Creators and newsletter writers",
-  "Trade and industry communities",
+  "B2B and industry communities",
   "Software and integration partners",
   "Existing ClientTurn customers",
 ];
@@ -233,7 +233,7 @@ function WhoItIsFor() {
             If you already talk to people who run these businesses.
           </h2>
           <p className="pub-lead mt-5">
-            Roofers, installers, electricians, cleaners. You are not selling —
+            Agencies, web studios, SaaS founders, accountancy practices. You are not selling —
             you are pointing them at something that answers their leads faster
             than they can.
           </p>

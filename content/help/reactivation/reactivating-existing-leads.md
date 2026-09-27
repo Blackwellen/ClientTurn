@@ -4,7 +4,14 @@ summary: Pick old leads already in ClientTurn with filters such as age, status, 
 category: reactivation
 keywords: [existing leads, old leads, audience filters, lead age, older than, lead status, lead source, no reply, marked lost, not booked, cooldown, audience estimate, breakdown]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/reactivation/reactivating-existing-leads-1.png
+    alt: "The audience filters for existing leads with Older than, reply and booking filters and the automatic exclusions"
+    caption: "Filter your existing leads by age and replies; the exclusions always apply"
+  - src: /help/screenshots/reactivation/reactivating-existing-leads-2.png
+    alt: "The Audience estimate panel with total leads, after filters, suppressed and eligible counts"
+    caption: "Check the estimate: total leads, after your filters, and after automatic suppression"
 ---
 
 The simplest reactivation audience is the leads you already have: people who enquired but went quiet.

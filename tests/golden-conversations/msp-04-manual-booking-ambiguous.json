@@ -1,0 +1,58 @@
+{
+  "id": "msp-04-manual-booking-ambiguous",
+  "archetype": "MSP",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "story": "Story H3: manual booking; the first answer names no time, so it is asked once more, then parsed.",
+  "manualBooking": true,
+  "turns": [
+    {
+      "lead": "Our IT support is terrible and we have 40 staff. We need day to day support.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "COMPANY_SIZE"
+        ]
+      }
+    },
+    {
+      "lead": "Can we book a call this week?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY"
+        ],
+        "questionDimension": null,
+        "preferredTimeAsked": true
+      }
+    },
+    {
+      "lead": "Sometime next week is fine",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ANSWER",
+          "ESCALATE"
+        ],
+        "preferredTime": "ambiguous"
+      }
+    },
+    {
+      "lead": "Wednesday at 3pm",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ANSWER",
+          "ESCALATE"
+        ],
+        "preferredTime": "slot"
+      }
+    }
+  ]
+}

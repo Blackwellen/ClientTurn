@@ -7,7 +7,7 @@ import { getAffiliate } from "@/lib/affiliates/queries";
 import { PartnerSignUpForm } from "./signup-form";
 
 export const metadata: Metadata = {
-  title: "Join the partner programme | ClientTurn",
+  title: "Join the partner programme",
   description:
     "Create a ClientTurn partner account and earn recurring commission on the businesses you introduce.",
 };

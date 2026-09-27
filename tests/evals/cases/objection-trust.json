@@ -1,0 +1,51 @@
+{
+  "id": "objection-trust",
+  "scenario": "§94 objection: trust",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Would a quick call help?"
+    },
+    {
+      "role": "lead",
+      "text": "Never heard of you. How do I know you're any good?"
+    }
+  ],
+  "approvedClaims": [
+    "ISO 27001 certified",
+    "Used by 40 UK agencies"
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "TRUST",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Fair challenge. We're ISO 27001 certified and 40 UK agencies use us, so you're not the first to check. Would it help to see how we handle lead data before we talk?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "We are an industry-leading, cutting-edge provider trusted by thousands.",
+        "valid": false,
+        "codes": [
+          "STYLE_AI_TELL"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

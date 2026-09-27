@@ -27,9 +27,6 @@ export type SourcingAllowance = {
   senderIdentities: number;
   /** Outbound emails included each month. */
   emailSends: number;
-  /** Whether verified prospects may run past the included allowance, if the
-   *  workspace has explicitly turned automatic overage on. */
-  prospectOverageAvailable: boolean;
   /** Mirrors the seeded `sourcing_enabled` capability. When false the plan
    *  has no sourcing at all, and every sourcing figure above is 0. */
   sourcingIncluded: boolean;
@@ -53,7 +50,6 @@ export const SOURCING_ALLOWANCES: Record<
     intentMonitors: 0,
     senderIdentities: 0,
     emailSends: 0,
-    prospectOverageAvailable: false,
     sourcingIncluded: false,
     coldEmailIncluded: false,
   },
@@ -64,7 +60,6 @@ export const SOURCING_ALLOWANCES: Record<
     intentMonitors: 2,
     senderIdentities: 1,
     emailSends: 1_800,
-    prospectOverageAvailable: true,
     sourcingIncluded: true,
     coldEmailIncluded: true,
   },
@@ -75,18 +70,16 @@ export const SOURCING_ALLOWANCES: Record<
     intentMonitors: 13,
     senderIdentities: 3,
     emailSends: 7_000,
-    prospectOverageAvailable: true,
     sourcingIncluded: true,
     coldEmailIncluded: true,
   },
   pro: {
-    verifiedProspects: 1_800,
+    verifiedProspects: 900,
     searchRuns: 160,
     savedSearches: 30,
     intentMonitors: 45,
     senderIdentities: 10,
     emailSends: 22_000,
-    prospectOverageAvailable: true,
     sourcingIncluded: true,
     coldEmailIncluded: true,
   },
@@ -97,17 +90,10 @@ export const SOURCING_ALLOWANCES: Record<
     intentMonitors: 180,
     senderIdentities: 50,
     emailSends: 90_000,
-    prospectOverageAvailable: true,
     sourcingIncluded: true,
     coldEmailIncluded: true,
   },
 };
-
-/**
- * Automatic overage is off until a workspace turns it on (V4 §97). The pricing
- * page says so; if this ever stops being true the copy must change with it.
- */
-export const AUTOMATIC_OVERAGE_DEFAULT_ON = false;
 
 const NUMBER = new Intl.NumberFormat("en-GB");
 

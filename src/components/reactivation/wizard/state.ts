@@ -83,6 +83,10 @@ export type WizardState = {
   sendMode: SendMode;
   scheduledDate: string;
   scheduledTime: string;
+  /** SMS only: email first for leads who have not engaged (default), or always SMS. */
+  channelMode: "cost_aware" | "sms";
+  /** Each lead at their best hour (default), or as soon as possible. */
+  sendTiming: "best_time" | "immediate";
 };
 
 export const FOLLOW_UP_DELAY_OPTIONS = [1, 2, 3, 5, 7, 14] as const;
@@ -110,6 +114,8 @@ export function initialWizardState(channel: WizardChannel): WizardState {
     sendMode: "now",
     scheduledDate: "",
     scheduledTime: "10:00",
+    channelMode: "cost_aware",
+    sendTiming: "best_time",
   };
 }
 

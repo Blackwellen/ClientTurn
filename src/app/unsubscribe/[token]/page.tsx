@@ -8,7 +8,7 @@ import {
 import { isUnsubscribeToken } from "@/lib/email/unsubscribe-links";
 
 export const metadata: Metadata = {
-  title: "Unsubscribe · ClientTurn",
+  title: "Unsubscribe",
   // An unsubscribe page must never be indexed or followed.
   robots: { index: false, follow: false },
 };

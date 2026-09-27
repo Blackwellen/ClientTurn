@@ -79,7 +79,9 @@ describe("classifyDeterministic", () => {
 
   test("recognises an explicit request for a person", () => {
     assert.equal(classifyDeterministic("can I speak to a human")?.intent, "HUMAN_REQUEST");
-    assert.equal(classifyDeterministic("are you a bot?")?.intent, "HUMAN_REQUEST");
+    // Owner decision 2026-09-27: "are you a bot?" is answered honestly and the
+    // conversation carries on (was HUMAN_REQUEST, an immediate hand-over).
+    assert.equal(classifyDeterministic("are you a bot?"), null);
     assert.equal(classifyDeterministic("give me a call")?.intent, "HUMAN_REQUEST");
   });
 
@@ -262,8 +264,11 @@ describe("resolveMode", () => {
     );
   });
 
-  test("a REVIEW qualification result routes to a person", () => {
-    assert.equal(resolveMode({ ...base, lifecycle: "REVIEW", intent: "UNKNOWN" }), "HUMAN_HANDOVER");
+  // Owner decision 2026-09-27: a REVIEW is flagged for a person in the
+  // background and the conversation carries on (was HUMAN_HANDOVER).
+  test("a REVIEW qualification result keeps the conversation going", () => {
+    assert.equal(resolveMode({ ...base, lifecycle: "REVIEW", intent: "UNKNOWN" }), "QUALIFICATION");
+    assert.equal(resolveMode({ ...base, lifecycle: "REVIEW", intent: "UNKNOWN", hasOutstandingQuestions: false }), "GENERAL_ENQUIRY");
   });
 });
 
@@ -636,10 +641,12 @@ describe("evaluateLength", () => {
 // =====================================================================
 
 describe("confidenceDecision", () => {
-  test("acts, clarifies or hands over by band", () => {
+  // Owner decision 2026-09-27: below the floor the lead is asked to clarify;
+  // confidence alone never hands over (was HANDOVER).
+  test("acts, clarifies or asks again by band", () => {
     assert.equal(confidenceDecision(0.95), "ACT");
     assert.equal(confidenceDecision(0.7), "CLARIFY");
-    assert.equal(confidenceDecision(0.2), "HANDOVER");
+    assert.equal(confidenceDecision(0.2), "UNCLEAR");
   });
 
   test("a missing confidence clarifies rather than acts", () => {

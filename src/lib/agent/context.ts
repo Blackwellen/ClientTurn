@@ -16,7 +16,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { wrapUntrustedContent } from "@/lib/ai/safety";
+import { renderTranscriptBlocks } from "./transcript";
 import {
   DISABLED_AUTHORITY,
   parseAuthority,
@@ -41,7 +41,9 @@ import {
 import type { KnownQuestion, StopReason } from "@/lib/qualification/next-question";
 import { loadOpportunityMemory } from "@/lib/opportunities/memory-service";
 import { renderOpportunityMemory, type OpportunityMemory } from "@/lib/opportunities/memory";
-import { loadSellingPreferencesOrDefault } from "@/lib/settings/ai-selling-queries";
+import { loadSellingPreferencesOrDefault, loadWorkspaceObjectionsOrEmpty } from "@/lib/settings/ai-selling-queries";
+import { reassuranceLines, type WorkspaceObjectionSet } from "@/lib/sales-library/workspace-objections";
+import type { ChannelPreferenceState } from "./channel-preference-store";
 import { buildOfferCard, buildVoiceProfile, type MemoryFactRow, type OfferCard, type OfferCardInput } from "./offer-card";
 import { logWriteError } from "@/lib/supabase/write-result";
 import { availabilityIsQueryable } from "./availability";
@@ -50,10 +52,14 @@ import { bookingShape } from "@/lib/bookings/meeting-types";
 import type { WeekHours } from "./availability/slots";
 import { parseBusinessHours } from "@/lib/settings/types";
 import { resolveLifecycle } from "./lifecycle";
+import { stageForMode } from "./strategy";
+import type { ConversationStage } from "@/lib/sales-library/method-router";
 import {
   VERBATIM_MESSAGE_WINDOW,
   isPlatformAgentChannel,
+  messageChannelFor,
   type AgentChannel,
+  type AgentMode,
   type ConversationOwner,
   type LifecycleState,
 } from "./types";
@@ -158,7 +164,18 @@ export type QualificationContext = {
   outstanding: number;
 };
 
-export type SalesContext = SalesProfile;
+export type SalesContext = SalesProfile & {
+  /**
+   * The business's own objections and reassurance (Settings -> AI & selling
+   * -> Objections). Absent or empty = the library playbook applies.
+   */
+  objections?: WorkspaceObjectionSet;
+  /**
+   * Where the lead said they would rather be reached, and whether they were
+   * asked (0147). Set by the orchestrator for the turn; absent = unknown.
+   */
+  channelPreference?: ChannelPreferenceState;
+};
 
 export type BookingContext = {
   /** calendly | google_calendar | handover */
@@ -328,6 +345,8 @@ async function loadQualification(input: {
   salesProfile: SalesProfile;
   serviceName: string | null;
   currentQuestionId: string | null;
+  /** The turn's stage (strategy.ts stageForMode), once the mode is known. */
+  stage?: ConversationStage | null;
 }): Promise<QualificationContext> {
   const questions = await loadQuestions(input.businessId);
   const selection = await loadAdaptiveSelection({
@@ -337,6 +356,9 @@ async function loadQualification(input: {
     salesProfile: input.salesProfile,
     serviceName: input.serviceName,
     currentQuestionId: input.currentQuestionId,
+    // Absent at assembly (the mode is resolved from this context); the
+    // selector then derives the stage from the lead.
+    stage: input.stage ?? null,
   });
 
   const knownIds = new Set(selection.known.map((entry) => entry.questionId));
@@ -371,6 +393,8 @@ async function loadQualification(input: {
 export async function refreshQualification(
   context: AgentContext,
   lead: LeadRecord,
+  /** The turn's agent mode, so prematurity is judged at the turn's real stage. */
+  mode?: AgentMode,
 ): Promise<QualificationContext> {
   return loadQualification({
     businessId: context.business.businessId,
@@ -378,6 +402,7 @@ export async function refreshQualification(
     salesProfile: context.sales,
     serviceName: context.workspace.services.find((service) => service.id === lead.service_id)?.name ?? null,
     currentQuestionId: context.conversation.currentQuestionId,
+    stage: mode ? stageForMode(mode) : null,
   });
 }
 
@@ -471,7 +496,7 @@ async function loadVoiceAndOffer(
   services: ServiceFact[],
 ): Promise<{ offer: OfferCard; sales: SalesContext }> {
   const admin = createAdminClient();
-  const [rows, facts, preferences] = await Promise.all([
+  const [rows, facts, preferences, objections] = await Promise.all([
     readVoiceRows(business.businessId),
     admin
       .from("business_memory_facts")
@@ -479,6 +504,7 @@ async function loadVoiceAndOffer(
       .eq("business_id", business.businessId)
       .order("fact_key", { ascending: true }),
     loadSellingPreferencesOrDefault(business.businessId),
+    loadWorkspaceObjectionsOrEmpty(business.businessId),
   ]);
   logWriteError(facts, "business_memory_facts.offer read", { businessId: business.businessId });
 
@@ -498,11 +524,14 @@ async function loadVoiceAndOffer(
       ...offerInput(business, rows, services, factRows),
       // Tone examples only, labelled as such inside the card's budget.
       examples: { good: preferences.goodExamples, bad: preferences.badExamples },
+      // The business's own reassurance facts, as approved claims.
+      reassurance: reassuranceLines(objections.assets),
     }),
     sales: {
       archetypeKey: rows.profile?.archetype_key ?? null,
       motion: primaryMotion(rows.profile?.sales_motions),
       preferences,
+      objections,
     },
   };
 }
@@ -644,10 +673,10 @@ export async function assembleContext(input: {
   // gave you.
   const contact = isPlatformAgentChannel(input.channel)
     ? conversation.externalThreadId
-    : leadContact(lead, input.channel);
+    : leadContact(lead, messageChannelFor(input.channel));
 
   const contactable = contact
-    ? !lead.opted_out && !(await isSuppressed(input.businessId, contact, input.channel))
+    ? !lead.opted_out && !(await isSuppressed(input.businessId, contact, messageChannelFor(input.channel)))
     : false;
 
   /**
@@ -880,20 +909,11 @@ export function renderContextBlock(
     blocks.push(`CONVERSATION SUMMARY (earlier history)\n${conversation.summary}`);
   }
 
-  const transcript = conversation.recentMessages.length
-    ? conversation.recentMessages
-        .map((turn) =>
-          turn.role === "lead"
-            ? `Lead: ${wrapUntrustedContent(turn.body)}`
-            : `Business: ${turn.body}`,
-        )
-        .join("\n")
-    : "No prior messages.";
-  blocks.push(`RECENT CONVERSATION\n${transcript}`);
-
-  if (extra.latestMessage) {
-    blocks.push(`CURRENT MESSAGE FROM THE LEAD\n${wrapUntrustedContent(extra.latestMessage)}`);
-  }
+  // Bounded in characters, the current message once (transcript.ts). Only the
+  // rendering: recentMessages stays whole for the validator.
+  blocks.push(
+    ...renderTranscriptBlocks(conversation.recentMessages, extra.latestMessage),
+  );
 
   if (extra.correction) blocks.push(extra.correction);
 

@@ -1,0 +1,54 @@
+{
+  "id": "roofer-02-asks-to-book-first",
+  "archetype": "ROOFER",
+  "motion": "LOCAL_SERVICE",
+  "channel": "sms",
+  "story": "The lead asks to book straight away; the agent asks at most one gating question (postcode).",
+  "leadFields": {
+    "SERVICE_NEEDED": "Roof repair"
+  },
+  "turns": [
+    {
+      "lead": "Can you book someone to come and look at my roof this week?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER_AND_ASK",
+          "ANSWER"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY",
+          "HIGH",
+          "MEDIUM"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "AUTHORITY",
+          "PROPERTY_TYPE"
+        ]
+      }
+    },
+    {
+      "lead": "It's LS6 2AB",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER"
+        ],
+        "known": [
+          "LOCATION"
+        ],
+        "notAsked": [
+          "LOCATION",
+          "BUDGET"
+        ]
+      },
+      "candidate": {
+        "text": "Thanks. Which day this week would suit you best for a visit?",
+        "qaOk": true
+      }
+    }
+  ]
+}

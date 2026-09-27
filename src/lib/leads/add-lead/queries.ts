@@ -5,6 +5,8 @@ import { hasRole, type BusinessRole } from "@/lib/auth/session";
 import { getWorkspaceMembers } from "@/lib/leads/queries";
 import type { WorkspaceMember } from "@/lib/leads/types";
 import type { ConversionGoalValue, FollowUpAvailability } from "./types";
+import { channelUsable, MESSAGING_CHANNEL_PROVIDERS } from "@/lib/integrations/platform-channels";
+import { platformConfigured } from "@/lib/integrations/queries";
 
 /**
  * Everything the Add Lead wizard needs before it opens: the workspace's own
@@ -101,16 +103,13 @@ export async function channelCapabilities(
     .select("provider_type, status")
     .eq("business_id", businessId);
 
-  const connected = new Set(
-    (data ?? [])
-      .filter((row) => row.status === "HEALTHY" || row.status === "DEGRADED")
-      .map((row) => row.provider_type),
-  );
-
+  const rows = data ?? [];
   return {
-    sms: connected.has("twilio_sms"),
-    whatsapp: connected.has("twilio_whatsapp"),
-    email: connected.has("email"),
+    sms: channelUsable(rows, MESSAGING_CHANNEL_PROVIDERS.sms, platformConfigured("twilio_sms")),
+    whatsapp: channelUsable(rows, MESSAGING_CHANNEL_PROVIDERS.whatsapp, platformConfigured("twilio_whatsapp")),
+    // The mailbox is `imap_smtp`; there is no `email` provider type, so this
+    // was always false and the preview said email could not be sent.
+    email: channelUsable(rows, MESSAGING_CHANNEL_PROVIDERS.email, false),
   };
 }
 

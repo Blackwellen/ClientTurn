@@ -893,6 +893,8 @@ export const duplicateCheckSchema = z.object({
 });
 
 export const contactabilityCheckSchema = z.object({
+  /** The company typed on the contact step; decides the PECR subscriber type. */
+  company: z.string().trim().max(160).default(""),
   email: z.string().trim().max(200),
   mobile: z.string().trim().max(40),
   telephone: z.string().trim().max(40),
@@ -920,4 +922,16 @@ export function parseEstimatedValue(raw: string): number | null {
   const value = Number(cleaned);
   if (!Number.isFinite(value) || value < 0 || value > 1_000_000) return null;
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * The subscriber type a hand-typed company name proves on its own (PECR:
+ * the corporate exemption covers incorporated bodies and LLPs only, not sole
+ * traders or ordinary partnerships). Only an incorporation suffix counts;
+ * "Smith Design" could be a sole trader, so it stays UNKNOWN and the
+ * cold-outreach policy treats it as an individual until verified.
+ */
+export function subscriberTypeFromCompanyName(name: string | null | undefined): "CORPORATE" | "UNKNOWN" {
+  const value = (name ?? "").trim().toLowerCase().replace(/[.,]/g, " ");
+  return /\b(ltd|limited|llp|plc|cic|incorporated|inc)\s*$/.test(value) ? "CORPORATE" : "UNKNOWN";
 }

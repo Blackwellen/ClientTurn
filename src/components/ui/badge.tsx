@@ -1,6 +1,19 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { QUALIFICATION_OUTCOME_LABEL } from "@/lib/qualification/outcome-labels";
+import {
+  DIMENSION_STATUS_COPY,
+  ENGINE_MODE_COPY,
+  INTENT_STATE_COPY,
+  NBA_ACTION_COPY,
+} from "@/lib/qualification-intelligence/explain";
+import type {
+  DimensionStatus,
+  FactState,
+  IntentState,
+  NbaAction,
+  QiEngineMode,
+} from "@/lib/qualification-intelligence/types";
 
 type Tone =
   | "neutral"
@@ -237,9 +250,116 @@ export const CRM_PULL_RUN = {
   FAILED: { label: "Failed", tone: "danger" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 
+/*
+ * Qualification intelligence (0134). Labels come from the one copy module
+ * (qualification-intelligence/explain.ts); tones follow meaning: green is
+ * ready or confirmed, amber is "check this", red is a stop or a conflict.
+ */
+
+/** lead_assessments.intent_state / leads.intent_state. */
+export const INTENT_STATE = {
+  NO_DETECTED_INTENT: { label: INTENT_STATE_COPY.NO_DETECTED_INTENT.label, tone: "neutral" },
+  LOW: { label: INTENT_STATE_COPY.LOW.label, tone: "neutral" },
+  EXPLORATORY: { label: INTENT_STATE_COPY.EXPLORATORY.label, tone: "info" },
+  MEDIUM: { label: INTENT_STATE_COPY.MEDIUM.label, tone: "accent" },
+  HIGH: { label: INTENT_STATE_COPY.HIGH.label, tone: "success" },
+  BOOKING_READY: { label: INTENT_STATE_COPY.BOOKING_READY.label, tone: "success" },
+  PURCHASE_READY: { label: INTENT_STATE_COPY.PURCHASE_READY.label, tone: "success" },
+  NOT_NOW: { label: INTENT_STATE_COPY.NOT_NOW.label, tone: "warning" },
+  NEGATIVE: { label: INTENT_STATE_COPY.NEGATIVE.label, tone: "danger" },
+} as const satisfies Record<IntentState, { label: string; tone: Tone }>;
+
+/** The next best action (lead_assessments.nba.next_action / leads.next_action). */
+export const NBA_ACTION = {
+  ASK: { label: NBA_ACTION_COPY.ASK.label, tone: "accent" },
+  ANSWER: { label: NBA_ACTION_COPY.ANSWER.label, tone: "info" },
+  ANSWER_AND_ASK: { label: NBA_ACTION_COPY.ANSWER_AND_ASK.label, tone: "info" },
+  INFORM: { label: NBA_ACTION_COPY.INFORM.label, tone: "neutral" },
+  CTA_BOOK: { label: NBA_ACTION_COPY.CTA_BOOK.label, tone: "success" },
+  CTA_CHECKOUT: { label: NBA_ACTION_COPY.CTA_CHECKOUT.label, tone: "success" },
+  CTA_SIGNUP: { label: NBA_ACTION_COPY.CTA_SIGNUP.label, tone: "success" },
+  ESCALATE: { label: NBA_ACTION_COPY.ESCALATE.label, tone: "warning" },
+  WAIT: { label: NBA_ACTION_COPY.WAIT.label, tone: "neutral" },
+  NURTURE: { label: NBA_ACTION_COPY.NURTURE.label, tone: "purple" },
+  DISQUALIFY: { label: NBA_ACTION_COPY.DISQUALIFY.label, tone: "danger" },
+  NO_ACTION: { label: NBA_ACTION_COPY.NO_ACTION.label, tone: "neutral" },
+} as const satisfies Record<NbaAction, { label: string; tone: Tone }>;
+
+/** A qualification dimension's derived status. UNKNOWN is not a negative, so it is neutral. */
+export const DIMENSION_STATUS = {
+  CONFIRMED: { label: DIMENSION_STATUS_COPY.CONFIRMED.label, tone: "success" },
+  INFERRED: { label: DIMENSION_STATUS_COPY.INFERRED.label, tone: "warning" },
+  UNKNOWN: { label: DIMENSION_STATUS_COPY.UNKNOWN.label, tone: "neutral" },
+  CONFLICTING: { label: DIMENSION_STATUS_COPY.CONFLICTING.label, tone: "danger" },
+} as const satisfies Record<DimensionStatus, { label: string; tone: Tone }>;
+
+/** lead_qualification_facts.state. */
+export const FACT_STATE = {
+  CONFIRMED: { label: "Confirmed", tone: "success" },
+  INFERRED: { label: "Inferred", tone: "warning" },
+  CONFLICTING: { label: "Conflicting", tone: "danger" },
+  REJECTED: { label: "Rejected", tone: "neutral" },
+} as const satisfies Record<FactState, { label: string; tone: Tone }>;
+
+/** The engine's rollout mode (CD-9). */
+export const ENGINE_MODE = {
+  OFF: { label: ENGINE_MODE_COPY.OFF.label, tone: "neutral" },
+  SHADOW: { label: ENGINE_MODE_COPY.SHADOW.label, tone: "info" },
+  LIVE: { label: ENGINE_MODE_COPY.LIVE.label, tone: "success" },
+} as const satisfies Record<QiEngineMode, { label: string; tone: Tone }>;
+
+/** checkout_attempts.status (0143): a checkout link the assistant sent. */
+export const CHECKOUT_ATTEMPT_STATUS = {
+  SENT: { label: "Sent", tone: "info" },
+  PAID: { label: "Paid", tone: "success" },
+  ABANDONED: { label: "Not paid yet", tone: "warning" },
+  EXPIRED: { label: "Expired", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** checkout_payments.status (0143): a payment received. REVIEW and UNMATCHED need a person. */
+export const PAYMENT_STATUS = {
+  MATCHED: { label: "Matched", tone: "success" },
+  LINKED: { label: "Linked by hand", tone: "success" },
+  REVIEW: { label: "Confirm lead", tone: "warning" },
+  UNMATCHED: { label: "No lead found", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** quotes.status (0153, lib/quotes/lifecycle.ts). Green = the customer said yes; amber = waiting on someone. */
+export const QUOTE_STATUS = {
+  DRAFT: { label: "Draft", tone: "neutral" },
+  PENDING_APPROVAL: { label: "Awaiting approval", tone: "warning" },
+  APPROVED: { label: "Approved", tone: "info" },
+  SENT: { label: "Sent", tone: "info" },
+  VIEWED: { label: "Viewed", tone: "purple" },
+  ACCEPTED: { label: "Accepted", tone: "success" },
+  SIGNED: { label: "Signed", tone: "success" },
+  DEPOSIT_PAID: { label: "Deposit paid", tone: "success" },
+  PAID: { label: "Paid", tone: "success" },
+  WON: { label: "Won", tone: "success" },
+  DECLINED: { label: "Declined", tone: "danger" },
+  EXPIRED: { label: "Expired", tone: "neutral" },
+  REVISED: { label: "Superseded", tone: "neutral" },
+  WITHDRAWN: { label: "Withdrawn", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** invoices.status (0154): the workspace's invoices to its customers. */
+export const INVOICE_STATUS = {
+  DRAFT: { label: "Draft", tone: "neutral" },
+  OPEN: { label: "Issued", tone: "info" },
+  PARTIALLY_PAID: { label: "Part paid", tone: "warning" },
+  PAID: { label: "Paid", tone: "success" },
+  VOID: { label: "Void", tone: "neutral" },
+  UNCOLLECTIBLE: { label: "Written off", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
 type StatusMap = Record<string, { label: string; tone: Tone }>;
 
 const MAPS = {
+  intent_state: INTENT_STATE,
+  nba_action: NBA_ACTION,
+  dimension_status: DIMENSION_STATUS,
+  fact_state: FACT_STATE,
+  engine_mode: ENGINE_MODE,
   lead: LEAD_STATUS,
   qualification: QUALIFICATION_STATE,
   message: MESSAGE_STATUS,
@@ -257,6 +377,10 @@ const MAPS = {
   opportunity_outcome: OPPORTUNITY_OUTCOME,
   whatsapp_template: WHATSAPP_TEMPLATE_STATUS,
   crm_pull_run: CRM_PULL_RUN,
+  checkout_attempt: CHECKOUT_ATTEMPT_STATUS,
+  payment: PAYMENT_STATUS,
+  quote: QUOTE_STATUS,
+  invoice: INVOICE_STATUS,
 } satisfies Record<string, StatusMap>;
 
 export type StatusKind = keyof typeof MAPS;

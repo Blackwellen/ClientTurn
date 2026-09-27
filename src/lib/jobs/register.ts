@@ -42,6 +42,23 @@ import { handleCrmPull } from "./handlers/crm-pull";
 import { handleSenderHealth } from "./handlers/sender-health";
 import { handleWhatsAppTemplateSync } from "./handlers/whatsapp-template-sync";
 import { handleBillingDaily } from "./handlers/billing-daily";
+import { handleBillingRefundReverse } from "./handlers/billing-refund";
+import { handleIntentSweep } from "./handlers/intent-sweep";
+import { handlePaymentConfirm } from "./handlers/payment-confirm";
+import { handleCheckoutNudge } from "./handlers/checkout-nudge";
+import { handleEconomicsMarginCheck } from "./handlers/economics-margin-check";
+import { handleReengageSweep, handleReengageTrigger } from "./handlers/reengage";
+import {
+  handleVoiceDial,
+  handleVoiceNumberProvision,
+  handleVoiceNumberRelease,
+  handleVoicePostCall,
+  handleVoiceRecordingFetch,
+  handleVoiceRetry,
+  handleVoiceWebhookIngest,
+} from "./handlers/voice";
+import { handleQuoteExpire, handleQuoteNudge, handleQuoteRenderPdf } from "./handlers/quote-jobs";
+import { handleInvoiceIssue, handleInvoiceRemind } from "./handlers/invoice-jobs";
 // The provider adapters, which register themselves on import. One list, in
 // `providers/all`, so a new adapter reaches the OAuth routes and the queue
 // together rather than only whichever one its author remembered.
@@ -66,7 +83,19 @@ export function registerJobHandlers() {
   registerHandler("email.sender_health", handleSenderHealth);
   registerHandler("whatsapp.template_sync", handleWhatsAppTemplateSync);
   registerHandler("billing.daily", handleBillingDaily);
+  registerHandler("billing.refund_reverse", handleBillingRefundReverse);
   registerHandler("lead.score", handleLeadScore);
+  registerHandler("intent.sweep", handleIntentSweep);
+  registerHandler("reengage.trigger", handleReengageTrigger);
+  registerHandler("reengage.sweep", handleReengageSweep);
+  registerHandler("quote.render_pdf", handleQuoteRenderPdf);
+  registerHandler("quote.expire", handleQuoteExpire);
+  registerHandler("quote.nudge", handleQuoteNudge);
+  registerHandler("invoice.issue", handleInvoiceIssue);
+  registerHandler("invoice.remind", handleInvoiceRemind);
+  registerHandler("payment.confirm", handlePaymentConfirm);
+  registerHandler("checkout.nudge", handleCheckoutNudge);
+  registerHandler("economics.margin_check", handleEconomicsMarginCheck);
   registerHandler("message.send", handleMessageSend);
   registerHandler("message.process_inbound", handleMessageProcessInbound);
   registerHandler("email.poll", handleEmailPoll);
@@ -102,6 +131,13 @@ export function registerJobHandlers() {
   registerHandler("social.execute", handleSocialExecute);
   registerHandler("event.dispatch", handleEventDispatch);
   registerHandler("ingest.webhook", handleIngestWebhook);
+  registerHandler("voice.dial", handleVoiceDial);
+  registerHandler("voice.webhook_ingest", handleVoiceWebhookIngest);
+  registerHandler("voice.post_call", handleVoicePostCall);
+  registerHandler("voice.recording_fetch", handleVoiceRecordingFetch);
+  registerHandler("voice.retry", handleVoiceRetry);
+  registerHandler("voice.number_provision", handleVoiceNumberProvision);
+  registerHandler("voice.number_release", handleVoiceNumberRelease);
 }
 
 registerJobHandlers();

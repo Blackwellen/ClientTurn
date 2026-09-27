@@ -4,7 +4,7 @@ summary: The seven ways a business can close a deal in ClientTurn, what each one
 category: sales-knowledge
 keywords: [motion, sales motion, close target, book meeting, proposal, checkout, trial, signup, enterprise, decision threshold, handover]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 A **sales motion** is how your business closes: book a call, send a proposal, sell online, start a trial, or build an enterprise business case. Your business type says *what* you are; your motion says *what the conversation is for*. A business can run more than one motion — a SaaS company might book meetings with small teams and run an enterprise motion for large accounts.
@@ -19,7 +19,7 @@ A **sales motion** is how your business closes: book a call, send a proposal, se
 | Suitability, then consultation | Consultation | Check the person is a suitable candidate, then book a consultation |
 | Product match, then checkout | Checkout | Match the buyer to the right product, then send them to checkout |
 | Fit, then trial or signup | Trial or signup | Confirm the use case fits, then point the buyer to a trial or signup |
-| Stakeholders, business case, then a person | Business case | Map the problem, stakeholders and decision process, then hand to a person |
+| Stakeholders, then a meeting with a person | Business case | Map the problem, stakeholders and decision process, then book a call with the person who builds the business case. The meeting is the hand-off: it carries the lead brief |
 
 For most UK B2B businesses — agencies, studios, SaaS and professional services — the first two are the usual choice.
 
@@ -35,20 +35,20 @@ Each motion has a **decision threshold**: the few things that must be known befo
 | Suitability, then consultation | Suitability and timing | — |
 | Product match, then checkout | Product interest | — |
 | Fit, then trial or signup | Use case | — |
-| Stakeholders, business case, then a person | The problem and the stakeholders | Decision process or success metrics |
+| Stakeholders, then a meeting with a person | The problem and the stakeholders | Decision process or success metrics |
 
 Every motion asks **at most one main question per message**. Asking two things at once is the most common way an automated follow-up starts to read like a form.
 
-## When a person always takes over
+## When a person takes over
 
-In every motion, the assistant hands the conversation to a person when:
+The assistant carries the conversation through to the close in every motion. Handing the conversation to a person is the last resort. It happens when:
 
-- the buyer asks for a price, discount or term that is not on your approved list
-- the buyer raises a legal, security, data-protection or contract question
 - the buyer asks to speak to a person
-- the buyer complains or is distressed
+- the buyer complains, makes a legal threat or is distressed
+- the buyer raises a legal, data-protection or contract-terms question, or a data-rights request
+- the buyer asks for bespoke terms, or insists on a discount beyond what you approved after the assistant has answered
 
-Some motions add their own triggers — for example a proposal that needs a non-list price, procurement or a security questionnaire in the enterprise motion, or a refund or delivery problem in ecommerce.
+Security documents and procurement paperwork are not a hand-over: a colleague is asked to send them in the background while the assistant keeps qualifying and books the meeting. Some motions add their own case, such as a refund or delivery problem on an existing ecommerce order. See [The handoff brief](/help/booking-and-sales/handoff-brief) for the full list.
 
 ## How the motion affects scoring
 

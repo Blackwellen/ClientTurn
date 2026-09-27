@@ -18,14 +18,30 @@ import type { QualificationExtraction } from "@/lib/ai/schemas";
 import type { BusinessContext, LeadRecord } from "./shared";
 import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
 import {
+  inferDimension,
   matchAnswer,
   selectNextQuestion,
   type KnownQuestion,
   type LeadFieldValues,
+  type MemoryFact,
   type NextQuestionResult,
   type QuestionRecord,
 } from "@/lib/qualification/next-question";
 import { SALES_MOTIONS, type SalesMotion } from "@/lib/sales-library/types";
+import type { ConversationStage } from "@/lib/sales-library/method-router";
+import { deriveConversationStage } from "@/lib/qualification-intelligence/goals";
+import { formAnswersToFacts, type FormAnswerFact } from "@/lib/qualification-intelligence/interpret";
+import { parseSalesOverrides, type ParsedSalesOverrides } from "@/lib/qualification-intelligence/offer-profile";
+import type { ConfiguredQuestion } from "@/lib/qualification-intelligence/question-intents";
+import {
+  ALWAYS_MATERIAL_DIMENSIONS,
+  QI_DIMENSION_KEYS,
+  customIntentKey,
+  type FactDimension,
+  type FactSource,
+  type FactState,
+  type QualificationFact,
+} from "@/lib/qualification-intelligence/types";
 import { loadSellingPreferencesOrDefault } from "@/lib/settings/ai-selling-queries";
 import type { SellingPreferences } from "@/lib/settings/ai-selling";
 
@@ -86,10 +102,221 @@ export async function loadSalesProfile(businessId: string): Promise<SalesProfile
   };
 }
 
+/** The override kinds qualification reads (defect F9: two of them had no reader). */
+const QUALIFICATION_OVERRIDE_KINDS = ["QUALIFICATION_QUESTION", "DISQUALIFIER", "QUALIFICATION_POLICY"] as const;
+
+/** Where a stored fact may feed the legacy selector (and so the engine): never the AI assist. */
+const SELECTOR_FACT_SOURCES: readonly FactSource[] = ["ANSWER", "FORM", "LEAD_FIELD", "ENRICHMENT", "REPLY", "CRM", "MANUAL"];
+
+export type QualificationContext = {
+  /** Form answers from lead_touches, newest touch first (defect F3). */
+  formFacts: FormAnswerFact[];
+  /** Live lead_qualification_facts rows (not superseded). */
+  storedFacts: QualificationFact[];
+  /** workspace_sales_overrides of the three qualification kinds, validated (F9). */
+  overrides: ParsedSalesOverrides;
+  /** Outbound asks per question intent key (messages.features.questionIntent). */
+  askCounts: Record<string, number>;
+};
+
+const EMPTY_OVERRIDES: ParsedSalesOverrides = {
+  intentOverrides: {},
+  disqualifiers: [],
+  workspacePolicy: null,
+  servicePolicies: {},
+  rejected: [],
+};
+
+function toQualificationFact(row: {
+  id: string;
+  lead_id: string;
+  service_id: string | null;
+  dimension: string;
+  value: string;
+  value_normalised: string | null;
+  state: string;
+  source: string;
+  source_ref: string | null;
+  question_id: string | null;
+  question_intent_key: string | null;
+  confidence: number;
+  observed_at: string;
+  valid_until: string | null;
+  verified_at: string | null;
+  set_by: string | null;
+  superseded_at: string | null;
+}): QualificationFact {
+  return {
+    id: row.id,
+    leadId: row.lead_id,
+    serviceId: row.service_id,
+    dimension: row.dimension as FactDimension,
+    value: row.value,
+    valueNormalised: row.value_normalised,
+    state: row.state as FactState,
+    source: row.source as FactSource,
+    sourceRef: row.source_ref,
+    questionId: row.question_id,
+    questionIntentKey: row.question_intent_key,
+    confidence: Number(row.confidence),
+    observedAt: row.observed_at,
+    validUntil: row.valid_until,
+    verifiedAt: row.verified_at,
+    setBy: row.set_by,
+    supersededAt: row.superseded_at,
+  };
+}
+
+/**
+ * Everything qualification knows about a lead beyond its answer rows: form
+ * answers (F3), stored dimension facts (0134), the workspace's qualification
+ * overrides (F9) and how often each question was asked. Every read degrades
+ * to "nothing known" on failure (logged): a missing context can only make the
+ * agent ask more, never decide more.
+ */
+export async function loadQualificationContext(input: {
+  businessId: string;
+  leadId: string;
+  questions: readonly (QuestionRecord & { dimensionKey?: string | null })[];
+}): Promise<QualificationContext> {
+  const admin = createAdminClient();
+  const [touches, facts, overrides, outbound] = await Promise.all([
+    admin
+      .from("lead_touches")
+      .select("answers, occurred_at")
+      .eq("business_id", input.businessId)
+      .eq("lead_id", input.leadId)
+      .order("occurred_at", { ascending: false })
+      .limit(10),
+    admin
+      .from("lead_qualification_facts")
+      .select(
+        "id, lead_id, service_id, dimension, value, value_normalised, state, source, source_ref, question_id, question_intent_key, confidence, observed_at, valid_until, verified_at, set_by, superseded_at",
+      )
+      .eq("business_id", input.businessId)
+      .eq("lead_id", input.leadId)
+      .is("superseded_at", null)
+      .limit(200),
+    admin
+      .from("workspace_sales_overrides")
+      .select("kind, key, payload")
+      .eq("business_id", input.businessId)
+      .in("kind", [...QUALIFICATION_OVERRIDE_KINDS]),
+    admin
+      .from("messages")
+      .select("features")
+      .eq("business_id", input.businessId)
+      .eq("lead_id", input.leadId)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
+  logWriteError(touches, "lead_touches.answers read", { businessId: input.businessId, leadId: input.leadId });
+  logWriteError(facts, "lead_qualification_facts read", { businessId: input.businessId, leadId: input.leadId });
+  logWriteError(overrides, "workspace_sales_overrides read", { businessId: input.businessId });
+  logWriteError(outbound, "messages.features read", { businessId: input.businessId, leadId: input.leadId });
+
+  const inferLabel = (label: string) =>
+    inferDimension({ id: "form-label", questionText: label, position: 0, responseType: "text", required: false, serviceId: null, options: [] });
+  const formFacts = formAnswersToFacts(
+    (touches.data ?? []).map((row) => ({ answers: (row.answers ?? {}) as Record<string, unknown> })),
+    input.questions,
+    inferLabel,
+  );
+
+  const askCounts: Record<string, number> = {};
+  for (const row of outbound.data ?? []) {
+    const features = row.features as { questionIntent?: unknown } | null;
+    const key = typeof features?.questionIntent === "string" ? features.questionIntent : null;
+    if (key) askCounts[key] = (askCounts[key] ?? 0) + 1;
+  }
+
+  const parsed = overrides.data ? parseSalesOverrides(overrides.data) : EMPTY_OVERRIDES;
+  if (parsed.rejected.length > 0) {
+    console.warn("[qualify] invalid qualification overrides ignored", { businessId: input.businessId, rejected: parsed.rejected });
+  }
+
+  return {
+    formFacts,
+    storedFacts: (facts.data ?? []).map(toQualificationFact),
+    overrides: parsed,
+    askCounts,
+  };
+}
+
+/**
+ * The facts the legacy selector may treat as known. Never AI_ASSIST (the
+ * engine verdict never reads AI facts, CLAUDE.md resolved conflict 1), never
+ * an expired fact, and never an INFERRED material one (BUDGET, AUTHORITY):
+ * those must be verified by asking before anything gates on them (08 §B.12).
+ */
+export function selectorFacts(context: QualificationContext, now: Date = new Date()): MemoryFact[] {
+  const facts: MemoryFact[] = context.formFacts.map((fact) => ({
+    dimension: fact.dimension,
+    questionId: fact.questionId,
+    value: fact.value,
+    confidence: fact.confidence,
+    source: "FORM",
+  }));
+  for (const fact of context.storedFacts) {
+    if (fact.supersededAt) continue;
+    if (fact.state !== "CONFIRMED" && fact.state !== "INFERRED") continue;
+    if (!SELECTOR_FACT_SOURCES.includes(fact.source)) continue;
+    if (fact.validUntil && Date.parse(fact.validUntil) <= now.getTime()) continue;
+    const dimension = (QI_DIMENSION_KEYS as readonly string[]).includes(fact.dimension) ? (fact.dimension as MemoryFact["dimension"]) : null;
+    if (fact.state === "INFERRED" && dimension && (ALWAYS_MATERIAL_DIMENSIONS as readonly string[]).includes(dimension)) continue;
+    facts.push({
+      dimension,
+      questionId: fact.questionId,
+      value: fact.value,
+      confidence: fact.state === "CONFIRMED" ? 1 : fact.confidence,
+      source: fact.source,
+    });
+  }
+  return facts;
+}
+
+/**
+ * Applies the QUALIFICATION_QUESTION overrides to configured questions: FORBID
+ * drops an optional question (a required one stays, because the engine cannot
+ * reach a verdict without it), REQUIRE makes it required for selection, and
+ * REWORD replaces its wording. An override scoped to other services is ignored.
+ */
+export function applyQuestionOverrides<Q extends QuestionRecord & { intentKey?: string | null }>(
+  questions: readonly Q[],
+  overrides: ParsedSalesOverrides,
+  serviceId: string | null,
+): Q[] {
+  const out: Q[] = [];
+  for (const question of questions) {
+    const override = overrides.intentOverrides[question.intentKey ?? ""] ?? overrides.intentOverrides[customIntentKey(question.id)];
+    const applies = override && (!override.serviceIds || (serviceId !== null && override.serviceIds.includes(serviceId)));
+    if (!applies) {
+      out.push(question);
+      continue;
+    }
+    if (override.action === "FORBID" && !question.required) continue;
+    if (override.action === "REQUIRE") {
+      out.push({ ...question, required: true, ...(override.renderings ? { questionText: override.renderings.default } : {}) });
+      continue;
+    }
+    if (override.action === "REWORD" && override.renderings) {
+      out.push({ ...question, questionText: override.renderings.default });
+      continue;
+    }
+    out.push(question);
+  }
+  return out;
+}
+
 /**
  * Loads everything the adaptive selector needs for one lead and runs it.
- * Lead fields that answer a dimension: postcode (LOCATION) and the service
- * the lead chose (SERVICE_NEEDED).
+ * Known before asking: the answer rows; lead fields (postcode -> LOCATION,
+ * the chosen service -> SERVICE_NEEDED); ad-form and web-form answers from
+ * lead_touches (F3); stored dimension facts (0134, never AI_ASSIST). The
+ * question -> dimension map comes from qualification_questions.dimension_key,
+ * the workspace's question overrides apply (F9), the stage is the real one
+ * (F2), and a question asked twice without an answer is not asked again.
  */
 export async function loadAdaptiveSelection(input: {
   businessId: string;
@@ -98,9 +325,13 @@ export async function loadAdaptiveSelection(input: {
   salesProfile?: SalesProfile;
   serviceName?: string | null;
   currentQuestionId?: string | null;
+  /** The agent's stage for this turn (strategy.ts stageForMode); derived from the lead otherwise. */
+  stage?: ConversationStage | null;
+  /** Pre-loaded context (the agent loads it once per turn). */
+  context?: QualificationContext;
 }): Promise<NextQuestionResult> {
   const admin = createAdminClient();
-  const [answers, salesProfile, serviceName] = await Promise.all([
+  const [answers, salesProfile, serviceName, context] = await Promise.all([
     admin
       .from("qualification_answers")
       .select("question_id, answer_value")
@@ -118,6 +349,9 @@ export async function loadAdaptiveSelection(input: {
             .maybeSingle()
             .then((row) => row.data?.name ?? null)
         : Promise.resolve(null),
+    input.context
+      ? Promise.resolve(input.context)
+      : loadQualificationContext({ businessId: input.businessId, leadId: input.lead.id, questions: input.questions }),
   ]);
   if (answers.error) throw new Error(`qualification_answers read failed: ${answers.error.message}`);
 
@@ -126,27 +360,66 @@ export async function loadAdaptiveSelection(input: {
     SERVICE_NEEDED: serviceName,
   };
 
+  const answerRows = (answers.data ?? []).map((row) => ({
+    questionId: row.question_id,
+    answerValue: row.answer_value,
+  }));
+  const answered = new Set(answerRows.filter((row) => row.answerValue !== null && row.answerValue !== "").map((row) => row.questionId));
+
+  const questions = applyQuestionOverrides(
+    input.questions as (QuestionRecord & { dimensionKey?: string | null; intentKey?: string | null })[],
+    context.overrides,
+    input.lead.service_id,
+  );
+  const dimensionMap: Record<string, NonNullable<MemoryFact["dimension"]>> = {};
+  for (const question of questions) {
+    if (question.dimensionKey && (QI_DIMENSION_KEYS as readonly string[]).includes(question.dimensionKey)) {
+      dimensionMap[question.id] = question.dimensionKey as NonNullable<MemoryFact["dimension"]>;
+    }
+  }
+  const askHistory = questions.map((question) => ({
+    questionId: question.id,
+    asked: (context.askCounts[customIntentKey(question.id)] ?? 0) + (question.intentKey ? (context.askCounts[question.intentKey] ?? 0) : 0),
+    answered: answered.has(question.id),
+  }));
+
   return selectNextQuestion({
-    questions: input.questions,
-    answers: (answers.data ?? []).map((row) => ({
-      questionId: row.question_id,
-      answerValue: row.answer_value,
-    })),
+    questions,
+    answers: answerRows,
     serviceId: input.lead.service_id,
     leadFields,
-    // No lead-level fact store exists beyond what accepted extractions already
-    // wrote onto the lead row (covered by leadFields). Opportunity memory
-    // (0131) was considered and deliberately not fed in: everything it knows
-    // comes from these same answers, except role mentions ("my director"),
-    // which are too weak to mark a question answered. The selector accepts
-    // facts so an enrichment store can feed it without a signature change.
-    facts: [],
+    facts: selectorFacts(context),
+    dimensionMap,
     motion: salesProfile.motion,
     archetypeKey: salesProfile.archetypeKey,
-    stage: input.lead.first_replied_at ? "QUALIFYING" : "NEW",
+    stage: deriveConversationStage({
+      explicit: input.stage ?? null,
+      leadStatus: input.lead.status,
+      firstRepliedAt: input.lead.first_replied_at,
+      answeredCount: answered.size,
+    }),
     currentQuestionId: input.currentQuestionId ?? null,
     depth: salesProfile.preferences?.qualificationDepth ?? null,
+    askHistory,
+    leadHasReplied: Boolean(input.lead.first_replied_at),
   });
+}
+
+/** qualification_answers.source for an inferred answer, by where the value came from. */
+export function inferredAnswerSource(entry: KnownQuestion): "form" | "manual" | "reply" | "ai_assist" {
+  if (entry.source === "LEAD_FIELD") return "form";
+  switch (entry.factSource) {
+    case "FORM":
+    case "LEAD_FIELD":
+      return "form";
+    case "MANUAL":
+      return "manual";
+    case "ANSWER":
+    case "REPLY":
+      return "reply";
+    default:
+      return "ai_assist";
+  }
 }
 
 /**
@@ -163,16 +436,29 @@ export async function recordInferredAnswers(
   if (inferred.length === 0) return 0;
   const admin = createAdminClient();
   const now = new Date().toISOString();
-  const rows = inferred.map((entry) => ({
-    business_id: businessId,
-    lead_id: leadId,
-    question_id: entry.questionId,
-    answer_value: entry.value,
-    answer_text: `Inferred from ${entry.source === "LEAD_FIELD" ? "the lead's details" : "a remembered fact"}: ${entry.value}`,
-    source: entry.source === "LEAD_FIELD" ? "form" : "ai_assist",
-    confidence: entry.confidence,
-    answered_at: now,
-  }));
+  const rows = inferred.map((entry) => {
+    const source = inferredAnswerSource(entry);
+    const origin =
+      entry.source === "LEAD_FIELD"
+        ? "the lead's details"
+        : source === "form"
+          ? "the lead's form answers"
+          : source === "manual"
+            ? "a fact set by the team"
+            : source === "reply"
+              ? "something the lead said"
+              : "a remembered fact";
+    return {
+      business_id: businessId,
+      lead_id: leadId,
+      question_id: entry.questionId,
+      answer_value: entry.value,
+      answer_text: `Inferred from ${origin}: ${entry.value}`,
+      source,
+      confidence: entry.confidence,
+      answered_at: now,
+    };
+  });
   assertWrite(
     await admin
       .from("qualification_answers")
@@ -183,16 +469,21 @@ export async function recordInferredAnswers(
   return rows.length;
 }
 
+/**
+ * The workspace's active configured questions. Each carries its explicit
+ * library dimension and question intent (0134 dimension_key /
+ * question_intent_key) when set, so nothing downstream has to guess them.
+ */
 export async function loadQuestions(
   businessId: string,
-): Promise<QuestionRecord[]> {
+): Promise<ConfiguredQuestion[]> {
   const admin = createAdminClient();
 
   const [questions, options] = await Promise.all([
     admin
       .from("qualification_questions")
       .select(
-        "id, question_text, response_type, required, service_id, position",
+        "id, question_text, response_type, required, service_id, position, dimension_key, question_intent_key",
       )
       .eq("business_id", businessId)
       .eq("active", true)
@@ -214,6 +505,8 @@ export async function loadQuestions(
     options: (options.data ?? [])
       .filter((option) => option.question_id === row.id)
       .map((option) => ({ value: option.value, label: option.label })),
+    dimensionKey: row.dimension_key ?? null,
+    intentKey: row.question_intent_key ?? null,
   }));
 }
 
@@ -386,7 +679,7 @@ export async function matchAnswerWithAi(
     /** The inbound message being interpreted; the most stable billing key. */
     messageId?: string | null;
   },
-): Promise<{ value: string | null; text: string } | null> {
+): Promise<{ value: string | null; text: string; confidence: number } | null> {
   const context =
     `Question (${question.responseType}): ${question.questionText}\n` +
     (question.options.length
@@ -417,6 +710,8 @@ export async function matchAnswerWithAi(
 
   const revalidated = matchAnswer(question, result.data.normalized_value);
   return revalidated.value
-    ? { value: revalidated.value, text: reply.trim() }
+    ? // Q-D1: the model's own confidence travels with the value, so the caller
+      // records it as ai_assist rather than as something the lead typed.
+      { value: revalidated.value, text: reply.trim(), confidence: result.data.confidence }
     : null;
 }

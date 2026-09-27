@@ -35,7 +35,11 @@ import { resolveTemplateVariables } from "@/lib/messaging/whatsapp-templates";
 import { HOLDOUT_ARM, variantTemplate } from "@/lib/learning/experiments";
 import { armForLead, featureContext, holdoutStopReason, runningExperiment } from "@/lib/learning/experiments-service";
 import { buildMessageFeatures } from "@/lib/learning/features";
+import { templateQuestionFeatures } from "@/lib/agent/qi-turn";
 import { withOptOutWording } from "@/lib/messaging/sms-compliance";
+import { chooseStepChannel, preferredStepChannel, SMS_STEP_EMAIL_SUBJECT } from "@/lib/follow-up/channel-strategy";
+import { readChannelPreference } from "@/lib/agent/channel-preference-store";
+import { followUpSmsAffordable, leadIsEngaged } from "@/lib/billing/limits-service";
 
 type StepRow = {
   id: string;
@@ -191,6 +195,7 @@ async function resolveStepChannel(
   business: BusinessContext,
   lead: LeadRecord,
   configured: Channel,
+  position: { stepIndex: number; bookingReminder: boolean; runId: string },
 ): Promise<{ channel: BroadcastChannel; destination: string } | null> {
   // An automation step schedules a send for the future, which is only
   // meaningful on a channel where the right to send still exists when the time
@@ -207,6 +212,57 @@ async function resolveStepChannel(
     const destination = leadContact(lead, channel);
     return destination ? { channel, destination } : null;
   };
+
+  // The lead told the assistant where to reach them (0147). Their channel
+  // wins over the cost strategy and the configured one when it is usable; the
+  // policy gate still decides, per send, whether it may be used right now.
+  const preferred = preferredStepChannel((await readChannelPreference(business.businessId, lead.id)).preference, (channel) =>
+    isBroadcastChannel(channel) ? usable(channel) : null,
+  );
+  if (preferred) return preferred;
+
+  // The workspace's cost-aware strategy (economics.md §3.6): the first message
+  // instant on SMS where the lead gave a mobile, later nudges to a lead who
+  // has NOT engaged by email through the customer's own mailbox (free to us),
+  // SMS only where email is not available. It re-routes SMS steps to
+  // unengaged leads only: a lead who has replied or whose intent is MEDIUM+
+  // stays on the configured channel (owner rule: conversion wins), and a step
+  // set to email or WhatsApp keeps its channel. Contactability, quiet hours
+  // and every stop condition are still decided per send, immediately before
+  // it goes.
+  if (
+    configured === "sms" &&
+    context.channelStrategy === "sms_first_then_email" &&
+    !position.bookingReminder &&
+    !(await leadIsEngaged(business.businessId, lead.id))
+  ) {
+    const leadHas = {
+      sms: Boolean(leadContact(lead, "sms")),
+      email: Boolean(leadContact(lead, "email")),
+    };
+    const smsAffordable =
+      context.available.sms && leadHas.sms
+        ? await followUpSmsAffordable({
+            businessId: business.businessId,
+            leadId: lead.id,
+            automationRunId: position.runId,
+          })
+        : false;
+    const chosen = chooseStepChannel({
+      strategy: context.channelStrategy,
+      configured,
+      stepIndex: position.stepIndex,
+      bookingReminder: position.bookingReminder,
+      engaged: false,
+      available: { sms: context.available.sms, email: context.available.email },
+      leadHas,
+      smsAffordable,
+    });
+    if (chosen === "sms" || chosen === "email") {
+      const picked = usable(chosen);
+      if (picked) return picked;
+    }
+  }
 
   const direct = usable(configured);
   if (direct) return direct;
@@ -476,7 +532,11 @@ export async function handleAutomationAdvance(job: ClaimedJob) {
   // The channel a step was configured with is not a promise that this lead can
   // receive it. Resolve the channel that will actually be used, which may be
   // the deterministic fallback, or nothing at all.
-  const resolved = await resolveStepChannel(business, lead, configured);
+  const resolved = await resolveStepChannel(business, lead, configured, {
+    stepIndex: run.current_step,
+    bookingReminder: payload.automationType === "booking_reminder",
+    runId: run.id,
+  });
 
   if (!resolved) {
     // §19.6: never silently substitute a channel. Raise an attention item and
@@ -558,10 +618,12 @@ export async function handleAutomationAdvance(job: ClaimedJob) {
   // literal token. The step pauses and a person is told which field is
   // missing (§19.9).
   const bodyRender = renderTemplate(stepTemplate, values, "follow-up");
-  const subjectRender =
-    channel === "email" && step.subject
-      ? renderTemplate(step.subject, values, "follow-up")
-      : ({ ok: true, text: "" } as const);
+  // An SMS step sent as email (the channel strategy, or the fallback) has no
+  // subject of its own; an email without one is refused by the provider.
+  const subjectTemplate = channel === "email" ? step.subject?.trim() || SMS_STEP_EMAIL_SUBJECT : null;
+  const subjectRender = subjectTemplate
+    ? renderTemplate(subjectTemplate, values, "follow-up")
+    : ({ ok: true, text: "" } as const);
 
   if (!bodyRender.ok || !subjectRender.ok) {
     const missing = [
@@ -633,6 +695,9 @@ export async function handleAutomationAdvance(job: ClaimedJob) {
       ...(await featureContext(business.businessId, lead.id)),
       experimentId: experiment?.id ?? null,
       arm,
+      // A follow-up that asks a qualifying question records which, so the
+      // engine's ask history sees it (never on a booking reminder).
+      question: bookingReminder ? null : templateQuestionFeatures(body),
     }),
     // §43: the step's sender identity controls From (the workspace default
     // when the step names none, resolved at send time); a booking reminder is

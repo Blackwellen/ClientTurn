@@ -1,39 +1,30 @@
 ---
 title: LinkedIn company-page engagement
-summary: How people who comment on or react to your own LinkedIn posts can become prospects, what LinkedIn shares, and the current status
+summary: Why ClientTurn does not turn people who engage with your LinkedIn posts into prospects, and what you can use instead
 category: finding-leads
-keywords: [linkedin, company page, comments, reactions, engagement, community management api, social prospects, post engagement]
+keywords: [linkedin, company page, comments, reactions, engagement, community management api, social prospects, post engagement, restricted uses]
 order: 45
 updated: 2026-09-26
 ---
 
-People who comment on or react to posts from your own LinkedIn Company Page have shown interest in a professional context. ClientTurn is built to turn them into **prospects** for review, through LinkedIn's official Community Management API.
+ClientTurn does **not** turn people who comment on or react to your LinkedIn Company Page posts into prospects, and it will not.
 
-> **Important:** This source is not yet available to switch on in the app. The rest of this article explains how it works so you know what to expect when it is. Nothing here happens until then.
+## Why
 
-## What LinkedIn shares, and what it does not
+LinkedIn's API terms list restricted uses of member data. Using it to identify sales prospects or create leads is one of them. Engagement data from your company page is member data, so using it to find prospects would break those terms, whatever the technical route.
 
-- It covers engagement on **your organisation's own posts** only. It cannot read anyone else's posts or activity.
-- It identifies the member (and, for approved applications, their name and headline).
-- It **never includes an email address**. LinkedIn does not give member email addresses to any application, so any tool that produces one got it somewhere else.
-- A comment and a reaction are recorded as what they are. A reaction is weaker evidence of interest than a comment.
-- LinkedIn requires its own approval before an application can use this API.
+An earlier version of ClientTurn included a company-page engagement source that was never switched on. It has been removed. ClientTurn does not request LinkedIn's company-page engagement permission when you connect LinkedIn.
 
-## What ClientTurn will do with it
+## What you can use instead
 
-1. Each person who engaged becomes a prospect in **Find Leads**, never a lead. Engaging with a post is not asking to be sold to.
-2. The prospect starts in review, because a LinkedIn identity with no company or email is not enough to decide whether they can be contacted.
-3. Nothing is filled in by guesswork. A commenter with only a name is stored as exactly that.
-4. A person decides whether to approve the prospect, reach out through the assisted LinkedIn queue, or promote them to a lead.
+- **[LinkedIn Lead Gen Forms](/help/finding-leads/linkedin-lead-gen-forms).** When someone submits a form on your LinkedIn ad, they have asked to hear from you, and they arrive as a lead.
+- **Your own list.** You can import LinkedIn's export of your own 1st-degree connections, or any list you own, as prospects. See [LinkedIn, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
+- **Assisted outreach.** ClientTurn prepares and records LinkedIn messages that you send yourself from your own account.
 
-> **Note:** Social direct messages count as electronic mail under PECR. Reaching out to a sole trader or an individual on LinkedIn follows the same consent rules as email. See [LinkedIn and social messages](/help/compliance/linkedin-and-social-messages).
-
-## What you can use today
-
-- [LinkedIn Lead Gen Forms](/help/finding-leads/linkedin-lead-gen-forms) bring in inbound leads from your LinkedIn ads.
-- [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted) explains how ClientTurn prepares and records LinkedIn outreach that you send yourself.
+If someone who engaged with your post replies to you or messages you, that is a conversation they started. You can add them yourself with the **Add lead** wizard.
 
 ## Related
 
 - [Lead sources explained](/help/finding-leads/lead-sources-explained)
 - [Connecting LinkedIn](/help/integrations/connecting-linkedin)
+- [LinkedIn and social messages](/help/compliance/linkedin-and-social-messages)

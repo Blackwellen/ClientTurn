@@ -21,6 +21,33 @@ import {
   type SignalSourceKey,
 } from "@/lib/intent/types";
 import { saveIntentCategory } from "@/lib/intent/actions";
+import {
+  INTENT_SOURCE_LABELS,
+  intentType,
+  intentTypeAvailability,
+  intentTypesForCategory,
+  type IntentSource,
+  type IntentTypeId,
+} from "@/lib/find-leads/intent-catalogue";
+import type { SignalFeed } from "@/lib/find-leads/signals";
+import { IntentTypePicker } from "./intent-type-picker";
+
+/** The category signal source each catalogue source is recorded as. */
+const SOURCE_KEY: Record<IntentSource, SignalSourceKey> = {
+  COMPANIES_HOUSE: "COMPANY_REGISTRY",
+  COMPANY_WEBSITE: "COMPANY_WEBSITE",
+  COMPANY_CAREERS: "JOB_POSTING",
+  CUSTOMER_DATA: "CUSTOMER_DATASET",
+  GOOGLE_PLACES: "COMPANY_WEBSITE",
+};
+
+const STRENGTH_IMPACT = { STRONG: 15, MODERATE: 10, WEAK: 5 } as const;
+
+/** The longest offered window that does not outlast the type's own decay. */
+function windowFor(decayDays: number): number {
+  const fitting = FRESHNESS_WINDOW_OPTIONS.filter((option) => option.value <= decayDays);
+  return (fitting.at(-1) ?? FRESHNESS_WINDOW_OPTIONS[0]).value;
+}
 
 /**
  * Create or edit an intent category (V4 §15.4).
@@ -39,11 +66,14 @@ export function CategoryBuilder({
   category,
   icpProfiles,
   monitorLimit,
+  liveFeeds = [],
   onClose,
 }: {
   category: IntentCategoryRow | null;
   icpProfiles: { id: string; name: string }[];
   monitorLimit: number;
+  /** The free feeds live for this deployment, to grey out what cannot run. */
+  liveFeeds?: SignalFeed[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -73,6 +103,21 @@ export function CategoryBuilder({
     setSignalTypes(template.signalTypes);
     setFreshnessDays(template.freshnessDays);
     setScoreImpact(template.scoreImpact);
+  }
+
+  const [catalogueOpen, setCatalogueOpen] = React.useState(false);
+  const liveSet = React.useMemo(() => new Set(liveFeeds), [liveFeeds]);
+  const collects = intentTypesForCategory({ name, keywords });
+
+  function applyIntentType(id: IntentTypeId) {
+    const entry = intentType(id);
+    setName(entry.label);
+    setDescription(`${entry.description} ${entry.indicates.needs}`.trim().slice(0, 400));
+    setKeywords(entry.aliases.filter((alias) => alias.length <= 60).slice(0, 40));
+    setSignalTypes([...new Set(entry.sources.map((source) => SOURCE_KEY[source.source]))]);
+    setFreshnessDays(windowFor(entry.decayDays));
+    setScoreImpact(STRENGTH_IMPACT[entry.strength]);
+    setCatalogueOpen(false);
   }
 
   function addKeyword() {
@@ -131,6 +176,46 @@ export function CategoryBuilder({
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            aria-expanded={catalogueOpen}
+            onClick={() => setCatalogueOpen((open) => !open)}
+            className="mt-2.5 text-[12px] font-medium text-content-accent hover:underline"
+          >
+            {catalogueOpen ? "Hide the buying-signal catalogue" : "Or start from a buying signal (Series A, new Head of Growth, rebrand…)"}
+          </button>
+          {catalogueOpen && (
+            <div className="mt-2 max-h-96 overflow-y-auto rounded-md border border-line p-2">
+              <IntentTypePicker
+                compact
+                allowUnavailable
+                selected={collects}
+                live={liveFeeds}
+                onToggle={applyIntentType}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {collects.length > 0 && (
+        <div className="mt-3 rounded-md bg-surface-sunken px-3 py-2 text-[11.5px] text-content-secondary">
+          <p className="font-medium text-content">This category collects</p>
+          <ul className="mt-1 space-y-0.5">
+            {collects.map((id) => {
+              const entry = intentType(id);
+              const availability = intentTypeAvailability(id, liveSet);
+              return (
+                <li key={id}>
+                  {entry.label}: {[...new Set(entry.sources.map((source) => INTENT_SOURCE_LABELS[source.source]))].join(", ")}
+                  {!availability.available && (
+                    <span className="block text-warning-700">{availability.reason}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
@@ -142,7 +227,7 @@ export function CategoryBuilder({
             value={name}
             maxLength={80}
             onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Commercial roofing need"
+            placeholder="e.g. Website rebuild need"
           />
         </div>
 
@@ -237,7 +322,7 @@ export function CategoryBuilder({
                 addKeyword();
               }}
               onBlur={addKeyword}
-              placeholder={keywords.length === 0 ? "roof repair, flat roof…" : "Add a term"}
+              placeholder={keywords.length === 0 ? "replatform, site redesign…" : "Add a term"}
               className="min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-[12.5px] text-content outline-none placeholder:text-content-subtle"
             />
           </div>

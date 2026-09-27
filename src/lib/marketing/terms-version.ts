@@ -7,7 +7,10 @@
  *
  * 2026-09-26: clause 5 (a card is taken before the trial; the trial converts
  * unless cancelled) and clause 7.6 (daily retry for up to 30 days).
+ *
+ * 2026-09-27: clause 9.9 (top-up credit is prepaid, does not expire, and is
+ * non-refundable once any credit from a purchase has been used).
  */
-export const TERMS_VERSION = "2026-09-26";
+export const TERMS_VERSION = "2026-09-27";
 
 export const TERMS_PATH = "/terms";

@@ -206,10 +206,11 @@ describe("connection vocabulary", () => {
 });
 
 describe("LinkedIn organisations and page engagement", () => {
-  test("r_organization_social is requested only once LinkedIn approved it", () => {
-    assert.doesNotMatch(linkedinScopes(false), /r_organization_social/);
-    assert.match(linkedinScopes(true), /r_organization_social/);
-    assert.match(linkedinScopes(false), /r_marketing_leadgen_automation/);
+  test("only Lead Gen Forms scopes are requested; never r_organization_social", () => {
+    // Company-page engagement as a prospect source was removed: LinkedIn's
+    // terms forbid using member data to identify sales prospects.
+    assert.doesNotMatch(linkedinScopes(), /r_organization_social/);
+    assert.match(linkedinScopes(), /r_marketing_leadgen_automation/);
   });
 
   test("every administered organisation is kept, with its URN", () => {
@@ -228,12 +229,10 @@ describe("LinkedIn organisations and page engagement", () => {
     );
   });
 
-  test("identify stores organizationUrn, and no profile URL is fabricated", () => {
+  test("identify stores organizationUrn, and no LinkedIn engagement prospect source exists", () => {
     assert.match(read("src", "lib", "integrations", "providers", "linkedin-ads.ts"), /organizationUrn: first\.urn/);
-    const engagement = read("src", "lib", "find-leads", "server", "providers", "linkedin-engagement.ts");
-    assert.doesNotMatch(engagement, /linkedin\.com\/in\/\$\{/);
-    assert.match(engagement, /profileUrl: null/);
-    assert.match(engagement, /configured: \(\) => linkedinCommunityApproved\(\)/);
+    const registry = read("src", "lib", "find-leads", "server", "providers", "registry.ts");
+    assert.doesNotMatch(registry, /linkedin-engagement|linkedinEngagementProvider/);
   });
 });
 

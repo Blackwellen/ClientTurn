@@ -1,12 +1,43 @@
 import "server-only";
 import { cache } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { archetypeFor } from "@/lib/sales-library/archetypes";
 import { stagesForMotion } from "@/lib/opportunities/stages";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { GOAL_LABEL } from "@/lib/qualification-intelligence/types";
+import { actionWords, summariseInterests, type InterestCard } from "@/lib/qualification-intelligence/interests";
 import { getWorkspaceMembers } from "./queries";
 import type { WorkspaceMember } from "./types";
 import { hasWhatsAppOptIn } from "./whatsapp-opt-in";
+import {
+  readCurrentAssessment,
+  readEngineMode,
+  readLiveFacts,
+  readQualificationHistory,
+  readSignals,
+  type SignalView,
+} from "@/lib/qualification-intelligence/store-reads";
+import {
+  deriveDimensionStatus,
+  dimensionBoard,
+  qualificationStatus,
+  qualificationUnknowns,
+  whyThisQuestion,
+  type AssessmentView,
+  type DimensionBoard,
+  type OverrideHistoryRow,
+  type QualificationStatusSummary,
+  type Unknowns,
+  type WhyThisQuestion,
+} from "@/lib/qualification-intelligence/explain";
+import type {
+  DimensionStatusEntry,
+  QiEngineMode,
+  QualificationFact,
+} from "@/lib/qualification-intelligence/types";
+import { canSeeEngineMode } from "@/lib/settings/ai-selling";
 import {
   firstAndLastTouch,
   parseScoreDimensions,
@@ -105,13 +136,25 @@ export const loadLeadPageHeader = cache(async function loadLeadPageHeader(
   const { data: lead, error } = await supabase
     .from("leads")
     .select(
-      "id, first_name, last_name, email, phone, company_name, status, qualification_state, assigned_user_id, human_takeover, automation_active, opted_out, needs_attention, attention_reason, archived_at, anonymised_at, created_at, estimated_value",
+      "id, first_name, last_name, email, phone, company_name, status, qualification_state, assigned_user_id, human_takeover, automation_active, opted_out, needs_attention, attention_reason, archived_at, created_at, estimated_value",
     )
     .eq("business_id", businessId)
     .eq("id", leadId)
     .maybeSingle();
   if (error) fail("lead", error);
   if (!lead) return null;
+
+  // `anonymised_at` has no column grant for members (0124 added it without
+  // one), so asking for it with the member's session failed the whole page
+  // with "permission denied for table leads". It is read with the service
+  // role instead, scoped to the business and the lead RLS just returned.
+  const anonymised = await createAdminClient()
+    .from("leads")
+    .select("anonymised_at")
+    .eq("business_id", businessId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (anonymised.error) fail("anonymised state", anonymised.error);
 
   const [score, tags, opportunity, members] = await Promise.all([
     supabase
@@ -150,7 +193,7 @@ export const loadLeadPageHeader = cache(async function loadLeadPageHeader(
   const o = opportunity.data;
 
   return {
-    lead,
+    lead: { ...lead, anonymised_at: (anonymised.data?.anonymised_at as string | null) ?? null },
     owner: members.find((member) => member.userId === lead.assigned_user_id) ?? null,
     members,
     score: s
@@ -558,6 +601,65 @@ export async function loadDataRightsHistory(
   }));
 }
 
+/* ------------------------------------------- qualification intelligence */
+
+export type QualificationIntelView = {
+  /** The lead's deterministic engine verdict (leads.qualification_state). */
+  verdict: string;
+  assessment: AssessmentView | null;
+  facts: QualificationFact[];
+  /** From the assessment when there is one, else derived from live facts. */
+  dimensions: DimensionStatusEntry[];
+  board: DimensionBoard;
+  signals: SignalView[];
+  history: OverrideHistoryRow[];
+  unknowns: Unknowns;
+  status: QualificationStatusSummary;
+  why: WhyThisQuestion | null;
+  /** Owners and admins only (CD-9); null for other roles. */
+  engineMode: { mode: QiEngineMode; stored: boolean } | null;
+};
+
+/**
+ * Everything the Qualification tab's Intent and Dimensions sections and the
+ * Next best action card show: the current assessment, the live facts and
+ * signals, the qualification history from the audit trail, and the engine
+ * mode for the roles allowed to see it. One read per table, all scoped to the
+ * business id the page resolved from the session and to this lead.
+ */
+export const loadQualificationIntel = cache(async function loadQualificationIntel(
+  businessId: string,
+  leadId: string,
+  role: string,
+): Promise<QualificationIntelView> {
+  const [header, assessment, facts, signals, members, engineMode] = await Promise.all([
+    loadLeadPageHeader(businessId, leadId),
+    readCurrentAssessment(businessId, leadId),
+    readLiveFacts(businessId, leadId),
+    readSignals(businessId, leadId, 15),
+    getWorkspaceMembers(businessId),
+    canSeeEngineMode(role) ? readEngineMode(businessId) : Promise.resolve(null),
+  ]);
+  const nameOf = (userId: string | null) =>
+    userId ? (members.find((m) => m.userId === userId)?.name ?? "A former member") : null;
+  const history = await readQualificationHistory(businessId, leadId, nameOf);
+  const verdict = header?.lead.qualification_state ?? "PENDING";
+  const dimensions = assessment ? assessment.dimensions : deriveDimensionStatus(facts);
+  return {
+    verdict,
+    assessment,
+    facts,
+    dimensions,
+    board: dimensionBoard(dimensions, facts),
+    signals,
+    history,
+    unknowns: qualificationUnknowns(assessment, assessment ? [] : dimensions),
+    status: qualificationStatus(verdict, assessment),
+    why: whyThisQuestion(assessment?.nba ?? null),
+    engineMode,
+  };
+});
+
 /* ------------------------------------------------------ whatsapp opt-in */
 
 export type WhatsAppOptInView = {
@@ -607,3 +709,132 @@ export async function loadWhatsAppOptIn(businessId: string, leadId: string): Pro
     source: typeof after?.source === "string" ? after.source : null,
   };
 }
+
+/* ------------------------------------------------------ several interests */
+
+export type LeadInterestsView = {
+  cards: InterestCard[];
+  summary: string;
+  /** Active services not yet an open interest, for "Add an interest". */
+  addable: { id: string; name: string }[];
+};
+
+type InterestOppRow = {
+  id: string;
+  name: string;
+  stage: string;
+  outcome: string;
+  value: number | null;
+  currency: string;
+  service_id?: string | null;
+  goal?: string | null;
+  qualification_state?: string | null;
+  nba?: { action?: string; reason?: string } | null;
+  interest_source?: string | null;
+  created_at: string;
+};
+
+/**
+ * Every interest of the lead as a card (08 §B.20): offer, goal, stage, next
+ * best action and value, with one sentence about the lead overall. Read with
+ * the service role, scoped to the business and the lead the page already
+ * loaded under RLS. Tolerates a database without 0144: the lead's one
+ * opportunity, plus the interests recorded as facts, still show.
+ */
+export const loadLeadInterests = cache(async function loadLeadInterests(
+  businessId: string,
+  leadId: string,
+): Promise<LeadInterestsView> {
+  const admin = createAdminClient() as unknown as SupabaseClient;
+  const [lead, services, facts, assessment] = await Promise.all([
+    admin.from("leads").select("service_id").eq("business_id", businessId).eq("id", leadId).maybeSingle(),
+    admin.from("services").select("id, name, average_value").eq("business_id", businessId).eq("active", true).order("name").limit(100),
+    admin
+      .from("lead_qualification_facts")
+      .select("service_id, source_ref")
+      .eq("business_id", businessId)
+      .eq("lead_id", leadId)
+      .eq("dimension", "SERVICE_NEEDED")
+      .is("superseded_at", null)
+      .limit(50),
+    admin.from("lead_assessments").select("nba").eq("business_id", businessId).eq("lead_id", leadId).eq("is_current", true).maybeSingle(),
+  ]);
+  if (services.error) fail("services", services.error);
+  let opps: { data: unknown[] | null; error: { code?: string; message: string } | null } = await admin
+    .from("opportunities")
+    .select("id, name, stage, outcome, value, currency, service_id, goal, qualification_state, nba, interest_source, created_at")
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (opps.error && isSchemaLag(opps.error)) {
+    opps = await admin
+      .from("opportunities")
+      .select("id, name, stage, outcome, value, currency, created_at")
+      .eq("business_id", businessId)
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: true })
+      .limit(20);
+  }
+  if (opps.error) fail("interests", opps.error);
+
+  const serviceRows = (services.data ?? []) as { id: string; name: string; average_value: number | null }[];
+  const nameOf = (id: string | null | undefined) => serviceRows.find((s) => s.id === id)?.name ?? null;
+  const leadServiceId = (lead.data as { service_id: string | null } | null)?.service_id ?? null;
+  const rows = (opps.data ?? []) as InterestOppRow[];
+  const leadNba = (assessment.data as { nba?: { next_action?: string; reason?: string } } | null)?.nba ?? null;
+  const single = rows.length === 1;
+
+  const cards: InterestCard[] = rows.map((row) => {
+    const serviceId = row.service_id ?? (single ? leadServiceId : null);
+    const goal = (row.goal ?? null) as InterestCard["goal"];
+    return {
+      serviceId,
+      opportunityId: row.id,
+      offer: nameOf(serviceId) ?? row.name,
+      goal,
+      goalLabel: goal ? GOAL_LABEL[goal] : "",
+      stage: row.stage,
+      outcome: row.outcome,
+      nextAction: row.outcome === "OPEN" ? actionWords(row.nba?.action ?? (single ? leadNba?.next_action : null)) : null,
+      nextActionReason: row.outcome === "OPEN" ? (row.nba?.reason ?? (single ? leadNba?.reason : null) ?? null) : null,
+      value: row.value === null ? null : Number(row.value),
+      currency: row.currency,
+      source: (row.interest_source ?? null) as InterestCard["source"],
+      qualificationState: row.qualification_state ?? null,
+    };
+  });
+  // Interests recorded as facts that have no opportunity yet (before 0144, or
+  // before the next assessment opens one).
+  const seen = new Set(cards.map((c) => c.serviceId).filter(Boolean));
+  const interestIds = new Set<string>(leadServiceId ? [leadServiceId] : []);
+  for (const f of (facts.data ?? []) as { service_id: string | null; source_ref: string | null }[]) {
+    if (f.service_id && (f.source_ref ?? "").includes("#interest")) interestIds.add(f.service_id);
+  }
+  if (interestIds.size >= 2) {
+    for (const id of interestIds) {
+      if (seen.has(id) || !nameOf(id)) continue;
+      cards.push({
+        serviceId: id,
+        opportunityId: null,
+        offer: nameOf(id)!,
+        goal: null,
+        goalLabel: "",
+        stage: "OPEN",
+        outcome: "OPEN",
+        nextAction: null,
+        nextActionReason: null,
+        value: serviceRows.find((s) => s.id === id)?.average_value ?? null,
+        currency: "GBP",
+        source: id === leadServiceId ? "LEAD_SERVICE" : "MESSAGE",
+        qualificationState: null,
+      });
+    }
+  }
+  const taken = new Set(cards.filter((c) => c.outcome === "OPEN").map((c) => c.serviceId).filter(Boolean));
+  return {
+    cards,
+    summary: summariseInterests(cards),
+    addable: serviceRows.filter((s) => !taken.has(s.id)).map((s) => ({ id: s.id, name: s.name })),
+  };
+});

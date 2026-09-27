@@ -4,7 +4,11 @@ summary: Step by step, add an HTTPS endpoint, choose its events, store the signi
 category: developers
 keywords: [add endpoint, webhook setup, test event, rotate secret, pause endpoint, delivery log, https endpoint, send test]
 order: 25
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/developers/setting-up-a-webhook-1.png
+    alt: "The Add a webhook endpoint dialog with the endpoint URL and three events ticked"
+    caption: "Enter the https address and tick the events to send"
 ---
 
 ## Before you start

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/terms" },
   openGraph: {
-    title: "Terms of Service · ClientTurn",
+    title: "Terms of Service",
     description,
     url: "/terms",
     siteName: "ClientTurn",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Terms of Service · ClientTurn",
+    title: "Terms of Service",
     description,
   },
 };
@@ -412,7 +412,8 @@ const SECTIONS: LegalSection[] = [
           free trial lets you evaluate the Service in full before paying, fees
           for a Subscription Term that has begun are not refundable except as set
           out in clauses 9.3 to 9.6 or where the law requires otherwise. We do
-          not refund part-months on cancellation.
+          not refund part-months on cancellation. Top-up credit is governed by
+          clause 9.9.
         </p>
         <p>
           <strong>9.3 First annual payment.</strong> If you take an annual
@@ -460,6 +461,27 @@ const SECTIONS: LegalSection[] = [
           <strong>9.8 No refund of third-party charges.</strong> We cannot refund
           amounts billed to you by Twilio, Meta, Google, Calendly or any other
           provider, because we never received them.
+        </p>
+        <p>
+          <strong>9.9 Top-up credit.</strong> SMS message credit, WhatsApp
+          token packs and AI token packs (<strong>&ldquo;top-up credit&rdquo;</strong>) are
+          bought separately from your subscription, in advance, and let you
+          keep sending messages or using AI features once your Plan&rsquo;s
+          included allowance for them is used up. Top-up credit is prepaid and does not expire. Your
+          included allowance is always used before any top-up credit, and
+          top-up credit is used oldest purchase first. A purchase can be
+          refunded only if none of its credit has been used; once any credit
+          from a purchase has been used, that purchase is non-refundable. If
+          we refund a purchase, its unused credit is removed from your balance
+          (for a partial refund, a proportionate share of its credit, never
+          more than is unused). Credit has no cash value and cannot be transferred to
+          another Workspace or person. WhatsApp tokens are units of use, not
+          money: each WhatsApp message uses a set number of tokens according to
+          its type, shown before you buy. WhatsApp tokens have no cash value,
+          cannot be exchanged for money or anything else, cannot be transferred,
+          and a pack is non-refundable once any of its tokens are used. You accept this clause at checkout for
+          each purchase. Top-up credit is sold for use in your business; if you
+          are a consumer, clause 9.6 still applies to you.
         </p>
       </>
     ),

@@ -125,6 +125,9 @@ export async function exportLead(businessId: string, leadId: string): Promise<Su
     prospectSources,
     prospectScores,
     suppression,
+    intentSignals,
+    qualificationFacts,
+    assessments,
   ] = await Promise.all([
     section(byLead("lead_touches", "*", "occurred_at")),
     section(bySubject("lead_source_evidence")),
@@ -213,6 +216,29 @@ export async function exportLead(businessId: string, leadId: string): Promise<Su
           }) as unknown as PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>,
         )
       : Promise.resolve({ rows: [], truncated: false }),
+    // Qualification intelligence (0134). The signals carry verbatim excerpts,
+    // the facts carry the person's answers, and the assessments are automated
+    // profiling (Art 15(1)(h), Art 22A-D), so all three are owed in full.
+    section(
+      byLead(
+        "lead_intent_signals",
+        "id, category, signal_type, polarity, strength, confidence, source, observed_at, half_life_hours, flat_until, expires_at, resume_at, reason, evidence_excerpt, rule_version, retracted_at, created_at",
+        "observed_at",
+      ),
+    ),
+    section(
+      byLead(
+        "lead_qualification_facts",
+        "id, dimension, value, value_normalised, state, source, question_intent_key, confidence, observed_at, valid_until, verified_at, superseded_at, created_at",
+        "observed_at",
+      ),
+    ),
+    section(
+      byLead(
+        "lead_assessments",
+        "id, intent_state, intent_score, intent_categories, intent_evidence, intent_contradictions, intent_confidence, valid_until, goal, qualification_completeness, dimension_status, nba, engine_version, engine_mode, trigger_event, is_current, created_at",
+      ),
+    ),
   ]);
 
   const sections: Record<string, Section> = {
@@ -239,11 +265,15 @@ export async function exportLead(businessId: string, leadId: string): Promise<Su
     sourced_prospect_records: prospectRows,
     prospect_provenance: prospectSources,
     prospect_scores: prospectScores,
+    intent_signals: intentSignals,
+    qualification_facts: qualificationFacts,
+    qualification_assessments: assessments,
   };
 
   const notes_: string[] = [
     "Scores are produced by deterministic rules. Each score row lists the factors and the explanation used; a person can ask for any automated decision to be reviewed by a human.",
     "Contactability decisions record the rules version that produced them, so each past decision can be checked against the rules in force at the time.",
+    "Intent signals, qualification facts and assessments are produced by deterministic, versioned rules (the engine_version and rule_version on each row). An AI assist may only propose a candidate value, which is stored as INFERRED at most and never decides anything on its own.",
     "Do-not-contact entries stored as a one-way hash are reported as HASHED: the address itself is no longer held.",
   ];
   const truncated = Object.entries(sections)

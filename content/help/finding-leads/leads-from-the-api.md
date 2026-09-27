@@ -4,7 +4,11 @@ summary: Record enquiries from your website, app or back office with POST /api/v
 category: finding-leads
 keywords: [api, post leads, web form, website form, integration, idempotency, developer, rest api, create lead]
 order: 90
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/leads-from-the-api-1.png
+    alt: "A lead's Attribution tab showing an API touch with its campaign, form and UTM values"
+    caption: "API leads keep the campaign, form and UTM details you send"
 ---
 
 If your website, app or back-office system captures enquiries, it can send them straight to ClientTurn with the public API. Each request goes through the same intake path as an ad-platform lead: suppression check, deduplication against existing leads, and a record of where it came from.
@@ -25,7 +29,7 @@ This article is the overview. The full request and response reference is in [Cre
 
 ## What happens next
 
-The response tells you exactly what happened: a new lead was **created**, an existing lead was **merged** (the same person enquired again), the request was a **duplicate** of one already received, the person is **suppressed** (recorded but never contacted), the details were **invalid**, or it needs a person to **review** a conflicting match.
+The response tells you exactly what happened: a new lead was **created**, an existing lead was **merged** (the same person enquired again), the request was a **duplicate** of one already received, the details were **invalid**, it needs a person to **review** a conflicting match, or it was **rejected** because the person is on your suppression list (`409`, and nothing is stored). A `REFERRAL` must carry evidence of who referred them and when, at least 20 characters, or the request is refused with `400`. See [Creating leads with the API](/help/developers/api-create-leads).
 
 > **Important:** A lead created through the API is recorded and qualified, but follow-up is **not** started automatically. Someone in your team chooses to message it, or selects it in **Leads** and chooses **Actions → Start follow-up**. This is deliberate: the API has nobody present to confirm an outbound action.
 

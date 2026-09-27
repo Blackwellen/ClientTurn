@@ -2,9 +2,22 @@
 
 import * as React from "react";
 import { Check, Minus } from "lucide-react";
-import { planOrder, type PlanDefinition } from "@/lib/billing/plans";
+import {
+  creditBundlesFor,
+  planOrder,
+  type PlanDefinition,
+} from "@/lib/billing/plans";
+import { WHATSAPP_TOKENS_PER_MESSAGE } from "@/lib/billing/whatsapp-tokens";
 import { SOURCING_ALLOWANCES } from "@/lib/billing/sourcing-allowances";
 import { trackEngagement } from "@/lib/marketing/track";
+import {
+  PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN,
+  QUOTES_ON_PLAN,
+  VOICE_MINUTE_PACKS,
+  gbp,
+  minutes,
+  planVoiceOffer,
+} from "@/lib/marketing/voice-offer";
 
 /**
  * The plan comparison.
@@ -35,6 +48,19 @@ type Group = {
 
 function allowance(plan: PlanDefinition, value: number): string {
   return plan.id === "enterprise" ? "Custom" : NUMBER.format(value);
+}
+
+/**
+ * The prepaid top-up bundles a plan can buy for one channel, as
+ * "100 for £24 · 500 for £115", or "not available" when there are none.
+ * There is no overage: prepaid credit is the only way past an allowance.
+ */
+function bundles(plan: PlanDefinition, channel: "sms" | "whatsapp"): Cell {
+  const list = creditBundlesFor(plan).filter((b) => b.channel === channel);
+  if (list.length === 0) return false;
+  return list
+    .map((b) => `${NUMBER.format(b.credits)} for £${NUMBER.format(b.priceGbp)}`)
+    .join(" · ");
 }
 
 const GROUPS: Group[] = [
@@ -77,9 +103,23 @@ const GROUPS: Group[] = [
   {
     heading: "Channels",
     rows: [
-      { label: "Email", value: () => true },
+      { label: "Follow-up email from your own mailbox", value: () => true },
       { label: "SMS", value: () => true },
-      { label: "WhatsApp", value: (plan) => plan.whatsappEnabled },
+      {
+        label: "SMS top-up credit (prepaid segments)",
+        value: (plan) => bundles(plan, "sms"),
+      },
+      {
+        label: "WhatsApp",
+        value: (plan) =>
+          plan.whatsappEnabled
+            ? `Add-on, prepaid tokens (${WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} per reply, ${WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} per marketing message)`
+            : false,
+      },
+      {
+        label: "WhatsApp token packs (prepaid)",
+        value: (plan) => bundles(plan, "whatsapp"),
+      },
     ],
   },
   {
@@ -108,6 +148,33 @@ const GROUPS: Group[] = [
       { label: "AI assistant", value: (plan) => plan.aiAssistAllowed },
       { label: "Analytics and CSV export", value: () => true },
       { label: "Integrations", value: () => true },
+    ],
+  },
+  {
+    heading: "AI Voice Sales Agent",
+    rows: [
+      { label: "AI calls to leads who asked", value: (plan) => planVoiceOffer(plan.id).agent },
+      { label: "Dedicated UK number", value: (plan) => planVoiceOffer(plan.id).number },
+      {
+        label: "Voice minute packs (prepaid)",
+        value: (plan) =>
+          plan.id === "enterprise"
+            ? "Custom"
+            : VOICE_MINUTE_PACKS.map((pack) => `${minutes(pack.minutes)} ${gbp(pack.priceGbp)}`).join(" · "),
+      },
+      {
+        label: "Premium voice",
+        value: (plan) =>
+          plan.id === "enterprise" ? "Custom" : `+${gbp(PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN)}/min`,
+      },
+    ],
+  },
+  {
+    heading: "Quotes and payments",
+    rows: [
+      { label: "Branded quotes, priced by your rules", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
+      { label: "Simple electronic signature", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
+      { label: "Invoices and payment links (your Stripe)", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
     ],
   },
   {

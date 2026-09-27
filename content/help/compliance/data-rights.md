@@ -4,7 +4,14 @@ summary: What each data-rights action on a lead does and keeps, who can use it, 
 category: compliance
 keywords: [gdpr, dsar, subject access request, right to erasure, right to be forgotten, anonymise, erase, delete lead, export lead, restrict processing, privacy request, retention, archive, do not contact]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/compliance/data-rights-1.png
+    alt: "A lead's Data rights tab with Suppress, Restrict processing, Export data, Anonymise and Erase, and the history below"
+    caption: "Every data-rights action for a lead is on its Data rights tab, and each one is recorded below"
+  - src: /help/screenshots/compliance/data-rights-2.png
+    alt: "The Privacy requests card with Record a request, the acknowledge and respond deadlines and an Identity not verified badge"
+    caption: "Log each privacy request so the acknowledge and respond deadlines are tracked"
 ---
 
 ClientTurn gives you a separate action for each thing a person can ask you to do with their data. Every action says what it removes and what it keeps before you confirm it. None of them claims something was "deleted" when part of it was kept.
@@ -65,7 +72,11 @@ Each open request shows two clocks: **Acknowledge** within 30 days and **Respond
 
 Request types are: see the data held, erase, correct, restrict, object to marketing or profiling, make a data protection complaint, and challenge an automated decision such as a qualification or score.
 
-People can also make a request through ClientTurn's public form at [/privacy-request](/privacy-request). They verify their email address first. ClientTurn then works out which workspace holds their data before routing it.
+People can also make a request through ClientTurn's public form at [/privacy-request](/privacy-request). They verify their email address first. Once they have, ClientTurn looks for them in every workspace, by the verified email across leads and prospects and by any phone number they gave across leads. Each workspace that holds them gets its own copy of the request in **Privacy requests**, and a notification that it needs a response.
+
+- The copy keeps the date the person first asked, because the deadlines run from then.
+- Its details say how the match was made. A match on email means the person proved they own that address. A match on phone alone arrives waiting for identity checks, because only the email was verified: confirm who they are before acting.
+- A workspace never receives the same request twice.
 
 ## Automatic retention
 

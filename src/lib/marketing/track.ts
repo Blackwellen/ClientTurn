@@ -51,6 +51,10 @@ export type CtaPlacement =
   | "contact_sales_form"
   | "contact_sales_final"
   | "contact_sales_start_free"
+  /* /compliance */
+  | "compliance_final"
+  | "compliance_contact_sales"
+  | "compliance_guide"
   /* Homepage V2. One placement per conversion surface on the page, so the
      hero, the two growth paths, pricing and the closing panel can each be
      judged on the signups they actually start. */
@@ -69,7 +73,13 @@ export type CtaPlacement =
   | "developers_hero"
   | "developers_hero_secondary"
   | "developers_final"
-  | "developers_contact_sales";
+  | "developers_contact_sales"
+  /* Voice Sales Agent and quote-to-cash sections (home, pricing). */
+  | "revenue_journey"
+  | "voice_agent_section"
+  | "quotes_section"
+  | "pricing_voice_pro"
+  | "pricing_voice_addon";
 
 /**
  * Non-CTA engagement on a product page: opening a drawer, expanding a score

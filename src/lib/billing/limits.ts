@@ -1,6 +1,6 @@
 /**
- * Metered limits: consumption order, daily caps, the overage spend cap and the
- * thresholds upsells fire at (Phase 8.9, 8.11, 8.13).
+ * Metered limits: consumption order, daily caps and the thresholds upsells
+ * fire at (Phase 8.9, 8.11, 8.13).
  *
  * Pure -- no `server-only`, no Supabase -- so the send-time gate, the meter,
  * the Usage & limits view and the unit tests all compute the same answer.
@@ -9,13 +9,13 @@
  *
  *   1. the plan's monthly allowance
  *   2. purchased top-up credit (never expires; it was paid for)
- *   3. overage -- only if the workspace switched it on, only on a plan that
- *      prices it, and only while the month's overage spend stays within the
- *      cap the workspace set
- *   4. otherwise the send is refused, with the reason on the message
+ *   3. otherwise the send is refused, with the reason on the message
+ *
+ * There is NO overage (owner, 2026-09-27: "it will get abused, make them top
+ * up"). Prepaid credit is the only way past an allowance.
  *
  * A message is never split across "allowed" and "refused": either all of its
- * units are covered by 1-3 or it does not go.
+ * units are covered by 1-2 or it does not go.
  */
 
 import {
@@ -27,99 +27,33 @@ import {
   type PlanDefinition,
 } from "./plans.ts";
 
-export type OverageSettings = {
-  enabled: boolean;
-  /** Monthly cap the workspace set, in pence. */
-  capMinor: number;
-  /** Overage already incurred this period, in pence. */
-  spentMinor: number;
-  /** This plan's price per unit past the allowance, in pence; null = none. */
-  unitPricePence: number | null;
-};
-
 export type ConsumptionSplit = {
   quantity: number;
   fromAllowance: number;
   fromCredits: number;
-  fromOverage: number;
-  /** Pence the overage portion costs (rounded up). */
-  overageMinor: number;
   allowed: boolean;
   /** Why it was refused, when it was. */
-  refusal: "LIMIT_REACHED" | "OVERAGE_CAP_REACHED" | null;
+  refusal: "LIMIT_REACHED" | null;
 };
-
-export function overageCostMinor(units: number, unitPricePence: number): number {
-  if (units <= 0) return 0;
-  // Rounded up per message: the customer is never charged a fraction of a
-  // penny less than it costs, and never more than one penny more.
-  return Math.ceil(units * unitPricePence);
-}
 
 export function splitConsumption(input: {
   quantity: number;
   allowance: number;
   usedThisPeriod: number;
   creditBalance: number;
-  overage: OverageSettings;
 }): ConsumptionSplit {
   const quantity = Math.max(0, Math.ceil(input.quantity));
   const allowanceLeft = Math.max(0, input.allowance - Math.max(0, input.usedThisPeriod));
   const fromAllowance = Math.min(quantity, allowanceLeft);
-  let rest = quantity - fromAllowance;
-
+  const rest = quantity - fromAllowance;
   const fromCredits = Math.min(rest, Math.max(0, Math.floor(input.creditBalance)));
-  rest -= fromCredits;
-
-  if (rest === 0) {
-    return {
-      quantity,
-      fromAllowance,
-      fromCredits,
-      fromOverage: 0,
-      overageMinor: 0,
-      allowed: true,
-      refusal: null,
-    };
-  }
-
-  const { overage } = input;
-  const overageAvailable =
-    overage.enabled && overage.capMinor > 0 && overage.unitPricePence !== null;
-
-  if (!overageAvailable) {
-    return {
-      quantity,
-      fromAllowance,
-      fromCredits,
-      fromOverage: 0,
-      overageMinor: 0,
-      allowed: false,
-      refusal: "LIMIT_REACHED",
-    };
-  }
-
-  const cost = overageCostMinor(rest, overage.unitPricePence!);
-  if (overage.spentMinor + cost > overage.capMinor) {
-    return {
-      quantity,
-      fromAllowance,
-      fromCredits,
-      fromOverage: 0,
-      overageMinor: 0,
-      allowed: false,
-      refusal: "OVERAGE_CAP_REACHED",
-    };
-  }
-
+  const allowed = fromAllowance + fromCredits === quantity;
   return {
     quantity,
     fromAllowance,
     fromCredits,
-    fromOverage: rest,
-    overageMinor: cost,
-    allowed: true,
-    refusal: null,
+    allowed,
+    refusal: allowed ? null : "LIMIT_REACHED",
   };
 }
 
@@ -188,8 +122,14 @@ export function upsellFor(input: {
   plan: string;
   used: number;
   limit: number;
+  /**
+   * The level decided elsewhere. SMS and WhatsApp pass the running-low rule
+   * (allowance-alerts.ts: credit counted, from 75%) so the offer appears
+   * exactly when the banner and the owner notification do.
+   */
+  level?: LimitLevel;
 }): UpsellOffer | null {
-  const level = limitLevel(input.used, input.limit);
+  const level = input.level ?? limitLevel(input.used, input.limit);
   if (level === "ok") return null;
 
   const nextKey = nextPlanFor(input.plan);

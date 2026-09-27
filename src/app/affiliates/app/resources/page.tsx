@@ -6,7 +6,7 @@ import { getAffiliateAccount, getResourceHub } from "@/lib/affiliates/portal";
 import { KpiCard, PortalHeader } from "@/components/affiliates/portal-ui";
 import { ResourcesView } from "@/components/affiliates/resources/resources-view";
 
-export const metadata: Metadata = { title: "Resources Hub | ClientTurn" };
+export const metadata: Metadata = { title: "Resources Hub" };
 export const dynamic = "force-dynamic";
 
 /**

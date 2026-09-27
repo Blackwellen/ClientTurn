@@ -9,10 +9,9 @@ import Link from "next/link";
  * Identity Services button. Clicking it leaves the page like any other OAuth
  * connect button already in this codebase (Calendly, Google Calendar, Slack).
  *
- * Google sign-in can never create a ClientTurn account (see the callback route
- * for the enforcement) -- only ever sign in to one that already exists. The
- * "signup" variant's copy reflects that: it offers a *sign-in* shortcut on a
- * signup page, never a way to register.
+ * Signup is open, so Google both signs in and registers: a new customer gets a
+ * workspace and goes to the trial checkout, an existing one signs in (see the
+ * callback route). The Terms are accepted at Checkout either way.
  */
 export function GoogleSignInButton({
   redirectTo,
@@ -21,7 +20,7 @@ export function GoogleSignInButton({
 }: {
   redirectTo?: string;
   audience?: "customer" | "affiliate";
-  /** "signin" sits on a login form; "signup" sits on a signup form and is worded as a shortcut back to sign-in. */
+  /** "signin" sits on a login form; "signup" sits on a signup form. */
   variant?: "signin" | "signup";
 }) {
   const params = new URLSearchParams({ aud: audience });
@@ -43,7 +42,7 @@ export function GoogleSignInButton({
         className="flex h-[52px] w-full items-center justify-center gap-3 rounded-[11px] border border-white/15 bg-white/[0.03] text-[15px] font-semibold text-[var(--auth-text)] transition-colors hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--auth-lime)]"
       >
         <GoogleMark />
-        {variant === "signup" ? "Already have an account? Sign in with Google" : "Continue with Google"}
+        {variant === "signup" ? "Sign up with Google" : "Continue with Google"}
       </Link>
     </div>
   );

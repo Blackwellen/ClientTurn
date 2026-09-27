@@ -165,11 +165,11 @@ describe("estimateTokensForCall", () => {
 
 describe("approximateTurns", () => {
   test("converts an allowance into conversations", () => {
-    assert.equal(approximateTurns(17_000), 10);
+    assert.equal(approximateTurns(27_500), 10);
   });
 
   test("rounds down, so nobody is promised a turn they cannot have", () => {
-    assert.equal(approximateTurns(1_699), 0);
+    assert.equal(approximateTurns(2_749), 0);
   });
 
   test("never returns a negative count", () => {

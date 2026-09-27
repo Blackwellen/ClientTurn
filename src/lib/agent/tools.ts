@@ -44,6 +44,7 @@ import { matchAnswer, type QuestionRecord } from "@/lib/jobs/handlers/qualify";
 import { normalisePhone } from "@/lib/messaging/types";
 import { getAvailability, recheckGoogleSlot, type AvailabilityContext } from "./availability";
 import { assignBooking, meetingTypeForLead } from "@/lib/bookings/meeting-type-store";
+import { readChannelPreference } from "./channel-preference-store";
 import {
   createGoogleCalendarEvent,
   type CreateGoogleCalendarEventResult,
@@ -57,20 +58,28 @@ import {
 } from "@/lib/bookings/confirmation";
 import { onBookingScheduled } from "@/lib/bookings/reminders";
 import { advanceLeadOpportunitySafely } from "@/lib/opportunities/service";
-import { checkoutMessage, type CheckoutLink } from "@/lib/commercial/authority";
+import { checkoutMessage, type CheckoutLink, type TrackedCheckoutLink } from "@/lib/commercial/authority";
+import { recordCheckoutAttempt } from "@/lib/payments/attempts";
 import { recordAudit } from "@/lib/audit";
 import type { AgentRunHandle } from "./audit";
 import { recordAction } from "./audit";
 import { evaluateToolGate } from "./policy";
 import type {
   AgentChannel,
+  AssistReason,
   HandoverPriority,
   HandoverReason,
   LifecycleState,
   ReplyClassification,
   RiskLevel,
 } from "./types";
-import { HANDOVER_PRIORITY_FOR, toMessageReplyClassification } from "./types";
+import {
+  ASSIST_REASON_LABEL,
+  ASSIST_REASON_STORED_AS,
+  HANDOVER_PRIORITY_FOR,
+  messageChannelFor,
+  toMessageReplyClassification,
+} from "./types";
 import { interestForReplyClassification } from "@/lib/inbox/interest";
 
 // ------------------------------------------------------------- declaration
@@ -107,6 +116,7 @@ export const TOOL_NAMES = [
   "send_booking_link",
   "create_booking",
   "request_human_handover",
+  "request_assist",
   "apply_suppression",
   "stop_follow_up",
   "record_reply_classification",
@@ -173,8 +183,18 @@ export const TOOL_REGISTRY: Record<ToolName, ToolDeclaration> = {
   },
   request_human_handover: {
     name: "request_human_handover",
-    description: "Pass the conversation to a person with a factual summary.",
+    description: "Pass the conversation to a person with a factual summary. A last resort only (handover-policy.ts).",
     risk: "HIGH",
+    requirements: {},
+    idempotent: true,
+  },
+  request_assist: {
+    name: "request_assist",
+    description:
+      "Ask a person to confirm one fact or do one task in the background. Ownership stays with the assistant.",
+    // LOW: nothing reaches the lead and nothing moves ownership; it records a
+    // task and notifies the team.
+    risk: "LOW",
     requirements: {},
     idempotent: true,
   },
@@ -231,6 +251,8 @@ export type ToolContext = {
     availabilityConfirmed: boolean;
     optOutRecognised: boolean;
     bookingEnabled: boolean;
+    /** The engine judged the lead booking-ready (policy.ts ToolGateSnapshot). */
+    engineBookingReady?: boolean;
   };
   /** Confidence of the proposal that led here; null for deterministic calls. */
   confidence: number | null;
@@ -554,6 +576,11 @@ export async function sendMessage(
     origin?: "agent" | "agent_handover";
     /** §61 outcome features for this message (learning/features.ts). */
     features?: Record<string, unknown> | null;
+    /**
+     * Email only. An abandoned-checkout nudge is MARKETING (it carries the
+     * unsubscribe link); anything else is derived from the origin as before.
+     */
+    messageClass?: "TRANSACTIONAL" | "MARKETING" | null;
   },
 ): Promise<ToolResult<{ messageId: string | null; queuedFor: string }>> {
   return invoke(
@@ -564,13 +591,14 @@ export async function sendMessage(
       const messageId = await queueOutboundMessage({
         businessId: context.business.businessId,
         leadId: context.lead.id,
-        channel: context.channel,
+        channel: messageChannelFor(context.channel),
         body: input.body,
         subject: input.subject ?? null,
         origin: input.origin ?? "agent",
         sendKey: input.sendKey,
         runAt: input.runAt,
         features: input.features ?? null,
+        messageClass: context.channel === "email" ? (input.messageClass ?? null) : null,
       });
 
       if (messageId) await tagMessageWithRun(messageId, context.run.id);
@@ -599,7 +627,7 @@ export async function draftMessage(
     const messageId = await queueOutboundMessage({
       businessId: context.business.businessId,
       leadId: context.lead.id,
-      channel: context.channel,
+      channel: messageChannelFor(context.channel),
       body: input.body,
       subject: input.subject ?? null,
       origin: "agent",
@@ -679,7 +707,7 @@ export async function sendBookingLink(
     const messageId = await queueOutboundMessage({
       businessId: context.business.businessId,
       leadId: context.lead.id,
-      channel: context.channel,
+      channel: messageChannelFor(context.channel),
       body,
       origin: "agent",
       sendKey: input.sendKey,
@@ -702,13 +730,20 @@ export async function sendBookingLink(
  */
 export async function proposeCheckout(
   context: ToolContext,
-  input: { body: string; sendKey: string; link: CheckoutLink },
+  input: {
+    body: string;
+    sendKey: string;
+    link: CheckoutLink | TrackedCheckoutLink;
+    /** The interest this checkout sells, for a lead with several (the turn's focus), and its motion. */
+    serviceId?: string | null;
+    motion?: string | null;
+  },
 ): Promise<ToolResult<{ messageId: string | null; opportunityId: string | null }>> {
   return invoke("propose_checkout", context, { linkId: input.link.id }, async () => {
     const messageId = await queueOutboundMessage({
       businessId: context.business.businessId,
       leadId: context.lead.id,
-      channel: context.channel,
+      channel: messageChannelFor(context.channel),
       body: checkoutMessage(input.body, input.link),
       origin: "agent",
       sendKey: input.sendKey,
@@ -720,7 +755,26 @@ export async function proposeCheckout(
       leadId: context.lead.id,
       event: "CHECKOUT_SENT",
       checkoutLinkId: input.link.id,
+      serviceId: input.serviceId ?? null,
+      motion: input.motion ?? null,
     });
+
+    // The direct-sale loop: a tracked send is recorded as a checkout attempt
+    // (its token is how the payment finds this lead) and its abandoned-
+    // checkout check is scheduled. Never throws.
+    const attemptId =
+      "tracked_url" in input.link && input.link.tracked_url !== input.link.url
+        ? await recordCheckoutAttempt({
+            businessId: context.business.businessId,
+            leadId: context.lead.id,
+            link: input.link,
+            channel: context.channel,
+            sendKey: input.sendKey,
+            messageId,
+            agentRunId: context.run.id,
+            opportunityId: advanced.ok ? advanced.opportunityId : null,
+          })
+        : null;
 
     await recordAudit({
       businessId: context.business.businessId,
@@ -728,7 +782,7 @@ export async function proposeCheckout(
       action: "checkout.proposed",
       entityType: "lead",
       entityId: context.lead.id,
-      metadata: { link_id: input.link.id, agent_run_id: context.run.id, message_id: messageId },
+      metadata: { link_id: input.link.id, agent_run_id: context.run.id, message_id: messageId, checkout_attempt_id: attemptId },
     });
 
     return {
@@ -764,14 +818,22 @@ export async function proposeCheckout(
  * A slot taken since it was offered fails with SLOT_TAKEN (recoverable) so the
  * orchestrator can offer fresh times.
  */
+/** The service of the meeting-goal interest this turn is about (decision_json.interests), if any. */
+function interestBookingService(context: ToolContext): string | null {
+  const primary = (context.run.marks?.interests as { primary?: { serviceId?: unknown; goal?: unknown } } | undefined)?.primary;
+  if (!primary || typeof primary.serviceId !== "string") return null;
+  return primary.goal === "B_BOOK_MEETING" || primary.goal === "E_HUMAN_CLOSER" ? primary.serviceId : null;
+}
+
 /** The meeting type and assignee for a new booking (§57). Never throws. */
 async function routeBooking(
   businessId: string,
   leadId: string,
   serviceId: string | null,
+  options: { preferCall?: boolean } = {},
 ): Promise<{ meetingTypeId: string | null; assignedUserId: string | null }> {
   try {
-    const meetingType = await meetingTypeForLead(businessId, serviceId);
+    const meetingType = await meetingTypeForLead(businessId, serviceId, options);
     if (!meetingType) return { meetingTypeId: null, assignedUserId: null };
     const { data: owner } = await createAdminClient()
       .from("leads")
@@ -891,7 +953,14 @@ export async function createBooking(
     // The lead's meeting type decides who takes it: round robin, specialism
     // or the lead's owner. No meeting types = no assignee, as before. Routing
     // never blocks a booking -- a failed lookup books it unassigned.
-    const routing = await routeBooking(businessId, context.lead.id, context.lead.service_id ?? null);
+    // Several interests (08 §B.20): the meeting is for the interest this turn is about.
+    // A lead who asked to be called (elite-closer brief, 0147
+    // preferred_contact_channel = phone) books a phone call: a "Phone call"
+    // meeting type when the workspace has one, and the request says so.
+    const wantsCall = (await readChannelPreference(businessId, context.lead.id)).preference === "phone";
+    const routing = await routeBooking(businessId, context.lead.id, interestBookingService(context) ?? context.lead.service_id ?? null, {
+      preferCall: wantsCall,
+    });
 
     // ---- claim the slot as a request ------------------------------------
     const { data: row, error: insertError } = await admin
@@ -907,7 +976,9 @@ export async function createBooking(
         starts_at: input.startsAt,
         ends_at: endsAt,
         status: "pending",
-        notes: "Requested through the ClientTurn assistant; awaiting confirmation.",
+        notes: wantsCall
+          ? "Phone call requested through the ClientTurn assistant; awaiting confirmation."
+          : "Requested through the ClientTurn assistant; awaiting confirmation.",
       })
       .select("id")
       .single();
@@ -1092,6 +1163,14 @@ async function notifyPendingBooking(
 }
 
 export type HandoverSummary = {
+  /**
+   * HANDOVER (the AI stopped) or ASSIST_REQUEST (a background task; the AI
+   * carries on). Written by the tool, never by a caller; absent on rows
+   * written before 2026-09-27, which were all hand-overs.
+   */
+  kind?: "HANDOVER" | "ASSIST_REQUEST";
+  /** The assist's own reason (types.ts ASSIST_REASONS), on an ASSIST_REQUEST. */
+  assistReason?: AssistReason;
   intent: string;
   service: string | null;
   qualificationStatus: string;
@@ -1209,7 +1288,7 @@ export async function requestHumanHandover(
               priority,
               // The handoff pack (leadBrief / quickBrief / crmNotes) survives a
               // refresh until the re-queued brief job rebuilds it.
-              summary_json: { ...keepBrief(open.summary_json), ...input.summary } as never,
+              summary_json: { ...keepBrief(open.summary_json), ...input.summary, kind: "HANDOVER" } as never,
               agent_run_id: context.run.id,
             })
             .eq("id", open.id),
@@ -1230,7 +1309,7 @@ export async function requestHumanHandover(
           agent_run_id: context.run.id,
           reason: input.reason,
           priority,
-          summary_json: input.summary as never,
+          summary_json: { ...input.summary, kind: "HANDOVER" } as never,
         })
         .select("id")
         .single();
@@ -1300,6 +1379,100 @@ export async function requestHumanHandover(
 }
 
 /**
+ * An assist request (owner decision 2026-09-27, handover-policy.ts): a person
+ * is asked to confirm one fact or do one task in the background, and is
+ * notified; the conversation stays with the assistant.
+ *
+ * Stored as an `agent_handoffs` row so it gets the same queue, the Lead Brief
+ * and CRM note (handoff.brief), Slack buttons and Resolve flow as a hand-over,
+ * with `summary_json.kind = 'ASSIST_REQUEST'` and the reason's closest
+ * existing `agent_handoffs.reason` (the CHECK constraint is unchanged). What
+ * it never does: move ownership, set `human_takeover`, stop automation or
+ * message the lead. The one-open-row-per-conversation index still holds: an
+ * open hand-over is left alone (a person already has it), an open assist is
+ * refreshed, and a later real hand-over takes the row over.
+ */
+export async function requestAssist(
+  context: ToolContext,
+  input: { reason: AssistReason; summary: HandoverSummary },
+): Promise<ToolResult<{ handoffId: string | null }>> {
+  return invoke("request_assist", context, { reason: input.reason }, async () => {
+    const admin = createAdminClient();
+    const stored = ASSIST_REASON_STORED_AS[input.reason];
+    const summary = { ...input.summary, kind: "ASSIST_REQUEST" as const, assistReason: input.reason };
+
+    let handoffId: string | null = null;
+    if (context.conversationId) {
+      const { data: open } = await admin
+        .from("agent_handoffs")
+        .select("id, summary_json")
+        .eq("business_id", context.business.businessId)
+        .eq("conversation_id", context.conversationId)
+        .in("status", ["OPEN", "ACKNOWLEDGED"])
+        .maybeSingle();
+      if (open) {
+        const openKind = (open.summary_json as { kind?: unknown } | null)?.kind;
+        // A person already holds this conversation's open hand-over: nothing
+        // to add, and it must never be downgraded to an assist.
+        if (openKind !== "ASSIST_REQUEST") return { ok: true as const, data: { handoffId: open.id } };
+        logWriteError(
+          await admin
+            .from("agent_handoffs")
+            .update({
+              reason: stored,
+              summary_json: { ...keepBrief(open.summary_json), ...summary } as never,
+              agent_run_id: context.run.id,
+            })
+            .eq("id", open.id),
+          "assist: refresh open request",
+          { businessId: context.business.businessId, leadId: context.lead.id, handoffId: open.id },
+        );
+        handoffId = open.id;
+      }
+    }
+
+    if (!handoffId) {
+      const { data, error } = await admin
+        .from("agent_handoffs")
+        .insert({
+          business_id: context.business.businessId,
+          lead_id: context.lead.id,
+          conversation_id: context.conversationId,
+          agent_run_id: context.run.id,
+          reason: stored,
+          priority: "NORMAL",
+          summary_json: summary as never,
+        })
+        .select("id")
+        .single();
+      if (error && error.code !== "23505") throw error;
+      handoffId = data?.id ?? null;
+    }
+
+    if (handoffId) {
+      await enqueue(
+        "handoff.brief",
+        { handoffId },
+        { businessId: context.business.businessId, idempotencyKey: `handoff-brief:${handoffId}` },
+      );
+    }
+
+    // A flag and a notification, never a takeover: the assistant keeps the
+    // conversation (visible on the lead page and in the inbox).
+    await flagForAttention({
+      businessId: context.business.businessId,
+      leadId: context.lead.id,
+      reason: `agent_assist:${input.reason}`,
+      title: ASSIST_REASON_LABEL[input.reason],
+      body: input.summary.unresolvedIssue ?? input.summary.summary,
+      takeover: false,
+    });
+
+    return { ok: true as const, data: { handoffId } };
+  });
+}
+
+/**
  * Suppression. Deterministic by construction: the gate requires a recognised
  * opt-out, which only the keyword/phrase layer can set. No model output can
  * reach this, and no model output can prevent it either.
@@ -1314,7 +1487,7 @@ export async function applySuppression(
     { reason: input.reason, scope: input.scope },
     async () => {
       const contact =
-        leadContact(context.lead, context.channel) ??
+        leadContact(context.lead, messageChannelFor(context.channel)) ??
         (context.lead.phone ? normalisePhone(context.lead.phone) : null);
 
       if (!contact) {

@@ -214,6 +214,7 @@ const SETTINGS_KEYWORDS: Record<string, string[]> = {
   connections: ["integrations", "meta", "facebook", "calendly", "google calendar", "twilio", "crm", "hubspot"],
   "business-profile": ["icp", "ideal customer", "goals", "company"],
   "ai-selling": ["ai", "brand", "voice", "budget", "strategy"],
+  quotes: ["quote", "catalogue", "products", "pricing", "vat", "e-signature", "deposit", "invoicing"],
   team: ["members", "invite", "users", "roles"],
   developer: ["api", "api keys", "webhooks", "mcp"],
   "data-controls": ["gdpr", "privacy", "retention", "suppression", "compliance"],

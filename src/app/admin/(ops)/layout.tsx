@@ -7,7 +7,7 @@ import { getAdminTopBarData } from "@/lib/admin/overview";
 import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
-  title: "Platform operations · Client Turn",
+  title: "Platform operations",
   robots: { index: false, follow: false },
 };
 

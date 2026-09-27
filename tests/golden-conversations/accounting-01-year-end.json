@@ -1,0 +1,70 @@
+{
+  "id": "accounting-01-year-end",
+  "archetype": "ACCOUNTING",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "A limited company needs year-end accounts; the agent asks what matters for an accountant, not budget.",
+  "turns": [
+    {
+      "lead": "We need someone to do our year end accounts and corporation tax.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "STAKEHOLDERS"
+        ]
+      },
+      "candidate": {
+        "text": "Thanks for getting in touch. Anything else I can help with?",
+        "qaOk": false,
+        "codes": [
+          "QA_GENERIC"
+        ]
+      }
+    },
+    {
+      "lead": "We're a limited company, about 8 staff, turnover around 900k.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "COMPANY_SIZE"
+        ],
+        "notAsked": [
+          "COMPANY_SIZE",
+          "BUDGET",
+          "SERVICE_NEEDED"
+        ]
+      }
+    },
+    {
+      "lead": "Our year end is 31 March so fairly soon.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER"
+        ],
+        "known": [
+          "TIMING"
+        ],
+        "notAsked": [
+          "TIMING",
+          "COMPANY_SIZE",
+          "SERVICE_NEEDED"
+        ]
+      }
+    }
+  ]
+}

@@ -22,8 +22,21 @@ import {
   type CampaignSendOutcome,
 } from "@/lib/campaigns/reactivation-channels";
 import { createSendStore } from "./send-store";
+import { HOLDOUT_ARM, variantTemplate } from "@/lib/learning/experiments";
+import { armForLead, holdoutStopReason, runningExperiment } from "@/lib/learning/experiments-service";
+import { buildMessageFeatures } from "@/lib/learning/features";
+import {
+  chooseCostAwareChannel,
+  parseCampaignChannelMode,
+  SMS_STEP_EMAIL_SUBJECT,
+  type CampaignChannelMode,
+} from "@/lib/follow-up/channel-strategy";
+import { getFollowUpChannelContext } from "@/lib/follow-up/channel-context";
+import { leadIsEngaged } from "@/lib/billing/limits-service";
 import {
   loadBusinessContext,
+  isSuppressed,
+  leadContact,
   loadLead,
   mergeValues,
   passesStyleLint,
@@ -39,6 +52,8 @@ type ContactRow = {
   id: string;
   lead_id: string;
   state: string;
+  /** 0146: the channel this contact was sent on in cost-aware mode. */
+  channel?: string | null;
   next_send_at: string | null;
   sent_at: string | null;
   followup_sent_at: string | null;
@@ -83,6 +98,26 @@ type ContactUpdate = {
   followup_sent_at?: string;
   next_send_at?: string;
 };
+
+/**
+ * The campaign's channel mode (0146). Read on its own so a database that has
+ * not run the migration keeps the old behaviour: SMS to everyone.
+ */
+async function campaignChannelMode(campaignId: string): Promise<CampaignChannelMode> {
+  const admin = createAdminClient() as unknown as SupabaseClient;
+  const { data, error } = await admin.from("campaigns").select("channel_mode").eq("id", campaignId).maybeSingle();
+  if (error) return "sms";
+  return parseCampaignChannelMode((data as { channel_mode?: string | null } | null)?.channel_mode);
+}
+
+/** The contact's recorded channel, where 0146 exists. Logged, never thrown. */
+async function recordContactChannel(contactId: string, channel: string) {
+  const admin = createAdminClient() as unknown as SupabaseClient;
+  const { error } = await admin.from("campaign_contacts").update({ channel }).eq("id", contactId);
+  if (error && !/channel/i.test(error.message)) {
+    console.error("[campaign.send] contact channel not recorded", { contactId, message: error.message });
+  }
+}
 
 /**
  * Settles one campaign contact. A failed write throws: the job retries, and
@@ -185,7 +220,7 @@ export async function handleCampaignSend(job: ClaimedJob) {
 
   let query = admin
     .from("campaign_contacts")
-    .select("id, lead_id, state, next_send_at, sent_at, followup_sent_at")
+    .select("*")
     .eq("campaign_id", campaign.id)
     .in("state", ["pending", "scheduled"]);
 
@@ -199,11 +234,22 @@ export async function handleCampaignSend(job: ClaimedJob) {
   }
 
   const provider = getMessagingProvider();
-  const channel = campaign.channel as Channel;
+  const campaignChannel = campaign.channel as Channel;
+
+  // Cost-aware mode (SMS campaigns only): a lead who has not engaged gets
+  // email from the connected mailbox when they have an address, SMS
+  // otherwise (follow-up/channel-strategy.ts). "Always SMS" keeps SMS.
+  const channelMode: CampaignChannelMode = campaignChannel === "sms" ? await campaignChannelMode(campaign.id) : "sms";
+  const channelContext = channelMode === "cost_aware" ? await getFollowUpChannelContext(campaign.business_id) : null;
+
+  // §62: a running REACTIVATION experiment on this campaign. Deterministic
+  // arm per lead; a holdout lead is not messaged at all (the baseline); a
+  // variant sends its own copy. Nothing is ever applied automatically.
+  const experiment = await runningExperiment(campaign.business_id, "REACTIVATION", campaign.id);
 
   // An email campaign without a subject cannot be sent, and failing here — at
   // the campaign, once — is clearer than failing per contact.
-  if (channel === "email" && !campaign.subject_template?.trim()) {
+  if (campaignChannel === "email" && !campaign.subject_template?.trim()) {
     throw new PermanentJobError(
       `Campaign ${campaign.id} is an email campaign with no subject line.`,
     );
@@ -212,7 +258,7 @@ export async function handleCampaignSend(job: ClaimedJob) {
   // WhatsApp reactivation reaches people outside the 24-hour window, where
   // only the campaign's approved template can be delivered.
   const whatsappTemplate =
-    channel === "whatsapp"
+    campaignChannel === "whatsapp"
       ? await campaignWhatsAppTemplate(campaign.id).catch((error: unknown) => {
           console.error("[campaign.send] WhatsApp template lookup failed", {
             campaignId: campaign.id,
@@ -235,6 +281,12 @@ export async function handleCampaignSend(job: ClaimedJob) {
     const stage = contactStage(contact);
     if (stage === "done") {
       await updateContact(contact.id, { state: "sent" });
+      continue;
+    }
+
+    // A contact given its own best send time is never sent before it.
+    if (stage === "initial" && !followUpIsDue(contact.next_send_at, new Date())) {
+      wakeups.push({ id: contact.id, at: new Date(contact.next_send_at as string) });
       continue;
     }
 
@@ -261,6 +313,33 @@ export async function handleCampaignSend(job: ClaimedJob) {
       continue;
     }
 
+    const arm = experiment ? armForLead(experiment, lead.id) : null;
+    if (experiment && arm === HOLDOUT_ARM) {
+      await updateContact(contact.id, { state: "stopped", stopped_reason: holdoutStopReason(experiment.id) });
+      continue;
+    }
+
+    // The channel this contact goes on. The follow-up keeps the initial's.
+    let channel: Channel = campaignChannel;
+    if (channelMode === "cost_aware" && channelContext) {
+      if (stage === "followup" && (contact.channel === "sms" || contact.channel === "email")) {
+        channel = contact.channel;
+      } else {
+        const email = leadContact(lead, "email");
+        const phone = leadContact(lead, "sms");
+        const [engaged, emailSuppressed] = await Promise.all([
+          leadIsEngaged(campaign.business_id, lead.id),
+          email ? isSuppressed(campaign.business_id, email, "email") : Promise.resolve(true),
+        ]);
+        channel =
+          chooseCostAwareChannel({
+            engaged,
+            available: { sms: channelContext.available.sms, email: channelContext.available.email },
+            leadHas: { sms: Boolean(phone), email: Boolean(email) && !emailSuppressed },
+          }) ?? campaignChannel;
+      }
+    }
+
     if (stage === "followup") {
       const skip = followUpSkipReason(lead, contact.sent_at);
       if (skip) {
@@ -272,10 +351,19 @@ export async function handleCampaignSend(job: ClaimedJob) {
       }
     }
 
+    const variantBody =
+      experiment && arm
+        ? variantTemplate(
+            { id: experiment.id, holdoutPercent: experiment.holdout_percent, variants: experiment.variants },
+            arm,
+            stage === "initial" ? 0 : 1,
+          )
+        : null;
     const template =
-      stage === "initial"
+      variantBody ??
+      (stage === "initial"
         ? campaign.message_template
-        : (campaign.followup_template as string);
+        : (campaign.followup_template as string));
     const subjectTemplate =
       stage === "initial"
         ? campaign.subject_template
@@ -331,15 +419,35 @@ export async function handleCampaignSend(job: ClaimedJob) {
     // workspace's opt-out wording (email carries its unsubscribe link).
     body = withOptOutWording(body, { channel, wording: business.optOutWording });
 
+    // An SMS campaign's message sent as an email (cost-aware) carries the
+    // follow-up engine's standard subject; an email campaign keeps its own.
+    const subject =
+      channel !== "email"
+        ? null
+        : campaignChannel === "email"
+          ? renderTemplate(subjectTemplate ?? "", values).trim()
+          : renderTemplate(SMS_STEP_EMAIL_SUBJECT, values).trim();
+
     const messageId = await queueOutboundMessage({
       businessId: campaign.business_id,
       leadId: lead.id,
       channel,
       body,
-      subject:
-        channel === "email"
-          ? renderTemplate(subjectTemplate ?? "", values).trim()
-          : null,
+      subject,
+      features: {
+        ...buildMessageFeatures({
+          family: "REACTIVATION",
+          body,
+          channel,
+          sendAt: new Date(),
+          timeZone: business.timezone,
+          templateId: `campaign:${campaign.id}`,
+          step: stage === "initial" ? 0 : 1,
+          experimentId: experiment?.id ?? null,
+          arm,
+        }),
+        loop: "campaign",
+      },
       origin: "campaign",
       campaignId: campaign.id,
       sendKey:
@@ -347,7 +455,7 @@ export async function handleCampaignSend(job: ClaimedJob) {
           ? `campaign:${campaign.id}:${contact.id}`
           : `campaign:${campaign.id}:${contact.id}:followup`,
       enqueueSend: false,
-      whatsappTemplate: whatsappTemplate
+      whatsappTemplate: whatsappTemplate && channel === "whatsapp"
         ? {
             templateId: whatsappTemplate.id,
             variables: campaignTemplateVariables(
@@ -391,6 +499,7 @@ export async function handleCampaignSend(job: ClaimedJob) {
     // A transient failure leaves the contact due for the next pass.
     if (!update) continue;
     await updateContact(contact.id, update);
+    if (stage === "initial" && channelMode === "cost_aware") await recordContactChannel(contact.id, channel);
 
     if (update.state === "scheduled" && update.next_send_at) {
       wakeups.push({ id: contact.id, at: new Date(update.next_send_at) });
@@ -409,6 +518,24 @@ export async function handleCampaignSend(job: ClaimedJob) {
         businessId: campaign.business_id,
         runAt: at,
         idempotencyKey: `campaign.send:${campaign.id}:wake:${wakeups[0].id}:${at.toISOString()}`,
+      },
+    );
+  }
+
+  // A sweep (no explicit contact list) reads at most DUE_LIMIT due contacts. A
+  // full batch means more may be due -- the whole list after a resume, say --
+  // and nothing else would wake them, so the next sweep is queued a minute on.
+  // The key is per minute, so retries of this job never stack sweeps.
+  if (!payload.contactIds?.length && (contacts?.length ?? 0) >= DUE_LIMIT) {
+    const at = new Date(Date.now() + 60_000);
+    at.setSeconds(0, 0);
+    await enqueue(
+      "campaign.send",
+      { campaignId: campaign.id },
+      {
+        businessId: campaign.business_id,
+        runAt: at,
+        idempotencyKey: `campaign.send:${campaign.id}:sweep:${at.toISOString()}`,
       },
     );
   }

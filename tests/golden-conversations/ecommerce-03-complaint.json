@@ -1,0 +1,19 @@
+{
+  "id": "ecommerce-03-complaint",
+  "archetype": "ECOMMERCE",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "email",
+  "story": "A complaint goes to a person; nothing is sold.",
+  "turns": [
+    {
+      "lead": "This is a scam, I want a refund now.",
+      "expect": {
+        "actionIn": [
+          "ESCALATE",
+          "NO_ACTION"
+        ],
+        "questionDimension": null
+      }
+    }
+  ]
+}

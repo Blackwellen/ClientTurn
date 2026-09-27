@@ -6,6 +6,13 @@ import {
   linkedinFiltersSchema,
 } from "./linkedin-filters.ts";
 import { TECHNOLOGY_KEYS, TECHNOLOGY_LABELS } from "./website-signals.ts";
+import {
+  INTENT_TYPE_IDS,
+  ROLE_FUNCTIONS,
+  ROLE_FUNCTION_NEEDS,
+  intentType,
+} from "./intent-catalogue.ts";
+import { intentSegmentSchema, segmentSummary } from "./intent-segments.ts";
 
 /**
  * The structured search plan (V4 §10.4).
@@ -128,6 +135,14 @@ export const planSignalsSchema = z.object({
   recentlyIncorporated: z.boolean().default(false),
   /** Registered-office changes (AD01): a possible move or expansion. */
   officeMoves: z.boolean().default(false),
+  /**
+   * Catalogue types to look for (`intent-catalogue.ts`): a Series A, a new
+   * Head of Growth, a rebrand. Each is found only where a lawful source backs
+   * it; the editor greys out the rest.
+   */
+  intentTypes: z.array(z.enum(INTENT_TYPE_IDS)).max(40).default([]),
+  /** Limits hiring and appointment types to these functions. Empty is all. */
+  roleFunctions: z.array(z.enum(ROLE_FUNCTIONS)).max(ROLE_FUNCTIONS.length).default([]),
 });
 export type PlanSignals = z.infer<typeof planSignalsSchema>;
 
@@ -140,9 +155,16 @@ export const searchPlanSchema = z.object({
   intent: planIntentSchema.default(planIntentSchema.parse({})),
   signals: planSignalsSchema.default(planSignalsSchema.parse({})),
   /**
-   * Sales Navigator's lead and account filters. Drive the partner search when
-   * a SNAP token exists, the "Open in Sales Navigator" link when it does not,
-   * and the title/seniority filter on an imported list either way.
+   * Signals combined with AND / OR and recency ("raised funds in the last 90
+   * days AND hiring a marketing role"). A gate on READY, like intent
+   * required. Null, the default, is no combination, so older plans parse to
+   * the search they always were.
+   */
+  segment: intentSegmentSchema.nullable().default(null),
+  /**
+   * LinkedIn's lead and account filters: the customer's own targeting, shown
+   * as a list to apply by hand in LinkedIn, and applied (title and seniority)
+   * to the customer's own imported list. ClientTurn never searches LinkedIn.
    */
   linkedin: linkedinFiltersSchema.default(emptyLinkedinFilters()),
   exclusions: planExclusionsSchema.default(planExclusionsSchema.parse({})),
@@ -246,7 +268,9 @@ export function planWantsIntent(plan: SearchPlan): boolean {
     signals.fundingFilings ||
     signals.leadershipChanges ||
     signals.recentlyIncorporated ||
-    signals.officeMoves
+    signals.officeMoves ||
+    signals.intentTypes.length > 0 ||
+    plan.segment !== null
   );
 }
 
@@ -260,6 +284,12 @@ export function signalsLabel(signals: PlanSignals): string[] {
   if (signals.hiringRoles.length) parts.push(`Hiring: ${signals.hiringRoles.join(", ")}`);
   if (signals.technologies.length) {
     parts.push(`Uses: ${signals.technologies.map((key) => TECHNOLOGY_LABELS[key]).join(", ")}`);
+  }
+  if (signals.intentTypes.length) {
+    const fns = signals.roleFunctions.length
+      ? ` (${signals.roleFunctions.map((fn) => ROLE_FUNCTION_NEEDS[fn].label.toLowerCase()).join(", ")})`
+      : "";
+    parts.push(`${signals.intentTypes.map((id) => intentType(id).label).join(", ")}${fns}`);
   }
   return parts;
 }
@@ -458,6 +488,8 @@ export function mergePlanPatch(
       candidate = { ...current.signals, ...(value as Record<string, unknown>) };
     }
 
+    // A segment is replaced whole: half of one is a different question.
+
     if (key === "linkedin" && value && typeof value === "object") {
       candidate = { ...current.linkedin, ...(value as Record<string, unknown>) };
     }
@@ -515,6 +547,9 @@ export function planSummaryLines(plan: SearchPlan): PlanSummaryLine[] {
   const signalParts = signalsLabel(plan.signals);
   if (signalParts.length) {
     lines.push({ label: "Signals", value: signalParts.join("; ") });
+  }
+  if (plan.segment) {
+    lines.push({ label: "Combination", value: segmentSummary(plan.segment) });
   }
   const linkedinLines = linkedinFilterLines(plan.linkedin);
   if (linkedinLines.length) {

@@ -4,7 +4,14 @@ summary: How opt-outs reach the do-not-contact list, why STOP on SMS or WhatsApp
 category: compliance
 keywords: [opt out, opt-out, stop, stopall, start, unstop, unsubscribe link, one-click unsubscribe, do not contact, suppression list, bounce, complaint, remove suppression, resubscribe, pecr]
 order: 50
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/compliance/suppression-and-unsubscribe-1.png
+    alt: "The Suppression card with the total, the count for each reason and the note that entries cannot be removed here"
+    caption: "The do-not-contact list, by reason; entries are removed only by support"
+  - src: /help/screenshots/compliance/suppression-and-unsubscribe-2.png
+    alt: "The unsubscribe page for an invalid link explaining the other ways to opt out"
+    caption: "An invalid link explains the other ways to opt out"
 ---
 
 The suppression list is your workspace's **do-not-contact list**. Every message is checked against it **at the moment it is sent**, not when it was scheduled. So someone who opts out at 9:00 is not sent a follow-up queued at 8:00.
@@ -53,6 +60,8 @@ Marketing email (cold outreach and automated follow-up) carries an unsubscribe l
 - The link in the email opens a page asking **Unsubscribe from** your business, with a confirm button. The link does not act on its own. Security scanners open links automatically, and a scanner must never unsubscribe anyone.
 
 Either way the address is suppressed on every channel, and any reactivation messages still waiting for that lead are stopped.
+
+If the link has expired or was copied incompletely, the page says **This link is no longer valid**. It tells the person that the unsubscribe link in any other email from you works too and stops all your marketing, and that replying STOP to a text message stops text messages only.
 
 ## Text messages from a sender name
 

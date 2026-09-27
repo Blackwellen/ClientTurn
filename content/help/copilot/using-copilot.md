@@ -4,7 +4,11 @@ summary: What Copilot can look up and do for you, how its permissions work, when
 category: copilot
 keywords: [copilot, ai assistant, chat, ask, permissions, confirm, actions tab, insights, history, in-app assistant]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/copilot/using-copilot-1.png
+    alt: "The Copilot drawer with the Chat, Actions, Insights and History tabs and example prompts"
+    caption: "Copilot answers from your own workspace; Chat, Actions, Insights and History are its four tabs"
 ---
 
 Copilot is the assistant built into ClientTurn. Ask it about your workspace in plain English and it answers from your own data, or takes routine actions for you using the same checks as the rest of the app.

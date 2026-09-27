@@ -11,6 +11,7 @@ import {
   MIN_EVIDENCE,
   normaliseEmail,
   normalisePhoneValue,
+  subscriberTypeFromCompanyName,
   WIZARD_CHANNELS,
   type ChannelPermission,
   type ContactabilityAssessment,
@@ -47,6 +48,8 @@ export type AssessInput = {
   postcode: string;
   relationship: RelationshipChoice;
   evidence: string;
+  /** The typed company, if any: only an incorporation suffix makes the subscriber corporate. */
+  company?: string;
   /** Which channels this workspace can actually send on right now. */
   capabilities: { sms: boolean; whatsapp: boolean; email: boolean };
 };
@@ -114,6 +117,9 @@ export async function assessContactability(
       email,
       phone: messagingPhone,
       relationshipType: input.relationship,
+      // The same rule the saved lead records (subscriberTypeFromCompanyName),
+      // so the preview never promises a channel the saved lead won't have.
+      subscriberType: subscriberTypeFromCompanyName(input.company),
       // Evidence recorded in the wizard is the consent record for this lead;
       // its absence is UNKNOWN, which the pack turns into review, not into a
       // silent yes.

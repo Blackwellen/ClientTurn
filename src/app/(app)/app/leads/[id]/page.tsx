@@ -21,6 +21,11 @@ import {
   LeadScoreBreakdown,
 } from "@/components/leads/detail/lead-page-header";
 import { LeadPageActions } from "@/components/leads/detail/lead-page-actions";
+import { LeadInterestsCard, LeadInterestsSkeleton } from "@/components/leads/detail/lead-interests-card";
+import {
+  NextBestActionCard,
+  NextBestActionSkeleton,
+} from "@/components/leads/detail/next-best-action-card";
 import {
   ContactabilitySkeleton,
   ContactabilityStrip,
@@ -35,6 +40,10 @@ import {
   ScoreHistoryTab,
   TabSkeleton,
 } from "@/components/leads/detail/lead-page-tabs";
+import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
+import { UpsellMomentMount } from "@/components/billing/upsell-moment-mount";
+import { CheckoutPaymentsCard, CheckoutPaymentsSkeleton } from "@/components/leads/detail/checkout-payments-card";
+import { LeadQuotesCard, LeadQuotesSkeleton } from "@/components/quotes/lead-quotes-card";
 
 export const dynamic = "force-dynamic";
 
@@ -44,15 +53,15 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  if (!isLeadId(id)) return { title: "Lead · Client Turn" };
+  if (!isLeadId(id)) return { title: "Lead" };
   const workspace = await requireWorkspace();
   const header = await loadLeadPageHeader(workspace.businessId, id).catch(
     () => null,
   );
   return {
     title: header
-      ? `${leadDisplayName(header.lead)} · Client Turn`
-      : "Lead · Client Turn",
+      ? `${leadDisplayName(header.lead)}`
+      : "Lead",
   };
 }
 
@@ -137,6 +146,9 @@ export default async function LeadDetailPage({
         </Link>
       </nav>
 
+      {/* Trial SMS used up while this lead is texting back: offer the instant upgrade. */}
+      <TrialUpgradePromptMount preferLeadId={id} />
+      <UpsellMomentMount context="lead" leadId={id} />
       <LeadPageHeader header={header} />
       <LeadKeyFacts header={header} />
 
@@ -146,7 +158,37 @@ export default async function LeadDetailPage({
           the action card sits above the record on a phone. Contactability is
           rendered once (it runs the policy engine), placed by grid position. */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[auto_1fr] xl:items-start">
-        <div className="min-w-0 xl:col-start-2 xl:row-start-1">{actions}</div>
+        <div className="min-w-0 space-y-4 xl:col-start-2 xl:row-start-1">
+          {actions}
+          {/* What the qualification engine would do next, and why (§B.17). */}
+          <React.Suspense fallback={<NextBestActionSkeleton />}>
+            <NextBestActionCard
+              businessId={workspace.businessId}
+              leadId={lead.id}
+              role={workspace.role}
+              canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
+              bookingConfigured={capabilities.booking}
+            />
+          </React.Suspense>
+          {/* Every offer this lead wants, each its own opportunity (08 §B.20). */}
+          <React.Suspense fallback={<LeadInterestsSkeleton />}>
+            <LeadInterestsCard
+              businessId={workspace.businessId}
+              leadId={lead.id}
+              canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
+            />
+          </React.Suspense>
+          {/* Quotes on this lead's opportunities: build, approve, send, sign, invoice (P2). */}
+          <React.Suspense fallback={<LeadQuotesSkeleton />}>
+            <LeadQuotesCard
+              businessId={workspace.businessId}
+              leadId={lead.id}
+              role={workspace.role}
+              userId={workspace.userId}
+              canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
+            />
+          </React.Suspense>
+        </div>
 
         <div className="min-w-0 space-y-4 xl:col-start-1 xl:row-span-2 xl:row-start-1">
           <LeadScoreBreakdown header={header} />
@@ -172,7 +214,13 @@ export default async function LeadDetailPage({
                 {tab === "conversation" && (
                   <ConversationTab {...tabProps} canWrite={canWrite} />
                 )}
-                {tab === "qualification" && <QualificationTab {...tabProps} />}
+                {tab === "qualification" && (
+                  <QualificationTab
+                    {...tabProps}
+                    canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
+                    role={workspace.role}
+                  />
+                )}
                 {tab === "scores" && <ScoreHistoryTab {...tabProps} />}
                 {tab === "attribution" && <AttributionTab {...tabProps} />}
                 {tab === "activity" && <ActivityTab {...tabProps} />}
@@ -189,6 +237,7 @@ export default async function LeadDetailPage({
           <React.Suspense fallback={<ContactabilitySkeleton />}>
             <ContactabilityStrip workspace={workspace} leadId={lead.id} />
           </React.Suspense>
+          <React.Suspense fallback={<CheckoutPaymentsSkeleton />}><div className="mt-4"><CheckoutPaymentsCard businessId={workspace.businessId} leadId={lead.id} /></div></React.Suspense>
         </div>
       </div>
     </div>

@@ -1,0 +1,39 @@
+{
+  "id": "roofer-05-form-fields-book",
+  "archetype": "ROOFER",
+  "motion": "LOCAL_SERVICE",
+  "channel": "sms",
+  "story": "A lead-ad lead typed their postcode and chose the service on the form, then asks to book: both are their own statements, so the agent books with no VERIFY turn.",
+  "leadFieldsFrom": "FORM",
+  "leadFields": {
+    "SERVICE_NEEDED": "Roof repair",
+    "LOCATION": "LS6 2AB"
+  },
+  "turns": [
+    {
+      "lead": "Can you book someone to come and look at the roof this week?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY"
+        ],
+        "known": [
+          "SERVICE_NEEDED",
+          "LOCATION"
+        ],
+        "questionDimension": null,
+        "notAsked": [
+          "SERVICE_NEEDED",
+          "LOCATION",
+          "BUDGET"
+        ]
+      },
+      "candidate": {
+        "text": "Thanks. Which day this week would suit you best for a visit?",
+        "qaOk": true
+      }
+    }
+  ]
+}

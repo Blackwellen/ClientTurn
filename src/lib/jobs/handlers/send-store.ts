@@ -25,6 +25,9 @@ import {
   type EmailMessageClass,
 } from "@/lib/email/sender-health";
 import { claimSenderSlot, sendingIdentityFor, type SendingIdentity } from "@/lib/email/sender-slots";
+import { frequencyGateForMessage } from "@/lib/reengagement/service";
+import { triggerOfSendKey } from "@/lib/reengagement/triggers";
+import { isPaymentThanksSendKey } from "@/lib/payments/send-keys";
 import type { Channel, SendResult } from "@/lib/messaging/types";
 import type {
   OutboundMessageRecord,
@@ -36,6 +39,7 @@ import type {
 } from "@/lib/jobs/send-core";
 import { guardOptedOut, SENDING_STATUS } from "@/lib/jobs/send-core";
 import { billingSendGate, meterSendBilling } from "@/lib/billing/limits-service";
+import { atZeroRoute } from "@/lib/billing/at-zero";
 import {
   channelState,
   flagForAttention,
@@ -44,6 +48,7 @@ import {
   loadBusinessContext,
   loadLead,
   queueNotification,
+  queueOutboundMessage,
   stopAutomationRuns,
 } from "./shared";
 
@@ -211,6 +216,120 @@ async function whatsAppLastInboundAt(
     .maybeSingle();
 
   return data?.last_inbound_at ?? null;
+}
+
+/**
+ * The allowance (and top-up credit) for this channel is used up. Re-routes an
+ * automated step or an AI reply to email where it can; otherwise hands an AI
+ * reply's lead to a person and tells the owner to top up. Returns what it did.
+ *
+ * The refused SMS stays BLOCKED with `policy:BLOCKED_MONTHLY_LIMIT`; when it
+ * was an AI reply and could not go by email, the lead is flagged with reason
+ * `sms_allowance_exhausted` so it can be released after a top-up or a trial
+ * converting (billing/end-trial.ts).
+ */
+async function handleAllowanceExhausted(
+  message: OutboundMessageRecord,
+  refusal: string,
+): Promise<"email" | "handover" | "none"> {
+  if (message.channel !== "sms" && message.channel !== "whatsapp") return "none";
+  const [lead, business] = await Promise.all([
+    loadLead(message.leadId),
+    loadBusinessContext(message.businessId),
+  ]);
+  if (!lead || !business) return "none";
+
+  const email = leadContact(lead, "email");
+  const mailbox = email
+    ? await channelState(message.businessId, "email", email, true)
+    : null;
+  const route = atZeroRoute({
+    origin: message.origin,
+    leadHasEmail: Boolean(email),
+    mailboxConnected: Boolean(mailbox?.integrationHealthy),
+    emailSuppressed: Boolean(mailbox?.contactSuppressed),
+    // The email channel's own verdict (suppression above covers the address;
+    // the flag binds only where the lookup cannot see it), never the lead-wide
+    // flag -- see guardOptedOut and tests/per-channel-opt-out.test.ts.
+    optedOut: guardOptedOut(lead, "email"),
+  });
+
+  const label = message.channel === "sms" ? "SMS" : "WhatsApp";
+
+  if (route === "email") {
+    const queued = await queueOutboundMessage({
+      businessId: message.businessId,
+      leadId: message.leadId,
+      channel: "email",
+      body: message.body,
+      subject: `Your enquiry with ${business.name}`,
+      origin: message.origin,
+      automationRunId: await automationRunIdOf(message.id),
+      // One re-route per refused message, however often this job retries.
+      sendKey: `${message.sendKey}:email-at-zero`,
+    });
+    await messageEvent(message.businessId, message.id, "rerouted", {
+      to_channel: "email",
+      reason: "allowance_exhausted",
+      message_id: queued,
+    });
+    return "email";
+  }
+
+  if (route === "handover") {
+    await flagForAttention({
+      businessId: message.businessId,
+      leadId: message.leadId,
+      reason: "sms_allowance_exhausted",
+      title: `An AI reply could not be sent: ${label} credit is used up`,
+      body: `${refusal} The lead has no usable email address, so a person needs to reply.`,
+      takeover: true,
+    });
+    // A trial cannot buy credit packs (plans.ts creditPurchaseAllowed); its
+    // path is the instant "Upgrade now" on the card already on file.
+    const onTrial = await workspaceOnTrial(message.businessId);
+    await queueNotification({
+      businessId: message.businessId,
+      type: "billing",
+      severity: "error",
+      title: onTrial
+        ? `Upgrade to keep texting: a lead is waiting for a reply`
+        : `Top up ${label}: a lead is waiting for a reply`,
+      body: onTrial
+        ? `An AI reply by ${label} could not be sent because your trial's ${label} allowance is used up, and the lead has no email address to reply to instead. The conversation has been passed to your team. Upgrade now to start your plan today and the waiting reply is sent straight away.`
+        : `An AI reply by ${label} could not be sent because this period's ${label} allowance and your top-up credit are used up, and the lead has no email address to reply to instead. The conversation has been passed to your team. Buy ${label} credits to let the AI carry on with new replies.`,
+      linkUrl: onTrial
+        ? "/app/settings?section=billing"
+        : "/app/settings?section=billing#message-credits",
+      entityType: "lead",
+      entityId: message.leadId,
+      dedupeKey: `allowance_handover:${message.leadId}:${message.channel}`,
+    });
+    return "handover";
+  }
+
+  return "none";
+}
+
+/** Whether the workspace is still on its trial (no packs; Upgrade now instead). */
+async function workspaceOnTrial(businessId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient()
+    .from("subscriptions")
+    .select("plan")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  // A failed read falls back to the paid wording; the link still reaches Billing.
+  if (error) return false;
+  return (data as { plan: string | null } | null)?.plan === "trial";
+}
+
+async function automationRunIdOf(messageId: string): Promise<string | null> {
+  const { data } = await createAdminClient()
+    .from("messages")
+    .select("automation_run_id")
+    .eq("id", messageId)
+    .maybeSingle();
+  return (data as { automation_run_id: string | null } | null)?.automation_run_id ?? null;
 }
 
 export function createSendStore(): SendStore & {
@@ -408,6 +527,11 @@ export function createSendStore(): SendStore & {
         origin: message.origin,
         // Phase 3.1: a booking reminder step is marked by its send key.
         bookingReminder: isBookingReminderSendKey(message.sendKey),
+        // An intent-driven re-engagement message is marked the same way
+        // (`reengage:<trigger>:`); send-core honours it for automation only.
+        reengagement: message.origin === "automation" ? triggerOfSendKey(message.sendKey) : null,
+        // The thank-you after a confirmed payment (payments/send-keys.ts).
+        paymentConfirmation: message.origin === "system" && isPaymentThanksSendKey(message.sendKey),
       };
     },
 
@@ -432,6 +556,36 @@ export function createSendStore(): SendStore & {
         };
       }
 
+      // The cross-loop contact-frequency guard (reengagement/frequency.ts):
+      // every automated touch -- a sequence step, a campaign message, an
+      // intent trigger, a win-back, an agent turn the lead did not start, an
+      // abandoned-checkout nudge -- counts against one set of per-lead caps,
+      // and the dead-lead rule stops automated loops for a lead who has
+      // ignored several in a row. Checked here, at the moment of sending, so
+      // no loop can go round it. A person's message and a reply to the lead
+      // are exempt. First, so a message it holds back never claims a billing
+      // or sender slot. A read failure throws, which the caller treats as a
+      // refusal, never as permission.
+      const frequency = await frequencyGateForMessage({
+        message: {
+          id: message.id,
+          businessId: message.businessId,
+          leadId: message.leadId,
+          origin: message.origin,
+          sendKey: message.sendKey,
+        },
+        at,
+      });
+      if (frequency) {
+        if (frequency.gate.action === "defer") {
+          await messageEvent(message.businessId, message.id, "frequency_deferred", {
+            loop: frequency.loop,
+            run_at: frequency.gate.at.toISOString(),
+          });
+        }
+        return frequency.gate;
+      }
+
       // 8.13: billing, re-checked at the moment of sending -- the dunning
       // pause (deferred, not dropped), the channel's daily cap, and for SMS /
       // WhatsApp the allowance, then top-up credit, then overage within its cap.
@@ -441,6 +595,12 @@ export function createSendStore(): SendStore & {
         body: message.body,
         origin: message.origin,
         at,
+        // The per-lead SMS caps (follow-up per sequence run; agent replies).
+        leadId: message.leadId,
+        messageId: message.id,
+        sendKey: message.sendKey,
+        // WhatsApp tokens by category: a queued template is priced at its category.
+        whatsappTemplateId: message.channel === "whatsapp" ? (message.queuedTemplate?.templateId ?? null) : null,
       });
       if (billing) return billing;
 
@@ -496,7 +656,11 @@ export function createSendStore(): SendStore & {
         campaignType:
           message.origin === "automation" && isBookingReminderSendKey(message.sendKey)
             ? "TRANSACTIONAL"
-            : CAMPAIGN_TYPE[message.origin],
+            : // A win-back goes to a lead whose deal is closed: judged as the
+              // reactivation it is, never as warm follow-up.
+              message.origin === "automation" && triggerOfSendKey(message.sendKey) === "WIN_BACK"
+              ? "REACTIVATION"
+              : CAMPAIGN_TYPE[message.origin],
         // The guard already resolved provider health for this channel; asking
         // the database a second time would be a different answer at a different
         // instant, which is worse than reusing the one we acted on. A marketing
@@ -639,9 +803,54 @@ export function createSendStore(): SendStore & {
         detail: gate.message,
       });
 
+      // SMS / WhatsApp allowance and top-up credit both used up (there is no
+      // overage). An automated step or an AI reply goes by email where the
+      // lead has an address and a mailbox is connected; otherwise an AI
+      // reply's lead is handed to a person and the owner is told to top up
+      // (billing/at-zero.ts decides; owner rule 2026-09-27).
+      const atZero =
+        gate.reasonCode === "BLOCKED_MONTHLY_LIMIT"
+          ? await handleAllowanceExhausted(message, gate.message)
+          : null;
+
       // A sequence policy has refused must not keep trying the next step.
-      if (message.origin === "automation") {
-        await stopAutomationRuns(message.businessId, message.leadId, "suppressed");
+      // Two exceptions refuse the channel, not the lead, so the run carries
+      // on: the per-lead SMS cap (the next step is queued on email,
+      // channel-strategy.ts) and the channel's allowance running out (this
+      // step went by email, or later steps may).
+      if (
+        message.origin === "automation" &&
+        gate.reasonCode !== "BLOCKED_COST_BUDGET" &&
+        gate.reasonCode !== "BLOCKED_MONTHLY_LIMIT" &&
+        // Over a frequency cap refuses this touch, not the lead: the next
+        // step is judged on its own when it falls due.
+        gate.reasonCode !== "BLOCKED_CONTACT_FREQUENCY"
+      ) {
+        await stopAutomationRuns(
+          message.businessId,
+          message.leadId,
+          // The dead-lead rule stops every automated loop until the lead
+          // engages again (a reply restarts follow-up as it always has).
+          gate.reasonCode === "BLOCKED_DEAD_LEAD" ? "dead_lead" : "suppressed",
+        );
+      }
+
+      // An AI reply to a lead who wrote in was refused by the per-lead abuse
+      // ceiling. A person picks it up rather than an engaged lead's message
+      // going unanswered (owner rule: conversion wins over cost).
+      if (
+        gate.reasonCode === "BLOCKED_COST_BUDGET" &&
+        atZero === null &&
+        (message.origin === "agent" || message.origin === "agent_handover")
+      ) {
+        await flagForAttention({
+          businessId: message.businessId,
+          leadId: message.leadId,
+          reason: "sms_conversation_cap",
+          title: "An AI reply to this lead could not be sent",
+          body: gate.message,
+          takeover: true,
+        });
       }
 
       // Two different failures, deliberately handled differently. A contact who
@@ -673,6 +882,9 @@ export function createSendStore(): SendStore & {
           sent_at: now,
           error_code: null,
           error_message: null,
+          // An SMS body is normalised to GSM-7 punctuation just before the
+          // carrier (send-core); the record keeps exactly what was sent.
+          ...(message.channel === "sms" ? { body: message.body } : {}),
         })
         .eq("id", message.id)
         // SENDING is the normal case, from our own claim. QUEUED covers a
@@ -866,6 +1078,9 @@ export function createSendStore(): SendStore & {
         messageId: message.id,
         channel: message.channel,
         body: message.body,
+        // WhatsApp tokens by what actually went out: the template's category,
+        // or none (a free-form reply in the 24h window) = service.
+        whatsappTemplate: message.template ? { category: message.template.category } : null,
       });
       await recordUsage({
         businessId: message.businessId,

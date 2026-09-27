@@ -24,6 +24,14 @@ export type CrmLeadInput = {
    * reason. Absent on a lead that has not reached qualification.
    */
   opportunity?: CrmOpportunity | null;
+  /**
+   * The lead's other interests (0144), each its own deal where the CRM
+   * models deals (HubSpot deals, Salesforce Opportunities). Absent or empty
+   * for a lead with one interest: the single-deal push is unchanged.
+   */
+  additionalOpportunities?: CrmOpportunity[];
+  /** opportunity id -> the CRM deal id an earlier push created for it. */
+  additionalDealIds?: Record<string, string>;
 };
 
 /** A note to attach to the lead's CRM record (the handoff brief, Phase 3.4). */
@@ -39,6 +47,8 @@ export type CrmNoteInput = {
 export type CrmPushResult = {
   externalContactId: string;
   externalDealId?: string | null;
+  /** opportunity id -> deal id for each additional interest pushed. */
+  additionalDealIds?: Record<string, string>;
 };
 
 /**

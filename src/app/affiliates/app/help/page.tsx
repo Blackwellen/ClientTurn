@@ -10,7 +10,7 @@ import {
 } from "@/lib/affiliates/programme";
 import { Panel, PortalHeader } from "@/components/affiliates/portal-ui";
 
-export const metadata: Metadata = { title: "Help | ClientTurn Affiliate Portal" };
+export const metadata: Metadata = { title: "Affiliate Help" };
 export const dynamic = "force-dynamic";
 
 /**

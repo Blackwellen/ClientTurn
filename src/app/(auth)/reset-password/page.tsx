@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ResetPasswordForm } from "./reset-password-form";
 
 export const metadata: Metadata = {
-  title: "Set a new password | ClientTurn",
+  title: "Set a new password",
   description: "Choose a new password for your ClientTurn account.",
 };
 

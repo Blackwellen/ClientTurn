@@ -2,7 +2,7 @@
 title: Connecting LinkedIn
 summary: What the LinkedIn connection does, the approval LinkedIn requires, and what ClientTurn will never do on LinkedIn
 category: integrations
-keywords: [linkedin, linkedin ads, campaign manager, lead gen forms, company page, oauth, lead sync, organisation]
+keywords: [linkedin, linkedin ads, campaign manager, lead gen forms, company page, oauth, lead sync, organisation, use this organisation, agency, several company pages]
 order: 57
 updated: 2026-09-26
 ---
@@ -13,7 +13,13 @@ The LinkedIn connection, shown as **LinkedIn Lead Gen Forms** in **Settings → 
 
 1. Open **Settings → Connections**, find **LinkedIn Lead Gen Forms** under **Ads / lead sources** and choose **Connect**, then **Connect** again in the panel.
 2. Sign in to LinkedIn with an account that has an admin role on your Company Page, and approve access. ClientTurn asks to read lead-gen forms and their responses, your ad accounts, and the organisations you administer.
-3. Back in Connections, the card shows the organisation it linked to. It links to the first organisation your account administers.
+3. Back in Connections, a message confirms the connection, and the card shows the organisation it linked to. At first that is the first organisation your account administers.
+
+## Choosing the organisation
+
+If your LinkedIn account administers more than one Company Page, for example at an agency, open the card's **Manage** panel. Under **LinkedIn organisation**, pick the one you want and choose **Use this organisation**. Only owners and admins can change it.
+
+ClientTurn reads Lead Gen Form submissions only. People who engage with your Company Page are not turned into prospects, because LinkedIn's terms forbid using member data to identify sales prospects.
 
 ## LinkedIn's approval
 

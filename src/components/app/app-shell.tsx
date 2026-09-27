@@ -196,7 +196,9 @@ export function AppShell({
           copilotOpen={copilotOpen}
           onToggleCopilot={() => setCopilotOpen((current) => !current)}
         />
-        <MainRegion className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+        {/* pb-24: room below the last card so the floating support button
+            never sits on a page's final Save button (8.7). */}
+        <MainRegion className="w-full px-4 pt-5 pb-24 sm:px-6 sm:pt-6 xl:px-8">
           {children}
         </MainRegion>
       </div>

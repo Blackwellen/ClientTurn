@@ -59,7 +59,7 @@ function tourKeysInSource(): Set<string> {
     ],
     [
       /data-tour=\{`settings-nav-\$\{section\.id\}`\}/,
-      ["workspace", "connections", "business-profile", "ai-selling", "team", "developer", "data-controls", "billing"].map(
+      ["workspace", "connections", "business-profile", "ai-selling", "quotes", "team", "developer", "data-controls", "billing"].map(
         (id) => `settings-nav-${id}`,
       ),
     ],

@@ -339,7 +339,7 @@ export function EmailMailboxPanel({
                 id="mail-from-name"
                 value={form.fromName}
                 maxLength={120}
-                placeholder="Blackwellen Roofing"
+                placeholder="Northwind Digital"
                 onChange={(event) => set("fromName", event.target.value)}
               />
             </FormField>

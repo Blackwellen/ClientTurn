@@ -16,7 +16,7 @@
  * threshold, a pattern, a SIC prefix). Stored on business_profiles, lead_scores
  * and workspace_sales_overrides.
  */
-export const LIBRARY_VERSION = "sl-2026.09.1";
+export const LIBRARY_VERSION = "sl-2026.09.3";
 
 /* ------------------------------------------------------------------ motions */
 
@@ -180,6 +180,15 @@ export const QUALIFICATION_DIMENSION_KEYS = [
   "DECISION_PROCESS",
   "COMPLIANCE_REQUIREMENTS",
   "HIRING_NEED",
+  // Qualification Intelligence (docs/revenue-engine/08 §B.7, CD-7). Listed
+  // once more in the contract as QI_ADDED_DIMENSION_KEYS; the union there
+  // de-duplicates, so the contract is stable with these present.
+  "OUTCOME",
+  "AVAILABILITY",
+  "DISSATISFACTION",
+  "TECHNICAL_REQUIREMENTS",
+  "IMPLEMENTATION_READINESS",
+  "PURCHASE_READINESS",
 ] as const;
 export type QualificationDimensionKey = (typeof QUALIFICATION_DIMENSION_KEYS)[number];
 
@@ -230,6 +239,11 @@ export const OBJECTION_KEYS = [
   "CALL_LATER",
   "INTERNAL_BUILD",
   "RISK",
+  // sl-2026.09.3: the complete taxonomy (elite-closer brief).
+  "STATUS_QUO",
+  "NOT_NOW",
+  "LOCK_IN",
+  "JUST_LOOKING",
 ] as const;
 export type ObjectionKey = (typeof OBJECTION_KEYS)[number];
 
@@ -287,4 +301,52 @@ export type Archetype = {
   /** DEEP archetypes are the ClientTurn ICP (CLAUDE.md resolved conflict 5):
    *  hand-tuned questions and profiles rather than family defaults. */
   depth: "DEEP" | "STANDARD";
+};
+
+/* ------------------------------------------------ qualification profiles */
+
+/**
+ * A complete qualification profile for one business type (08 §B.7
+ * "Hierarchy"): Industry (SIC) -> Archetype -> **profile** -> Offer ->
+ * Motion / goal -> Lead context -> Intent -> Known -> next best question.
+ *
+ * The profile is the archetype's default *offer shape* and questioning rules.
+ * A workspace's per-service offer profile (services.offer_profile) and its
+ * qualification policy override it field by field; this is the floor that
+ * makes an unconfigured workspace behave sensibly for its type.
+ *
+ * Plain strings here, not the Qualification Intelligence contract's enums,
+ * so the sales library never imports from the engine that builds on it.
+ * offer-profile.ts validates the mapping (tests/offer-profile.test.ts).
+ */
+export type QualificationProfile = {
+  archetypeKey: string;
+  customerType: "B2B" | "B2C" | "BOTH";
+  pricingModel: "FIXED" | "FROM" | "QUOTE" | "SUBSCRIPTION" | "USAGE" | "RETAINER";
+  billing: "ONE_OFF" | "RECURRING";
+  cycleComplexity: "SIMPLE" | "CONSIDERED" | "COMPLEX";
+  /** Must be known before the close action (added to the motion's threshold). */
+  requiredDimensions: QualificationDimensionKey[];
+  /** Never asked by the library for this type, whatever the motion. */
+  neverAsk: QualificationDimensionKey[];
+  /**
+   * Asked (at most one per turn) before a booking even when the buyer asks to
+   * book, because the answer can disqualify: an MSP needs the headcount.
+   */
+  gatingDimensions: QualificationDimensionKey[];
+  /** How this type's buyers name the incumbent ("IT provider", "agency"). */
+  incumbentTerms: string[];
+  /**
+   * Default disqualifiers, as plain rules. offer-profile.ts turns them into
+   * contract predicates. Every one defaults to REVIEW (a person decides), never
+   * to an automatic disqualification: see reviewInstead in the contract.
+   */
+  disqualifierHints: {
+    dimension: QualificationDimensionKey;
+    op: "lt" | "gt" | "equals" | "in";
+    value: number | string | string[];
+    reason: string;
+  }[];
+  /** Target buyer size in staff, when size is part of fit. */
+  targetStaff?: { min?: number; max?: number };
 };

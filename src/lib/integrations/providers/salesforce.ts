@@ -408,7 +408,7 @@ async function push(params: {
   integrationId: string;
   lead: CrmLeadInput;
   linkedExternalId?: string | null;
-}): Promise<{ externalContactId: string; externalDealId?: string | null }> {
+}): Promise<{ externalContactId: string; externalDealId?: string | null; additionalDealIds?: Record<string, string> }> {
   const oauthConfig = config();
   if (!oauthConfig) {
     throw new Error("Salesforce is not configured on this platform.");
@@ -442,7 +442,25 @@ async function push(params: {
       leadId,
       existingRecord?.external_deal_id ?? null,
     );
-    return { externalContactId: leadId, externalDealId: opportunityId };
+    // Several interests (0144): each other interest is its own Opportunity,
+    // named after its offer. One failing never fails the lead's own.
+    const additionalDealIds: Record<string, string> = {};
+    for (const extra of params.lead.additionalOpportunities ?? []) {
+      try {
+        const offer = extra.name.includes(" - ") ? extra.name.split(" - ").slice(1).join(" - ") : extra.name;
+        additionalDealIds[extra.id] = await upsertOpportunity(
+          params.integrationId,
+          oauthConfig,
+          { ...params.lead, services: { name: offer, average_value: extra.value } },
+          extra,
+          leadId,
+          params.lead.additionalDealIds?.[extra.id] ?? null,
+        );
+      } catch (error) {
+        console.error("[salesforce] interest opportunity push failed", { opportunityId: extra.id, message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { externalContactId: leadId, externalDealId: opportunityId, additionalDealIds };
   } catch (error) {
     // The Lead exists in the org whether or not the Opportunity does; keep its
     // id so the retry updates it instead of creating a duplicate.

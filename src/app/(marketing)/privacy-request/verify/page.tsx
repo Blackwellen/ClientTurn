@@ -5,7 +5,7 @@ import { PublicContainer } from "@/components/marketing/public/ui";
 import { ConfirmRequestButton } from "@/components/marketing/public/privacy-request/confirm-request-button";
 
 export const metadata: Metadata = {
-  title: "Confirm your privacy request · ClientTurn",
+  title: "Confirm your privacy request",
   description: "Confirm a privacy request from the link we emailed you.",
   // Every URL here carries a one-time token.
   robots: { index: false, follow: false },

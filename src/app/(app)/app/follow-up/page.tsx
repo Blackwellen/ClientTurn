@@ -11,7 +11,7 @@ import { SegmentedViewSwitch } from "@/components/follow-up/view-switch";
 import { FollowUpView } from "@/components/follow-up/follow-up-view";
 import { QualificationView } from "@/components/follow-up/qualification-view";
 
-export const metadata: Metadata = { title: "Follow-Up · Client Turn" };
+export const metadata: Metadata = { title: "Follow-Up" };
 export const dynamic = "force-dynamic";
 
 /**

@@ -9,7 +9,11 @@
  *   * a response strategy, written as instructions. It may only draw on the
  *     workspace's approved claims, prices and proof. It never invents a
  *     discount, a guarantee, a customer name, a statistic or a deadline;
- *   * handover conditions: when a person must take over.
+ *   * handover conditions: when a person must take over. Owner decision
+ *     2026-09-27: only a legal or contractual question, or a commitment the
+ *     AI may not make (a discount, special terms, a bespoke plan), hands
+ *     over. Security documents and procurement steps are an `assist`: a
+ *     colleague provides them in the background and the AI keeps going.
  *
  * `matchObjection` is a deterministic surface match. It picks which playbook to
  * load when the classifier (or a person) has already decided the message is an
@@ -35,9 +39,19 @@ export type ObjectionEntry = {
   /** Instructions to the drafter. References to facts are to *approved* data. */
   responseStrategy: string[];
   handover: {
-    /** Always a person's job (security, legal, procurement, contract). */
+    /** Always a person's job: a legal, regulatory or contract-terms question. */
     always: boolean;
-    /** Conditions under which it becomes a person's job. */
+    /** Conditions under which it becomes a person's job (a commitment the AI may not make). */
+    when: string[];
+  };
+  /**
+   * A colleague confirms or provides something in the background while the
+   * AI keeps the conversation (types.ts ASSIST_REQUEST). Never a hand-over.
+   */
+  assist?: {
+    /** Always a colleague's task (security documents, procurement steps). */
+    always: boolean;
+    /** Conditions under which a colleague is asked to confirm a detail. */
     when: string[];
   };
   /** A refusal: stop selling, confirm, and do not follow up on this thread. */
@@ -104,8 +118,8 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     patterns: [
       /\bnot (the )?right time\b/i,
       /\b(maybe|perhaps|possibly) (next|later) (year|month|quarter)\b/i,
-      /\bnot (now|yet|at the moment|right now)\b/i,
-      /\b(in|after) (the )?(new year|q[1-4]|spring|summer|autumn|winter)\b/i,
+      /\b(in|after) (the )?(new year|christmas|q[1-4]|spring|summer|autumn|winter|busy season|year end)\b/i,
+      /\b(next|this) (financial year|quarter|budget cycle)\b/i,
     ],
     underlyingConcerns: [
       "A real constraint (a busy season, a project, a renewal date).",
@@ -124,8 +138,8 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     key: "COMPETITOR",
     label: "Considering a competitor",
     patterns: [
-      /\b(looking at|talking to|speaking to|comparing|got quotes from) (other|another|a few|several)\b/i,
-      /\b(other|another) (company|provider|agency|supplier|quote)s?\b/i,
+      /\b(looking at|talking to|speaking to|comparing|got quotes from|getting quotes from|quotes (from|off)) (other|another|a few|several)\b/i,
+      /\b(other|another) (compan(y|ies)|providers?|agenc(y|ies)|suppliers?|quotes?)\b/i,
       /\bgoing with (someone|somebody) else\b/i,
     ],
     underlyingConcerns: [
@@ -219,7 +233,8 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
       "Never fabricate or paraphrase a testimonial.",
       NEVER_INVENT,
     ],
-    handover: { always: false, when: ["They ask for a reference customer to speak to."] },
+    handover: { always: false, when: [] },
+    assist: { always: false, when: ["They ask for a reference customer to speak to."] },
     respectAsRefusal: false,
   },
   IMPLEMENTATION: {
@@ -261,7 +276,6 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     patterns: [
       /\b(hassle|pain|effort|cost) (of|to) (switch|switching|change|changing|move|moving)\b/i,
       /\b(switch|switching|moving) (over|across)?\b[^.?!]{0,30}\b(hassle|pain|effort|difficult)\b/i,
-      /\b(locked in|tied in|notice period)\b/i,
     ],
     underlyingConcerns: ["Contract lock-in.", "Data or process migration effort.", "Disruption risk."],
     clarifyingQuestion: "What would worry you most about switching?",
@@ -287,7 +301,8 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
       "Never assert a certification the approved data does not list.",
       NEVER_INVENT,
     ],
-    handover: { always: true, when: ["Any security review, questionnaire or certification question."] },
+    handover: { always: false, when: [] },
+    assist: { always: true, when: ["Any security review, questionnaire or certification request: a colleague sends the approved documents."] },
     respectAsRefusal: false,
   },
   COMPLIANCE: {
@@ -320,7 +335,8 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
       "Never promise a roadmap item.",
       NEVER_INVENT,
     ],
-    handover: { always: false, when: ["The answer is not in approved data."] },
+    handover: { always: false, when: [] },
+    assist: { always: false, when: ["The answer is not in approved data."] },
     respectAsRefusal: false,
   },
   AUTHORITY: {
@@ -348,15 +364,23 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     ],
     underlyingConcerns: ["A formal buying process with its own steps and owner."],
     clarifyingQuestion: "What does the procurement process involve on your side?",
-    responseStrategy: ["Acknowledge the process and route to a person.", NEVER_INVENT],
-    handover: { always: true, when: ["Any procurement, tender or supplier-onboarding step."] },
+    responseStrategy: [
+      "Acknowledge the process, say a colleague will handle the supplier paperwork, and keep qualifying toward a meeting.",
+      NEVER_INVENT,
+    ],
+    handover: { always: false, when: ["They ask the business to agree procurement or contract terms."] },
+    assist: { always: true, when: ["Any procurement, tender or supplier-onboarding step: a colleague provides it."] },
     respectAsRefusal: false,
   },
   CONTRACT: {
     key: "CONTRACT",
     label: "Contract terms",
     patterns: [
-      /\b(contract|terms and conditions|t&cs?|minimum term|cancellation terms|sla|liability|indemnit(y|ies))\b/i,
+      // A question about the terms, not a statement that they are tied into
+      // someone else's contract (that is LOCK_IN, which the AI handles):
+      // "we're in a contract until March" never hands over.
+      /\b(terms and conditions|t&cs?|minimum term|cancellation terms|sla|liability|indemnit(y|ies))\b/i,
+      /(?<!\b(?:locked|tied) (?:in|into) (?:a |an |our |the )?)\bcontract\b(?![^.?!]{0,40}\b(until|till|runs|ends|expires|renews|is up|for another|for (the )?(next|another) \d*\s?(months?|years?)))/i,
     ],
     underlyingConcerns: ["Lock-in worry.", "Legal review required."],
     clarifyingQuestion: "Which part of the terms would you like to look at?",
@@ -465,12 +489,99 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     handover: { always: false, when: ["They ask for a guarantee or a refund promise."] },
     respectAsRefusal: false,
   },
+  STATUS_QUO: {
+    key: "STATUS_QUO",
+    label: "Happy with how things are",
+    patterns: [
+      /\b(we'?re|we are|it'?s|things are) (fine|ok|okay|alright|good) (as (it is|they are|we are)|for now)\b/i,
+      /\b(what we have|current (setup|system|way)|how we do it) (works|is working|does the job)\b/i,
+      /\b(always done it|managed fine) (this way|without)\b/i,
+      /\bif it ain'?t broke\b/i,
+    ],
+    underlyingConcerns: [
+      "Change feels like effort and risk for an uncertain gain.",
+      "They have not yet seen a cost in how things are today.",
+    ],
+    clarifyingQuestion: "Fair enough. If you could change one thing about how it works today, what would it be?",
+    responseStrategy: [
+      "Respect that it works. Look for one real gap in their own words, never invent one.",
+      "Only frame a cost of standing still if they stated it themselves.",
+      NEVER_INVENT,
+    ],
+    handover: { always: false, when: [] },
+    respectAsRefusal: false,
+  },
+  NOT_NOW: {
+    key: "NOT_NOW",
+    label: "Not now",
+    patterns: [
+      /\bnot (now|yet|at the moment|right now|for now|just now)\b/i,
+      /\b(maybe|perhaps) (later|another time|down the line|in a while)\b/i,
+      /\b(park|shelve|hold off on) (it|this|that)\b/i,
+    ],
+    underlyingConcerns: [
+      "A real constraint they have not named yet.",
+      "A polite way of saying the need is not pressing.",
+    ],
+    clarifyingQuestion: "No problem. Is it the timing, or is something else holding it back?",
+    responseStrategy: [
+      "Accept it without pushing. If they name a time, offer to pick it up then and record it.",
+      "Do not manufacture urgency or a deadline.",
+      NEVER_INVENT,
+    ],
+    handover: { always: false, when: [] },
+    respectAsRefusal: false,
+  },
+  LOCK_IN: {
+    key: "LOCK_IN",
+    label: "Tied into a contract",
+    patterns: [
+      /\b(locked|tied) (in|into)\b/i,
+      /\b(in|under|on) (a |an |our )?(\w+ )?(contract|agreement|retainer)\b[^.?!]{0,40}\b(until|till|ends|runs|expires|renews|is up|for another)\b/i,
+      /\b(notice period|contract (ends|runs out|is up|renews|expires))\b/i,
+    ],
+    underlyingConcerns: [
+      "A contract with their current provider has a real end date.",
+      "Exit fees or overlap costs worry them.",
+    ],
+    clarifyingQuestion: "Makes sense. When does the current contract come up for renewal?",
+    responseStrategy: [
+      "Accept the date. Offer to reconnect ahead of it so they have time to compare, and record it.",
+      "Describe approved switching help only if it exists. Never offer to cover exit fees.",
+      NEVER_INVENT,
+    ],
+    handover: { always: false, when: ["They ask the business to cover exit fees or overlap costs."] },
+    respectAsRefusal: false,
+  },
+  JUST_LOOKING: {
+    key: "JUST_LOOKING",
+    label: "Just looking",
+    patterns: [
+      /\bjust (looking|browsing|curious|having a look|researching|exploring|getting (some )?prices)\b/i,
+      /\b(early|initial) (stages?|days)\b/i,
+      /\b(doing|done) (some|a bit of) research\b/i,
+      /\bgetting a feel for\b/i,
+    ],
+    underlyingConcerns: [
+      "Early research, with no decision date yet.",
+      "Not ready to talk to a salesperson.",
+    ],
+    clarifyingQuestion: "Makes sense. What got you looking in the first place?",
+    responseStrategy: [
+      "Lower the stakes: be useful now with one approved point that fits what they said.",
+      "Offer the lightest next step and let them set the pace.",
+      NEVER_INVENT,
+    ],
+    handover: { always: false, when: [] },
+    respectAsRefusal: false,
+  },
 };
 
 /**
  * Tie-break order when several playbooks match. A refusal first (it must be
- * respected), then the always-handover categories (a person must see them),
- * then the rest in the brief's order.
+ * respected), then the legal and contract categories (a person must see
+ * them), then the specialist ones (a colleague provides them), then the rest
+ * in the brief's order.
  */
 const PRIORITY: ObjectionKey[] = [
   "NOT_INTERESTED",
@@ -489,7 +600,10 @@ export type ObjectionMatch = {
   matched: string;
   /** How many of the entry's patterns matched. */
   hits: number;
+  /** A legal or contract question: a person takes the conversation. */
   handoverRequired: boolean;
+  /** Security or procurement: a colleague provides it; the AI keeps going. */
+  assistRequired: boolean;
 };
 
 /**
@@ -516,7 +630,7 @@ export function matchObjection(text: string): ObjectionMatch[] {
       }
     }
     if (hits > 0) {
-      matches.push({ key, matched, hits, handoverRequired: entry.handover.always });
+      matches.push({ key, matched, hits, handoverRequired: entry.handover.always, assistRequired: entry.assist?.always === true });
     }
   }
 

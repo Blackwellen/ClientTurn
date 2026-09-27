@@ -104,6 +104,7 @@ const SELF_GUARDED: Record<string, string> = {
  * in — and writing that sentence is the moment the question gets asked.
  */
 const PUBLIC_TREES: { prefix: string; why: string }[] = [
+  { prefix: "(public)/q/", why: "quote recipients authenticate through a validated quote token rather than an account session" },
   { prefix: "(marketing)/", why: "the public website" },
   { prefix: "(auth)/", why: "sign in, sign up and password reset: reaching these signed out is the point" },
   { prefix: "admin/login/", why: "the separate admin front door (resolved conflict 4)" },
@@ -225,6 +226,12 @@ const MECHANISMS: Record<string, RegExp> = {
   // An HMAC over the raw body, compared in constant time.
   hmac: /timingSafeEqual\s*\(/,
   "stripe-signature": /webhooks\.constructEvent\s*\(/,
+  // The direct-sale loop: the customer's OWN Stripe account, verified with
+  // the workspace's signing secret (payments/signatures.ts, constant time).
+  "customer-stripe-signature": /verifyStripeSignature\s*\(/,
+  // The generic order-paid webhook: HMAC-SHA256 over `${timestamp}.${body}`
+  // with the workspace's secret (payments/signatures.ts, constant time).
+  "order-paid-signature": /verifyOrderPaidSignature\s*\(/,
   "twilio-signature": /verifyTwilioSignature\s*\(/,
   // Slack's HMAC-SHA256 over `v0:{timestamp}:{body}`, verified in one place
   // (`lib/integrations/providers/slack.ts`) and reused by every Slack route.
@@ -298,6 +305,8 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/webhooks/slack/interactive/route.ts": "slack-signature",
   "api/webhooks/stripe/route.ts": "stripe-signature",
   "api/webhooks/twilio/route.ts": "twilio-signature",
+  "api/webhooks/payments/stripe/[endpointId]/route.ts": "customer-stripe-signature",
+  "api/webhooks/payments/order-paid/[endpointId]/route.ts": "order-paid-signature",
 };
 
 /**

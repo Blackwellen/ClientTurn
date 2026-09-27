@@ -1,0 +1,33 @@
+{
+  "id": "multi-01-subscription-and-rebuild",
+  "story": "A studio lead came in on a website rebuild and also wants the Growth subscription. The AI sends the subscription's checkout link, books the rebuild meeting, and never re-asks the shared facts.",
+  "archetype": "CREATIVE_WEB_STUDIO",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "leadService": "Website rebuild",
+  "directClose": true,
+  "services": [
+    { "name": "Website rebuild", "averageValue": 9000 },
+    { "name": "Growth subscription", "averageValue": 1200, "offerProfile": { "motion": "SAAS_SELF_SERVE", "goal": "D_SIGNUP_TRIAL", "checkoutLinkId": "growth-monthly" } }
+  ],
+  "turns": [
+    {
+      "lead": "Hi, we're a team of 12. We need a website rebuild before our launch in March, and we'd also like to sign up for the Growth subscription to handle our monthly SEO reporting.",
+      "expect": { "interests": ["Website rebuild", "Growth subscription"], "primaryService": "Growth subscription", "actionIn": ["CTA_SIGNUP"], "companion": { "service": "Website rebuild", "kind": "ASK" }, "notAsked": ["TEAM_SIZE", "COMPANY_SIZE", "TIMING"] }
+    },
+    {
+      "lead": "Great. Can you send me the link to start the Growth subscription now?",
+      "expect": { "primaryService": "Growth subscription", "actionIn": ["CTA_SIGNUP", "CTA_CHECKOUT"], "notAsked": ["TEAM_SIZE", "COMPANY_SIZE", "TIMING"] }
+    },
+    {
+      "events": [{ "serviceName": "Growth subscription", "event": "WON" }],
+      "lead": "Done, I've paid for the subscription. For the website, can we book a call to talk it through?",
+      "expect": { "primaryService": "Website rebuild", "actionIn": ["CTA_BOOK"], "notAsked": ["TEAM_SIZE", "COMPANY_SIZE", "TIMING"], "interests": ["Website rebuild"] }
+    },
+    {
+      "events": [{ "serviceName": "Website rebuild", "event": "MEETING_BOOKED" }],
+      "lead": "Thanks, see you then.",
+      "expect": { "notAsked": ["TEAM_SIZE", "COMPANY_SIZE", "TIMING"], "interests": ["Website rebuild"] }
+    }
+  ]
+}

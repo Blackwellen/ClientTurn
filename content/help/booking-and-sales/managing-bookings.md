@@ -41,7 +41,15 @@ A lead moves to **Booked** when a booking is scheduled, and automatic follow-up 
 
 ## Booking reminders
 
-In **Follow-Up**, **Booking reminders** sends a reminder message to leads with an upcoming appointment. Owners and admins can set it up and choose **Activate**. Every stop condition, including opt-outs and quiet hours, is checked again before each reminder is sent. A reminder stops if the meeting is cancelled, and moves if it is rescheduled.
+In **Follow-Up**, **Booking reminders** sends a reminder message to leads with an upcoming appointment. Owners and admins can set it up and choose **Activate**.
+
+Each reminder step's delay is counted **back from the start of the meeting**, not from when it was booked: a step set to 24 hours is sent 24 hours before the meeting starts.
+
+- If that moment falls in quiet hours, the reminder is sent earlier, at the last time before quiet hours begin. It is never moved later, where it could land after the meeting.
+- If the moment has already passed, for example a meeting booked two hours ahead has no "24 hours before" moment, that step is skipped rather than sent late.
+- A rescheduled meeting moves its reminders to the new start. A cancelled meeting stops them.
+
+Every stop condition, including opt-outs and quiet hours, is checked again before each reminder is sent.
 
 > **Note:** A lead reply, a booking, an opt-out or a human takeover stops automatic follow-up. Booking reminders are the exception to the booking stop, because they exist for booked leads.
 

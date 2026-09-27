@@ -4,7 +4,11 @@ summary: Every way a person or company can arrive in ClientTurn, whether it beco
 category: finding-leads
 keywords: [sources, intake, inbound, prospects vs leads, lead source, where leads come from, provenance, attribution, deduplication]
 order: 5
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/lead-sources-explained-1.png
+    alt: "The Leads page with the Leads and Find Leads sidebar entries marked"
+    caption: "Leads can be followed up; prospects wait for your review in Find Leads"
 ---
 
 ClientTurn has two lists, and every source feeds one of them:
@@ -35,8 +39,12 @@ That split is deliberate. Finding someone's details is not permission to message
 | Find Leads discovery | A search plan you approve, run against Companies House, company websites and other permitted providers | [Discovering companies with Find Leads](/help/finding-leads/find-leads-discovery) |
 | Zapier, Pipedrive or any tool that can post a webhook | A signed inbound endpoint | [Leads from Zapier and webhooks](/help/finding-leads/leads-from-zapier-and-webhooks) |
 | A CSV row you mark as "We found this person or company" | **Leads → Import** | [Importing a CSV](/help/finding-leads/importing-a-csv) |
-| LinkedIn company-page engagement | Not yet available in the app | [LinkedIn company-page engagement](/help/finding-leads/linkedin-company-page-engagement) |
-| LinkedIn Sales Navigator | You work it in LinkedIn; ClientTurn prepares and records | [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted) |
+| Your LinkedIn connections, or any list you own | **Import your list (CSV)** in a search plan's **LinkedIn filters** row | [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted) |
+| LinkedIn company-page engagement | Not offered: LinkedIn's terms forbid using member data to find prospects | [LinkedIn company-page engagement](/help/finding-leads/linkedin-company-page-engagement) |
+
+### Where buying signals come from
+
+Find Leads can also look for buying signals on the prospects it finds: a funding round, a new Head of Growth, a new office, a rebrand, a hiring push. These come only from the Companies House register, the company's own website and careers pages, your own CRM or list, and Google Places (to confirm a location). ClientTurn does not scrape LinkedIn or buy intent data. See [Intent signals explained](/help/finding-leads/intent-signals-explained).
 
 A prospect becomes a lead when someone chooses **Promote to lead** and says how the business knows them, or when they reply to outreach.
 
@@ -54,5 +62,6 @@ Every lead source above goes through the same intake step. Whatever the source, 
 ## Related
 
 - [Discovering companies with Find Leads](/help/finding-leads/find-leads-discovery)
+- [Intent signals explained](/help/finding-leads/intent-signals-explained)
 - [The lead page](/help/finding-leads/the-lead-page)
 - [Corporate and individual subscribers](/help/compliance/corporate-and-individual-subscribers)

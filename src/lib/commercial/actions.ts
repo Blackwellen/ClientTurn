@@ -5,9 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { commercialAuthoritySchema } from "./authority";
 
-export type CommercialActionResult = { ok: true } | { ok: false; error: string };
+export type CommercialActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
 /**
  * Saves the workspace's commercial authority (decision Q2). Owner/admin only,
@@ -31,17 +32,33 @@ export async function saveCommercialAuthority(input: unknown): Promise<Commercia
     .eq("business_id", workspace.businessId)
     .maybeSingle();
 
-  const { error } = await db.from("commercial_authority").upsert(
-    {
-      business_id: workspace.businessId,
-      enabled: parsed.data.enabled,
-      approved_checkout_links: parsed.data.approved_checkout_links,
-      max_discount_percent: parsed.data.max_discount_percent,
-      requires_human_above_value_minor: parsed.data.requires_human_above_value_minor,
-      updated_by: workspace.userId,
-    },
-    { onConflict: "business_id" },
-  );
+  const row: Record<string, unknown> = {
+    business_id: workspace.businessId,
+    enabled: parsed.data.enabled,
+    approved_checkout_links: parsed.data.approved_checkout_links,
+    max_discount_percent: parsed.data.max_discount_percent,
+    requires_human_above_value_minor: parsed.data.requires_human_above_value_minor,
+    updated_by: workspace.userId,
+  };
+  const abandoned = parsed.data.abandoned_checkout;
+  if (abandoned) {
+    // Abandoned-checkout follow-up (0143).
+    row.abandoned_checkout_enabled = abandoned.enabled;
+    row.abandoned_checkout_delay_hours = abandoned.delay_hours;
+    row.abandoned_checkout_max_nudges = abandoned.max_nudges;
+    row.abandoned_checkout_gap_hours = abandoned.gap_hours;
+  }
+  let { error } = await db.from("commercial_authority").upsert(row, { onConflict: "business_id" });
+  let warning: string | null = null;
+  if (error && abandoned && isSchemaLag(error)) {
+    // Before 0143: keep the links and limits; the follow-up settings wait.
+    delete row.abandoned_checkout_enabled;
+    delete row.abandoned_checkout_delay_hours;
+    delete row.abandoned_checkout_max_nudges;
+    delete row.abandoned_checkout_gap_hours;
+    ({ error } = await db.from("commercial_authority").upsert(row, { onConflict: "business_id" }));
+    warning = "Saved, but the abandoned-checkout settings need database update 0143 before they take effect.";
+  }
   if (error) return { ok: false, error: "Those selling settings could not be saved." };
 
   const prior = before as { enabled?: boolean; max_discount_percent?: number; approved_checkout_links?: unknown[] } | null;
@@ -68,5 +85,5 @@ export async function saveCommercialAuthority(input: unknown): Promise<Commercia
   });
 
   revalidatePath("/app/settings");
-  return { ok: true };
+  return warning ? { ok: true, warning } : { ok: true };
 }

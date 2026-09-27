@@ -1,0 +1,42 @@
+{
+  "id": "accounting-02-switching",
+  "archetype": "ACCOUNTING",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "The lead is unhappy with their current accountant and wants to talk.",
+  "turns": [
+    {
+      "lead": "Our current accountant never replies and we keep missing deadlines.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "DISSATISFACTION"
+        ],
+        "notAsked": [
+          "DISSATISFACTION",
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "Can we arrange a call to discuss switching?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER",
+          "ANSWER_AND_ASK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY",
+          "HIGH"
+        ]
+      }
+    }
+  ]
+}

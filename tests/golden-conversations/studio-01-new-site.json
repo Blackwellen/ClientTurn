@@ -1,0 +1,49 @@
+{
+  "id": "studio-01-new-site",
+  "archetype": "CREATIVE_WEB_STUDIO",
+  "motion": "DIRECT_B2B",
+  "channel": "email",
+  "story": "A new site for a launch date; scope and timing arrive, then the close.",
+  "turns": [
+    {
+      "lead": "We need a new website for our architecture practice.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "INFORM",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "PROJECT_SCOPE"
+        ],
+        "notAsked": [
+          "PROJECT_SCOPE",
+          "SUCCESS_METRICS"
+        ]
+      }
+    },
+    {
+      "lead": "We'd like it live before our rebrand launch in March.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "INFORM",
+          "CTA_CHECKOUT",
+          "ANSWER"
+        ],
+        "known": [
+          "TIMING"
+        ],
+        "notAsked": [
+          "TIMING",
+          "PROJECT_SCOPE",
+          "SUCCESS_METRICS"
+        ]
+      }
+    }
+  ]
+}

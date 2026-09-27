@@ -56,43 +56,33 @@ describe("D. LinkedIn company-page engagement (Community Management API, faked)"
     });
   });
 
-  test("D1 the provider's request is accepted by the documented API contract", async () => {
-    await check({ id: "D1", flow: "LinkedIn engagement fetch", scenario: "fake enforces the documented version window", expected: "a supported LinkedIn-Version (>= 202510) is sent", fix: "linkedin-engagement.ts sends linkedin-version 202401 (deprecated); also uses the linkedin_ads token (no r_organization_social_feed scope). Not fixed: LinkedIn terms bar prospecting from engagement data -- owner decision (see LinkedIn findings)" }, async () => {
-      S.strictVersion = "1";
-      const { ingestSocialEngagement } = await import("../../src/lib/find-leads/server/engagement-ingest.ts");
-      const outcome = await ingestSocialEngagement(H.mustWorld().businessId, 20);
-      const { linkedinEngagementProvider } = await import("../../src/lib/find-leads/server/providers/linkedin-engagement.ts");
-      const direct = await linkedinEngagementProvider.fetchEngagement!({ businessId: H.mustWorld().businessId, since: null, limit: 10 });
-      const { data: rows } = await admin.from("integrations").select("provider_type, status, config").eq("business_id", H.mustWorld().businessId).eq("provider_type", "linkedin_ads");
-      assert.ok(outcome.created > 0, `created=${outcome.created}; versions sent=${[...new Set(versionsSeen)].join(",")}; direct=${JSON.stringify(direct).slice(0, 160)}; integration=${JSON.stringify(rows)}`);
-      return `created=${outcome.created}`;
+  // The LinkedIn engagement prospect source was removed (2026-09-26, owner
+  // decision): LinkedIn's Restricted Uses forbid using member data to identify
+  // sales prospects. D1-D3 now assert it stays gone.
+  test("D1 no LinkedIn engagement prospect source is registered", async () => {
+    await check({ id: "D1", flow: "LinkedIn engagement source", scenario: "registry after the removal", expected: "no linkedin_engagement provider" }, async () => {
+      const { providerByKey } = await import("../../src/lib/find-leads/server/providers/registry.ts");
+      assert.equal(providerByKey("linkedin_engagement"), null);
+      return "absent";
     });
   });
 
-  test("D2 engagement -> prospect (URN only, REVIEW), promotion refused until they engage", async () => {
-    await check({ id: "D2", flow: "Engagement -> prospect -> promotion", scenario: "version check relaxed to exercise the downstream path", expected: "1 prospect, no name invented, eligibility REVIEW, no contact; promotion refused without a reply" }, async () => {
-      S.strictVersion = "0";
+  test("D2 engagement ingest creates no LinkedIn prospect", async () => {
+    await check({ id: "D2", flow: "Engagement -> prospect", scenario: "a commenter on the company page", expected: "no prospect is created from LinkedIn engagement" }, async () => {
       const { ingestSocialEngagement } = await import("../../src/lib/find-leads/server/engagement-ingest.ts");
       const outcome = await ingestSocialEngagement(H.mustWorld().businessId, 20);
-      const { data: prospects } = await admin.from("prospects").select("*").eq("business_id", H.mustWorld().businessId).eq("social_external_id", `linkedin_member:${commenter}`);
-      assert.equal(prospects?.length, 1, `outcome=${JSON.stringify(outcome)}`);
-      const p = prospects![0] as Record<string, unknown>;
-      assert.equal(p.first_name ?? null, null, "a name was invented for a URN-only actor");
-      S.prospectId = p.id as string;
-      H.signInAsOwner();
-      const { promoteProspectToLeadAction } = await import("../../src/lib/find-leads/actions.ts");
-      const promoted = await promoteProspectToLeadAction(S.prospectId, "THEY_CONTACTED_US");
-      assert.equal((promoted as { ok: boolean }).ok, false, `promoted without engagement: ${JSON.stringify(promoted)}`);
-      return `prospect eligibility=${p.outreach_eligibility} profile_url=${p.social_profile_url}; promotion: ${JSON.stringify(promoted).slice(0, 120)}`;
+      const { data: prospects } = await admin.from("prospects").select("id").eq("business_id", H.mustWorld().businessId).eq("social_external_id", `linkedin_member:${commenter}`);
+      assert.equal(prospects?.length ?? 0, 0, `outcome=${JSON.stringify(outcome)}`);
+      return "none created";
     });
   });
 
-  test("D3 the profile URL is not fabricated from an app-scoped member id", async () => {
-    await check({ id: "D3", flow: "LinkedIn engagement data quality", scenario: "profile URL for urn:li:person:<id>", expected: "no linkedin.com/in/<opaque id> URL (ids are app-scoped; public URLs use vanityName)", fix: "linkedin-engagement.ts profileUrlFor: return null for a person URN" }, async () => {
-      const { data } = await admin.from("prospects").select("social_profile_url, linkedin_url").eq("id", S.prospectId).single();
-      const url = (data?.social_profile_url ?? data?.linkedin_url ?? null) as string | null;
-      assert.ok(!url || !url.includes("StoryCommenter42"), `fabricated URL ${url}`);
-      return String(url);
+  test("D3 no LinkedIn profile URL is fabricated", async () => {
+    await check({ id: "D3", flow: "LinkedIn data quality", scenario: "profile URL for an app-scoped member id", expected: "no linkedin.com/in/<opaque id> URL anywhere" }, async () => {
+      const { data } = await admin.from("prospects").select("linkedin_url, social_profile_url").eq("business_id", H.mustWorld().businessId);
+      const fabricated = (data ?? []).filter((row) => `${row.linkedin_url ?? ""}${row.social_profile_url ?? ""}`.includes("StoryCommenter42"));
+      assert.equal(fabricated.length, 0);
+      return "none";
     });
   });
 

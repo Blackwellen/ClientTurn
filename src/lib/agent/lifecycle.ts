@@ -109,7 +109,10 @@ export function resolveMode(input: ModeInput): AgentMode {
     return input.bookingEnabled ? "BOOKING_ASSISTANCE" : "HUMAN_HANDOVER";
   }
 
-  if (lifecycle === "REVIEW") return "HUMAN_HANDOVER";
+  // A REVIEW verdict is recorded and flagged for a person in the background;
+  // the conversation carries on (owner decision 2026-09-27). The close is
+  // still gated: booking needs a clean verdict (policy.ts tool gate).
+  if (lifecycle === "REVIEW") return input.hasOutstandingQuestions ? "QUALIFICATION" : "GENERAL_ENQUIRY";
   if (lifecycle === "BOOKING_PENDING") {
     return input.bookingEnabled ? "BOOKING_ASSISTANCE" : "HUMAN_HANDOVER";
   }

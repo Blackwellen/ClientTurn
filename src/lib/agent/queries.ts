@@ -14,10 +14,11 @@ import "server-only";
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { HANDOVER_REASON_LABEL, AGENT_OUTCOME_LABEL } from "./types";
+import { ASSIST_REASONS, ASSIST_REASON_LABEL, HANDOVER_REASON_LABEL, AGENT_OUTCOME_LABEL } from "./types";
 import type {
   AgentOutcome,
   AgentRunStatus,
+  AssistReason,
   HandoverPriority,
   HandoverReason,
   LeadIntent,
@@ -142,14 +143,23 @@ function readLeadBrief(value: unknown): HandoffLeadBriefView | null {
 
 function toHandoffRow(row: RawHandoff, assigneeName: string | null): HandoffRow {
   const reason = row.reason as HandoverReason;
+  const raw = (row.summary_json ?? {}) as { kind?: unknown; assistReason?: unknown };
+  const assistReason =
+    raw.kind === "ASSIST_REQUEST" && (ASSIST_REASONS as readonly string[]).includes(String(raw.assistReason))
+      ? (raw.assistReason as AssistReason)
+      : null;
   return {
     id: row.id,
     leadId: row.lead_id,
     leadName:
       [row.leads?.first_name, row.leads?.last_name].filter(Boolean).join(" ") || "This lead",
     conversationId: row.conversation_id,
+    kind: raw.kind === "ASSIST_REQUEST" ? "ASSIST_REQUEST" : "HANDOVER",
+    assistReason,
     reason,
-    reasonLabel: HANDOVER_REASON_LABEL[reason] ?? "Needs a person",
+    reasonLabel: assistReason
+      ? ASSIST_REASON_LABEL[assistReason]
+      : (HANDOVER_REASON_LABEL[reason] ?? "Needs a person"),
     priority: row.priority as HandoverPriority,
     status: row.status as HandoffStatus,
     summary: readSummary(row.summary_json),

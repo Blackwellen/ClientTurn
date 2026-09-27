@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueCrmPushes } from "@/lib/integrations/providers/crm-trigger";
 import {
   closeOpportunity,
+  emitOpportunityStageChanged,
   OpportunityCloseError,
   OPPORTUNITY_FIELDS,
   type OpportunityRow,
@@ -103,6 +104,44 @@ defineOperation("opportunity.get", {
   },
 });
 
+defineOperation("opportunity.add_interest", {
+  schema: z.object({
+    leadId: z.string().uuid(),
+    serviceId: z.string().uuid(),
+  }),
+  async run({ args, context }: HandlerInput<{ leadId: string; serviceId: string }>) {
+    const { data: lead } = await db()
+      .from("leads")
+      .select("id, anonymised_at")
+      .eq("id", args.leadId)
+      .eq("business_id", context.businessId)
+      .maybeSingle();
+    if (!lead) throw new ServiceError("NOT_FOUND", "That lead could not be found.");
+    if ((lead as { anonymised_at: string | null }).anonymised_at) {
+      throw new ServiceError("CONFLICT", "That lead has been anonymised.");
+    }
+    const { addLeadInterest, enqueueReassessment } = await import("@/lib/qualification-intelligence/service");
+    let result: Awaited<ReturnType<typeof addLeadInterest>>;
+    try {
+      result = await addLeadInterest({
+        businessId: context.businessId,
+        leadId: args.leadId,
+        serviceId: args.serviceId,
+        userId: context.userId ?? null,
+        correlationId: `${args.leadId.slice(0, 8)}-${args.serviceId.slice(0, 8)}-${Date.now()}`,
+      });
+    } catch (error) {
+      throw new ServiceError("INVALID_INPUT", error instanceof Error ? error.message : "That service could not be added.");
+    }
+    // The engine plans the new interest on the next assessment.
+    await enqueueReassessment(context.businessId, args.leadId, `interest.added:${args.serviceId}`).catch(() => undefined);
+    return {
+      data: { leadId: args.leadId, serviceId: args.serviceId, serviceName: result.serviceName, opportunityId: result.opportunityId },
+      entityId: result.opportunityId ?? args.leadId,
+    };
+  },
+});
+
 defineOperation("opportunity.set_stage", {
   schema: z.object({
     opportunityId: z.string().uuid(),
@@ -144,6 +183,20 @@ defineOperation("opportunity.set_stage", {
     const after = data as OpportunityRow;
 
     if (after.lead_id) await enqueueCrmPushes(context.businessId, after.lead_id);
+    // A stage move is a recalculation trigger for the qualification engine
+    // (design 08 §B.5), like the moves opportunities/service.ts makes itself.
+    await emitOpportunityStageChanged({
+      businessId: context.businessId,
+      opportunityId: after.id,
+      leadId: after.lead_id,
+      stage: after.stage,
+      previousStage: before.stage,
+    }).catch((error: unknown) => {
+      console.error("[opportunity.set_stage] stage event not emitted", {
+        opportunityId: after.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     return {
       data: { opportunity: present(after), unchanged: false },

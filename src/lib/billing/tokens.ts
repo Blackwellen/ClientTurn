@@ -33,11 +33,14 @@ export const AI_TOKEN_ALLOWANCE: Record<PlanId, number> = {
 
 /**
  * A rough, honest yardstick for the UI. One agent turn is a system prompt plus
- * a short context window plus a two-sentence reply — call it 1,700 tokens.
+ * a short context window plus a two-sentence reply. Measured 2026-09-27
+ * (tests/fixtures/prompt-token-snapshot.json): about 2,130 tokens in on SMS
+ * and 2,760 on email, plus ~250 out -- call it 2,750. It was 1,700, which
+ * over-stated the replies an allowance buys by about 60% (economics.md §0.3).
  * Deliberately a round over-estimate: telling someone they have fewer
  * conversations left than they really do is the safe direction to be wrong in.
  */
-export const TOKENS_PER_CONVERSATION_TURN = 1_700;
+export const TOKENS_PER_CONVERSATION_TURN = 2_750;
 
 export function approximateTurns(tokens: number): number {
   return Math.max(Math.floor(tokens / TOKENS_PER_CONVERSATION_TURN), 0);

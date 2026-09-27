@@ -8,7 +8,7 @@ import { getAffiliate, getPublicPlan } from "@/lib/affiliates/queries";
 import { OnboardingWizard } from "@/components/affiliates/onboarding-wizard";
 
 export const metadata: Metadata = {
-  title: "Finish your application | ClientTurn partners",
+  title: "Finish your partner application",
   robots: { index: false, follow: false },
 };
 

@@ -74,20 +74,27 @@ describe("pricing page reads production pricing", () => {
 /* -------------------------------------------------- sourcing allowances --- */
 
 describe("advertised sourcing allowances match the seeded entitlements", () => {
-  const sql = readFileSync(
-    new URL("../supabase/migrations/0038_v4_core_extensions.sql", import.meta.url),
-    "utf8",
-  );
+  // 0038 seeded these; later migrations (0138: Pro verified prospects) revise
+  // single rows. The LATEST seed of a row is the one the database holds.
+  const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
+  const migrations = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => readFileSync(path.join(migrationsDir, name), "utf8"));
 
-  /** Reads a seeded `soft_limit` straight out of the migration. */
+  /** Reads the latest seeded `soft_limit` for a row out of the migrations. */
   function seeded(plan: string, metric: string): number {
     const pattern = new RegExp(
       `\\('${plan}',\\s*'${metric}',\\s*(\\d+),`,
       "m",
     );
-    const match = sql.match(pattern);
-    assert.ok(match, `no seed row for ${plan}/${metric}`);
-    return Number(match[1]);
+    let value: number | null = null;
+    for (const sql of migrations) {
+      const match = sql.match(pattern);
+      if (match) value = Number(match[1]);
+    }
+    assert.ok(value !== null, `no seed row for ${plan}/${metric}`);
+    return value;
   }
 
   const CHECKS = [

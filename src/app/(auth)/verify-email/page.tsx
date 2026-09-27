@@ -6,7 +6,7 @@ import { AuthCard } from "@/components/auth/auth-card";
 import { ResendVerification } from "./resend-verification";
 
 export const metadata: Metadata = {
-  title: "Verify your email | ClientTurn",
+  title: "Verify your email",
   description: "Confirm your email address to finish setting up ClientTurn.",
 };
 

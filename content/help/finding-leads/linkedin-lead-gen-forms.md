@@ -9,7 +9,7 @@ updated: 2026-09-26
 
 LinkedIn Lead Gen Forms are the forms that open inside a LinkedIn ad. The person submits their own details, usually including their work email, so a submission is an inbound enquiry: it becomes a lead, not a prospect.
 
-> **Note:** This is the only LinkedIn route that creates leads automatically. LinkedIn does not allow any application to search members or send messages on your behalf. For the other LinkedIn routes, see [LinkedIn company-page engagement](/help/finding-leads/linkedin-company-page-engagement) and [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted).
+> **Note:** This is the only LinkedIn route that creates leads automatically. LinkedIn does not allow any application to search members or send messages on your behalf. For importing your own connections and assisted outreach, see [Sales Navigator, assisted](/help/finding-leads/linkedin-sales-navigator-assisted). Company-page engagement is not offered; see [LinkedIn company-page engagement](/help/finding-leads/linkedin-company-page-engagement).
 
 ## Before you start
 
@@ -29,7 +29,7 @@ For more detail, see [Connecting LinkedIn](/help/integrations/connecting-linkedi
 
 ## How leads arrive
 
-ClientTurn checks your organisation's lead forms for new submissions every few minutes. The first check looks back over the previous 24 hours. Each submission goes through the same intake checks as every source (see [Lead sources explained](/help/finding-leads/lead-sources-explained)), and a new lead is qualified and enters your follow-up sequence.
+ClientTurn checks your organisation's lead forms for new submissions every few minutes. The first check looks back over the previous 24 hours. Each check reads every page of results LinkedIn returns, so a busy form does not lose leads. Submissions made from a form's own **Test** preview are skipped, so previewing your form does not create a lead. New leads are recorded with LinkedIn Lead Gen Forms as their source. Each submission goes through the same intake checks as every source (see [Lead sources explained](/help/finding-leads/lead-sources-explained)), and a new lead is qualified and enters your follow-up sequence.
 
 ## If nothing arrives
 

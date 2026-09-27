@@ -8,7 +8,7 @@ import { SourcingRunView } from "@/components/find-leads/runs/sourcing-run-view"
 import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
 
-export const metadata: Metadata = { title: "Sourcing run · ClientTurn" };
+export const metadata: Metadata = { title: "Sourcing run" };
 export const dynamic = "force-dynamic";
 
 /**

@@ -4,7 +4,14 @@ summary: How a time a lead asks for becomes a request awaiting your confirmation
 category: booking-and-sales
 keywords: [manual booking, handover booking, awaiting confirmation, pending booking, confirm time, decline, requested time, booking link, no calendar, it went ahead, no show, cancelled]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/booking-and-sales/manual-bookings-and-confirmation-1.png
+    alt: "The Awaiting confirmation card with a requested time and the Confirm time and Decline menu"
+    caption: "Confirm or decline a time a lead asked for"
+  - src: /help/screenshots/booking-and-sales/manual-bookings-and-confirmation-2.png
+    alt: "A past booking under Did these happen with the outcome menu open"
+    caption: "Past appointments wait under Did these happen until you record what happened"
 ---
 
 ClientTurn never tells a lead a meeting is booked unless something has confirmed it. If you do not use a connected calendar, or the calendar cannot confirm a time, **you** are the confirmation.

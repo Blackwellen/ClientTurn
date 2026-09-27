@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getV4Entitlements,
   getV4Usage,
-  isOverageEnabled,
 } from "@/lib/billing/v4-entitlements";
 import {
   estimateRunCost,
@@ -54,11 +53,10 @@ export async function resolveCampaignBudgetContext(input: {
   const admin = createAdminClient();
   const entitlements = await getV4Entitlements(input.businessId);
 
-  const [prospectsUsed, emailsUsed, overageOn, unitCosts, sender, committed] =
+  const [prospectsUsed, emailsUsed, unitCosts, sender, committed] =
     await Promise.all([
       getV4Usage(input.businessId, "verified_prospect", entitlements.periodStart),
       getV4Usage(input.businessId, "email_sent", entitlements.periodStart),
-      isOverageEnabled(input.businessId),
       loadUnitCosts(),
       input.senderIdentityId
         ? admin
@@ -103,9 +101,9 @@ export async function resolveCampaignBudgetContext(input: {
       providerCeilingMinor,
       communicationRemaining: emailsRemaining,
       communicationLimit: emailAllowance.hardLimit,
-      // Campaign-level automatic usage is only offered when the account has
-      // already turned it on. A campaign switch never enables account billing.
-      overageAvailable: overageOn && emailAllowance.overageAllowed,
+      // No overage on any metric (owner, 2026-09-27), so a campaign is never
+      // offered automatic usage past the allowance.
+      overageAvailable: false,
     },
     meters: [
       {

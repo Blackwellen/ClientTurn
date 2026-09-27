@@ -33,8 +33,14 @@ export type MetricAllowance = {
   softLimit: number;
   /** What the server enforces. */
   hardLimit: number;
-  overageAllowed: boolean;
-  overagePrice: number | null;
+  /**
+   * Always false: there is no overage on any metric (owner, 2026-09-27: "it
+   * will get abused, make them top up"). Kept on the type so existing readers
+   * compile; a stale `plan_entitlements.overage_allowed = true` row (before
+   * migration 0141) is ignored rather than trusted.
+   */
+  overageAllowed: false;
+  overagePrice: null;
   unit: string | null;
   /** True when a per-tenant grant replaced the plan default. */
   granted: boolean;
@@ -84,7 +90,7 @@ export const getV4Entitlements = cache(
     const [planRows, grantRows] = await Promise.all([
       admin
         .from("plan_entitlements")
-        .select("metric, soft_limit, hard_limit, overage_allowed, overage_price, unit")
+        .select("metric, soft_limit, hard_limit, unit")
         .eq("plan_key", base.plan)
         .in("metric", METRICS),
       admin
@@ -105,8 +111,8 @@ export const getV4Entitlements = cache(
         metric,
         softLimit: Number(row.soft_limit ?? 0),
         hardLimit: Number(row.hard_limit ?? 0),
-        overageAllowed: Boolean(row.overage_allowed),
-        overagePrice: row.overage_price === null ? null : Number(row.overage_price),
+        overageAllowed: false,
+        overagePrice: null,
         unit: row.unit,
         granted: false,
       };
@@ -200,7 +206,6 @@ export type CapacityCheck = {
   remaining: number;
   /** True once usage passes the soft limit, so the UI can warn before it bites. */
   nearLimit: boolean;
-  requiresOverage: boolean;
 };
 
 /**
@@ -223,19 +228,17 @@ export async function checkCapacity(
   const withinHard = used + quantity <= allowance.hardLimit;
 
   return {
-    allowed: withinHard || allowance.overageAllowed,
+    allowed: withinHard,
     used,
     limit: allowance.hardLimit,
     remaining,
     nearLimit: used >= allowance.softLimit,
-    requiresOverage: !withinHard && allowance.overageAllowed,
   };
 }
 
 /**
- * The gate every path that spends a V4 allowance calls. Overage is never
- * assumed: exceeding a hard limit requires both the plan to permit overage AND
- * the workspace to have switched it on with a cap (§27.3, §110).
+ * The gate every path that spends a V4 allowance calls. The hard limit is the
+ * limit: there is no overage (owner, 2026-09-27).
  */
 export async function assertCapacity(
   businessId: string,
@@ -253,20 +256,9 @@ export async function assertCapacity(
 
   const check = await checkCapacity(businessId, metric, quantity);
 
-  if (check.requiresOverage) {
-    const overageOn = await isOverageEnabled(businessId);
-    if (!overageOn) {
-      throw new EntitlementError(
-        `You have used your ${describeMetric(metric)} for this billing period. Turn on additional usage in Settings → Billing & Usage, or wait for the period to reset.`,
-        "PLAN_LIMIT",
-      );
-    }
-    return check;
-  }
-
   if (!check.allowed) {
     throw new EntitlementError(
-      `You have used your ${describeMetric(metric)} for this billing period.`,
+      `You have used your ${describeMetric(metric)} for this billing period. It resets at the start of the next period, or upgrade for more.`,
       "PLAN_LIMIT",
     );
   }
@@ -293,42 +285,6 @@ export async function assertCapability(
       "FEATURE_LOCKED",
     );
   }
-}
-
-/**
- * Automatic overage is OFF unless the workspace deliberately enabled it, and
- * it is a budget, not a switch: once the month's recorded overage spend
- * (`usage_overage_events`, 0129) reaches the cap the workspace set, overage is
- * off again until the next month. A read failure answers "off".
- */
-export async function isOverageEnabled(businessId: string): Promise<boolean> {
-  const admin = createAdminClient();
-  const now = new Date();
-  const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-
-  const { data } = await admin
-    .from("customer_usage_allocations")
-    .select("overage_enabled, overage_cap_minor")
-    .eq("business_id", businessId)
-    .eq("billing_period", period)
-    .maybeSingle();
-
-  const capMinor = Number(data?.overage_cap_minor ?? 0);
-  if (!data?.overage_enabled || capMinor <= 0) return false;
-
-  // usage_overage_events post-dates the generated types.
-  const spent = await (admin as unknown as import("@supabase/supabase-js").SupabaseClient)
-    .from("usage_overage_events")
-    .select("amount_minor")
-    .eq("business_id", businessId)
-    .eq("billing_period", period);
-  if (spent.error) return false;
-
-  const spentMinor = ((spent.data ?? []) as { amount_minor: number }[]).reduce(
-    (sum, row) => sum + Number(row.amount_minor),
-    0,
-  );
-  return spentMinor < capMinor;
 }
 
 const METRIC_WORDS: Record<V4Metric, string> = {

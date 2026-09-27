@@ -209,7 +209,7 @@ describe("research depth moves research-task ceilings only", () => {
   });
 });
 
-describe("risk tolerance can only raise the handover floor", () => {
+describe("risk tolerance can only raise the clarify floor", () => {
   test("never below the current floor", () => {
     for (const tolerance of ["CAUTIOUS", "BALANCED", "ASSERTIVE", null, undefined] as const) {
       assert.ok(handoverFloor(tolerance) >= AGENT_CONFIDENCE.CLARIFY);
@@ -224,10 +224,12 @@ describe("risk tolerance can only raise the handover floor", () => {
     }
   });
 
-  test("CAUTIOUS hands over anything short of ACT confidence", () => {
-    assert.equal(confidenceVerdictForTolerance(0.7, "CAUTIOUS"), "HANDOVER");
-    assert.equal(confidenceVerdictForTolerance(null, "CAUTIOUS"), "HANDOVER");
-    assert.equal(confidenceVerdictForTolerance(0.5, "CAUTIOUS"), "HANDOVER");
+  // Owner decision 2026-09-27: below the floor the lead is asked to clarify
+  // (UNCLEAR); confidence alone never hands over (was HANDOVER).
+  test("CAUTIOUS clarifies anything short of ACT confidence", () => {
+    assert.equal(confidenceVerdictForTolerance(0.7, "CAUTIOUS"), "UNCLEAR");
+    assert.equal(confidenceVerdictForTolerance(null, "CAUTIOUS"), "UNCLEAR");
+    assert.equal(confidenceVerdictForTolerance(0.5, "CAUTIOUS"), "UNCLEAR");
     assert.equal(confidenceVerdictForTolerance(0.9, "CAUTIOUS"), "ACT");
   });
 });

@@ -204,7 +204,9 @@ export function LeadsToolbar({
       <LeadSearchInput
         value={filters.q ?? ""}
         onChange={(value) => setFilter({ q: value || null })}
-        className="w-full shrink-0 sm:w-[380px] xl:w-[460px]"
+        // min-w-0 flex-1 on phones: a full-width, non-shrinking search pushed
+        // Filters and the view toggle off a 390px screen (8.7).
+        className="min-w-0 flex-1 sm:w-[380px] sm:flex-none sm:shrink-0 xl:w-[460px]"
       />
 
       <div className="shrink-0">

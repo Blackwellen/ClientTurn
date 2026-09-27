@@ -29,6 +29,8 @@ import {
   type ChannelRuleSet,
   type SubscriberType,
 } from "./types.ts";
+import { canCallLead, type CanCallLeadInput, type CanCallLeadResult, type EligibilityDenial } from "../voice/eligibility.ts";
+import { localParts } from "../voice/calling-hours.ts";
 
 function decide(
   input: PolicyInput,
@@ -391,6 +393,83 @@ export function summariseEligibility(
   return "REVIEW";
 }
 
+/** How a channel is written in a sentence: "SMS" and "WhatsApp", not "Sms" and "Whatsapp" (8.7). */
+const CHANNEL_NAMES: Record<string, string> = { SMS: "SMS", WHATSAPP: "WhatsApp", EMAIL: "Email", SOCIAL: "Social" };
+
 function titleCase(value: string): string {
-  return value.charAt(0) + value.slice(1).toLowerCase();
+  return CHANNEL_NAMES[value] ?? value.charAt(0) + value.slice(1).toLowerCase();
+}
+
+/* --------------------------------------------------------------------------
+ * VOICE (voice phase P2)
+ *
+ * A live AI call is not a message, so it is not a `PolicyChannel` and never
+ * goes through `canSend`: the message rules (templates, unsubscribe footers,
+ * cold-channel lists) do not describe a phone call. Its decision is
+ * `canCallLead` (voice/eligibility.ts: PECR reg 19 consent, TPS/CTPS, the
+ * lead-supplied number rule, calling hours in the RECIPIENT's local time,
+ * attempt caps, one live call per lead), wrapped here so every contact
+ * decision is reachable from one module.
+ *
+ * Quiet hours for voice are evaluated in the recipient's time zone (the one
+ * `canCallLead` resolved: lead, then phone country, then workspace). The
+ * message channels are unchanged: `canSend` still reads the `localTime` its
+ * caller supplies, and the owner-held "reply during quiet hours" change is not
+ * made here.
+ * ------------------------------------------------------------------------ */
+
+
+export const VOICE_POLICY_CHANNEL = "VOICE" as const;
+
+/** Wall-clock time in a time zone, for a quiet-hours check. */
+export function localTimeIn(at: Date, timezone: string): { hour: number; minute: number } {
+  const parts = localParts(at, timezone);
+  return { hour: Math.floor(parts.minuteOfDay / 60), minute: parts.minuteOfDay % 60 };
+}
+
+/** Quiet hours judged in the recipient's own time zone (voice). */
+export function isWithinQuietHoursAt(at: Date, timezone: string, rule: { start: string; end: string }): boolean {
+  return isWithinQuietHours(localTimeIn(at, timezone), rule);
+}
+
+/** The denials that mean "not now" rather than "not ever": the caller reschedules. */
+const VOICE_NOT_NOW: readonly EligibilityDenial[] = ["OUTSIDE_CALLING_HOURS", "ATTEMPT_TOO_SOON", "CALL_ALREADY_ACTIVE"];
+
+export type VoicePolicyDecision = {
+  channel: typeof VOICE_POLICY_CHANNEL;
+  outcome: "ALLOWED" | "NOT_NOW" | "BLOCKED";
+  reasonCode: "ALLOWED" | EligibilityDenial | "BLOCKED_QUIET_HOURS";
+  eligibility: CanCallLeadResult;
+  /** When a NOT_NOW decision may be retried, when known. */
+  retryAt: Date | null;
+};
+
+/**
+ * May this lead be called now? `canCallLead`, plus the workspace pack's quiet
+ * hours (when it names VOICE) judged in the recipient's time zone.
+ */
+export function canCallVoice(
+  input: CanCallLeadInput & { quietHours?: { start: string; end: string } | null },
+): VoicePolicyDecision {
+  const eligibility = canCallLead(input);
+  if (!eligibility.allowed) {
+    const notNow = eligibility.reasons.every((r) => VOICE_NOT_NOW.includes(r));
+    return {
+      channel: VOICE_POLICY_CHANNEL,
+      outcome: notNow ? "NOT_NOW" : "BLOCKED",
+      reasonCode: eligibility.reason,
+      eligibility,
+      retryAt: notNow ? (eligibility.detail.nextEligibleAt ?? null) : null,
+    };
+  }
+  if (input.quietHours && isWithinQuietHoursAt(input.now, eligibility.timezone, input.quietHours)) {
+    return {
+      channel: VOICE_POLICY_CHANNEL,
+      outcome: "NOT_NOW",
+      reasonCode: "BLOCKED_QUIET_HOURS",
+      eligibility,
+      retryAt: null,
+    };
+  }
+  return { channel: VOICE_POLICY_CHANNEL, outcome: "ALLOWED", reasonCode: "ALLOWED", eligibility, retryAt: null };
 }

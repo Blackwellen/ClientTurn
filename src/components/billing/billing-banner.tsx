@@ -1,6 +1,7 @@
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { BillingNotice } from "@/lib/billing/limits-service";
+import { UpgradeNowButton } from "./upgrade-now-button";
 
 const TONE = {
   info: { box: "border-info-100 bg-info-50", title: "text-info-700", icon: Info, iconClass: "text-info-600" },
@@ -46,6 +47,11 @@ export function BillingBanner({
             {!canManageBilling && notice.action ? " The workspace owner can resolve this in Billing." : ""}
           </p>
         </div>
+        {canManageBilling && notice.upgradeNow ? (
+          // A trial notice: end the trial today on the card already on file
+          // (billing.end_trial_now), with a confirmation that states the charge.
+          <UpgradeNowButton label="Upgrade now: start your plan today" className="shrink-0" />
+        ) : null}
         {canManageBilling && notice.action ? (
           // A plain link: "Update card" is a route handler that redirects to
           // Stripe, which client-side navigation cannot follow.

@@ -434,6 +434,15 @@ describe("campaign icon tiles", () => {
         audienceLabel: "Past quote requests",
         name: "Autumn Roof Check",
       }),
+      "message",
+    );
+    assert.equal(
+      campaignIconKey({
+        status: "DRAFT",
+        channel: "email",
+        audienceLabel: "Past enquiries",
+        name: "Spring check-in",
+      }),
       "email",
     );
   });

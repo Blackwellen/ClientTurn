@@ -1,0 +1,47 @@
+{
+  "id": "objection-not-now",
+  "scenario": "§94 objection: not now",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Want me to send the sign-up link?"
+    },
+    {
+      "role": "lead",
+      "text": "Not right now thanks."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "NOT_NOW",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "one clarifying question"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "No problem. Is it the timing, or is something else holding it back?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "This offer expires today, so it's now or never.",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

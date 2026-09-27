@@ -1,21 +1,25 @@
 ---
 title: AI guides and best practice
-summary: How to set up AI & selling so the assistant sounds like you, qualifies at the right depth, hands over at the right moments and stays within budget
+summary: How to set up AI & selling so the assistant sounds like you, qualifies at the right depth, keeps the conversation going and brings a person in only when it must and stays within budget
 category: ai-agents
 keywords: [ai and selling, brand voice, tone of voice, forbidden phrases, example messages, risk tolerance, qualification depth, preferred methods, best practice, guide the ai]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/ai-agents/ai-guides-best-practice-1.png
+    alt: "The Brand card with tone of voice, value proposition and forbidden phrases filled in"
+    caption: "Tell the assistant how you sound, and what it must never say"
 ---
 
-**Settings → AI & selling** is where you tell ClientTurn how your business sells and sounds. Owners and admins can change it; everyone else can see the same settings read-only. None of these settings can override the hard rules: suppression and opt-outs, quiet hours, handover on a review decision, and the AI never quoting a price, a promise or availability it was not given.
+**Settings → AI & selling** is where you tell ClientTurn how your business sells and sounds. Owners and admins can change it; everyone else can see the same settings read-only. None of these settings can override the hard rules: suppression and opt-outs, quiet hours, a review decision is always made by your rules, and the AI never quoting a price, a promise or availability it was not given.
 
 ## Start cautious, then widen
 
 1. Set the automation level to **Suggest replies** first. For a week or two, read each draft in **Inbox** and send, edit or discard it.
 2. Keep **Risk tolerance** on **Cautious** or **Balanced** while you learn how it behaves:
-   - **Cautious** hands over whenever the assistant is not clearly confident it read the reply correctly.
-   - **Balanced** hands over when confidence is low, or on a sensitive topic.
-   - **Assertive** keeps the same safety floor as Balanced: low confidence and the hard rules still hand over.
+   - **Cautious** asks the lead to clarify whenever the assistant is not clearly confident it read the reply correctly.
+   - **Balanced** (the default) asks the lead to clarify when a reply is unclear, and passes the conversation to a person only as a last resort.
+   - **Assertive** keeps the same safety floor as Balanced: it never acts on a reply it could not read, and the hard rules still hand over.
 3. Move to **Reply automatically** when the drafts you are discarding are rare. Discarded drafts are kept, so you can look back at what you rejected.
 
 ## Tell it how you sell

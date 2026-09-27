@@ -1,0 +1,206 @@
+{
+  "_note": "Held-out labelled replies for the reply grader (src/lib/agent/reply-grader.ts). Written and labelled by hand BEFORE the grader existed and never edited to fit it. A label is what a skilled UK B2B salesperson would judge: pass = would send it as is. If the grader disagrees, fix the grader, not this file.",
+  "written": "2026-09-27",
+  "cases": [
+    {
+      "id": "h01-price-objection-good",
+      "channel": "sms",
+      "inbound": "Honestly that sounds expensive for what it is",
+      "approvedClaims": ["Clients typically see their first booked meeting within two weeks"],
+      "objection": true,
+      "reply": "Fair question. Most clients see their first booked meeting within two weeks, so it tends to pay for itself early. Is it the overall cost, or how it compares with something else you've looked at?",
+      "pass": true
+    },
+    {
+      "id": "h02-price-objection-ai-voice",
+      "channel": "sms",
+      "inbound": "Honestly that sounds expensive for what it is",
+      "approvedClaims": ["Clients typically see their first booked meeting within two weeks"],
+      "objection": true,
+      "reply": "Certainly! I completely understand your concern. Our solution is designed to deliver exceptional value and help you leverage your pipeline. Please don't hesitate to reach out if you have any other questions!",
+      "pass": false
+    },
+    {
+      "id": "h03-em-dash",
+      "channel": "whatsapp",
+      "inbound": "Can you do Shopify sites?",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Yes — we build on Shopify — and we can migrate your current store. What's the site doing for you now?",
+      "pass": false
+    },
+    {
+      "id": "h04-emoji",
+      "channel": "sms",
+      "inbound": "Sounds good, what's next?",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Great stuff 🙌 I can do Tuesday 10:00am or Wednesday 2:00pm for a quick call. Does either work?",
+      "pass": false
+    },
+    {
+      "id": "h05-close-two-slots-good",
+      "channel": "sms",
+      "inbound": "Sounds good, what's next?",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Next step is a 20 minute call to map it out. I can do Tuesday 10:00am or Wednesday 2:00pm. Does either work?",
+      "pass": true
+    },
+    {
+      "id": "h06-bullet-list-chat",
+      "channel": "sms",
+      "inbound": "What do you actually do?",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Here's what we offer:\n- Web design\n- SEO\n- Hosting\nWhich of these interests you?",
+      "pass": false
+    },
+    {
+      "id": "h07-answer-first-good",
+      "channel": "email",
+      "inbound": "Do you integrate with HubSpot? We live in it.",
+      "approvedClaims": ["Native two-way HubSpot sync"],
+      "objection": false,
+      "reply": "Yes, there's a native two-way HubSpot sync, so leads and notes stay where your team already works. What would you want it to push into HubSpot first?",
+      "pass": true
+    },
+    {
+      "id": "h08-ignores-question",
+      "channel": "email",
+      "inbound": "Do you integrate with HubSpot? We live in it.",
+      "approvedClaims": ["Native two-way HubSpot sync"],
+      "objection": false,
+      "reply": "How many people are on your sales team at the moment?",
+      "pass": false
+    },
+    {
+      "id": "h09-pressure",
+      "channel": "sms",
+      "inbound": "Let me think about it",
+      "approvedClaims": [],
+      "objection": true,
+      "reply": "No worries, but this price ends today and we only have 2 spots left, so don't miss out.",
+      "pass": false
+    },
+    {
+      "id": "h10-not-now-good",
+      "channel": "sms",
+      "inbound": "Not right now, maybe after Christmas",
+      "approvedClaims": [],
+      "objection": true,
+      "reply": "Makes sense, January's usually calmer anyway. Shall I drop you a line in the first week of January?",
+      "pass": true
+    },
+    {
+      "id": "h11-too-long-for-short-sms",
+      "channel": "sms",
+      "inbound": "how much",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Thank you so much for your message and for your interest in our services. Pricing really does depend on a number of different factors including the size of the project, the timeline you have in mind, the number of pages, any integrations you might need and the level of ongoing support that you would like us to provide after launch. We always try to be flexible. Would you like to tell me more about your project so that we can put together an accurate estimate?",
+      "pass": false
+    },
+    {
+      "id": "h12-how-much-good",
+      "channel": "sms",
+      "inbound": "how much",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Depends on the size of the site. Roughly how many pages are you thinking?",
+      "pass": true
+    },
+    {
+      "id": "h13-trust-proof-good",
+      "channel": "email",
+      "inbound": "Never heard of you. Why should we trust you with our leads?",
+      "approvedClaims": ["ISO 27001 certified", "Used by 40 UK agencies"],
+      "objection": true,
+      "reply": "Fair challenge. We're ISO 27001 certified and used by 40 UK agencies, so your lead data sits under the same controls they rely on. Would it help to see how the data is handled before we talk?",
+      "pass": true
+    },
+    {
+      "id": "h14-trust-invented-vague",
+      "channel": "email",
+      "inbound": "Never heard of you. Why should we trust you with our leads?",
+      "approvedClaims": ["ISO 27001 certified", "Used by 40 UK agencies"],
+      "objection": true,
+      "reply": "I understand. We are a trusted, industry-leading provider with a robust and seamless platform. I would be happy to assist further.",
+      "pass": false
+    },
+    {
+      "id": "h15-name-overuse",
+      "channel": "whatsapp",
+      "leadFirstName": "Sarah",
+      "inbound": "We need a new site by March",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Thanks Sarah! March is doable Sarah. Sarah, what's driving the March date?",
+      "pass": false
+    },
+    {
+      "id": "h16-timing-good",
+      "channel": "whatsapp",
+      "leadFirstName": "Sarah",
+      "inbound": "We need a new site by March",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Thanks Sarah, March gives us a decent run at it. What's driving the date, a launch or something else?",
+      "pass": true
+    },
+    {
+      "id": "h17-us-spelling-signoff",
+      "channel": "sms",
+      "inbound": "Can you help optimise our checkout?",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Yes, we can optimize your checkout and customize the flow. What's the biggest drop-off right now? Best regards, The Team",
+      "pass": false
+    },
+    {
+      "id": "h18-send-info-good",
+      "channel": "email",
+      "inbound": "Can you just send me some info?",
+      "approvedClaims": [],
+      "objection": true,
+      "reply": "Happy to. So I send the right thing rather than a generic brochure, is it pricing, examples of past work, or how the process runs that you'd want first?",
+      "pass": true
+    },
+    {
+      "id": "h19-exclamations",
+      "channel": "sms",
+      "inbound": "yes please book me in",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "Amazing!! So excited to work with you! Let's get you booked in! Which day suits?",
+      "pass": false
+    },
+    {
+      "id": "h20-competitor-good",
+      "channel": "email",
+      "inbound": "We're also talking to another agency",
+      "approvedClaims": ["Fixed-price quotes with no hourly billing"],
+      "objection": true,
+      "reply": "Sensible to compare. One thing worth checking with anyone you speak to is how they bill, as we quote fixed prices with no hourly billing. What matters most to you in choosing?",
+      "pass": true
+    },
+    {
+      "id": "h21-as-an-ai",
+      "channel": "sms",
+      "inbound": "can you tell me more",
+      "approvedClaims": [],
+      "objection": false,
+      "reply": "As an AI assistant, I'd be happy to delve into the details with you. What would you like to know?",
+      "pass": false
+    },
+    {
+      "id": "h22-authority-good",
+      "channel": "email",
+      "inbound": "I'd need to run it past my MD first",
+      "approvedClaims": [],
+      "objection": true,
+      "reply": "Of course. Would it help if I put together a short summary you can forward, or would a quick call with both of you be easier?",
+      "pass": true
+    }
+  ]
+}

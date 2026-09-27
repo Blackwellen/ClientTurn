@@ -19,7 +19,7 @@ import {
 } from "../_components/auth-form-parts";
 import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
-export function SignupForm() {
+export function SignupForm({ plan = null }: { plan?: string | null }) {
   const router = useRouter();
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
     signUp,
@@ -48,6 +48,7 @@ export function SignupForm() {
 
   return (
     <form action={submit} className="space-y-5" noValidate>
+      {plan && <input type="hidden" name="plan" value={plan} />}
       <AuthError message={formError} />
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -131,7 +132,13 @@ export function SignupForm() {
 
       <SubmitButton pendingLabel="Creating account…" busy={Boolean(state?.ok && state.redirectTo)}>Create your account</SubmitButton>
 
-      <GoogleSignInButton audience="customer" variant="signup" />
+      <GoogleSignInButton
+        audience="customer"
+        variant="signup"
+        // Carries the plan chosen on the pricing page through Google, so a new
+        // account lands on trial checkout with it already picked.
+        redirectTo={plan ? `/start-trial?plan=${encodeURIComponent(plan)}` : undefined}
+      />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
         Already have an account?{" "}

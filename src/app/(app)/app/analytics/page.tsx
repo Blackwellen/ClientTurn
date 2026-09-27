@@ -30,8 +30,10 @@ import {
 import { SlicesPanel } from "@/components/analytics/slices-panel";
 import { getSourceFunnels } from "@/lib/analytics/source-funnels-query";
 import { SourceFunnelsPanel } from "@/components/analytics/source-funnels-panel";
+import { getReengagementPerformance } from "@/lib/analytics/reengagement-query";
+import { ReengagementPanelSkeleton, ReengagementSection } from "@/components/analytics/reengagement-panel";
 
-export const metadata: Metadata = { title: "Analytics · ClientTurn" };
+export const metadata: Metadata = { title: "Analytics" };
 export const dynamic = "force-dynamic";
 
 const RANGES: AnalyticsRange[] = ["7d", "30d", "90d", "12m"];
@@ -169,6 +171,9 @@ export default async function AnalyticsPage({
         model={model}
         baseParams={{ view, range }}
       />
+      <React.Suspense fallback={<ReengagementPanelSkeleton />}>
+        <ReengagementSection load={() => getReengagementPerformance(businessId, bounds)} />
+      </React.Suspense>
     </div>
   );
 }

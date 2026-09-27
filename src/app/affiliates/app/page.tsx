@@ -58,7 +58,7 @@ import { ApplicationStatusPanel } from "@/components/affiliates/application-stat
 import { REFERRAL_STATUS_LABEL, REFERRAL_STATUS_TONE } from "@/lib/affiliates/types";
 import { COMMISSION_STATUS_LABEL, COMMISSION_STATUS_TONE } from "@/lib/affiliates/types";
 
-export const metadata: Metadata = { title: "Affiliate Dashboard | ClientTurn" };
+export const metadata: Metadata = { title: "Affiliate Dashboard" };
 export const dynamic = "force-dynamic";
 
 /**

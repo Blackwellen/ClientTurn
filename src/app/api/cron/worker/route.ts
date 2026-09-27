@@ -8,6 +8,8 @@ import "@/lib/jobs/register";
 import { scheduleEmailPolls } from "@/lib/jobs/handlers/email-poll";
 import { scheduleAgents } from "@/lib/agents/scheduler";
 import { scheduleCrmPullSweep } from "@/lib/jobs/handlers/crm-pull";
+import { scheduleIntentSweep } from "@/lib/jobs/handlers/intent-sweep";
+import { scheduleReengageSweep } from "@/lib/jobs/handlers/reengage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -80,6 +82,14 @@ export async function GET(request: Request) {
   // Opt-in CRM pull (§29): one sweep per fifteen-minute bucket, which queues a
   // pull for each integration whose pull is switched on.
   await scheduleCrmPullSweep();
+  // Qualification intelligence (design 08 §B.5): one intent sweep per six-hour
+  // bucket re-assesses leads whose intent has decayed past a boundary, which
+  // is how silence and an expired timeframe re-score a lead nobody touched.
+  await scheduleIntentSweep();
+  // Intent-driven re-engagement: one sweep per hour bucket plans any NOT_NOW
+  // resume, stated deadline, no-show or win-back that is due and has no
+  // trigger job yet (the domain-event consumer plans most of them at once).
+  await scheduleReengageSweep();
 
   const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
   let claimed = 0;

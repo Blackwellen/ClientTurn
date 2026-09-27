@@ -17,7 +17,7 @@ import { LeadDrawerHost } from "@/components/leads/lead-drawer-host";
 import { AddLeadButton } from "@/components/leads/add-lead/add-lead-button";
 import { getAddLeadContext } from "@/lib/leads/add-lead/queries";
 
-export const metadata: Metadata = { title: "Leads · Client Turn" };
+export const metadata: Metadata = { title: "Leads" };
 export const dynamic = "force-dynamic";
 
 const VIEW_COOKIE = "clientturn.leads.view";

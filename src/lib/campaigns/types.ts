@@ -147,6 +147,14 @@ const campaignDraftShape = z.object({
   sendRatePerMinute: z.coerce.number().int().min(1).max(60).default(20),
   aiPersonalize: z.boolean().default(false),
   /**
+   * SMS campaigns (0146): `cost_aware` (the default) sends email from the
+   * connected mailbox to leads who have not engaged, SMS otherwise; `sms`
+   * sends SMS to everyone.
+   */
+  channelMode: z.enum(["cost_aware", "sms"]).default("cost_aware"),
+  /** 0146: each contact at their best hour (default), or as fast as the rate allows. */
+  sendTiming: z.enum(["best_time", "immediate"]).default("best_time"),
+  /**
    * WhatsApp only: the approved template sent once the 24-hour window has
    * closed, and which merge field fills each of its variables.
    */
@@ -256,7 +264,7 @@ export const MERGE_FIELDS = [
   { token: "{{first_name}}", label: "First name", sample: "Jamie" },
   { token: "{{last_name}}", label: "Last name", sample: "Bell" },
   { token: "{{full_name}}", label: "Full name", sample: "Jamie Bell" },
-  { token: "{{service_name}}", label: "Service", sample: "roof repair" },
+  { token: "{{service_name}}", label: "Service", sample: "website rebuild" },
   { token: "{{business_name}}", label: "Your business", sample: "Your business" },
   { token: "{{booking_link}}", label: "Booking link", sample: "https://yourbookinglink.com" },
   { token: "{{business_phone}}", label: "Your phone", sample: "0161 000 0000" },
@@ -273,7 +281,7 @@ export function previewTemplate(
     last_name: "Bell",
     full_name: "Jamie Bell",
     business_name: businessName,
-    service_name: overrides?.serviceName ?? "roof repair",
+    service_name: overrides?.serviceName ?? "website rebuild",
     business_phone: "0161 000 0000",
     booking_link: "https://yourbookinglink.com",
   });

@@ -88,6 +88,12 @@ export type OfferCardInput = {
    * tone examples, explicitly not facts, and dropped first under the budget.
    */
   examples?: { good: readonly string[]; bad: readonly string[] };
+  /**
+   * Reassurance the business entered and stands behind (Settings -> AI &
+   * selling -> Objections): SLAs, guarantees, case studies, testimonials it
+   * owns, response-time commitments. Approved claims: quoted as written.
+   */
+  reassurance?: readonly string[];
 };
 
 export type VoiceProfile = {
@@ -299,6 +305,11 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
 
   // Priority 1: voice.
   push("voice:tone", "VOICE", `Tone: ${voice.tone}. Reply length: ${voice.replyLength}.`, 1);
+  // How to sound (elite-closer brief): the business's best salesperson
+  // messaging a prospect, not a chatbot. The detailed rules are in the
+  // static prompt and enforced by human-style.ts; this line ties them to the
+  // workspace's own voice.
+  push("voice:human", "VOICE", `Sound like ${clean(input.businessName) || "the business"}'s best salesperson messaging a prospect: mirror their length and register, plain words.`, 1);
   voice.styleNotes.forEach((note, i) => push(`voice:style:${i}`, "VOICE", `Style: ${note}`, 1));
   push("voice:cta", "VOICE", voice.callToAction ? `Preferred call to action: ${voice.callToAction}` : null, 1);
   push("voice:signature", "VOICE", voice.signature ? `Sign-off (email only): ${voice.signature}` : null, 1);
@@ -325,6 +336,7 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
   // Priority 4: approved claims (customer-written proof points).
   const proof = splitList(input.outreach.proofPoints);
   proof.forEach((point, i) => push(`proof:${i}`, "APPROVED CLAIMS", point, 4));
+  (input.reassurance ?? []).forEach((line, i) => push(`reassurance:${i}`, "APPROVED CLAIMS", line, 4));
 
   // Priority 4-6: memory facts, accepted/verified only, with provenance.
   const excludedFacts: OfferCard["excludedFacts"] = [];

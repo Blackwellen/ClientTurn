@@ -1,0 +1,48 @@
+{
+  "id": "objection-just-looking",
+  "scenario": "§94 objection: just looking",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "whatsapp",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Which product were you looking at?"
+    },
+    {
+      "role": "lead",
+      "text": "Just browsing at the moment really."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "JUST_LOOKING",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Just looking"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "No pressure at all. What got you looking in the first place?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Browsing? Don't miss out, these are selling fast 👍",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE",
+          "STYLE_EMOJI"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

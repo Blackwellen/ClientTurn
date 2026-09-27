@@ -1,0 +1,16 @@
+{
+  "id": "continue-02-low-confidence",
+  "story": "The model cannot read a reply (confidence 0.4). The AI asks one short clarifying question rather than passing the lead to a person, then carries on once the reply is clear.",
+  "turns": [
+    {
+      "lead": "hmm ok maybe the other thing then",
+      "model": { "proposed_action": "REPLY", "confidence": 0.4, "message": "Sure." },
+      "expect": { "disposition": "CLARIFY", "attempt": 1, "was": "HANDOVER" }
+    },
+    {
+      "lead": "Sorry, I meant we need a new website for our accountancy firm.",
+      "model": { "proposed_action": "ANSWER_AND_ASK", "confidence": 0.9, "message": "Thanks, that is clear. Roughly how many pages do you expect the new site to have?" },
+      "expect": { "disposition": "CONTINUE", "assist": null, "validates": true }
+    }
+  ]
+}

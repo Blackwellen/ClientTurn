@@ -39,6 +39,7 @@ describe("catalogue", () => {
       "lead.booking_ready",
       "lead.created",
       "lead.engaged",
+      "lead.intent_changed",
       "lead.qualified",
       "lead.scored",
       "lead.touched",
@@ -148,6 +149,26 @@ describe("re-score triggers, in one place", () => {
     }
   });
 
+  test("qualification intelligence (08 §B.5): opportunity changes and decay boundaries re-assess", () => {
+    for (const type of ["opportunity.created", "opportunity.stage_changed", "opportunity.won", "opportunity.lost"]) {
+      assert.deepEqual(
+        rescoreFor({ ...base, type, subject_type: "opportunity", subject_id: "O1", payload: { lead_id: "L7" } }),
+        { leadId: "L7", triggerEvent: `${type}:${base.id}` },
+        type,
+      );
+    }
+    assert.deepEqual(rescoreFor({ ...base, type: "intent.decay_due" }), { leadId: "L1", triggerEvent: `intent.decay_due:${base.id}` });
+    // A lost deal with no lead has nothing to re-assess.
+    assert.equal(rescoreFor({ ...base, type: "opportunity.lost", subject_type: "opportunity", subject_id: "O1", payload: {} }), null);
+  });
+
+  test("an intent change never re-triggers the assessment that caused it", () => {
+    assert.equal(RESCORE_ON.includes("lead.intent_changed"), false);
+    assert.equal(rescoreFor({ ...base, type: "lead.intent_changed" }), null);
+    assert.ok((INTERNAL_EVENT_TYPES as readonly string[]).includes("opportunity.stage_changed"));
+    assert.ok((INTERNAL_EVENT_TYPES as readonly string[]).includes("intent.decay_due"));
+  });
+
   test("the lead comes from the payload when the subject is not the lead", () => {
     assert.deepEqual(
       rescoreFor({ ...base, type: "reply.classified", subject_type: "message", subject_id: "M1", payload: { lead_id: "L9" } }),
@@ -184,6 +205,26 @@ describe("emit sites", () => {
     const plan = read("src", "lib", "ingest", "plan.ts");
     assert.match(plan, /"lead\.created"/);
     assert.match(plan, /"lead\.touched"/);
+  });
+
+  test("lead.score emits lead.intent_changed only when the state changed, keyed by the assessment row", () => {
+    const handler = read("src", "lib", "jobs", "handlers", "lead-score.ts");
+    assert.match(handler, /type: "lead\.intent_changed"/);
+    assert.match(handler, /dedupeKey: `lead\.intent_changed:\$\{recorded\.assessmentId\}`/);
+    assert.match(handler, /if \(recorded\.stateChanged\)/);
+  });
+
+  test("opportunities emit opportunity.stage_changed on an advance, once per stage", () => {
+    const service = read("src", "lib", "opportunities", "service.ts");
+    assert.match(service, /type: "opportunity\.stage_changed"/);
+    assert.match(service, /dedupeKey: `opportunity\.stage_changed:\$\{input\.opportunityId\}:\$\{input\.stage\}`/);
+  });
+
+  test("the intent sweep emits intent.decay_due through the outbox and is scheduled by the worker", () => {
+    const sweep = read("src", "lib", "jobs", "handlers", "intent-sweep.ts");
+    assert.match(sweep, /type: "intent\.decay_due"/);
+    assert.match(read("src", "lib", "jobs", "register.ts"), /registerHandler\("intent\.sweep", handleIntentSweep\)/);
+    assert.match(read("src", "app", "api", "cron", "worker", "route.ts"), /await scheduleIntentSweep\(\)/);
   });
 
   test("lead.score emits lead.scored and score.changed, keyed by the score row", () => {

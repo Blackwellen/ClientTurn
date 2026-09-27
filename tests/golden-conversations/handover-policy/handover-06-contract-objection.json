@@ -1,0 +1,15 @@
+{
+  "id": "handover-06-contract-objection",
+  "story": "An objection that carries a legal or contract question (a DPA) goes to a person, even beside a security step a colleague could send.",
+  "turns": [
+    {
+      "lead": "We need to think about it: we'd need your security questionnaire and a DPA first.",
+      "expect": {
+        "disposition": "HANDOVER",
+        "trigger": "LEGAL_OR_CONTRACT_QUESTION",
+        "reason": "POLICY",
+        "was": "HANDOVER"
+      }
+    }
+  ]
+}

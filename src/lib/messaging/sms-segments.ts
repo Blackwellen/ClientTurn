@@ -11,6 +11,8 @@
  * Used by the agent's length lint and recorded on every SMS send for cost.
  */
 
+import { stripAiPunctuation } from "./human-punctuation.ts";
+
 const GSM7_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
   "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
@@ -68,9 +70,18 @@ const SMART_REPLACEMENTS: [RegExp, string][] = [
   [/ /g, " "],
 ];
 
-/** Replaces smart punctuation with GSM-7 equivalents. Never touches emoji or letters. */
+/**
+ * Replaces smart punctuation with GSM-7 equivalents. Never touches letters.
+ *
+ * Owner rule (2026-09-27): no emojis and no em or en dashes used as dashes
+ * in anything a lead reads. The agent validator rejects them first; this is
+ * the backstop, so an SMS never carries one whoever wrote it. Emojis are
+ * removed and a dash becomes a comma or full stop (stripAiPunctuation); an en
+ * dash in a number range becomes a hyphen.
+ */
 export function normaliseForSms(body: string): string {
-  return SMART_REPLACEMENTS.reduce((text, [pattern, plain]) => text.replace(pattern, plain), body);
+  const plain = /[–—]|\p{Extended_Pictographic}/u.test(body) ? stripAiPunctuation(body) : body;
+  return SMART_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), plain);
 }
 
 /** Segments above which an SMS is too long to send as one reply (lint). */

@@ -14,6 +14,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
+import {
+  PRO_MONTHLY_GBP,
+  PRO_WITH_VOICE_MONTHLY_GBP,
+  VOICE_ADDON,
+  VOICE_NUMBER_MONTHLY_GBP,
+  VOICE_PACKS_FROM_GBP,
+  VOICE_TRIAL_NOTE,
+  gbp,
+} from "@/lib/marketing/voice-offer";
 
 /**
  * The homepage FAQ content.
@@ -23,7 +32,7 @@ import { TRIAL_DAYS } from "@/lib/billing/plans";
  * Importing a plain value from a `"use client"` module gives the server a
  * client reference, not the data.
  *
- * Twelve questions, which is the range where the block still reads as a
+ * Fourteen questions, which is the range where the block still reads as a
  * genuine pre-purchase FAQ rather than a keyword dump, and every answer
  * states something the product or the Terms actually commit to. The trial
  * length is read from the plan catalogue rather than written out, so it
@@ -32,6 +41,16 @@ import { TRIAL_DAYS } from "@/lib/billing/plans";
 export type HomeFaq = { icon: LucideIcon; q: string; a: string };
 
 export const HOME_FAQS: HomeFaq[] = [
+  {
+    icon: Phone,
+    q: "What is the AI Voice Sales Agent?",
+    a: `An AI sales agent that phones leads who asked for a call or agreed to one on your form. It opens by saying it is an AI assistant calling from your business, qualifies the enquiry, handles objections and sends a quote or books a meeting, then carries on the conversation by email, SMS and WhatsApp. Pro with Voice is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month with ${VOICE_ADDON.includedMinutes} minutes and a dedicated number (Pro without voice is ${gbp(PRO_MONTHLY_GBP)}); on Starter and Growth, minute packs start at ${gbp(VOICE_PACKS_FROM_GBP)} plus ${gbp(VOICE_NUMBER_MONTHLY_GBP)} a month for the number. ${VOICE_TRIAL_NOTE}`,
+  },
+  {
+    icon: CreditCard,
+    q: "Can ClientTurn send quotes and take payment?",
+    a: "Yes, on every paid plan. The agent collects the details your pricing needs, your catalogue and rules price the job, and a branded quote goes out for approval if your thresholds require it. The lead signs with a simple electronic signature, and deposit or balance invoices are paid through your own Stripe account. Your CRM is updated and the revenue is attributed to the source that produced it.",
+  },
   {
     icon: CreditCard,
     q: "Do I need a credit card to start?",
@@ -55,7 +74,7 @@ export const HOME_FAQS: HomeFaq[] = [
   {
     icon: Sparkles,
     q: "How does ClientTurn use AI?",
-    a: "Qualification is deterministic: your configured questions and rules make every decision, and the same answers always produce the same outcome. AI assists by classifying what an inbound message means and extracting a candidate answer to a question you already configured. It never quotes, never promises availability and never commits you to anything — low confidence or an unmatched value goes to a person.",
+    a: "Qualification is deterministic: your configured questions and rules make every decision, and the same answers always produce the same outcome. The AI sales agent holds the conversation, understands what a lead means and extracts answers to the questions you configured. It never sets a price or invents availability: quotes are calculated from your catalogue and rules, discounts beyond your limits wait for a person's approval, and bookings only go into real calendar slots. Low confidence or an unmatched answer is marked for review, not guessed.",
   },
   {
     icon: MessageSquareText,
@@ -80,7 +99,7 @@ export const HOME_FAQS: HomeFaq[] = [
   {
     icon: CalendarClock,
     q: "Does it replace my sales team?",
-    a: "No. It removes the delay and the admin so your team spends its time on people who are actually ready to talk. ClientTurn never quotes, never promises availability and never commits you to anything — anything outside your configured questions goes to a human.",
+    a: "No. It removes the delay and the admin so your team spends its time on people who are actually ready to talk. The agent quotes only from your catalogue and rules, books only into your real availability, and hands anything outside them to a person with the full context.",
   },
   {
     icon: ShieldCheck,

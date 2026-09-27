@@ -4,92 +4,59 @@ import {
   dailyCapAllows,
   limitLevel,
   nextDailyReset,
-  overageCostMinor,
   splitConsumption,
   upsellFor,
-  type OverageSettings,
 } from "../src/lib/billing/limits.ts";
 import { enforcedDailyCap, PLATFORM_DAILY_CEILING, planDailyCaps } from "../src/lib/billing/usage-allocation.ts";
 import {
   MESSAGE_CREDIT_BUNDLES,
   PLANS,
-  SMS_OVERAGE_BUNDLES,
+  SMS_CREDIT_BUNDLES,
   allowancesFor,
   planThatUnlocks,
   unlockPlanLabel,
 } from "../src/lib/billing/plans.ts";
 
-const OFF: OverageSettings = { enabled: false, capMinor: 0, spentMinor: 0, unitPricePence: 9 };
-
-describe("consumption order: allowance, then credit, then overage", () => {
+// Owner rule 2026-09-27: NO overage. The order is allowance, then prepaid
+// credit, then refused. (The overage-within-cap cases that used to be here
+// were removed with overage itself.)
+describe("consumption order: allowance, then credit, then refused", () => {
   test("inside the allowance, nothing else is touched", () => {
-    const split = splitConsumption({ quantity: 2, allowance: 250, usedThisPeriod: 100, creditBalance: 50, overage: OFF });
-    assert.deepEqual(
-      [split.allowed, split.fromAllowance, split.fromCredits, split.fromOverage],
-      [true, 2, 0, 0],
-    );
+    const split = splitConsumption({ quantity: 2, allowance: 250, usedThisPeriod: 100, creditBalance: 50 });
+    assert.deepEqual([split.allowed, split.fromAllowance, split.fromCredits], [true, 2, 0]);
   });
 
   test("a message straddling the allowance uses the remainder, then credit", () => {
-    const split = splitConsumption({ quantity: 3, allowance: 250, usedThisPeriod: 249, creditBalance: 50, overage: OFF });
-    assert.deepEqual([split.fromAllowance, split.fromCredits, split.fromOverage, split.allowed], [1, 2, 0, true]);
+    const split = splitConsumption({ quantity: 3, allowance: 250, usedThisPeriod: 249, creditBalance: 50 });
+    assert.deepEqual([split.fromAllowance, split.fromCredits, split.allowed], [1, 2, true]);
   });
 
-  test("credit before overage, even when overage is on", () => {
-    const split = splitConsumption({
-      quantity: 2,
-      allowance: 10,
-      usedThisPeriod: 10,
-      creditBalance: 5,
-      overage: { enabled: true, capMinor: 1000, spentMinor: 0, unitPricePence: 9 },
-    });
-    assert.deepEqual([split.fromCredits, split.fromOverage, split.overageMinor], [2, 0, 0]);
+  test("past the allowance, credit pays", () => {
+    const split = splitConsumption({ quantity: 2, allowance: 10, usedThisPeriod: 10, creditBalance: 5 });
+    assert.deepEqual([split.allowed, split.fromCredits], [true, 2]);
   });
 
-  test("overage only within the cap, and never partially", () => {
-    const within = splitConsumption({
-      quantity: 3,
-      allowance: 10,
-      usedThisPeriod: 10,
-      creditBalance: 1,
-      overage: { enabled: true, capMinor: 100, spentMinor: 80, unitPricePence: 9 },
-    });
-    assert.deepEqual([within.allowed, within.fromCredits, within.fromOverage, within.overageMinor], [true, 1, 2, 18]);
-
-    const over = splitConsumption({
-      quantity: 3,
-      allowance: 10,
-      usedThisPeriod: 10,
-      creditBalance: 0,
-      overage: { enabled: true, capMinor: 100, spentMinor: 80, unitPricePence: 9 },
-    });
-    assert.deepEqual([over.allowed, over.refusal, over.fromOverage], [false, "OVERAGE_CAP_REACHED", 0]);
-  });
-
-  test("no credit and overage off: refused at the limit", () => {
-    const split = splitConsumption({ quantity: 1, allowance: 10, usedThisPeriod: 10, creditBalance: 0, overage: OFF });
+  test("no credit: refused at the limit, whatever the plan", () => {
+    const split = splitConsumption({ quantity: 1, allowance: 10, usedThisPeriod: 10, creditBalance: 0 });
     assert.deepEqual([split.allowed, split.refusal], [false, "LIMIT_REACHED"]);
   });
 
-  test("a plan with no overage price refuses even with overage switched on", () => {
-    const split = splitConsumption({
-      quantity: 1,
-      allowance: 0,
-      usedThisPeriod: 0,
-      creditBalance: 0,
-      overage: { enabled: true, capMinor: 5000, spentMinor: 0, unitPricePence: null },
-    });
-    assert.equal(split.refusal, "LIMIT_REACHED");
+  test("never partially: a message the credit cannot fully cover does not go", () => {
+    const split = splitConsumption({ quantity: 3, allowance: 10, usedThisPeriod: 10, creditBalance: 2 });
+    assert.deepEqual([split.allowed, split.refusal], [false, "LIMIT_REACHED"]);
   });
 
-  test("overage cost rounds up per message", () => {
-    assert.equal(overageCostMinor(3, 7.5), 23);
-    assert.equal(overageCostMinor(0, 9), 0);
+  test("WhatsApp (no allowance) runs on credit alone", () => {
+    assert.equal(splitConsumption({ quantity: 1, allowance: 0, usedThisPeriod: 0, creditBalance: 0 }).allowed, false);
+    assert.equal(splitConsumption({ quantity: 1, allowance: 0, usedThisPeriod: 0, creditBalance: 1 }).allowed, true);
   });
 
-  test("the trial has no overage: nothing is billed before the first invoice", () => {
-    assert.equal(allowancesFor("trial").smsOveragePence, null);
-    assert.equal(allowancesFor("trial").whatsappOveragePence, null);
+  test("no plan carries an overage price any more", () => {
+    for (const plan of ["trial", "starter", "growth", "pro", "enterprise"]) {
+      const allowances = allowancesFor(plan) as Record<string, unknown>;
+      assert.equal("smsOveragePence" in allowances, false, plan);
+      assert.equal("whatsappOveragePence" in allowances, false, plan);
+    }
   });
 });
 
@@ -145,7 +112,7 @@ describe("upsells are honest", () => {
     const sms = MESSAGE_CREDIT_BUNDLES.filter((bundle) => bundle.channel === "sms");
     assert.deepEqual(
       sms.map((bundle) => [bundle.credits, bundle.priceGbp]),
-      SMS_OVERAGE_BUNDLES.map((bundle) => [bundle.credits, bundle.priceGbp]),
+      SMS_CREDIT_BUNDLES.map((bundle) => [bundle.credits, bundle.priceGbp]),
     );
     assert.equal(new Set(MESSAGE_CREDIT_BUNDLES.map((bundle) => bundle.key)).size, MESSAGE_CREDIT_BUNDLES.length);
   });

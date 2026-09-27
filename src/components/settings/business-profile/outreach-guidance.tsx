@@ -122,7 +122,7 @@ export function OutreachGuidanceEditor({
             id="guidance-cta"
             label="Call to action"
             hint="What you want the reader to do next."
-            placeholder="Invite to book a site visit or request a quote"
+            placeholder="Invite to book a discovery call or request a proposal"
             value={draft.callToAction ?? ""}
             disabled={!canEdit}
             onChange={(value) => set("callToAction", value)}
@@ -133,7 +133,7 @@ export function OutreachGuidanceEditor({
           id="guidance-value"
           label="Value proposition"
           hint="The one sentence that explains why someone should care."
-          placeholder="We reduce roofing costs for property managers and keep sites compliant."
+          placeholder="We rebuild slow ecommerce sites so more visitors turn into orders."
           value={draft.valueProposition ?? ""}
           disabled={!canEdit}
           onChange={(value) => set("valueProposition", value)}
@@ -143,7 +143,7 @@ export function OutreachGuidanceEditor({
           id="guidance-messages"
           label="Key messages"
           hint="The points worth making, in your own words."
-          placeholder="Highlight experience, reliability and quality workmanship"
+          placeholder="Highlight relevant experience, clear process and reliable delivery"
           value={draft.keyMessages ?? ""}
           disabled={!canEdit}
           onChange={(value) => set("keyMessages", value)}
@@ -153,7 +153,7 @@ export function OutreachGuidanceEditor({
           id="guidance-proof"
           label="Proof points"
           hint="Facts you can actually stand behind if challenged."
-          placeholder="20+ years trading, fully insured, 400+ commercial roofs maintained"
+          placeholder="10 years in business, 60+ sites launched, most clients on retainer"
           value={draft.proofPoints ?? ""}
           disabled={!canEdit}
           onChange={(value) => set("proofPoints", value)}
@@ -173,7 +173,7 @@ export function OutreachGuidanceEditor({
           id="guidance-claims"
           label="Claims we cannot make"
           hint="Guarantees, prices or timescales you are not able to promise. Generated copy will not use these."
-          placeholder="No guaranteed timescales, no fixed prices before survey, no warranty claims"
+          placeholder="No guaranteed results, no fixed prices before a scoping call, no ROI promises"
           value={draft.claimRestrictions ?? ""}
           disabled={!canEdit}
           onChange={(value) => set("claimRestrictions", value)}

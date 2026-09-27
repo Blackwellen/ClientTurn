@@ -72,7 +72,11 @@ function UsageBlock({ label, usage }: { label: string; usage: UsageCell }) {
           {usage.limit !== null && ` / ${formatNumber(usage.limit)}`}
         </span>
         <span className="lr-tabular text-[11.5px] text-content-muted">
-          {usage.limit === null ? "Unlimited" : formatUsagePercent(usage.ratio)}
+          {usage.limit === null
+            ? usage.countOnly
+              ? "This period"
+              : "Unlimited"
+            : formatUsagePercent(usage.ratio)}
         </span>
       </div>
       {usage.limit !== null && (
@@ -308,7 +312,8 @@ export function CustomerSupportDrawer({
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <UsageBlock label="Leads" usage={detail.leadUsage} />
-          <UsageBlock label="Messages" usage={detail.messageUsage} />
+          <UsageBlock label="Messages sent" usage={detail.messageUsage} />
+          <UsageBlock label="SMS segments" usage={detail.smsUsage} />
         </div>
         <p className="mt-2 text-[11.5px] text-content-subtle">
           Plan state mirrors Stripe, which remains the source of truth for

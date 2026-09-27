@@ -104,11 +104,22 @@ const HUMAN_REQUEST_PHRASES = [
   "put me through",
   "speak to the manager",
   "speak to the owner",
-  "is this a bot",
-  "are you a bot",
-  "are you a robot",
-  "am i talking to a robot",
 ] as const;
+
+/**
+ * "Are you a bot?" is a question, not a request for a person (owner decision
+ * 2026-09-27). The assistant answers it honestly (it is the business's AI
+ * assistant; a person can join if they would like) and carries on; it never
+ * claims to be human (validate.ts CLAIMS_TO_BE_HUMAN). Only an explicit ask
+ * for a person hands over.
+ */
+const BOT_QUESTION =
+  /(?:^|\s)(?:are you|r u|is this|is that|is it|am i (?:talking|speaking|chatting|texting) (?:to|with))\s+(?:a |an |the )?(?:real )?(?:bot|robot|ai|machine|computer|human|person|chatbot|automated(?: assistant| system| message)?)(?:\s|$)/;
+
+/** The lead asks whether they are talking to a person or to automation. */
+export function isBotQuestion(body: string): boolean {
+  return BOT_QUESTION.test(normalise(body));
+}
 
 const COMPLAINT_PHRASES = [
   "complaint",
@@ -377,7 +388,11 @@ export function classifyDeterministic(body: string): DeterministicVerdict | null
     };
   }
 
-  if (hasAny(text, HUMAN_REQUEST_PHRASES)) {
+  // "real person" inside "am I talking to a real person?" is the bot question,
+  // not a request; any explicit request ("can I speak to a person") still is.
+  const botQuestion = BOT_QUESTION.test(text);
+  const explicitRequest = HUMAN_REQUEST_PHRASES.some((phrase) => phrase !== "real person" && hasPhrase(text, phrase));
+  if (explicitRequest || (!botQuestion && hasPhrase(text, "real person"))) {
     return {
       intent: "HUMAN_REQUEST",
       confidence: 1,

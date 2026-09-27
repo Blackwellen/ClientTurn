@@ -1,7 +1,7 @@
 {
   "tokens": {
-    "agent_decision": 1113,
-    "answer_extraction": 99,
+    "agent_decision": 988,
+    "answer_extraction": 161,
     "conversation_summary": 55,
     "copilot_turn": 364,
     "handoff_brief": 115,
@@ -15,5 +15,44 @@
     "social_reply_classification": 235,
     "variant_generation": 192,
     "website_contacts": 230
+  },
+  "turn": {
+    "fixtures": [
+      "msp-ask-timing",
+      "saas-answer-and-ask",
+      "studio-threshold-met-book",
+      "enterprise-deep-known",
+      "low-intent-inform"
+    ],
+    "legacy_strategy_block": {
+      "mean": 176,
+      "max": 212
+    },
+    "nba_strategy_block": {
+      "mean": 93,
+      "max": 114
+    },
+    "agent_decision_system_prompt": 988,
+    "offer_card_budget": 600,
+    "conversation_blocks": {
+      "sms-8-messages": {
+        "before": 578,
+        "after": 343
+      },
+      "email-8-messages-quoted": {
+        "before": 1821,
+        "after": 1364
+      }
+    },
+    "agent_turn_input": {
+      "sms-8-messages": {
+        "before": 2259,
+        "after": 2024
+      },
+      "email-8-messages-quoted": {
+        "before": 3502,
+        "after": 3045
+      }
+    }
   }
 }

@@ -2,6 +2,15 @@ import "server-only";
 import { safeFetchText } from "@/lib/security/safe-fetch";
 import { recencyStrength, type IntentEvidenceKind } from "../../intent-evidence";
 import {
+  ROLE_FUNCTION_NEEDS,
+  effectiveWindowDays,
+  intentType,
+  strengthCap,
+  type IntentTypeId,
+  type RoleFunction,
+} from "../../intent-catalogue";
+import { careersFindings, detectAnnouncements, siteIssues } from "../../website-announcements";
+import {
   DISCOVERY_PATHS,
   detectTechnologies,
   hiringRoleMatches,
@@ -175,6 +184,9 @@ function keep(best: Best | undefined, page: Page, terms: string[], snippet: stri
 
 function evidenceFor(input: {
   kind: IntentEvidenceKind;
+  intentType?: IntentTypeId | null;
+  roleFunction?: RoleFunction | null;
+  source?: string;
   category: string | null;
   domain: string;
   best: Best;
@@ -188,8 +200,11 @@ function evidenceFor(input: {
     hits: input.best.hits.size,
     datedAt,
     now: input.now,
-    freshnessDays: input.freshnessDays,
-    max: MAX_STRENGTH,
+    // The type's own decay, when it is shorter than the plan's window.
+    freshnessDays: effectiveWindowDays(input.intentType, input.freshnessDays),
+    // A named round on a press page counts for more than a keyword mention,
+    // but no website evidence scores like a register filing.
+    max: input.intentType ? Math.min(strengthCap(input.intentType, MAX_STRENGTH), WEBSITE_TYPED_MAX) : MAX_STRENGTH,
   });
   // Dated outside the freshness window: not a current signal.
   if (strength <= 0) return null;
@@ -203,12 +218,32 @@ function evidenceFor(input: {
     sourceUrl: input.best.url,
     evidence: {
       kind: input.kind,
-      source: SOURCE,
+      source: input.source ?? SOURCE,
       reference: input.best.url,
       observedAt,
       snippet: input.best.snippet,
+      ...(input.intentType ? { intentType: input.intentType } : {}),
+      ...(input.roleFunction ? { roleFunction: input.roleFunction } : {}),
     },
   };
+}
+
+/** The careers-page types. */
+const CAREERS_TYPES: IntentTypeId[] = ["HIRING_ROLE", "HIRING_SPIKE", "FIRST_HIRE_IN_FUNCTION"];
+const ISSUE_TYPE: IntentTypeId = "SITE_TECHNICAL_ISSUE";
+const WEBSITE_TYPED_MAX = 0.7;
+const CAREERS_SOURCE = "Company careers page";
+
+function isCareersPath(url: string): boolean {
+  try {
+    return /\/(careers|jobs|vacancies|join-us|work-with-us)(\/|$)/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function functionLabel(fn: RoleFunction): string {
+  return ROLE_FUNCTION_NEEDS[fn].label.toLowerCase();
 }
 
 async function fetchIntent(input: {
@@ -220,8 +255,12 @@ async function fetchIntent(input: {
   const kinds = new Set(input.wants?.kinds ?? []);
   const roles = kinds.has("HIRING") ? (input.wants?.hiringRoles ?? []) : [];
   const technologies = new Set(kinds.has("TECHNOLOGY") ? (input.wants?.technologies ?? []) : []);
+  const types = new Set<IntentTypeId>(input.wants?.types ?? []);
+  const functions = new Set<RoleFunction>(input.wants?.roleFunctions ?? []);
+  const wantsFunction = (fn: RoleFunction | null | undefined) =>
+    functions.size === 0 || (fn ? functions.has(fn) : true);
 
-  if (input.categories.length === 0 && roles.length === 0 && technologies.size === 0) {
+  if (input.categories.length === 0 && roles.length === 0 && technologies.size === 0 && types.size === 0) {
     return { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
   }
 
@@ -240,6 +279,22 @@ async function fetchIntent(input: {
     const byCategory = new Map<string, Best>();
     let hiring: Best | undefined;
     let tech: Best | undefined;
+    // Catalogue types, one piece of evidence per type and role function.
+    type Typed = { type: IntentTypeId; fn: RoleFunction | null; source: string; best: Best; current?: boolean };
+    const typed = new Map<string, Typed>();
+    const keepTyped = (
+      type: IntentTypeId,
+      fn: RoleFunction | null,
+      page: Page,
+      term: string,
+      snippet: string,
+      source: string,
+      current = false,
+    ) => {
+      const key = `${type}:${fn ?? ""}`;
+      const entry = typed.get(key);
+      typed.set(key, { type, fn, source: entry?.source ?? source, best: keep(entry?.best, page, [term], snippet), current });
+    };
 
     for (const page of pages) {
       const text = stripHtml(page.html);
@@ -261,6 +316,48 @@ async function fetchIntent(input: {
         }
       }
 
+      if (types.size > 0) {
+        const source = isCareersPath(page.url) ? CAREERS_SOURCE : SOURCE;
+        for (const found of detectAnnouncements(text)) {
+          if (!types.has(found.type) || !wantsFunction(found.roleFunction)) continue;
+          const detail = found.round
+            ? `${found.round}${found.amount ? ` (${found.amount})` : ""}: `
+            : found.amount
+              ? `${found.amount}: `
+              : "";
+          keepTyped(found.type, found.roleFunction ?? null, page, page.url, `${detail}${found.snippet}`, source);
+        }
+
+        if (CAREERS_TYPES.some((type) => types.has(type))) {
+          const careers = careersFindings(text);
+          if (types.has("HIRING_ROLE")) {
+            for (const role of careers.roles) {
+              if (!wantsFunction(role.roleFunction)) continue;
+              const snippet = `Hiring (${functionLabel(role.roleFunction)}): ${role.titles.join(", ")}. ${role.snippet}`;
+              for (const title of role.titles) keepTyped("HIRING_ROLE", role.roleFunction, page, title, snippet, CAREERS_SOURCE);
+            }
+          }
+          if (types.has("HIRING_SPIKE") && careers.spike) {
+            const sample = careers.roles.flatMap((role) => role.titles).slice(0, 4).join(", ");
+            keepTyped("HIRING_SPIKE", null, page, page.url, `${careers.distinctTitles} open roles listed, including ${sample}`, CAREERS_SOURCE, true);
+          }
+          if (types.has("FIRST_HIRE_IN_FUNCTION")) {
+            for (const first of careers.firstHires) {
+              if (!wantsFunction(first.roleFunction)) continue;
+              keepTyped("FIRST_HIRE_IN_FUNCTION", first.roleFunction, page, page.url, first.snippet, CAREERS_SOURCE);
+            }
+          }
+        }
+
+        if (types.has(ISSUE_TYPE) && new URL(page.url).pathname === "/") {
+          const issues = siteIssues(page.html, now);
+          if (issues.length > 0) {
+            const best = keep(undefined, page, issues.map((issue) => issue.code), `Homepage ${issues.map((issue) => issue.detail).join("; ")}`);
+            typed.set(`${ISSUE_TYPE}:`, { type: ISSUE_TYPE, fn: null, source: SOURCE, best, current: true });
+          }
+        }
+      }
+
       if (technologies.size > 0) {
         const found = detectTechnologies(page.html).filter((t) => technologies.has(t.key));
         if (found.length > 0) {
@@ -274,11 +371,26 @@ async function fetchIntent(input: {
       if (result) records.push(result);
     }
     if (hiring) {
-      const result = evidenceFor({ kind: "HIRING", category: null, domain, best: hiring, now, freshnessDays: input.freshnessDays });
+      const result = evidenceFor({ kind: "HIRING", intentType: "HIRING_ROLE", source: CAREERS_SOURCE, category: null, domain, best: hiring, now, freshnessDays: input.freshnessDays });
+      if (result) records.push(result);
+    }
+    for (const entry of typed.values()) {
+      const result = evidenceFor({
+        kind: intentType(entry.type).evidenceKind,
+        intentType: entry.type,
+        roleFunction: entry.fn,
+        source: entry.source,
+        category: null,
+        domain,
+        best: entry.best,
+        now,
+        freshnessDays: input.freshnessDays,
+        current: entry.current,
+      });
       if (result) records.push(result);
     }
     if (tech) {
-      const result = evidenceFor({ kind: "TECHNOLOGY", category: null, domain, best: tech, now, freshnessDays: input.freshnessDays, current: true });
+      const result = evidenceFor({ kind: "TECHNOLOGY", intentType: "TECH_IN_USE", category: null, domain, best: tech, now, freshnessDays: input.freshnessDays, current: true });
       if (result) records.push(result);
     }
   }

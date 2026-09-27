@@ -25,6 +25,8 @@ export const dynamic = "force-dynamic";
 const searchSchema = z.object({
   session_id: z.string().regex(/^cs_[A-Za-z0-9_]+$/).optional(),
   checkout: z.enum(["cancelled"]).optional(),
+  // The plan picked on /pricing before signing up (8.29): highlighted, nothing more.
+  plan: z.enum(["starter", "growth", "pro"]).optional(),
 });
 
 /**
@@ -46,6 +48,7 @@ export default async function StartTrialPage({
   const params = searchSchema.safeParse({
     session_id: typeof raw.session_id === "string" ? raw.session_id : undefined,
     checkout: typeof raw.checkout === "string" ? raw.checkout : undefined,
+    plan: typeof raw.plan === "string" ? raw.plan : undefined,
   });
   const query = params.success ? params.data : {};
 
@@ -93,7 +96,8 @@ export default async function StartTrialPage({
       tagline: plan.tagline,
       monthlyPrice: plan.monthlyPrice!,
       yearlyPrice: plan.yearlyPrice!,
-      recommended: plan.recommended,
+      // The plan they picked on /pricing takes the highlight, when there is one.
+      recommended: query.plan ? plan.id === query.plan : plan.recommended,
       features: plan.features.slice(0, 5),
     }));
 

@@ -51,15 +51,15 @@ export function isInternalVariant(variant: AuthVariant): boolean {
 const FEATURES: Record<AuthVariant, AuthFeature[]> = {
   signup: [
     { icon: Zap, title: "Instant responses", description: "Never miss a new enquiry." },
-    { icon: CalendarCheck2, title: "More bookings", description: "Turn enquiries into scheduled jobs." },
+    { icon: CalendarCheck2, title: "More bookings", description: "Turn enquiries into booked meetings." },
     { icon: TrendingUp, title: "Clear visibility", description: "See what's happening across your lead journey." },
     { icon: Users, title: "Built for B2B teams", description: "Lead conversion for agencies, studios, SaaS and professional-services firms." },
   ],
   login: [
     { icon: Zap, title: "Pick up where you left off", description: "Your leads, bookings and progress are always here." },
-    { icon: Users, title: "Follow up smarter", description: "Turn more enquiries into jobs with less effort." },
+    { icon: Users, title: "Follow up smarter", description: "Turn more enquiries into clients with less effort." },
     { icon: TrendingUp, title: "See real results", description: "Track growth and revenue in real time." },
-    { icon: CalendarCheck2, title: "More jobs, less admin", description: "A simpler way to run your business." },
+    { icon: CalendarCheck2, title: "More clients, less admin", description: "A simpler way to run your business." },
   ],
   forgot: [
     { icon: Lock, title: "Secure", description: "Your account stays protected." },
@@ -102,7 +102,7 @@ const COPY: Record<
   },
   login: {
     headline: ["Welcome back", "to ClientTurn."],
-    support: "Respond faster, follow up smarter, and book more jobs — all in one place.",
+    support: "Respond faster, follow up smarter, and book more meetings — all in one place.",
     annotation: ["More leads", "More bookings", "More growth"],
   },
   forgot: {

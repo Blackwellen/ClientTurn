@@ -106,6 +106,22 @@ export function selectMeetingType(
   return unrestricted.find((type) => type.isDefault) ?? unrestricted[0] ?? null;
 }
 
+/** A meeting type named for a phone call ("Phone call", "Discovery call by phone"). */
+const CALL_TYPE_NAME = /\b(phone|call|ring)\b/i;
+
+/**
+ * The meeting type for a lead who asked to be called (elite-closer brief):
+ * among the types that would fit the lead, one named for a phone call wins;
+ * otherwise the ordinary choice (`selectMeetingType`). The booking is still
+ * made through the ordinary flow, so it stays automated.
+ */
+export function selectCallMeetingType(types: MeetingType[], serviceId: string | null | undefined): MeetingType | null {
+  const active = types.filter((type) => type.active);
+  const fits = (type: MeetingType) => type.serviceIds.length === 0 || (serviceId ? type.serviceIds.includes(serviceId) : false);
+  const call = active.filter((type) => CALL_TYPE_NAME.test(type.name) && fits(type));
+  return call.find((type) => type.isDefault) ?? call[0] ?? selectMeetingType(types, serviceId);
+}
+
 export type AssigneeDecision = {
   userId: string | null;
   reason:

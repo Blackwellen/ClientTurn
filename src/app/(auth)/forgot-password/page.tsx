@@ -4,7 +4,7 @@ import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { ForgotPasswordForm } from "./forgot-password-form";
 
 export const metadata: Metadata = {
-  title: "Reset your password | ClientTurn",
+  title: "Reset your password",
   description: "Request a password reset link for your ClientTurn account.",
 };
 

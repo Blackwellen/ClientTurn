@@ -5,6 +5,7 @@ import { logWriteError } from "@/lib/supabase/write-result";
 import { emitDomainEvent } from "@/lib/events/outbox";
 import { enqueueCrmPushes } from "@/lib/integrations/providers/crm-trigger";
 import { SALES_MOTIONS, type SalesMotion } from "@/lib/sales-library/types";
+import { advanceInterestOpportunity } from "./interests";
 import {
   canAdvance,
   closeTargetForMotion,
@@ -113,8 +114,22 @@ export async function advanceLeadOpportunity(input: {
   checkoutLinkId?: string | null;
   /** Correlates the domain events this move emits. */
   causeKey?: string;
+  /**
+   * The interest (service) this event belongs to, for a lead with several
+   * (08 §B.20, 0144). Absent: the lead's own interest, or the one the event
+   * fits (a checkout: a direct-sale interest; a booking: a meeting one).
+   */
+  serviceId?: string | null;
+  /**
+   * That interest's own motion (interest-focus.ts: a self-serve subscription
+   * sold inside a meeting-led workspace). Only read with `serviceId`; absent,
+   * the workspace's motion decides the stage. Without it a checkout for a
+   * self-serve interest was skipped ("BOOK_MEETING_B2B has no CHECKOUT_SENT
+   * stage") and its opportunity stayed OPEN (story S1).
+   */
+  motion?: string | null;
 }): Promise<AdvanceResult> {
-  const motion = await loadWorkspaceMotion(input.businessId);
+  const motion = input.serviceId && input.motion ? input.motion : await loadWorkspaceMotion(input.businessId);
   // No motion configured: default to the full meeting-led pipeline rather than
   // dropping the opportunity, because "we do not know the motion" is not "no
   // deal exists".
@@ -123,7 +138,22 @@ export async function advanceLeadOpportunity(input: {
 
   const { name, value } = await opportunityName(input.businessId, input.leadId);
 
-  const { data, error } = await db().rpc("ensure_lead_opportunity", {
+  // Several interests: the event goes to that interest's own opportunity.
+  const interest = await advanceInterestOpportunity({
+    businessId: input.businessId,
+    leadId: input.leadId,
+    event: input.event,
+    stage,
+    serviceId: input.serviceId ?? null,
+    checkoutLinkId: input.checkoutLinkId ?? null,
+    motion,
+    name,
+    value,
+  });
+
+  const { data, error } = interest
+    ? { data: interest as unknown, error: null }
+    : await db().rpc("ensure_lead_opportunity", {
     p_business_id: input.businessId,
     p_lead_id: input.leadId,
     p_stage: stage,
@@ -175,6 +205,18 @@ export async function advanceLeadOpportunity(input: {
     });
   }
 
+  if (result.advanced && !result.created) {
+    // Internal (design 08 §B.5): re-assesses the lead's intent and next best
+    // action. Stages only move forward, so one event per (opportunity, stage).
+    await emitOpportunityStageChanged({
+      businessId: input.businessId,
+      opportunityId: result.id,
+      leadId: input.leadId,
+      stage: result.stage,
+      previousStage: result.previous_stage,
+    });
+  }
+
   if (result.advanced) {
     // A new stage is something the CRM should see. Qualification and booking
     // already enqueue a push of their own; the job's idempotency key collapses
@@ -189,6 +231,30 @@ export async function advanceLeadOpportunity(input: {
     advanced: result.advanced,
     stage: result.stage,
   };
+}
+
+/**
+ * `opportunity.stage_changed` (internal, in RESCORE_ON): the lead is
+ * re-assessed when its deal moves. Keyed by (opportunity, stage), so a retry
+ * or a second path reporting the same move emits once. Exported for the one
+ * other writer of `opportunities.stage` (the manual stage move in
+ * services/operations/opportunities.ts). Never throws (emitDomainEvent).
+ */
+export async function emitOpportunityStageChanged(input: {
+  businessId: string;
+  opportunityId: string;
+  leadId: string | null;
+  stage: string;
+  previousStage: string | null;
+}): Promise<void> {
+  if (!input.leadId || input.stage === input.previousStage) return;
+  await emitDomainEvent({
+    businessId: input.businessId,
+    type: "opportunity.stage_changed",
+    subject: { type: "opportunity", id: input.opportunityId },
+    payload: { lead_id: input.leadId, stage: input.stage, previous_stage: input.previousStage },
+    dedupeKey: `opportunity.stage_changed:${input.opportunityId}:${input.stage}`,
+  });
 }
 
 /**
@@ -234,6 +300,18 @@ export async function closeOpportunity(input: {
   opportunityId: string;
   outcome: "WON" | "LOST";
   reason: string;
+  /**
+   * The confirmed payment behind a WON (the direct-sale loop). Carried on the
+   * `opportunity.won` event so a customer's webhook and CRM see the amount.
+   */
+  payment?: {
+    amount_minor: number;
+    currency: string;
+    recurring: boolean;
+    interval: string | null;
+    mrr_minor: number | null;
+    payment_id: string;
+  } | null;
 }): Promise<CloseResult> {
   const { data, error } = await db().rpc("close_opportunity", {
     p_business_id: input.businessId,
@@ -262,7 +340,30 @@ export async function closeOpportunity(input: {
     previous_stage: string;
     previous_outcome: string;
     lead_status: string | null;
+    /** 0144: the lead's opportunities still open after this close. */
+    open_remaining?: number;
   };
+
+  // Several interests (0144): winning one does not close the other, so the
+  // lead's follow-up carries on while any interest is open.
+  const othersOpen = typeof result.open_remaining === "number" && result.open_remaining > 0;
+
+  // A closed deal ends the lead's automation: follow-ups, nudges and the
+  // agent's sequence must not keep running against a customer or a lost deal
+  // (business-stories A9 found the flag left true). The send guard re-checks
+  // lifecycle anyway; this makes the lead's own state say so.
+  if (result.lead_id && !othersOpen) {
+    logWriteError(
+      await db()
+        .from("leads")
+        .update({ automation_active: false })
+        .eq("id", result.lead_id)
+        .eq("business_id", input.businessId)
+        .eq("automation_active", true),
+      "opportunities: stop automation on close",
+      { businessId: input.businessId, leadId: result.lead_id, outcome: input.outcome },
+    );
+  }
 
   // Re-closing with the same outcome is a correction of the reason, not a new
   // win: the dedupe key keeps the event to one per outcome.
@@ -270,7 +371,11 @@ export async function closeOpportunity(input: {
     businessId: input.businessId,
     type: input.outcome === "WON" ? "opportunity.won" : "opportunity.lost",
     subject: { type: "opportunity", id: result.id },
-    payload: { lead_id: result.lead_id, reason: input.reason.slice(0, 500) },
+    payload: {
+      lead_id: result.lead_id,
+      reason: input.reason.slice(0, 500),
+      ...(input.outcome === "WON" && input.payment ? { payment: input.payment } : {}),
+    },
     dedupeKey: `opportunity.${input.outcome.toLowerCase()}:${result.id}`,
   });
 

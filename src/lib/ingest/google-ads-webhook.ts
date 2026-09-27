@@ -5,6 +5,7 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { submissionIdFromResourceName } from "./google-ads-ids.ts";
 import { z } from "zod";
 import type { IngestInput } from "./types.ts";
 
@@ -92,7 +93,7 @@ export function googleAdsWebhookToIngest(businessId: string, integrationId: stri
     source: {
       type: "AD_FORM",
       provider: "google_ads",
-      providerRecordId: body.lead_id,
+      providerRecordId: submissionIdFromResourceName(body.lead_id),
       formId: stringId(body.form_id),
       campaignId: stringId(body.campaign_id),
       adsetId: stringId(body.adgroup_id),

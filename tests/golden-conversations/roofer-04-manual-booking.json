@@ -1,0 +1,59 @@
+{
+  "id": "roofer-04-manual-booking",
+  "archetype": "ROOFER",
+  "motion": "LOCAL_SERVICE",
+  "channel": "sms",
+  "story": "Story H3: booking_mode 'handover' (no calendar, no link). The lead asks to book; one gating check, then the agent asks for a day and time and holds it as a pending booking.",
+  "manualBooking": true,
+  "leadFields": {
+    "SERVICE_NEEDED": "Roof repair"
+  },
+  "turns": [
+    {
+      "lead": "The roof is leaking at LS6 2AB, we need it fixed this week. Can we book a visit?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY"
+        ],
+        "known": [
+          "LOCATION"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "AUTHORITY",
+          "LOCATION"
+        ]
+      }
+    },
+    {
+      "lead": "Yes that's right",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY"
+        ],
+        "known": [
+          "SERVICE_NEEDED"
+        ],
+        "questionDimension": null,
+        "preferredTimeAsked": true
+      }
+    },
+    {
+      "lead": "Tuesday at 10am please",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ANSWER",
+          "ESCALATE"
+        ],
+        "preferredTime": "slot"
+      }
+    }
+  ]
+}

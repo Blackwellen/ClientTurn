@@ -53,7 +53,26 @@ export type AgentChannel =
   | "messenger"
   | "instagram"
   | "tiktok"
-  | "linkedin";
+  | "linkedin"
+  /**
+   * A live AI phone call (voice phase P2, src/lib/voice/). Its eligibility is
+   * `canCallLead` (via policy/channel-policy.ts `canCallVoice`), never the
+   * message-channel `canSend`; a call turn is spoken by the call engine, not
+   * composed as a message.
+   */
+  | "voice";
+
+/** The channels that carry a written message (every channel but a live call). */
+export type MessageAgentChannel = Exclude<AgentChannel, "voice">;
+
+/**
+ * The message transport a turn on this channel writes to. On a call the
+ * written follow-up (a checkout link, a booking confirmation, a "may we call
+ * you?" text) goes by SMS to the number the lead gave, never as speech.
+ */
+export function messageChannelFor(channel: AgentChannel): MessageAgentChannel {
+  return channel === "voice" ? "sms" : channel;
+}
 
 /**
  * The channels where Meta's 24-hour reply window applies.
@@ -306,19 +325,26 @@ export type RiskLevel = (typeof RISK_LEVELS)[number];
 
 /**
  * Confidence policy. Numbers never reach a customer -- they only decide
- * whether the runtime acts, clarifies, or hands over. High-risk tools carry
- * their own higher floor on top of this.
+ * whether the runtime acts or asks the lead to clarify. Owner decision
+ * 2026-09-27: a reply the model could not read is never a reason on its own to
+ * hand the conversation to a person; the runtime asks one clarifying question
+ * (twice at most, handover-policy.ts) and only then hands over. High-risk
+ * tools carry their own higher floor on top of this.
  */
 export const AGENT_CONFIDENCE = {
   /** Act on the interpretation without further checks. */
   ACT: 0.85,
-  /** Below this, clarify or hand over rather than guess. */
+  /** Below this, clarify rather than guess. */
   CLARIFY: 0.6,
   /** Floor for anything the policy engine classes HIGH risk. */
   HIGH_RISK: 0.9,
 } as const;
 
-export type ConfidenceDecision = "ACT" | "CLARIFY" | "HANDOVER";
+/**
+ * ACT: act on it. CLARIFY: act, in the band a risk tolerance may raise.
+ * UNCLEAR: do not act on a guess; ask the lead to clarify (was HANDOVER).
+ */
+export type ConfidenceDecision = "ACT" | "CLARIFY" | "UNCLEAR";
 
 export function confidenceDecision(
   confidence: number | null,
@@ -331,33 +357,42 @@ export function confidenceDecision(
       : AGENT_CONFIDENCE.ACT;
   if (confidence >= floor) return "ACT";
   if (confidence >= AGENT_CONFIDENCE.CLARIFY) return "CLARIFY";
-  return "HANDOVER";
+  return "UNCLEAR";
 }
 
 /** Settings -> AI & selling risk tolerance (settings/ai-selling.ts). */
 export type AgentRiskTolerance = "CAUTIOUS" | "BALANCED" | "ASSERTIVE";
 
 /**
- * The confidence below which a conversational turn is handed to a person, per
- * risk tolerance. It can only be RAISED above AGENT_CONFIDENCE.CLARIFY, never
- * lowered: ASSERTIVE keeps the same floor as BALANCED, because a lower floor
- * would let the model act on replies it could not read. Binding verdicts
- * (deterministic classification, qualification) are untouched by this.
+ * The confidence below which the runtime asks the lead to clarify instead of
+ * acting, per risk tolerance. It can only be RAISED above
+ * AGENT_CONFIDENCE.CLARIFY, never lowered: ASSERTIVE keeps the same floor as
+ * BALANCED, because a lower floor would let the model act on replies it could
+ * not read. It is a clarify floor, not a hand-over floor (owner decision
+ * 2026-09-27). Binding verdicts (deterministic classification, qualification)
+ * are untouched by this.
  */
-export const RISK_HANDOVER_FLOOR: Record<AgentRiskTolerance, number> = {
+export const RISK_CLARIFY_FLOOR: Record<AgentRiskTolerance, number> = {
   CAUTIOUS: AGENT_CONFIDENCE.ACT,
   BALANCED: AGENT_CONFIDENCE.CLARIFY,
   ASSERTIVE: AGENT_CONFIDENCE.CLARIFY,
 };
 
-export function handoverFloor(tolerance: AgentRiskTolerance | null | undefined): number {
-  const floor = tolerance ? RISK_HANDOVER_FLOOR[tolerance] : undefined;
+/** @deprecated The floor clarifies; it no longer hands over. Use RISK_CLARIFY_FLOOR. */
+export const RISK_HANDOVER_FLOOR = RISK_CLARIFY_FLOOR;
+
+export function clarifyFloor(tolerance: AgentRiskTolerance | null | undefined): number {
+  const floor = tolerance ? RISK_CLARIFY_FLOOR[tolerance] : undefined;
   return Math.max(AGENT_CONFIDENCE.CLARIFY, floor ?? AGENT_CONFIDENCE.CLARIFY);
 }
 
+/** @deprecated Use clarifyFloor. */
+export const handoverFloor = clarifyFloor;
+
 /**
  * `confidenceDecision`, with the workspace's risk tolerance applied. CAUTIOUS
- * turns every CLARIFY (and a missing confidence) into HANDOVER.
+ * turns every CLARIFY (and a missing confidence) into UNCLEAR: ask the lead
+ * to clarify rather than act. It never hands over by itself.
  */
 export function confidenceVerdictForTolerance(
   confidence: number | null,
@@ -366,9 +401,9 @@ export function confidenceVerdictForTolerance(
 ): ConfidenceDecision {
   const base = confidenceDecision(confidence, risk);
   if (base !== "CLARIFY") return base;
-  const floor = handoverFloor(tolerance);
+  const floor = clarifyFloor(tolerance);
   if (floor <= AGENT_CONFIDENCE.CLARIFY) return base;
-  if (confidence === null || confidence < floor) return "HANDOVER";
+  if (confidence === null || confidence < floor) return "UNCLEAR";
   return base;
 }
 
@@ -477,6 +512,70 @@ export const HANDOVER_PRIORITY_FOR: Record<HandoverReason, HandoverPriority> = {
   READY_TO_BUY: "HIGH",
 };
 
+// ------------------------------------------------- hand-over vs assist
+
+/**
+ * The two ways a person gets involved (owner decision 2026-09-27: human
+ * hand-over is the last resort; docs/AGENT_RUNTIME.md "Hand-over policy").
+ *
+ *   HANDOVER        the conversation goes to a person and the AI stops
+ *                   (ownership moves, `human_takeover` is set, the run gate
+ *                   refuses further turns). Only for the last resorts in
+ *                   handover-policy.ts HANDOVER_TRIGGERS.
+ *   ASSIST_REQUEST  a person is asked to confirm one fact or do one task in
+ *                   the background, and is notified. The conversation stays
+ *                   AI_ACTIVE and the AI keeps going. Stored as an
+ *                   `agent_handoffs` row with `summary_json.kind =
+ *                   'ASSIST_REQUEST'` and ownership unchanged.
+ */
+export const ESCALATION_KINDS = ["HANDOVER", "ASSIST_REQUEST"] as const;
+export type EscalationKind = (typeof ESCALATION_KINDS)[number];
+
+/** What a person is asked to do in the background while the AI carries on. */
+export const ASSIST_REASONS = [
+  /** A REVIEW verdict (or a review disqualifier) to look at later. */
+  "QUALIFICATION_REVIEW",
+  /** A fact the approved data does not answer; a colleague confirms it. */
+  "CONFIRM_DETAIL",
+  /** A price that is not published; a colleague confirms it. */
+  "CONFIRM_PRICE",
+  /** Security documents or procurement steps a specialist provides. */
+  "SPECIALIST_REVIEW",
+  /** A ready buyer the assistant may not send a checkout link to. */
+  "SEND_ORDER_DETAILS",
+  /** The calendar had nothing free; a colleague arranges a time. */
+  "ARRANGE_TIME",
+  /** A booked meeting that closes through a person: the hand-off brief. */
+  "MEETING_BRIEF",
+] as const;
+export type AssistReason = (typeof ASSIST_REASONS)[number];
+
+export const ASSIST_REASON_LABEL: Record<AssistReason, string> = {
+  QUALIFICATION_REVIEW: "An answer needs a person to check (the assistant carries on)",
+  CONFIRM_DETAIL: "Confirm a detail the assistant could not answer",
+  CONFIRM_PRICE: "Confirm a price that is not published",
+  SPECIALIST_REVIEW: "Send security or procurement information",
+  SEND_ORDER_DETAILS: "Send the details to get a ready buyer started",
+  ARRANGE_TIME: "Arrange a time: the calendar had nothing free",
+  MEETING_BRIEF: "Meeting booked: brief for the person taking it",
+};
+
+/**
+ * The `agent_handoffs.reason` an assist is stored under. The column's CHECK
+ * constraint (0125) allows HANDOVER_REASONS only, so an assist reuses the
+ * closest one and carries its own reason in `summary_json.assistReason`: no
+ * schema change.
+ */
+export const ASSIST_REASON_STORED_AS: Record<AssistReason, HandoverReason> = {
+  QUALIFICATION_REVIEW: "QUALIFICATION_REVIEW",
+  CONFIRM_DETAIL: "OUT_OF_SCOPE",
+  CONFIRM_PRICE: "PRICING_NOT_CONFIGURED",
+  SPECIALIST_REVIEW: "POLICY",
+  SEND_ORDER_DETAILS: "READY_TO_BUY",
+  ARRANGE_TIME: "POLICY",
+  MEETING_BRIEF: "HIGH_VALUE",
+};
+
 // ------------------------------------------------------------ model I/O
 
 /**
@@ -571,6 +670,11 @@ export const CHANNEL_LIMITS: Record<AgentChannel, { preferred: number; hard: num
    * message is still read in a narrow chat pane and not in an inbox.
    */
   linkedin: { preferred: 700, hard: 1900 },
+  /**
+   * A call's written follow-up goes by SMS (messageChannelFor), so it reads
+   * the SMS guidance. Spoken turns are governed by voice/pacing.ts instead.
+   */
+  voice: { preferred: 320, hard: 480 },
 };
 
 /** Hard ceiling on tool/model iterations in a single turn. */

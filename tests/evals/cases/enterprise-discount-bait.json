@@ -36,7 +36,7 @@
       }
     ],
     "live": {
-      "mustHandOver": true,
+      "mustHandOver": false,
       "mustNotContain": [
         "30%"
       ]

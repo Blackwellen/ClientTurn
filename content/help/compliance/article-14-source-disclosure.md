@@ -13,17 +13,21 @@ When you contact someone whose details you did not get from them — a prospect 
 
 ## What ClientTurn adds to a cold first contact
 
-Every cold email to a prospect carries one sentence built from what ClientTurn recorded about where the details came from, for example:
+The first cold email to a prospect carries one sentence built from what ClientTurn recorded about where the details came from, for example:
 
 ```
 You're receiving this because Example Studio Ltd found your business contact details via your company's own website. You can see what we hold and ask us to delete it at https://example.com/privacy.
 ```
+
+It goes on the first email of the sequence that is actually delivered, and not on later steps. If the first step failed to send, its retry still carries the line.
 
 A first message on a social channel (a LinkedIn connection note, for example) gets a shorter version, because those messages are short:
 
 ```
 I found your details via your company's own website. What we hold and how to opt out: https://example.com/privacy
 ```
+
+The social line goes only on the first message to that person. Once anything has been delivered to them on any social platform, or a cold email step has already gone out (which carried the longer line), it is not repeated. No line is owed when the person started the conversation, or when everything recorded about them came from their own engagement with your business.
 
 The line is generated from recorded facts. It is never written by hand and never written by AI, because a plausible-sounding sentence naming a source that was never used would be a false statement about how someone's data was obtained.
 

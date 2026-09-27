@@ -44,9 +44,11 @@ describe("SMS segments", () => {
 
   test("the SMS length lint is by segment", () => {
     assert.equal(evaluateLength("a".repeat(150), "sms").verdict, "OK");
-    // 300 characters with an emoji is five UCS-2 segments: rejected though
-    // well under the 480-character limit.
-    assert.equal(evaluateLength(`${"a".repeat(298)}👋`, "sms").verdict, "REJECT");
+    // 300 characters with one non-GSM letter is five UCS-2 segments: rejected
+    // though well under the 480-character limit. (An emoji no longer shows
+    // this: owner rule 2026-09-27, normaliseForSms strips emojis before the
+    // count, and the validator rejects them as STYLE_EMOJI anyway.)
+    assert.equal(evaluateLength(`${"a".repeat(298)}ł`, "sms").verdict, "REJECT");
     // 480 GSM-7 characters (four segments) is the hard limit and passes.
     assert.notEqual(evaluateLength("a".repeat(480), "sms").verdict, "REJECT");
   });

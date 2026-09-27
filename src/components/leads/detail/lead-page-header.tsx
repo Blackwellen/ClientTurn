@@ -174,9 +174,13 @@ export function LeadKeyFacts({ header }: { header: HeaderData }) {
         {score ? (
           <span className="flex flex-wrap items-center gap-1.5">
             <StatusBadge kind="lead_grade" value={score.grade} dense />
-            <span className="tabular-nums">{Math.round(score.total)}</span>
+            {/* "59 / 100" stays on one line; only the confidence may wrap (8.7). */}
+            <span className="whitespace-nowrap tabular-nums">
+              {Math.round(score.total)}
+              <span className="font-normal text-content-muted"> / 100</span>
+            </span>
             <span className="font-normal tabular-nums text-content-muted">
-              / 100 · {Math.round(score.confidence * 100)}% confidence
+              · {Math.round(score.confidence * 100)}% confidence
             </span>
           </span>
         ) : (
@@ -271,9 +275,9 @@ export function LeadScoreBreakdown({ header }: { header: HeaderData }) {
                         <span className="min-w-0">
                           {item.label}
                           {item.value && item.value !== "true" ? (
-                            <span className="text-content">: {item.value}</span>
+                            <span className="text-content">: {evidenceValue(item.value)}</span>
                           ) : null}
-                          <span className="text-content-subtle"> · {item.source.replace(/_/g, " ")}</span>
+                          <span className="text-content-subtle"> · {evidenceSource(item.source)}</span>
                         </span>
                       </li>
                     ))}
@@ -308,4 +312,18 @@ export function LeadScoreBreakdown({ header }: { header: HeaderData }) {
       )}
     </section>
   );
+}
+
+/**
+ * Score evidence names where each fact came from. Column paths such as
+ * "lead.estimated_value" and verdict codes such as "QUALIFIED" read as
+ * internals on the lead page (8.7), so both are put into words here.
+ */
+function evidenceSource(source: string): string {
+  if (source.startsWith("lead.")) return "the lead record";
+  return source.replace(/[._]/g, " ");
+}
+
+function evidenceValue(value: string): string {
+  return /^[A-Z][A-Z_]+$/.test(value) ? value.replace(/_/g, " ").toLowerCase() : value;
 }

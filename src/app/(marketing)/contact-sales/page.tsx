@@ -71,7 +71,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
     url: path,
     siteName: "ClientTurn",
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
   },
 };

@@ -11,6 +11,7 @@ import {
   type ExperimentVariant,
 } from "@/lib/learning/experiments";
 import { EXPERIMENT_FIELDS, experimentResults, type ExperimentRow } from "@/lib/learning/experiments-service";
+import { questionIntentKeySchema } from "@/lib/qualification-intelligence/types";
 import { defineOperation, ServiceError, type HandlerInput } from "../runtime";
 
 /**
@@ -45,6 +46,14 @@ const variantSchema = z.object({
   key: z.string().trim().min(1).max(16).regex(/^[A-Z0-9_]+$/, "Use capital letters, digits or _ for a variant key."),
   label: z.string().trim().min(1).max(80),
   templates: z.record(z.string().regex(/^\d{1,2}$/), z.string().trim().max(2000)).optional(),
+  /** QUESTION_STRATEGY: intent key -> wording family (and optional rendering). */
+  questions: z
+    .record(
+      questionIntentKeySchema,
+      z.object({ wordingFamily: z.string().trim().min(1).max(80), rendering: z.string().trim().min(3).max(300).optional() }).strict(),
+    )
+    .optional(),
+  strategyVersion: z.string().trim().min(1).max(80).optional(),
 });
 
 defineOperation("experiment.list", {
@@ -75,7 +84,10 @@ defineOperation("experiment.results", {
 defineOperation("experiment.create", {
   schema: z.object({
     kind: z.enum(EXPERIMENT_KINDS),
-    /** WARM_FOLLOW_UP: an automation (sequence) id; REACTIVATION: a campaign id. */
+    /**
+     * WARM_FOLLOW_UP: an automation (sequence) id; REACTIVATION: a campaign id;
+     * QUESTION_STRATEGY: a service (offer) id, or the business id for the whole workspace.
+     */
     targetId: z.string().uuid(),
     name: z.string().trim().min(1).max(120),
     holdoutPercent: z.number().int().min(0).max(MAX_HOLDOUT_PERCENT).default(0),
@@ -99,17 +111,24 @@ defineOperation("experiment.create", {
       holdoutPercent: args.holdoutPercent,
       variants: args.variants,
       minSamplePerArm: args.minSamplePerArm,
+      kind: args.kind,
+      primaryMetric: args.primaryMetric,
     });
     if (problems.length > 0) throw new ServiceError("INVALID_INPUT", problems[0]);
 
     // The target must be this workspace's own sequence or campaign.
     const admin = createAdminClient();
+    // A QUESTION_STRATEGY experiment targets an offer, or the workspace itself (CD-19).
     const target =
-      args.kind === "WARM_FOLLOW_UP"
-        ? await admin.from("automation_definitions").select("id").eq("business_id", context.businessId).eq("id", args.targetId).maybeSingle()
-        : await admin.from("campaigns").select("id").eq("business_id", context.businessId).eq("id", args.targetId).maybeSingle();
+      args.kind === "QUESTION_STRATEGY" && args.targetId === context.businessId
+        ? { data: { id: context.businessId }, error: null }
+        : args.kind === "QUESTION_STRATEGY"
+          ? await admin.from("services").select("id").eq("business_id", context.businessId).eq("id", args.targetId).maybeSingle()
+          : args.kind === "WARM_FOLLOW_UP"
+            ? await admin.from("automation_definitions").select("id").eq("business_id", context.businessId).eq("id", args.targetId).maybeSingle()
+            : await admin.from("campaigns").select("id").eq("business_id", context.businessId).eq("id", args.targetId).maybeSingle();
     if (target.error) throw new ServiceError("UNAVAILABLE", "The sequence or campaign could not be read.");
-    if (!target.data) throw new ServiceError("NOT_FOUND", "That sequence or campaign could not be found.");
+    if (!target.data) throw new ServiceError("NOT_FOUND", "That sequence, campaign or offer could not be found.");
 
     const { data, error } = await db()
       .from("experiments")

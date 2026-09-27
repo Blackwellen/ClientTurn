@@ -22,9 +22,13 @@ type RegistryEntry = { promptKey: TaskType; version: number; systemPrompt: strin
  *     variant_generation    "UK home-services business" framing removed
  *   v3 (2026-09-26, revenue engine phase 3):
  *     agent_decision        PROPOSE_CHECKOUT + checkout_link_id, no discounts/purchase claims
+ *   v4 / v2 (2026-09-26, qualification intelligence, design 08 §B.16):
+ *     agent_decision        follows the NBA strategy block's "move" (engine LIVE)
+ *     answer_extraction     multi-dimension candidates with verbatim evidence spans
  */
 export const PROMPT_VERSIONS: Partial<Record<TaskType, number>> = {
-  agent_decision: 3,
+  agent_decision: 4,
+  answer_extraction: 2,
   intent_classification: 2,
   variant_generation: 2,
 };

@@ -31,7 +31,7 @@ import {
   type QualificationDimensionKey,
   type SalesMotion,
 } from "../sales-library/types.ts";
-import { HANDOVER_REASONS, type AgentChannel, type HandoverReason } from "../agent/types.ts";
+import { ASSIST_REASONS, HANDOVER_REASONS, type AgentChannel, type HandoverReason } from "../agent/types.ts";
 import type { ConversionGoalType } from "../business-profile/types.ts";
 import { RESPONSE_TYPES } from "../qualification/types.ts";
 import type { ConversationStage } from "../sales-library/method-router.ts";
@@ -150,8 +150,32 @@ export const BEHAVIOURAL_SIGNAL_TYPES = [
   "BOOKING_LINK_OPENED",
 ] as const;
 
-/** From Find Leads' permitted sources for a promoted prospect; input only. */
-export const CONTEXT_SIGNAL_TYPES = ["FUNDING", "HIRING", "JOB_CHANGE", "TECH_CHANGE", "TENDER"] as const;
+/**
+ * From Find Leads' permitted sources for a promoted prospect; input only.
+ * The later types carry the find-leads intent catalogue
+ * (find-leads/intent-catalogue.ts) into lead context: signals.ts
+ * CONTEXT_BY_INTENT_TYPE maps each catalogue type to one of these.
+ * Migration 0155 widens lead_intent_signals_signal_type_check to match.
+ */
+export const CONTEXT_SIGNAL_TYPES = [
+  "FUNDING",
+  "HIRING",
+  "JOB_CHANGE",
+  "TECH_CHANGE",
+  "TENDER",
+  "EXPANSION",
+  "LEADERSHIP_HIRE",
+  "KEY_DEPARTURE",
+  "ACQUISITION",
+  "REBRAND",
+  "WEBSITE_RELAUNCH",
+  "PRODUCT_LAUNCH",
+  "AWARD",
+  "PARTNERSHIP",
+  "FILING_DEADLINE",
+  "ACCOUNTS_GROWTH",
+  "CONTRACT_RENEWAL",
+] as const;
 
 export const NEGATIVE_SIGNAL_TYPES = [
   "NOT_INTERESTED",
@@ -211,6 +235,18 @@ export const SIGNAL_TYPE_CATEGORY: Record<SignalType, SignalCategory> = {
   JOB_CHANGE: "CONTEXT",
   TECH_CHANGE: "CONTEXT",
   TENDER: "CONTEXT",
+  EXPANSION: "CONTEXT",
+  LEADERSHIP_HIRE: "CONTEXT",
+  KEY_DEPARTURE: "CONTEXT",
+  ACQUISITION: "CONTEXT",
+  REBRAND: "CONTEXT",
+  WEBSITE_RELAUNCH: "CONTEXT",
+  PRODUCT_LAUNCH: "CONTEXT",
+  AWARD: "CONTEXT",
+  PARTNERSHIP: "CONTEXT",
+  FILING_DEADLINE: "CONTEXT",
+  ACCOUNTS_GROWTH: "CONTEXT",
+  CONTRACT_RENEWAL: "CONTEXT",
   NOT_INTERESTED: "EXPLICIT",
   NO_NEED: "EXPLICIT",
   WRONG_PERSON: "EXPLICIT",
@@ -680,7 +716,7 @@ const _stagesExhaustive: _StagesExhaustive = true;
 void _stagesExhaustive;
 
 /** The agent channels (agent/types.ts AgentChannel), as a runtime list. */
-export const QI_CHANNELS = ["sms", "whatsapp", "email", "messenger", "instagram", "tiktok", "linkedin"] as const satisfies readonly AgentChannel[];
+export const QI_CHANNELS = ["sms", "whatsapp", "email", "messenger", "instagram", "tiktok", "linkedin", "voice"] as const satisfies readonly AgentChannel[];
 type _ChannelsExhaustive = AgentChannel extends (typeof QI_CHANNELS)[number] ? true : never;
 const _channelsExhaustive: _ChannelsExhaustive = true;
 void _channelsExhaustive;
@@ -964,6 +1000,12 @@ export const offerProfileSchema = z
       .strict()
       .optional(),
     handoffRules: z.array(z.object({ when: predicateSchema, reason: z.enum(HANDOVER_REASONS) }).strict()).max(20).optional(),
+    /**
+     * The approved checkout link (commercial_authority.approved_checkout_links[].id)
+     * that sells this offer, for a lead with several interests (interests.ts
+     * checkoutLinkForService). Absent: the link whose product names the offer.
+     */
+    checkoutLinkId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
   })
   .strict();
 export type OfferProfile = z.infer<typeof offerProfileSchema>;
@@ -1200,6 +1242,13 @@ export const nextBestActionSchema = z
     confidence: unit,
     /** Set when next_action is ESCALATE (an existing HandoverReason). */
     handover_reason: z.enum(HANDOVER_REASONS).nullable(),
+    /**
+     * A background task for a person while the AI carries on (owner decision
+     * 2026-09-27, agent/types.ts ASSIST_REQUEST): a REVIEW to check, a
+     * specialist document, order details for a ready buyer. Never set on an
+     * ESCALATE. Optional so assessments stored before it still parse.
+     */
+    assist_reason: z.enum(ASSIST_REASONS).nullable().optional(),
     /** Set when next_action is WAIT: when to resume. */
     resume_at: isoDateTime.nullable(),
     /** Set when next_action is DISQUALIFY: also suppress (offer disqualifier suppress:true). */
@@ -1245,6 +1294,9 @@ export const nextBestActionSchema = z
     }
     if ((n.next_action === "ESCALATE") !== (n.handover_reason !== null)) {
       ctx.addIssue({ code: "custom", path: ["handover_reason"], message: "handover_reason is set exactly when escalating" });
+    }
+    if (n.next_action === "ESCALATE" && n.assist_reason) {
+      ctx.addIssue({ code: "custom", path: ["assist_reason"], message: "an escalation is a hand-over, not an assist" });
     }
     if (n.next_action !== "WAIT" && n.resume_at !== null) {
       ctx.addIssue({ code: "custom", path: ["resume_at"], message: "resume_at is for WAIT only" });

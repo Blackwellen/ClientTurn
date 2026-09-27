@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   Brain,
   Building2,
+  FileSignature,
   CreditCard,
   Link2,
   ShieldCheck,
@@ -21,6 +22,7 @@ const ICONS: Record<
   connections: Link2,
   "business-profile": Brain,
   "ai-selling": Sparkles,
+  quotes: FileSignature,
   team: Users,
   developer: Terminal,
   "data-controls": ShieldCheck,
@@ -41,9 +43,9 @@ const ICONS: Record<
 export function SettingsSectionNav({ active }: { active: SettingsSection }) {
   return (
     <nav aria-label="Settings sections" data-tour="settings-nav">
-      {/* Four across on wide screens (two even rows of four); on mobile they stack rather
-          than wrapping into an uneven grid. */}
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Nine sections: three even rows of three on wide screens; on mobile
+          they stack rather than wrapping into an uneven grid. */}
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = ICONS[section.id];
           const isActive = section.id === active;

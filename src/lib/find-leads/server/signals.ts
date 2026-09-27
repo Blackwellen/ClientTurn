@@ -1,6 +1,5 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { serverEnv } from "@/lib/env";
 import {
   liveFeeds,
   signalAvailability,
@@ -19,10 +18,6 @@ export function liveSignalFeeds(): SignalFeed[] {
   return [...liveFeeds(allProviders().filter((provider) => provider.configured()).map((p) => p.key))];
 }
 
-/** True when a SNAP partner token is configured, so LinkedIn search runs server-side. */
-export function linkedinPartnerConfigured(): boolean {
-  return Boolean(serverEnv.sourcing.linkedinSnapToken);
-}
 
 /**
  * Reading and running signals.

@@ -19,6 +19,18 @@ import {
   planMerge,
   revertFieldPatch,
 } from "../src/lib/identity/merge-plan.ts";
+import { readFileSync } from "node:fs";
+import { activeFilterCount, hasActiveFilters, parseLeadFilters } from "../src/lib/leads/filters.ts";
+import {
+  DIMENSION_STATUSES,
+  FACT_STATES,
+  INTENT_STATES,
+  NBA_ACTIONS,
+  QI_ENGINE_MODES,
+} from "../src/lib/qualification-intelligence/types.ts";
+import { NBA_ACTION_COPY, NBA_FAMILIES } from "../src/lib/qualification-intelligence/explain.ts";
+
+const surface = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 /**
  * Phase 5 surfaces: the pure rules behind the Dashboard revenue-control cards,
@@ -348,5 +360,111 @@ describe("the merge plan", () => {
       { status: "NEW" },
     );
     assert.deepEqual(restore, {});
+  });
+});
+
+/* ---------------------------------------- qualification intelligence (§B.17) */
+
+describe("Lead Detail: qualification intelligence surfaces", () => {
+  const card = surface("src/components/leads/detail/next-best-action-card.tsx");
+  const tabs = surface("src/components/leads/detail/lead-page-tabs.tsx");
+  const intent = surface("src/components/leads/detail/intent-panel.tsx");
+  const page = surface("src/app/(app)/app/leads/[id]/page.tsx");
+
+  test("the Next best action card sits in the right rail, streamed with a skeleton", () => {
+    assert.match(page, /<React\.Suspense fallback=\{<NextBestActionSkeleton \/>\}>\s*<NextBestActionCard/);
+  });
+
+  test("the card implements all six route states", () => {
+    assert.match(card, /export function NextBestActionSkeleton/, "loading");
+    assert.match(card, /This lead has not been assessed yet/, "empty");
+    assert.match(card, /could not be loaded/, "error");
+    assert.match(card, /Your role can view this but not change it/, "permission denied");
+    assert.match(card, /No calendar or booking page is connected/, "integration required");
+    assert.match(card, /<PlanLimitState/, "plan limit");
+  });
+
+  test("the card explains itself: reason, why this question, alternatives, confidence, engine version, overrides", () => {
+    for (const pattern of [/nba\.reason/, /Why this question\?/, /Also considered/, /Confidence/, /assessment\.engineVersion/, /<NbaOverrideDialog/, /<RequalifyButton/, /Qualification score/]) {
+      assert.match(card, pattern);
+    }
+  });
+
+  test("the Intent section shows score, components, evidence with source and age, signals, contradictions and decay", () => {
+    for (const pattern of [/INTENT_SCORE_COMPONENTS\.map/, /Evidence/, /SIGNAL_SOURCE_COPY/, /formatRelative\(item\.observed_at\)/, /Latest signals/, /Contradicting evidence/, /Valid until/, /<IntentOverrideDialog/]) {
+      assert.match(intent, pattern);
+    }
+    assert.match(intent, /Not assessed yet/, "empty state");
+  });
+
+  test("the Qualification tab shows confirmed, inferred, unknown and conflicting with completeness and history", () => {
+    assert.match(tabs, /DIMENSION_STATUSES\.map/);
+    assert.match(tabs, /label="Qualification completeness"/);
+    assert.match(tabs, /Qualification history/);
+    assert.match(tabs, /<FactActions/);
+    assert.match(tabs, /<SetFactDialog/);
+    assert.match(tabs, /Your role can view this lead&apos;s qualification but not correct it/);
+    assert.match(tabs, /TabError leadId=\{leadId\} tab="qualification" what="Intent and qualification"/);
+  });
+
+  test("the families the card groups actions into cover all nine the brief names", () => {
+    assert.deepEqual([...NBA_FAMILIES], ["Ask", "Answer", "Follow up", "Book", "Checkout", "Escalate", "Nurture", "Disqualify", "Wait"]);
+    for (const action of NBA_ACTIONS) assert.ok(NBA_FAMILIES.includes(NBA_ACTION_COPY[action].family));
+  });
+});
+
+describe("status badges for qualification intelligence live in one place", () => {
+  const badge = surface("src/components/ui/badge.tsx");
+
+  test("every state has a badge entry", () => {
+    for (const [map, values] of [
+      ["INTENT_STATE", INTENT_STATES],
+      ["NBA_ACTION", NBA_ACTIONS],
+      ["DIMENSION_STATUS", DIMENSION_STATUSES],
+      ["FACT_STATE", FACT_STATES],
+      ["ENGINE_MODE", QI_ENGINE_MODES],
+    ] as const) {
+      const block = badge.slice(badge.indexOf(`export const ${map} = {`));
+      const body = block.slice(0, block.indexOf("} as const"));
+      for (const value of values) assert.match(body, new RegExp(`\\b${value}: \\{`), `${map}.${value}`);
+    }
+    for (const kind of ["intent_state", "nba_action", "dimension_status", "fact_state", "engine_mode"]) {
+      assert.match(badge, new RegExp(`${kind}: [A-Z_]+,`));
+    }
+  });
+
+  test("no other surface maps these states to tones", () => {
+    for (const path of [
+      "src/components/leads/detail/next-best-action-card.tsx",
+      "src/components/leads/detail/intent-panel.tsx",
+      "src/components/leads/detail/lead-page-tabs.tsx",
+      "src/components/settings/ai-selling/qualification-policy-card.tsx",
+      "src/components/leads/lead-filter-popover.tsx",
+    ]) {
+      assert.equal(/BOOKING_READY:\s*\{[^}]*tone/.test(surface(path)), false, `${path} defines its own tone map`);
+    }
+  });
+});
+
+describe("Leads list: intent filters", () => {
+  test("intent state, next action and strong-but-incomplete parse from the URL", () => {
+    const filters = parseLeadFilters({ intent: "HIGH,BOOKING_READY,NOPE", nextAction: "ASK", strongIncomplete: "1" });
+    assert.deepEqual(filters.intent, ["HIGH", "BOOKING_READY"]);
+    assert.deepEqual(filters.nextAction, ["ASK"]);
+    assert.equal(filters.strongIncomplete, true);
+    assert.equal(hasActiveFilters(filters), true);
+    assert.equal(activeFilterCount(filters), 3);
+    assert.equal(parseLeadFilters({ intent: "NOPE" }).intent, undefined);
+  });
+
+  test("the list query and the popover apply them", () => {
+    const queries = surface("src/lib/leads/queries.ts");
+    assert.match(queries, /in\("intent_state", filters\.intent\)/);
+    assert.match(queries, /in\("next_action", filters\.nextAction\)/);
+    assert.match(queries, /lt\("qualification_completeness", INCOMPLETE_BELOW\)/);
+    const popover = surface("src/components/leads/lead-filter-popover.tsx");
+    assert.match(popover, /Strong intent, qualification incomplete/);
+    assert.match(popover, /label="Buying intent"/);
+    assert.match(popover, /label="Next best action"/);
   });
 });

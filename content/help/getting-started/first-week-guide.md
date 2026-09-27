@@ -4,7 +4,11 @@ summary: A day-by-day plan for your first week, from connecting lead sources to 
 category: getting-started
 keywords: [first week, checklist, plan, get started, onboarding checklist, what to do first, quick start, best practice]
 order: 5
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/getting-started/first-week-guide-1.png
+    alt: "The Dashboard's Needs attention panel and the Revenue control tiles for unanswered replies and booking-ready leads"
+    caption: "Check Needs attention, Booking-ready and Unanswered replies every day"
 ---
 
 This plan assumes you have finished [setting up your workspace](/help/getting-started/setting-up-your-workspace). Each step links to the detailed guide.
@@ -38,7 +42,8 @@ This plan assumes you have finished [setting up your workspace](/help/getting-st
 
 ## Every day
 
-- Check the **Dashboard** and **Inbox** for leads that need attention and conversations handed to a person.
+- Check the **Dashboard** and **Inbox** for leads that need attention and conversations handed to a person. On the Dashboard, the **Booking-ready** card counts leads that are qualified but not yet booked; choose it to open that list under **Leads**.
+- Work through anything left under **Finish setting up** at the top of the Dashboard.
 - Ask Copilot "Which leads need attention?"
 
 ## End of the week

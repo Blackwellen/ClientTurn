@@ -1,0 +1,15 @@
+{
+  "id": "handover-08-bespoke-terms",
+  "story": "Bespoke contract or payment terms are a commitment only a person can make: an immediate hand-over.",
+  "turns": [
+    {
+      "lead": "We'd need net 60 payment terms and a custom contract before we go ahead.",
+      "expect": {
+        "disposition": "HANDOVER",
+        "trigger": "COMMERCIAL_COMMITMENT",
+        "reason": "POLICY",
+        "was": "CONTINUE"
+      }
+    }
+  ]
+}

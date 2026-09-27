@@ -1,4 +1,4 @@
-import content from "./content.generated.ts";
+import content, { imageSizes } from "./content.generated.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { validateArticle, type HelpArticle } from "./contract.ts";
 
@@ -20,4 +20,9 @@ export function readBundledHelpIndex() {
     if (result.article) articles.push(result.article);
   }
   return { articles, problems };
+}
+
+/** A screenshot's pixel size as bundled at build time, or null. */
+export function bundledImageSize(src: string): { width: number; height: number } | null {
+  return imageSizes[src] ?? null;
 }

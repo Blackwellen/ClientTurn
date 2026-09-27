@@ -13,7 +13,7 @@ import "server-only";
 
 import { z } from "zod";
 import { enqueue } from "@/lib/jobs/queue";
-import type { AgentChannel, AgentEvent, AgentEventType } from "./types";
+import type { AgentChannel, AgentEvent, AgentEventType, MessageAgentChannel } from "./types";
 
 export const agentRunPayload = z.object({
   eventId: z.string().min(1).max(200),
@@ -52,7 +52,7 @@ export const agentRunPayload = z.object({
 
 export type AgentRunPayload = z.infer<typeof agentRunPayload>;
 
-const CHANNEL_EVENT: Record<AgentChannel, AgentEventType> = {
+const CHANNEL_EVENT: Record<MessageAgentChannel, AgentEventType> = {
   sms: "INBOUND_SMS",
   whatsapp: "INBOUND_WHATSAPP",
   email: "INBOUND_EMAIL",
@@ -67,7 +67,7 @@ export function inboundMessageEvent(input: {
   businessId: string;
   leadId: string;
   conversationId: string;
-  channel: AgentChannel;
+  channel: MessageAgentChannel;
   provider: string | null;
   /** The `messages.id` of the stored inbound row -- stable across retries. */
   messageId: string;

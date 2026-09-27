@@ -197,14 +197,32 @@ const ATTENTION_REASONS: Record<string, string> = {
   follow_up_overdue: "Follow-up is overdue",
   human_requested: "The lead asked to speak to a person",
   review_required: "Qualification needs a human decision",
+  clarification_failed: "A reply could not be matched after asking again",
   send_failed: "The last message could not be delivered",
   no_response: "No response to the last follow-up",
 };
 
 export function attentionReasonLabel(reason: string | null) {
   if (!reason) return "Needs attention";
+  // A background task while the assistant keeps the conversation (owner
+  // decision 2026-09-27): `agent_assist:<AssistReason>`.
+  if (reason.startsWith("agent_assist:")) {
+    const assist = reason.slice("agent_assist:".length);
+    return ATTENTION_ASSIST[assist] ?? "A colleague is asked to help; the assistant carries on";
+  }
   return ATTENTION_REASONS[reason] ?? reason.replace(/_/g, " ");
 }
+
+/** `agent_assist:<reason>` labels. Mirrors agent/types.ts ASSIST_REASON_LABEL without importing the runtime. */
+const ATTENTION_ASSIST: Record<string, string> = {
+  QUALIFICATION_REVIEW: "Check an answer (the assistant carries on)",
+  CONFIRM_DETAIL: "Confirm a detail for the assistant",
+  CONFIRM_PRICE: "Confirm a price for the assistant",
+  SPECIALIST_REVIEW: "Send security or procurement information",
+  SEND_ORDER_DETAILS: "Send the details to a ready buyer",
+  ARRANGE_TIME: "Arrange a meeting time",
+  MEETING_BRIEF: "Meeting booked: read the brief",
+};
 
 /**
  * Last-activity summary for the list views: the most recent thing that

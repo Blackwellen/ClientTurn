@@ -11,8 +11,23 @@
  *
  * Seven dimensions, weighted by the workspace's archetype × motion profile
  * (sales-library/motions.ts combineWeights) with optional workspace overrides.
- * The default shape is fit 30, intent 20, need 15, commercial 10, decision
- * access 10, timing 10, engagement 5.
+ * With no archetype the shape is QUALIFICATION_DEFAULT (design 08 §B.14):
+ * need 20, offer fit 20, intent 20, timing 15, commercial 10, decision access
+ * 10, engagement 5. Archetype profiles keep their own shapes.
+ *
+ * ## ls-v2 (design 08 §B.14): one score, not two
+ *
+ *   * INTENT reads the intent engine's assessment (`intent_assessment`,
+ *     intent score / 100) when there is one, instead of a MAX over booleans;
+ *     the booleans stay allow-listed and are listed as evidence.
+ *   * Every dimension reports a `status` taken from the facts, not the
+ *     points: KNOWN_POSITIVE / KNOWN_NEGATIVE / UNKNOWN / CONFLICTING.
+ *     UNKNOWN earns 0 points but is labelled unknown, lowers confidence and
+ *     never triggers a veto; only a KNOWN_NEGATIVE fact caps.
+ *   * Completeness (the share of the plan's required dimensions known, from
+ *     the fact store) is carried on the result.
+ *   * FIT and INTENT are disjoint: no FIT feature is an INTENT feature, and
+ *     the intent engine reads only intent signals (tested).
  *
  * ## The feature allow-list (brief §87)
  *
@@ -51,7 +66,7 @@ import {
 } from "../sales-library/types.ts";
 
 /** Bump when a normaliser, a veto, a band or the combination rule changes. */
-export const SCORING_VERSION = "ls-v1.2026.09";
+export const SCORING_VERSION = "ls-v2.2026.09";
 
 /* ------------------------------------------------------------ features */
 
@@ -100,6 +115,9 @@ export const FEATURE_ALLOW_LIST = {
   booking_intent: { dimension: "INTENT", kind: "boolean", label: "asked to book" },
   pricing_requested: { dimension: "INTENT", kind: "boolean", label: "asked about pricing" },
   intent_signal_strength: { dimension: "INTENT", kind: "unit", label: "buying-intent signal" },
+  // The intent engine's score / 100 (qualification-intelligence/intent.ts).
+  // When present it IS the INTENT dimension; the booleans become evidence.
+  intent_assessment: { dimension: "INTENT", kind: "unit", label: "intent assessment" },
   not_interested: { dimension: "INTENT", kind: "boolean", label: "said not interested" },
   // NEED
   need_stated: { dimension: "NEED", kind: "boolean", label: "stated need" },
@@ -137,6 +155,28 @@ export const FEATURE_ALLOW_LIST = {
 } as const satisfies Record<string, FeatureSpec>;
 
 export type FeatureKey = keyof typeof FEATURE_ALLOW_LIST;
+
+/** The features FIT may read (and only these). */
+export const FIT_FEATURE_KEYS = Object.keys(FIT_FEATURES) as FitSignal[];
+
+/** The features INTENT may read. Disjoint from FIT_FEATURE_KEYS (tested). */
+export const INTENT_FEATURE_KEYS = (Object.keys(FEATURE_ALLOW_LIST) as FeatureKey[]).filter(
+  (key) => FEATURE_ALLOW_LIST[key].dimension === "INTENT",
+);
+
+/**
+ * The brief's §13 shape (design 08 §B.14), used when the workspace has no
+ * archetype. FIT is "offer fit". Sums to 100.
+ */
+export const QUALIFICATION_DEFAULT_PROFILE: { key: string; weights: DimensionWeights; fitSignals: FitSignal[] } = {
+  key: "QUALIFICATION_DEFAULT",
+  weights: { FIT: 20, INTENT: 20, NEED: 20, COMMERCIAL: 10, DECISION_ACCESS: 10, TIMING: 15, ENGAGEMENT: 5 },
+  fitSignals: [...SCORING_PROFILES.DEFAULT_B2B.fitSignals],
+};
+
+/** Per-dimension status, from facts rather than points (§B.14). */
+export const DIMENSION_SCORE_STATUSES = ["KNOWN_POSITIVE", "KNOWN_NEGATIVE", "UNKNOWN", "CONFLICTING"] as const;
+export type DimensionScoreStatus = (typeof DIMENSION_SCORE_STATUSES)[number];
 
 /**
  * Protected characteristics (Equality Act 2010) and UK GDPR Art. 9/10 special
@@ -179,6 +219,8 @@ export type DimensionResult = {
   evidence: EvidenceItem[];
   missing: FeatureKey[];
   confidence: number;
+  /** From the facts, not the points. UNKNOWN is not KNOWN_NEGATIVE. */
+  status: DimensionScoreStatus;
 };
 
 export type LeadGrade = "A" | "B" | "C" | "D";
@@ -189,6 +231,14 @@ export type LeadScoreInput = {
   motion?: SalesMotion | null;
   /** From workspace_sales_overrides (kind SCORING_WEIGHTS); replaces named dimensions. */
   weightOverrides?: Partial<DimensionWeights> | null;
+  /**
+   * Score dimensions a CONFLICTING qualification fact sits in (fact store,
+   * qualification-intelligence/facts.ts). Reported as CONFLICTING; the
+   * service does not pass the conflicting value as a fact.
+   */
+  conflictingDimensions?: ScoreDimension[] | null;
+  /** Qualification completeness 0..1 from the fact store, carried through. */
+  completeness?: number | null;
 };
 
 export type LeadScoreResult = {
@@ -204,6 +254,10 @@ export type LeadScoreResult = {
   rejected: RejectedFact[];
   scoringVersion: string;
   libraryVersion: string;
+  /** The profile the weights came from (an archetype profile or QUALIFICATION_DEFAULT). */
+  profileKey: string;
+  /** Qualification completeness 0..1, or null when the fact store was not consulted. */
+  completeness: number | null;
 };
 
 /* ------------------------------------------------------------ validation */
@@ -454,7 +508,7 @@ function evidenceFor(fact: CleanFact): EvidenceItem {
 
 export function scoreLead(input: LeadScoreInput): LeadScoreResult {
   const archetype = archetypeFor(input.archetypeKey ?? null);
-  const profile = archetype?.scoringProfile ?? SCORING_PROFILES.DEFAULT_B2B;
+  const profile = archetype?.scoringProfile ?? QUALIFICATION_DEFAULT_PROFILE;
   const band = archetype?.dealSizeBand ?? null;
   const motion = input.motion ?? archetype?.defaultMotions[0] ?? null;
   const weights = combineWeights(profile.weights, motion, input.weightOverrides ?? null);
@@ -495,6 +549,13 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
       // Coverage × average certainty: half the signals known at full certainty
       // is a 0.5-confidence fit score.
       confidence = present.length === 0 ? 0 : (present.length / expected) * (confSum / present.length);
+    } else if (dimension === "INTENT" && byFeature.has("intent_assessment")) {
+      // The intent engine already weighed strength, confidence, decay and
+      // contradictions: its score is the dimension, and its confidence the
+      // dimension's. The booleans stay listed as evidence.
+      const assessment = byFeature.get("intent_assessment")!;
+      value = clamp01(assessment.value as number);
+      confidence = assessment.confidence;
     } else {
       let best = 0;
       let bestConfidence = 0;
@@ -511,11 +572,13 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
       confidence = bestConfidence;
     }
 
-    // Vetoes.
+    // Vetoes. Only a known negative fact caps; an unknown never does.
+    let vetoed = false;
     for (const veto of VETOES) {
       const fact = byFeature.get(veto.feature);
       const cap = veto.caps[dimension];
       if (fact && fact.value === true && cap !== undefined) {
+        vetoed = true;
         value = Math.min(value, cap);
         // A veto is itself strong evidence about the dimension.
         confidence = Math.max(confidence, fact.confidence);
@@ -523,6 +586,7 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
       }
     }
     if (dimension === "NEED" && byFeature.get("qualification_state")?.value === "NOT_QUALIFIED") {
+      vetoed = true;
       value = Math.min(value, NOT_QUALIFIED_NEED_CAP);
     }
 
@@ -541,6 +605,14 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
       evidence: present.map(evidenceFor),
       missing,
       confidence: round3(clamp01(confidence)),
+      status: dimensionStatus({
+        dimension,
+        value,
+        vetoed,
+        present,
+        conflicting: (input.conflictingDimensions ?? []).includes(dimension),
+        band,
+      }),
     };
   });
 
@@ -562,11 +634,55 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
     rejected: [...rejected].sort((a, b) => a.feature.localeCompare(b.feature) || a.reason.localeCompare(b.reason)),
     scoringVersion: SCORING_VERSION,
     libraryVersion: LIBRARY_VERSION,
+    profileKey: profile.key,
+    completeness:
+      input.completeness === undefined || input.completeness === null ? null : round3(clamp01(input.completeness)),
   };
 }
 
+/** A fact that says something is *not* so (as opposed to not knowing). */
+function isNegativeFact(fact: CleanFact): boolean {
+  switch (fact.feature) {
+    case "budget_confirmed":
+    case "authority_confirmed":
+    case "incorporated":
+      return fact.value === false;
+    case "qualification_state":
+      return fact.value === "NOT_QUALIFIED";
+    default:
+      return FEATURE_ALLOW_LIST[fact.feature].dimension === "FIT" && fact.value === 0;
+  }
+}
+
+/**
+ * KNOWN_POSITIVE / KNOWN_NEGATIVE / UNKNOWN / CONFLICTING, from the facts:
+ *   CONFLICTING    a conflicting qualification fact sits in the dimension;
+ *   KNOWN_NEGATIVE a veto applied, or the evidence is weak and includes a
+ *                  fact that says "no" (budget not confirmed, out of area,
+ *                  not qualified), or FIT evidence averages below 0.3;
+ *   KNOWN_POSITIVE any evidence with positive strength;
+ *   UNKNOWN        otherwise: no evidence, or only absent-looking facts.
+ */
+function dimensionStatus(input: {
+  dimension: ScoreDimension;
+  value: number;
+  vetoed: boolean;
+  present: CleanFact[];
+  conflicting: boolean;
+  band: DealSizeBand | null;
+}): DimensionScoreStatus {
+  if (input.conflicting) return "CONFLICTING";
+  if (input.vetoed) return "KNOWN_NEGATIVE";
+  const scored = input.present.filter((fact) => strength(fact, input.band) !== null);
+  if (scored.length === 0) return "UNKNOWN";
+  if (input.dimension === "FIT" && input.value < 0.3) return "KNOWN_NEGATIVE";
+  if (input.value < 0.3 && scored.some(isNegativeFact)) return "KNOWN_NEGATIVE";
+  return input.value > 0 ? "KNOWN_POSITIVE" : "UNKNOWN";
+}
+
 const DIMENSION_WORDS: Record<ScoreDimension, string> = {
-  FIT: "fit",
+  // "Offer fit" (§B.14): computed against the offer's target customer.
+  FIT: "offer fit",
   INTENT: "intent",
   NEED: "need",
   COMMERCIAL: "deal value",
@@ -588,14 +704,16 @@ function explain(
   const ratio = (d: DimensionResult) => (d.max > 0 ? d.score / d.max : 0);
   const weighted = dimensions.filter((d) => d.max > 0);
   const strong = [...weighted].filter((d) => ratio(d) >= 0.6).sort((a, b) => b.score - a.score).slice(0, 2);
-  const unknown = weighted.filter((d) => d.evidence.length === 0).sort((a, b) => b.max - a.max).slice(0, 2);
+  const unknown = weighted.filter((d) => d.status === "UNKNOWN").sort((a, b) => b.max - a.max).slice(0, 2);
+  const conflicting = weighted.filter((d) => d.status === "CONFLICTING").slice(0, 2);
 
   const parts = [`Graded ${grade} (${Math.round(total)}/100).`];
   if (byFeature.get("opted_out")?.value === true) parts.push("Opted out.");
   else if (byFeature.get("not_interested")?.value === true) parts.push("Said they are not interested.");
   if (strong.length > 0) parts.push(`Strongest: ${strong.map((d) => DIMENSION_WORDS[d.dimension]).join(" and ")}.`);
   if (unknown.length > 0) parts.push(`Unknown: ${unknown.map((d) => DIMENSION_WORDS[d.dimension]).join(" and ")}.`);
-  if (strong.length === 0 && unknown.length === 0) parts.push("Evidence is mixed.");
+  if (conflicting.length > 0) parts.push(`Conflicting: ${conflicting.map((d) => DIMENSION_WORDS[d.dimension]).join(" and ")}.`);
+  if (strong.length === 0 && unknown.length === 0 && conflicting.length === 0) parts.push("Evidence is mixed.");
   return parts.join(" ");
 }
 

@@ -59,7 +59,7 @@ function config(): OAuthConfig | null {
     tokenUrl: TOKEN_URL,
     clientId,
     clientSecret,
-    scope: linkedinScopes(serverEnv.linkedinAds.communityManagementApproved === "true"),
+    scope: linkedinScopes(),
   };
 }
 
@@ -101,8 +101,7 @@ registerOAuthProvider("linkedin_ads", {
         externalAccountId: first?.id ?? null,
         displayName: first?.name ?? null,
         scopes: [],
-        // The URN is what the engagement provider reads (`config.organizationUrn`).
-        // It was never written, so page engagement could not find the page.
+        // The organisation's URN, kept so the chosen page is identifiable.
         config: first
           ? { organizationUrn: first.urn, organizations }
           : { organizations },
@@ -232,6 +231,8 @@ async function questionMapFor(
 type LeadFormResponse = {
   id?: string;
   submittedAt?: number;
+  /** True for a submission made from the form's own "Test" preview. */
+  testLead?: boolean;
   versionedLeadGenFormUrn?: string;
   leadMetadataInfo?: {
     sponsoredLeadMetadataInfo?: { campaign?: { name?: string; id?: string } };
@@ -396,6 +397,11 @@ async function ingestLeadFormResponse(
  * LinkedIn's own guidance ("a combination of both methods provides a
  * balance").
  */
+/** Lead Sync pages; 100 is the documented maximum `count`. */
+const PAGE_SIZE = 100;
+/** Bounded so one poll never runs unbounded; the window is re-read if hit. */
+const MAX_PAGES = 20;
+
 registerLeadSourcePoller("linkedin_ads", {
   async poll({ integrationId, businessId }) {
     const cfg = config();
@@ -421,33 +427,54 @@ registerLeadSourcePoller("linkedin_ads", {
       .maybeSingle();
 
     const since = cursor?.cursor_value ? Number(cursor.cursor_value) : Date.now() - 24 * 60 * 60 * 1000;
+    // The window's end is fixed before the first request and becomes the next
+    // cursor, so a lead submitted while this poll runs falls in the next
+    // window instead of between two.
+    const until = Date.now();
     // Rest.li 2.0: the parentheses and the key stay raw; only the URN inside
     // is encoded, once -- `owner=(organization:urn%3Ali%3Aorganization%3A123)`
     // exactly as the Lead Sync docs write it. Encoding the whole value again
     // turned %3A into %253A.
     const owner = `(organization:${encodeURIComponent(`urn:li:organization:${organizationId}`)})`;
-    const url =
+    const base =
       `https://api.linkedin.com/rest/leadFormResponses?q=owner&owner=${owner}` +
-      `&leadType=(leadType:SPONSORED)&submittedAtTimeRange=(start:${since},end:${Date.now()})`;
+      `&leadType=(leadType:SPONSORED)&submittedAtTimeRange=(start:${since},end:${until})`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Linkedin-Version": LINKEDIN_VERSION,
-        "X-Restli-Protocol-Version": "2.0.0",
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`LinkedIn lead poll failed with status ${response.status}.`);
-    }
+    // Every page of the window before the cursor moves: stopping at the first
+    // page would silently drop the rest of a busy form's leads.
+    for (let page = 0, start = 0; page < MAX_PAGES; page += 1) {
+      const response = await fetch(`${base}&start=${start}&count=${PAGE_SIZE}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Linkedin-Version": LINKEDIN_VERSION,
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`LinkedIn lead poll failed with status ${response.status}.`);
+      }
 
-    const json = (await response.json().catch(() => null)) as {
-      elements?: LeadFormResponse[];
-    } | null;
-    const leads = json?.elements ?? [];
+      const json = (await response.json().catch(() => null)) as {
+        elements?: LeadFormResponse[];
+        paging?: { total?: number };
+      } | null;
+      const leads = json?.elements ?? [];
 
-    for (const lead of leads) {
-      await ingestLeadFormResponse(businessId, lead, accessToken);
+      for (const lead of leads) {
+        // A test submission is the advertiser previewing their own form.
+        // Ingesting it would text the advertiser as if they were a lead.
+        if (lead.testLead) continue;
+        await ingestLeadFormResponse(businessId, lead, accessToken);
+      }
+
+      start += leads.length;
+      const total = json?.paging?.total;
+      if (leads.length < PAGE_SIZE || (typeof total === "number" && start >= total)) break;
+      if (page === MAX_PAGES - 1) {
+        // Leave the cursor where it was: the next poll re-reads this window
+        // (ingest is idempotent on the response id) rather than skipping it.
+        throw new Error("LinkedIn returned more lead pages than one poll reads; retrying.");
+      }
     }
 
     await admin.from("lead_source_cursors").upsert(
@@ -455,7 +482,7 @@ registerLeadSourcePoller("linkedin_ads", {
         integration_id: integrationId,
         business_id: businessId,
         external_object_id: organizationId,
-        cursor_value: String(Date.now()),
+        cursor_value: String(until),
         last_polled_at: new Date().toISOString(),
       },
       { onConflict: "integration_id" },

@@ -6,9 +6,24 @@ import {
   BarChart3,
   Bot,
   ClipboardList,
+  Lock,
   MapPin,
   ShieldCheck,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import {
+  FACT_SOURCE_COPY,
+  type DimensionBoardItem,
+  type OverrideHistoryRow,
+} from "@/lib/qualification-intelligence/explain";
+import {
+  DIMENSION_STATUSES,
+  type DimensionStatus,
+  type QiDimensionKey,
+} from "@/lib/qualification-intelligence/types";
+import { IntentPanel } from "./intent-panel";
+import { sourceStyle } from "@/components/leads/lead-source-badge";
+import { FactActions, SetFactDialog } from "./qualification-override-dialogs";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { EmptyState, ErrorState, Skeleton, SkeletonTable } from "@/components/ui/feedback";
 import { formatDateTime, formatRelative } from "@/lib/dates";
@@ -21,7 +36,9 @@ import {
   loadDataRightsHistory,
   loadLeadAi,
   loadQualification,
+  loadQualificationIntel,
   loadScoreHistory,
+  type QualificationIntelView,
   type TouchView,
 } from "@/lib/leads/detail-queries";
 import {
@@ -152,18 +169,244 @@ function QualificationList({ items, inferred }: { items: QualificationItem[]; in
   );
 }
 
-export async function QualificationTab({ businessId, leadId }: TabProps) {
-  const result = await attempt(() => loadQualification(businessId, leadId));
-  if (!result.ok) return <TabError leadId={leadId} tab="qualification" what="Qualification" />;
-  const { known, inferred, missing } = result.data;
+/* The four dimension columns (§B.12 / §B.17): confirmed, inferred, unknown and
+   conflicting, with completeness. Replaces Known / Inferred / Missing, which
+   now describes only the configured questions below it. */
 
+const DIMENSION_COLUMN_EMPTY: Record<DimensionStatus, string> = {
+  CONFIRMED: "Nothing confirmed yet.",
+  INFERRED: "Nothing inferred. Inferred values are kept apart so they are never mistaken for an answer.",
+  UNKNOWN: "Nothing required is unknown.",
+  CONFLICTING: "No conflicting answers.",
+};
+
+function DimensionColumn({
+  status,
+  items,
+  leadId,
+  canWrite,
+}: {
+  status: DimensionStatus;
+  items: DimensionBoardItem[];
+  leadId: string;
+  canWrite: boolean;
+}) {
+  return (
+    <div className="min-w-0 bg-surface">
+      <div className="flex items-center gap-2 border-b border-line-subtle px-4 py-2.5">
+        <StatusBadge kind="dimension_status" value={status} dense />
+        <span className="text-[12px] tabular-nums text-content-subtle">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-4 py-4 text-[12.5px] text-content-muted">{DIMENSION_COLUMN_EMPTY[status]}</p>
+      ) : (
+        <ul className="divide-y divide-line-subtle">
+          {items.map((item) => (
+            <li key={`${status}-${item.dimension}`} className="px-4 py-3">
+              <p className="flex flex-wrap items-center gap-1.5 text-[12px] font-medium text-content-secondary">
+                {item.label}
+                {item.required && (
+                  <Badge tone="warning" dense>
+                    Required
+                  </Badge>
+                )}
+                {item.material && status === "INFERRED" && (
+                  <Badge tone="warning" dense>
+                    Verify first
+                  </Badge>
+                )}
+                {item.stale && (
+                  <Badge tone="neutral" dense>
+                    Last known
+                  </Badge>
+                )}
+              </p>
+              {item.facts.length === 0 ? (
+                <p className="mt-0.5 text-[12.5px] text-content-muted">Not known yet</p>
+              ) : (
+                <ul className="mt-1 space-y-1.5">
+                  {item.facts.map((fact) => (
+                    <li key={fact.id} className="min-w-0">
+                      <p className="text-[13.5px] text-content">{fact.value}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-content-muted">
+                        <span>{FACT_SOURCE_COPY[fact.source] ?? fact.source}</span>
+                        {fact.confidence < 1 && <span>{Math.round(fact.confidence * 100)}% confidence</span>}
+                        <span>{formatRelative(fact.observedAt)}</span>
+                        {fact.validUntil && <span>valid until {formatDateTime(fact.validUntil)}</span>}
+                      </p>
+                      {canWrite && (status === "INFERRED" || status === "CONFLICTING") && (
+                        <FactActions leadId={leadId} factId={fact.id} value={fact.value} label={item.label} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canWrite && item.dimension !== "UNMAPPED" && (status === "UNKNOWN" || status === "CONFLICTING") && (
+                <div className="mt-1.5">
+                  <SetFactDialog
+                    leadId={leadId}
+                    dimension={item.dimension as QiDimensionKey}
+                    triggerLabel={status === "CONFLICTING" ? "Set the right value" : "Set a value"}
+                  />
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function QualificationDimensions({
+  intel,
+  leadId,
+  canWrite,
+}: {
+  intel: QualificationIntelView;
+  leadId: string;
+  canWrite: boolean;
+}) {
+  const { board, assessment, unknowns, status } = intel;
+  const total = board.CONFIRMED.length + board.INFERRED.length + board.UNKNOWN.length + board.CONFLICTING.length;
+  return (
+    <section aria-labelledby="dimensions-title" className="rounded-xl border border-line bg-surface shadow-xs">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line-subtle px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="dimensions-title" className="text-[15px] font-semibold text-content">
+              What we know
+            </h2>
+            <StatusBadge kind="qualification" value={intel.verdict} />
+          </div>
+          <p className="mt-1 text-[13px] text-content-muted">{status.headline}</p>
+        </div>
+        {canWrite && <SetFactDialog leadId={leadId} />}
+      </header>
+
+      {assessment && (
+        <div className="border-b border-line-subtle px-5 py-3">
+          <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+            <span className="font-medium text-content-secondary">Completeness</span>
+            <span className="tabular-nums text-content-muted">
+              <span className="font-semibold text-content">{Math.round(assessment.completeness * 100)}%</span> of the required
+              picture
+            </span>
+          </div>
+          <Progress
+            className="mt-1.5"
+            value={assessment.completeness * 100}
+            tone={assessment.completeness >= 1 ? "success" : "accent"}
+            label="Qualification completeness"
+          />
+          {unknowns.required.length > 0 && (
+            <p className="mt-2 text-[12px] text-warning-700">
+              Still needed: {unknowns.required.map((u) => u.label).join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+
+      {total === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="Nothing known yet"
+          description="Details appear here as the lead answers, fills in a form, or a person sets them. Unknown is never counted as a negative."
+        />
+      ) : (
+        <div className="grid gap-px bg-line-subtle md:grid-cols-2 xl:grid-cols-4">
+          {DIMENSION_STATUSES.map((s) => (
+            <DimensionColumn key={s} status={s} items={board[s]} leadId={leadId} canWrite={canWrite} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function QualificationHistory({ rows }: { rows: OverrideHistoryRow[] }) {
+  return (
+    <Section title="Qualification history" count={rows.length}>
+      {rows.length === 0 ? (
+        <p className="px-5 py-4 text-[12.5px] text-content-muted">
+          No one has re-run, corrected or overridden this lead&apos;s qualification. Every change made here, by a person, Copilot
+          or a connected assistant, is recorded in this list.
+        </p>
+      ) : (
+        <ol className="divide-y divide-line-subtle">
+          {rows.map((row) => (
+            <li key={row.id} className="px-5 py-3">
+              <p className="text-[13px] text-content">
+                {row.label}
+                {row.actor && <span className="text-content-muted"> · {row.actor}</span>}
+                {row.caller && row.caller !== "UI" && <span className="text-content-muted"> via {row.caller}</span>}
+              </p>
+              {row.detail && <p className="mt-0.5 text-[12.5px] text-content-secondary">{row.detail}</p>}
+              <p className="mt-0.5 text-[11.5px] text-content-subtle">{formatDateTime(row.at)}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Section>
+  );
+}
+
+export async function QualificationTab({
+  businessId,
+  leadId,
+  canWrite,
+  role,
+}: TabProps & { canWrite: boolean; role: string }) {
+  const [result, intelResult] = await Promise.all([
+    attempt(() => loadQualification(businessId, leadId)),
+    attempt(() => loadQualificationIntel(businessId, leadId, role)),
+  ]);
+
+  const intel = intelResult.ok ? intelResult.data : null;
+
+  return (
+    <div className="space-y-4">
+      {intel ? (
+        <>
+          <IntentPanel
+            leadId={leadId}
+            assessment={intel.assessment}
+            signals={intel.signals}
+            canWrite={canWrite}
+            engineOff={intel.engineMode ? intel.engineMode.mode === "OFF" : null}
+          />
+          <QualificationDimensions intel={intel} leadId={leadId} canWrite={canWrite} />
+        </>
+      ) : (
+        <TabError leadId={leadId} tab="qualification" what="Intent and qualification" />
+      )}
+
+      {!canWrite && (
+        <p className="flex items-center gap-2 rounded-lg border border-line bg-surface-sunken px-4 py-2.5 text-[12.5px] text-content-muted">
+          <Lock className="size-3.5 shrink-0" aria-hidden />
+          Your role can view this lead&apos;s qualification but not correct it.
+        </p>
+      )}
+
+      {!result.ok ? (
+        <TabError leadId={leadId} tab="qualification" what="Your qualification questions" />
+      ) : (
+        <ConfiguredQuestions {...result.data} />
+      )}
+
+      {intel && <QualificationHistory rows={intel.history} />}
+    </div>
+  );
+}
+
+function ConfiguredQuestions({ known, inferred, missing }: { known: QualificationItem[]; inferred: QualificationItem[]; missing: { questionId: string; question: string; required: boolean }[] }) {
   if (known.length + inferred.length + missing.length === 0) {
     return (
       <Panel>
         <EmptyState
           icon={ClipboardList}
           title="No qualification questions yet"
-          description="Add the questions you qualify leads on, and each lead's answers appear here."
+          description="Add the questions you qualify leads on, and each lead's answers appear here. Your rules decide qualified or not from these answers."
           action={
             <Link
               href="/app/follow-up?view=qualification"
@@ -178,41 +421,47 @@ export async function QualificationTab({ businessId, leadId }: TabProps) {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Section title="Known" count={known.length}>
-        {known.length ? (
-          <QualificationList items={known} />
-        ) : (
-          <p className="px-4 py-5 text-[12.5px] text-content-muted">Nothing the lead has told us yet.</p>
-        )}
-      </Section>
-      <Section title="Inferred" count={inferred.length}>
-        {inferred.length ? (
-          <QualificationList items={inferred} inferred />
-        ) : (
-          <p className="px-4 py-5 text-[12.5px] text-content-muted">
-            Nothing inferred. Inferred values are shown separately so they are never mistaken for an answer.
-          </p>
-        )}
-      </Section>
-      <Section title="Missing" count={missing.length}>
-        {missing.length ? (
-          <ul className="divide-y divide-line-subtle">
-            {missing.map((item) => (
-              <li key={item.questionId} className="flex items-start justify-between gap-2 px-4 py-3">
-                <span className="text-[13px] text-content">{item.question}</span>
-                {item.required && (
-                  <Badge tone="warning" dense>
-                    Required
-                  </Badge>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-4 py-5 text-[12.5px] text-content-muted">Every active question has an answer.</p>
-        )}
-      </Section>
+    <div>
+      <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-content-subtle">
+        Your qualification questions
+        <span className="ml-1 font-normal normal-case tracking-normal">: the answers your rules decide on</span>
+      </p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Section title="Answered" count={known.length}>
+          {known.length ? (
+            <QualificationList items={known} />
+          ) : (
+            <p className="px-4 py-5 text-[12.5px] text-content-muted">Nothing the lead has told us yet.</p>
+          )}
+        </Section>
+        <Section title="Inferred" count={inferred.length}>
+          {inferred.length ? (
+            <QualificationList items={inferred} inferred />
+          ) : (
+            <p className="px-4 py-5 text-[12.5px] text-content-muted">
+              Nothing inferred. Inferred values are shown separately so they are never mistaken for an answer.
+            </p>
+          )}
+        </Section>
+        <Section title="Unanswered" count={missing.length}>
+          {missing.length ? (
+            <ul className="divide-y divide-line-subtle">
+              {missing.map((item) => (
+                <li key={item.questionId} className="flex items-start justify-between gap-2 px-4 py-3">
+                  <span className="text-[13px] text-content">{item.question}</span>
+                  {item.required && (
+                    <Badge tone="warning" dense>
+                      Required
+                    </Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-5 text-[12.5px] text-content-muted">Every active question has an answer.</p>
+          )}
+        </Section>
+      </div>
     </div>
   );
 }
@@ -277,12 +526,28 @@ export async function ScoreHistoryTab({ businessId, leadId }: TabProps) {
 
 /* ------------------------------------------------------------- attribution */
 
+/** How a touch arrived, in words ("api · api" read as internals, 8.7). */
+const TOUCH_TYPE_LABEL: Record<string, string> = {
+  AD_FORM: "Ad lead form",
+  WEB_FORM: "Website form",
+  CSV: "CSV import",
+  MANUAL: "Added by hand",
+  API: "API",
+  MCP: "AI assistant",
+  CONNECTOR: "Connector",
+  SOCIAL_DM: "Social message",
+  CRM: "CRM import",
+};
+
 function TouchLine({ touch }: { touch: TouchView }) {
   const parts = [touch.campaign, touch.form, touch.ad, touch.utm].filter(Boolean);
+  const provider = sourceStyle(touch.provider).label;
+  const type = TOUCH_TYPE_LABEL[touch.sourceType] ?? touch.sourceType.replace(/_/g, " ").toLowerCase();
   return (
     <div className="min-w-0">
       <p className="text-[13px] font-medium text-content">
-        {touch.provider} <span className="font-normal text-content-muted">· {touch.sourceType.replace(/_/g, " ").toLowerCase()}</span>
+        {provider}
+        {type !== provider && <span className="font-normal text-content-muted"> · {type}</span>}
       </p>
       {parts.length > 0 && <p className="truncate text-[12px] text-content-secondary">{parts.join(" · ")}</p>}
       <p className="text-[11.5px] text-content-subtle">

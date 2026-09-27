@@ -56,20 +56,32 @@ before(async () => {
 });
 
 after(async () => {
-  let cleanup: Awaited<ReturnType<typeof H.teardownWorld>> | null = null;
+  // Everything that needs the test data is computed and PRINTED before the
+  // teardown deletes anything, so the evidence survives a teardown failure.
   let foreign: unknown[] = [];
-  try {
-    await H.stopGuard();
-    if (H.world) foreign = await H.foreignlyTouchedJobs();
-  } finally {
-    if (H.world) cleanup = await H.teardownWorld();
+  let foreignError: string | null = null;
+  let shadow: Awaited<ReturnType<typeof H.shadowReview>> | { error: string } | null = null;
+  await H.stopGuard();
+  if (H.world) {
+    try {
+      foreign = await H.foreignlyTouchedJobs();
+    } catch (e) {
+      foreignError = (e as Error).message;
+    }
+    try {
+      shadow = await H.shadowReview();
+    } catch (e) {
+      shadow = { error: (e as Error).message };
+    }
   }
   const report = {
     run: RUN,
     parkAt: PARK_AT,
     preflightOk,
     deployedWorkerTouched: foreign,
+    deployedWorkerCheckError: foreignError,
     guard: H.guardStats,
+    claimPause0137: H.claimPause,
     egress: {
       faked: egress.faked.length,
       fakedByHost: egress.faked.reduce<Record<string, number>>((acc, call) => {
@@ -79,18 +91,37 @@ after(async () => {
       blocked: egress.blocked,
       parkedInserts: egress.parkedInserts,
       reparkedSqlJobs: egress.reparked.length,
-      schemaShims0129: egress.schemaShims,
     },
     jobs: { ran: H.jobLog.length, sequence: H.jobLog.map((j) => j.type + (j.ok ? "" : "!")).join(" > "), failed: H.failedJobs() },
-    cleanup,
+    shadowReview: shadow,
   };
   console.log("\n=== STORY REPORT ===\n" + JSON.stringify(report, null, 2));
   console.log("\n=== EVIDENCE ===");
   for (const row of evidence) {
     console.log(`| ${row.id} | ${row.flow} | ${row.scenario} | ${row.expected} | ${row.actual.replace(/\|/g, "/").replace(/\n/g, " ")} | ${row.result} | ${row.evidence} | ${row.fix ?? ""} |`);
   }
+
+  // Teardown last. It never throws; what it could not delete is reported with
+  // the SQL that finishes the job.
+  let cleanup: Awaited<ReturnType<typeof H.teardownWorld>> | null = null;
+  if (H.world) {
+    try {
+      cleanup = await H.teardownWorld();
+    } catch (e) {
+      console.log(`\n=== TEARDOWN THREW === ${(e as Error).message}`);
+    }
+  }
+  console.log("\n=== CLEANUP ===\n" + JSON.stringify(cleanup, null, 2));
+  if (cleanup && cleanup.finishSql.length > 0) {
+    console.log("\n=== CLEANUP INCOMPLETE: remaining rows ===\n" + JSON.stringify({ after: cleanup.after.nonZero, globals: cleanup.globals, errors: cleanup.errors }, null, 2));
+    console.log("=== SQL to finish (run as postgres, e.g. the SQL editor) ===\n" + cleanup.finishSql.join("\n"));
+  }
+  assert.equal(foreignError, null, `deployedWorkerTouched could not be computed: ${foreignError}`);
   assert.deepEqual(foreign, [], "a test-business job was touched by a worker other than this process");
-  assert.deepEqual(cleanup?.after.nonZero ?? {}, {}, "rows remain for the test business");
+  assert.ok(cleanup, "teardown did not complete");
+  assert.deepEqual(cleanup.errors, [], "teardown recorded errors");
+  assert.deepEqual(cleanup.after.nonZero, {}, "rows remain for the test business");
+  assert.ok(Object.values(cleanup.globals).every((n) => n === 0), `global rows remain: ${JSON.stringify(cleanup.globals)}`);
 });
 
 /* ================================================================ STORY A */
@@ -403,3 +434,11 @@ await import("./story-b-google-ads.ts");
 await import("./story-c-linkedin-leadgen.ts");
 await import("./story-g-m-intake.ts");
 await import("./story-d-f-x.ts");
+// Story P: the direct-sale loop (0143). Before Q, which switches the engine to LIVE.
+await import("./story-p-payments.ts");
+// Last: it switches the workspace's qualification engine to LIVE.
+await import("./story-q-engine-live.ts");
+// Story R: intent-driven re-engagement. After Q, with the engine LIVE.
+await import("./story-r-reengagement.ts");
+// Story S: a lead with several interests (08 §B.20). After Q, with the engine LIVE.
+await import("./story-s-several-interests.ts");

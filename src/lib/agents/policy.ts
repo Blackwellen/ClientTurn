@@ -7,6 +7,7 @@
  */
 
 import type { AgentType, Autonomy, Cadence, SourceKey } from "./types";
+import { chooseCostAwareChannel } from "../follow-up/channel-strategy.ts";
 
 /* ------------------------------------------------------------ what runs */
 
@@ -104,7 +105,9 @@ export const SOURCE_PROVIDERS: Partial<Record<SourceKey, readonly string[]>> = {
   GOOGLE_PLACES: ["google_places"],
   COMPANY_REGISTRY: ["companies_house"],
   WEBSITE: ["website_contacts", "website_signals"],
-  DATA_PROVIDER: ["hunter", "apollo", "linkedin_sales_navigator", "clearbit"],
+  // The LinkedIn list-import route is the customer's own imported list, not a
+  // data provider, so it is not governed here.
+  DATA_PROVIDER: ["hunter", "apollo", "clearbit"],
 };
 
 /** Every provider an agent's source choice governs. */
@@ -128,18 +131,25 @@ export function excludedProvidersFor(enabled: readonly string[]): string[] {
 export type ReengagementChannel = "email" | "sms";
 
 /**
- * The channel a re-engagement draft uses: the workspace's own mailbox when one
- * is connected, otherwise SMS when Twilio is connected, otherwise nothing —
- * and the agent reports that setup is needed rather than drafting a campaign
- * that could never launch.
+ * The channel a re-engagement draft uses: the cheapest channel first, by the
+ * same rule every automated re-engagement message follows
+ * (follow-up/channel-strategy.ts `chooseCostAwareChannel`). Every lead in the
+ * agent's audience has never replied and is therefore unengaged, so that is
+ * the workspace's own mailbox when one is connected (free), otherwise SMS when
+ * Twilio is connected, otherwise nothing -- and the agent reports that setup is
+ * needed rather than drafting a campaign that could never launch. An SMS draft
+ * is created in the cost-aware channel mode, so a lead with an email address
+ * still gets email once a mailbox is connected.
  */
 export function chooseReengagementChannel(connected: {
   mailbox: boolean;
   sms: boolean;
 }): ReengagementChannel | null {
-  if (connected.mailbox) return "email";
-  if (connected.sms) return "sms";
-  return null;
+  return chooseCostAwareChannel({
+    engaged: false,
+    available: { sms: connected.sms, email: connected.mailbox },
+    leadHas: { sms: true, email: true },
+  });
 }
 
 /* ------------------------------------------------------------- run state */
@@ -167,7 +177,7 @@ export function agentRunState(agent: {
       }
       return { label: "Running", tone: "success", hint: null };
     case "PAUSED":
-      return { label: "Paused", tone: "accent", hint: null };
+      return { label: "Paused", tone: "warning", hint: null };
     case "NEEDS_ATTENTION":
       return { label: "Needs attention", tone: "warning", hint: null };
     case "ERROR":

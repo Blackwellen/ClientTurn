@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { ingestLead } from "@/lib/ingest/service";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
@@ -118,6 +120,9 @@ const channelSchema = z.enum(["sms", "whatsapp", "email"]).default("sms");
  * campaign counts the leads with an email address and the email suppression
  * list, not the ones with a mobile number.
  */
+const AUDIENCE_UNAVAILABLE =
+  "The audience could not be worked out right now. Nothing was sent. Try again shortly.";
+
 export async function previewAudience(
   input: unknown,
   channel?: unknown,
@@ -130,13 +135,17 @@ export async function previewAudience(
   const access = await requireCampaignAccess();
   if (!access.ok) return fail(access.error);
 
-  const [{ preview }, allowance] = await Promise.all([
-    resolveAudience(access.workspace.businessId, parsed.data, parsedChannel.data),
-    // Shown beside the estimate; a failed read shows nothing rather than a
-    // made-up allowance. Launch re-checks it either way.
-    loadReactivationAllowance(access.workspace.businessId).catch(() => null),
-  ]);
-  return ok({ ...preview, allowance });
+  try {
+    const [{ preview }, allowance] = await Promise.all([
+      resolveAudience(access.workspace.businessId, parsed.data, parsedChannel.data),
+      // Shown beside the estimate; a failed read shows nothing rather than a
+      // made-up allowance. Launch re-checks it either way.
+      loadReactivationAllowance(access.workspace.businessId).catch(() => null),
+    ]);
+    return ok({ ...preview, allowance });
+  } catch {
+    return fail(AUDIENCE_UNAVAILABLE);
+  }
 }
 
 /* --------------------------------------------------------- campaigns --- */
@@ -218,11 +227,13 @@ export async function createCampaign(
     }
   }
 
-  const { preview, eligibleLeadIds } = await resolveAudience(
-    workspace.businessId,
-    draft.audience,
-    draft.channel,
-  );
+  let audience: Awaited<ReturnType<typeof resolveAudience>>;
+  try {
+    audience = await resolveAudience(workspace.businessId, draft.audience, draft.channel);
+  } catch {
+    return fail(AUDIENCE_UNAVAILABLE);
+  }
+  const { preview, eligibleLeadIds } = audience;
 
   if (launch && eligibleLeadIds.length === 0) {
     return fail("No contactable leads match this audience.");
@@ -301,6 +312,22 @@ export async function createCampaign(
     .single();
 
   if (error || !campaign) return fail("Could not save the campaign.");
+
+  // 0146 columns, written separately so a database without them still saves
+  // the campaign (and keeps the old behaviour: SMS to all, sent at once).
+  {
+    const { error: modeError } = await (admin as unknown as SupabaseClient)
+      .from("campaigns")
+      .update({
+        channel_mode: draft.channel === "sms" ? draft.channelMode : "sms",
+        send_timing: draft.sendTiming,
+      })
+      .eq("id", campaign.id)
+      .eq("business_id", workspace.businessId);
+    if (modeError && !isSchemaLag(modeError)) {
+      console.error("[campaign] channel mode not saved", { campaignId: campaign.id, message: modeError.message });
+    }
+  }
 
   await recordAudit({
     businessId: workspace.businessId,
@@ -452,7 +479,7 @@ async function setCampaignState(
   }
 
   const now = new Date().toISOString();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("campaigns")
     .update({
       status: next,
@@ -466,17 +493,31 @@ async function setCampaignState(
     // Optimistic concurrency: if someone else moved the campaign on between
     // the read above and this write, the update matches nothing and we say so
     // rather than silently overwriting their change.
-    .eq("status", campaign.status);
+    .eq("status", campaign.status)
+    .select("id");
 
   if (error) return fail("Could not update the campaign.");
+  // No row matched: the campaign moved on between the read and this write.
+  if (!updated || updated.length === 0) {
+    return fail("This campaign was changed by someone else. Refresh and try again.");
+  }
 
   if (next === "CANCELLED") {
-    await admin
+    const { error: stopError } = await admin
       .from("campaign_contacts")
       .update({ state: "stopped", stopped_reason: "campaign_cancelled" })
       .eq("campaign_id", campaign.id)
       .eq("business_id", workspace.businessId)
       .in("state", ["pending", "scheduled"]);
+    // The campaign is already CANCELLED, and campaign.send refuses a cancelled
+    // campaign, so nothing can go out; the contacts are only left un-stopped
+    // in the record. Logged rather than reported as a failed cancel.
+    if (stopError) {
+      console.error("[campaigns] cancel: contacts not marked stopped", {
+        campaignId: campaign.id,
+        message: stopError.message,
+      });
+    }
   }
 
   if (next === "RUNNING") {

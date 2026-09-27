@@ -109,7 +109,7 @@ export async function getIntegrationsView(
       // before this was added.
       const planBlock: ProviderBlock =
         definition.requiresFeature === "whatsapp" && !entitlements.whatsappEnabled
-          ? { kind: "plan", reason: `WhatsApp is included on the ${unlockPlanLabel("whatsapp")} and above.` }
+          ? { kind: "plan", reason: `The WhatsApp add-on is available on the ${unlockPlanLabel("whatsapp")} and above.` }
           : null;
 
       return {
@@ -122,7 +122,7 @@ export async function getIntegrationsView(
             : {
                 kind: "unavailable",
                 reason:
-                  "Client Turn has not finished configuring this service, so nothing is being sent through it yet.",
+                  "ClientTurn has not finished configuring this service, so nothing is being sent through it yet.",
               }),
         connected: configured && integration?.status !== "DISCONNECTED",
         status: configured
@@ -137,7 +137,7 @@ export async function getIntegrationsView(
     if (definition.requiresFeature === "whatsapp" && !entitlements.whatsappEnabled) {
       block = {
         kind: "plan",
-        reason: `WhatsApp is included on the ${unlockPlanLabel("whatsapp")} and above.`,
+        reason: `The WhatsApp add-on is available on the ${unlockPlanLabel("whatsapp")} and above.`,
       };
     } else {
       block = workspaceProviderBlock(definition, { configured, connected });

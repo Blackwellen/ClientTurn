@@ -4,7 +4,11 @@ summary: Take a conversation from the assistant and automated follow-up so you c
 category: booking-and-sales
 keywords: [take over, takeover, human takeover, reply myself, stop automation, pause follow-up, hand back, resume follow-up, manual reply, inbox, needs human]
 order: 90
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/booking-and-sales/taking-over-a-conversation-1.png
+    alt: "The lead's Actions menu with Take over marked"
+    caption: "Take the conversation over from the lead's Actions menu"
 ---
 
 You can take any conversation away from the assistant and automated follow-up at any time and reply yourself. Nothing is sent automatically while you have it, and only a person can hand it back.
@@ -20,7 +24,7 @@ Automated follow-up for that lead stops straight away, and the assistant will no
 
 Members, admins and owners can take over.
 
-ClientTurn also takes over for you, handing the conversation to your team, when the assistant hands over or a reply needs a person. See [The handoff brief](/help/booking-and-sales/handoff-brief).
+ClientTurn also takes over for you, handing the conversation to your team, when the assistant hands over. That is a last resort, for example when the lead asks for a person or complains. When the assistant only needs one thing confirmed, it asks your team in the background and keeps the conversation, so nothing is taken over. See [The handoff brief](/help/booking-and-sales/handoff-brief).
 
 ## While you have the conversation
 

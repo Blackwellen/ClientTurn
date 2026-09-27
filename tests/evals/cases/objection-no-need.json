@@ -1,0 +1,47 @@
+{
+  "id": "objection-no-need",
+  "scenario": "§94 objection: no need",
+  "motion": "DIRECT_B2B",
+  "channel": "whatsapp",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "What would you mainly use it for?"
+    },
+    {
+      "role": "lead",
+      "text": "To be honest we don't need it."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "NO_NEED",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Fair enough. Out of interest, how are you handling that today?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Here's why you need it:\n- Faster replies\n- More bookings\nShall we talk?",
+        "valid": false,
+        "codes": [
+          "STYLE_LIST"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

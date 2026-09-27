@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   keywords: ["ClientTurn help", "ClientTurn guides", "lead follow-up help", "CRM integration guide"],
   alternates: { canonical: path },
   openGraph: {
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
     url: path,
     siteName: "ClientTurn",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
   },
 };

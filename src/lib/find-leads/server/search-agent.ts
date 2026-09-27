@@ -11,6 +11,7 @@ import {
   type SearchPlan,
 } from "../plan";
 import type { PlanSummaryLine } from "../types";
+import { INTENT_CATALOGUE, ROLE_FUNCTIONS } from "../intent-catalogue";
 import { resolveBudget } from "./budget";
 import { readAcquisitionProfile } from "./profile";
 import { resolvePlanLocations } from "./locations";
@@ -54,6 +55,17 @@ export type AgentTurn = {
  * the same rule the conversation agent uses: untrusted text (the customer's
  * own message) never becomes policy.
  */
+/**
+ * The catalogue as the agent sees it: one line per type, with the sources
+ * that back it or why none can. The agent proposes; availability is still
+ * enforced by the editor and the run.
+ */
+const INTENT_TYPES_FOR_AGENT = INTENT_CATALOGUE.map((entry) =>
+  entry.sources.length === 0
+    ? `${entry.id} (${entry.label}): NOT AVAILABLE`
+    : `${entry.id} (${entry.label}): ${[...new Set(entry.sources.map((source) => source.source))].join(", ")}`,
+).join("\n");
+
 function buildContext(input: {
   profileSummary: string;
   plan: SearchPlan;
@@ -73,7 +85,12 @@ function buildContext(input: {
     JSON.stringify(input.plan),
     "",
     "PLAN FIELD NAMES YOU MAY PATCH",
-    "industries, locations, company, decisionMakerRoles, intent, exclusions, minimumGrade, targetVerifiedProspects, conversionGoal",
+    "industries, locations, company, decisionMakerRoles, intent, signals, segment, exclusions, minimumGrade, targetVerifiedProspects, conversionGoal",
+    "",
+    "BUYING SIGNAL TYPES (signals.intentTypes, and segment conditions' types)",
+    INTENT_TYPES_FOR_AGENT,
+    `ROLE FUNCTIONS (signals.roleFunctions, segment condition roleFunction): ${ROLE_FUNCTIONS.join(", ")}`,
+    'SEGMENT SHAPE: {"op": "ALL"|"ANY", "conditions": [{"types": [TYPE, ...], "withinDays": 1-365, "roleFunction": FUNCTION|null}]}. Use a segment only when the customer combines signals or gives a recency, for example "raised funds in the last 90 days and hiring a marketing role". Never use a type marked NOT AVAILABLE.',
     "",
     recent ? `CONVERSATION SO FAR\n${recent}\n` : "",
     "CUSTOMER MESSAGE",

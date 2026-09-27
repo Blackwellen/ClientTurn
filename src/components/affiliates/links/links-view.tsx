@@ -525,7 +525,7 @@ function UtmBuilder({
               id="utm-term"
               value={term}
               onChange={(event) => setTerm(event.target.value)}
-              placeholder="roofing"
+              placeholder="web-agencies"
               className="h-9 w-full rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-content placeholder:text-content-subtle"
             />
           </Field>

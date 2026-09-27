@@ -18,6 +18,7 @@ import {
   type DomainEventSubject,
 } from "./types";
 
+import { planFromDomainEvent, REENGAGEMENT_PLAN_EVENTS } from "@/lib/reengagement/planner";
 /**
  * The domain event outbox (design 03 §4, D10).
  *
@@ -131,6 +132,9 @@ export const WEBHOOK_FORWARDED = [
   "opportunity.created",
   "opportunity.won",
   "opportunity.lost",
+  // Emitted by the lead.score job when the qualification engine's intent
+  // state changes (0134); lets a customer's CRM follow buying intent.
+  "lead.intent_changed",
 ] as const satisfies readonly DomainEventType[];
 
 const webhookConsumer: Consumer = {
@@ -192,10 +196,24 @@ const rescoreConsumer: Consumer = {
   },
 };
 
+/**
+ * Intent-driven re-engagement (reengagement/planner.ts): a no-show, a lost
+ * deal or a re-assessment that found a NOT_NOW / stated timeframe plans its
+ * trigger job at once. Idempotent: each trigger is planned once per source.
+ */
+const reengagementConsumer: Consumer = {
+  name: "reengagement",
+  async run(event) {
+    if (!(REENGAGEMENT_PLAN_EVENTS as readonly string[]).includes(event.type)) return;
+    await planFromDomainEvent(event);
+  },
+};
+
 export const EVENT_CONSUMERS: readonly Consumer[] = [
   webhookConsumer,
   automationConsumer,
   rescoreConsumer,
+  reengagementConsumer,
 ];
 
 export async function handleEventDispatch(job: ClaimedJob): Promise<void> {

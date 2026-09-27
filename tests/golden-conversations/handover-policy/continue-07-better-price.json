@@ -1,0 +1,25 @@
+{
+  "id": "continue-07-better-price",
+  "story": "\"We need a better price\" is pushback, not a demand for a specific concession: the AI answers from the offer card and keeps the conversation (the first version of the discount detector handed this over).",
+  "settings": {
+    "publishedPriceText": [
+      "£95 per month"
+    ]
+  },
+  "turns": [
+    {
+      "lead": "We need a better price than that.",
+      "model": {
+        "proposed_action": "REPLY",
+        "confidence": 0.9,
+        "message": "I understand. The care plan is £95 per month with hosting, updates and backups included. If a lighter scope would suit you better, what matters most to keep?"
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "HANDOVER",
+        "validates": true
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -25,25 +26,26 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
-import { Label, Select, Textarea } from "@/components/ui/form";
+import { Input, Label, Select, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { approveProspectAction, promoteProspectToLeadAction } from "@/lib/find-leads/actions";
 import {
-  approveProspectAction,
-  promoteProspectToLeadAction,
   PROMOTION_RELATIONSHIP_CHOICES,
   type PromotionRelationshipChoice,
-} from "@/lib/find-leads/actions";
+} from "@/lib/find-leads/types";
 import {
   enrichProspectContactAction,
   generateResearchSummaryAction,
   refreshProspectResearchAction,
   suppressProspectAction,
 } from "@/lib/find-leads/prospect-actions";
+import { addProspectWebsiteAction } from "@/lib/find-leads/linkedin-import-actions";
 import { formatMinor } from "@/lib/find-leads/plan";
 import type { ResearchSummary } from "@/lib/find-leads/server/research-summary";
 import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/policy/types";
 import { shortAgo } from "@/lib/prospects/activity";
+import { isRoleMailbox } from "@/lib/prospects/dedupe";
 import {
   SUPPRESSION_REASON_OPTIONS,
   locationLabel,
@@ -136,6 +138,19 @@ export function ProspectDrawer({
                 <IdentityFact icon={MapPin} label="Location" value={location} />
               </dl>
 
+              {isRoleMailbox(prospect.email) && (
+                <p className="mt-1.5 text-[12px] text-content-muted">
+                  A shared inbox rarely reaches the decision maker. Use it to ask who handles
+                  this, or find the named person.{" "}
+                  <Link
+                    href="/app/help/finding-leads/reaching-the-decision-maker"
+                    className="text-content-accent underline-offset-4 hover:underline"
+                  >
+                    Learn more
+                  </Link>
+                </p>
+              )}
+
               <ProspectTags detail={detail} />
             </div>
 
@@ -166,7 +181,7 @@ export function ProspectDrawer({
         id={`prospect-panel-${view}`}
         aria-labelledby={`prospect-tab-${view}`}
       >
-        {view === "summary" && <SummaryView detail={detail} />}
+        {view === "summary" && <SummaryView detail={detail} canManage={canManage} />}
         {view === "research" && <ResearchView detail={detail} />}
         {view === "conversation" && <ConversationView detail={detail} />}
         {view === "activity" && <ActivityView detail={detail} />}
@@ -281,10 +296,10 @@ function ProspectTags({ detail }: { detail: ProspectDetail }) {
 
 /* ------------------------------------------------------------------ summary */
 
-function SummaryView({ detail }: { detail: ProspectDetail }) {
+function SummaryView({ detail, canManage }: { detail: ProspectDetail; canManage: boolean }) {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      <CompanySummaryCard detail={detail} />
+      <CompanySummaryCard detail={detail} canManage={canManage} />
       <ProspectGradeCard detail={detail} />
       <IntentSummaryCard detail={detail} />
       <ContactabilityCard detail={detail} />
@@ -355,7 +370,7 @@ function Card({
   );
 }
 
-function CompanySummaryCard({ detail }: { detail: ProspectDetail }) {
+function CompanySummaryCard({ detail, canManage }: { detail: ProspectDetail; canManage: boolean }) {
   const company = detail.prospect.company;
 
   if (!company) {
@@ -393,7 +408,83 @@ function CompanySummaryCard({ detail }: { detail: ProspectDetail }) {
           <ExternalLink className="size-3" aria-hidden />
         </a>
       )}
+
+      {!company.domain && !company.website_url && (
+        <AddWebsite prospectId={detail.prospect.id} canManage={canManage} />
+      )}
     </Card>
+  );
+}
+
+/**
+ * "Website unknown", with the way to fix it.
+ *
+ * An imported prospect often arrives without a company website. It is still a
+ * prospect; adding the website runs the normal email waterfall and the free
+ * buying-signal checks for it.
+ */
+function AddWebsite({ prospectId, canManage }: { prospectId: string; canManage: boolean }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [open, setOpen] = React.useState(false);
+  const [website, setWebsite] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+  const inputId = React.useId();
+
+  function save() {
+    startTransition(async () => {
+      const result = await addProspectWebsiteAction({ prospectId, website });
+      if (!result.ok) {
+        toast({ variant: "error", title: result.error });
+        return;
+      }
+      toast({
+        variant: "success",
+        title: `Website added: ${result.domain}`,
+        description: [
+          result.emailFound ? "A work email was found." : (result.warning ?? "No work email found yet."),
+          result.intentMatched > 0 ? `${result.intentMatched} buying signal${result.intentMatched === 1 ? "" : "s"} found.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      });
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <Badge tone="warning" dense>
+        Website unknown
+      </Badge>
+      {canManage &&
+        (open ? (
+          <div className="space-y-2">
+            <Label htmlFor={inputId}>Company website</Label>
+            <Input
+              id={inputId}
+              placeholder="acme.co.uk"
+              value={website}
+              onChange={(event) => setWebsite(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={save} loading={pending} disabled={!website.trim()}>
+                Save and look for an email
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+              Add website
+            </Button>
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -705,6 +796,20 @@ function VerificationCard({ detail }: { detail: ProspectDetail }) {
             ? "This address has not been verified"
             : `Verification returned ${verificationLabel(prospect.verification_status).toLowerCase()}`}
       </p>
+
+      {prospect.verification_status !== "VALID" && prospect.verification_status !== "INVALID" && (
+        <p className="mt-1.5 text-[12px] text-content-muted">
+          {prospect.verification_status === "CATCH_ALL"
+            ? "This domain accepts every address, so valid does not mean delivered. It is held for your review."
+            : "Only verified addresses go out automatically. Guessed addresses wait until they are verified."}{" "}
+          <Link
+            href="/app/help/finding-leads/cold-email-that-gets-replies"
+            className="text-content-accent underline-offset-4 hover:underline"
+          >
+            Learn more
+          </Link>
+        </p>
+      )}
 
       {prospect.email && (
         <p className="mt-1 truncate text-[12px] text-content-muted">{prospect.email}</p>

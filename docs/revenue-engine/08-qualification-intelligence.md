@@ -4,9 +4,11 @@
 **Status:** discovery and design only. No code was changed to write this document.
 **Brief:** owner's 25-section "Qualification Intelligence & Intent Engine" (tracker 8.28).
 **Binding constraints:** CLAUDE.md resolved conflict 1 (deterministic engine is the system of
-record; AI may only classify intent or extract a candidate value; low confidence ⇒ `REVIEW` +
-handover; AI never composes a binding promise), [AGENT_RUNTIME.md](../AGENT_RUNTIME.md) ("the
-model proposes, code decides"), and the memory rules: the service layer is the spine, and shared
+record; AI may only classify intent or extract a candidate value; low confidence or an
+unmatched value records `REVIEW` and the AI keeps the conversation going with a clarifying
+question, human hand-over being the last resort (owner decision 2026-09-27); AI never composes a
+binding promise), [AGENT_RUNTIME.md](../AGENT_RUNTIME.md) ("the model proposes, code decides";
+"Hand-over policy"), and the memory rules: the service layer is the spine, and shared
 helpers go in pure `types.ts`-style modules, never in `server-only` files.
 
 **Core rule the whole design serves:** ask the smallest, most natural question that gets the most
@@ -353,22 +355,30 @@ interpretation.
 ```
 
 `next_action` ∈ `ANSWER | ASK | ANSWER_AND_ASK | INFORM | CTA_BOOK | CTA_CHECKOUT | CTA_SIGNUP |
-ESCALATE | WAIT | NURTURE | DISQUALIFY | NO_ACTION`. Decision rules, first match wins:
+ESCALATE | WAIT | NURTURE | DISQUALIFY | NO_ACTION`. Decision rules, first match wins.
+
+> **Amended 2026-09-27 (owner decision: human hand-over is the last resort).** `ESCALATE` is kept
+> only for the lead asking for a person, a complaint, an emergency, a legal or contract question,
+> a VERIFY asked twice unanswered, and rules the workspace configured itself (offer hand-off
+> rules, escalation conditions, goal A). Everything else continues; the NBA's optional
+> `assist_reason` asks a person to do one thing in the background (`agent/types.ts`
+> `ASSIST_REASONS`). A lead flagged `QUALIFICATION_REVIEW` gets no CTA until a person clears it.
+> Rows 3, 4, 8, 10 and 12 below and goal E read as amended.
 
 | # | Condition | Action |
 |---|---|---|
 | 1 | Binding verdict (`classifyDeterministic`) | Existing handling; NBA records it |
 | 2 | Suppressed, opted out, or intent `NEGATIVE` | `NO_ACTION` (stop follow-up); `DISQUALIFY` if the goal requires it |
-| 3 | Engine `NOT_QUALIFIED`, or a disqualifier met on a **CONFIRMED** fact | `DISQUALIFY` (+ suppress if the offer says so). An INFERRED fact goes to a VERIFY question or REVIEW instead |
-| 4 | Handover-always objection, value above threshold, goal E with threshold met, low confidence | `ESCALATE` with an existing `HandoverReason` |
+| 3 | Engine `NOT_QUALIFIED`, or a disqualifier met on a **CONFIRMED** fact | `DISQUALIFY` (+ suppress if the offer says so). A `reviewInstead` disqualifier: `assist_reason = QUALIFICATION_REVIEW`, the plan continues. An INFERRED fact goes to a VERIFY question; asked twice unanswered ⇒ `ESCALATE` |
+| 4 | The lead asked for a person, a legal or contract objection, an offer hand-off rule, a workspace escalation condition | `ESCALATE` with an existing `HandoverReason`. A security/procurement step or an engine REVIEW sets `assist_reason` and continues; value above threshold and goal E close with a meeting (rules 7 and 10) |
 | 5 | The lead asked a question | `ANSWER`; then `ANSWER_AND_ASK` only if rule 9 yields a question with V ≥ 0.4 |
 | 6 | Intent `NOT_NOW` | `WAIT` (resume job at `resume_at`) → goal F on resume |
 | 7 | `BOOKING_READY` and goal ∈ {B, E} | `CTA_BOOK`. Ask **at most one** gating question first, and only if a disqualifier dimension is unknown |
-| 8 | `PURCHASE_READY` and goal ∈ {C, D} | `CTA_CHECKOUT` / `CTA_SIGNUP` through the existing `checkoutGate`; refused ⇒ `ESCALATE READY_TO_BUY` |
+| 8 | `PURCHASE_READY` and goal ∈ {C, D} | `CTA_CHECKOUT` / `CTA_SIGNUP` through the existing `checkoutGate`; refused ⇒ `INFORM` + `SEND_ORDER_DETAILS` assist (a colleague sends the details; the AI keeps the conversation) |
 | 9 | Best question V ≥ 0.25 and the threshold is not met | `ASK` (question_intent) |
-| 10 | Threshold met | Goal CTA (A ⇒ `ESCALATE` with a qualified brief) |
+| 10 | Threshold met | Goal CTA (A ⇒ `ESCALATE` with a qualified brief; E ⇒ `CTA_BOOK`, the meeting is the hand-off; C/D without direct close ⇒ as rule 8) |
 | 11 | Intent `LOW` / `NO_DETECTED_INTENT` | `INFORM` (value line from the offer card + soft CTA) or `WAIT` |
-| 12 | Otherwise | `ESCALATE NO_NEXT_QUESTION` |
+| 12 | Otherwise | `INFORM` (one useful point, a soft next step) |
 
 **The trees (§11)** are the `branches` on intents plus rule 10: the plan stops as soon as the
 goal's threshold is met, *or* as soon as a disqualifier is confirmed.
@@ -381,7 +391,7 @@ goal's threshold is met, *or* as soon as a disqualifier is confirmed.
 | B Book meeting | BOOK_APPOINTMENT / BOOK_DEMO / BOOK_SITE_VISIT | BOOK_MEETING_B2B, LOCAL_SERVICE, HIGH_TICKET_B2C | `CHECK_AVAILABILITY`, `SEND_BOOKING_OPTIONS` (mode `BOOKING_ASSISTANCE`) | `meeting.booked` / `meeting.pending` |
 | C Direct sale | DIRECT_PURCHASE | ECOMMERCE_DIRECT, DIRECT_B2B | `PROPOSE_CHECKOUT` via `commercial_authority` | checkout sent, or `READY_TO_BUY` |
 | D Signup / trial | DIRECT_SIGNUP | SAAS_SELF_SERVE | `PROPOSE_CHECKOUT` with an approved signup link | same |
-| E Human closer | offer `goal`, or ENTERPRISE motion, or value > threshold | ENTERPRISE, DIRECT_B2B | `ESCALATE READY_TO_BUY` / `HIGH_VALUE` (declared, never raised today) | handover |
+| E Human closer | offer `goal`, or ENTERPRISE motion, or value > threshold | ENTERPRISE, DIRECT_B2B | `CTA_BOOK`: the AI books the meeting with the person who closes, with the hand-off brief attached (`MEETING_BRIEF` assist). Amended 2026-09-27; was `ESCALATE READY_TO_BUY` | meeting booked |
 | F Nurture / reactivation | NOT_NOW, LOW intent, reactivation reply | any | modes `FOLLOW_UP` / `REACTIVATION`; the plan starts from stored facts and stale facts become VERIFY intents | back to B–E |
 | G Disqualify | engine NOT_QUALIFIED / confirmed disqualifier | any | `stopFollowUp`; `lead.suppress` only for opt-out, wrong person or a disqualifier with `suppress:true` | reason in `qualification_reason` + `opportunities.outcome_reason` |
 
@@ -401,7 +411,9 @@ goal's threshold is met, *or* as soon as a disqualifier is confirmed.
 | 5 | Output: `answeredQuestionId`, `completeness` (FULL / PARTIAL / NONE / DEFLECTED), `facts[]`, `signals[]`, `objections[]`, `leadAskedQuestion`, `requestedAction`, `intentDelta`, `closeInstead` | — |
 
 Deterministic rules decide: a required configured question answered only by AI and not matched ⇒
-the engine sees no value ⇒ REVIEW ⇒ the existing `QUALIFICATION_REVIEW` handover. The agent's
+the engine sees no value ⇒ REVIEW (or PENDING when required) ⇒ the question is asked again in
+other words, twice at most, then a hand-over (amended 2026-09-27; was an immediate
+`QUALIFICATION_REVIEW` handover). The agent's
 `extracted[]` keeps its 5-field whitelist for lead columns. Dimension facts come only from
 `interpret()`, never from the model's free proposal.
 
@@ -421,7 +433,8 @@ how nurture remembers without restarting from zero and without trusting stale fa
 ### B.13 Pre-send QA (§16)
 
 `qa.ts`: deterministic checks run inside `validateResponse` / `lintStyle` against the NBA and the
-fact state. Failure ⇒ correction prompt ⇒ one retry ⇒ handover (the existing loop).
+fact state. Failure ⇒ correction prompt ⇒ retry, up to three drafts ⇒ handover (the existing
+loop; three drafts since 2026-09-27).
 
 | # | Check | Deterministic test | Code |
 |---|---|---|---|
@@ -515,6 +528,36 @@ agent is excluded from every write.
 | `question_performance.get` | READ | UI, COPILOT, MCP, API | per-intent metrics with low-sample flags |
 
 ---
+
+### B.20 Several interests per lead (2026-09-27)
+
+A lead may want more than one offer (a subscription and a one-off project).
+Each is an interest: one opportunity per (lead, service) with its own goal,
+motion, stage, close target, qualification state and NBA
+(`interests.ts`; migration `0144_lead_interests.sql`, not applied at writing).
+
+- **Detection** (`detectInterests`): the lead's own service, services its
+  messages name (`servicesMentioned`, negation-aware), services a submitted
+  form selected, a person's `opportunity.add_interest`, existing interest
+  opportunities. Recorded as CONFIRMED `SERVICE_NEEDED` facts per service.
+- **Fact scope**: `SHARED_DIMENSIONS` are asked once for all interests;
+  every other dimension is per interest (`factsForInterest`,
+  `factsInMergeScope`, `attributeReply`). One interest: unchanged.
+- **Planning** (`planInterests`): the unchanged pipeline per interest. The
+  lead's conversion goal and estimated value apply to its own service; an
+  offer that sets its own motion closes with that motion's default goal.
+- **Coordination** (`coordinateInterests`): lead-level rules first, then the
+  interest closest to its close, then the one just named, then value; a
+  checkout may carry one light touch (`companionFor`). `interestStrategyLines`
+  and `QaContext.companionQuestion` keep it to one clear call to action and
+  one question.
+- **Closing**: each interest's own checkout link and meeting type; winning one
+  keeps the others open (0144 `close_opportunity` with `open_remaining`);
+  follow-up continues while any is open (`followUpContinues`).
+- **Tests**: `tests/multi-interest.test.ts` (detection, scope, coordinator,
+  closing, CRM deal plan) and the golden conversation
+  `tests/golden-conversations/multi-interest/` (subscription closed by
+  sign-up, website meeting booked, no shared fact asked); live story S.
 
 ## C. Phased build plan
 

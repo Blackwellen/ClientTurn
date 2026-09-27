@@ -9,7 +9,11 @@ export function Card({
   return (
     <div
       className={cn(
-        "bg-surface border border-line rounded-xl shadow-xs",
+        // min-w-0: a card is nearly always a grid or flex item, whose default
+        // minimum is its content's width. A table inside then pushed the card
+        // (and the page) wider than a phone screen instead of scrolling in its
+        // own wrapper (8.7).
+        "min-w-0 bg-surface border border-line rounded-xl shadow-xs",
         interactive &&
           "transition-shadow duration-[var(--lr-duration-base)] hover:shadow-md cursor-pointer",
         className,

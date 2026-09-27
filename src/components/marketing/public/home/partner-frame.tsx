@@ -63,10 +63,10 @@ const MONTHS = [
 ];
 
 const REFERRALS = [
-  { name: "Harper Joinery", plan: "Growth", state: "Paid", commission: "£39.80" },
-  { name: "Kerr Electrical", plan: "Starter", state: "Trial", commission: "—" },
-  { name: "Vale Landscapes", plan: "Pro", state: "Paid", commission: "£79.80" },
-  { name: "Ridgeway Roofing", plan: "Growth", state: "Signed up", commission: "—" },
+  { name: "Brightlabs", plan: "Growth", state: "Paid", commission: "£39.80" },
+  { name: "Kestrel Accounting", plan: "Starter", state: "Trial", commission: "—" },
+  { name: "Fernhill IT Services", plan: "Pro", state: "Paid", commission: "£79.80" },
+  { name: "Loomwell Goods", plan: "Growth", state: "Signed up", commission: "—" },
 ];
 
 function Sidebar() {

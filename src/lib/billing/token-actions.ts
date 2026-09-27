@@ -16,7 +16,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logWriteError } from "@/lib/supabase/write-result";
 import { serverEnv } from "@/lib/env";
 import { recordAudit } from "@/lib/audit";
+import { TERMS_VERSION } from "@/lib/marketing/terms-version";
 import { stripe } from "./stripe";
+import { topUpCheckoutTerms } from "./checkout";
 import { getTokenStatus, listTokenPurchases } from "./token-service";
 import { isTokenPackKey, TOKEN_PACKS, type TokenPackKey } from "./tokens";
 
@@ -99,14 +101,19 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
         ? undefined
         : (profile?.email ?? undefined),
       client_reference_id: workspace.businessId,
+      // Terms clause 9.9 (non-refundable once any credit is used) must be
+      // accepted to pay; the webhook records it with the purchase.
+      ...topUpCheckoutTerms(serverEnv.siteUrl.replace(/\/$/, "")),
       // The webhook reads these back. `purchase_id` is what makes crediting
       // idempotent without having to match on amounts.
       metadata: {
         kind: "ai_tokens",
         business_id: workspace.businessId,
+        user_id: workspace.userId,
         purchase_id: purchase.id,
         pack_key: pack.key,
         tokens: String(pack.tokens),
+        terms_version: TERMS_VERSION,
       },
       payment_intent_data: {
         metadata: {

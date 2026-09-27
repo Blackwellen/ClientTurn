@@ -7,7 +7,7 @@ import { PortalHeader } from "@/components/affiliates/portal-ui";
 import { LinksView } from "@/components/affiliates/links/links-view";
 import { siteOrigin } from "@/lib/affiliates/origin";
 
-export const metadata: Metadata = { title: "Affiliate Links | ClientTurn" };
+export const metadata: Metadata = { title: "Affiliate Links" };
 export const dynamic = "force-dynamic";
 
 /**

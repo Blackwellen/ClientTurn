@@ -1,0 +1,30 @@
+{
+  "id": "msp-03-not-interested",
+  "archetype": "MSP",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "A reply to outreach saying no: the agent stops.",
+  "origin": "OUTBOUND",
+  "turns": [
+    {
+      "lead": "Not interested, thanks. We're happy with our current provider.",
+      "expect": {
+        "actionIn": [
+          "NO_ACTION",
+          "DISQUALIFY"
+        ],
+        "intentStateIn": [
+          "NEGATIVE"
+        ],
+        "questionDimension": null
+      },
+      "candidate": {
+        "text": "Understood. Out of interest, who looks after your IT today?",
+        "qaOk": false,
+        "codes": [
+          "QA_SHOULD_CLOSE"
+        ]
+      }
+    }
+  ]
+}

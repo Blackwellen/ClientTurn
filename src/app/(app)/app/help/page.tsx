@@ -30,7 +30,7 @@ import {
 import { ReplayTourButton } from "@/components/tour/replay-tour-button";
 import { SECTION_TOURS } from "@/lib/tour/model";
 
-export const metadata: Metadata = { title: "Help · Client Turn" };
+export const metadata: Metadata = { title: "Help" };
 export const dynamic = "force-dynamic";
 
 const SUPPORT_EMAIL = "support@clientturn.com";
@@ -99,7 +99,7 @@ export default async function HelpPage({
     <div className="space-y-5">
       <PageHeader
         title="Help"
-        description="Get set up, understand what Client Turn is doing, and reach a human when you need one."
+        description="Get set up, understand what ClientTurn is doing, and reach a human when you need one."
         action={<ReplayTourButton />}
       />
 
@@ -297,7 +297,7 @@ x-clientturn-signature: <hmac_hex>
                 quickly.
               </p>
               <a
-                href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Client Turn support — ${workspace.businessName}`)}`}
+                href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`ClientTurn support — ${workspace.businessName}`)}`}
                 className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border px-3.5 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"
               >
                 <Mail className="size-3.5" aria-hidden />

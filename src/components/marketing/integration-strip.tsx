@@ -18,7 +18,7 @@ const SOURCES: Tool[] = [
 ];
 const CHANNELS: Tool[] = [
   { name: "SMS", detail: "Every plan", icon: MessageSquare },
-  { name: "WhatsApp", detail: "Growth and above", icon: MessageCircle },
+  { name: "WhatsApp", detail: "Paid add-on, Growth and above", icon: MessageCircle },
 ];
 const DESTINATIONS: Tool[] = [
   { name: "Google Calendar", detail: "Booked straight into your diary", icon: CalendarDays },

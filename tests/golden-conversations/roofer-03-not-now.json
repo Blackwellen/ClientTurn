@@ -1,0 +1,50 @@
+{
+  "id": "roofer-03-not-now",
+  "archetype": "ROOFER",
+  "motion": "LOCAL_SERVICE",
+  "channel": "sms",
+  "story": "The lead says not until the spring; the agent waits instead of pushing.",
+  "leadFields": {
+    "SERVICE_NEEDED": "Roof replacement",
+    "LOCATION": "YO1 7HH"
+  },
+  "turns": [
+    {
+      "lead": "Thinking about a new roof but not until the spring",
+      "expect": {
+        "actionIn": [
+          "WAIT",
+          "NURTURE",
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "notAsked": [
+          "LOCATION",
+          "BUDGET",
+          "AUTHORITY",
+          "TIMING"
+        ]
+      }
+    },
+    {
+      "lead": "Honestly not right now, maybe in the spring",
+      "expect": {
+        "actionIn": [
+          "WAIT",
+          "NURTURE"
+        ],
+        "intentStateIn": [
+          "NOT_NOW"
+        ],
+        "questionDimension": null
+      },
+      "candidate": {
+        "text": "No problem at all. Before you go, when exactly in spring?",
+        "qaOk": false,
+        "codes": [
+          "QA_SHOULD_CLOSE"
+        ]
+      }
+    }
+  ]
+}

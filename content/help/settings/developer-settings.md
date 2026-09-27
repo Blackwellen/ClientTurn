@@ -4,7 +4,11 @@ summary: One place for every credential and outgoing connection with access to y
 category: settings
 keywords: [developer, api key, new key, revoke key, outgoing endpoint, add endpoint, signing secret, rotate secret, assistant connections, credentials, integrations for developers]
 order: 60
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/settings/developer-settings-1.png
+    alt: "The Developer section with the API keys, Webhooks and Assistant connections cards"
+    caption: "Every credential with access to your workspace in one place: API keys, webhooks and assistant connections"
 ---
 
 **Settings → Developer** gathers the three ways into your workspace from outside: API keys for your own code, endpoints that ClientTurn sends events to, and assistant connections. They sit together because they are one decision: what can reach your workspace, and where its data goes. Revoking a key in one place and leaving an assistant connected in another is how access gets forgotten.
@@ -18,7 +22,7 @@ Only owners and admins can open this section, even to look. The lists name every
 | Overview | Your base URL, how to **Check a key works**, and how to **Connect an AI assistant** | |
 | **API keys** | Keys your own systems use to call the ClientTurn API, each with its own permissions, environment (**Live** or **Test**) and expiry | **New key**, **Create key**, **Revoke** |
 | **Webhooks** | Endpoints ClientTurn sends events to, with **Recent deliveries** | **Add endpoint**, rotate the signing secret, delete an endpoint |
-| **Assistant connections** | AI assistants connected to your workspace, each limited to what you allow | **New connection**, **Revoke** |
+| **Assistant connections** | AI assistants connected to your workspace, each limited to what you allow. A new connection issues its own API key, with the MCP server URL and a client configuration to copy | **New connection**, **Replace key**, **Revoke** |
 
 ## Keys and secrets are shown once
 

@@ -4,12 +4,18 @@ summary: How ClientTurn applies UK GDPR and PECR to every message, what it check
 category: compliance
 keywords: [gdpr, uk gdpr, pecr, ico, data protection, lawful basis, legitimate interests, cold outreach rules, quiet hours, contact rules, evidence, policy, send checks, data use and access act]
 order: 5
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/compliance/compliance-overview-1.png
+    alt: "The Cold outreach is not ready yet panel in Data Controls with its list of gaps"
+    caption: "Data Controls tells you what is missing before cold outreach can run"
 ---
 
 ClientTurn is built for UK businesses selling to other businesses. The rules that matter most are **UK GDPR**, which covers the personal data you hold, and **PECR**, which covers electronic marketing by email, SMS and social message. ClientTurn applies them as fixed rules, checked before every message. It does not rely on AI to judge them, and a rule it refuses cannot be overridden by AI.
 
 > **Note:** This is general guidance about how ClientTurn works, not legal advice. You remain responsible for your own marketing. The ICO is the authoritative source; start with its guidance on the [PECR electronic mail marketing rules](https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guidance-on-direct-marketing-using-electronic-mail/how-do-we-comply-with-the-pecr-electronic-mail-marketing-rules/).
+
+For a plain-English summary you can share with your team or your own customers, see [How we keep you compliant](/compliance).
 
 ## What is checked before every message
 
@@ -67,3 +73,7 @@ Lead scores and qualification outcomes are worked out by fixed, explainable rule
 - [Data Controls settings](/help/settings/data-controls-settings)
 - [Consent and WhatsApp opt-in](/help/compliance/consent-and-whatsapp-opt-in)
 - [Suppression, STOP and unsubscribe](/help/compliance/suppression-and-unsubscribe)
+- [Cold email that gets replies (and stays legal)](/help/finding-leads/cold-email-that-gets-replies)
+- [Reaching the decision maker](/help/finding-leads/reaching-the-decision-maker)
+- [LinkedIn, Instagram, Messenger and TikTok conversations](/help/compliance/social-conversations-by-channel)
+- [How we keep you compliant](/compliance)

@@ -164,7 +164,7 @@ export function WorkspaceSettings({
         <ReadOnlyNotice message="Only an owner or admin can change workspace settings." />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
           <BusinessIdentityCard
             draft={draft}

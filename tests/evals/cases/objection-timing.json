@@ -1,0 +1,48 @@
+{
+  "id": "objection-timing",
+  "scenario": "§94 objection: timing",
+  "motion": "DIRECT_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "When are you hoping to have this in place?"
+    },
+    {
+      "role": "lead",
+      "text": "Probably after the new year, it's our busy season."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "TIMING",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Fair enough, busy season comes first. Shall I drop you a line in the first week of January?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Don't wait! Spots are filling up fast 👍",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE",
+          "STYLE_EMOJI"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

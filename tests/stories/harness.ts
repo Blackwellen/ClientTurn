@@ -5,6 +5,8 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { Worker } from "node:worker_threads";
+import { strategyQuestion, strategySaysStop } from "./strategy-read.ts";
 import {
   PARK_AT,
   PARK_MARK,
@@ -86,6 +88,14 @@ export async function setupWorld(): Promise<World> {
     .single();
   if (error || !business) throw new Error(`business: ${error?.message}`);
   const businessId = business.id as string;
+  // Migration 0137 (when applied): the deployed claim_jobs skips a paused
+  // workspace, which closes the window between an SQL-inserted job and its
+  // parking. Before 0137 the column does not exist and parking is the barrier.
+  {
+    const { error: pauseError } = await admin.from("businesses").update({ job_claims_paused: true } as never).eq("id", businessId);
+    claimPause.active = !pauseError;
+    claimPause.detail = pauseError ? `unavailable: ${pauseError.message.slice(0, 120)}` : "job_claims_paused = true";
+  }
   world = {
     businessId,
     ownerId,
@@ -147,7 +157,9 @@ export async function setupWorld(): Promise<World> {
         allow_ai_interpretation: true,
         agent_mode: "AUTO_REPLY",
         agent_channels: ["sms", "email"],
-        agent_handover_on_review: true,
+        // The default since 2026-09-27 (migration 0139): a REVIEW is flagged
+        // for a person and the assistant carries on.
+        agent_handover_on_review: false,
         agent_answer_service_questions: true,
       },
       { onConflict: "business_id" },
@@ -187,18 +199,48 @@ export function signInAsOwner() {
 
 /* ------------------------------------------------- the deployed-worker guard */
 
+/** Whether the workspace's claim pause (migration 0137) is in force. */
+export const claimPause = { active: false, detail: "not set" };
+
 const claimedByUs = new Set<string>();
-let guardTimer: NodeJS.Timeout | null = null;
-let guardBusy = false;
-export const guardStats = { sweeps: 0, reparked: 0, maxExposureMs: 0 };
+/** Sweeps in flight on the main thread (runJobs' own sweep). */
+let guardInFlight = 0;
+const GUARD_CONCURRENCY = 3;
+const GUARD_INTERVAL_MS = 40;
+export const guardStats = {
+  thread: "worker",
+  sweeps: 0,
+  failedSweeps: 0,
+  reparked: 0,
+  maxExposureMs: 0,
+  totalExposureMs: 0,
+  intervalMs: GUARD_INTERVAL_MS,
+  concurrency: GUARD_CONCURRENCY,
+  /** Longest gap between the guard thread's ticks (should stay near intervalMs). */
+  guardMaxTickGapMs: 0,
+  /** Longest main-thread event-loop stall seen while the stories ran. */
+  mainMaxStallMs: 0,
+};
+
+function noteParked(rows: { id: string; type: string; created_at: string }[], at = Date.now()) {
+  for (const row of rows) {
+    guardStats.reparked += 1;
+    egress.reparked.push({ id: row.id, type: row.type });
+    // Includes any skew between this machine's clock and the database's.
+    const exposed = at - new Date(row.created_at).getTime();
+    guardStats.maxExposureMs = Math.max(guardStats.maxExposureMs, exposed);
+    guardStats.totalExposureMs += Math.max(0, exposed);
+  }
+}
 
 /**
  * Parks any pending job of the test business that is not yet parked. Uses the
- * raw fetch so the parking PATCH is not itself rewritten.
+ * raw fetch so the parking PATCH is not itself rewritten. The continuous loop
+ * runs on the guard thread (guard-worker.mjs); runJobs calls this directly.
  */
 async function guardSweep() {
-  if (guardBusy || !world) return;
-  guardBusy = true;
+  if (guardInFlight >= GUARD_CONCURRENCY || !world) return;
+  guardInFlight += 1;
   try {
     const now = new Date().toISOString();
     const url =
@@ -215,28 +257,71 @@ async function guardSweep() {
       body: JSON.stringify({ run_at: PARK_AT, last_error: `${PARK_MARK}${now}` }),
     });
     guardStats.sweeps += 1;
-    if (response.ok) {
-      const rows = (await response.json()) as { id: string; type: string; created_at: string }[];
-      for (const row of rows) {
-        guardStats.reparked += 1;
-        egress.reparked.push({ id: row.id, type: row.type });
-        guardStats.maxExposureMs = Math.max(guardStats.maxExposureMs, Date.now() - new Date(row.created_at).getTime());
-      }
-    }
+    if (response.ok) noteParked((await response.json()) as { id: string; type: string; created_at: string }[]);
   } catch {
-    // A missed sweep is caught by the next one 100ms later.
+    // A missed sweep is caught by the guard thread GUARD_INTERVAL_MS later.
   } finally {
-    guardBusy = false;
+    guardInFlight -= 1;
   }
 }
 
+let guardThread: Worker | null = null;
+let stallTimer: NodeJS.Timeout | null = null;
+
 export function startGuard() {
-  if (guardTimer) return;
-  guardTimer = setInterval(() => void guardSweep(), 100);
+  if (guardThread || !world) return;
+  guardThread = new Worker(new URL("./guard-worker.mjs", import.meta.url), {
+    // Plain JS with no hooks: none of the run's loaders or test flags.
+    execArgv: [],
+    workerData: {
+      supabaseUrl: SUPABASE_URL,
+      serviceKey: SERVICE_KEY,
+      businessId: world.businessId,
+      parkAt: PARK_AT,
+      parkMark: PARK_MARK,
+      intervalMs: GUARD_INTERVAL_MS,
+      concurrency: GUARD_CONCURRENCY,
+    },
+  });
+  guardThread.on("message", (message: { kind: string; rows?: { id: string; type: string; created_at: string }[]; at?: number }) => {
+    if (message.kind === "parked" && message.rows) noteParked(message.rows, message.at);
+  });
+  guardThread.on("error", (error) => {
+    // Loud: without the guard thread only runJobs' sweeps park SQL jobs.
+    console.error(`[story guard] thread failed: ${error.message}`);
+  });
+  let last = Date.now();
+  stallTimer = setInterval(() => {
+    const now = Date.now();
+    guardStats.mainMaxStallMs = Math.max(guardStats.mainMaxStallMs, now - last - 100);
+    last = now;
+  }, 100);
+  stallTimer.unref();
 }
+
 export async function stopGuard() {
-  if (guardTimer) clearInterval(guardTimer);
-  guardTimer = null;
+  if (stallTimer) clearInterval(stallTimer);
+  stallTimer = null;
+  const thread = guardThread;
+  guardThread = null;
+  if (thread) {
+    const none = { sweeps: 0, failedSweeps: -1, maxTickGapMs: -1 };
+    const stats = await new Promise<{ sweeps: number; failedSweeps: number; maxTickGapMs: number }>((resolve) => {
+      const timeout = setTimeout(() => resolve(none), 15_000);
+      thread.on("message", (m: { kind: string; stats?: { sweeps: number; failedSweeps: number; maxTickGapMs: number } }) => {
+        if (m.kind === "stopped" && m.stats) {
+          clearTimeout(timeout);
+          resolve(m.stats);
+        }
+      });
+      thread.postMessage({ kind: "stop" });
+    });
+    guardStats.sweeps += stats.sweeps;
+    guardStats.failedSweeps += stats.failedSweeps;
+    guardStats.guardMaxTickGapMs = stats.maxTickGapMs;
+    await thread.terminate();
+  }
+  while (guardInFlight > 0) await new Promise((r) => setTimeout(r, 20));
   await guardSweep();
 }
 
@@ -248,7 +333,7 @@ export async function foreignlyTouchedJobs() {
   const w = mustWorld();
   const { data, error } = await admin
     .from("jobs")
-    .select("id, type, state, attempts, locked_by, last_error")
+    .select("id, type, state, attempts, locked_by, last_error, created_at, completed_at")
     .eq("business_id", w.businessId)
     .or("state.neq.pending,attempts.gt.0");
   if (error) throw error;
@@ -357,14 +442,9 @@ async function taskTypeOf(system: string): Promise<string> {
   return promptIndex.get(system) ?? "unknown";
 }
 
-/** The next question the strategy block tells the model to ask, if any. */
-export function strategyQuestion(user: string): string | null {
-  const match = user.match(/Next best question\. Ask only this, in natural wording: (.+?)(?: \(acceptable answers: .*\))?$/m);
-  return match ? match[1].trim() : null;
-}
-export function strategySaysStop(user: string): boolean {
-  return /Stop qualifying: enough is known\.|No further questions\./.test(user);
-}
+// How the scripted model reads the block (pure, unit-tested in
+// tests/story-strategy-read.test.ts).
+export { strategyQuestion, strategySaysStop } from "./strategy-read.ts";
 
 /** Default scripted decisions. Model QUALITY is not evaluated by these stories. */
 function defaultAi(taskType: string, user: string): unknown {
@@ -460,7 +540,21 @@ export function installProviderFakes() {
     match: (url) => url.hostname === "www.googleapis.com" && url.pathname.startsWith("/calendar/v3"),
     respond: (url, method, body) => {
       if (url.pathname.endsWith("/freeBusy")) {
-        return json({ calendars: { primary: { busy: [] } } });
+        // Like Google: every event this fake has accepted in the run is busy
+        // (freeBusy returns opaque busy blocks inside timeMin..timeMax). An
+        // always-empty answer re-offered A8's booked slot to Q1, which the
+        // product then correctly refused as SLOT_TAKEN (2026-09-27 08:07 run).
+        const query = JSON.parse(body || "{}") as { timeMin?: string; timeMax?: string; items?: { id: string }[] };
+        const min = Date.parse(query.timeMin ?? "") || -Infinity;
+        const max = Date.parse(query.timeMax ?? "") || Infinity;
+        const busy = calendarEvents
+          .map(({ event }) => ({
+            start: (event.start as { dateTime?: string } | undefined)?.dateTime ?? "",
+            end: (event.end as { dateTime?: string } | undefined)?.dateTime ?? "",
+          }))
+          .filter((b) => Date.parse(b.end) > min && Date.parse(b.start) < max);
+        const ids = query.items?.length ? query.items.map((i) => i.id) : ["primary"];
+        return json({ calendars: Object.fromEntries(ids.map((id) => [id, { busy }])) });
       }
       if (method === "POST" && url.pathname.endsWith("/events")) {
         const event = JSON.parse(body) as Record<string, unknown>;
@@ -568,39 +662,271 @@ export async function countBusinessRows(businessId: string) {
   return remainingRows(businessId);
 }
 
-export async function teardownWorld(): Promise<{
+export type TeardownStage = { stage: string; table: string; deleted: number; batches: number; error: string | null };
+export type TeardownResult = {
   before: Record<string, number>;
+  stages: TeardownStage[];
+  errors: string[];
   after: { tablesChecked: number; nonZero: Record<string, number> };
   globals: Record<string, number>;
-}> {
+  /** SQL that finishes the cleanup by hand; empty when nothing remains. */
+  finishSql: string[];
+};
+
+const isTimeout = (message: string) => /statement timeout|canceling statement/i.test(message);
+
+/**
+ * Deletes rows by id in batches. `jobs` needs this: its unindexed self-FK
+ * (retried_from_job_id, ON DELETE SET NULL) makes every deleted job scan the
+ * whole jobs table, so one statement over a run's jobs exceeds PostgREST's
+ * 8 s statement timeout (the 2026-09-27 08:07 run). A batch that times out is
+ * halved and retried.
+ */
+async function deleteByIds(table: string, ids: string[], stage: string, startBatch = 25): Promise<TeardownStage> {
+  const result: TeardownStage = { stage, table, deleted: 0, batches: 0, error: null };
+  let size = startBatch;
+  let i = 0;
+  while (i < ids.length) {
+    const batch = ids.slice(i, i + size);
+    const { data, error } = await admin.from(table).delete().in("id", batch).select("id");
+    result.batches += 1;
+    if (error) {
+      if (isTimeout(error.message) && size > 1) {
+        size = Math.max(1, Math.floor(size / 2));
+        continue;
+      }
+      result.error = `${error.message} (batch at ${i}, size ${batch.length})`;
+      return result;
+    }
+    result.deleted += data?.length ?? 0;
+    i += batch.length;
+  }
+  return result;
+}
+
+type IdQuery = ReturnType<ReturnType<SupabaseClient["from"]>["select"]>;
+async function idsOf(table: string, filter: (q: IdQuery) => IdQuery): Promise<{ ids: string[]; error: string | null }> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await filter(admin.from(table).select("id")).order("id").range(from, from + 999);
+    if (error) return { ids, error: error.message };
+    for (const row of (data ?? []) as unknown as { id: string }[]) ids.push(row.id);
+    if (!data || data.length < 1000) return { ids, error: null };
+  }
+}
+
+/**
+ * Staged teardown. Every delete's `{ error }` is checked and recorded; nothing
+ * here throws. Order: jobs (batched, see deleteByIds), domain_events, the
+ * global inbox rows, then every other business_id table with rows (in passes,
+ * so a table still referenced by another is retried after it), then the
+ * business itself (retried), then the auth user. Whatever remains is counted
+ * and returned with the SQL that finishes it.
+ */
+export async function teardownWorld(): Promise<TeardownResult> {
   const w = mustWorld();
-  const before = (await remainingRows(w.businessId)).nonZero;
-  // Jobs this run parked without a business (the Twilio route queues inbound
-  // processing with no business id) and the global inbox rows it wrote.
-  await admin.from("jobs").delete().eq("run_at", PARK_AT);
+  const stages: TeardownStage[] = [];
+  const errors: string[] = [];
+  const note = (s: TeardownStage) => {
+    stages.push(s);
+    if (s.error) errors.push(`${s.stage} ${s.table}: ${s.error}`);
+  };
+
+  let before: Record<string, number> = {};
+  try {
+    before = (await remainingRows(w.businessId)).nonZero;
+  } catch (e) {
+    errors.push(`before-count: ${(e as Error).message}`);
+  }
+
+  // 1. Jobs: the business's own, then the parked jobs this run wrote with no
+  //    business (the Twilio route queues inbound processing without one).
+  const own = await idsOf("jobs", (q) => q.eq("business_id", w.businessId));
+  if (own.error) errors.push(`jobs select: ${own.error}`);
+  note(await deleteByIds("jobs", own.ids, "1-jobs"));
+  const orphans = await idsOf("jobs", (q) => q.eq("run_at", PARK_AT).is("business_id", null));
+  if (orphans.error) errors.push(`orphan jobs select: ${orphans.error}`);
+  note(await deleteByIds("jobs", orphans.ids, "1-orphan-parked-jobs"));
+
+  // 2. Domain events.
+  const events = await idsOf("domain_events", (q) => q.eq("business_id", w.businessId));
+  if (events.error) errors.push(`domain_events select: ${events.error}`);
+  note(await deleteByIds("domain_events", events.ids, "2-domain_events", 200));
+
+  // 3. Global inbox rows this run wrote.
+  let webhookDeleted = 0;
   for (const event of w.createdGlobal.webhookEvents) {
-    await admin.from("webhook_events").delete().eq("provider", event.provider).like("external_event_id", `%${event.id}%`);
+    const { data, error } = await admin
+      .from("webhook_events")
+      .delete()
+      .eq("provider", event.provider)
+      .like("external_event_id", `%${event.id}%`)
+      .select("id");
+    if (error) errors.push(`webhook_events ${event.id}: ${error.message}`);
+    webhookDeleted += data?.length ?? 0;
   }
-  const { error } = await admin.from("businesses").delete().eq("id", w.businessId);
-  if (error) throw new Error(`business delete: ${error.message}`);
-  for (const id of w.createdGlobal.authUsers) await admin.auth.admin.deleteUser(id).catch(() => undefined);
-  const after = await remainingRows(w.businessId);
+  stages.push({ stage: "3-webhook_events", table: "webhook_events", deleted: webhookDeleted, batches: w.createdGlobal.webhookEvents.length, error: null });
+
+  // 4. Every other table with rows, largest first, in passes.
+  let pending = Object.entries(before)
+    .filter(([t]) => t !== "businesses" && t !== "jobs" && t !== "domain_events")
+    .sort((a, b) => b[1] - a[1])
+    .map(([t]) => t);
+  const PASSES = 4;
+  for (let pass = 1; pass <= PASSES && pending.length > 0; pass += 1) {
+    const retry: string[] = [];
+    for (const table of pending) {
+      const { data, error } = await admin.from(table).delete().eq("business_id", w.businessId).select("business_id");
+      if (error) {
+        retry.push(table);
+        // Only the last pass's refusal is an error: earlier ones are ordering.
+        if (pass === PASSES) note({ stage: `4-tables-pass${pass}`, table, deleted: 0, batches: 1, error: error.message });
+        continue;
+      }
+      stages.push({ stage: `4-tables-pass${pass}`, table, deleted: data?.length ?? 0, batches: 1, error: null });
+    }
+    pending = retry;
+  }
+
+  // 5. The business (cascades to anything left), retried with backoff.
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const { error } = await admin.from("businesses").delete().eq("id", w.businessId);
+    if (!error) {
+      stages.push({ stage: "5-business", table: "businesses", deleted: 1, batches: attempt, error: null });
+      break;
+    }
+    if (attempt === 3) {
+      note({ stage: "5-business", table: "businesses", deleted: 0, batches: attempt, error: error.message });
+    } else {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+
+  // 6. The auth user.
+  for (const id of w.createdGlobal.authUsers) {
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error) errors.push(`auth user ${id}: ${error.message}`);
+  }
+
+  // 7. Proof.
+  let after: TeardownResult["after"] = { tablesChecked: 0, nonZero: {} };
   const globals: Record<string, number> = {};
-  const [parked] = await readSql<{ n: number }>(`select count(*)::int n from public.jobs where run_at = '${PARK_AT}'`);
-  globals.parked_jobs = parked?.n ?? -1;
-  const ids = w.createdGlobal.webhookEvents.map((e) => `'${e.id.replace(/'/g, "")}'`);
-  if (ids.length) {
-    const [wh] = await readSql<{ n: number }>(
-      `select count(*)::int n from public.webhook_events where ${w.createdGlobal.webhookEvents.map((e) => `external_event_id like '%${e.id.replace(/'/g, "")}%'`).join(" or ")}`,
-    );
-    globals.webhook_events = wh?.n ?? -1;
+  try {
+    after = await remainingRows(w.businessId);
+    const [parked] = await readSql<{ n: number }>(`select count(*)::int n from public.jobs where run_at = '${PARK_AT}'`);
+    globals.parked_jobs = parked?.n ?? -1;
+    if (w.createdGlobal.webhookEvents.length) {
+      const [wh] = await readSql<{ n: number }>(
+        `select count(*)::int n from public.webhook_events where ${w.createdGlobal.webhookEvents.map((e) => `external_event_id like '%${e.id.replace(/'/g, "")}%'`).join(" or ")}`,
+      );
+      globals.webhook_events = wh?.n ?? -1;
+    }
+    const users = w.createdGlobal.authUsers.map((u) => `'${u}'`).join(",");
+    const [au] = await readSql<{ n: number }>(`select count(*)::int n from auth.users where id in (${users})`);
+    globals.auth_users = au?.n ?? -1;
+    const [biz] = await readSql<{ n: number }>(`select count(*)::int n from public.businesses where name like '${BUSINESS_PREFIX}-${RUN}%'`);
+    globals.businesses = biz?.n ?? -1;
+  } catch (e) {
+    errors.push(`proof: ${(e as Error).message}`);
+    after = { tablesChecked: -1, nonZero: { proof_failed: 1 } };
   }
-  const users = w.createdGlobal.authUsers.map((u) => `'${u}'`).join(",");
-  const [au] = await readSql<{ n: number }>(`select count(*)::int n from auth.users where id in (${users})`);
-  globals.auth_users = au?.n ?? -1;
-  const [biz] = await readSql<{ n: number }>(`select count(*)::int n from public.businesses where name like '${BUSINESS_PREFIX}-${RUN}%'`);
-  globals.businesses = biz?.n ?? -1;
-  return { before, after, globals };
+
+  const finishSql: string[] = [];
+  const leftover = Object.keys(after.nonZero).length > 0 || Object.values(globals).some((n) => n !== 0);
+  if (leftover || errors.length > 0) {
+    finishSql.push("set statement_timeout = '600s';");
+    finishSql.push(`delete from public.jobs where business_id = '${w.businessId}' or run_at = '${PARK_AT}';`);
+    finishSql.push(`delete from public.domain_events where business_id = '${w.businessId}';`);
+    for (const e of w.createdGlobal.webhookEvents) {
+      finishSql.push(`delete from public.webhook_events where provider = '${e.provider}' and external_event_id like '%${e.id.replace(/'/g, "")}%';`);
+    }
+    for (const table of Object.keys(after.nonZero).filter((t) => !["jobs", "domain_events", "businesses", "proof_failed"].includes(t))) {
+      finishSql.push(`delete from public."${table}" where business_id = '${w.businessId}';`);
+    }
+    finishSql.push(`delete from public.businesses where id = '${w.businessId}';`);
+    for (const id of w.createdGlobal.authUsers) finishSql.push(`delete from auth.users where id = '${id}';`);
+  }
+  return { before, stages, errors, after, globals, finishSql };
+}
+
+/* ------------------------------------------------------- shadow-diff review */
+
+export type ShadowReview = {
+  runsWithEngine: number;
+  shadowTurns: number;
+  shadowDiffers: number;
+  liveTurns: number;
+  byNbaAction: { nba: string; turns: number; differs: number }[];
+  /** Every SHADOW turn where the NBA and the legacy turn disagreed: what each did. */
+  differingTurns: { story: string; nba: string; rule: string | null; nbaQuestion: string | null; legacyAction: string | null; legacyMode: string | null; outcome: string | null }[];
+  assessments: { shadow: number; differs: number; notes: { note: string; n: number }[] };
+};
+
+/**
+ * First review of the engine's SHADOW decisions against the legacy turn, read
+ * from this run's agent runs (decision_json.qi.accounting.shadow_differs) and
+ * SHADOW assessments (lead_assessments.legacy_decision). Must run BEFORE the
+ * teardown deletes them. Test traffic only: a real-traffic review is owed.
+ */
+export async function shadowReview(): Promise<ShadowReview> {
+  const w = mustWorld();
+  const { data: runs, error } = await admin
+    .from("conversation_agent_runs")
+    .select("id, outcome, decision_json, created_at, leads(email)")
+    .eq("business_id", w.businessId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`shadow review runs: ${error.message}`);
+  const review: ShadowReview = { runsWithEngine: 0, shadowTurns: 0, shadowDiffers: 0, liveTurns: 0, byNbaAction: [], differingTurns: [], assessments: { shadow: 0, differs: 0, notes: [] } };
+  const byAction = new Map<string, { turns: number; differs: number }>();
+  for (const run of runs ?? []) {
+    const acc = ((run.decision_json ?? {}) as { qi?: { accounting?: { shadow_differs?: boolean | null; nba_action?: string; engine_mode?: string; nba_rule?: string; question_intent?: string | null } } }).qi?.accounting;
+    if (!acc) continue;
+    review.runsWithEngine += 1;
+    if (acc.engine_mode !== "SHADOW") {
+      if (acc.engine_mode === "LIVE") review.liveTurns += 1;
+      continue;
+    }
+    review.shadowTurns += 1;
+    if (acc.shadow_differs === true) {
+      review.shadowDiffers += 1;
+      const d = (run.decision_json ?? {}) as { action?: string; mode?: string };
+      const lead = (run as { leads?: { email?: string } | null }).leads;
+      review.differingTurns.push({
+        story: String(lead?.email ?? "").split(".")[0] || "?",
+        nba: acc.nba_action ?? "?",
+        rule: acc.nba_rule ?? null,
+        nbaQuestion: acc.question_intent ?? null,
+        legacyAction: d.action ?? null,
+        legacyMode: d.mode ?? null,
+        outcome: (run as { outcome?: string | null }).outcome ?? null,
+      });
+    }
+    const key = acc.nba_action ?? "?";
+    const entry = byAction.get(key) ?? { turns: 0, differs: 0 };
+    entry.turns += 1;
+    if (acc.shadow_differs === true) entry.differs += 1;
+    byAction.set(key, entry);
+  }
+  review.byNbaAction = [...byAction.entries()].map(([nba, v]) => ({ nba, ...v })).sort((a, b) => b.turns - a.turns);
+  const { data: assessments, error: aErr } = await admin
+    .from("lead_assessments")
+    .select("legacy_decision, engine_mode")
+    .eq("business_id", w.businessId)
+    .eq("engine_mode", "SHADOW");
+  if (aErr) throw new Error(`shadow review assessments: ${aErr.message}`);
+  const notes = new Map<string, number>();
+  for (const a of assessments ?? []) {
+    review.assessments.shadow += 1;
+    const legacy = (a.legacy_decision ?? null) as { differs?: boolean; note?: string | null } | null;
+    if (legacy?.differs) {
+      review.assessments.differs += 1;
+      // Collapse question ids so the same kind of difference groups together.
+      const note = String(legacy.note ?? "").replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, "<id>");
+      notes.set(note, (notes.get(note) ?? 0) + 1);
+    }
+  }
+  review.assessments.notes = [...notes.entries()].map(([note, n]) => ({ note, n })).sort((a, b) => b.n - a.n);
+  return review;
 }
 
 /* ------------------------------------------------------- time and turns */

@@ -4,7 +4,11 @@ summary: Your organisation's legal details, markets, permitted data sources, bas
 category: settings
 keywords: [legal name, registered address, privacy notice url, privacy contact, dpo, markets, data sources, lawful basis, retention period, strictness, social outreach, privacy requests, suppression list, evidence, cold outreach ready]
 order: 70
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/settings/data-controls-settings-1.png
+    alt: "The Data Controls form with the Organisation and Data sources cards"
+    caption: "Tell ClientTurn about your organisation and which data sources you allow"
 ---
 
 **Settings → Data Controls** is where you tell ClientTurn about your organisation and set the rules your outreach follows. Everyone can see it. Owners and admins can change it, and only they see privacy requests and the retention dry run.

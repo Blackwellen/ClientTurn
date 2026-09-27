@@ -1,0 +1,52 @@
+{
+  "id": "ecommerce-01-product-to-checkout",
+  "archetype": "ECOMMERCE",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "email",
+  "story": "A buyer names the product and asks to buy; the agent moves to checkout or a person, never more questions.",
+  "directClose": true,
+  "turns": [
+    {
+      "lead": "I'm interested in the standard fulfilment plan.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_CHECKOUT",
+          "ESCALATE",
+          "INFORM",
+          "ANSWER"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "AUTHORITY",
+          "COMPANY_SIZE",
+          "TEAM_SIZE",
+          "PRODUCT_INTEREST"
+        ]
+      }
+    },
+    {
+      "lead": "Great, how do I buy it?",
+      "expect": {
+        "actionIn": [
+          "CTA_CHECKOUT",
+          "ESCALATE",
+          "ANSWER"
+        ],
+        "intentStateIn": [
+          "PURCHASE_READY",
+          "HIGH"
+        ],
+        "questionDimension": null
+      },
+      "candidate": {
+        "text": "Great to hear. How many orders do you ship each month?",
+        "qaOk": false,
+        "codes": [
+          "QA_SHOULD_CLOSE"
+        ]
+      }
+    }
+  ]
+}

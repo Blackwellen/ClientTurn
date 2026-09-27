@@ -341,16 +341,25 @@ describe("lead.process mode", () => {
 /* ---------------------------------------------------------- vocabularies */
 
 describe("provenance vocabularies match the database", () => {
-  const leadsIntake = read("supabase", "migrations", "0038_v4_core_extensions.sql");
+  // 0135 widened the leads CHECK; the latest definition is the one that binds.
+  const leadsIntake = read("supabase", "migrations", "0135_ad_platform_intake_methods.sql");
   const createdVia = read("supabase", "migrations", "0040_manual_lead_intake.sql");
 
   test("every intake_method and created_via ingest writes is allowed by its CHECK", () => {
     for (const type of INGEST_SOURCE_TYPES) {
-      for (const provider of ["meta", "google_ads", "pipedrive", "api"]) {
+      for (const provider of ["meta", "google_ads", "linkedin_ads", "tiktok_ads", "pipedrive", "api"]) {
         assert.ok(leadsIntake.includes(`'${intakeMethodFor(type, provider)}'`), `${type}/${provider}`);
       }
       assert.ok(createdVia.includes(`'${createdViaFor(type)}'`), type);
     }
+  });
+
+  test("each ad platform's form lead is recorded under its own intake method", () => {
+    assert.equal(intakeMethodFor("AD_FORM", "google_ads"), "GOOGLE_ADS");
+    assert.equal(intakeMethodFor("AD_FORM", "linkedin_ads"), "LINKEDIN_ADS");
+    assert.equal(intakeMethodFor("AD_FORM", "tiktok_ads"), "TIKTOK_ADS");
+    assert.equal(intakeMethodFor("AD_FORM", "meta"), "META");
+    assert.equal(intakeMethodFor("AD_FORM", "someone_new"), "OTHER");
   });
 
   test("forms and DMs default to THEY_CONTACTED_US; everything else must say", () => {

@@ -273,7 +273,6 @@ export function ReviewStep({
               label="Communication allowance"
               value={formatCount(draft.budget.communicationAllowance)}
             />
-            <Detail label="Auto overage" value={draft.budget.autoOverage ? "On" : "Off"} />
             <Detail label="Auto optimize" value={draft.budget.autoOptimize ? "On" : "Off"} />
           </SummaryCard>
 

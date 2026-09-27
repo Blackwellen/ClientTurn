@@ -198,6 +198,11 @@ export type UsageCell = {
   limit: number | null;
   /** Null when there is no limit to be a fraction of. */
   ratio: number | null;
+  /**
+   * A plain count with no allowance behind it (messages sent across every
+   * channel). Shown as "this period", never as "Unlimited".
+   */
+  countOnly?: boolean;
 };
 
 export type CustomerRow = {
@@ -287,6 +292,8 @@ export type CustomerDetail = {
   connectionIssueCount: number;
   leadUsage: UsageCell;
   messageUsage: UsageCell;
+  /** SMS segments this period against the plan's SMS allowance. */
+  smsUsage: UsageCell;
   userLimit: number;
   lastActivityAt: string | null;
   lastHealthCheckAt: string | null;

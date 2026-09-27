@@ -15,7 +15,7 @@ type Params = Promise<{ category: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { category } = await params;
-  return { title: `${helpCategory(category)?.title ?? "Help"} · Help · Client Turn` };
+  return { title: `${helpCategory(category)?.title ?? "Help"} · Help` };
 }
 
 export default async function AppHelpCategoryPage({ params }: { params: Params }) {

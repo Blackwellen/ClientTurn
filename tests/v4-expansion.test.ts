@@ -23,13 +23,11 @@ import {
 } from "../src/lib/outreach/campaign-draft.ts";
 import {
   DEFAULT_ALLOCATION,
-  MAX_OVERAGE_CAP_MINOR,
   allocationTotal,
   effectiveDailyCap,
   estimateSends,
   rebalance,
   validateAllocation,
-  validateOverage,
 } from "../src/lib/billing/usage-allocation.ts";
 import {
   canOverwrite,
@@ -398,41 +396,9 @@ describe("daily caps", () => {
   });
 });
 
-describe("overage", () => {
-  test("overage off needs no cap and raises no issue", () => {
-    assert.deepEqual(
-      validateOverage({ enabled: false, capMinor: 0, accountMaxMinor: 50000 }),
-      [],
-    );
-  });
-
-  test("enabling overage with no cap is a contradiction and is refused", () => {
-    const issues = validateOverage({
-      enabled: true,
-      capMinor: 0,
-      accountMaxMinor: 50000,
-    });
-    assert.equal(issues.length, 1);
-  });
-
-  test("a cap above the account maximum is refused", () => {
-    const issues = validateOverage({
-      enabled: true,
-      capMinor: 90000,
-      accountMaxMinor: 50000,
-    });
-    assert.ok(issues.some((issue) => /maximum/i.test(issue.message)));
-  });
-
-  test("nothing may exceed the platform overage ceiling", () => {
-    const issues = validateOverage({
-      enabled: true,
-      capMinor: MAX_OVERAGE_CAP_MINOR + 1,
-      accountMaxMinor: Number.MAX_SAFE_INTEGER,
-    });
-    assert.ok(issues.length > 0);
-  });
-});
+// The "overage" suite (validateOverage, MAX_OVERAGE_CAP_MINOR) was removed on
+// 2026-09-27 with overage itself: owner rule, "it will get abused, make them
+// top up". Prepaid credit is the only way past an allowance (limits.test.ts).
 
 /* ======================================================== §26 fact precedence */
 

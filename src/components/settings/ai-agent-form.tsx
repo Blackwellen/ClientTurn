@@ -234,8 +234,9 @@ export function AiAgentForm({
                   Hand over when qualification needs review
                 </span>
                 <span className="text-muted block text-sm">
-                  Recommended. A reply your rules cannot decide goes to your team instead of
-                  getting a guess.
+                  Off by default. When off, a reply your rules cannot decide is flagged for your
+                  team to check and the assistant keeps the conversation going. It never guesses
+                  the result. Turn on to pass these conversations to your team instead.
                 </span>
               </span>
             </label>

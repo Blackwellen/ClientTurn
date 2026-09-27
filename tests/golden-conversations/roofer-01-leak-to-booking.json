@@ -1,0 +1,85 @@
+{
+  "id": "roofer-01-leak-to-booking",
+  "archetype": "ROOFER",
+  "motion": "LOCAL_SERVICE",
+  "channel": "sms",
+  "story": "A homeowner with a leak gives postcode and timing; the agent stops qualifying and books.",
+  "leadFields": {
+    "SERVICE_NEEDED": "Roof repair"
+  },
+  "turns": [
+    {
+      "lead": "We've got a leak in the roof over the kitchen, can someone take a look?",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "AUTHORITY",
+          "STAKEHOLDERS",
+          "DECISION_PROCESS",
+          "TIMING"
+        ]
+      },
+      "candidate": {
+        "text": "Sorry to hear about the leak. What's the postcode? And when do you need someone?",
+        "qaOk": false,
+        "codes": [
+          "STYLE_MULTIPLE_QUESTIONS"
+        ]
+      }
+    },
+    {
+      "lead": "LS6 2AB",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "LOCATION"
+        ],
+        "notAsked": [
+          "LOCATION",
+          "BUDGET",
+          "AUTHORITY",
+          "TIMING"
+        ]
+      }
+    },
+    {
+      "lead": "As soon as possible really, it's getting worse",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER"
+        ],
+        "known": [
+          "LOCATION",
+          "TIMING"
+        ],
+        "notAsked": [
+          "LOCATION",
+          "TIMING",
+          "BUDGET"
+        ]
+      },
+      "candidate": {
+        "text": "Thanks. Before we book, what's your budget for the repair?",
+        "qaOk": false,
+        "codes": [
+          "QA_UNPLANNED_QUESTION"
+        ]
+      }
+    }
+  ]
+}

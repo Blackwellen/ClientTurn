@@ -50,7 +50,7 @@ const GOAL_ICONS = [Calendar, Doc, Phone];
 
 /** The three goals the panel offers, read from the product's own list. */
 const GOALS = CONVERSION_GOALS.filter((goal) =>
-  ["BOOK_SITE_VISIT", "REQUEST_QUOTE", "PHONE_CALL"].includes(goal.value),
+  ["BOOK_APPOINTMENT", "REQUEST_QUOTE", "PHONE_CALL"].includes(goal.value),
 );
 
 export function CampaignPanel() {
@@ -185,13 +185,13 @@ export function CampaignPanel() {
           <div className="fl-field">
             <span>Campaign name</span>
             <div className="fl-field-box">
-              <b>South Coast roofing — Q4</b>
+              <b>North West ecommerce — Q4</b>
             </div>
           </div>
           <div className="fl-field">
             <span>Target audience</span>
             <div className="fl-field-box">
-              <b>Property managers (5–50 emp)</b>
+              <b>Ecommerce brands (10–200 emp)</b>
               <ChevronDown size={12} />
             </div>
           </div>

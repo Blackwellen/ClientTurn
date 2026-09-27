@@ -4,7 +4,7 @@ import { PublicContainer, SectionEyebrow } from "@/components/marketing/public/u
 import { PrivacyRequestForm } from "@/components/marketing/public/privacy-request/privacy-request-form";
 
 export const metadata: Metadata = {
-  title: "Privacy request · ClientTurn",
+  title: "Privacy request",
   description:
     "Ask to see, correct, restrict or erase personal data held about you, object to marketing, challenge an automated decision or make a data protection complaint.",
   alternates: { canonical: "/privacy-request" },

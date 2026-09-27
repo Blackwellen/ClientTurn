@@ -21,7 +21,14 @@
  *   * **Workspace-level only.** Inputs are one workspace's leads.
  */
 
-export const EXPERIMENT_KINDS = ["WARM_FOLLOW_UP", "REACTIVATION"] as const;
+/**
+ * QUESTION_STRATEGY (0134, design 08 §B.15, CD-19): variants map a question
+ * intent key to a wording family (and optionally its rendering) or pin a
+ * strategy version. target_id is the offer (services.id) or, workspace-wide,
+ * the business id. Its primary metric is BOOKING or WIN, never replies: a
+ * question that gets more answers but fewer bookings is not better.
+ */
+export const EXPERIMENT_KINDS = ["WARM_FOLLOW_UP", "REACTIVATION", "QUESTION_STRATEGY"] as const;
 export type ExperimentKind = (typeof EXPERIMENT_KINDS)[number];
 
 export const PRIMARY_METRICS = ["WIN", "BOOKING", "POSITIVE_REPLY"] as const;
@@ -38,7 +45,17 @@ export type ExperimentVariant = {
   label: string;
   /** Step position (as a string) -> the body to send instead. Absent = control copy. */
   templates?: Record<string, string>;
+  /**
+   * QUESTION_STRATEGY only: question intent key -> the wording family (and
+   * optionally the rendering) this arm uses. Absent = the library's own.
+   */
+  questions?: Record<string, { wordingFamily: string; rendering?: string }>;
+  /** QUESTION_STRATEGY only: pin the arm to an engine strategy version. */
+  strategyVersion?: string;
 };
+
+/** Metrics a QUESTION_STRATEGY experiment may optimise (never replies). */
+export const QUESTION_STRATEGY_METRICS = ["BOOKING", "WIN"] as const;
 
 export type ExperimentDefinition = {
   id: string;
@@ -78,11 +95,29 @@ export function variantTemplate(
   return typeof body === "string" && body.trim() ? body : null;
 }
 
+/**
+ * The wording an arm uses for one planned question, or null for the library's
+ * own (control, holdout, or an intent the arm does not change).
+ */
+export function variantQuestion(
+  experiment: ExperimentDefinition,
+  arm: string,
+  intentKey: string,
+): { wordingFamily: string; rendering: string | null } | null {
+  const variant = experiment.variants.find((v) => v.key === arm);
+  const entry = variant?.questions?.[intentKey];
+  if (!entry || !entry.wordingFamily?.trim()) return null;
+  return { wordingFamily: entry.wordingFamily, rendering: entry.rendering?.trim() || null };
+}
+
 /** Validates a definition before it is stored or started. Returns problems. */
 export function experimentProblems(input: {
   holdoutPercent: number;
   variants: ExperimentVariant[];
   minSamplePerArm: number;
+  /** Absent = a message-copy experiment (WARM_FOLLOW_UP / REACTIVATION). */
+  kind?: ExperimentKind;
+  primaryMetric?: PrimaryMetric;
 }): string[] {
   const problems: string[] = [];
   if (input.variants.length < 2 || input.variants.length > 4) problems.push("An experiment needs 2 to 4 variants.");
@@ -94,7 +129,15 @@ export function experimentProblems(input: {
     problems.push(`Holdout must be between 0 and ${MAX_HOLDOUT_PERCENT}%.`);
   }
   if (input.minSamplePerArm < MIN_SAMPLE_FLOOR) problems.push(`The minimum sample is ${MIN_SAMPLE_FLOOR} per arm.`);
-  if (!input.variants.slice(1).some((v) => v.templates && Object.values(v.templates).some((t) => t.trim()))) {
+  if (input.kind === "QUESTION_STRATEGY") {
+    const changes = input.variants
+      .slice(1)
+      .some((v) => (v.questions && Object.values(v.questions).some((q) => q.wordingFamily?.trim())) || v.strategyVersion?.trim());
+    if (!changes) problems.push("At least one non-control variant must change a question's wording or the strategy version.");
+    if (input.primaryMetric && !(QUESTION_STRATEGY_METRICS as readonly string[]).includes(input.primaryMetric)) {
+      problems.push("A question strategy is judged on bookings or wins, never on replies.");
+    }
+  } else if (!input.variants.slice(1).some((v) => v.templates && Object.values(v.templates).some((t) => t.trim()))) {
     problems.push("At least one non-control variant must change a message.");
   }
   return problems;
@@ -231,3 +274,76 @@ export function computeExperimentResult(input: {
       : "No variant differs from control with 95% confidence. Keep the current copy or keep collecting.",
   };
 }
+
+/* ------------------------------------------------ reactivation report */
+
+/** What a reactivation campaign's A/B panel shows per arm: outcomes first, replies last. */
+export type ReactivationArmRow = {
+  arm: string;
+  label: string;
+  leads: number;
+  meetings: number;
+  sales: number;
+  salesValue: number;
+  optOuts: number;
+  replies: number;
+  /** Below the per-arm minimum: the panel says "not enough data" for this arm. */
+  enoughData: boolean;
+};
+
+export type ReactivationArmCounts = Omit<ReactivationArmRow, "label" | "enoughData">;
+
+/**
+ * The per-arm table and the verdict. The verdict comes from
+ * `computeExperimentResult` (booking or win, never replies), and until every
+ * arm has `minSamplePerArm` (>= 100) leads it is NOT_ENOUGH_DATA whatever the
+ * numbers look like. Nothing here changes any copy.
+ */
+export function reactivationArmReport(input: {
+  variants: ExperimentVariant[];
+  metric: PrimaryMetric;
+  minSamplePerArm: number;
+  counts: ReactivationArmCounts[];
+}): { rows: ReactivationArmRow[]; result: ExperimentResult } {
+  const minSample = Math.max(input.minSamplePerArm, MIN_SAMPLE_FLOOR);
+  const byArm = new Map(input.counts.map((row) => [row.arm, row]));
+  const order = [...input.variants.map((v) => v.key), HOLDOUT_ARM];
+  const rows: ReactivationArmRow[] = order
+    .filter((key) => key !== HOLDOUT_ARM || byArm.has(HOLDOUT_ARM))
+    .map((key) => {
+      const counts = byArm.get(key) ?? { arm: key, leads: 0, meetings: 0, sales: 0, salesValue: 0, optOuts: 0, replies: 0 };
+      return {
+        ...counts,
+        arm: key,
+        label: key === HOLDOUT_ARM ? "Holdout (not messaged)" : (input.variants.find((v) => v.key === key)?.label ?? key),
+        enoughData: counts.leads >= minSample,
+      };
+    });
+  const result = computeExperimentResult({
+    metric: input.metric,
+    minSamplePerArm: minSample,
+    arms: rows.map((row) => ({
+      arm: row.arm,
+      leads: row.leads,
+      wins: row.sales,
+      bookings: row.meetings,
+      positiveReplies: row.replies,
+      optOuts: row.optOuts,
+    })),
+  });
+  return { rows, result };
+}
+
+/** What the campaign drawer receives: plain data, safe for a client component. */
+export type CampaignExperimentView = {
+  id: string;
+  name: string;
+  status: "DRAFT" | "RUNNING" | "STOPPED";
+  holdoutPercent: number;
+  metric: PrimaryMetric;
+  minSamplePerArm: number;
+  rows: ReactivationArmRow[];
+  verdict: ExperimentResult["verdict"];
+  winner: string | null;
+  explanation: string;
+};

@@ -68,7 +68,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
     url: path,
     siteName: "ClientTurn",
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${title} · ClientTurn`,
+    title: `${title}`,
     description,
   },
 };
@@ -107,7 +107,7 @@ const QUICKSTART = `curl ${siteUrl}/api/v1/me \\
   -H "Authorization: Bearer ct_live_your_key_here"`;
 
 const QUICKSTART_RESPONSE = `{
-  "workspace": { "id": "…", "name": "Apex Roofing", "timezone": "Europe/London" },
+  "workspace": { "id": "…", "name": "Northwind Digital", "timezone": "Europe/London" },
   "key":       { "name": "CRM sync", "environment": "live",
                  "scopes": ["leads:read", "leads:write"] },
   "acting_as": { "role": "admin" }
@@ -119,7 +119,7 @@ const LIST_LEADS = `curl "${siteUrl}/api/v1/leads?status=QUALIFIED&limit=25" \\
 const UPDATE_LEAD = `curl -X PATCH ${siteUrl}/api/v1/leads/{id} \\
   -H "Authorization: Bearer ct_live_your_key_here" \\
   -H "Content-Type: application/json" \\
-  -d '{ "status": "WON", "note": "Signed the quote." }'`;
+  -d '{ "status": "WON", "note": "Signed the proposal." }'`;
 
 const VERIFY = `import crypto from "node:crypto";
 

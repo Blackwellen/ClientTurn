@@ -12,6 +12,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { evaluateQualification, type Answer, type Question } from "./engine";
 import { getQualificationConfig } from "./queries";
+import { intentKeyFamily, questionMappingSchema, type QuestionMapping } from "./mapping";
+import { QI_DIMENSION_KEYS } from "@/lib/qualification-intelligence/types";
+import { intentByKey } from "@/lib/qualification-intelligence/question-intents";
+import { questionIntentOptions, type QuestionIntentOption } from "@/lib/settings/ai-selling-queries";
 import {
   describeRule,
   previewInputSchema,
@@ -341,6 +345,92 @@ export async function deleteRule(input: {
 
   refresh();
   return { ok: true };
+}
+
+/* ------------------------------------------------------- dimension mapping */
+
+export type MappingResult =
+  | {
+      ok: true;
+      mapping: { dimensionKey: string | null; questionIntentKey: string | null };
+      /** The library intents a question may be mapped to. */
+      intentOptions: QuestionIntentOption[];
+    }
+  | { ok: false; error: string };
+
+/** The stored mapping of one question, for the mapping dialog. Any member of the workspace may read it. */
+export async function getQuestionMapping(input: { questionId: string }): Promise<MappingResult> {
+  const parsed = z.object({ questionId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Question not found." };
+  const workspace = await requireWorkspace();
+  const { data, error } = await createAdminClient()
+    .from("qualification_questions")
+    .select("dimension_key, question_intent_key")
+    .eq("business_id", workspace.businessId)
+    .eq("id", parsed.data.questionId)
+    .maybeSingle();
+  if (error) return { ok: false, error: "The mapping could not be read." };
+  if (!data) return { ok: false, error: "Publish the question first, then map it." };
+  return {
+    ok: true,
+    mapping: { dimensionKey: data.dimension_key, questionIntentKey: data.question_intent_key },
+    intentOptions: questionIntentOptions(),
+  };
+}
+
+/**
+ * Maps a published question to the detail it answers and, optionally, the
+ * library question intent it is. Takes effect on each lead's next assessment:
+ * the answer then counts toward that detail's status and completeness. The
+ * rules' qualified / not-qualified verdict is unchanged by a mapping.
+ */
+export async function saveQuestionMapping(input: QuestionMapping): Promise<ActionResult> {
+  const parsed = questionMappingSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Check the mapping.");
+  const workspace = await editor();
+  if (!workspace) return fail("You do not have permission to change qualification questions.");
+
+  const { questionId, dimensionKey, questionIntentKey } = parsed.data;
+  const intent = questionIntentKey ? intentByKey(questionIntentKey) : null;
+  if (questionIntentKey && !intent) return fail(`"${questionIntentKey}" is not in the question library.`);
+  const family = intent?.dimension ?? intentKeyFamily(questionIntentKey);
+  // A question cannot be mapped to one detail and a library intent about another.
+  if (dimensionKey && family && family !== dimensionKey && (QI_DIMENSION_KEYS as readonly string[]).includes(family)) {
+    return fail(`That question key is about ${family.toLowerCase().replace(/_/g, " ")}, not the detail you chose.`);
+  }
+
+  const supabase = createAdminClient();
+  const { data: before, error: readError } = await supabase
+    .from("qualification_questions")
+    .select("id, dimension_key, question_intent_key")
+    .eq("business_id", workspace.businessId)
+    .eq("id", questionId)
+    .maybeSingle();
+  if (readError) return fail("The question could not be read.");
+  if (!before) return fail("That question is not in this workspace.");
+
+  const { error } = await supabase
+    .from("qualification_questions")
+    .update({ dimension_key: dimensionKey, question_intent_key: questionIntentKey })
+    .eq("id", questionId)
+    .eq("business_id", workspace.businessId);
+  if (error) return fail("Could not save the mapping.");
+
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "qualification.question_saved",
+    entityType: "qualification_question",
+    entityId: questionId,
+    metadata: {
+      mapping: true,
+      before: { dimension_key: before.dimension_key, question_intent_key: before.question_intent_key },
+      after: { dimension_key: dimensionKey, question_intent_key: questionIntentKey },
+    },
+  });
+
+  refresh();
+  return { ok: true, id: questionId };
 }
 
 /**

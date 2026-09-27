@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Select } from "@/components/ui/select";
 import Link from "next/link";
 import {
   Calendar,
@@ -164,21 +165,20 @@ function QuestionRowEditor({
 
         <div className="relative flex shrink-0 items-center gap-1.5">
           <Icon className="size-3.5 shrink-0 text-[#9ad84a]" aria-hidden />
-          <select
+          <Select
             aria-label="Answer type"
             value={row.responseType}
-            onChange={(e) => {
-              const responseType = e.target.value as ResponseType;
-              onChange({ ...row, responseType, rule: null });
+            onValueChange={(value) => {
+              onChange({ ...row, responseType: value as ResponseType, rule: null });
             }}
-            className="h-7 w-[118px] shrink-0 appearance-none rounded-[6px] border-none bg-transparent text-[12.5px] text-[#c1cad6] outline-none"
+            className="h-7 w-[132px] shrink-0 rounded-[6px] border-none bg-transparent pl-1 text-[12.5px] text-[#c1cad6] shadow-none"
           >
             {Object.entries(RESPONSE_TYPE_META).map(([value, meta]) => (
-              <option key={value} value={value} className="bg-[#0c151d] text-[#dbe1ea]">
+              <option key={value} value={value}>
                 {meta.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
@@ -188,18 +188,18 @@ function QuestionRowEditor({
             </span>
           ) : (
             <>
-              <select
+              <Select
                 aria-label="Qualifying rule"
                 value={activePresetKey}
-                onChange={(e) => applyPreset(e.target.value)}
-                className="h-7 w-[212px] rounded-[6px] border border-[rgba(150,170,190,0.28)] bg-[#0b141d] px-2 text-[12.5px] text-[#dbe1ea] outline-none"
+                onValueChange={applyPreset}
+                className="h-7 w-[212px] rounded-[6px] border border-[rgba(150,170,190,0.28)] bg-[#0b141d] pl-2 text-[12.5px] text-[#dbe1ea]"
               >
                 {presets.map((preset) => (
                   <option key={preset.key} value={preset.key}>
                     {preset.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               {activePreset.needsValue && (
                 <div className="relative w-16 shrink-0">
                   <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-[11.5px] text-[#8c98ab]">

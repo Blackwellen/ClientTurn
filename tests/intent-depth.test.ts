@@ -124,7 +124,10 @@ describe("signal kinds map to real, free sources", () => {
     assert.ok(kindsForCategory({ name: "New funding", keywords: [] }).includes("FUNDING"));
     assert.ok(kindsForCategory({ name: "Hiring for a related role", keywords: [], signalTypes: ["JOB_POSTING"] }).includes("HIRING"));
     assert.ok(kindsForCategory({ name: "Leadership change", keywords: [] }).includes("JOB_CHANGE"));
-    assert.deepEqual(kindsForCategory({ name: "Rebrand", keywords: ["new logo"] }), ["WEBSITE_MENTION"]);
+    // A rebrand is now a detectable growth announcement (intent-catalogue.ts);
+    // a category with no structured meaning still only collects mentions.
+    assert.deepEqual(kindsForCategory({ name: "Rebrand", keywords: ["new logo"] }), ["WEBSITE_MENTION", "GROWTH"]);
+    assert.deepEqual(kindsForCategory({ name: "Sustainability", keywords: ["net zero"] }), ["WEBSITE_MENTION"]);
 
     const wants = intentWantsFor(plan({}), [
       { name: "Hiring for a related role", keywords: ["Head of Marketing"], signalTypes: ["JOB_POSTING"] },

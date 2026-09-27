@@ -7,7 +7,16 @@ import { serverEnv } from "@/lib/env";
 import { recordAudit } from "@/lib/audit";
 import { TERMS_PATH, TERMS_VERSION } from "@/lib/marketing/terms-version";
 import { stripe, priceIdFor, planForPriceId } from "./stripe";
-import { PLANS, creditBundlesFor, messageCreditBundle, type PlanId } from "./plans";
+import { selectPlanItem } from "./subscription-items";
+import { voicePriceIds } from "./voice-subscription-sync";
+import {
+  PLANS,
+  TRIAL_CREDIT_PURCHASE_REFUSAL,
+  creditBundlesFor,
+  creditPurchaseAllowed,
+  messageCreditBundle,
+  type PlanId,
+} from "./plans";
 import { getEntitlements } from "./entitlements";
 import { trialOffer, type SubscriptionRowLike } from "./lifecycle";
 import {
@@ -186,7 +195,8 @@ export async function changeSubscriptionPlan(
 
   try {
     const subscription = await stripe.subscriptions.retrieve(row.stripe_subscription_id);
-    const item = subscription.items.data[0];
+    // By price, never position: a voice item can be first (subscription-items.ts).
+    const item = selectPlanItem(subscription.items.data, planForPriceId, voicePriceIds());
     if (!item) return { ok: false, error: "The subscription has no plan to change." };
 
     const interval = resolvePlanInterval({ liveInterval: item.price.recurring?.interval });
@@ -281,7 +291,7 @@ export async function cancelPendingPlanChange(
     const scheduleId = idOfSchedule(subscription.schedule);
     if (!scheduleId) return { ok: true, changed: false };
     await stripe.subscriptionSchedules.release(scheduleId);
-    const price = subscription.items.data[0]?.price;
+    const price = selectPlanItem(subscription.items.data, planForPriceId, voicePriceIds())?.price;
     const current = planForPriceId(price?.id);
     await auditPlanChange(workspace, {
       from: current,
@@ -320,7 +330,7 @@ export async function getPendingPlanChange(businessId: string): Promise<PendingP
     if (!schedule || typeof schedule === "string") return null;
     return pendingChangeFromSchedule(
       schedule,
-      planForPriceId(subscription.items.data[0]?.price.id),
+      planForPriceId(selectPlanItem(subscription.items.data, planForPriceId, voicePriceIds())?.price.id),
       Math.floor(Date.now() / 1000),
       planForPriceId,
     );
@@ -347,22 +357,66 @@ async function auditPlanChange(
   });
 }
 
-/** One-off Checkout for an SMS or WhatsApp credit bundle (8.9). */
+/**
+ * The Checkout terms for a one-off top-up (SMS credit, a WhatsApp token pack or
+ * an AI token pack). Owner policy 2026-09-27: top-up credit is non-refundable
+ * once any of it is used (terms clause 9.9). `consent_collection` makes
+ * Checkout refuse to complete until the terms box is ticked, exactly as the
+ * subscription Checkout does; `submit` puts the rule next to the Pay button.
+ * WhatsApp packs are worded as TOKENS (no cash value, not exchangeable or
+ * transferable), never as money or credit (owner, 2026-09-27).
+ */
+export function topUpCheckoutTerms(
+  site: string,
+  kind: "credit" | "whatsapp_tokens" = "credit",
+): Pick<Stripe.Checkout.SessionCreateParams, "consent_collection" | "custom_text"> {
+  if (kind === "whatsapp_tokens") {
+    return {
+      consent_collection: { terms_of_service: "required" },
+      custom_text: {
+        terms_of_service_acceptance: {
+          message: `I agree to the [ClientTurn Terms of Service](${site}${TERMS_PATH}), including clause 9.9: WhatsApp tokens have no cash value, cannot be exchanged or transferred, and are non-refundable once any are used.`,
+        },
+        submit: {
+          message: "WhatsApp tokens are prepaid units of use and do not expire. Non-refundable once any tokens are used.",
+        },
+      },
+    };
+  }
+  return {
+    consent_collection: { terms_of_service: "required" },
+    custom_text: {
+      terms_of_service_acceptance: {
+        message: `I agree to the [ClientTurn Terms of Service](${site}${TERMS_PATH}), including clause 9.9: top-up credit is non-refundable once any of it is used.`,
+      },
+      submit: {
+        message: "Top-up credit is prepaid and does not expire. Non-refundable once any credit is used.",
+      },
+    },
+  };
+}
+
+/** One-off Checkout for an SMS credit bundle or a WhatsApp token pack (8.9). */
 export async function createCreditCheckout(workspace: Workspace, bundleKey: string): Promise<UrlOutcome> {
   const bundle = messageCreditBundle(bundleKey);
   if (!bundle) return { ok: false, error: "Choose a bundle to continue." };
 
   // Only credit the plan can spend. Read here, not trusted from the page.
   let whatsappEnabled: boolean;
+  let plan: string;
   try {
-    ({ whatsappEnabled } = await getEntitlements(workspace.businessId));
+    ({ whatsappEnabled, plan } = await getEntitlements(workspace.businessId));
   } catch {
     return { ok: false, error: "Could not check your plan. Try again." };
+  }
+  // No packs in a trial: its path is "Upgrade now" (owner, 2026-09-27).
+  if (!creditPurchaseAllowed(plan)) {
+    return { ok: false, error: TRIAL_CREDIT_PURCHASE_REFUSAL };
   }
   if (!creditBundlesFor({ whatsappEnabled }).some((allowed) => allowed.key === bundle.key)) {
     return {
       ok: false,
-      error: "WhatsApp is not included in your plan, so WhatsApp credit cannot be used. Upgrade to a plan with WhatsApp first.",
+      error: "WhatsApp is not included in your plan, so WhatsApp tokens cannot be used. Upgrade to a plan with WhatsApp first.",
     };
   }
 
@@ -390,7 +444,7 @@ export async function createCreditCheckout(workspace: Workspace, bundleKey: stri
   }
   const purchaseId = (purchase.data as { id: string }).id;
   const site = serverEnv.siteUrl.replace(/\/$/, "");
-  const label = bundle.channel === "sms" ? "UK SMS segment credits" : "WhatsApp message credits";
+  const label = bundle.channel === "sms" ? "UK SMS segment credits" : "WhatsApp tokens";
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -412,11 +466,16 @@ export async function createCreditCheckout(workspace: Workspace, bundleKey: stri
       client_reference_id: workspace.businessId,
       // Receipts for the history table: Stripe emails one and keeps it.
       invoice_creation: row?.stripe_customer_id ? { enabled: true } : undefined,
+      // Checkout will not complete without the terms box ticked; the webhook
+      // records the acceptance with the purchase (source "top_up").
+      ...topUpCheckoutTerms(site, bundle.channel === "whatsapp" ? "whatsapp_tokens" : "credit"),
       metadata: {
         kind: "message_credits",
         business_id: workspace.businessId,
+        user_id: workspace.userId,
         purchase_id: purchaseId,
         bundle_key: bundle.key,
+        terms_version: TERMS_VERSION,
       },
       payment_intent_data: {
         metadata: { kind: "message_credits", business_id: workspace.businessId, purchase_id: purchaseId },

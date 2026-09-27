@@ -4,7 +4,11 @@ summary: How ClientTurn decides which question to ask next, never asks for what 
 category: qualifying
 keywords: [qualify, qualification rules, adaptive questions, next question, known answers, one question, qualification depth, qualified, not qualified, needs review, pending, deterministic, ai assist, required questions]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/qualifying/how-qualification-works-1.png
+    alt: "The What we know section with confirmed, inferred and unknown counts and the details still needed"
+    caption: "What we know: confirmed, inferred and unknown, with what is still needed; Set a value records a fact"
 ---
 
 Qualification is how ClientTurn finds out whether a new lead is a fit, by asking your questions and checking the answers against your rules. Two separate things happen:
@@ -61,7 +65,14 @@ AI is an optional assistant, and off unless you turn it on. It may only work out
 
 ## Seeing it on a lead
 
-Open the lead and choose the **Qualification** tab. It lists what is **Known**, what was **Inferred**, and what is still **Missing**.
+Open the lead and choose the **Qualification** tab. From top to bottom it shows:
+
+- **Buying intent**: how ready the lead is to act, and the evidence behind it. See [Buying intent explained](/help/qualifying/buying-intent-explained).
+- **What we know**: each qualification detail as **Confirmed**, **Inferred**, **Unknown** or **Conflicting**, how complete the picture is, and your rules' result. See [Correcting what is known about a lead](/help/qualifying/correcting-qualification).
+- **Your qualification questions**: your own questions as **Answered**, **Inferred** or **Unanswered**. These answers are the ones your rules decide on.
+- **Qualification history**: every re-run, correction and override, with who made it.
+
+The **Next best action** card beside the record says what happens next and why. See [The next best action](/help/qualifying/next-best-action).
 
 If there is no question left to ask and the lead is not yet decided, the conversation is handed to your team.
 
@@ -69,4 +80,5 @@ If there is no question left to ask and the lead is not yet decided, the convers
 
 - [Setting up qualification questions](/help/qualifying/setting-up-qualification-questions)
 - [Lead scoring explained](/help/qualifying/lead-scoring-explained)
+- [Your qualification policy](/help/qualifying/qualification-policy)
 - [Sales motions and close targets](/help/sales-knowledge/sales-motions-and-close-targets)

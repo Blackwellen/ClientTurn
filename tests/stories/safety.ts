@@ -128,7 +128,6 @@ export const egress = {
   blocked: [] as string[],
   parkedInserts: 0,
   reparked: [] as { id: string; type: string }[],
-  schemaShims: {} as Record<string, number>,
   dnsFaked: [] as string[],
 };
 
@@ -289,26 +288,8 @@ async function supabaseFetch(input: RequestInfo | URL, init: RequestInit | undef
     return json(accept.includes("vnd.pgrst.object") ? row : [row]);
   }
 
-  // Migration 0129 (billing, concurrent work) is not applied to this database
-  // yet, but the working-tree send path already reads two of its tables. For
-  // the TEST business only, those reads answer "nothing recorded" -- which is
-  // exactly what an applied 0129 would return for a new workspace. Counted.
-  const table = path.replace("/rest/v1/", "");
-  if (
-    method === "GET" &&
-    UNAPPLIED_0129_TABLES.has(table) &&
-    testBusinessId &&
-    url.searchParams.get("business_id") === `eq.${testBusinessId}`
-  ) {
-    egress.schemaShims[table] = (egress.schemaShims[table] ?? 0) + 1;
-    const accept = new Headers(init?.headers).get("accept") ?? "";
-    return json(accept.includes("vnd.pgrst.object") ? null : []);
-  }
-
   return realFetch(input, init);
 }
-
-const UNAPPLIED_0129_TABLES = new Set(["usage_overage_events", "message_credit_balances"]);
 
 let fetchGuarded = false;
 function guardFetch() {

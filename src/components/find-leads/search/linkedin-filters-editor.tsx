@@ -15,18 +15,18 @@ import {
   LINKEDIN_TENURE_BANDS,
   LINKEDIN_TENURE_LABELS,
   linkedinFiltersText,
+  linkedinSearchKeywords,
+  linkedinSearchUrl,
   type LinkedinFilters,
 } from "@/lib/find-leads/linkedin-filters";
-import { buildSalesNavigatorSearchUrl } from "@/lib/find-leads/sales-navigator-url";
 import { importLinkedinListAction } from "@/lib/find-leads/linkedin-import-actions";
 
 /**
- * Sales Navigator's lead and account filters, edited as part of the plan.
+ * LinkedIn's lead and account filters, edited as part of the plan.
  *
- * With a SNAP partner token they drive the server-side search. Without one --
- * the normal case -- LinkedIn permits no server-side search and we never drive
- * the customer's session, so the handoff below is the route: open the same
- * search in their own Sales Navigator, export it, import the file here.
+ * They are the customer's own targeting. ClientTurn does not search LinkedIn
+ * and never uses the customer's session; the filters are applied by hand in
+ * LinkedIn or Sales Navigator, and to the customer's own imported list.
  */
 export function LinkedinFiltersEditor({
   value,
@@ -144,24 +144,30 @@ export function LinkedinFiltersEditor({
     </div>
   );
 }
-
 /**
- * Open the search in Sales Navigator, copy the filters, import the export.
+ * Apply the filters by hand, and import your own list.
  *
- * The link is best effort: its format is undocumented, so the filters are
- * always shown as copyable text too, and anything the link could not carry is
- * named.
+ * The link is LinkedIn's standard people search with keywords only, exactly
+ * the URL the browser shows. Every other filter is in the copyable list, to be
+ * applied by hand in LinkedIn or Sales Navigator.
  */
-export function SalesNavigatorHandoff({
+export function LinkedinHandoff({
   filters,
-  partnerConfigured,
+  industries,
   canImport,
+  sessionId,
 }: {
   filters: LinkedinFilters;
-  partnerConfigured: boolean;
+  /** The plan's industries, used for the search keywords when none are set. */
+  industries: string[];
   canImport: boolean;
+  sessionId: string | null;
 }) {
-  const link = React.useMemo(() => buildSalesNavigatorSearchUrl(filters), [filters]);
+  const keywords = linkedinSearchKeywords({
+    titles: filters.titlesInclude,
+    industries: filters.industries.length ? filters.industries : industries,
+    keywords: filters.keywords,
+  });
   const text = React.useMemo(() => linkedinFiltersText(filters), [filters]);
   const [copied, setCopied] = React.useState(false);
 
@@ -178,19 +184,18 @@ export function SalesNavigatorHandoff({
   return (
     <div className="space-y-3 rounded-lg border border-line bg-surface-sunken/50 p-3">
       <p className="text-[12px] leading-relaxed text-content-secondary">
-        {partnerConfigured
-          ? "A LinkedIn partner connection is configured, so these filters also run in the server-side search."
-          : "LinkedIn does not allow server-side search without a partner contract, and ClientTurn never uses your LinkedIn session. Open the search in your own Sales Navigator, export the list, and import it here."}
+        ClientTurn does not search LinkedIn and never uses your LinkedIn session. Apply these
+        filters by hand in LinkedIn or Sales Navigator, and import your own list below.
       </p>
 
       <div className="flex flex-wrap gap-2">
         <a
-          href={link.url}
+          href={linkedinSearchUrl(keywords)}
           target="_blank"
           rel="noreferrer noopener"
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-[12.5px] font-medium text-content hover:bg-surface-hover"
         >
-          Open this search in Sales Navigator <ExternalLink className="size-3.5" aria-hidden />
+          Search LinkedIn <ExternalLink className="size-3.5" aria-hidden />
         </a>
         <Button size="sm" variant="secondary" onClick={copy}>
           <Copy className="size-3.5" aria-hidden />
@@ -198,17 +203,16 @@ export function SalesNavigatorHandoff({
         </Button>
       </div>
 
-      {link.notApplied.length > 0 && (
-        <p className="text-[11.5px] text-content-muted">
-          Add these by hand in Sales Navigator; the link cannot carry them: {link.notApplied.join(", ")}.
+      <div>
+        <p className="mb-1 text-[11.5px] font-medium text-content-secondary">
+          Filters to apply by hand in LinkedIn or Sales Navigator
         </p>
-      )}
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface p-2 text-[11.5px] text-content-secondary">
+          {text || "No LinkedIn filters set."}
+        </pre>
+      </div>
 
-      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface p-2 text-[11.5px] text-content-secondary">
-        {text || "No LinkedIn filters set."}
-      </pre>
-
-      {canImport && <LinkedinListImport />}
+      {canImport && <LinkedinListImport sessionId={sessionId} />}
     </div>
   );
 }
@@ -216,7 +220,7 @@ export function SalesNavigatorHandoff({
 /** Server actions cap a request body at about 1 MB. */
 const MAX_FILE_BYTES = 950_000;
 
-function LinkedinListImport() {
+function LinkedinListImport({ sessionId }: { sessionId: string | null }) {
   const [pending, startTransition] = React.useTransition();
   const [message, setMessage] = React.useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const inputId = React.useId();
@@ -230,14 +234,15 @@ function LinkedinListImport() {
     setMessage(null);
     startTransition(async () => {
       const csv = await file.text();
-      const result = await importLinkedinListAction({ csv, fileName: file.name, surface: null });
+      const result = await importLinkedinListAction({ csv, fileName: file.name, surface: null, sessionId });
       if (!result.ok) {
         setMessage({ tone: "error", text: result.error });
         return;
       }
       const parts = [
-        `Imported ${result.imported.toLocaleString("en-GB")} ${result.surface === "SALES_NAVIGATOR" ? "Sales Navigator" : "LinkedIn"} lead${result.imported === 1 ? "" : "s"}.`,
+        `Added ${result.imported.toLocaleString("en-GB")} prospect${result.imported === 1 ? "" : "s"}${result.surface === "LINKEDIN_CONNECTIONS" ? " from your LinkedIn connections" : ""}.`,
         result.duplicates ? `${result.duplicates} already held.` : null,
+        result.withoutWebsite ? `${result.withoutWebsite} without a company website yet.` : null,
         result.rejected
           ? `${result.rejected} skipped${result.firstErrors[0] ? ` (row ${result.firstErrors[0].row}: ${result.firstErrors[0].message})` : ""}.`
           : null,
@@ -257,7 +262,7 @@ function LinkedinListImport() {
         )}
       >
         <Upload className="size-3.5" aria-hidden />
-        {pending ? "Importing…" : "Import your export (CSV)"}
+        {pending ? "Importing…" : "Import your list (CSV)"}
       </label>
       <input
         id={inputId}
@@ -271,8 +276,9 @@ function LinkedinListImport() {
         }}
       />
       <p className="mt-1.5 text-[11.5px] text-content-muted">
-        Needs first name, last name, company and company website columns. Phone numbers are
-        discarded, never stored.
+        Your LinkedIn Connections export (Settings → Data privacy → Get a copy of your data), or
+        any list you own. Needs names and a company. Each row becomes a prospect for review.
+        Phone numbers are discarded, never stored.
       </p>
       {message && (
         <p

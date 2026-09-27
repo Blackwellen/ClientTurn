@@ -4,7 +4,11 @@ summary: Send a reactivation campaign by text, with how segments are counted and
 category: reactivation
 keywords: [sms, text message, sms campaign, segments, characters, gsm-7, emoji, opt-out line, reply stop, sender id, twilio, sms allowance, sms credits, quiet hours]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/reactivation/sms-reactivation-1.png
+    alt: "The SMS message editor showing the segment count and Unicode encoding, the opt-out line note and the message preview"
+    caption: "Watch the segment count: one emoji switches the message to Unicode and makes every segment shorter"
 ---
 
 SMS is the most direct reactivation channel for leads who gave you their mobile number. This guide covers what is specific to text messages. For the campaign builder itself, see [Reactivation overview](/help/reactivation/reactivation-overview).
@@ -16,7 +20,7 @@ SMS is the most direct reactivation channel for leads who gave you their mobile 
 
 ## Segments: how texts are counted
 
-Your SMS allowance, top-up credits and overage are counted in **segments**, not messages. The builder shows the number of segments as you type.
+Your SMS allowance and top-up credits are counted in **segments**, not messages. The builder shows the number of segments as you type.
 
 | Message contains | One segment holds | Each segment of a longer message holds |
 |---|---|---|
@@ -40,9 +44,13 @@ If your SMS sender is a name rather than a number, people cannot reply to it, so
 - **Quiet hours:** texts are not sent overnight. They wait until the next permitted time, both under ClientTurn's contact rules and your own quiet hours in **Settings → Workspace**.
 - **Daily sending limits:** campaign texts count towards your daily SMS limit. Anything over it waits until the next day. See [Usage and limits](/help/billing/usage-and-limits).
 
+## Email first for leads who have not engaged
+
+New SMS campaigns are cost-aware: a lead who has never replied gets the message by email from your connected mailbox when they have an address. Only leads with no usable email, and leads who have replied or shown real interest, are texted. This keeps most of your SMS allowance for conversations. Turn it off in the campaign builder to text everyone.
+
 ## When your SMS allowance runs out
 
-Each text uses your plan's monthly SMS allowance first, then any SMS credits you have bought, then overage if you have switched it on. If none is left, the message is not sent and the reason is recorded on it. Buy a bundle in **Settings → Billing & Usage** to carry on. See [Top-up credits for AI, SMS and WhatsApp](/help/billing/top-up-credits).
+Each text uses your plan's monthly SMS allowance first, then any SMS credits you have bought. If none is left, the message is not sent, nothing is charged, and the reason is recorded on it. Buy a bundle in **Settings → Billing & Usage** to carry on. See [Top-up credits for AI, SMS and WhatsApp](/help/billing/top-up-credits).
 
 ## Personalising with AI
 
@@ -52,4 +60,5 @@ Each text uses your plan's monthly SMS allowance first, then any SMS credits you
 
 - [Reactivating existing leads](/help/reactivation/reactivating-existing-leads)
 - [Who reactivation will not contact](/help/reactivation/who-reactivation-will-not-contact)
+- [Re-engagement check-ins, no-shows and win-back](/help/reactivation/re-engagement)
 - [Plans and what each includes](/help/billing/plans-and-pricing)

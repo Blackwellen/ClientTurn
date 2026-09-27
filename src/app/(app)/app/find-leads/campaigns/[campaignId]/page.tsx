@@ -46,7 +46,7 @@ export async function generateMetadata({
   const { campaignId } = await params;
   const workspace = await requireWorkspace();
   const campaign = await loadCampaignHeader(workspace.businessId, campaignId);
-  return { title: campaign ? `${campaign.name} · ClientTurn` : "Campaign · ClientTurn" };
+  return { title: campaign ? `${campaign.name}` : "Campaign" };
 }
 
 /**

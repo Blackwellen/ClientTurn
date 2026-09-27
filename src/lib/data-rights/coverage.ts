@@ -173,6 +173,57 @@ export const PERSONAL_DATA_RULES: readonly PersonalDataRule[] = [
     retainedBecause:
       "Revenue and stage are the workspace's own sales record; the name, notes and memory (0131, cleared by trigger) are removed.",
   },
+  {
+    table: "checkout_attempts",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "checkout links sent to the person and whether they were paid",
+  },
+  {
+    table: "checkout_payments",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "payments received from the person (the email they paid with is removed; the amount stays)",
+  },
+
+  /*
+   * Voice (0150). Cleared on anonymise by the leads_voice_clear_on_anonymise
+   * trigger (same transaction as data_rights_scrub); new calls for an
+   * anonymised lead are refused and late post-call rows are skipped. All four
+   * reference leads(id) on delete cascade. Route, state, outcome, disposition
+   * and durations stay on anonymise: they are the workspace's own record and
+   * feed minutes and economics, and hold no personal values.
+   */
+  {
+    table: "voice_calls",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "phone calls with the person (the number called is removed; route, outcome and duration stay)",
+  },
+  {
+    table: "voice_call_eligibility",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "call permission checks (the consent evidence is removed; the decision stays)",
+  },
+  {
+    table: "voice_call_outcomes",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "call summaries, facts heard on the call and next steps",
+  },
+  {
+    table: "objection_events",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "objections the person raised (their words are removed; the objection type stays)",
+  },
 
   /*
    * Qualification intelligence (0134). Removed on anonymise by the
@@ -609,6 +660,20 @@ export const INDIRECT_RULES: readonly PersonalDataRule[] = [
     delete: "RETAIN",
     label: "metered usage",
     retainedBecause: "Append-only billing ledger with ids and quantities.",
+  },
+  {
+    table: "voice_call_transcripts",
+    link: "voice_call_id (voice_calls.lead_id)",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "call transcripts (a stored transcript file is queued for removal from storage)",
+  },
+  {
+    table: "voice_call_recordings",
+    link: "voice_call_id (voice_calls.lead_id)",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "call recordings (the audio file is queued for removal from storage)",
   },
 ] as const;
 

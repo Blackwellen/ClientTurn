@@ -58,6 +58,7 @@ const QUEUES: { key: string; label: string; types: JobType[] }[] = [
       "retention.cleanup",
       "cost.rollup_daily",
       "cost.rollup_monthly",
+      "economics.margin_check",
       "integration.health_check",
       "crm.push",
     ],

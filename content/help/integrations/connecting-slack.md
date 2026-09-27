@@ -4,7 +4,7 @@ summary: Post new-lead, handover, booking and warm-prospect alerts, and an optio
 category: integrations
 keywords: [slack, alerts, notifications, channel id, handover alert, daily digest, slack bot, invite bot]
 order: 60
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 Slack is a notification channel only. Connecting it changes nothing about how leads are handled.
@@ -27,12 +27,16 @@ Under **What goes to Slack** on the same page, switch each alert on or off:
 | Alert | Sent when |
 |---|---|
 | **New lead** | A lead arrives and follow-up starts |
-| **Handover** | A conversation needs a person, whether a human or the assistant asked for it |
+| **Handover** | A conversation needs a person, whether a human or the assistant asked for it. Also sent when the assistant asks your team to confirm one thing in the background while it keeps the conversation |
 | **Booking** | A lead books an appointment |
 | **Warm prospect** | A Find Leads run surfaces contactable prospects |
 | **Daily digest** | One summary each morning: leads in, bookings, handovers and assistant activity |
 
 Choose **Save Slack alert settings**.
+
+## Checking where alerts go
+
+Open the **Slack** card's **Manage** panel in **Settings → Connections**. Under **Alert channel** it shows the channel ID alerts are posted to, or says no channel is chosen yet, in which case nothing is posted. The link beside it takes you to the **Slack alerts** card in **Settings → Workspace** to choose or change the channel.
 
 Handover alerts include buttons so someone can acknowledge or resolve the handover from Slack.
 

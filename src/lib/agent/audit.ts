@@ -55,6 +55,21 @@ export type AgentRunHandle = {
    * the choice is on the run whichever branch the turn ends in.
    */
   strategy?: Record<string, unknown>;
+  /**
+   * The qualification engine's record for this turn (CD-14):
+   * decision_json.qi = { nba, interpretation, accounting }. A function, read
+   * when the run closes, because the accounting (model called, QA findings,
+   * question grade) is only final then. Absent or null = engine OFF.
+   */
+  qi?: () => Record<string, unknown> | null;
+  /**
+   * Background tasks a person was asked to do on this turn while the AI
+   * carried on (handover-policy.ts ASSIST_REQUEST). Written into
+   * decision_json.assists whichever branch the turn ends in.
+   */
+  assists?: string[];
+  /** Facts the next turn reads back (e.g. discountDemand), spread into decision_json. */
+  marks?: Record<string, unknown>;
 };
 
 /**
@@ -138,6 +153,21 @@ export type CloseRunInput = {
   decision?: Record<string, unknown>;
 };
 
+function decisionJson(handle: AgentRunHandle, input: CloseRunInput): Record<string, unknown> {
+  const decision: Record<string, unknown> = { ...(input.decision ?? {}) };
+  if (handle.strategy) decision.strategy = handle.strategy;
+  if (handle.assists?.length) decision.assists = [...handle.assists];
+  if (handle.marks) Object.assign(decision, handle.marks);
+  let qi: Record<string, unknown> | null = null;
+  try {
+    qi = handle.qi?.() ?? null;
+  } catch {
+    // The engine record is worth strictly less than the turn it describes.
+  }
+  if (qi) decision.qi = qi;
+  return decision;
+}
+
 export async function closeRun(
   handle: AgentRunHandle,
   input: CloseRunInput,
@@ -156,9 +186,7 @@ export async function closeRun(
         qualification_after: input.qualificationAfter ?? null,
         step_count: handle.step,
         error_code: input.errorCode ?? null,
-        decision_json: (handle.strategy
-          ? { ...(input.decision ?? {}), strategy: handle.strategy }
-          : (input.decision ?? {})) as never,
+        decision_json: decisionJson(handle, input) as never,
         duration_ms: Date.now() - handle.startedAt,
         completed_at: new Date().toISOString(),
       })

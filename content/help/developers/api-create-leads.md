@@ -2,7 +2,7 @@
 title: Creating leads with the API
 summary: The full reference for POST /api/v1/leads, including the Idempotency-Key header, the request body and every outcome it can return
 category: developers
-keywords: [post leads, create lead, idempotency-key, outcome, created, merged, duplicate, suppressed, invalid, review, rejected, 201, 422, relationship]
+keywords: [post leads, create lead, idempotency-key, outcome, created, merged, duplicate, suppressed, invalid, review, rejected, 201, 409, 422, 400, relationship, referral, referral evidence]
 order: 10
 updated: 2026-09-26
 ---
@@ -54,7 +54,7 @@ Content-Type: application/json
 | `first_name`, `last_name`, `company_name`, `role_title`, `postcode` | No | |
 | `source` | No | `type` is `WEB_FORM`, `API` (default), `CRM` or `CONNECTOR`. `provider` is a lower-case name for the sending system (default `api`). Optional: `record_id`, `form_id`, `form_name`, `campaign_id`, `campaign_name`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `gclid`, `fbclid`, `referrer`, `landing_url`, `submitted_at` |
 | `answers` | No | Question-and-answer pairs from your form |
-| `consent` | No | `marketing` and `whatsapp` (true or false) and free-text `evidence`. WhatsApp is only treated as allowed when `whatsapp` is true |
+| `consent` | No, except for a referral | `marketing` and `whatsapp` (true or false) and free-text `evidence`. WhatsApp is only treated as allowed when `whatsapp` is true. With `relationship` `REFERRAL`, `evidence` is required: who referred them and when, in at least 20 characters |
 | `service_id` | No | The ID of one of your services |
 
 Send `submitted_at` whenever you have it: speed-to-lead is measured from the time the person submitted, not from when ClientTurn received the request.
@@ -80,10 +80,11 @@ Every successful call returns the outcome, never a bare "success":
 | `CREATED` | 201 | A new lead was created |
 | `MERGED` | 200 | The same person already existed (same email, or same phone with no conflicting email). Blank fields were filled, nothing was overwritten, and this enquiry was recorded as a new touch. `matched_by` says which rule matched |
 | `DUPLICATE` | 200 | This `Idempotency-Key`, or this `source.record_id`, was already received. Nothing new was created. A repeated key also returns `original_outcome` |
-| `SUPPRESSED` | 200 | Recorded, but every address given is on your suppression list, so the person will not be contacted |
 | `REVIEW` | 200 | Recorded, but the phone number belongs to another lead with a different email. The two are not merged; a person decides |
 | `INVALID` | 422 | No usable email or phone. Nothing was stored |
-| `REJECTED` | 409 | Nothing was stored |
+| `REJECTED` | 409 | The contact is on your suppression list. Nothing was stored: not the lead, not a touch, and not the idempotency key. `reasons` includes `suppressed_refused` |
+
+A suppressed contact is refused rather than recorded, because the API is creating a record and "nothing stored" is the honest answer. (Leads that arrive from ad forms are still recorded when suppressed, so you can see the enquiry, and are never contacted.)
 
 If you reuse an `Idempotency-Key` with a different body, the first outcome is still returned and `reasons` includes `idempotency_key_reused_with_different_body`.
 
@@ -93,7 +94,7 @@ A lead created over the API is recorded, qualified and counted against your plan
 
 ## Errors
 
-A missing or malformed `Idempotency-Key` or body returns `400 invalid_request`. For the other error codes, see [API overview and authentication](/help/developers/api-overview-and-authentication).
+A missing or malformed `Idempotency-Key` or body returns `400 invalid_request`. So does a `REFERRAL` whose `consent.evidence` is shorter than 20 characters: nothing is stored, and the message says what to send. For the other error codes, see [API overview and authentication](/help/developers/api-overview-and-authentication).
 
 ## Related
 

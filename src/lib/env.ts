@@ -82,6 +82,25 @@ export const serverEnv = {
         month: optional("STRIPE_PRICE_PRO_MONTHLY"),
         year: optional("STRIPE_PRICE_PRO_YEARLY"),
       },
+      /**
+       * Voice (OD-2), Stripe TEST prices the owner creates by hand; nothing
+       * in the codebase creates Stripe objects. All optional: a missing id
+       * makes the matching purchase refuse with an integration-required
+       * message rather than throw.
+       */
+      voice: {
+        /** The Pro £100/month voice item (200 minutes plus the number). */
+        addonMonthly: optional("STRIPE_PRICE_VOICE_ADDON_MONTHLY"),
+        /** The £11.99/month dedicated-number item. */
+        numberMonthly: optional("STRIPE_PRICE_VOICE_NUMBER_MONTHLY"),
+        /** One-off minute packs, by minutes. */
+        packs: {
+          100: optional("STRIPE_PRICE_VOICE_PACK_100"),
+          250: optional("STRIPE_PRICE_VOICE_PACK_250"),
+          500: optional("STRIPE_PRICE_VOICE_PACK_500"),
+          1000: optional("STRIPE_PRICE_VOICE_PACK_1000"),
+        } as Record<number, string | undefined>,
+      },
     },
   },
   r2: {
@@ -130,6 +149,30 @@ export const serverEnv = {
     webhookUrl: optional("TWILIO_WEBHOOK_URL"),
   },
   /**
+   * Retell, the conversational layer of the voice sales agent (phase P2,
+   * docs/VOICE.md). Absent key = voice is `integration-required` everywhere:
+   * nothing dials, nothing throws. The same key verifies Retell webhooks
+   * (only a key with the webhook badge does, research §2).
+   */
+  retell: {
+    apiKey: optional("RETELL_API_KEY"),
+    /** The platform's default Retell agent; a workspace may override it (voice_settings.provider_agent_id). */
+    agentId: optional("RETELL_AGENT_ID"),
+  },
+  /** Voice runtime settings. */
+  voice: {
+    /**
+     * The public origin Twilio and Retell call back to (voice webhooks, the
+     * bundle status callback). Twilio signs the exact URL it posted to, so this
+     * must be the public https origin. Falls back to NEXT_PUBLIC_SITE_URL.
+     */
+    webhookBaseUrl: optional("VOICE_WEBHOOK_BASE_URL"),
+    /** Platform kill switch: "1"/"true" stops every AI call on every workspace. */
+    callsDisabled: /^(1|true|yes)$/i.test(process.env.VOICE_CALLS_DISABLED ?? ""),
+    /** Where Twilio emails regulatory bundle status (a platform ops mailbox). */
+    bundleNotificationEmail: optional("VOICE_BUNDLE_NOTIFICATION_EMAIL"),
+  },
+  /**
    * Key used to encrypt credentials this product holds on a customer's
    * behalf (mailbox SMTP/IMAP passwords). Absent in development, in which
    * case email account setup reports itself as unavailable rather than
@@ -164,14 +207,6 @@ export const serverEnv = {
   linkedinAds: {
     clientId: optional("LINKEDIN_CLIENT_ID"),
     clientSecret: optional("LINKEDIN_CLIENT_SECRET"),
-    /**
-     * "true" only once LinkedIn has approved this app for the Community
-     * Management API. It adds `r_organization_social` to the connect scopes
-     * and switches on company-page engagement. Requesting that scope without
-     * the product makes LinkedIn refuse the whole authorisation, so it is off
-     * by default.
-     */
-    communityManagementApproved: optional("LINKEDIN_COMMUNITY_MANAGEMENT_APPROVED"),
   },
   /**
    * Meta Lead Ads. One app covers both placements — a lead submitted from an
@@ -282,13 +317,6 @@ export const serverEnv = {
      * returns a commenter id is what should flip this on.
      */
     tiktokEngagementEnabled: optional("TIKTOK_ENGAGEMENT_ENABLED") === "1",
-    /**
-     * LinkedIn partner (SNAP / Sales Insights) token.
-     *
-     * Optional by design: without it the LinkedIn provider still works through
-     * the customer's own exported list, which needs no credential from us.
-     */
-    linkedinSnapToken: optional("LINKEDIN_SNAP_ACCESS_TOKEN"),
     /** Timeout applied to every outbound provider call, in milliseconds. */
     timeoutMs: Number(process.env.SOURCING_PROVIDER_TIMEOUT_MS || 15000),
   },

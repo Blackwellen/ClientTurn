@@ -1,0 +1,43 @@
+{
+  "id": "saas-04-just-looking-then-trial",
+  "archetype": "B2B_SAAS",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "whatsapp",
+  "story": "A lead who is just looking gets one light question and no pressure; when they ask how to start the agent stops qualifying.",
+  "turns": [
+    {
+      "lead": "Just browsing really, we use HubSpot and want better follow-up.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "INFORM",
+          "NURTURE"
+        ]
+      },
+      "candidate": {
+        "text": "No pressure at all. What would you mainly want it to handle for you?",
+        "qaOk": true,
+        "styleOk": true
+      }
+    },
+    {
+      "lead": "Leads go cold because nobody replies fast enough. How do we get started?",
+      "expect": {
+        "actionIn": [
+          "INFORM",
+          "CTA_SIGNUP",
+          "CTA_CHECKOUT"
+        ],
+        "questionDimension": null
+      },
+      "candidate": {
+        "text": "Don't miss out 🚀 sign up today before it's too late!",
+        "qaOk": true,
+        "styleOk": false,
+        "styleCodes": [
+          "STYLE_EMOJI"
+        ]
+      }
+    }
+  ]
+}

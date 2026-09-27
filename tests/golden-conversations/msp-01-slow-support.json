@@ -1,0 +1,69 @@
+{
+  "id": "msp-01-slow-support",
+  "archetype": "MSP",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "story": "An office manager unhappy with slow IT support; size and timing arrive over two turns, then the booking.",
+  "turns": [
+    {
+      "lead": "Our IT support is awful, tickets take days. We're about 40 staff.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK"
+        ],
+        "known": [
+          "DISSATISFACTION"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "DISSATISFACTION",
+          "PROBLEM"
+        ]
+      },
+      "candidate": {
+        "text": "Sorry to hear that. How many staff do you have?",
+        "qaOk": false,
+        "codes": [
+          "QA_UNPLANNED_QUESTION"
+        ]
+      }
+    },
+    {
+      "lead": "Mainly day to day support, and we'd want someone in place within the next month",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "known": [
+          "TIMING"
+        ],
+        "notAsked": [
+          "TIMING",
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "Can we book a call this week?",
+      "expect": {
+        "actionIn": [
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER",
+          "ANSWER_AND_ASK"
+        ],
+        "intentStateIn": [
+          "BOOKING_READY",
+          "HIGH"
+        ],
+        "notAsked": [
+          "COMPANY_SIZE"
+        ]
+      }
+    }
+  ]
+}

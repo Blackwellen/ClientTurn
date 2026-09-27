@@ -77,7 +77,7 @@ export function ReactivationView({
       {!enabled && (
         <PlanLimitState
           title={`Reactivation campaigns need the ${unlockPlanLabel("campaigns")}`}
-          description={`${unlockPlanLabel("campaigns")} and above can re-contact an old lead list from Client Turn, with opt-outs, suppressions and quiet hours enforced automatically.`}
+          description={`${unlockPlanLabel("campaigns")} and above can re-contact an old lead list from ClientTurn, with opt-outs, suppressions and quiet hours enforced automatically.`}
           action={
             <Link
               href="/app/settings?section=billing"

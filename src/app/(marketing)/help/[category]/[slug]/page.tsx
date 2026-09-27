@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     keywords: article.keywords,
     alternates: { canonical: path },
     openGraph: {
-      title: `${article.title} · ClientTurn`,
+      title: `${article.title}`,
       description: article.summary,
       url: path,
       siteName: "ClientTurn",
@@ -58,7 +58,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     },
     twitter: {
       card: "summary_large_image",
-      title: `${article.title} · ClientTurn`,
+      title: `${article.title}`,
       description: article.summary,
     },
   };

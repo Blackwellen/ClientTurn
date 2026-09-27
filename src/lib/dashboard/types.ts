@@ -172,7 +172,7 @@ const SYSTEM_ATTENTION_TITLES: Record<HealthStripItem["key"], string> = {
   lead_source: "Lead source needs attention",
   messaging: "Messaging needs attention",
   booking: "Booking destination missing",
-  followup: "Follow-up is not published",
+  followup: "Follow-up is not sending",
 };
 
 /**

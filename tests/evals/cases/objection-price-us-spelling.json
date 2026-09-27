@@ -1,0 +1,53 @@
+{
+  "id": "objection-price-us-spelling",
+  "scenario": "§94 objection: price, AI voice rejected",
+  "motion": "DIRECT_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Our websites start from £2,500."
+    },
+    {
+      "role": "lead",
+      "text": "That's a bit steep for us."
+    }
+  ],
+  "facts": {
+    "publishedPriceText": [
+      "Websites start from £2,500"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "objection": "PRICE",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "one clarifying question"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Fair question. Is it the overall figure, or how it compares with something else you've seen?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "We can optimize the scope and customize a package, Best regards, The Team",
+        "valid": false,
+        "codes": [
+          "STYLE_US_SPELLING",
+          "STYLE_SIGN_OFF"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

@@ -76,7 +76,10 @@ export function SectionHeader({
   dense?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    // w-full: inside a CardHeader (itself a flex row) the header otherwise
+    // shrank to its text, and a short description left the action floating
+    // mid-card instead of at the right edge (8.7).
+    <div className="flex w-full min-w-0 items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
         {Icon && (
           <span

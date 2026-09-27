@@ -37,6 +37,13 @@ export const SETTINGS_SECTIONS = [
     label: "AI & selling",
     description: "Strategy, budgets, brand and compliance",
   },
+  {
+    // Quote-to-cash (P2): catalogue, VAT, numbering, terms, signatures,
+    // approvals and payment. A Settings section, not a new destination (V3).
+    id: "quotes",
+    label: "Quotes & invoices",
+    description: "Catalogue, VAT, terms and payment",
+  },
   { id: "team", label: "Team", description: "Manage your team" },
   {
     id: "developer",
@@ -309,7 +316,7 @@ export const PRICING_VISIBILITY_OPTIONS = [
   {
     value: "QUOTE_REQUIRED",
     label: "Quote required",
-    description: "Leads are told the price depends on the job and is quoted by your team.",
+    description: "Leads are told the price depends on the scope and is quoted by your team.",
   },
   {
     value: "PUBLIC_FROM",

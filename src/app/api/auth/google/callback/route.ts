@@ -96,7 +96,10 @@ export async function GET(request: NextRequest) {
       await attributeSignup({ userId, businessId }).catch(() => undefined);
 
       // Card and terms first (8.10); onboarding follows once Stripe confirms.
-      const response = NextResponse.redirect(`${origin}/start-trial`);
+      // Only a trial-checkout destination is honoured here (it carries the plan
+      // picked on the pricing page); anything else waits until after setup.
+      const trialPath = next?.startsWith("/start-trial") ? next : "/start-trial";
+      const response = NextResponse.redirect(`${origin}${trialPath}`);
       response.cookies.delete({ name: GOOGLE_LOGIN_COOKIE, path: "/api/auth/google" });
       return response;
     }

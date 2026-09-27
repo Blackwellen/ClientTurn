@@ -14,6 +14,13 @@ import {
 import { SOURCING_ALLOWANCES } from "@/lib/billing/sourcing-allowances";
 import { buttonClass } from "../ui";
 import {
+  PRO_WITH_VOICE_ANNUAL_MONTHLY_GBP,
+  PRO_WITH_VOICE_MONTHLY_GBP,
+  VOICE_TRIAL_NOTE,
+  gbp,
+  planVoiceOffer,
+} from "@/lib/marketing/voice-offer";
+import {
   trackCta,
   trackEngagement,
   withCampaignParams,
@@ -55,6 +62,8 @@ function cardFeatures(plan: PlanDefinition): string[] {
       "Custom messaging volume",
       "Custom user and workspace limits",
       "AI assistant included",
+      planVoiceOffer(plan.id).cardLine,
+      "Quotes, e-signature and invoices",
       "Dedicated support contact and a DPA",
     ];
   }
@@ -63,9 +72,13 @@ function cardFeatures(plan: PlanDefinition): string[] {
     `${NUMBER.format(plan.leadLimit)} new leads a month`,
     `${NUMBER.format(sourcing.verifiedProspects)} verified prospects a month`,
     `${NUMBER.format(sourcing.emailSends)} outbound emails a month`,
-    `${NUMBER.format(plan.smsSegmentAllowance)} UK SMS segments${plan.whatsappEnabled ? " + WhatsApp" : ""}`,
+    `${NUMBER.format(plan.smsSegmentAllowance)} UK SMS segments (a first text for every lead)`,
+    "Follow-up email from your own mailbox",
+    ...(plan.whatsappEnabled ? ["WhatsApp add-on, prepaid WhatsApp tokens"] : []),
     `${plan.userLimit} ${plan.userLimit === 1 ? "user" : "users"}`,
     "AI assistant included",
+    planVoiceOffer(plan.id).cardLine,
+    "Quotes, e-signature and invoices",
   ];
 }
 
@@ -86,6 +99,25 @@ function PriceBlock({ plan, cycle }: { plan: PlanDefinition; cycle: Cycle }) {
   const perMonth =
     cycle === "annual" ? Math.round(plan.yearlyPrice / 12) : plan.monthlyPrice;
   const saving = plan.monthlyPrice * 12 - plan.yearlyPrice;
+
+  // Pro leads with the voice bundle (OD-2): the voice item is a separate
+  // subscription item, so the annual discount applies to the platform only.
+  if (plan.id === "pro") {
+    const withVoice =
+      cycle === "annual" ? PRO_WITH_VOICE_ANNUAL_MONTHLY_GBP : PRO_WITH_VOICE_MONTHLY_GBP;
+    return (
+      <>
+        <p className="pub-plan-price">
+          <b>{gbp(withVoice)}</b>
+          <span>/ month with Voice</span>
+        </p>
+        <p className="pub-plan-sub">
+          Don&rsquo;t need voice? Pro {gbp(perMonth)}
+          {cycle === "annual" ? " a month, billed yearly" : ""}. Excluding VAT.
+        </p>
+      </>
+    );
+  }
 
   return (
     <>
@@ -145,7 +177,8 @@ export function PlanGrid() {
 
       <p className="pub-small mt-8 text-center">
         All plans include a {TRIAL_DAYS}-day free trial. A card is required to
-        start; nothing is charged until the trial ends. Prices exclude VAT.
+        start; nothing is charged until the trial ends. Prices exclude VAT.{" "}
+        {VOICE_TRIAL_NOTE}
       </p>
     </>
   );

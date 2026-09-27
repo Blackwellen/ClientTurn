@@ -543,7 +543,7 @@ export type AdminTopBarData = {
 export async function getAdminTopBarData(): Promise<AdminTopBarData> {
   const supabase = await adminRead();
 
-  const [recent, pastDue, integrationIssues] = await Promise.all([
+  const [recent, pastDue, integrationIssues, marginAlerts] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, name")
@@ -557,6 +557,12 @@ export async function getAdminTopBarData(): Promise<AdminTopBarData> {
       .from("integrations")
       .select("business_id", { count: "exact", head: true })
       .in("status", ["ACTION_REQUIRED", "DISCONNECTED"]),
+    // Admin -> Economics: open "margin below 75%" alerts from the daily check.
+    supabase
+      .from("economics_alerts")
+      .select("id", { count: "exact", head: true })
+      .eq("alert_type", "MARGIN_BELOW_THRESHOLD")
+      .eq("status", "OPEN"),
   ]);
 
   return {
@@ -564,6 +570,6 @@ export async function getAdminTopBarData(): Promise<AdminTopBarData> {
       id: row.id,
       name: row.name,
     })),
-    alertCount: (pastDue.count ?? 0) + (integrationIssues.count ?? 0),
+    alertCount: (pastDue.count ?? 0) + (integrationIssues.count ?? 0) + (marginAlerts.count ?? 0),
   };
 }

@@ -1,0 +1,22 @@
+{
+  "id": "accounting-03-later",
+  "archetype": "ACCOUNTING",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "story": "The lead is not ready until next year; the agent waits.",
+  "turns": [
+    {
+      "lead": "Not right now, maybe next year once we've grown a bit.",
+      "expect": {
+        "actionIn": [
+          "WAIT",
+          "NURTURE"
+        ],
+        "intentStateIn": [
+          "NOT_NOW"
+        ],
+        "questionDimension": null
+      }
+    }
+  ]
+}

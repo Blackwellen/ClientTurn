@@ -214,6 +214,7 @@ export function AddLeadWizard({
     state.contact.email.trim().toLowerCase(),
     state.contact.mobile.trim(),
     state.contact.telephone.trim(),
+    state.contact.company.trim(),
   ].join("|");
 
   React.useEffect(() => {
@@ -222,6 +223,7 @@ export function AddLeadWizard({
     let cancelled = false;
     const timer = setTimeout(async () => {
       const result = await checkContactability({
+        company: state.contact.company,
         email: state.contact.email,
         mobile: state.contact.mobile,
         telephone: state.contact.telephone,

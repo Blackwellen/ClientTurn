@@ -38,7 +38,18 @@ Scope `leads:read`. Searches your leads. Archived leads are not included.
 
 ## GET /api/v1/leads/{id}
 
-Scope `leads:read`. Returns one lead, with its recent activity, as `{ "data": { … } }`. An ID that is not a valid UUID returns `400`; a valid ID with no matching lead in your workspace returns `404`.
+Scope `leads:read`. Returns one lead as `data`, with its recent activity beside it as `recent_activity`: the last 20 messages on any channel, newest first.
+
+```json
+{
+  "data": { "id": "…", "first_name": "Jo", "status": "QUALIFIED", … },
+  "recent_activity": [
+    { "type": "message", "id": "…", "direction": "inbound", "channel": "email", "status": "…", "body": "…", "at": "2026-09-25T10:12:00Z" }
+  ]
+}
+```
+
+A message body longer than 500 characters is shortened. An ID that is not a valid UUID returns `400`; a valid ID with no matching lead in your workspace returns `404`.
 
 ## PATCH /api/v1/leads/{id}
 

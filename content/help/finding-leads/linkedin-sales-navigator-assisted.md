@@ -1,10 +1,14 @@
 ---
 title: LinkedIn Sales Navigator, assisted
-summary: Sales Navigator filters in your search plan, importing your own list, what ClientTurn automates for LinkedIn outreach, and how InMail credits are tracked
+summary: LinkedIn filters in your search plan, importing your own connections or list, what ClientTurn automates for LinkedIn outreach, and how InMail credits are tracked
 category: finding-leads
-keywords: [linkedin, sales navigator, inmail, inmail credits, connection request, social queue, assisted outreach, mark as sent, seniority, function, job title, changed jobs, export, import list, csv]
+keywords: [linkedin, sales navigator, inmail, inmail credits, connection request, social queue, assisted outreach, mark as sent, seniority, function, job title, changed jobs, connections export, connections.csv, import list, csv, website unknown, add website]
 order: 50
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/linkedin-sales-navigator-assisted-1.png
+    alt: "A prospect drawer whose company shows Website unknown with an Add website button"
+    caption: "Website unknown: add the company website so ClientTurn can look for a work email"
 ---
 
 ClientTurn does not send anything on LinkedIn for you. It prepares, paces and records; you press send inside your own LinkedIn account. This article explains the split.
@@ -25,15 +29,30 @@ LinkedIn's User Agreement prohibits bots that add contacts or send messages, and
 
 The queue lives in **Find Leads → Social**. It has three lists: **Ready to message** (they accepted), **Ready to invite** (approved prospects with a profile to reach) and **Waiting on them** (invites sent).
 
-> **Note:** The Social tab needs a LinkedIn sending account recorded against your workspace before the queue appears. At the time of writing there is no button in the app to add one yourself; contact support if the tab shows **No social account connected**.
+> **Note:** The Social tab needs a sending account before the queue appears. If it shows **No social account connected**, add one in **Settings → Connections → Social sending accounts**: choose **Add account**, pick the platform and **Subscription** (LinkedIn Free, Premium, Sales Navigator or Recruiter), and enter the **Name on the account**. Nothing logs in to LinkedIn; the account only tells ClientTurn whose allowances to pace against.
+
+## Allowances by account type
+
+The subscription you choose on the sending account sets the limits ClientTurn paces against:
+
+| Subscription | Invitation notes | InMail |
+|---|---|---|
+| LinkedIn Free | Personal notes on 3 invitations a month. Invitations without a note still go out | None |
+| LinkedIn Premium | Unlimited | 15 a month, rolling over to 45 (a conservative figure; LinkedIn's varies by Premium plan) |
+| LinkedIn Sales Navigator | Unlimited | 50 a month, rolling over to 150 |
+| LinkedIn Recruiter | Unlimited | 150 a month, rolling over to 450 (check your contract's figure) |
+
+If your workspace has more than one LinkedIn account, the InMail panel uses the best subscription among the active ones.
 
 ## InMail credits
 
-Sales Navigator gives you a monthly allowance of InMail credits. ClientTurn cannot see your LinkedIn balance, so it works one out from what you record, using LinkedIn's published Sales Navigator rules:
+Premium, Sales Navigator and Recruiter give you a monthly allowance of InMail credits. ClientTurn cannot see your LinkedIn balance, so it works one out from what you record, using the allowance for your account type (see the table above). For Sales Navigator, LinkedIn's published rules are:
 
 - 50 credits are added on the 1st of each month (UTC).
 - Unused credits roll over, up to a balance of 150.
 - A credit comes back when the InMail gets a reply within 90 days.
+
+On a LinkedIn Free account the panel says the plan includes no InMail, and **Mark InMail sent** is refused.
 
 The **LinkedIn InMail credits** panel on the Social tab shows **Credits left**, **Sent this month**, **Credited back this month** and **Awaiting a reply**.
 
@@ -42,9 +61,9 @@ The **LinkedIn InMail credits** panel on the Social tab shows **Credits left**, 
 
 > **Tip:** If the panel shows a negative balance, more InMails have been recorded than LinkedIn would allow, so some records are probably wrong. Check against the balance in Sales Navigator.
 
-## Sales Navigator filters in your search plan
+## LinkedIn filters in your search plan
 
-A search plan has a **LinkedIn filters** row. Open a search session in **Find Leads → Discover** and choose that row to set Sales Navigator's own lead and account filters:
+A search plan has a **LinkedIn filters** row. Open a search session in **Find Leads → Discover** and choose that row to note the lead and account filters you target:
 
 - Geography and industry
 - Company headcount (LinkedIn's bands, 1-10 to 10,001+), headcount growth and company type
@@ -54,32 +73,47 @@ A search plan has a **LinkedIn filters** row. Open a search session in **Find Le
 
 All of them are optional. A plan without them searches exactly as before.
 
-LinkedIn does not allow a search from a server without a partner contract, and it is not currently taking new partners. ClientTurn never uses your LinkedIn session and never reads LinkedIn pages. So, unless your workspace has a partner connection, the filters work through your own account:
+ClientTurn does not search LinkedIn. LinkedIn does not offer a search that ClientTurn may lawfully run, and ClientTurn never uses your LinkedIn session or reads LinkedIn pages. The filters are used in two ways:
 
-1. In the **LinkedIn filters** dialog, choose **Open this search in Sales Navigator**. The link opens a people search in your own Sales Navigator with as many of the filters filled in as it can carry.
-2. Some filters need LinkedIn's internal ids, which ClientTurn does not hold: most places, every industry, and company type. The dialog lists these under **Add these by hand in Sales Navigator**.
-3. **Copy filters** copies the whole filter list as text. Use it if the link does not open the search you expect: LinkedIn does not publish its link format, and it can change.
+1. **Search LinkedIn** opens LinkedIn's ordinary people search with keywords from your job titles and industries. Apply the rest of the filters by hand in LinkedIn or Sales Navigator. **Copy filters** copies the full list as text.
+2. When you import your own list, the job-title and seniority filters decide which imported people a sourcing run picks up for its companies.
 
-If no job titles are set, the link uses the plan's **Decision maker** roles.
+If no job titles are set, the plan's **Decision maker** roles are used.
 
 ## Importing your own list
 
-To use a list you built in Sales Navigator, or in ordinary LinkedIn search, export it from your own account. Then import it:
+You can import two kinds of file, both your own data:
 
-1. Open the **LinkedIn filters** row of a search plan and choose **Import your export (CSV)**.
-2. The file needs first name and last name (or a full name), company, and company website or domain. The job title, LinkedIn profile URL, location and email columns are used when present. LinkedIn's own Connections export works if it has a company website column added.
-3. The result tells you how many rows were imported, how many were already held, and why any were skipped.
+- **Your LinkedIn connections.** LinkedIn lets you download your own 1st-degree connections: **Settings → Data privacy → Get a copy of your data**, then choose **Connections**. The download includes a file called Connections.csv.
+- **Any list you own**, such as an export from your CRM, an event attendee list or a spreadsheet.
 
-What happens to the rows:
+Sales Navigator has no export of its own, and LinkedIn prohibits browser extensions that scrape it. Do not use one.
 
-- **Phone numbers are discarded.** A phone, mobile or telephone column is dropped and named in the result. ClientTurn cold-contacts by email only, so it does not store numbers from lists.
-- An email address in your file is kept as your own imported data and is verified before use, like any other.
-- Each row records whether it came from Sales Navigator or a standard account, and that you supplied it.
-- Importing the same file again adds nothing new.
+1. Open the **LinkedIn filters** row of a search plan and choose **Import your list (CSV)**.
+2. The file needs a first and last name (or a full name) and a company. A job title, LinkedIn profile URL, location, email and company website are used when present.
+3. Every valid row becomes a prospect straight away. The result tells you how many were added, how many were already held, how many have no company website yet, and why any rows were skipped.
 
-Imported people are matched to the companies a sourcing run finds, by company website. They become prospects when a run finds their company and they pass the plan's job-title and seniority filters. Files over 1 MB need splitting.
+### When the file has no company website
 
-> **Note:** You can still [import a CSV](/help/finding-leads/importing-a-csv) of people as prospects directly, choosing **We found this person or company**. That route does not wait for a sourcing run.
+A website column is not needed. ClientTurn works out the company's website in this order and records which step found it:
+
+1. A website or domain column in the file.
+2. The domain of a work email in the row. A personal address such as Gmail or Outlook is never used.
+3. The Companies House register, by exact company name, when your workspace has a Companies House key. The register does not publish websites, so a match confirms the company but does not supply one.
+
+If none of these finds it, the prospect is still created and shows **Website unknown**. Open the prospect and choose **Add website**, enter the **Company website**, then choose **Save and look for an email**. ClientTurn then looks for a work email and checks the company's website and the register for buying signals.
+
+### What happens to the rows
+
+- **Phone numbers are discarded.** A phone, mobile or telephone column is dropped and named in the result. ClientTurn contacts cold prospects by email only, so it does not store numbers from lists.
+- An email address in your file is recorded as your own imported data and is verified before use, like any other.
+- Every prospect starts in review. Its subscriber type (company, individual, partnership or unknown) comes from its email address and, where checked, the register.
+- A 1st-degree connection is recorded as a connection. That is a relationship, but it is not consent to marketing. For a sole trader, partnership or personal address, ClientTurn allows one non-promotional opener, and anything more only after they reply. A row from any other list is recorded as imported, which needs consent for individuals. See [LinkedIn and social messages](/help/compliance/linkedin-and-social-messages).
+- Importing the same file again adds nothing new. People are matched first by LinkedIn profile URL, then by name at the same company, then by email.
+
+Files over 1 MB need splitting.
+
+> **Note:** You can also [import a CSV](/help/finding-leads/importing-a-csv) from **Leads → Import**, choosing **We found this person or company**.
 
 ## Rules that always apply
 

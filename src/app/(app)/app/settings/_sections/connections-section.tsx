@@ -15,6 +15,7 @@ import { ConnectResultToast } from "@/components/settings/connections/connect-re
 import { SocialAccountsCard } from "@/components/settings/connections/social-accounts-card";
 import { loadProviderExtras } from "@/lib/integrations/extras";
 import { listSocialAccounts } from "@/lib/outreach/social-outreach";
+import { PaymentsSection, PaymentsSectionSkeleton } from "@/components/settings/connections/payments-section";
 
 export async function ConnectionsSection() {
   const workspace = await requireWorkspace();
@@ -73,6 +74,11 @@ export async function ConnectionsSection() {
         canManage={canManage}
         extras={extras}
       />
+
+      {/* Payment confirmation for the direct-sale loop (0143). */}
+      <React.Suspense fallback={<PaymentsSectionSkeleton />}>
+        <PaymentsSection />
+      </React.Suspense>
 
       <SocialAccountsCard
         canManage={canManage}

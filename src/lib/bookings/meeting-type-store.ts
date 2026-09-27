@@ -6,6 +6,7 @@ import {
   meetingTypeFromRow,
   pickAssignee,
   ROUND_ROBIN_WINDOW_DAYS,
+  selectCallMeetingType,
   selectMeetingType,
   type AssigneeDecision,
   type MeetingType,
@@ -51,9 +52,12 @@ export async function listMeetingTypes(
 export async function meetingTypeForLead(
   businessId: string,
   serviceId: string | null,
+  options: { preferCall?: boolean } = {},
 ): Promise<MeetingType | null> {
   try {
-    return selectMeetingType(await listMeetingTypes(businessId), serviceId);
+    const types = await listMeetingTypes(businessId);
+    // A lead who asked to be called gets a "Phone call" type when there is one.
+    return options.preferCall ? selectCallMeetingType(types, serviceId) : selectMeetingType(types, serviceId);
   } catch (error) {
     console.error("[meeting-types] falling back to workspace defaults", {
       businessId,

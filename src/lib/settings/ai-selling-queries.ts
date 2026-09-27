@@ -15,6 +15,22 @@ import {
 } from "./ai-selling";
 import type { DimensionWeights } from "@/lib/sales-library/types";
 import { logWriteError } from "@/lib/supabase/write-result";
+import { ARCHETYPES } from "@/lib/sales-library/archetypes";
+import { QUESTION_INTENTS } from "@/lib/qualification-intelligence/question-intents";
+import {
+  LIBRARY_INTENT_KEY_PATTERN,
+  parseOfferProfile,
+  type OfferProfile,
+  type QiEngineMode,
+  type QualificationPolicy,
+} from "@/lib/qualification-intelligence/types";
+import { readEngineMode, readPolicies } from "@/lib/qualification-intelligence/store-reads";
+import { canSeeEngineMode, policyForRole } from "./ai-selling";
+import {
+  EMPTY_WORKSPACE_OBJECTIONS,
+  parseWorkspaceObjectionRows,
+  type WorkspaceObjectionSet,
+} from "@/lib/sales-library/workspace-objections";
 
 /**
  * Reads behind Settings -> AI & selling and the `sales_settings.get`
@@ -134,6 +150,74 @@ export async function loadScoringWeightsView(
   const defaults = defaultScoringWeights(archetypeKey, motion);
   const stored = data ? parseScoringWeights(data.payload) : null;
   return { current: stored ?? defaults, defaults, overridden: stored !== null };
+}
+
+/* ---------------------------------------------------- qualification policy */
+
+export type QualificationPolicyOffer = {
+  id: string;
+  name: string;
+  active: boolean;
+  policy: QualificationPolicy;
+  /** services.offer_profile, read with parseOfferProfile (invalid => defaults). */
+  offerProfile: OfferProfile;
+  offerProfileValid: boolean;
+};
+
+export type QualificationPolicyView = {
+  workspace: QualificationPolicy;
+  offers: QualificationPolicyOffer[];
+  invalidScopes: string[];
+  /** Owners and admins only (CD-9). */
+  engineMode: { mode: QiEngineMode; stored: boolean } | null;
+  archetypes: { key: string; name: string }[];
+  /** The question-intent library, for the Never ask / Also ask pickers. */
+  intentOptions: QuestionIntentOption[];
+};
+
+export type QuestionIntentOption = { key: string; dimension: string; label: string };
+
+/** The library question intents a policy or a mapping may name (A2's question-intents.ts). */
+export function questionIntentOptions(): QuestionIntentOption[] {
+  return QUESTION_INTENTS.filter((intent) => LIBRARY_INTENT_KEY_PATTERN.test(intent.key)).map((intent) => ({
+    key: intent.key,
+    dimension: intent.dimension,
+    label: intent.renderings.default,
+  }));
+}
+
+/**
+ * Settings -> AI & selling -> Qualification policy: the QUALIFICATION_POLICY
+ * rows ('*' and one per offer), each offer's profile, and the engine mode for
+ * the roles allowed to see it. Throws on a failed read (the card shows its
+ * error state rather than a blank form that would overwrite real settings).
+ */
+export async function loadQualificationPolicyView(businessId: string, role: string): Promise<QualificationPolicyView> {
+  const db = createAdminClient();
+  const [policies, services, engineMode] = await Promise.all([
+    readPolicies(businessId),
+    db.from("services").select("id, name, active, offer_profile").eq("business_id", businessId).order("name"),
+    canSeeEngineMode(role) ? readEngineMode(businessId) : Promise.resolve(null),
+  ]);
+  if (services.error) throw new Error(`services read: ${services.error.message}`);
+  return {
+    workspace: policyForRole(policies.workspace, role),
+    offers: (services.data ?? []).map((service) => {
+      const offer = parseOfferProfile(service.offer_profile);
+      return {
+        id: service.id,
+        name: service.name,
+        active: service.active,
+        policy: policies.services[service.id] ?? {},
+        offerProfile: offer.profile,
+        offerProfileValid: offer.valid,
+      };
+    }),
+    invalidScopes: policies.invalidKeys,
+    engineMode,
+    archetypes: ARCHETYPES.map((a) => ({ key: a.key, name: a.name })),
+    intentOptions: questionIntentOptions(),
+  };
 }
 
 /* ----------------------------------------------------------------- budgets */
@@ -309,4 +393,36 @@ export async function loadSenderHealth(businessId: string, now: Date = new Date(
       })),
     domains: [...latest.values()],
   };
+}
+
+/* -------------------------------------------------------------- objections */
+
+/**
+ * Settings -> AI & selling -> Objections: the workspace's own objections and
+ * reassurance assets (`workspace_sales_overrides` kind OBJECTION). Throws on
+ * a failed read, so the card shows its error state rather than an empty
+ * editor that would look like nothing was saved.
+ */
+export async function loadWorkspaceObjections(businessId: string): Promise<WorkspaceObjectionSet> {
+  const { data, error } = await createAdminClient()
+    .from("workspace_sales_overrides")
+    .select("key, payload")
+    .eq("business_id", businessId)
+    .eq("kind", "OBJECTION");
+  if (error) throw new Error(`workspace_sales_overrides objections read: ${error.message}`);
+  return parseWorkspaceObjectionRows(data ?? []);
+}
+
+/**
+ * The same, for the conversation runtime. Never throws: a failed read is
+ * logged and the generic library applies, exactly as for a workspace that
+ * never entered any.
+ */
+export async function loadWorkspaceObjectionsOrEmpty(businessId: string): Promise<WorkspaceObjectionSet> {
+  try {
+    return await loadWorkspaceObjections(businessId);
+  } catch (error) {
+    console.error("[workspace-objections] read failed; the library applies", { businessId, error });
+    return EMPTY_WORKSPACE_OBJECTIONS;
+  }
 }

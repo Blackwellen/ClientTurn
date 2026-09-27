@@ -561,6 +561,19 @@ export const SERVICE_OPERATIONS = [
     entityType: "opportunity",
   },
   {
+    // 08 §B.20: a lead can hold several interests, each its own opportunity.
+    name: "opportunity.add_interest",
+    domain: "opportunity",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Add another service a lead is interested in, as its own opportunity",
+    effect:
+      "The lead gets a second (or further) interest for that service. The assistant works it toward that service's own goal alongside the others, and it is sent to your connected CRM as its own deal.",
+    entityType: "opportunity",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
     name: "opportunity.set_stage",
     domain: "opportunity",
     risk: "REVERSIBLE_WRITE",
@@ -581,6 +594,28 @@ export const SERVICE_OPERATIONS = [
       "The opportunity is recorded as won or lost with your reason, the lead's status changes to match, follow-up for the lead stops, and the outcome is sent to your connected CRM.",
     entityType: "opportunity",
     callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+
+  /* ---------------------------------------------------------- payments
+   *
+   * The direct-sale loop (0143). A payment the customer's Stripe or order
+   * webhook reported that matched no lead with certainty (an email-only match,
+   * or none) waits for a person. Linking it is the same apply a token match
+   * gets: the opportunity closes WON with the amount, follow-up stops and the
+   * thank-you goes out -- so it is EXTERNAL, confirmed in the UI, and offered
+   * to the UI only: no model or client decides who paid.
+   */
+  {
+    name: "payment.link_to_lead",
+    domain: "payment",
+    risk: "EXTERNAL",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Link a received payment to the lead who paid",
+    effect:
+      "The payment is recorded against this lead, their open opportunity is closed as won with the amount, their follow-up stops, and the assistant sends them a thank-you with your next steps.",
+    entityType: "checkout_payment",
+    callers: ["UI"],
   },
 
   /* --------------------------------------------------------- campaigns
@@ -706,19 +741,31 @@ export const SERVICE_OPERATIONS = [
     entityType: "prospect",
   },
   {
-    // The writer the LinkedIn adapter's ingested-list route reads. The
-    // customer's own Sales Navigator or LinkedIn export, uploaded by them:
-    // nothing here touches LinkedIn. Phone columns are discarded, never stored.
-    // UI and API only: an import is a person handing over their own file, not
-    // something an agent or a chat assistant does on its own initiative.
+    // The customer's own list as prospects: LinkedIn's export of their own
+    // 1st-degree connections, or any CSV they own. Nothing here touches
+    // LinkedIn. Phone columns are discarded, never stored. UI and API only: an
+    // import is a person handing over their own file, not something an agent
+    // or a chat assistant does on its own initiative.
     name: "prospect.import_linkedin_list",
     domain: "prospect",
     risk: "REVERSIBLE_WRITE",
     minimumRole: "member",
     scope: "prospects:write",
-    summary: "Import your own Sales Navigator or LinkedIn list export (CSV)",
+    summary: "Import your own list (LinkedIn Connections export or any CSV you own) as prospects",
     entityType: null,
     callers: ["UI", "API"],
+  },
+  {
+    // "Add website" on a prospect whose company has none. Admin, because it
+    // runs the email waterfall, which spends the enrichment allowance.
+    name: "prospect.set_company_website",
+    domain: "prospect",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "prospects:write",
+    summary: "Add a company website to a prospect, then look for a work email and buying signals",
+    entityType: "prospect",
+    callers: ["UI", "MCP", "API"],
   },
 
   /* ------------------------------------------------ business and metrics */
@@ -869,6 +916,122 @@ export const SERVICE_OPERATIONS = [
     callers: ["UI", "MCP", "API"],
   },
 
+  /* ------------------------- qualification intelligence (§B.19, brief §21)
+   *
+   * What the qualification and intent engine concluded about a lead, and the
+   * three ways a person corrects it. The reads answer "is this lead
+   * qualified", "what do we still need" and "why are we asking this"; the
+   * engine's deterministic verdict stays the answer to the first, with intent,
+   * completeness and the next action as context (CLAUDE.md resolved conflict 1).
+   *
+   * An unattended agent is excluded from every write here: it must not
+   * re-label the evidence it acts on. Copilot may re-run an assessment and
+   * confirm, reject or set a fact (a member's ordinary correction, audited with
+   * before and after), but overriding intent or the next action is a person's
+   * call from the app or a supervised MCP client.
+   *
+   * The policy write is admin-only. From any caller other than the app it may
+   * only make the policy stricter (`policyChangeOnlyNarrows`, CD-18): forbid a
+   * question, require a dimension, add an escalation condition or a
+   * disqualifier, or lower the autonomy cap. Widening, thresholds and the engine
+   * mode are changed in Settings.
+   */
+  {
+    name: "qualification.status",
+    domain: "qualification",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Say whether a lead is qualified, how much of the picture is known and what happens next",
+    entityType: "lead",
+  },
+  {
+    name: "qualification.unknowns",
+    domain: "qualification",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "List what is still needed to qualify a lead: required, conflicting and unverified details",
+    entityType: "lead",
+  },
+  {
+    name: "qualification.explain",
+    domain: "qualification",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Explain why the next question or action was chosen for a lead",
+    entityType: "lead",
+  },
+  {
+    name: "qualification.intent",
+    domain: "qualification",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Explain a lead's buying intent: state, score, evidence, contradictions and when it decays",
+    entityType: "lead",
+  },
+  {
+    name: "qualification.requalify",
+    domain: "qualification",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Re-run a lead's qualification and intent assessment now",
+    entityType: "lead",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "qualification.set_fact",
+    domain: "qualification",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Confirm, reject or set what is known about a lead for one qualification detail",
+    entityType: "lead",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "qualification.override_intent",
+    domain: "qualification",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Override a lead's buying-intent state, with a reason and an end date",
+    entityType: "lead",
+    callers: ["UI", "MCP"],
+  },
+  {
+    name: "qualification.override_nba",
+    domain: "qualification",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Override a lead's next best action, with a reason",
+    entityType: "lead",
+    callers: ["UI", "MCP"],
+  },
+  {
+    name: "qualification.policy_get",
+    domain: "qualification",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read the qualification policy for the workspace and each offer",
+    entityType: "business",
+  },
+  {
+    name: "qualification.policy_update",
+    domain: "qualification",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change the qualification policy; outside Settings it can only be made stricter",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+
   /* ------------------------------------------- AI & selling settings (§74)
    *
    * How the workspace sells and how much AI it may spend doing it. None of
@@ -895,6 +1058,54 @@ export const SERVICE_OPERATIONS = [
     summary: "Change how this workspace sells: classification, motions, methods and brand voice",
     entityType: "business",
     callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "sales_objections.list",
+    domain: "sales_objections",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read the objections this workspace hears most, its own answers and its reassurance facts",
+    entityType: "business",
+  },
+  {
+    name: "sales_objections.save",
+    domain: "sales_objections",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Add or edit one objection the workspace hears, with its own approved answer",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "sales_objections.remove",
+    domain: "sales_objections",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Remove one of the workspace's own objection answers (the library playbook applies again)",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "sales_objections.save_reassurance",
+    domain: "sales_objections",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Set the reassurance facts the assistant may use: SLAs, guarantees, case studies, owned testimonials",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "sales_objections.preview",
+    domain: "sales_objections",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Try an objection offline: which playbook fires, the plan and an example reply (no AI spend)",
+    entityType: "business",
   },
   {
     name: "ai_budget.update",
@@ -1155,6 +1366,283 @@ export const SERVICE_OPERATIONS = [
     entityType: "experiment",
     callers: ["UI", "MCP", "API"],
   },
+  /* ------------------------------------------------------------- billing
+   *
+   * "Upgrade now" during a card-first trial: ends the Stripe trial today and
+   * charges the card already on file (billing/end-trial.ts). It spends the
+   * customer's money, so it is FINANCIAL (a person confirms the amount in the
+   * modal), owner-only (the one role that controls billing), and offered to
+   * the UI alone: no API key, MCP client, Copilot or agent can start a charge.
+   * The Stripe call is idempotent per workspace and confirmation nonce.
+   */
+  {
+    name: "billing.end_trial_now",
+    domain: "billing",
+    risk: "FINANCIAL",
+    minimumRole: "owner",
+    scope: "business:write",
+    summary: "End the free trial now and start the paid plan",
+    effect:
+      "Your trial ends today and the card on file is charged for the first period of the plan straight away. The plan's full limits switch on immediately.",
+    entityType: "subscription",
+    callers: ["UI"],
+  },
+
+  /* --------------------------------------------------- quote to cash (P2)
+   *
+   * One implementation per act for the UI, API, MCP and (later) the agent:
+   * the logic is lib/quotes/service-core.ts and lib/invoicing/service-core.ts,
+   * over stores that only ever change a quote's state through the 0153 RPCs.
+   *
+   * Roles: the catalogue and the quote settings are prices and legal terms,
+   * so owner/admin. Members build, send, revise and withdraw quotes; only an
+   * owner or admin approves (and only a person: approve/reject exclude every
+   * non-human caller, and the core refuses a non-HUMAN actor as well). Money
+   * records (payments, voids, credit notes) are admin.
+   *
+   * Plan gates are inside each handler through `can()` (billing/capabilities.ts),
+   * never here and never by plan name.
+   *
+   * AGENT: the agent may later use exactly the operations in
+   * AGENT_QUOTE_OPERATIONS below (calculate, create a draft, request approval,
+   * and send where commercial authority permits and a person confirms). The
+   * tools are wired by another phase.
+   */
+  {
+    name: "catalogue.list",
+    domain: "catalogue",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "List the priced catalogue: items, price tiers and bundles",
+    entityType: "catalogue_item",
+  },
+  {
+    name: "catalogue.upsert_item",
+    domain: "catalogue",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Add or change a priced catalogue item",
+    entityType: "catalogue_item",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "catalogue.upsert_bundle",
+    domain: "catalogue",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Add or change a catalogue bundle",
+    entityType: "catalogue_bundle",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "catalogue.archive",
+    domain: "catalogue",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Stop selling a catalogue item or bundle (quotes already sent keep it)",
+    entityType: "catalogue_item",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "quote_settings.get",
+    domain: "quote_settings",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read the workspace's quote and invoice settings",
+    entityType: "quote_settings",
+  },
+  {
+    name: "quote_settings.update",
+    domain: "quote_settings",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change quote and invoice settings: VAT, terms, numbering, deposits and approvals",
+    entityType: "quote_settings",
+    callers: ["UI"],
+  },
+  {
+    name: "quote.calculate",
+    domain: "quote",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "leads:read",
+    summary: "Price quote lines from the catalogue, without saving anything",
+    entityType: "quote",
+  },
+  {
+    name: "quote.create",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Create a draft quote for an opportunity from the catalogue",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API", "AGENT"],
+  },
+  {
+    name: "quote.update_draft",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Change a draft quote's lines, discount, payment terms or note",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "quote.submit_for_approval",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Ask an owner or admin to approve a quote",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API", "AGENT"],
+  },
+  {
+    name: "quote.approve",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Approve a quote so it can be sent",
+    entityType: "quote",
+    // A person, in the app. Never an agent, Copilot, MCP client or API key.
+    callers: ["UI"],
+  },
+  {
+    name: "quote.reject",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Send a quote back to draft instead of approving it",
+    entityType: "quote",
+    callers: ["UI"],
+  },
+  {
+    name: "quote.send",
+    domain: "quote",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Send a quote to the customer",
+    effect:
+      "The quote is frozen as it stands, a private link is created, and it is emailed to the customer (or the link is given to you to share). After this it can only be changed by issuing a new revision.",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API", "AGENT"],
+  },
+  {
+    name: "quote.revise",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Start a new revision of a quote; the customer's current link stops working",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "quote.withdraw",
+    domain: "quote",
+    risk: "DESTRUCTIVE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Withdraw a quote",
+    effect: "The quote is withdrawn and the customer's link stops working. A withdrawn quote cannot be reopened; you would create a new one.",
+    entityType: "quote",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "quote.get",
+    domain: "quote",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Read one quote: its lines, totals, status history and revisions",
+    entityType: "quote",
+  },
+  {
+    name: "quote.list",
+    domain: "quote",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "List quotes, optionally for one lead or opportunity",
+    entityType: "quote",
+  },
+  {
+    name: "invoice.create_from_quote",
+    domain: "invoice",
+    risk: "EXTERNAL",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Create the invoices for an accepted quote's payment schedule",
+    effect:
+      "An invoice is drafted for each payment in the quote's schedule. With automatic issue on, each is numbered and emailed to the customer on its date, starting with any payment due on acceptance.",
+    entityType: "invoice",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.issue",
+    domain: "invoice",
+    risk: "EXTERNAL",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Issue an invoice: number it and email it to the customer",
+    effect:
+      "The invoice gets its number and dates and can no longer be edited (only voided or credited). It is emailed to the customer, and payment reminders are scheduled.",
+    entityType: "invoice",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.record_payment",
+    domain: "invoice",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Record a payment received against an invoice",
+    effect: "The payment is added to the invoice permanently. A mistaken payment is corrected with a credit note, not deleted.",
+    entityType: "invoice",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.void",
+    domain: "invoice",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Void an unpaid invoice",
+    effect: "The invoice is cancelled and stops being chased. Its number is kept in the sequence. This cannot be undone.",
+    entityType: "invoice",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.credit_note",
+    domain: "invoice",
+    risk: "FINANCIAL",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Issue a credit note against a paid invoice",
+    effect: "A numbered credit note is issued for the amount, reducing what the customer has been charged. You refund the money yourself in your payment provider.",
+    entityType: "invoice",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.list",
+    domain: "invoice",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "List invoices, optionally for one quote or opportunity",
+    entityType: "invoice",
+  },
 ] as const satisfies readonly ServiceDeclaration[];
 
 /**
@@ -1182,6 +1670,20 @@ export type RegisteredOperation = ServiceDeclaration & { name: ServiceOperationN
  * anything that walks the catalogue uses this widened view instead.
  */
 export const ALL_OPERATIONS: readonly RegisteredOperation[] = SERVICE_OPERATIONS;
+
+/**
+ * The quote operations the agent may use once its tools are wired (another
+ * phase): price, draft, ask for approval, and send where commercial
+ * authority permits. `quote.send` is EXTERNAL, so an agent call still needs a
+ * person's confirmation (the runtime refuses it otherwise). Asserted against
+ * each declaration's `callers` in tests/quote-service.test.ts.
+ */
+export const AGENT_QUOTE_OPERATIONS = [
+  "quote.calculate",
+  "quote.create",
+  "quote.submit_for_approval",
+  "quote.send",
+] as const satisfies readonly ServiceOperationName[];
 
 /* ------------------------------------------------------------- accessors */
 

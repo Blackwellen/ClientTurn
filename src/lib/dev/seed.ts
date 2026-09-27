@@ -502,10 +502,10 @@ async function seedReactivationCampaigns(
         message_template:
           "Hi {{first_name}}, it's {{business_name}}. We're booking " +
           fixture.audienceLabel.toLowerCase() +
-          " visits in your area — would you like us to take another look? " +
+          " visits in your area. Would you like us to take another look? " +
           "Reply STOP to opt out.",
         followup_template:
-          "Hi {{first_name}}, just checking you saw this — we still have a " +
+          "Hi {{first_name}}, just checking you saw this. We still have a " +
           "couple of slots left this month. {{business_phone}}",
         followup_delay_seconds: 48 * 3600,
         estimated_audience_size: fixture.sent,

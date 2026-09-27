@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Ban,
@@ -124,6 +125,16 @@ export function SocialOutreachPanel({
         You connect first and message once they accept. That order is the platform&rsquo;s
         rule, not ours — a message sent before then either cannot be delivered or is never
         seen.
+      </p>
+      <p className="mt-1 text-[12px] text-content-muted">
+        On LinkedIn and TikTok we draft and you send from your own account. Record their
+        replies in the Social queue so the conversation stays in one place.{" "}
+        <Link
+          href="/app/help/compliance/social-conversations-by-channel"
+          className="text-content-accent underline-offset-4 hover:underline"
+        >
+          Learn more
+        </Link>
       </p>
 
       <div className="mt-3 space-y-3">

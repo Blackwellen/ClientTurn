@@ -16,7 +16,8 @@
 
 import { dimensionRatio, evidenceValue, type LeadScoreResult } from "./lead-score.ts";
 
-export const TAG_RULE_VERSION = "lt-v1.2026.09";
+/** lt-v2: HIGH_INTENT and NOT_NOW read the intent engine's state when there is one. */
+export const TAG_RULE_VERSION = "lt-v2.2026.09";
 
 export const LEAD_TAGS = [
   "HOT",
@@ -56,7 +57,15 @@ export type TagContext = {
   /** Newest first. */
   replyClassifications: string[];
   now: Date;
+  /**
+   * The intent engine's current state (qualification-intelligence/intent.ts),
+   * when the engine ran. Absent: the tags fall back to the score and the
+   * latest classification, as before.
+   */
+  intentState?: string | null;
 };
+
+const READY_INTENT_STATES = new Set(["HIGH", "BOOKING_READY", "PURCHASE_READY"]);
 
 export type DerivedTag = {
   tag: LeadTag;
@@ -118,11 +127,14 @@ export const TAG_RULES: Rule[] = [
   },
   {
     tag: "HIGH_INTENT",
-    condition: "Intent at least 80% of its weight.",
-    evaluate: (ctx) =>
-      !ctx.lifecycle.optedOut && dimensionRatio(ctx.score, "INTENT") >= 0.8
-        ? { reason: "Strong buying signal.", confidence: dimensionConfidence(ctx, "INTENT") }
-        : null,
+    condition: "Intent state HIGH, BOOKING_READY or PURCHASE_READY; without an intent state, intent at least 80% of its weight. Never when opted out or NEGATIVE.",
+    evaluate: (ctx) => {
+      if (ctx.lifecycle.optedOut || ctx.intentState === "NEGATIVE" || ctx.intentState === "NOT_NOW") return null;
+      const strong = ctx.intentState
+        ? READY_INTENT_STATES.has(ctx.intentState)
+        : dimensionRatio(ctx.score, "INTENT") >= 0.8;
+      return strong ? { reason: "Strong buying signal.", confidence: dimensionConfidence(ctx, "INTENT") } : null;
+    },
   },
   {
     tag: "BUDGET_CONFIRMED",
@@ -170,9 +182,11 @@ export const TAG_RULES: Rule[] = [
   },
   {
     tag: "NOT_NOW",
-    condition: "The latest reply was classified NOT_NOW.",
+    condition: "The intent state is NOT_NOW, or (without one) the latest reply was classified NOT_NOW.",
     evaluate: (ctx) =>
-      ctx.replyClassifications[0] === "NOT_NOW" ? { reason: "Asked to be contacted later.", confidence: 0.9 } : null,
+      ctx.intentState === "NOT_NOW" || (!ctx.intentState && ctx.replyClassifications[0] === "NOT_NOW")
+        ? { reason: "Asked to be contacted later.", confidence: 0.9 }
+        : null,
   },
   {
     tag: "BOOKED",

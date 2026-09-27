@@ -9,7 +9,10 @@ import {
   getCrmPushAdapter,
   isCrmProvider,
 } from "@/lib/integrations/providers/crm-registry";
-import { latestLeadOpportunity } from "@/lib/opportunities/service";
+import { latestLeadOpportunity, OPPORTUNITY_FIELDS, type OpportunityRow } from "@/lib/opportunities/service";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { crmDealPlan } from "@/lib/qualification-intelligence/interests";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const crmPushPayload = z.object({
   leadId: z.uuid(),
@@ -78,7 +81,11 @@ export async function handleCrmPush(job: ClaimedJob) {
 
   // Re-read at push time, like the lead: the opportunity's current stage and
   // outcome are what the CRM should show, not whatever triggered the job.
-  const opportunity = await latestLeadOpportunity(businessId, lead.id);
+  // Several interests (0144): the recorded deal stays with its own
+  // opportunity and every other interest is its own deal. One interest (or
+  // no 0144): the latest opportunity, exactly as before.
+  const deals = await loadInterestDeals(businessId, lead.id, payload.provider);
+  const opportunity = deals?.primary ?? (await latestLeadOpportunity(businessId, lead.id));
 
   try {
     const result = await adapter.push({
@@ -99,6 +106,9 @@ export async function handleCrmPush(job: ClaimedJob) {
               closedAt: opportunity.closed_at,
             }
           : null,
+        ...(deals && deals.extras.length > 0
+          ? { additionalOpportunities: deals.extras.map(toCrmOpportunity), additionalDealIds: deals.dealIds }
+          : {}),
       },
     });
 
@@ -115,6 +125,8 @@ export async function handleCrmPush(job: ClaimedJob) {
       },
       { onConflict: "business_id,lead_id,provider_type" },
     );
+
+    if (deals && opportunity) await recordInterestDeals(businessId, lead.id, payload.provider, opportunity.id, deals.dealIds, result.additionalDealIds ?? {});
 
     await recordAudit({
       businessId: job.business_id,
@@ -168,4 +180,78 @@ export async function handleCrmPush(job: ClaimedJob) {
 
     throw error;
   }
+}
+
+/* ------------------------------------------------ several interests (0144) */
+
+function toCrmOpportunity(row: OpportunityRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    stage: row.stage,
+    outcome: row.outcome,
+    outcomeReason: row.outcome_reason,
+    value: row.value,
+    currency: row.currency,
+    expectedCloseDate: row.expected_close_date,
+    closedAt: row.closed_at,
+  };
+}
+
+/**
+ * The deal plan for a lead with several interests, or null (one interest, or
+ * 0144 not applied): the handler then pushes the latest opportunity as before.
+ */
+async function loadInterestDeals(
+  businessId: string,
+  leadId: string,
+  provider: string,
+): Promise<{ primary: OpportunityRow; extras: OpportunityRow[]; dealIds: Record<string, string> } | null> {
+  const admin = createAdminClient() as unknown as SupabaseClient;
+  const { data, error } = await admin
+    .from("opportunities")
+    .select(`${OPPORTUNITY_FIELDS}, service_id`)
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .limit(20);
+  if (error) {
+    if (!isSchemaLag(error)) console.error("[crm.push] interest read failed", { leadId, code: error.code });
+    return null;
+  }
+  const rows = (data ?? []) as (OpportunityRow & { service_id: string | null })[];
+  if (rows.filter((r) => r.service_id).length < 2) return null;
+  const record = await admin
+    .from("crm_push_records")
+    .select("external_deal_id, deal_opportunity_id, external_deal_ids")
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .eq("provider_type", provider)
+    .maybeSingle();
+  if (record.error && isSchemaLag(record.error)) return null;
+  const rec = (record.data ?? null) as { external_deal_id: string | null; deal_opportunity_id: string | null; external_deal_ids: Record<string, string> | null } | null;
+  const plan = crmDealPlan(
+    rows.map((r) => ({ id: r.id, serviceId: r.service_id, createdAt: r.created_at, updatedAt: r.updated_at })),
+    { dealOpportunityId: rec?.deal_opportunity_id ?? null, hasDeal: Boolean(rec?.external_deal_id) },
+  );
+  const primary = rows.find((r) => r.id === plan.primaryId);
+  if (!primary) return null;
+  return { primary, extras: rows.filter((r) => plan.extraIds.includes(r.id)), dealIds: { ...(rec?.external_deal_ids ?? {}) } };
+}
+
+/** Which opportunity the existing deal is, and each further interest's deal id. Tolerates a database without 0144. */
+async function recordInterestDeals(
+  businessId: string,
+  leadId: string,
+  provider: string,
+  primaryOpportunityId: string,
+  before: Record<string, string>,
+  pushed: Record<string, string>,
+): Promise<void> {
+  const { error } = await (createAdminClient() as unknown as SupabaseClient)
+    .from("crm_push_records")
+    .update({ deal_opportunity_id: primaryOpportunityId, external_deal_ids: { ...before, ...pushed } })
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .eq("provider_type", provider);
+  if (error && !isSchemaLag(error)) console.error("[crm.push] interest deals not recorded", { leadId, code: error.code });
 }

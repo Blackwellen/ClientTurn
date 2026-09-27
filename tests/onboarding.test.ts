@@ -48,11 +48,14 @@ describe("onboarding steps", () => {
     assert.equal(seen.size, ONBOARDING_STEPS.length);
   });
 
-  test("setup opens with the guided first-Copilot step (Phase 8.3)", () => {
-    assert.equal(ONBOARDING_STEPS[0], "copilot");
-    assert.equal(nextStep("copilot"), "business");
-    assert.equal(previousStep("business"), "copilot");
-    assert.equal(STEP_META.copilot.number, 1);
+  test("setup opens on the business step, then the guided Copilot step (8.29, was 8.3)", () => {
+    // The workspace is named on the business step, and nothing, Copilot
+    // included, should show a workspace before it has a name.
+    assert.equal(ONBOARDING_STEPS[0], "business");
+    assert.equal(nextStep("business"), "copilot");
+    assert.equal(previousStep("copilot"), "business");
+    assert.equal(STEP_META.business.number, 1);
+    assert.equal(STEP_META.copilot.number, 2);
   });
 
   test("step numbers and the progress nav follow the step order", () => {
@@ -70,10 +73,11 @@ describe("onboarding steps", () => {
     }
   });
 
-  test("new workspaces start at the Copilot step", async () => {
+  test("new workspaces are created unnamed, so they open on the business step", async () => {
     const { readFileSync } = await import("node:fs");
-    const source = readFileSync("src/lib/auth/provision.ts", "utf8");
-    assert.match(source, /onboarding_step: "copilot"/);
+    for (const file of ["src/lib/auth/actions.ts", "src/app/api/auth/google/callback/route.ts"]) {
+      assert.match(readFileSync(file, "utf8"), /businessName: UNNAMED_WORKSPACE/, file);
+    }
   });
 
   test("an unknown step falls back to the first rather than throwing", () => {

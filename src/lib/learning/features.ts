@@ -11,12 +11,22 @@
  * nothing here is pooled across workspaces.
  */
 
+import type { QuestionMessageFeatures } from "../qualification-intelligence/types.ts";
+
 export type MessageFamily = "FOLLOW_UP" | "AGENT_REPLY" | "REACTIVATION";
 export type CtaType = "BOOKING_LINK" | "LINK" | "QUESTION" | "NONE";
 export type LengthBucket = "SHORT" | "MEDIUM" | "LONG";
 
-export type MessageFeatures = {
-  v: 1;
+/**
+ * v2 (design 08 §B.15) adds the question-level features the qualification
+ * engine planned (`QuestionMessageFeatures`): the question intent, its
+ * dimension and wording family, its 1-based position in the conversation, the
+ * intent state and goal at send time, the offer, the NBA action and the engine
+ * version. All null on a message the engine did not plan. v1 rows (before
+ * 2026-09-26) lack these keys; readers treat a missing key as null.
+ */
+export type MessageFeatures = QuestionMessageFeatures & {
+  v: 2;
   family: MessageFamily;
   /** The step / template / campaign the copy came from. */
   templateId: string | null;
@@ -84,10 +94,13 @@ export function buildMessageFeatures(input: {
   scoreBand?: string | null;
   experimentId?: string | null;
   arm?: string | null;
+  /** Set when the qualification engine planned this message. */
+  question?: Partial<QuestionMessageFeatures> | null;
 }): MessageFeatures {
   const { hour, dow } = localHourDow(input.sendAt, input.timeZone);
+  const q = input.question ?? {};
   return {
-    v: 1,
+    v: 2,
     family: input.family,
     templateId: input.templateId ?? null,
     cta: ctaType(input.body),
@@ -102,5 +115,14 @@ export function buildMessageFeatures(input: {
     scoreBand: input.scoreBand ?? null,
     experimentId: input.experimentId ?? null,
     arm: input.arm ?? null,
+    questionIntent: q.questionIntent ?? null,
+    dimension: q.dimension ?? null,
+    wordingFamily: q.wordingFamily ?? null,
+    questionPosition: q.questionPosition ?? null,
+    intentState: q.intentState ?? null,
+    goal: q.goal ?? null,
+    offerId: q.offerId ?? null,
+    nbaAction: q.nbaAction ?? null,
+    strategyVersion: q.strategyVersion ?? null,
   };
 }

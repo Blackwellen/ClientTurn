@@ -1,0 +1,10 @@
+{
+  "id": "handover-02-legal-threat",
+  "story": "A legal threat goes to a person at once.",
+  "turns": [
+    {
+      "lead": "If this is not sorted by Friday my solicitor will be in touch.",
+      "expect": { "disposition": "HANDOVER", "trigger": "COMPLAINT_OR_LEGAL_THREAT", "reason": "COMPLAINT", "was": "HANDOVER" }
+    }
+  ]
+}

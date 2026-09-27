@@ -171,7 +171,7 @@ export function ConnectionCard({
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
             <span className="font-semibold">
-              Run by Client Turn on your behalf.
+              Run by ClientTurn on your behalf.
             </span>{" "}
             There is nothing to connect.
           </span>

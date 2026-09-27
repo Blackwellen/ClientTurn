@@ -38,6 +38,26 @@ export const AUTOMATION_EVENT_TYPES = [
   "campaign.started",
   "campaign.contact_due",
   "campaign.completed",
+  // Quote-to-cash (P2, gap map §45; CHECK in migration 0156). Emitted by
+  // lib/quotes/events.ts from the quote, signature and invoice paths.
+  "quote.created",
+  "quote.approval_requested",
+  "quote.approved",
+  "quote.approval_rejected",
+  "quote.sent",
+  "quote.viewed",
+  "quote.accepted",
+  "quote.declined",
+  "quote.expired",
+  "quote.revised",
+  "quote.withdrawn",
+  "quote.reminded",
+  "signature.completed",
+  "invoice.issued",
+  "invoice.paid",
+  "invoice.overdue",
+  "invoice.voided",
+  "invoice.credited",
 ] as const;
 
 export type AutomationEventType = (typeof AUTOMATION_EVENT_TYPES)[number];

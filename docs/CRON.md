@@ -205,3 +205,25 @@ After deploying, re-queue those jobs:
 update public.jobs set state = 'pending', attempts = 0, run_at = now(), last_error = null
  where type = 'event.dispatch' and state = 'dead';
 ```
+
+## Verified live 2026-09-27 (final programme check)
+
+Read-only checks against project `losieaikadkadtmezini`:
+
+| Check | Result |
+|---|---|
+| `cron.job` | `clientturn-worker` every 30 s, `clientturn-daily` at 03:07 UTC, `clientturn-reap` every 5 min; all active |
+| `cron.job_run_details`, last 24 h | worker 2,879/2,879 succeeded, reap 288/288, daily 1/1 (03:07) |
+| `net._http_response`, last 6 h | 720/720 calls to `/api/cron/worker` returned HTTP 200 |
+| Vault | `clientturn_site_url` and `clientturn_cron_secret` present |
+| Daily run (03:07 today) | every job completed: `cost.rollup_daily`, `usage.aggregate`, `retention.cleanup`, `maintenance.expiry`, `affiliate.ledger`, `recurring_search.tick`, `domain.health_check`, `email.sender_health`, `whatsapp.template_sync`, `billing.daily` |
+| Minute ticks | `outreach.tick` and `social.tick` completing continuously (~8.6k each in 3 days) |
+| Backlog | 0 pending jobs overdue by more than 5 minutes; 0 dead or failed jobs in 48 h |
+| `claim_jobs` (0137) | claims skip workspaces with `businesses.job_claims_paused`; service-role only; worker still 200 after the change |
+
+**Deploy dependency.** The deployed worker runs the last deployed code. `intent.sweep` (qualification engine, every 6 h) is scheduled by `/api/cron/worker` in this working tree, so it starts only after this code is deployed; until then intent decay happens only when a lead is rescored. Every other new job type added in this programme is enqueued by application events and runs as soon as the code that enqueues it is deployed. After deploying, confirm with:
+
+```sql
+select type, state, count(*) from public.jobs
+ where type = 'intent.sweep' and created_at > now() - interval '1 day' group by 1, 2;
+```

@@ -1,21 +1,31 @@
 ---
 title: AI & selling settings
-summary: Set how much the assistant researches and when it hands over, cap what AI may cost, choose your business type and qualification depth, and set brand rules and legitimate interests assessments
+summary: Set how much the assistant researches and how readily it asks leads to clarify, cap what AI may cost, choose your business type and qualification depth, and set brand rules and legitimate interests assessments
 category: settings
-keywords: [ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia]
+keywords: [ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia, objections, reassurance, guarantees, case studies, try it]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/settings/ai-and-selling-settings-1.png
+    alt: "The AI strategy card with automation level, research depth and risk tolerance"
+    caption: "Set how much the assistant researches and how readily it asks leads to clarify"
+  - src: /help/screenshots/settings/ai-and-selling-settings-2.png
+    alt: "The Sales behaviour card with primary industry, business type and qualification depth"
+    caption: "Your industry, business type and qualification depth shape scoring and questions"
+  - src: /help/screenshots/qualifying/qualification-policy-1.png
+    alt: "The Qualification policy card with Applies to, the engine mode choices and the details required before the next step"
+    caption: "Qualification policy: choose where it applies, the engine mode and what must be known before the next step"
 ---
 
 **Settings → AI & selling** controls how the assistant sells and how much it may spend. Owners and admins can change it. Everyone else sees the same settings read-only.
 
-Whatever you choose here, the hard rules always apply: suppression and opt-outs, quiet hours, handover when a decision needs review, and the assistant never quoting a price, a promise or availability it was not given.
+Whatever you choose here, the hard rules always apply: suppression and opt-outs, quiet hours, review decisions made by your rules, and the assistant never quoting a price, a promise or availability it was not given.
 
 ## AI strategy
 
 - **Automation level** is shown here for reference. You change it, with the channels and handover rules, in **Settings → Workspace → AI assistant**. See [Workspace settings](/help/settings/workspace-settings).
 - **Research depth:** **Light** runs AI research (search planning, research summaries, reading company websites) on the cheapest AI tier allowed. **Standard** uses its usual tier. **Deep** may use one tier higher, only when your AI budgets and the lead's value allow it.
-- **Risk tolerance:** **Cautious** hands the conversation to a person whenever the assistant is not clearly confident it read the reply correctly. **Balanced** hands over when confidence is low or the topic is sensitive. **Assertive** keeps the same safety floor as Balanced: low confidence and the hard rules still hand over.
+- **Risk tolerance:** **Cautious** asks the lead to clarify whenever the assistant is not clearly confident it read the reply correctly. **Balanced** (the default) asks the lead to clarify when a reply is unclear, and passes the conversation to a person only as a last resort. **Assertive** keeps the same safety floor as Balanced: it never acts on a reply it could not read, and the hard rules still hand over. Confidence alone never hands a conversation over: after two unclear replies on the same point, a person takes it. See [The handoff brief](/help/booking-and-sales/handoff-brief).
 
 Choose **Save strategy**.
 
@@ -55,6 +65,19 @@ How your business sounds.
 - **Bad example messages:** messages that do not sound like you.
 
 You can add up to five examples of each. Choose **Save brand**.
+
+## Objections
+
+The objections your business hears most and your own best answers. The assistant uses them before its general playbook, may put them in its own words, and never adds to them.
+
+1. Choose **Add an objection**. Pick **A common objection** to refine one (such as price or timing), or **One only we hear** and give it a name.
+2. Under **How leads say it**, add the phrases leads use, one per line. One is required for an objection only you hear.
+3. Write **Your best answer**. Only what you can stand behind. Emojis, dashes and deadline or pressure wording are refused when you save.
+4. Tick any **Reassurance to lean on**, and choose **Save objection**.
+
+Under **Reassurance you stand behind**, add service levels, guarantees, case studies, testimonials you own and response-time commitments. The assistant quotes them as written, or not at all.
+
+**Try it** runs a message through the same matching, plan and checks the assistant uses and shows an example reply. It uses no AI tokens. See [Objection handling](/help/sales-knowledge/objection-handling).
 
 ## Channels
 

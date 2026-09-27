@@ -53,6 +53,7 @@ describe("settings sections", () => {
         "connections",
         "business-profile",
         "ai-selling",
+        "quotes",
         "team",
         "developer",
         "data-controls",
@@ -210,7 +211,7 @@ describe("connection availability", () => {
   test("a plan-gated provider is distinguished from an unavailable one", () => {
     const model = card({
       id: "twilio_whatsapp",
-      block: { kind: "plan", reason: "WhatsApp is included on Growth and above." },
+      block: { kind: "plan", reason: "The WhatsApp add-on is available on the Growth plan and above." },
     });
     assert.equal(providerAvailability(model), "PLAN_LOCKED");
     assert.equal(connectionActions(model).canConnect, false);

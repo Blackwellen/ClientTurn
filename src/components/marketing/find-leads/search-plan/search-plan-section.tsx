@@ -41,9 +41,9 @@ import {
 
 /** Rows the plan panel shows beyond the ones already in the chat summary. */
 const EXTRA_ROWS = [
-  { label: "Organisation type", value: ["Commercial", "Mixed"] },
+  { label: "Organisation type", value: ["Limited company", "LLP"] },
   { label: "Minimum grade", value: ["B and above"] },
-  { label: "Conversion goal", value: ["Book a site visit"] },
+  { label: "Conversion goal", value: ["Book appointment"] },
 ];
 
 const PLAN_ROWS = [...HERO_PLAN, ...EXTRA_ROWS];
@@ -87,7 +87,7 @@ export function SearchPlanSection() {
         >
         <AppSurface
           title="Search session"
-          subtitle="Property managers — Bournemouth"
+          subtitle="Ecommerce brands — Manchester"
           actions={<Badge tone="lime">Draft plan</Badge>}
         >
           <motion.ul

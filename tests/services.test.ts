@@ -376,3 +376,38 @@ describe("caller authority", () => {
     }
   });
 });
+
+/* ------------------------------------------- qualification intelligence */
+
+describe("the qualification domain (§B.19)", () => {
+  const QI_OPS = [
+    "qualification.list_questions",
+    "qualification.status",
+    "qualification.unknowns",
+    "qualification.explain",
+    "qualification.intent",
+    "qualification.requalify",
+    "qualification.set_fact",
+    "qualification.override_intent",
+    "qualification.override_nba",
+    "qualification.policy_get",
+    "qualification.policy_update",
+  ];
+
+  test("answers is-it-qualified, what-is-missing and why-this-question, and takes corrections", () => {
+    const names: string[] = operationsInDomain("qualification").map((op) => op.name);
+    for (const name of QI_OPS) assert.ok(names.includes(name), `${name} is missing`);
+  });
+
+  test("an autonomous agent cannot re-label the evidence it acts on", () => {
+    for (const op of operationsInDomain("qualification")) {
+      if (isWrite(op.risk)) assert.equal(callerAllowed(op, "AGENT"), false, `${op.name} is reachable by an agent`);
+    }
+  });
+
+  test("a read-only lead grant sees the reads and none of the corrections", () => {
+    const readOnly = operationsForScopes(["leads:read"]).map((op) => op.name as string);
+    assert.ok(readOnly.includes("qualification.explain"));
+    assert.equal(readOnly.includes("qualification.set_fact"), false);
+  });
+});

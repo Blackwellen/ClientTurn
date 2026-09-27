@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PageHeader } from "@/components/app/page-header";
 import { ImportWizard } from "@/components/leads/import/import-wizard";
 
-export const metadata: Metadata = { title: "Import leads · ClientTurn" };
+export const metadata: Metadata = { title: "Import leads" };
 export const dynamic = "force-dynamic";
 
 export default async function ImportPage() {

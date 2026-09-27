@@ -12,7 +12,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { readBundledHelpIndex } from "./bundled.ts";
+import { bundledImageSize, readBundledHelpIndex } from "./bundled.ts";
 import { HELP_CATEGORY_SLUGS } from "./categories.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 import {
@@ -116,6 +116,8 @@ export function imageSize(src: string): HelpImageSize | null {
   } catch {
     size = null;
   }
+  // A serverless deployment has no public/ on disk; the build bundled the size.
+  size ??= bundledImageSize(src);
   sizeCache.set(src, size);
   return size;
 }

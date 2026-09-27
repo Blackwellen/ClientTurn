@@ -69,7 +69,8 @@ export const SAFETY_CLASSIFICATION_TASKS: ReadonlySet<TaskType> = new Set<TaskTy
  */
 export const TASK_TOKEN_ENVELOPES: Record<TaskType, { input: number; output: number }> = {
   intent_classification: { input: 900, output: 80 },
-  answer_extraction: { input: 700, output: 120 },
+  // Multi-dimension extraction (design 08 §B.16): still nano, a wider envelope.
+  answer_extraction: { input: 900, output: 200 },
   reply_generation: { input: 900, output: 150 },
   conversation_summary: { input: 2_500, output: 250 },
   handover_reasoning: { input: 1_500, output: 200 },

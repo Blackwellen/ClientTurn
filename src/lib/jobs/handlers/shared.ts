@@ -178,7 +178,8 @@ export async function loadBusinessContext(
         (settingsRow?.ai_assist_enabled ?? false) && entitlements.aiAssistAllowed,
       ),
       channels: resolveAgentChannels(aiSettings.data?.agent_channels),
-      handoverOnReview: aiSettings.data?.agent_handover_on_review ?? true,
+      // Opt-in (owner decision 2026-09-27): a REVIEW is flagged, not handed over.
+      handoverOnReview: aiSettings.data?.agent_handover_on_review ?? false,
       answerServiceQuestions: aiSettings.data?.agent_answer_service_questions ?? true,
     },
     notify: {
@@ -614,7 +615,7 @@ export async function restyleMessage(
   const context =
     `Tone: ${business.aiSettings.tone}. Length: ${business.aiSettings.replyLength}.\n` +
     `Restyle this exact message as a short reply from the business to a lead. ` +
-    `Keep every fact, name, link and instruction — only adjust wording and tone.\n` +
+    `Keep every fact, name, link and instruction. Only adjust wording and tone. No emojis, no em or en dashes.\n` +
     `Message: ${input.baseMessage}`;
 
   const result = await runTask<ReplyPlan>({

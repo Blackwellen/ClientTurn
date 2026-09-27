@@ -41,6 +41,7 @@ const JOB_TYPE_AREA: Record<string, ErrorArea> = {
   "retention.cleanup": "Database",
   "cost.rollup_daily": "Jobs",
   "cost.rollup_monthly": "Jobs",
+  "economics.margin_check": "Jobs",
   "crm.push": "API",
 };
 

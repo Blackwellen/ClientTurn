@@ -60,9 +60,10 @@ describe("trial is defined once", () => {
     }
   });
 
-  test("the 0129 seed matches plans.ts for AI tokens, SMS and WhatsApp", () => {
+  test("the 0138 seed matches plans.ts for AI tokens, SMS and WhatsApp", () => {
+    // 0129 first seeded these; 0138 (margin-safe catalogue) supersedes it.
     const sql = readFileSync(
-      path.join(process.cwd(), "supabase", "migrations", "0129_billing_trial_dunning_credits.sql"),
+      path.join(process.cwd(), "supabase", "migrations", "0138_margin_catalogue_and_channel_budget.sql"),
       "utf8",
     );
     const seeded = (plan: string, metric: string) => {

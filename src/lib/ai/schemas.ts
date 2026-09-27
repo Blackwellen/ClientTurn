@@ -69,6 +69,23 @@ export const qualificationExtractionSchema = z.object({
   matched_option_id: z.string().nullable().default(null),
   confidence: z.number().min(0).max(1),
   requires_review: z.boolean().default(false),
+  /**
+   * Multi-dimension candidates (design 08 §B.11 step 3): other facts the reply
+   * states outright. Proposals only: interpret() keeps one only when its
+   * evidence_span is a verbatim substring of the reply, the dimension's own
+   * extractor accepts it and confidence >= 0.85, and then as INFERRED.
+   */
+  dimensions: z
+    .array(
+      z.object({
+        dimension: z.string().max(40),
+        value: z.string().max(200),
+        evidence_span: z.string().max(240),
+        confidence: z.number().min(0).max(1),
+      }),
+    )
+    .max(10)
+    .default([]),
 });
 export type QualificationExtraction = z.infer<typeof qualificationExtractionSchema>;
 

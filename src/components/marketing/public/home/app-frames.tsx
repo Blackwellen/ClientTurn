@@ -138,10 +138,10 @@ function Sidebar({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[10.5px] font-semibold leading-tight text-[#cdd4de]">
-            {workspace?.name ?? "Northgate Roofing"}
+            {workspace?.name ?? "Northwind Digital"}
           </span>
           <span className="block truncate text-[9px] leading-tight text-[#8794a5]">
-            {workspace?.meta ?? "& Exteriors · Pro"}
+            {workspace?.meta ?? "Web studio · Pro"}
           </span>
         </span>
       </div>
@@ -334,9 +334,9 @@ const RECENT = [
 ];
 
 const BOOKINGS = [
-  { name: "James Taylor", service: "Roof survey", when: "Mon 10:00" },
-  { name: "Harriet Wilson", service: "Measure-up", when: "Tue 14:30" },
-  { name: "Daniel Moore", service: "Site visit", when: "Wed 09:15" },
+  { name: "James Taylor", service: "Discovery call", when: "Mon 10:00" },
+  { name: "Harriet Wilson", service: "Website audit", when: "Tue 14:30" },
+  { name: "Daniel Moore", service: "Scoping call", when: "Wed 09:15" },
 ];
 
 const FUNNEL = [
@@ -358,7 +358,7 @@ export function DashboardFrame() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-[19px] font-semibold tracking-[-0.02em]" style={{ color: INK }}>
-                Good afternoon, Northgate Roofing &amp; Exteriors
+                Good afternoon, Northwind Digital
               </h3>
               <p className="mt-1 text-[11px]" style={{ color: INK_MUTED }}>
                 Here is what happened over the last 30 days.
@@ -601,10 +601,10 @@ const ADMIN_NAV = [
 ] as const;
 
 const ADMIN_WORKSPACES = [
-  { name: "Northgate Roofing", plan: "Pro", state: "Active", leads: "1,284" },
-  { name: "Harper Kitchens", plan: "Growth", state: "Active", leads: "412" },
-  { name: "Vale Landscapes", plan: "Starter", state: "Trial", leads: "96" },
-  { name: "Bellway Plumbing", plan: "Growth", state: "Active", leads: "338" },
+  { name: "Northwind Digital", plan: "Pro", state: "Active", leads: "1,284" },
+  { name: "Brightlabs", plan: "Growth", state: "Active", leads: "412" },
+  { name: "Kestrel Accounting", plan: "Starter", state: "Trial", leads: "96" },
+  { name: "Fernhill IT Services", plan: "Growth", state: "Active", leads: "338" },
 ];
 
 const ADMIN_HEALTH = [
@@ -753,11 +753,11 @@ export function AdminFrame() {
 /* ------------------------------------------------------ acquisition --- */
 
 const PROSPECTS = [
-  { name: "Riverside Homes", meta: "Residential developer · Manchester", score: 92 },
-  { name: "Oakwood Developments", meta: "Property developer · Manchester", score: 88 },
-  { name: "Centurion Living", meta: "Residential developer · Stockport", score: 84 },
-  { name: "Halewood Estates", meta: "Property developer · Salford", score: 79 },
-  { name: "Brookfield Residential", meta: "Residential developer · Bolton", score: 74 },
+  { name: "Loomwell Goods", meta: "Ecommerce brand · Manchester", score: 92 },
+  { name: "Parcel & Pine", meta: "DTC homeware · Manchester", score: 88 },
+  { name: "Tidewater Supply Co.", meta: "B2B ecommerce · Stockport", score: 84 },
+  { name: "Copperleaf Apparel", meta: "Ecommerce brand · Salford", score: 79 },
+  { name: "Hollins & Hart", meta: "Online retailer · Bolton", score: 74 },
 ];
 
 export function AcquisitionFrame() {
@@ -783,7 +783,7 @@ export function AcquisitionFrame() {
               >
                 <Sparkles className="size-3.5 shrink-0" style={{ color: LIME_DARK }} />
                 <span className="text-[11.5px]" style={{ color: INK }}>
-                  Residential developers in Manchester with 10&ndash;200 staff
+                  Ecommerce brands in Manchester with 10&ndash;200 staff
                 </span>
               </span>
               <span
@@ -795,7 +795,7 @@ export function AcquisitionFrame() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              {["Construction", "Residential", "Manchester", "10–200 staff"].map((chip) => (
+              {["Ecommerce", "Shopify", "Manchester", "10–200 staff"].map((chip) => (
                 <span
                   key={chip}
                   className="rounded-full border px-2.5 py-1 text-[10px]"

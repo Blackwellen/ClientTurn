@@ -9,7 +9,9 @@ import { serviceScopeSummary, type DraftQuestion } from "@/lib/qualification/dra
 import type { ServiceRef } from "@/lib/qualification/types";
 
 /**
- * How much of the qualification set each service actually gets asked.
+ * How much of the qualification set each service actually gets asked, and
+ * the way to each offer's own qualification rules (Settings -> AI & selling ->
+ * Qualification policy, stored per offer as QUALIFICATION_POLICY service:<id>).
  *
  * Computed from the live draft, so scoping a question to one service shows up
  * here immediately — including the case worth spotting, where a service is
@@ -76,6 +78,18 @@ export function ServiceScopeCard({
               </li>
             ))}
           </ul>
+        )}
+        {services.length > 0 && (
+          <p className="text-content-muted border-line-subtle mt-4 border-t pt-3 text-[12.5px]">
+            Each offer can also have its own qualification rules: details it must know, questions it must never ask,
+            disqualifiers and its sales goal.{" "}
+            <Link
+              href="/app/settings?section=ai-selling#qualification-policy"
+              className="text-content-accent font-medium underline-offset-4 hover:underline"
+            >
+              Set offer rules
+            </Link>
+          </p>
         )}
       </CardContent>
     </Card>

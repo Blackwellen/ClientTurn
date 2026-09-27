@@ -417,29 +417,21 @@ export async function analyseWebsite(url: unknown): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: "Enter the full address of your website." };
 
   const workspace = await requireRole("admin");
-  const db = createAdminClient();
 
-  await db.from("business_profiles").upsert(
-    {
-      business_id: workspace.businessId,
-      website_url: parsed.data,
-      analysis_status: "QUEUED",
-      analysis_error: null,
-    },
-    { onConflict: "business_id" },
+  // One way to start an analysis: `startAnalysis` creates the analysis row the
+  // worker needs (this used to queue `business.analyse` without an
+  // `analysisId`, so the job failed every time), checks the address is safe to
+  // fetch before queueing, and turns a double click into ALREADY_RUNNING. The
+  // fetch itself happens on the queue, never in this request.
+  const { startAnalysis, analysisRejectionSentence } = await import(
+    "@/lib/find-leads/server/analysis"
   );
-
-  // The fetch happens on the queue, never in this request: reading a website
-  // is slow and a server action that blocked on it would time out.
-  const { enqueue } = await import("@/lib/jobs/queue");
-  await enqueue(
-    "business.analyse",
-    { businessId: workspace.businessId, url: parsed.data },
-    {
-      businessId: workspace.businessId,
-      idempotencyKey: `business.analyse:${workspace.businessId}:${parsed.data}`,
-    },
-  );
+  const started = await startAnalysis({
+    businessId: workspace.businessId,
+    userId: workspace.userId,
+    websiteUrl: parsed.data,
+  });
+  if (!started.ok) return { ok: false, error: analysisRejectionSentence(started.code) };
 
   revalidatePath("/app/settings");
   return { ok: true };

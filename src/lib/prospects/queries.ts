@@ -52,9 +52,33 @@ const PROSPECT_COLUMNS = `
   id, first_name, last_name, role_title, role_classification, email, phone_e164,
   status, grade, score, verification_status, outreach_eligibility, eligibility_reason,
   campaign_id, source_provider, source_run_id, last_activity_at, last_contacted_at, replied_at,
-  approved_at, promoted_at, last_intent_at, created_at, promoted_to_lead_id,
-  avatar_url, avatar_source, avatar_expires_at,
-  social_platform, social_comment_id, social_commented_at, private_reply_sent_at`;
+  approved_at, promoted_at, last_intent_at, created_at, promoted_to_lead_id`;
+
+/**
+ * Columns added by 0073 (social identity) without a column grant for members.
+ * Asking for them with the member's session failed the whole query with
+ * "permission denied", and the list swallowed that as "No prospects found"
+ * (8.7). They hold no personal data beyond what the row already shows, so they
+ * are read with the service role, scoped to the business and to the ids the
+ * member's own query returned, and merged in.
+ */
+const SOCIAL_COLUMNS =
+  "id, avatar_url, avatar_source, avatar_expires_at, social_platform, social_comment_id, social_commented_at, private_reply_sent_at";
+
+async function withSocialColumns<T extends { id: string }>(businessId: string, rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return rows;
+  const { data, error } = await createAdminClient()
+    .from("prospects")
+    .select(SOCIAL_COLUMNS)
+    .eq("business_id", businessId)
+    .in(
+      "id",
+      rows.map((row) => row.id),
+    );
+  if (error) throw new Error(`prospects: social columns: ${error.message}`);
+  const byId = new Map(((data ?? []) as unknown as { id: string }[]).map((row) => [row.id, row]));
+  return rows.map((row) => ({ ...row, ...(byId.get(row.id) ?? {}) }));
+}
 
 const COMPANY_COLUMNS = `id, name, domain, website_url, industry, company_size,
                          employee_count, location_json`;
@@ -244,8 +268,10 @@ export async function listProspects(
         .order("created_at", { ascending: false });
   }
 
-  const { data, count } = await query.range(from, to);
-  const rows = (data ?? []) as unknown as RawProspect[];
+  const { data, count, error } = await query.range(from, to);
+  // A failed read is an error, never an empty list (8.7).
+  if (error) throw new Error(`prospects: list: ${error.message}`);
+  const rows = await withSocialColumns(businessId, (data ?? []) as unknown as RawProspect[]);
 
   // Intent and campaign names are resolved for the page's rows only, so the
   // cost of both is bounded by page size rather than by workspace size.
@@ -465,7 +491,9 @@ export async function getProspectDetail(
     .maybeSingle();
 
   if (!raw) return null;
-  const prospectRaw = raw as unknown as RawProspect & { conversation_id: string | null };
+  const [prospectRaw] = await withSocialColumns(businessId, [
+    raw as unknown as RawProspect & { conversation_id: string | null },
+  ]);
 
   const [intent, campaigns] = await Promise.all([
     loadIntentBadges(businessId, [prospectId]),
@@ -788,7 +816,7 @@ export async function getProspectScoring(
     .maybeSingle();
 
   if (!raw) return null;
-  const prospectRaw = raw as unknown as RawProspect;
+  const [prospectRaw] = await withSocialColumns(businessId, [raw as unknown as RawProspect]);
 
   const [intent, campaigns, currentScore, historyResult] = await Promise.all([
     loadIntentBadges(businessId, [prospectId]),

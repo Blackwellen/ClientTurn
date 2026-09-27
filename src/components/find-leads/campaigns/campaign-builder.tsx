@@ -144,7 +144,7 @@ function SenderDialog({ onClose }: { onClose: () => void }) {
             id="sender-name"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
-            placeholder="Jamie at Blackwellen Roofing"
+            placeholder="Jamie at Northwind Digital"
             className="mt-1"
           />
         </div>
@@ -158,7 +158,7 @@ function SenderDialog({ onClose }: { onClose: () => void }) {
             rows={3}
             value={postalFooter}
             onChange={(event) => setPostalFooter(event.target.value)}
-            placeholder="Blackwellen Roofing Ltd, 12 Example Road, Bournemouth, BH1 1AA"
+            placeholder="Northwind Digital Ltd, 12 Example Road, Manchester, M1 1AA"
             className="mt-1 w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-content focus:border-accent-400 focus:outline-none"
           />
           {/* Not a preference. A cold marketing email that does not identify

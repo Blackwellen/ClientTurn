@@ -4,7 +4,11 @@ summary: The people a reactivation campaign always leaves out, why, and the furt
 category: reactivation
 keywords: [excluded, suppressed, not sent, why not contacted, opted out, invalid number, active conversation, recently contacted, cooldown, already booked, won, consent, blocked message, suppression reasons]
 order: 60
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/reactivation/reactivating-existing-leads-1.png
+    alt: "The reactivation audience filters with the Automatic exclusions panel marked"
+    caption: "These people are always left out, whatever your filters"
 ---
 
 A reactivation campaign never messages everyone in its audience. Two sets of checks decide who is left out.
@@ -32,7 +36,8 @@ Between launch and sending, things change. So every message is checked again at 
 - **Contact rules.** Imported contacts who are not confirmed companies need a relationship or consent on record. See [Reactivating a CSV list](/help/reactivation/reactivating-a-csv-list).
 - **WhatsApp opt-in and templates**, for WhatsApp campaigns. See [WhatsApp templates for reactivation](/help/reactivation/whatsapp-templates-for-reactivation).
 - **Quiet hours.** The message waits until the next permitted time rather than being dropped.
-- **Your limits.** A daily limit makes it wait until tomorrow. A used-up monthly allowance with no credit and no overage stops it. See [Usage and limits](/help/billing/usage-and-limits).
+- **Contact limits.** A lead who has already had an automated message today waits until tomorrow. One who has had 3 this week or 6 in 30 days, from any mix of sequences, campaigns and check-ins, is skipped. A lead who has ignored 4 automated messages in a row and shows little interest is not messaged until they respond. See [Re-engagement check-ins, no-shows and win-back](/help/reactivation/re-engagement).
+- **Your limits.** A daily limit makes it wait until tomorrow. A used-up monthly allowance with no top-up credit left stops it. See [Usage and limits](/help/billing/usage-and-limits).
 - **Your subscription.** If a payment has failed and sending is paused, messages wait until it is paid. See [What happens if a payment fails](/help/billing/failed-payments).
 
 A message that is refused is not lost silently: the reason is recorded on it. A message that is only waiting goes out as soon as it is allowed.

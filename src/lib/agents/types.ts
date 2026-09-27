@@ -405,24 +405,7 @@ export function agentStatusLabel(status: AgentStatus): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-/** One mapping for agent status tone, so it cannot drift between the card grid
- *  and the detail header. */
-export function agentStatusTone(
-  status: AgentStatus,
-): "neutral" | "accent" | "success" | "warning" | "danger" {
-  switch (status) {
-    case "ACTIVE":
-      return "success";
-    case "PAUSED":
-      return "accent";
-    case "NEEDS_ATTENTION":
-      return "warning";
-    case "ERROR":
-      return "danger";
-    default:
-      return "neutral";
-  }
-}
+// Agent status tone lives in one place: agentRunState() in ./policy (8.8).
 
 const AUTONOMY_LABELS: Record<Autonomy, string> = {
   REVIEW_ALL: "Review everything",

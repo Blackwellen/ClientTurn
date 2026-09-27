@@ -1,0 +1,47 @@
+{
+  "id": "objection-existing-supplier",
+  "scenario": "§94 objection: already have a supplier",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Who looks after your website at the moment?"
+    },
+    {
+      "role": "lead",
+      "text": "We already have an agency we're happy with."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "EXISTING_PROVIDER",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Good to hear. Is there anything you'd change about the current setup if you could?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "You'll lose out if you stay with them.",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

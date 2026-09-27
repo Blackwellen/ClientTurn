@@ -1,0 +1,51 @@
+{
+  "id": "close-trial-friction",
+  "scenario": "§93 close: trial, remove friction",
+  "motion": "SAAS_SELF_SERVE",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "It connects to HubSpot in a few clicks."
+    },
+    {
+      "role": "lead",
+      "text": "Sounds good, what's the next step?"
+    }
+  ],
+  "facts": {
+    "allowedUrls": [
+      "https://app.example.com/signup"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "strategy": {
+      "mode": "QUALIFICATION",
+      "mustInclude": [
+        "make starting easy"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Easiest next step is the free trial, and you can connect HubSpot from the first screen: https://app.example.com/signup. Want me to stay on hand while you set it up?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Sign up now, the trial offer ends tonight!",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

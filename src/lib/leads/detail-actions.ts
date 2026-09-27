@@ -206,3 +206,18 @@ export async function recordWhatsAppOptInAction(input: {
   const result = await runOperation("lead.record_whatsapp_opt_in", parsed.data, context(workspace));
   return outcome(result, parsed.data.leadId, "WhatsApp opt-in recorded.");
 }
+
+/* ------------------------------------------------------------ interests */
+
+/**
+ * Adds another service the lead is interested in (08 §B.20), through
+ * `opportunity.add_interest`: its own opportunity, worked toward its own goal.
+ */
+export async function addLeadInterestAction(input: { leadId: string; serviceId: string }): Promise<LeadPageActionResult> {
+  const parsed = leadIdSchema.extend({ serviceId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a service." };
+  const workspace = await actor("member");
+  if (!workspace) return { ok: false, error: "You do not have permission to change this lead." };
+  const result = await runOperation("opportunity.add_interest", parsed.data, context(workspace));
+  return outcome(result, parsed.data.leadId, "Interest added. The assistant will work it alongside the others.");
+}

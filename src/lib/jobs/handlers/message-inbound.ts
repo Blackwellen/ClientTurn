@@ -54,7 +54,10 @@ import { parsePayload } from "./parse";
 import { messageInboundPayload } from "./payloads";
 import { emitAutomationEvent } from "@/lib/automation/events";
 import { enqueueAgentTurn, inboundMessageEvent } from "@/lib/agent/events";
+import { answerProvenance, type AnswerMatch } from "./answer-provenance";
+import { interpretInboundReply } from "@/lib/agent/qi-runtime";
 import { isOptOutPhrase } from "@/lib/agent/classification";
+import { clarifyingQuestion, policyOnAnswer } from "@/lib/agent/handover-policy";
 import { handleCampaignReply } from "@/lib/outreach/campaigns/replies";
 import {
   deterministicReplyClassification,
@@ -304,6 +307,19 @@ async function askNext(
     origin: "system",
     sendKey: `question:${lead.id}:${question.id}`,
   });
+}
+
+/**
+ * How many clarifying questions this lead has already been sent for one
+ * question (their send keys are `clarify:<lead>:<question>:<attempt>`).
+ */
+async function clarificationsSent(businessId: string, leadId: string, questionId: string): Promise<number> {
+  const { count } = await createAdminClient()
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .like("send_key", `clarify:${leadId}:${questionId}:%`);
+  return count ?? 0;
 }
 
 async function sendHandoverReply(
@@ -785,6 +801,11 @@ export async function applyInboundMessage(
     ? await replyAnsweredSince(businessId, current.id, resumedReceivedAt)
     : false;
 
+  let askedQuestion: QuestionRecord | null = null;
+  // The reply matched none of the asked question's options (and no AI
+  // interpretation rescued it): an unusable answer to clarify, not a reason
+  // on its own to hand the lead to a person (owner decision 2026-09-27).
+  let answerUnmatched = false;
   if (conversation?.current_question_id && !answerAlreadyRecorded) {
     const { data: questionRow } = await admin
       .from("qualification_questions")
@@ -813,7 +834,9 @@ export async function applyInboundMessage(
         })),
       };
 
-      let matched = matchAnswer(question, message.body);
+      askedQuestion = question;
+      let matched: { value: string | null; text: string } = matchAnswer(question, message.body);
+      let match: AnswerMatch = matched.value === null ? { matchedBy: "none" } : { matchedBy: "rules" };
 
       if (
         matched.value === null &&
@@ -825,10 +848,19 @@ export async function applyInboundMessage(
           businessId,
           leadId: current.id,
           conversationId,
+          messageId: storedMessageId,
         });
-        if (aiMatched) matched = aiMatched;
+        if (aiMatched) {
+          matched = aiMatched;
+          match = { matchedBy: "ai", confidence: aiMatched.confidence };
+        }
       }
 
+      answerUnmatched = matched.value === null && question.responseType !== "text";
+
+      // Q-D1: an AI-matched value is stored as ai_assist with its confidence,
+      // never as something the lead typed.
+      const provenance = answerProvenance(match);
       assertWrite(
         await admin.from("qualification_answers").upsert(
           {
@@ -837,7 +869,8 @@ export async function applyInboundMessage(
             question_id: question.id,
             answer_value: matched.value,
             answer_text: matched.text,
-            source: "reply",
+            source: provenance.source,
+            confidence: provenance.confidence,
             answered_at: now,
           },
           { onConflict: "lead_id,question_id" },
@@ -850,6 +883,23 @@ export async function applyInboundMessage(
 
   const refreshed = (await loadLead(current.id)) ?? current;
 
+  // Qualification intelligence (design 08 CD-15): with the engine on, the
+  // reply is interpreted across every dimension and written back (facts and
+  // signals, source_ref = this message), then the lead is re-assessed. A
+  // no-op when the workspace's engine is OFF; never throws.
+  if (!answerAlreadyRecorded) {
+    await interpretInboundReply({
+      businessId,
+      leadId: refreshed.id,
+      serviceId: refreshed.service_id ?? null,
+      conversationId,
+      messageId: storedMessageId,
+      body: message.body,
+      receivedAt: message.receivedAt || now,
+      currentQuestion: askedQuestion,
+    });
+  }
+
   // Answers the lead's own details already give (a postcode on the form, the
   // service they picked) are recorded as inferred answers before the engine
   // runs, so it judges them like any other answer and they are never asked.
@@ -861,6 +911,50 @@ export async function applyInboundMessage(
   await recordInferredAnswers(businessId, refreshed.id, inferredSelection.inferred);
 
   const { output, questions } = await applyQualification(business, refreshed);
+
+  // ---- an unusable answer: ask again in other words (handover-policy.ts) --
+  // Twice at most on the same question; the third unusable reply goes to a
+  // person below. The rules still decide the verdict: nothing here changes it.
+  if (askedQuestion && answerUnmatched && output.result !== "QUALIFIED" && output.result !== "NOT_QUALIFIED") {
+    const sent = await clarificationsSent(businessId, refreshed.id, askedQuestion.id);
+    const decision = policyOnAnswer({
+      text: message.body,
+      answer: { questionId: askedQuestion.id, matched: false, structured: true },
+      verdict: { result: output.result, reasons: output.reasons },
+      // This path has no assistant to carry the conversation: a REVIEW that
+      // clarification cannot fix still goes to a person, below.
+      handoverOnReview: false,
+      previousClarification: sent > 0 ? { point: `question:${askedQuestion.id}`, attempt: sent } : null,
+    });
+    if (decision.kind === "CLARIFY") {
+      await queueOutboundMessage({
+        businessId,
+        leadId: refreshed.id,
+        channel,
+        body: clarifyingQuestion({
+          question: askedQuestion,
+          attempt: decision.attempt,
+          firstName: refreshed.first_name ?? null,
+        }),
+        origin: "system",
+        // One per attempt: a replayed webhook re-queues nothing.
+        sendKey: `clarify:${refreshed.id}:${askedQuestion.id}:${decision.attempt}`,
+      });
+      return "applied";
+    }
+    if (decision.kind === "HANDOVER") {
+      await sendHandoverReply(business, refreshed, channel, "clarification");
+      await flagForAttention({
+        businessId,
+        leadId: refreshed.id,
+        reason: "clarification_failed",
+        title: "A reply could not be matched after asking again",
+        body: `No usable answer to "${askedQuestion.questionText}" after two clarifying questions.`,
+        takeover: true,
+      });
+      return "applied";
+    }
+  }
 
   if (output.result === "QUALIFIED") {
     // A current question left set would match the next reply against it and

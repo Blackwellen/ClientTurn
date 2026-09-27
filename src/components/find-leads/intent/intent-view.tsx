@@ -35,6 +35,7 @@ import { shortAgo } from "@/lib/prospects/activity";
 import { CategoryBuilder } from "./category-builder";
 import { MonitorBuilder } from "./monitor-builder";
 import { IntentControls } from "./intent-controls";
+import type { SignalFeed } from "@/lib/find-leads/signals";
 
 /**
  * The Intent view (V4 §15).
@@ -50,9 +51,12 @@ import { IntentControls } from "./intent-controls";
 export function IntentView({
   data,
   canManage,
+  liveFeeds = [],
 }: {
   data: IntentViewData;
   canManage: boolean;
+  /** Free feeds live for this deployment: greys out catalogue types that cannot run. */
+  liveFeeds?: SignalFeed[];
 }) {
   const [editing, setEditing] = React.useState<string | null>(null);
   const [addingMonitor, setAddingMonitor] = React.useState(false);
@@ -82,6 +86,7 @@ export function IntentView({
             category={editingCategory}
             icpProfiles={data.icpProfiles}
             monitorLimit={overview.monitorLimit}
+            liveFeeds={liveFeeds}
             onClose={() => setEditing(null)}
           />
         ) : (
@@ -94,6 +99,7 @@ export function IntentView({
             onToggleAdd={() => setAddingMonitor((open) => !open)}
             categories={categories}
             icpProfiles={data.icpProfiles}
+            liveFeeds={liveFeeds}
             onCloseAdd={() => setAddingMonitor(false)}
           />
         )}
@@ -461,6 +467,7 @@ function MonitorsCard({
   onCloseAdd,
   categories,
   icpProfiles,
+  liveFeeds,
 }: {
   monitors: IntentViewData["monitors"];
   canManage: boolean;
@@ -471,6 +478,7 @@ function MonitorsCard({
   onCloseAdd: () => void;
   categories: IntentCategoryRow[];
   icpProfiles: { id: string; name: string }[];
+  liveFeeds: SignalFeed[];
 }) {
   return (
     <section className="min-w-0 rounded-xl border border-line bg-surface p-5 shadow-xs">
@@ -508,6 +516,7 @@ function MonitorsCard({
           <MonitorBuilder
             categories={categories.filter((category) => category.active)}
             icpProfiles={icpProfiles}
+            liveFeeds={liveFeeds}
             onClose={onCloseAdd}
           />
         </div>

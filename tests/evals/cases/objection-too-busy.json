@@ -1,0 +1,47 @@
+{
+  "id": "objection-too-busy",
+  "scenario": "§94 objection: too busy",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Would a quick call this week work?"
+    },
+    {
+      "role": "lead",
+      "text": "Honestly I'm flat out busy this month."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "TOO_BUSY",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Totally get it. Would a short note by email suit you better than a call?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Amazing!! No worries at all!! Let's chat soon!",
+        "valid": false,
+        "codes": [
+          "STYLE_EXCLAMATION"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

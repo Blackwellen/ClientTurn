@@ -63,7 +63,7 @@ keywords:                                   # or a block list
   - hubspot
   - service key
 screenshots:
-  - src: /help/screenshots/hubspot-connect-dialog.png
+  - src: /help/screenshots/integrations/connecting-hubspot-1.png
     alt: The HubSpot connect dialog with the token field focused
     caption: Paste the Service Key token here, then choose Connect
 ```
@@ -137,24 +137,33 @@ level-1 headings, emoji shortcodes.
 
 ## 5. Screenshots and figures
 
-Screenshot files live in `public/help/screenshots/` and are referenced by their public path
-`/help/screenshots/<file>`.
+Screenshot files live in `public/help/screenshots/<category>/` and are referenced by their
+public path `/help/screenshots/<category>/<slug>-<n>.png`.
 
-- File name: kebab-case, prefixed with the article slug: `connecting-hubspot-token-dialog.png`.
-- Format: **PNG** (preferred — its size is read automatically so the page does not jump while
-  it loads). `.jpg`/`.webp` are accepted but reserve no space.
+- Folder: the article's category slug (section 3). File name: the article slug and a
+  sequence number, `connecting-hubspot-1.png`, `connecting-hubspot-2.png`; a multi-stage flow
+  is a numbered sequence in step order. The test checks both. (Older flat paths directly under
+  `/help/screenshots/` still validate but should not be added.)
+- Format: **PNG** (preferred — its size is read automatically, and bundled at build time for
+  serverless deployments, so the page does not jump while it loads). `.jpg`/`.webp` are
+  accepted but reserve no space. Save palette-optimised; most shots are 30–150 KB.
 - Capture at 2× device pixel ratio, 1440 px wide or narrower for full-screen shots; crop to
-  the relevant area. Never show real personal data — use the demo workspace.
-- Arrows, highlights and numbered markers are drawn into the image before it is saved.
-  Use the brand lime `#B7F34A` for highlights on dark UI and midnight `#0B1020` on light UI.
-- The file **must exist** — the test fails on a missing image.
+  the relevant area. Never show real personal data, secrets or keys — use a demo workspace
+  with fictional `.example` data, and delete it afterwards.
+- Annotations are drawn into the image before it is saved: numbered markers (lime `#B7F34A`
+  disc, midnight outline) at each control the caption talks about, and a midnight box around
+  it on light UI (lime on dark UI). Every image ends with the branded caption band: midnight
+  `#0B1020` background, a lime rule, the favicon and the caption in white.
+- The file **must exist**, and after adding or changing one run
+  `node scripts/generate-help-content.mjs` — the test fails on a missing image or a stale
+  bundled size.
 
 Two ways to show one:
 
 **Inline** — where it belongs in the text. The quoted title is the caption and is required:
 
 ```markdown
-![The Connections page with the HubSpot card highlighted](/help/screenshots/connecting-hubspot-card.png "Open Settings → Connections and find the HubSpot card")
+![The Connections page with the HubSpot card highlighted](/help/screenshots/integrations/connecting-hubspot-2.png "Open Settings → Connections and find the HubSpot card")
 ```
 
 **Frontmatter `screenshots`** — rendered as a numbered gallery after the body. Use this for
@@ -196,7 +205,7 @@ keywords: [example crm, crm sync, api token, contacts, deals, "action required"]
 order: 60
 updated: 2026-09-26
 screenshots:
-  - src: /help/screenshots/connecting-example-crm-card-healthy.png
+  - src: /help/screenshots/integrations/connecting-example-crm-1.png
     alt: The Example CRM connection card showing a green Healthy status and the last sync time
     caption: A healthy connection shows its last successful sync
 ---
@@ -215,7 +224,7 @@ You need an Example CRM account with permission to create API tokens.
 2. In Example CRM, create an API token with the `contacts.write` scope.
 3. Paste the token into the dialog and choose **Connect**.
 
-![The Example CRM connect dialog with the token field](/help/screenshots/connecting-example-crm-dialog.png "Paste the token, then choose Connect")
+![The Example CRM connect dialog with the token field](/help/screenshots/integrations/connecting-example-crm-2.png "Paste the token, then choose Connect")
 
 ## What gets sent
 

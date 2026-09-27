@@ -2,7 +2,7 @@ import * as React from "react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Platform operations · Client Turn",
+  title: "Platform operations",
   robots: { index: false, follow: false },
 };
 

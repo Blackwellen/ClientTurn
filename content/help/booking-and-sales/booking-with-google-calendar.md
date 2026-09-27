@@ -4,7 +4,11 @@ summary: Connect Google Calendar so the assistant can offer real free times from
 category: booking-and-sales
 keywords: [google calendar, gcal, availability, free slots, calendar invite, business hours, appointment duration, buffer, slot taken, double booking, connect calendar]
 order: 20
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/booking-and-sales/booking-with-google-calendar-1.png
+    alt: "The Google Calendar card in the Booking group with its Connect button"
+    caption: "Connect Google Calendar from the Booking group in Settings, Connections"
 ---
 
 With Google Calendar connected, the conversation assistant can offer a qualified lead real free times from your calendar and book the one they choose. A meeting only counts as booked once Google has accepted the event.

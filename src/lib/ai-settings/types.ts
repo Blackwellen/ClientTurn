@@ -131,7 +131,12 @@ export type AiBehaviourSettings = {
   /** Conversation agent. OFF unless a workspace deliberately turns it on. */
   agentMode: AgentModeValue;
   agentChannels: AgentChannelValue[];
-  /** Send a REVIEW qualification result to a person rather than replying. */
+  /**
+   * Opt-in: hand a REVIEW qualification result to a person instead of
+   * carrying on. OFF by default (owner decision 2026-09-27: human hand-over is
+   * the last resort); with it off a REVIEW is flagged for a person in the
+   * background and the assistant keeps the conversation going.
+   */
   agentHandoverOnReview: boolean;
   /** Let the agent answer general service questions, not only qualify. */
   agentAnswerServiceQuestions: boolean;
@@ -147,7 +152,7 @@ export const saveAiBehaviourSchema = z.object({
   allowAiInterpretation: z.boolean(),
   agentMode: z.enum(["OFF", "SUGGEST_ONLY", "AUTO_REPLY"]).default("OFF"),
   agentChannels: z.array(z.enum(["sms", "whatsapp", "email"])).max(3).default([]),
-  agentHandoverOnReview: z.boolean().default(true),
+  agentHandoverOnReview: z.boolean().default(false),
   agentAnswerServiceQuestions: z.boolean().default(true),
 });
 
@@ -161,7 +166,7 @@ export const DEFAULT_AI_BEHAVIOUR: AiBehaviourSettings = {
   allowAiInterpretation: true,
   agentMode: "OFF",
   agentChannels: ["sms", "whatsapp"],
-  agentHandoverOnReview: true,
+  agentHandoverOnReview: false,
   agentAnswerServiceQuestions: true,
 };
 

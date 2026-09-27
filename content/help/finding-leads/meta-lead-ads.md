@@ -25,7 +25,7 @@ For the full connection guide, see [Connecting Meta](/help/integrations/connecti
 
 ## Which forms are read
 
-ClientTurn reads every lead form on the Pages you shared during the Meta sign-in. To leave a Page out, leave it unticked in Meta's dialog; to add one later, choose **Reconnect** or disconnect and connect again.
+ClientTurn receives leads for one Page, and reads every lead form on it. When you connect, it picks a Page you manage, preferring one linked to Instagram. To use a different Page, open the **Meta Lead Ads** card's **Manage** panel, choose **Load my Pages**, pick the Page and choose **Use this Page**. See [Connecting Meta](/help/integrations/connecting-meta).
 
 On the first check after connecting, ClientTurn looks back over the previous seven days, so recent submissions are not lost.
 

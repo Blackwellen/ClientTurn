@@ -6,6 +6,7 @@
  */
 
 import type { CampaignStatus } from "./types.ts";
+import type { CampaignExperimentView } from "../learning/experiments.ts";
 // `rate()` is pure — no server-only, no Supabase — which is what lets the one
 // ratio rule be shared between Analytics and this module.
 import { rate } from "../analytics/v4-metrics.ts";
@@ -144,6 +145,10 @@ export type ReactivationCampaignDetail = {
   activity: ReactivationActivityEntry[];
   /** False when the workspace has no messaging provider connected. */
   providerConnected: boolean;
+  /** The campaign's REACTIVATION A/B test and its per-arm results, if any. */
+  experiment?: CampaignExperimentView | null;
+  /** SMS campaigns: cost-aware (email first for unengaged leads) or always SMS. */
+  channelMode?: "cost_aware" | "sms" | null;
 };
 
 /* ---------------------------------------------------------- helpers --- */
@@ -165,8 +170,10 @@ export function campaignIconKey(input: {
   const text = haystack.toLowerCase();
   if (text.includes("commercial")) return "audience";
   if (text.includes("dormant")) return "megaphone";
-  if (input.channel === "whatsapp") return "message";
-  return "email";
+  // The tile shows the channel: an envelope only for email. SMS showed an
+  // envelope before, which read as an email campaign (8.7).
+  if (input.channel === "email") return "email";
+  return "message";
 }
 
 export const ICON_TONES: Record<

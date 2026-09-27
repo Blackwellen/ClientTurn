@@ -4,6 +4,7 @@ import type { Capability } from "../../cost-model";
 import type { SearchPlan } from "../../plan";
 import type { IntentEvidence, IntentEvidenceKind } from "../../intent-evidence";
 import type { TechnologyKey } from "../../website-signals";
+import type { IntentTypeId, RoleFunction } from "../../intent-catalogue";
 import type { LinkedinFilters } from "../../linkedin-filters";
 
 /**
@@ -156,6 +157,13 @@ export type IntentWants = {
   hiringRoles: string[];
   /** Technologies to fingerprint (TECHNOLOGY). */
   technologies: TechnologyKey[];
+  /**
+   * Catalogue types to look for (`intent-catalogue.ts`). Optional so a caller
+   * written before the catalogue asks for exactly what it did.
+   */
+  types?: IntentTypeId[];
+  /** Limits role-carrying types (hiring, appointments) to these functions. Empty is all. */
+  roleFunctions?: RoleFunction[];
 };
 
 export type IntentResult = {
@@ -249,7 +257,7 @@ export type SourcingProvider = {
     /** Set for providers that read something the workspace itself supplied,
      *  such as an uploaded LinkedIn export. Ignored by pure API providers. */
     businessId?: string;
-    /** The plan's Sales Navigator filters. Read by the LinkedIn adapter only. */
+    /** The plan's LinkedIn filters. Read by the list-import adapter only. */
     linkedin?: LinkedinFilters;
   }) => Promise<ProviderResponse<ContactCandidate>>;
   enrichCompanies?: (input: {

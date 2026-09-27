@@ -37,8 +37,18 @@
       },
       {
         "text": "Would a short call next week help you decide?",
-        "valid": true,
+        "valid": false,
+        "codes": [
+          "QA_REPEAT"
+        ],
         "repeatsQuestion": true
+      },
+      {
+        "text": "Great. Would a short call next week help you to decide?",
+        "valid": false,
+        "codes": [
+          "QA_REPEAT"
+        ]
       }
     ],
     "live": {

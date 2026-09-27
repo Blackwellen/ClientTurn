@@ -5,6 +5,13 @@ import { packForCountry, WORKSPACE_COUNTRY } from "@/lib/policy/packs";
 import { loadSenderHealth, type SenderHealth } from "@/lib/outreach/campaigns/sender";
 import type { Channel } from "@/lib/automations/types";
 import type { WarmChannelContext } from "./channel-policy";
+import { channelUsable } from "@/lib/integrations/platform-channels";
+import { platformConfigured } from "@/lib/integrations/queries";
+import {
+  clampSmsCap,
+  parseFollowUpChannelStrategy,
+  type FollowUpChannelStrategy,
+} from "./channel-strategy";
 
 /**
  * The I/O half of the warm channel policy (V4 §19.2).
@@ -24,6 +31,12 @@ export type FollowUpChannelContext = WarmChannelContext & {
   /** The identity the editor pre-selects. */
   defaultSenderId: string | null;
   fallbackEnabled: boolean;
+  /** Cost-aware channel choice for automated steps (channel-strategy.ts). */
+  channelStrategy: FollowUpChannelStrategy;
+  /** Automated follow-up SMS segments per lead per sequence run. */
+  followUpSmsCap: number;
+  /** Agent-reply SMS segments per lead. */
+  conversationSmsDailyCeiling: number;
   /** The pack name, so the UI can attribute a refusal to a named policy. */
   policyName: string;
   /** Convenience: what the editor may currently offer, per channel. */
@@ -35,7 +48,7 @@ export async function getFollowUpChannelContext(
 ): Promise<FollowUpChannelContext> {
   const admin = createAdminClient();
 
-  const [settings, integrations, entitlements, senders] = await Promise.all([
+  const [settings, integrations, entitlements, senders, budget] = await Promise.all([
     admin
       .from("business_settings")
       .select("default_sender_identity_id, follow_up_fallback_enabled")
@@ -47,7 +60,19 @@ export async function getFollowUpChannelContext(
       .eq("business_id", businessId),
     getEntitlements(businessId),
     loadSenderHealth(businessId),
+    // Read on its own so a schema lag (0138 not yet applied) degrades to the
+    // defaults instead of losing the sender and fallback settings above.
+    admin
+      .from("business_settings")
+      .select("follow_up_channel_strategy, follow_up_sms_cap_segments, conversation_sms_daily_ceiling")
+      .eq("business_id", businessId)
+      .maybeSingle(),
   ]);
+  const budgetRow = (budget.error ? null : budget.data) as {
+    follow_up_channel_strategy?: string | null;
+    follow_up_sms_cap_segments?: number | null;
+    conversation_sms_daily_ceiling?: number | null;
+  } | null;
 
   // Workspace-level policy uses the workspace country's pack (UK). A recipient's own country
   // can narrow it further, and does — per-lead evaluation re-resolves the pack
@@ -55,12 +80,6 @@ export async function getFollowUpChannelContext(
   const pack = await packForCountry(WORKSPACE_COUNTRY);
 
   const rows = integrations.data ?? [];
-  const connected = (provider: string) =>
-    rows.some(
-      (row) =>
-        row.provider_type === provider &&
-        (row.status === "HEALTHY" || row.status === "DEGRADED"),
-    );
 
   const whatsappRow = rows.find(
     (row) =>
@@ -99,13 +118,16 @@ export async function getFollowUpChannelContext(
       ? settings.data.default_sender_identity_id
       : (usableSenders[0]?.id ?? null);
 
-  const smsConnected = connected("twilio_sms");
+  const smsConnected = channelUsable(rows, ["twilio_sms"], platformConfigured("twilio_sms"));
   const whatsappEnabled = entitlements.whatsappEnabled && Boolean(whatsappRow);
 
   return {
     senders,
     defaultSenderId,
     fallbackEnabled: settings.data?.follow_up_fallback_enabled ?? false,
+    channelStrategy: parseFollowUpChannelStrategy(budgetRow?.follow_up_channel_strategy),
+    followUpSmsCap: clampSmsCap(budgetRow?.follow_up_sms_cap_segments ?? undefined, "followUp"),
+    conversationSmsDailyCeiling: clampSmsCap(budgetRow?.conversation_sms_daily_ceiling ?? undefined, "conversation"),
     policyName: pack.name,
     senderAvailable,
     senderIssue,

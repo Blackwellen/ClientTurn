@@ -104,6 +104,31 @@ describe("every article on disk meets the contract", () => {
     }
   });
 
+  test("every referenced PNG has its size bundled, so figures reserve space in production (8.2)", async () => {
+    const { bundledImageSize } = await import("../src/lib/help/bundled.ts");
+    for (const article of index.articles) {
+      const sources = [...bodyImages(article.body).map((i) => i.src), ...article.screenshots.map((s) => s.src)];
+      for (const src of sources.filter((s) => s.toLowerCase().endsWith(".png"))) {
+        const bundled = bundledImageSize(src);
+        assert.ok(bundled, `${article.slug}: ${src} has no bundled size; run node scripts/generate-help-content.mjs`);
+        const onDisk = pngSize(new Uint8Array(readFileSync(path.join(process.cwd(), "public", src)).subarray(0, 32)));
+        assert.deepEqual(bundled, onDisk, `${article.slug}: ${src} size is stale; regenerate the help bundle`);
+      }
+    }
+  });
+
+  test("screenshots live in a category folder and are named <slug>-<n> (8.2)", () => {
+    for (const article of index.articles) {
+      for (const shot of article.screenshots) {
+        const rest = shot.src.slice("/help/screenshots/".length);
+        const [folder, file] = rest.split("/");
+        if (!file) continue; // a flat legacy path; the README still allows it
+        assert.ok(HELP_CATEGORY_SLUGS.includes(folder as never), `${article.slug}: ${shot.src} folder is not a category`);
+        assert.match(file, /^[a-z0-9]+(?:-[a-z0-9]+)*-\d+\.(png|jpe?g|webp)$/, `${article.slug}: ${shot.src}`);
+      }
+    }
+  });
+
   test("the thirteen formerly bundled articles kept their slugs", () => {
     const slugs = new Set(index.articles.map((article) => article.slug));
     for (const slug of [

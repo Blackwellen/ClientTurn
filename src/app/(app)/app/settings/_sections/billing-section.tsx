@@ -11,8 +11,19 @@ import { UsagePanel } from "@/components/settings/billing/usage-panel";
 import { getLimitsOverview } from "@/lib/billing/limits-service";
 import { listCreditPurchases } from "@/lib/billing/message-credits";
 import { LimitsPanel } from "@/components/settings/billing/limits-panel";
+import { creditBundlesFor } from "@/lib/billing/plans";
+import { parseBundleParam } from "@/lib/billing/allowance-alerts";
+import { UpsellBillingCard } from "@/components/settings/billing/upsell-billing-card";
+import { passiveAddOns } from "@/lib/billing/upsell-moments";
+import { upgradeSuggestionsEnabled } from "@/lib/billing/upsell-service";
+import { TOKEN_PACK_LIST } from "@/lib/billing/tokens";
 
-export async function BillingSection() {
+export async function BillingSection({
+  bundle,
+}: {
+  /** `?bundle=` from a running-low prompt: the pack to pre-select. */
+  bundle?: string | string[];
+} = {}) {
   const workspace = await requireWorkspace();
 
   // Billing is owner-only, enforced here and again in every billing action.
@@ -25,7 +36,7 @@ export async function BillingSection() {
     );
   }
 
-  const [billing, invoices, tokenStatus, tokenPurchases, usage, limits, creditPurchases] =
+  const [billing, invoices, tokenStatus, tokenPurchases, usage, limits, creditPurchases, suggestionsOn] =
     await Promise.all([
       getBillingView(workspace.businessId),
       listRecentInvoices(workspace.businessId),
@@ -34,6 +45,7 @@ export async function BillingSection() {
       getUsageOverview(workspace.businessId),
       getLimitsOverview(workspace.businessId),
       listCreditPurchases(workspace.businessId),
+      upgradeSuggestionsEnabled(workspace.businessId),
     ]);
 
   return (
@@ -44,26 +56,49 @@ export async function BillingSection() {
         invoicesError={invoices.ok ? null : invoices.error}
       />
       {/* Every metered limit, daily and monthly, with credit and what happens
-          at the limit (8.13); upsells at 80% / 100% only (8.11). */}
+          at the limit (8.13); upsells at 80% / 100% only (8.11), and from 75% on
+          SMS / WhatsApp (allowance-alerts.ts). */}
       <LimitsPanel
         rows={limits.rows}
         credits={limits.credits}
         purchases={creditPurchases}
-        overage={limits.overage}
         canBuy={workspace.role === "owner"}
         whatsappEnabled={limits.whatsappEnabled}
+        // Only a pack this workspace can buy is pre-selected; in a trial
+        // there are none (packs start with the plan).
+        trial={limits.plan === "trial"}
+        preselectedBundle={
+          limits.plan === "trial"
+            ? null
+            : parseBundleParam(bundle, creditBundlesFor({ whatsappEnabled: limits.whatsappEnabled }))
+        }
       />
-      {/* Allocation, caps, overage and history (V4 §27). Every control here is
+      {/* Allocation, caps and history (V4 §27). Every control here is
           a narrowing of what the plan already grants: the server re-derives
           each ceiling and clamps to it rather than trusting the form. */}
       <UsagePanel usage={usage} canManage />
 
       {/* The AI allowance sits with billing because that is where someone
           goes when they want more of something. */}
-      <AiTokenMeter
-        status={tokenStatus}
-        purchases={tokenPurchases}
-        canBuy={workspace.role === "owner"}
+      <div id="ai-tokens" className="scroll-mt-4">
+        <AiTokenMeter
+          status={tokenStatus}
+          purchases={tokenPurchases}
+          canBuy={workspace.role === "owner"}
+        />
+      </div>
+
+      {/* Passive add-ons card (never a pop-up) and the owner's "Show me
+          upgrade suggestions" switch (docs/upsell-plan.md). */}
+      <UpsellBillingCard
+        enabled={suggestionsOn}
+        addOns={passiveAddOns({
+          plan: limits.plan,
+          state: limits.state,
+          whatsappEnabled: limits.whatsappEnabled,
+          billingInterval: billing.billingInterval === "year" ? "year" : "month",
+          tokenPacks: TOKEN_PACK_LIST,
+        })}
       />
     </div>
   );

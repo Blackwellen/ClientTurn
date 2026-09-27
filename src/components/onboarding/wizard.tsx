@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 import {
   ONBOARDING_STEPS,
+  canSkipToGoLive,
   previousStep,
   stepIndex,
   type OnboardingStep,
@@ -12,6 +13,7 @@ import {
 import {
   advanceConnectLeadsStep,
   advanceCopilotStep,
+  applyRecommendedSetup,
   completeOnboarding,
   goToStep,
   readTestLead,
@@ -108,6 +110,17 @@ export function OnboardingWizard({
     if (target !== step) handleContinue(() => goToStep(target));
   }
 
+  // "Skip to go live" (8.29): the recommended setup for everything not done
+  // yet, then straight to the last step. The business step saves first, so
+  // the one required input (the workspace name) is never skipped.
+  function skipToGoLive() {
+    if (actions.skipToGoLive) {
+      actions.skipToGoLive();
+      return;
+    }
+    handleContinue(() => applyRecommendedSetup());
+  }
+
   if (!canEdit) {
     return (
       <OnboardingShell step={step} completedThrough={index}>
@@ -135,6 +148,12 @@ export function OnboardingWizard({
             initial={initial.business}
             onContinue={(payload: BusinessStepInput) => handleContinue(() => saveBusinessStep(payload))}
             onSaveExit={(payload: BusinessStepInput) => handleSaveExit(() => saveBusinessStep(payload))}
+            onSkipToGoLive={(payload: BusinessStepInput) =>
+              handleContinue(async () => {
+                const saved = await saveBusinessStep(payload);
+                return saved.ok ? applyRecommendedSetup() : saved;
+              })
+            }
             onRegisterActions={setActions}
           />
         )}
@@ -207,6 +226,7 @@ export function OnboardingWizard({
         saveExitPending={saveExitPending}
         continueDisabledReason={actions.disabledReason}
         isLastStep={step === "test_go_live"}
+        onSkipToGoLive={canSkipToGoLive(step) ? skipToGoLive : undefined}
       />
     </>
   );

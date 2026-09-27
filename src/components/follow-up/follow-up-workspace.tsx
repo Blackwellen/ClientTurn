@@ -9,6 +9,8 @@ import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { SequenceEditor, type DraftStep } from "./sequence-editor";
 import { ChannelPolicyCard } from "./channel-policy-card";
+import { ChannelBudgetCard } from "./channel-budget-card";
+import type { FollowUpChannelStrategy } from "@/lib/follow-up/channel-strategy";
 import { MessagePreviewCard } from "./message-preview-card";
 import { SenderIdentityCard } from "./sender-identity-card";
 import { EstimatedUsageCard, MergeFieldsCard } from "./usage-and-fields";
@@ -29,6 +31,9 @@ import { cn } from "@/lib/cn";
 export type ChannelContextView = {
   available: Record<Channel, boolean>;
   fallbackEnabled: boolean;
+  channelStrategy: FollowUpChannelStrategy;
+  followUpSmsCap: number;
+  conversationSmsDailyCeiling: number;
   senderAvailable: boolean;
   senderIssue: string | null;
   policyAllows: Record<Channel, boolean>;
@@ -307,6 +312,9 @@ export function FollowUpWorkspace({
             context={{
               available: context.available,
               fallbackEnabled: context.fallbackEnabled,
+              channelStrategy: context.channelStrategy,
+              followUpSmsCap: context.followUpSmsCap,
+              conversationSmsDailyCeiling: context.conversationSmsDailyCeiling,
               senderAvailable: context.senderAvailable,
               senderIssue: context.senderIssue,
               policyAllows: context.policyAllows,
@@ -317,6 +325,13 @@ export function FollowUpWorkspace({
               senders: context.senders,
               defaultSenderId: context.defaultSenderId,
             }}
+            canEdit={canEdit}
+          />
+
+          <ChannelBudgetCard
+            strategy={context.channelStrategy}
+            followUpSmsCap={context.followUpSmsCap}
+            conversationSmsDailyCeiling={context.conversationSmsDailyCeiling}
             canEdit={canEdit}
           />
 

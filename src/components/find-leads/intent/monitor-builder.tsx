@@ -7,6 +7,13 @@ import { cn } from "@/lib/cn";
 import { monitorTypeLabel, type IntentCategoryRow } from "@/lib/intent/types";
 import { createIntentMonitor } from "@/lib/intent/actions";
 import { Select } from "@/components/ui/form";
+import {
+  INTENT_SOURCE_LABELS,
+  intentType,
+  intentTypeAvailability,
+  intentTypesForCategory,
+} from "@/lib/find-leads/intent-catalogue";
+import type { SignalFeed } from "@/lib/find-leads/signals";
 
 /**
  * Create a monitor: a category, somewhere to look, and how often.
@@ -18,10 +25,12 @@ import { Select } from "@/components/ui/form";
 export function MonitorBuilder({
   categories,
   icpProfiles,
+  liveFeeds = [],
   onClose,
 }: {
   categories: IntentCategoryRow[];
   icpProfiles: { id: string; name: string }[];
+  liveFeeds?: SignalFeed[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -36,6 +45,12 @@ export function MonitorBuilder({
   );
   const [icpIds, setIcpIds] = React.useState<string[]>([]);
   const [companiesText, setCompaniesText] = React.useState("");
+
+  const liveSet = React.useMemo(() => new Set(liveFeeds), [liveFeeds]);
+  const selectedCategory = categories.find((category) => category.id === categoryId) ?? null;
+  const collects = selectedCategory
+    ? intentTypesForCategory({ name: selectedCategory.name, keywords: selectedCategory.keywords })
+    : [];
 
   const companies = companiesText
     .split(/[\n,]/)
@@ -79,6 +94,24 @@ export function MonitorBuilder({
             ))}
           </Select>
         </Field>
+
+        {collects.length > 0 && (
+          <ul className="-mt-1 space-y-0.5 rounded-md bg-surface px-2.5 py-2 text-[11.5px] text-content-secondary">
+            {collects.map((id) => {
+              const entry = intentType(id);
+              const availability = intentTypeAvailability(id, liveSet);
+              return (
+                <li key={id} className={availability.available ? undefined : "opacity-70"}>
+                  <span className="font-medium text-content">{entry.label}</span>{" "}
+                  from {[...new Set(entry.sources.map((source) => INTENT_SOURCE_LABELS[source.source]))].join(", ")}
+                  {!availability.available && (
+                    <span className="block text-warning-700">{availability.reason}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         <fieldset>
           <legend className="mb-1.5 text-[12px] font-medium text-content-secondary">
@@ -154,7 +187,7 @@ export function MonitorBuilder({
               value={companiesText}
               rows={4}
               onChange={(event) => setCompaniesText(event.target.value)}
-              placeholder={"acme.co.uk\nExample Roofing Ltd"}
+              placeholder={"acme.co.uk\nExample Digital Ltd"}
               className={INPUT}
             />
           </Field>

@@ -15,7 +15,7 @@ Open **Settings → Connections** and scroll to **WhatsApp templates**. The pane
 
 ## Sync your templates
 
-Templates are synced once a day. To fetch new or changed ones straight away, choose **Sync** (owners and admins). Each template shows its category: **Marketing**, **Utility** or **Authentication**. WhatsApp prices template messages by category.
+Templates are synced once a day. To fetch new or changed ones straight away, choose **Sync** (owners and admins). Each template shows its category: **Marketing**, **Utility** or **Authentication**. WhatsApp prices template messages by category, and so does ClientTurn: a utility template uses 2 [WhatsApp tokens](/help/billing/top-up-credits#whatsapp-token-packs) and a marketing template 5. A template whose category is unknown uses the marketing rate.
 
 ## Choose a template for each step
 

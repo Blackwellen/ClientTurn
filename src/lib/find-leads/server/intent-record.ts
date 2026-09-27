@@ -1,11 +1,16 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  EVIDENCE_SIGNAL_TYPE,
+  categoryKeywords,
+  evidenceSignalType,
   evidenceSummary,
+  intentDedupeKey,
   kindsForCategory,
+  parseIntentDedupeKey,
   type IntentEvidenceKind,
 } from "../intent-evidence";
+import { effectiveWindowDays } from "../intent-catalogue";
+import type { SegmentEvidence } from "../intent-segments";
 import { emptyPlan } from "../plan";
 import { intentWantsFor } from "../signals";
 import { providersFor, unhealthyProviders } from "./providers/registry";
@@ -43,7 +48,10 @@ export async function recordIntentSignal(input: {
   const { signal, category } = input;
   const now = input.now ?? Date.now();
 
-  const expiresAtMs = new Date(signal.observedAt).getTime() + category.freshness_days * 864e5;
+  // Decay follows the type: a hiring signal lasts weeks, an IPO a year. The
+  // category's own window still caps it.
+  const liveDays = effectiveWindowDays(signal.evidence.intentType, category.freshness_days);
+  const expiresAtMs = new Date(signal.observedAt).getTime() + liveDays * 864e5;
   // Dated evidence already outside the category's window is history, not a
   // live signal.
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) return false;
@@ -51,13 +59,15 @@ export async function recordIntentSignal(input: {
 
   // The same underlying fact (the same filing, the same page, on the same
   // day) collapses to one event per prospect, whichever path reports it.
-  const dedupeKey = [
-    signal.domain,
-    signal.evidence.kind,
-    signal.evidence.reference ?? signal.sourceUrl ?? "",
-    signal.observedAt.slice(0, 10),
-    input.prospectId,
-  ].join(":");
+  // A finer catalogue type is appended, which is also how a segment reads the
+  // type back; evidence of a kind's original type keeps the original key.
+  const dedupeKey = intentDedupeKey({
+    domain: signal.domain,
+    evidence: signal.evidence,
+    sourceUrl: signal.sourceUrl,
+    observedAt: signal.observedAt,
+    prospectId: input.prospectId,
+  });
 
   const admin = createAdminClient();
   const { data: event } = await admin
@@ -68,7 +78,7 @@ export async function recordIntentSignal(input: {
         intent_category_id: category.id,
         company_id: input.companyId,
         prospect_id: input.prospectId,
-        signal_type: EVIDENCE_SIGNAL_TYPE[signal.evidence.kind],
+        signal_type: evidenceSignalType(signal.evidence),
         source: input.provider,
         source_url: signal.sourceUrl,
         observed_at: signal.observedAt,
@@ -138,10 +148,7 @@ export async function checkProspectIntent(
   if (!rows || rows.length === 0) return { checked: false, matched: 0 };
 
   const shapes = rows.map((row) => {
-    const configured = row.keywords_entities as { keywords?: unknown } | null;
-    const keywords = Array.isArray(configured?.keywords)
-      ? configured.keywords.filter((k): k is string => typeof k === "string")
-      : [];
+    const keywords = categoryKeywords(row.keywords_entities);
     const signalTypes = Array.isArray(row.signal_types)
       ? (row.signal_types as unknown[]).filter((t): t is string => typeof t === "string")
       : [];
@@ -201,4 +208,39 @@ export async function checkProspectIntent(
   }
 
   return { checked: sources.length > 0, matched };
+}
+
+/**
+ * The live intent evidence recorded for a set of prospects, as a segment
+ * reads it: catalogue type, role function and date, per prospect.
+ *
+ * The type is read back from the dedupe key (see `intentDedupeKey`), so no
+ * column was added for it.
+ */
+export async function segmentEvidenceFor(
+  businessId: string,
+  prospectIds: string[],
+): Promise<Map<string, SegmentEvidence[]>> {
+  const out = new Map<string, SegmentEvidence[]>();
+  if (prospectIds.length === 0) return out;
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  for (let index = 0; index < prospectIds.length; index += 200) {
+    const slice = prospectIds.slice(index, index + 200);
+    const { data } = await admin
+      .from("intent_events")
+      .select("prospect_id, dedupe_key, observed_at")
+      .eq("business_id", businessId)
+      .in("prospect_id", slice)
+      .gt("expires_at", now);
+    for (const row of data ?? []) {
+      if (!row.prospect_id || !row.dedupe_key) continue;
+      const parsed = parseIntentDedupeKey(row.dedupe_key);
+      const list = out.get(row.prospect_id) ?? [];
+      list.push({ intentType: parsed.intentType, roleFunction: parsed.roleFunction, observedAt: row.observed_at });
+      out.set(row.prospect_id, list);
+    }
+  }
+  return out;
 }

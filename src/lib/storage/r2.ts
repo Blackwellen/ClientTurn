@@ -26,7 +26,17 @@ const ALLOWED_TYPES: Record<string, string[]> = {
     "application/vnd.ms-excel",
     "text/x-log",
   ],
+  // Quote PDFs (P2), written by the `quote.render_pdf` job and served only
+  // through short-lived signed URLs. Never uploaded from a browser.
+  quote_pdf: ["application/pdf"],
+  // Call recordings (voice P2), copied from the provider by the
+  // `voice.recording_fetch` job and served only through short-lived signed
+  // URLs to a workspace member. Never uploaded from a browser.
+  voice_recording: ["audio/mpeg", "audio/wav"],
 };
+
+/** A seven-minute call recorded as WAV runs past the 10MB default. */
+const MAX_BYTES_BY_KIND: Record<string, number> = { voice_recording: 60 * 1024 * 1024 };
 
 export type UploadKind = keyof typeof ALLOWED_TYPES;
 
@@ -65,8 +75,9 @@ export function assertUploadAllowed(
   if (!ALLOWED_TYPES[kind].includes(contentType)) {
     throw new Error(`File type ${contentType} is not allowed`);
   }
-  if (size > MAX_UPLOAD_BYTES) {
-    throw new Error("File exceeds the 10MB limit");
+  const max = MAX_BYTES_BY_KIND[kind] ?? MAX_UPLOAD_BYTES;
+  if (size > max) {
+    throw new Error(`File exceeds the ${Math.round(max / (1024 * 1024))}MB limit`);
   }
 }
 
@@ -105,5 +116,40 @@ export async function getObjectText(key: string) {
 export async function deleteObject(key: string) {
   await r2().send(
     new DeleteObjectCommand({ Bucket: serverEnv.r2.bucket, Key: key }),
+  );
+}
+
+/**
+ * The object key of a quote revision's PDF. Fixed by revision (0153 CHECK
+ * `quotes/<business>/<revision>.pdf`), so re-rendering overwrites the same
+ * deterministic bytes rather than piling up copies.
+ */
+export function quotePdfKey(businessId: string, revisionId: string) {
+  return `quotes/${businessId}/${revisionId}.pdf`;
+}
+
+/**
+ * The object key of a call recording (0150 CHECK
+ * `voice/recordings/<business>/<call>/<file>`).
+ */
+export function voiceRecordingKey(businessId: string, callId: string, contentType: string) {
+  return `voice/recordings/${businessId}/${callId}/recording.${contentType === "audio/wav" ? "wav" : "mp3"}`;
+}
+
+/** Server-side write (a job's output, never a browser upload). */
+export async function putObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+) {
+  const kind = key.split("/")[0] === "quotes" ? "quote_pdf" : key.startsWith("voice/recordings/") ? "voice_recording" : null;
+  if (kind) assertUploadAllowed(kind, contentType, body.byteLength);
+  await r2().send(
+    new PutObjectCommand({
+      Bucket: serverEnv.r2.bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
   );
 }

@@ -45,7 +45,7 @@ import {
   ReferralsView,
 } from "@/components/affiliates/referrals/referrals-view";
 
-export const metadata: Metadata = { title: "Referrals | ClientTurn" };
+export const metadata: Metadata = { title: "Referrals" };
 export const dynamic = "force-dynamic";
 
 /**

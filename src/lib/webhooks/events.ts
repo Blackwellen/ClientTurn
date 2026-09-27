@@ -172,7 +172,7 @@ export const WEBHOOK_EVENTS = [
   {
     type: "opportunity.won",
     label: "Opportunity won",
-    description: "An opportunity was closed as won. Carries the lead and the reason given.",
+    description: "An opportunity was closed as won. Carries the lead and the reason given, and the payment (amount, currency, recurring, interval, MRR) when a confirmed payment closed it.",
     scope: "leads:read",
     emittedBy: "lib/events/outbox.ts",
   },
@@ -184,12 +184,89 @@ export const WEBHOOK_EVENTS = [
     emittedBy: "lib/events/outbox.ts",
   },
   {
+    type: "lead.intent_changed",
+    label: "Lead intent changed",
+    description:
+      "A lead's buying intent moved to a new state (for example EXPLORATORY to BOOKING_READY, or to NOT_NOW). Carries the new and previous state, the intent score, the next best action and how complete qualification is.",
+    scope: "leads:read",
+    emittedBy: "lib/events/outbox.ts",
+  },
+  {
     type: "ai.escalated",
     label: "Assistant handed over",
     description:
       "The conversation assistant handed a lead to a person. Carries the reason and priority of the handover.",
     scope: "leads:read",
     emittedBy: "lib/events/outbox.ts",
+  },
+  /* ------------------------------------------------ quote to cash (P2)
+   *
+   * Emitted by lib/quotes/events.ts from the quote operations, the public
+   * quote page and the quote/invoice jobs. docs/DEVELOPER_PLATFORM.md
+   * describes each payload.
+   */
+  {
+    type: "quote.sent",
+    label: "Quote sent",
+    description: "A quote was sent to a customer. Carries the quote id and number, the opportunity and lead, the revision, the total and the valid-until date.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "quote.viewed",
+    label: "Quote viewed",
+    description: "The customer opened a sent quote for the first time. Fires once per revision, not on every view.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "quote.accepted",
+    label: "Quote accepted",
+    description: "The customer accepted a quote on its public page. Carries the quote id, number and revision.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "quote.declined",
+    label: "Quote declined",
+    description: "The customer declined a quote. Carries the quote id, number and revision.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "quote.expired",
+    label: "Quote expired",
+    description: "A sent quote passed its valid-until date without being accepted, and can no longer be signed.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "signature.completed",
+    label: "Quote signed",
+    description: "The customer signed a quote with a simple electronic signature. The signature record, with its document fingerprint, stays in ClientTurn.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "invoice.issued",
+    label: "Invoice issued",
+    description: "An invoice was numbered and issued to the customer. Carries the invoice id and number, the total, the currency and the due date.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "invoice.paid",
+    label: "Invoice paid",
+    description: "An invoice was paid in full. Carries the invoice id and number, the total and the quote it came from.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
+  },
+  {
+    type: "invoice.overdue",
+    label: "Invoice overdue",
+    description: "An issued invoice passed its due date unpaid and its first overdue reminder went out. Carries the amount still due.",
+    scope: "leads:read",
+    emittedBy: "lib/quotes/events.ts",
   },
 ] as const satisfies readonly WebhookEventDefinition[];
 

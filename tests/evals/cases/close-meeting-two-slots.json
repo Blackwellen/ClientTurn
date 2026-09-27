@@ -1,0 +1,56 @@
+{
+  "id": "close-meeting-two-slots",
+  "scenario": "§93 close: meeting, two specific slots",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "sms",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "Sounds like a good fit. Want to book a call?"
+    },
+    {
+      "role": "lead",
+      "text": "Yes please, what have you got?"
+    }
+  ],
+  "facts": {
+    "confirmedSlots": [
+      "Tue 6 Oct, 10:00am",
+      "Wed 7 Oct, 2:00pm",
+      "Thu 8 Oct, 11:00am"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "strategy": {
+      "mode": "BOOKING_ASSISTANCE",
+      "bookingRoute": "SLOTS",
+      "mustInclude": [
+        "two of the confirmed times",
+        "Does either work?"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Great. I can do Tue 6 Oct, 10:00am or Wed 7 Oct, 2:00pm. Does either work?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "I can do Thursday at 4pm — does that work?",
+        "valid": false,
+        "codes": [
+          "UNSUPPORTED_AVAILABILITY_CLAIM",
+          "STYLE_EM_DASHES"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

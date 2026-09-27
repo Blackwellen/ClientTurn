@@ -148,7 +148,7 @@ export function LeadFunnelCard({
       <CardHeader>
         <SectionHeader
           title="Lead funnel"
-          description="From new enquiry to won job. Click a stage to view leads."
+          description="From new enquiry to won deal. Click a stage to view leads."
         />
       </CardHeader>
       <CardContent className="flex flex-1 items-center pt-0">

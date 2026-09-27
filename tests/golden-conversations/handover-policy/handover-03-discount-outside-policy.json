@@ -1,0 +1,36 @@
+{
+  "id": "handover-03-discount-outside-policy",
+  "story": "A discount above the approved maximum (10%) is a two-step rule: the AI first offers what is allowed; insisting on more after that is a commitment only a person can make.",
+  "settings": {
+    "commercial": {
+      "enabled": true,
+      "maxDiscountPercent": 10
+    }
+  },
+  "turns": [
+    {
+      "lead": "Can you do 20% off?",
+      "model": {
+        "proposed_action": "REPLY",
+        "confidence": 0.9,
+        "message": "The most I can offer is 10% off the first year, which still includes hosting, updates and backups."
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "HANDOVER",
+        "discountWithinPolicy": false,
+        "validates": true
+      }
+    },
+    {
+      "lead": "No, 20% off or nothing.",
+      "expect": {
+        "disposition": "HANDOVER",
+        "trigger": "COMMERCIAL_COMMITMENT",
+        "reason": "POLICY",
+        "was": "HANDOVER"
+      }
+    }
+  ]
+}

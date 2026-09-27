@@ -331,3 +331,56 @@ describe("the moved helpers keep their behaviour", () => {
     assert.equal(nextQuestion([USE_CASE], new Set(["q-use"]), null), null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Qualification Intelligence (08 §B.8, A2): deliberate updates. The selector
+// now ranks with the additive qv-1 value function; these pin what changed.
+// ---------------------------------------------------------------------------
+
+describe("adaptive qualification: qv-1 value function (deliberate update)", () => {
+  test("components carry the qv-1 terms; the old threshold/required bonus is folded in", () => {
+    const result = selectNextQuestion({ questions: B2B, answers: [], serviceId: null, motion: "BOOK_MEETING_B2B", stage: "ENGAGED" });
+    for (const entry of result.ranked) {
+      assert.equal(entry.components.bonus, 0);
+      const c = entry.components;
+      const total = c.decisionRelevance + c.informationGain + c.salesProgression + c.intentRelevance - c.friction - c.repetitionRisk - c.prematurity - c.pKnown;
+      assert.ok(Math.abs(entry.value - total) < 1e-3, entry.questionId);
+    }
+    const use = result.ranked.find((entry) => entry.questionId === "q-use")!;
+    assert.equal(use.components.salesProgression, 1, "a threshold dimension unlocks the next step");
+  });
+
+  test("a low-intent lead is not asked commercial questions ahead of the problem", () => {
+    const low = selectNextQuestion({ questions: [BUDGET, USE_CASE, AUTHORITY], answers: [], serviceId: null, stage: "QUALIFYING", intentState: "LOW" });
+    assert.equal(low.ranked[0].questionId, "q-use");
+    assert.equal(low.ranked.find((entry) => entry.questionId === "q-budget")!.components.intentRelevance, 0);
+  });
+
+  test("the sticky re-ask is limited to one (MAX_ASKS_PER_INTENT)", () => {
+    const again = selectNextQuestion({ questions: B2B, answers: [], serviceId: null, motion: "BOOK_MEETING_B2B", currentQuestionId: "q-team", askHistory: [{ questionId: "q-team", asked: 1 }] });
+    assert.equal(again.question?.id, "q-team");
+    const stop = selectNextQuestion({ questions: B2B, answers: [], serviceId: null, motion: "BOOK_MEETING_B2B", currentQuestionId: "q-team", askHistory: [{ questionId: "q-team", asked: 2 }] });
+    assert.notEqual(stop.question?.id, "q-team");
+    const answered = selectNextQuestion({ questions: [TEAM], answers: [], serviceId: null, askHistory: [{ questionId: "q-team", asked: 3, answered: true }] });
+    assert.equal(answered.question?.id, "q-team", "an answered history never blocks (the answer row decides)");
+  });
+
+  test("a remembered fact keeps its provenance (form answers are recorded as form)", () => {
+    const result = selectNextQuestion({
+      questions: [TEAM],
+      answers: [],
+      serviceId: null,
+      facts: [{ dimension: "TEAM_SIZE", questionId: "q-team", value: "12", confidence: 1, source: "FORM" }],
+    });
+    assert.equal(result.inferred[0]?.factSource, "FORM");
+  });
+
+  test("the six added dimensions are inferred from wording", () => {
+    assert.equal(inferDimension(q("a", "What would a good result look like for you?", 1)), "OUTCOME");
+    assert.equal(inferDimension(q("b", "Does it need to integrate with Xero?", 1)), "TECHNICAL_REQUIREMENTS");
+    assert.equal(inferDimension(q("c", "What days usually suit you for a call?", 1)), "AVAILABILITY");
+    assert.equal(inferDimension(q("d", "Is anything frustrating you about the current setup?", 1)), "DISSATISFACTION");
+    assert.equal(inferDimension(q("e", "How soon could you get started?", 1)), "TIMING", "timing wording still wins");
+    assert.equal(inferDimension(q("f", "Are you ready to go ahead if it fits?", 1)), "PURCHASE_READINESS");
+  });
+});

@@ -41,7 +41,7 @@ export function GET() {
         method: "POST",
         path: "/api/v1/leads",
         scope: "leads:write",
-        note: "Requires an Idempotency-Key header. 201 CREATED; 200 MERGED, DUPLICATE, SUPPRESSED or REVIEW; 409 REJECTED (a suppressed contact: nothing stored); 422 INVALID.",
+        note: "Requires an Idempotency-Key header. 201 CREATED; 200 MERGED, DUPLICATE or REVIEW; 409 REJECTED (a suppressed contact: nothing stored); 422 INVALID; 400 for a REFERRAL without evidence.",
       },
       { method: "GET", path: "/api/v1/leads/{id}", scope: "leads:read" },
       { method: "PATCH", path: "/api/v1/leads/{id}", scope: "leads:write" },

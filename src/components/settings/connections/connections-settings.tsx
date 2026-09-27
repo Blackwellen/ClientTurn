@@ -73,7 +73,7 @@ export function ConnectionsSettings({
           <EmptyState
             icon={PlugZap}
             title="No connections configured"
-            description="Once your Client Turn workspace is provisioned, the connections available on your plan appear here."
+            description="Once your ClientTurn workspace is provisioned, the connections available on your plan appear here."
           />
         </CardContent>
       </Card>

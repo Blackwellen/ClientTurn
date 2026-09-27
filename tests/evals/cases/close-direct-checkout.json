@@ -1,0 +1,51 @@
+{
+  "id": "close-direct-checkout",
+  "scenario": "§93 close: direct sale, link plus one line of value",
+  "motion": "ECOMMERCE_DIRECT",
+  "channel": "whatsapp",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "The Growth bundle covers everything you mentioned."
+    },
+    {
+      "role": "lead",
+      "text": "Great, how do I get started?"
+    }
+  ],
+  "facts": {
+    "allowedUrls": [
+      "https://shop.example.com/checkout/growth"
+    ]
+  },
+  "expectations": {
+    "deterministic": null,
+    "strategy": {
+      "mode": "QUALIFICATION",
+      "mustInclude": [
+        "checkout link with the one line of value"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Here's the checkout for the Growth bundle, which covers the stock sync you said was eating your evenings: https://shop.example.com/checkout/growth",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Buy now before it's too late! https://shop.example.com/checkout/growth",
+        "valid": false,
+        "codes": [
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}

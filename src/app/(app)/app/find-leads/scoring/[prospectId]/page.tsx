@@ -8,7 +8,7 @@ import { ExplainableScoring } from "@/components/find-leads/scoring/explainable-
 import { PageHeader } from "@/components/app/page-header";
 import { PlanLimitState } from "@/components/ui/feedback";
 
-export const metadata: Metadata = { title: "Prospect scoring · ClientTurn" };
+export const metadata: Metadata = { title: "Prospect scoring" };
 export const dynamic = "force-dynamic";
 
 /**

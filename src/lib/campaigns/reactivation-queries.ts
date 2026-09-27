@@ -16,6 +16,22 @@ import {
   type ReactivationSummary,
   type ReactivationTrend,
 } from "./reactivation-types";
+import { platformConfigured } from "@/lib/integrations/queries";
+import { campaignExperimentView } from "@/lib/learning/experiments-service";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { parseCampaignChannelMode, type CampaignChannelMode } from "@/lib/follow-up/channel-strategy";
+
+/** 0146: an SMS campaign's channel mode; null for other channels (or before the migration). */
+async function campaignChannelModeFor(campaignId: string, channel: string): Promise<CampaignChannelMode | null> {
+  if (channel !== "sms") return null;
+  const { data, error } = await (createAdminClient() as unknown as { from: (t: string) => any }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    .from("campaigns")
+    .select("channel_mode, send_timing")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error) return null;
+  return parseCampaignChannelMode((data as { channel_mode?: string } | null)?.channel_mode);
+}
 
 const CAMPAIGN_LIMIT = 200;
 /** Only the audience *preview* reads individual contacts. */
@@ -596,7 +612,7 @@ export async function getReactivationCampaignDetail(
       label: ACTIVITY_LABELS[entry.action] ?? entry.action,
       actor:
         entry.actor_type === "system"
-          ? "Client Turn"
+          ? "ClientTurn"
           : ((entry.actor_user_id ? names.get(entry.actor_user_id) : null) ??
             "Unknown user"),
       at: entry.created_at,
@@ -607,7 +623,7 @@ export async function getReactivationCampaignDetail(
   // campaign needs the mailbox, not an SMS number.
   const campaignChannel: CampaignChannel =
     campaign.channel === "whatsapp" || campaign.channel === "email" ? campaign.channel : "sms";
-  const providerConnected = campaignChannelReadiness(integrations ?? [])[campaignChannel];
+  const providerConnected = campaignChannelReadiness(integrations ?? [], { sms: platformConfigured("twilio_sms"), whatsapp: platformConfigured("twilio_whatsapp") })[campaignChannel];
 
   const audienceLabel = audienceLabelFor(campaign);
   const denominator = Math.max(
@@ -615,8 +631,14 @@ export async function getReactivationCampaignDetail(
     campaign.estimated_audience_size,
   );
   const timezone = campaign.timezone ?? "workspace time";
+  const [experiment, channelMode] = await Promise.all([
+    campaignExperimentView(businessId, campaign.id),
+    campaignChannelModeFor(campaign.id, campaign.channel),
+  ]);
 
   return {
+    experiment,
+    channelMode,
     id: campaign.id,
     name: campaign.name,
     description: campaign.description,

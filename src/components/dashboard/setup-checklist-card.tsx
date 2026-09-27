@@ -16,6 +16,27 @@ export type SetupChecklistItem = {
 };
 
 const HIDDEN_KEY = "ct-setup-checklist-hidden";
+const HIDDEN_EVENT = "ct-setup-checklist-hidden";
+
+function subscribe(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(HIDDEN_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(HIDDEN_EVENT, onChange);
+  };
+}
+
+function readHidden(): string | null {
+  try {
+    return window.localStorage.getItem(HIDDEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** On the server the stored choice is unknown, so the card waits for the browser. */
+const UNKNOWN = "__unknown__";
 
 /**
  * "Finish setting up" (Phase 8.29).
@@ -32,19 +53,11 @@ export function SetupChecklistCard({ items }: { items: SetupChecklistItem[] }) {
   // A fingerprint of what is outstanding: hiding it hides this list, not every
   // future one.
   const signature = outstanding.map((item) => item.id).join(",");
-  const [hidden, setHidden] = React.useState<boolean | null>(null);
+  const stored = React.useSyncExternalStore(subscribe, readHidden, () => UNKNOWN);
 
-  React.useEffect(() => {
-    try {
-      setHidden(window.localStorage.getItem(HIDDEN_KEY) === signature);
-    } catch {
-      setHidden(false);
-    }
-  }, [signature]);
-
-  // Rendered only after the stored choice is read, so a hidden card never
+  // Rendered only once the stored choice is read, so a hidden card never
   // flashes on load.
-  if (outstanding.length === 0 || hidden !== false) return null;
+  if (outstanding.length === 0 || stored === UNKNOWN || stored === signature) return null;
 
   const done = items.length - outstanding.length;
   const ordered = [...outstanding, ...items.filter((item) => item.done)];
@@ -63,9 +76,9 @@ export function SetupChecklistCard({ items }: { items: SetupChecklistItem[] }) {
               try {
                 window.localStorage.setItem(HIDDEN_KEY, signature);
               } catch {
-                // Storage unavailable: hide for this visit only.
+                // Storage unavailable: nothing to remember it by.
               }
-              setHidden(true);
+              window.dispatchEvent(new Event(HIDDEN_EVENT));
             }}
             className="text-content-muted hover:bg-surface-hover hover:text-content focus-visible:outline-content-accent -mr-1 inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium focus-visible:outline-2"
           >

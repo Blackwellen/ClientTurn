@@ -1,0 +1,70 @@
+{
+  "id": "studio-02-budget-forbidden",
+  "archetype": "CREATIVE_WEB_STUDIO",
+  "motion": "DIRECT_B2B",
+  "channel": "email",
+  "story": "The workspace forbids budget questions; budget is never asked.",
+  "policy": {
+    "forbiddenQuestionIntents": [
+      "BUDGET.RANGE",
+      "BUDGET.STUDIO"
+    ]
+  },
+  "turns": [
+    {
+      "lead": "Looking for a redesign of our online shop.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "INFORM",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      },
+      "candidate": {
+        "text": "Thanks. Do you have a budget range in mind for the build?",
+        "qaOk": false,
+        "codes": [
+          "QA_FORBIDDEN_INTENT"
+        ]
+      }
+    },
+    {
+      "lead": "The current site is slow and doesn't convert.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "INFORM",
+          "CTA_BOOK",
+          "ESCALATE"
+        ],
+        "notAsked": [
+          "BUDGET"
+        ]
+      }
+    },
+    {
+      "lead": "We'd want to launch in about three months.",
+      "expect": {
+        "actionIn": [
+          "ASK",
+          "ANSWER_AND_ASK",
+          "CTA_BOOK",
+          "ESCALATE",
+          "ANSWER",
+          "INFORM",
+          "CTA_CHECKOUT"
+        ],
+        "notAsked": [
+          "BUDGET",
+          "TIMING"
+        ]
+      }
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 title: Integrating with your CRM
 summary: How ClientTurn pushes qualified and booked leads into HubSpot, Salesforce or Zoho CRM, and optionally imports new CRM records back
 category: integrations
-keywords: [crm, crm sync, two-way, push, pull, pipedrive, salesforce, zoho, deals, opportunities, crm integration]
+keywords: [crm, crm sync, two-way, push, pull, push status, failed push, last push, pipedrive, salesforce, zoho, deals, opportunities, crm integration]
 order: 25
 updated: 2026-09-26
 ---
@@ -32,7 +32,11 @@ All of them are under **Settings → Connections**. Only owners and admins can c
 - When the conversation is handed to a person, the lead brief is also added to the CRM record as a note, where the CRM supports it.
 - If a push fails, it is retried. A connection whose credentials stop working shows **Reconnect required** on its card.
 
-> **Note:** Disconnecting a CRM stops pushing to it. Nothing already in ClientTurn or in your CRM is deleted.
+### Push status
+
+Each CRM card's **Manage** panel has a **Push status** section: **Last push**, **Pushed, last 30 days**, and any recent failed pushes. Each failure names the lead (with a link to it), whether it was not pushed at all or only partly pushed (the record exists in your CRM, but not everything was written), and the CRM's reason. When there are none, it says **No failed pushes**.
+
+> **Note:** Disconnecting a CRM stops pushing to it and also switches its pull off, so reconnecting, perhaps to a different CRM account, never resumes an import on its own. Nothing already in ClientTurn or in your CRM is deleted.
 
 ## How pull works
 

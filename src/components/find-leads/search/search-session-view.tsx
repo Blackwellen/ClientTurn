@@ -40,12 +40,10 @@ export function SearchSessionView({
   initialBudget,
   canManage,
   liveFeeds = [],
-  linkedinPartner = false,
 }: {
   session: SearchSessionView;
   /** Free signal feeds live for this workspace, for the signals editor. */
   liveFeeds?: SignalFeed[];
-  linkedinPartner?: boolean;
   initialBudget: {
     maxTarget: number;
     maxProviderCostMinor: number;
@@ -184,7 +182,7 @@ export function SearchSessionView({
             onChange={commit}
             disabled={!canManage}
             liveFeeds={liveFeeds}
-            linkedinPartner={linkedinPartner}
+            sessionId={session.id}
           />
           <SourcingControls
             sessionId={session.id}

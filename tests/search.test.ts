@@ -170,8 +170,13 @@ describe("static page index", () => {
   });
 
   test("keywords find a page, and title-prefix matches rank first", () => {
-    const billing = filterNavIndex("invoices", ALL);
+    const billing = filterNavIndex("subscription", ALL);
     assert.equal(billing.items[0]?.href, "/app/settings?section=billing");
+    // "Invoices" is in the title of Quotes & invoices (customer invoicing), so
+    // it ranks first; ClientTurn's own invoices are still found under Billing.
+    const invoices = filterNavIndex("invoices", ALL);
+    assert.equal(invoices.items[0]?.href, "/app/settings?section=quotes");
+    assert.ok(invoices.items.some((item) => item.href === "/app/settings?section=billing"));
 
     const settings = filterNavIndex("sett", ALL);
     assert.equal(settings.items[0]?.title, "Settings");

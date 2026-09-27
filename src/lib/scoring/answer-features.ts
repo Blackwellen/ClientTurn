@@ -15,16 +15,24 @@
  *   STAKEHOLDERS / DECISION_PROCESS -> stakeholder_count (only a stated number)
  *   inbound text asking about price -> pricing_requested
  *
+ * Facts (design 08 §B.12): `factAnswers` turns the lead's qualification
+ * facts into the same answers, so a form answer, an incidental mention or a
+ * person's override feeds the score exactly as a direct answer does. Live
+ * CONFIRMED facts count at their confidence, fresh INFERRED ones at 0.8 of
+ * it, and CONFLICTING, REJECTED, superseded or stale facts not at all: a
+ * conflict is excluded from the score until it is resolved.
+ *
  * Not mapped, deliberately: TEAM_SIZE / COMPANY_SIZE to company_size_match.
  * A "match" needs the workspace's target size range, which no configuration
  * holds yet; a size alone is not fit.
  */
 
 import type { LeadFact } from "./lead-score.ts";
-import type { QualificationDimensionKey } from "../sales-library/types.ts";
+import type { QualificationDimensionKey, ScoreDimension } from "../sales-library/types.ts";
+import type { FactDimension, QualificationFact } from "../qualification-intelligence/types.ts";
 
 export type ScoredAnswer = {
-  dimension: QualificationDimensionKey | null;
+  dimension: QualificationDimensionKey | FactDimension | null;
   value: string;
   answeredAt: string | null;
   /** qualification_answers.confidence; null = stated by the lead (1). */
@@ -103,6 +111,90 @@ export function answerFeatures(answers: ScoredAnswer[]): LeadFact[] {
     }
   }
   return facts;
+}
+
+/**
+ * The score dimension each qualification dimension informs. Used to report a
+ * CONFLICTING fact on the score dimension it sits in (lead-score.ts status).
+ */
+export const SCORE_DIMENSION_FOR_FACT: Partial<Record<FactDimension, ScoreDimension>> = {
+  SERVICE_NEEDED: "FIT",
+  LOCATION: "FIT",
+  PROPERTY_TYPE: "FIT",
+  COMPANY_SIZE: "FIT",
+  TEAM_SIZE: "FIT",
+  SUITABILITY: "FIT",
+  PRODUCT_INTEREST: "FIT",
+  TECHNICAL_REQUIREMENTS: "FIT",
+  COMPLIANCE_REQUIREMENTS: "FIT",
+  PROBLEM: "NEED",
+  USE_CASE: "NEED",
+  PROJECT_SCOPE: "NEED",
+  OUTCOME: "NEED",
+  SUCCESS_METRICS: "NEED",
+  DISSATISFACTION: "NEED",
+  CURRENT_SOLUTION: "NEED",
+  HIRING_NEED: "NEED",
+  VOLUME: "NEED",
+  BUDGET: "COMMERCIAL",
+  AUTHORITY: "DECISION_ACCESS",
+  STAKEHOLDERS: "DECISION_ACCESS",
+  DECISION_PROCESS: "DECISION_ACCESS",
+  TIMING: "TIMING",
+  AVAILABILITY: "TIMING",
+  IMPLEMENTATION_READINESS: "TIMING",
+  PURCHASE_READINESS: "TIMING",
+};
+
+/** Dimensions whose known value means the lead has stated a need. */
+const NEED_DIMENSIONS = new Set<FactDimension>(["PROBLEM", "USE_CASE", "SERVICE_NEEDED", "PROJECT_SCOPE", "OUTCOME"]);
+
+/** A live, fresh CONFIRMED fact on a need dimension: `need_stated`. */
+export function needStatedFact(facts: readonly QualificationFact[], now: Date): LeadFact | null {
+  const hit = facts
+    .filter(
+      (f) =>
+        f.supersededAt === null &&
+        f.state === "CONFIRMED" &&
+        NEED_DIMENSIONS.has(f.dimension) &&
+        !(f.validUntil && Date.parse(f.validUntil) <= now.getTime()),
+    )
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+  return hit ? { feature: "need_stated", value: true, source: "qualification_facts", observedAt: hit.observedAt, confidence: hit.confidence } : null;
+}
+
+/** Score dimensions with a CONFLICTING live fact. */
+export function conflictingScoreDimensions(facts: readonly QualificationFact[]): ScoreDimension[] {
+  const out = new Set<ScoreDimension>();
+  for (const f of facts) {
+    if (f.supersededAt !== null || f.state !== "CONFLICTING") continue;
+    const d = SCORE_DIMENSION_FOR_FACT[f.dimension];
+    if (d) out.add(d);
+  }
+  return [...out].sort();
+}
+
+/** Below this share of its confidence an INFERRED fact is counted. */
+const INFERRED_WEIGHT = 0.8;
+
+/**
+ * Qualification facts as scored answers (see the header). `now` decides
+ * staleness; the validity window is the fact's own `valid_until`.
+ */
+export function factAnswers(facts: readonly QualificationFact[], now: Date): ScoredAnswer[] {
+  const out: ScoredAnswer[] = [];
+  for (const fact of facts) {
+    if (fact.supersededAt !== null) continue;
+    if (fact.state !== "CONFIRMED" && fact.state !== "INFERRED") continue;
+    if (fact.validUntil && Date.parse(fact.validUntil) <= now.getTime()) continue;
+    out.push({
+      dimension: fact.dimension,
+      value: fact.value,
+      answeredAt: fact.observedAt,
+      confidence: fact.state === "CONFIRMED" ? fact.confidence : Math.round(fact.confidence * INFERRED_WEIGHT * 1000) / 1000,
+    });
+  }
+  return out;
 }
 
 /** The lead asked about price in one of their own messages. */

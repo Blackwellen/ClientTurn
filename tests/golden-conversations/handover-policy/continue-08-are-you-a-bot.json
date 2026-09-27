@@ -1,0 +1,21 @@
+{
+  "id": "continue-08-are-you-a-bot",
+  "story": "\"Are you a bot?\" is answered honestly (the business's AI assistant; a person can join if they would like) and the conversation carries on. It used to be a deterministic hand-over.",
+  "turns": [
+    {
+      "lead": "Are you a bot?",
+      "model": {
+        "proposed_action": "ANSWER_AND_ASK",
+        "confidence": 0.9,
+        "message": "I am Acme Studio's AI assistant, and a person from the team can join whenever you would like. What would you like help with?"
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "HANDOVER",
+        "disclose": true,
+        "validates": true
+      }
+    }
+  ]
+}

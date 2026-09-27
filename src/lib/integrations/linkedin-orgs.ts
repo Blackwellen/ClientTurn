@@ -11,7 +11,7 @@ export type LinkedInOrganization = {
   name: string;
 };
 
-/** Lead Sync scopes, always; page engagement only when LinkedIn approved it. */
+/** Lead Sync scopes: Lead Gen Forms only. */
 export const LINKEDIN_LEAD_SYNC_SCOPES = [
   "r_marketing_leadgen_automation",
   "r_ads",
@@ -19,18 +19,14 @@ export const LINKEDIN_LEAD_SYNC_SCOPES = [
 ] as const;
 
 /**
- * The scopes the connect flow requests.
+ * The scopes the connect flow requests: Lead Gen Forms only.
  *
- * `r_organization_social` belongs to LinkedIn's Community Management API, a
- * separate product that needs its own approval. Requesting a scope the app
- * has not been granted makes LinkedIn refuse the authorisation outright, so
- * asking for it unconditionally would break Lead Gen Forms too.
+ * `r_organization_social` (company-page engagement) is never requested.
+ * LinkedIn's terms forbid using member data to identify sales prospects, so
+ * the engagement prospect source it served was removed.
  */
-export function linkedinScopes(communityManagementApproved: boolean): string {
-  return [
-    ...LINKEDIN_LEAD_SYNC_SCOPES,
-    ...(communityManagementApproved ? ["r_organization_social"] : []),
-  ].join(" ");
+export function linkedinScopes(): string {
+  return [...LINKEDIN_LEAD_SYNC_SCOPES].join(" ");
 }
 
 /** Organisations from an `organizationAcls?q=roleAssignee` response, de-duplicated. */

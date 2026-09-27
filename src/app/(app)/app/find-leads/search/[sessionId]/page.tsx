@@ -5,13 +5,13 @@ import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { getSession } from "@/lib/find-leads/server/sessions";
 import { resolveBudget } from "@/lib/find-leads/server/budget";
-import { linkedinPartnerConfigured, liveSignalFeeds } from "@/lib/find-leads/server/signals";
+import { liveSignalFeeds } from "@/lib/find-leads/server/signals";
 import { planWantsIntent } from "@/lib/find-leads/plan";
 import { SearchSessionView } from "@/components/find-leads/search/search-session-view";
 import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
 
-export const metadata: Metadata = { title: "Search session · ClientTurn" };
+export const metadata: Metadata = { title: "Search session" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -71,7 +71,6 @@ export default async function SearchSessionPage({
       session={session}
       canManage={hasRole(workspace.role, "admin")}
       liveFeeds={liveSignalFeeds()}
-      linkedinPartner={linkedinPartnerConfigured()}
       initialBudget={{
         maxTarget: verdict.maxTarget,
         maxProviderCostMinor: verdict.maxProviderCostMinor,

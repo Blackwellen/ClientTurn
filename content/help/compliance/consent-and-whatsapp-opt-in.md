@@ -4,7 +4,11 @@ summary: Which relationships allow you to message someone, why consent needs evi
 category: compliance
 keywords: [consent, permission, relationship, lawful basis, soft opt-in, existing customer, evidence, whatsapp consent, whatsapp template, 24-hour window, service window, cold sms, pecr, marketing consent]
 order: 10
-updated: 2026-09-26
+updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/compliance/consent-and-whatsapp-opt-in-1.png
+    alt: "The Add lead permission step with the relationship cards, consent evidence and the WhatsApp opt-in box"
+    caption: "Record how you came to have the lead's details, with evidence"
 ---
 
 Before every message, ClientTurn checks what you are allowed to send to that person, on that channel, at that moment. The check uses facts on record: how you came to have their details, any consent and its evidence, who they are, and the channel. It is a fixed set of rules. AI never makes this decision and cannot override it.
@@ -64,7 +68,13 @@ WhatsApp has its own rule on top of the law. Meta requires an **explicit opt-in 
 
 ### Recording a WhatsApp opt-in
 
-Today, a WhatsApp opt-in is recorded when a lead is created through the ClientTurn API or a connected AI assistant with the WhatsApp consent flag set. The **Add lead** wizard, CSV imports and lead-form connections do not record a WhatsApp opt-in yet. Leads from those sources can still be messaged on WhatsApp once they message you first.
+A WhatsApp opt-in is recorded:
+
+- **On the lead page.** Under the contactability strip, a lead with no opt-in shows **No WhatsApp opt-in on record** and a **Record WhatsApp opt-in** button. Enter the **Date they opted in**, **How they opted in** (Ticked a box on a form, Asked us on WhatsApp, Agreed on a phone call, Agreed in person, Agreed by email, or Other) and any **Detail** (required for Other), then choose **Record opt-in**. It is kept in the audit trail with the date and how they agreed.
+- **In the Add lead wizard.** On the **Permission & contactability** step, tick **They opted in to WhatsApp**. It is recorded with today's date and the lead's source.
+- **Through the ClientTurn API or a connected AI assistant**, with the WhatsApp consent flag set.
+
+Only record one if the person agreed to be messaged on WhatsApp at that mobile number. CSV imports and lead-form connections do not record a WhatsApp opt-in. Leads from those sources can still be messaged on WhatsApp once they message you first.
 
 > **Tip:** If you want to use WhatsApp for follow-up, ask on your lead form, in words that name your business, whether the person agrees to be contacted on WhatsApp.
 

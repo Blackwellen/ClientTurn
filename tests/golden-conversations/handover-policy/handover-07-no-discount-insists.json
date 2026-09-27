@@ -1,0 +1,30 @@
+{
+  "id": "handover-07-no-discount-insists",
+  "story": "No discount is approved. The AI answers the first ask with the value and scope options; the lead insists, and a person takes it.",
+  "turns": [
+    {
+      "lead": "Knock 30% off and we'll sign today.",
+      "model": {
+        "proposed_action": "REPLY",
+        "confidence": 0.9,
+        "message": "I cannot offer a discount on this plan, but I can walk you through what is included, or a lighter scope if budget is the concern."
+      },
+      "expect": {
+        "disposition": "CONTINUE",
+        "assist": null,
+        "was": "HANDOVER",
+        "discountWithinPolicy": false,
+        "validates": true
+      }
+    },
+    {
+      "lead": "That's not good enough. 30% or no deal.",
+      "expect": {
+        "disposition": "HANDOVER",
+        "trigger": "COMMERCIAL_COMMITMENT",
+        "reason": "POLICY",
+        "was": "HANDOVER"
+      }
+    }
+  ]
+}

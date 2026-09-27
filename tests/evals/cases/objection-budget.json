@@ -1,0 +1,49 @@
+{
+  "id": "objection-budget",
+  "scenario": "§94 objection: budget",
+  "motion": "BOOK_MEETING_B2B",
+  "channel": "email",
+  "turns": [
+    {
+      "role": "agent",
+      "text": "What's prompted you to look at a new site now?"
+    },
+    {
+      "role": "lead",
+      "text": "Honestly we've got no budget until April."
+    }
+  ],
+  "expectations": {
+    "deterministic": null,
+    "objection": "BUDGET",
+    "strategy": {
+      "mode": "OBJECTION_HANDLING",
+      "mustInclude": [
+        "Shape: acknowledge",
+        "one clarifying question"
+      ]
+    },
+    "candidates": [
+      {
+        "text": "Makes sense, April's not far off. Shall I pick this up with you in March, so you've a plan ready for then?",
+        "valid": true,
+        "gradeAtLeast": 75
+      },
+      {
+        "text": "Totally understand — but this price ends today, so act now!",
+        "valid": false,
+        "codes": [
+          "STYLE_EM_DASHES",
+          "STYLE_PRESSURE"
+        ]
+      }
+    ],
+    "live": {
+      "maxQuestions": 1,
+      "mustNotContain": [
+        "—",
+        "👍"
+      ]
+    }
+  }
+}
