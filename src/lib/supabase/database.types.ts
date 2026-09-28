@@ -24,8 +24,11 @@ export type Database = {
           expires_at: string | null
           id: string
           link_id: string | null
+          payment_checked_at: string | null
           promo_code_id: string | null
           rejected_reason: string | null
+          signup_device_hash: string | null
+          signup_ip_hash: string | null
           user_id: string | null
           visitor_hash: string | null
         }
@@ -38,8 +41,11 @@ export type Database = {
           expires_at?: string | null
           id?: string
           link_id?: string | null
+          payment_checked_at?: string | null
           promo_code_id?: string | null
           rejected_reason?: string | null
+          signup_device_hash?: string | null
+          signup_ip_hash?: string | null
           user_id?: string | null
           visitor_hash?: string | null
         }
@@ -52,8 +58,11 @@ export type Database = {
           expires_at?: string | null
           id?: string
           link_id?: string | null
+          payment_checked_at?: string | null
           promo_code_id?: string | null
           rejected_reason?: string | null
+          signup_device_hash?: string | null
+          signup_ip_hash?: string | null
           user_id?: string | null
           visitor_hash?: string | null
         }
@@ -130,11 +139,13 @@ export type Database = {
           country: string | null
           device_type: string | null
           id: string
+          ip_hash: string | null
           is_bot: boolean
           landing_path: string | null
           link_id: string | null
           occurred_at: string
           referrer_host: string | null
+          suspect_reasons: string[]
           visitor_hash: string
         }
         Insert: {
@@ -143,11 +154,13 @@ export type Database = {
           country?: string | null
           device_type?: string | null
           id?: string
+          ip_hash?: string | null
           is_bot?: boolean
           landing_path?: string | null
           link_id?: string | null
           occurred_at?: string
           referrer_host?: string | null
+          suspect_reasons?: string[]
           visitor_hash: string
         }
         Update: {
@@ -156,11 +169,13 @@ export type Database = {
           country?: string | null
           device_type?: string | null
           id?: string
+          ip_hash?: string | null
           is_bot?: boolean
           landing_path?: string | null
           link_id?: string | null
           occurred_at?: string
           referrer_host?: string | null
+          suspect_reasons?: string[]
           visitor_hash?: string
         }
         Relationships: [
@@ -364,6 +379,105 @@ export type Database = {
             columns: ["reversal_of_id"]
             isOneToOne: false
             referencedRelation: "affiliate_commissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_fingerprints: {
+        Row: {
+          affiliate_id: string
+          first_seen_at: string
+          kind: string
+          last_seen_at: string
+          value_hash: string
+        }
+        Insert: {
+          affiliate_id: string
+          first_seen_at?: string
+          kind: string
+          last_seen_at?: string
+          value_hash: string
+        }
+        Update: {
+          affiliate_id?: string
+          first_seen_at?: string
+          kind?: string
+          last_seen_at?: string
+          value_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_fingerprints_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_fraud_flags: {
+        Row: {
+          affiliate_id: string
+          business_id: string | null
+          code: string
+          created_at: string
+          id: string
+          referral_id: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          severity: string
+          source: string
+          status: string
+        }
+        Insert: {
+          affiliate_id: string
+          business_id?: string | null
+          code: string
+          created_at?: string
+          id?: string
+          referral_id?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity: string
+          source?: string
+          status?: string
+        }
+        Update: {
+          affiliate_id?: string
+          business_id?: string | null
+          code?: string
+          created_at?: string
+          id?: string
+          referral_id?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string
+          source?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_fraud_flags_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_fraud_flags_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_fraud_flags_referral_id_fkey"
+            columns: ["referral_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_referrals"
             referencedColumns: ["id"]
           },
         ]
@@ -591,6 +705,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      affiliate_programme_settings: {
+        Row: {
+          auto_approve_payouts: boolean
+          auto_dispatch_payouts: boolean
+          click_retention_days: number
+          fingerprint_retention_days: number
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          auto_approve_payouts?: boolean
+          auto_dispatch_payouts?: boolean
+          click_retention_days?: number
+          fingerprint_retention_days?: number
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          auto_approve_payouts?: boolean
+          auto_dispatch_payouts?: boolean
+          click_retention_days?: number
+          fingerprint_retention_days?: number
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       affiliate_promo_codes: {
         Row: {
@@ -979,6 +1123,89 @@ export type Database = {
           },
         ]
       }
+      affiliate_tier_history: {
+        Row: {
+          active_customers: number
+          actor_user_id: string | null
+          affiliate_id: string
+          created_at: string
+          from_tier: string | null
+          id: string
+          reason: string
+          referred_mrr_minor: number
+          to_tier: string
+        }
+        Insert: {
+          active_customers?: number
+          actor_user_id?: string | null
+          affiliate_id: string
+          created_at?: string
+          from_tier?: string | null
+          id?: string
+          reason: string
+          referred_mrr_minor?: number
+          to_tier: string
+        }
+        Update: {
+          active_customers?: number
+          actor_user_id?: string | null
+          affiliate_id?: string
+          created_at?: string
+          from_tier?: string | null
+          id?: string
+          reason?: string
+          referred_mrr_minor?: number
+          to_tier?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_tier_history_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_tiers: {
+        Row: {
+          commission_percent: number | null
+          description: string | null
+          key: string
+          min_active_customers: number
+          min_referred_mrr_minor: number
+          name: string
+          rank: number
+          recurring_months: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          commission_percent?: number | null
+          description?: string | null
+          key: string
+          min_active_customers?: number
+          min_referred_mrr_minor?: number
+          name: string
+          rank: number
+          recurring_months?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          commission_percent?: number | null
+          description?: string | null
+          key?: string
+          min_active_customers?: number
+          min_referred_mrr_minor?: number
+          name?: string
+          rank?: number
+          recurring_months?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       affiliates: {
         Row: {
           approved_at: string | null
@@ -1021,6 +1248,10 @@ export type Database = {
           tax_status: string
           tax_submitted_at: string | null
           tier: string
+          tier_active_customers: number
+          tier_evaluated_at: string | null
+          tier_locked: boolean
+          tier_referred_mrr_minor: number
           timezone: string
           updated_at: string
           user_id: string
@@ -1067,6 +1298,10 @@ export type Database = {
           tax_status?: string
           tax_submitted_at?: string | null
           tier?: string
+          tier_active_customers?: number
+          tier_evaluated_at?: string | null
+          tier_locked?: boolean
+          tier_referred_mrr_minor?: number
           timezone?: string
           updated_at?: string
           user_id: string
@@ -1113,6 +1348,10 @@ export type Database = {
           tax_status?: string
           tax_submitted_at?: string | null
           tier?: string
+          tier_active_customers?: number
+          tier_evaluated_at?: string | null
+          tier_locked?: boolean
+          tier_referred_mrr_minor?: number
           timezone?: string
           updated_at?: string
           user_id?: string
@@ -1679,6 +1918,7 @@ export type Database = {
           monthly_prospect_cap: number
           name: string
           next_run_at: string | null
+          offer_scope: string
           paused_at: string | null
           pending_review_count: number
           run_window_end: string
@@ -1687,6 +1927,8 @@ export type Database = {
           service_id: string | null
           status: string
           status_reason: string | null
+          target_catalogue_item_ids: string[]
+          target_service_ids: string[]
           timezone: string | null
           total_conversions: number
           total_leads: number
@@ -1718,6 +1960,7 @@ export type Database = {
           monthly_prospect_cap?: number
           name: string
           next_run_at?: string | null
+          offer_scope?: string
           paused_at?: string | null
           pending_review_count?: number
           run_window_end?: string
@@ -1726,6 +1969,8 @@ export type Database = {
           service_id?: string | null
           status?: string
           status_reason?: string | null
+          target_catalogue_item_ids?: string[]
+          target_service_ids?: string[]
           timezone?: string | null
           total_conversions?: number
           total_leads?: number
@@ -1757,6 +2002,7 @@ export type Database = {
           monthly_prospect_cap?: number
           name?: string
           next_run_at?: string | null
+          offer_scope?: string
           paused_at?: string | null
           pending_review_count?: number
           run_window_end?: string
@@ -1765,6 +2011,8 @@ export type Database = {
           service_id?: string | null
           status?: string
           status_reason?: string | null
+          target_catalogue_item_ids?: string[]
+          target_service_ids?: string[]
           timezone?: string | null
           total_conversions?: number
           total_leads?: number
@@ -2637,6 +2885,147 @@ export type Database = {
           },
         ]
       }
+      automation_rule_runs: {
+        Row: {
+          action_index: number
+          action_type: string | null
+          audit_event_id: string | null
+          automation_event_id: string
+          business_id: string
+          created_at: string
+          entity_id: string | null
+          id: string
+          lead_id: string | null
+          operation: string | null
+          reason: string | null
+          reason_code: string | null
+          rule_id: string
+          run_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          action_index: number
+          action_type?: string | null
+          audit_event_id?: string | null
+          automation_event_id: string
+          business_id: string
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          lead_id?: string | null
+          operation?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          rule_id: string
+          run_at?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          action_index?: number
+          action_type?: string | null
+          audit_event_id?: string | null
+          automation_event_id?: string
+          business_id?: string
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          lead_id?: string | null
+          operation?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          rule_id?: string
+          run_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rule_runs_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_rule_runs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_rule_runs_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "automation_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_rules: {
+        Row: {
+          acknowledge_external: boolean
+          actions: Json
+          business_id: string
+          conditions: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          enabled: boolean
+          enabled_at: string | null
+          enabled_by: string | null
+          frequency: string
+          id: string
+          name: string
+          trigger_event: string
+          updated_at: string
+        }
+        Insert: {
+          acknowledge_external?: boolean
+          actions: Json
+          business_id: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          frequency?: string
+          id?: string
+          name: string
+          trigger_event: string
+          updated_at?: string
+        }
+        Update: {
+          acknowledge_external?: boolean
+          actions?: Json
+          business_id?: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          frequency?: string
+          id?: string
+          name?: string
+          trigger_event?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_runs: {
         Row: {
           business_id: string
@@ -2885,6 +3274,74 @@ export type Database = {
           },
         ]
       }
+      billing_disputes: {
+        Row: {
+          amount_minor: number
+          business_id: string
+          closed_at: string | null
+          currency: string | null
+          id: string
+          opened_at: string
+          payment_intent_id: string | null
+          purchase_id: string | null
+          purchase_kind: string
+          reason: string | null
+          restored_units: number
+          reversed_units: number
+          status: string
+          stripe_charge_id: string | null
+          stripe_dispute_id: string
+          stripe_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_minor?: number
+          business_id: string
+          closed_at?: string | null
+          currency?: string | null
+          id?: string
+          opened_at?: string
+          payment_intent_id?: string | null
+          purchase_id?: string | null
+          purchase_kind: string
+          reason?: string | null
+          restored_units?: number
+          reversed_units?: number
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_dispute_id: string
+          stripe_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_minor?: number
+          business_id?: string
+          closed_at?: string | null
+          currency?: string | null
+          id?: string
+          opened_at?: string
+          payment_intent_id?: string | null
+          purchase_id?: string | null
+          purchase_kind?: string
+          reason?: string | null
+          restored_units?: number
+          reversed_units?: number
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_dispute_id?: string
+          stripe_status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_disputes_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_dunning: {
         Row: {
           amount_due_minor: number | null
@@ -2952,6 +3409,86 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      billing_invoices: {
+        Row: {
+          amount_paid_minor: number
+          billing_reason: string | null
+          business_id: string
+          created_at: string
+          currency: string
+          discount_minor: number
+          id: string
+          paid_at: string
+          period_end: string | null
+          period_start: string | null
+          stripe_invoice_id: string
+          stripe_subscription_id: string | null
+          subtotal_minor: number
+          tax_minor: number
+          total_excluding_tax_minor: number
+        }
+        Insert: {
+          amount_paid_minor?: number
+          billing_reason?: string | null
+          business_id: string
+          created_at?: string
+          currency?: string
+          discount_minor?: number
+          id?: string
+          paid_at?: string
+          period_end?: string | null
+          period_start?: string | null
+          stripe_invoice_id: string
+          stripe_subscription_id?: string | null
+          subtotal_minor?: number
+          tax_minor?: number
+          total_excluding_tax_minor?: number
+        }
+        Update: {
+          amount_paid_minor?: number
+          billing_reason?: string | null
+          business_id?: string
+          created_at?: string
+          currency?: string
+          discount_minor?: number
+          id?: string
+          paid_at?: string
+          period_end?: string | null
+          period_start?: string | null
+          stripe_invoice_id?: string
+          stripe_subscription_id?: string | null
+          subtotal_minor?: number
+          tax_minor?: number
+          total_excluding_tax_minor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_invoices_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_unit_conversions: {
+        Row: {
+          applied_at: string
+          key: string
+          note: string | null
+        }
+        Insert: {
+          applied_at?: string
+          key: string
+          note?: string | null
+        }
+        Update: {
+          applied_at?: string
+          key?: string
+          note?: string | null
+        }
+        Relationships: []
       }
       bookings: {
         Row: {
@@ -3647,6 +4184,9 @@ export type Database = {
         Row: {
           accepted_at: string | null
           business_id: string
+          can_manage_billing: boolean | null
+          can_manage_integrations: boolean | null
+          can_send_outbound: boolean | null
           created_at: string
           id: string
           invited_at: string | null
@@ -3659,6 +4199,9 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           business_id: string
+          can_manage_billing?: boolean | null
+          can_manage_integrations?: boolean | null
+          can_send_outbound?: boolean | null
           created_at?: string
           id?: string
           invited_at?: string | null
@@ -3671,6 +4214,9 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           business_id?: string
+          can_manage_billing?: boolean | null
+          can_manage_integrations?: boolean | null
+          can_send_outbound?: boolean | null
           created_at?: string
           id?: string
           invited_at?: string | null
@@ -3753,6 +4299,8 @@ export type Database = {
         Row: {
           activated_at: string | null
           address_sid: string | null
+          admin_suspended_at: string | null
+          admin_suspended_reason: string | null
           attempts: number
           bundle_sid: string | null
           bundle_status: string | null
@@ -3784,6 +4332,8 @@ export type Database = {
         Insert: {
           activated_at?: string | null
           address_sid?: string | null
+          admin_suspended_at?: string | null
+          admin_suspended_reason?: string | null
           attempts?: number
           bundle_sid?: string | null
           bundle_status?: string | null
@@ -3815,6 +4365,8 @@ export type Database = {
         Update: {
           activated_at?: string | null
           address_sid?: string | null
+          admin_suspended_at?: string | null
+          admin_suspended_reason?: string | null
           attempts?: number
           bundle_sid?: string | null
           bundle_status?: string | null
@@ -4169,6 +4721,7 @@ export type Database = {
           activated_at: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           id: string
           industry: string | null
           job_claims_paused: boolean
@@ -4187,6 +4740,7 @@ export type Database = {
           activated_at?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           industry?: string | null
           job_claims_paused?: boolean
@@ -4205,6 +4759,7 @@ export type Database = {
           activated_at?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           industry?: string | null
           job_claims_paused?: boolean
@@ -5008,6 +5563,7 @@ export type Database = {
           email: string | null
           external_event_id: string
           id: string
+          invoice_id: string | null
           lead_id: string | null
           linked_by: string | null
           match_kind: string | null
@@ -5016,9 +5572,11 @@ export type Database = {
           paid_at: string
           provider: string
           provider_order_id: string
+          provider_payment_intent: string | null
           recurring: boolean
           recurring_interval: string | null
           reference: string | null
+          review_reason: string | null
           source: string | null
           status: string
           subscription_id: string | null
@@ -5034,6 +5592,7 @@ export type Database = {
           email?: string | null
           external_event_id: string
           id?: string
+          invoice_id?: string | null
           lead_id?: string | null
           linked_by?: string | null
           match_kind?: string | null
@@ -5042,9 +5601,11 @@ export type Database = {
           paid_at?: string
           provider: string
           provider_order_id: string
+          provider_payment_intent?: string | null
           recurring?: boolean
           recurring_interval?: string | null
           reference?: string | null
+          review_reason?: string | null
           source?: string | null
           status?: string
           subscription_id?: string | null
@@ -5060,6 +5621,7 @@ export type Database = {
           email?: string | null
           external_event_id?: string
           id?: string
+          invoice_id?: string | null
           lead_id?: string | null
           linked_by?: string | null
           match_kind?: string | null
@@ -5068,9 +5630,11 @@ export type Database = {
           paid_at?: string
           provider?: string
           provider_order_id?: string
+          provider_payment_intent?: string | null
           recurring?: boolean
           recurring_interval?: string | null
           reference?: string | null
+          review_reason?: string | null
           source?: string | null
           status?: string
           subscription_id?: string | null
@@ -5092,6 +5656,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "checkout_payments_invoice_fk"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "checkout_payments_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -5107,12 +5678,62 @@ export type Database = {
           },
         ]
       }
+      commercial_action_claims: {
+        Row: {
+          action_key: string
+          action_kind: string
+          business_id: string
+          created_at: string
+          holder_kind: string
+          holder_ref: string | null
+          id: string
+          lead_id: string | null
+        }
+        Insert: {
+          action_key: string
+          action_kind: string
+          business_id: string
+          created_at?: string
+          holder_kind: string
+          holder_ref?: string | null
+          id?: string
+          lead_id?: string | null
+        }
+        Update: {
+          action_key?: string
+          action_kind?: string
+          business_id?: string
+          created_at?: string
+          holder_kind?: string
+          holder_ref?: string | null
+          id?: string
+          lead_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_action_claims_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_action_claims_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_authority: {
         Row: {
           abandoned_checkout_delay_hours: number
           abandoned_checkout_enabled: boolean
           abandoned_checkout_gap_hours: number
           abandoned_checkout_max_nudges: number
+          ai_discount_policy: Json
+          ai_permissions: Json
           approved_checkout_links: Json
           business_id: string
           created_at: string
@@ -5127,6 +5748,8 @@ export type Database = {
           abandoned_checkout_enabled?: boolean
           abandoned_checkout_gap_hours?: number
           abandoned_checkout_max_nudges?: number
+          ai_discount_policy?: Json
+          ai_permissions?: Json
           approved_checkout_links?: Json
           business_id: string
           created_at?: string
@@ -5141,6 +5764,8 @@ export type Database = {
           abandoned_checkout_enabled?: boolean
           abandoned_checkout_gap_hours?: number
           abandoned_checkout_max_nudges?: number
+          ai_discount_policy?: Json
+          ai_permissions?: Json
           approved_checkout_links?: Json
           business_id?: string
           created_at?: string
@@ -6760,8 +7385,78 @@ export type Database = {
           },
         ]
       }
+      experiment_promotions: {
+        Row: {
+          action: string
+          arm: string
+          business_id: string
+          conversion_by_arm: Json
+          created_at: string
+          decided_by: string | null
+          decided_by_kind: string
+          experiment_id: string
+          from_arm: string | null
+          id: string
+          p_value: number | null
+          reason: string
+          sample_by_arm: Json
+          sensitive_fields: string[]
+          version: number
+        }
+        Insert: {
+          action: string
+          arm: string
+          business_id: string
+          conversion_by_arm?: Json
+          created_at?: string
+          decided_by?: string | null
+          decided_by_kind: string
+          experiment_id: string
+          from_arm?: string | null
+          id?: string
+          p_value?: number | null
+          reason: string
+          sample_by_arm?: Json
+          sensitive_fields?: string[]
+          version: number
+        }
+        Update: {
+          action?: string
+          arm?: string
+          business_id?: string
+          conversion_by_arm?: Json
+          created_at?: string
+          decided_by?: string | null
+          decided_by_kind?: string
+          experiment_id?: string
+          from_arm?: string | null
+          id?: string
+          p_value?: number | null
+          reason?: string
+          sample_by_arm?: Json
+          sensitive_fields?: string[]
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiment_promotions_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiment_promotions_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       experiments: {
         Row: {
+          auto_promote: boolean
           business_id: string
           created_at: string
           created_by: string | null
@@ -6771,13 +7466,18 @@ export type Database = {
           min_sample_per_arm: number
           name: string
           primary_metric: string
+          promoted_arm: string | null
+          promoted_at: string | null
+          significance_alpha: number
           started_at: string | null
           status: string
           stopped_at: string | null
           target_id: string
           variants: Json
+          version: number
         }
         Insert: {
+          auto_promote?: boolean
           business_id: string
           created_at?: string
           created_by?: string | null
@@ -6787,13 +7487,18 @@ export type Database = {
           min_sample_per_arm?: number
           name: string
           primary_metric?: string
+          promoted_arm?: string | null
+          promoted_at?: string | null
+          significance_alpha?: number
           started_at?: string | null
           status?: string
           stopped_at?: string | null
           target_id: string
           variants?: Json
+          version?: number
         }
         Update: {
+          auto_promote?: boolean
           business_id?: string
           created_at?: string
           created_by?: string | null
@@ -6803,11 +7508,15 @@ export type Database = {
           min_sample_per_arm?: number
           name?: string
           primary_metric?: string
+          promoted_arm?: string | null
+          promoted_at?: string | null
+          significance_alpha?: number
           started_at?: string | null
           status?: string
           stopped_at?: string | null
           target_id?: string
           variants?: Json
+          version?: number
         }
         Relationships: [
           {
@@ -8128,6 +8837,8 @@ export type Database = {
           number: string | null
           opportunity_id: string
           paid_minor: number
+          pay_link_url: string | null
+          pay_token: string | null
           period_start: string | null
           quote_id: string | null
           revision_id: string | null
@@ -8158,6 +8869,8 @@ export type Database = {
           number?: string | null
           opportunity_id: string
           paid_minor?: number
+          pay_link_url?: string | null
+          pay_token?: string | null
           period_start?: string | null
           quote_id?: string | null
           revision_id?: string | null
@@ -8188,6 +8901,8 @@ export type Database = {
           number?: string | null
           opportunity_id?: string
           paid_minor?: number
+          pay_link_url?: string | null
+          pay_token?: string | null
           period_start?: string | null
           quote_id?: string | null
           revision_id?: string | null
@@ -8444,6 +9159,48 @@ export type Database = {
           },
         ]
       }
+      lead_commercial_leases: {
+        Row: {
+          acquired_at: string
+          business_id: string
+          expires_at: string
+          holder_kind: string
+          holder_ref: string | null
+          lead_id: string
+        }
+        Insert: {
+          acquired_at?: string
+          business_id: string
+          expires_at: string
+          holder_kind: string
+          holder_ref?: string | null
+          lead_id: string
+        }
+        Update: {
+          acquired_at?: string
+          business_id?: string
+          expires_at?: string
+          holder_kind?: string
+          holder_ref?: string | null
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_commercial_leases_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_commercial_leases_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_import_mappings: {
         Row: {
           business_id: string
@@ -8497,6 +9254,7 @@ export type Database = {
           classification: string
           classification_reason: string | null
           company_name: string | null
+          contract_renewal_date: string | null
           created_at: string
           created_lead_id: string | null
           created_prospect_id: string | null
@@ -8505,6 +9263,7 @@ export type Database = {
           email: string | null
           error_message: string | null
           first_name: string | null
+          headcount: number | null
           id: string
           import_id: string
           import_state: string
@@ -8517,6 +9276,7 @@ export type Database = {
           role_title: string | null
           row_number: number
           source_detail: string | null
+          technologies: string[] | null
           user_classification: string | null
           validation_flags: string[]
         }
@@ -8525,6 +9285,7 @@ export type Database = {
           classification?: string
           classification_reason?: string | null
           company_name?: string | null
+          contract_renewal_date?: string | null
           created_at?: string
           created_lead_id?: string | null
           created_prospect_id?: string | null
@@ -8533,6 +9294,7 @@ export type Database = {
           email?: string | null
           error_message?: string | null
           first_name?: string | null
+          headcount?: number | null
           id?: string
           import_id: string
           import_state?: string
@@ -8545,6 +9307,7 @@ export type Database = {
           role_title?: string | null
           row_number: number
           source_detail?: string | null
+          technologies?: string[] | null
           user_classification?: string | null
           validation_flags?: string[]
         }
@@ -8553,6 +9316,7 @@ export type Database = {
           classification?: string
           classification_reason?: string | null
           company_name?: string | null
+          contract_renewal_date?: string | null
           created_at?: string
           created_lead_id?: string | null
           created_prospect_id?: string | null
@@ -8561,6 +9325,7 @@ export type Database = {
           email?: string | null
           error_message?: string | null
           first_name?: string | null
+          headcount?: number | null
           id?: string
           import_id?: string
           import_state?: string
@@ -8573,6 +9338,7 @@ export type Database = {
           role_title?: string | null
           row_number?: number
           source_detail?: string | null
+          technologies?: string[] | null
           user_classification?: string | null
           validation_flags?: string[]
         }
@@ -9738,6 +10504,256 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      linkedin_assist_contacts: {
+        Row: {
+          business_id: string
+          conversation_id: string | null
+          created_at: string
+          first_touch: string
+          id: string
+          invited_at: string | null
+          lead_id: string | null
+          messaged_at: string | null
+          owner_user_id: string
+          profile_url: string
+          prospect_id: string | null
+          replied_at: string | null
+          state: string
+          stopped_at: string | null
+          stopped_reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          conversation_id?: string | null
+          created_at?: string
+          first_touch?: string
+          id?: string
+          invited_at?: string | null
+          lead_id?: string | null
+          messaged_at?: string | null
+          owner_user_id: string
+          profile_url: string
+          prospect_id?: string | null
+          replied_at?: string | null
+          state?: string
+          stopped_at?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          first_touch?: string
+          id?: string
+          invited_at?: string | null
+          lead_id?: string | null
+          messaged_at?: string | null
+          owner_user_id?: string
+          profile_url?: string
+          prospect_id?: string | null
+          replied_at?: string | null
+          state?: string
+          stopped_at?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linkedin_assist_contacts_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_contacts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_contacts_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      linkedin_assist_settings: {
+        Row: {
+          account_tier: string
+          business_id: string
+          created_at: string
+          daily_connection_notes: number
+          daily_messages: number
+          follow_up_after_days: number
+          max_follow_ups: number
+          monthly_inmail_credits: number
+          paused: boolean
+          updated_at: string
+          user_id: string
+          weekly_connection_requests: number
+        }
+        Insert: {
+          account_tier?: string
+          business_id: string
+          created_at?: string
+          daily_connection_notes?: number
+          daily_messages?: number
+          follow_up_after_days?: number
+          max_follow_ups?: number
+          monthly_inmail_credits?: number
+          paused?: boolean
+          updated_at?: string
+          user_id: string
+          weekly_connection_requests?: number
+        }
+        Update: {
+          account_tier?: string
+          business_id?: string
+          created_at?: string
+          daily_connection_notes?: number
+          daily_messages?: number
+          follow_up_after_days?: number
+          max_follow_ups?: number
+          monthly_inmail_credits?: number
+          paused?: boolean
+          updated_at?: string
+          user_id?: string
+          weekly_connection_requests?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linkedin_assist_settings_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      linkedin_assist_tasks: {
+        Row: {
+          assignee_user_id: string
+          body: string | null
+          body_source: string | null
+          business_id: string
+          cancelled_reason: string | null
+          completed_at: string | null
+          completed_by: string | null
+          contact_id: string
+          created_at: string
+          dedupe_key: string
+          draft_message_id: string | null
+          due_on: string
+          fallback_reason: string | null
+          id: string
+          inbound_body: string | null
+          kind: string
+          lead_id: string | null
+          prospect_id: string | null
+          snooze_count: number
+          status: string
+          step: number
+          updated_at: string
+        }
+        Insert: {
+          assignee_user_id: string
+          body?: string | null
+          body_source?: string | null
+          business_id: string
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          contact_id: string
+          created_at?: string
+          dedupe_key: string
+          draft_message_id?: string | null
+          due_on: string
+          fallback_reason?: string | null
+          id?: string
+          inbound_body?: string | null
+          kind: string
+          lead_id?: string | null
+          prospect_id?: string | null
+          snooze_count?: number
+          status?: string
+          step?: number
+          updated_at?: string
+        }
+        Update: {
+          assignee_user_id?: string
+          body?: string | null
+          body_source?: string | null
+          business_id?: string
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          contact_id?: string
+          created_at?: string
+          dedupe_key?: string
+          draft_message_id?: string | null
+          due_on?: string
+          fallback_reason?: string | null
+          id?: string
+          inbound_body?: string | null
+          kind?: string
+          lead_id?: string | null
+          prospect_id?: string | null
+          snooze_count?: number
+          status?: string
+          step?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linkedin_assist_tasks_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_tasks_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "linkedin_assist_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_tasks_draft_message_id_fkey"
+            columns: ["draft_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_tasks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linkedin_assist_tasks_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
             referencedColumns: ["id"]
           },
         ]
@@ -12278,6 +13294,35 @@ export type Database = {
           },
         ]
       }
+      pipeline_stage_maps: {
+        Row: {
+          business_id: string
+          mapping: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          business_id: string
+          mapping?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          business_id?: string
+          mapping?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stage_maps_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_entitlements: {
         Row: {
           boolean_value: boolean | null
@@ -12324,6 +13369,90 @@ export type Database = {
           soft_limit?: number | null
           text_value?: string | null
           unit?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      platform_banner_dismissals: {
+        Row: {
+          banner_key: string
+          dismissed_at: string
+          user_id: string
+        }
+        Insert: {
+          banner_key: string
+          dismissed_at?: string
+          user_id: string
+        }
+        Update: {
+          banner_key?: string
+          dismissed_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      platform_banners: {
+        Row: {
+          audience: string
+          body: string | null
+          business_ids: string[]
+          created_at: string
+          created_by: string | null
+          dismissible: boolean
+          ended_at: string | null
+          ends_at: string | null
+          id: string
+          link_label: string | null
+          link_url: string | null
+          placements: string[]
+          plans: string[]
+          priority: number
+          starts_at: string
+          title: string
+          tone: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          audience?: string
+          body?: string | null
+          business_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          link_label?: string | null
+          link_url?: string | null
+          placements: string[]
+          plans?: string[]
+          priority?: number
+          starts_at?: string
+          title: string
+          tone?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          audience?: string
+          body?: string | null
+          business_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          link_label?: string | null
+          link_url?: string | null
+          placements?: string[]
+          plans?: string[]
+          priority?: number
+          starts_at?: string
+          title?: string
+          tone?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -12412,6 +13541,72 @@ export type Database = {
           status?: string
           updated_at?: string
           updated_by?: string | null
+        }
+        Relationships: []
+      }
+      platform_maintenance_windows: {
+        Row: {
+          announce_banner: boolean
+          cancelled_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_email: string | null
+          ended_at: string | null
+          ended_by: string | null
+          ends_at: string | null
+          expected_back_at: string | null
+          id: string
+          keep_automation_running: boolean
+          keep_quote_pages_online: boolean
+          level: string
+          message: string | null
+          notice_queued_at: string | null
+          notify_owners: boolean
+          reason: string | null
+          starts_at: string
+          updated_at: string
+        }
+        Insert: {
+          announce_banner?: boolean
+          cancelled_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_email?: string | null
+          ended_at?: string | null
+          ended_by?: string | null
+          ends_at?: string | null
+          expected_back_at?: string | null
+          id?: string
+          keep_automation_running?: boolean
+          keep_quote_pages_online?: boolean
+          level: string
+          message?: string | null
+          notice_queued_at?: string | null
+          notify_owners?: boolean
+          reason?: string | null
+          starts_at: string
+          updated_at?: string
+        }
+        Update: {
+          announce_banner?: boolean
+          cancelled_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_email?: string | null
+          ended_at?: string | null
+          ended_by?: string | null
+          ends_at?: string | null
+          expected_back_at?: string | null
+          id?: string
+          keep_automation_running?: boolean
+          keep_quote_pages_online?: boolean
+          level?: string
+          message?: string | null
+          notice_queued_at?: string | null
+          notify_owners?: boolean
+          reason?: string | null
+          starts_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -14273,9 +15468,13 @@ export type Database = {
           currency: string
           default_deposit_bps: number | null
           discount_policy: Json
+          invoice_pay_link_url: string | null
+          invoice_pay_mode: string
           legal_name: string | null
           payment_terms_days: number
+          quote_nudges_enabled: boolean
           reminder_offsets: number[]
+          require_drawn_signature: boolean
           terms_text: string
           updated_at: string
           updated_by: string | null
@@ -14291,9 +15490,13 @@ export type Database = {
           currency?: string
           default_deposit_bps?: number | null
           discount_policy?: Json
+          invoice_pay_link_url?: string | null
+          invoice_pay_mode?: string
           legal_name?: string | null
           payment_terms_days?: number
+          quote_nudges_enabled?: boolean
           reminder_offsets?: number[]
+          require_drawn_signature?: boolean
           terms_text?: string
           updated_at?: string
           updated_by?: string | null
@@ -14309,9 +15512,13 @@ export type Database = {
           currency?: string
           default_deposit_bps?: number | null
           discount_policy?: Json
+          invoice_pay_link_url?: string | null
+          invoice_pay_mode?: string
           legal_name?: string | null
           payment_terms_days?: number
+          quote_nudges_enabled?: boolean
           reminder_offsets?: number[]
+          require_drawn_signature?: boolean
           terms_text?: string
           updated_at?: string
           updated_by?: string | null
@@ -14520,6 +15727,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      r2_object_tombstones: {
+        Row: {
+          business_id: string
+          created_at: string
+          kind: string
+          object_key: string
+          purged_at: string | null
+          reason: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          kind: string
+          object_key: string
+          purged_at?: string | null
+          reason?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          kind?: string
+          object_key?: string
+          purged_at?: string | null
+          reason?: string
+        }
+        Relationships: []
       }
       rate_limits: {
         Row: {
@@ -16073,6 +17307,9 @@ export type Database = {
           id: string
           intent_monitor_limit: number
           lead_limit: number
+          mrr_currency: string | null
+          mrr_minor: number | null
+          mrr_updated_at: string | null
           payment_method_brand: string | null
           payment_method_id: string | null
           payment_method_last4: string | null
@@ -16109,6 +17346,9 @@ export type Database = {
           id?: string
           intent_monitor_limit?: number
           lead_limit?: number
+          mrr_currency?: string | null
+          mrr_minor?: number | null
+          mrr_updated_at?: string | null
           payment_method_brand?: string | null
           payment_method_id?: string | null
           payment_method_last4?: string | null
@@ -16145,6 +17385,9 @@ export type Database = {
           id?: string
           intent_monitor_limit?: number
           lead_limit?: number
+          mrr_currency?: string | null
+          mrr_minor?: number | null
+          mrr_updated_at?: string | null
           payment_method_brand?: string | null
           payment_method_id?: string | null
           payment_method_last4?: string | null
@@ -17234,8 +18477,10 @@ export type Database = {
       }
       voice_call_outcomes: {
         Row: {
+          attribution_spoken: boolean | null
           business_id: string
           callback_requested_for: string | null
+          closing_version: string | null
           created_at: string
           disposition: string
           facts: Json
@@ -17246,8 +18491,10 @@ export type Database = {
           voice_call_id: string
         }
         Insert: {
+          attribution_spoken?: boolean | null
           business_id: string
           callback_requested_for?: string | null
+          closing_version?: string | null
           created_at?: string
           disposition: string
           facts?: Json
@@ -17258,8 +18505,10 @@ export type Database = {
           voice_call_id: string
         }
         Update: {
+          attribution_spoken?: boolean | null
           business_id?: string
           callback_requested_for?: string | null
+          closing_version?: string | null
           created_at?: string
           disposition?: string
           facts?: Json
@@ -17475,11 +18724,13 @@ export type Database = {
           answered_at: string | null
           attempt_number: number
           billed_sec: number | null
+          brief_version: string | null
           business_id: string
           business_number_id: string | null
           call_key: string
           calling_as_name: string | null
           carrier_call_sid: string | null
+          carrier_call_sid_source: string | null
           consent_basis: string | null
           created_at: string
           destination_class: string | null
@@ -17498,6 +18749,7 @@ export type Database = {
           opportunity_id: string | null
           outcome: string | null
           persona_name: string | null
+          premium_voice: boolean
           provider: string | null
           provider_call_id: string | null
           queued_at: string | null
@@ -17516,11 +18768,13 @@ export type Database = {
           answered_at?: string | null
           attempt_number?: number
           billed_sec?: number | null
+          brief_version?: string | null
           business_id: string
           business_number_id?: string | null
           call_key: string
           calling_as_name?: string | null
           carrier_call_sid?: string | null
+          carrier_call_sid_source?: string | null
           consent_basis?: string | null
           created_at?: string
           destination_class?: string | null
@@ -17539,6 +18793,7 @@ export type Database = {
           opportunity_id?: string | null
           outcome?: string | null
           persona_name?: string | null
+          premium_voice?: boolean
           provider?: string | null
           provider_call_id?: string | null
           queued_at?: string | null
@@ -17557,11 +18812,13 @@ export type Database = {
           answered_at?: string | null
           attempt_number?: number
           billed_sec?: number | null
+          brief_version?: string | null
           business_id?: string
           business_number_id?: string | null
           call_key?: string
           calling_as_name?: string | null
           carrier_call_sid?: string | null
+          carrier_call_sid_source?: string | null
           consent_basis?: string | null
           created_at?: string
           destination_class?: string | null
@@ -17580,6 +18837,7 @@ export type Database = {
           opportunity_id?: string | null
           outcome?: string | null
           persona_name?: string | null
+          premium_voice?: boolean
           provider?: string | null
           provider_call_id?: string | null
           queued_at?: string | null
@@ -17921,8 +19179,12 @@ export type Database = {
       }
       voice_settings: {
         Row: {
+          admin_controls_updated_at: string | null
           admin_kill_reason: string | null
           admin_kill_switch: boolean
+          admin_outbound_paused: boolean
+          admin_outbound_paused_reason: string | null
+          admin_spend_limit_gbp_month: number | null
           assistant_persona_name: string | null
           business_id: string
           calling_as_name: string | null
@@ -17935,15 +19197,21 @@ export type Database = {
           provider_agent_id: string | null
           recording_enabled: boolean
           recording_retention_days: number
+          transfer_mode: string
           transfer_number_e164: string | null
           updated_at: string
           voice_enabled: boolean
+          voice_profile: Json
           voicemail_enabled: boolean
           workspace_concurrency: number
         }
         Insert: {
+          admin_controls_updated_at?: string | null
           admin_kill_reason?: string | null
           admin_kill_switch?: boolean
+          admin_outbound_paused?: boolean
+          admin_outbound_paused_reason?: string | null
+          admin_spend_limit_gbp_month?: number | null
           assistant_persona_name?: string | null
           business_id: string
           calling_as_name?: string | null
@@ -17956,15 +19224,21 @@ export type Database = {
           provider_agent_id?: string | null
           recording_enabled?: boolean
           recording_retention_days?: number
+          transfer_mode?: string
           transfer_number_e164?: string | null
           updated_at?: string
           voice_enabled?: boolean
+          voice_profile?: Json
           voicemail_enabled?: boolean
           workspace_concurrency?: number
         }
         Update: {
+          admin_controls_updated_at?: string | null
           admin_kill_reason?: string | null
           admin_kill_switch?: boolean
+          admin_outbound_paused?: boolean
+          admin_outbound_paused_reason?: string | null
+          admin_spend_limit_gbp_month?: number | null
           assistant_persona_name?: string | null
           business_id?: string
           calling_as_name?: string | null
@@ -17977,9 +19251,11 @@ export type Database = {
           provider_agent_id?: string | null
           recording_enabled?: boolean
           recording_retention_days?: number
+          transfer_mode?: string
           transfer_number_e164?: string | null
           updated_at?: string
           voice_enabled?: boolean
+          voice_profile?: Json
           voicemail_enabled?: boolean
           workspace_concurrency?: number
         }
@@ -17989,6 +19265,79 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: true
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_tool_calls: {
+        Row: {
+          args_hash: string
+          business_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          latency_ms: number | null
+          lead_id: string
+          operation: string | null
+          refusal_code: string | null
+          result: Json
+          status: string
+          tool: string
+          tool_call_id: string
+          voice_call_id: string
+        }
+        Insert: {
+          args_hash: string
+          business_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          lead_id: string
+          operation?: string | null
+          refusal_code?: string | null
+          result?: Json
+          status: string
+          tool: string
+          tool_call_id: string
+          voice_call_id: string
+        }
+        Update: {
+          args_hash?: string
+          business_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          lead_id?: string
+          operation?: string | null
+          refusal_code?: string | null
+          result?: Json
+          status?: string
+          tool?: string
+          tool_call_id?: string
+          voice_call_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_tool_calls_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_tool_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_tool_calls_voice_call_id_fkey"
+            columns: ["voice_call_id"]
+            isOneToOne: false
+            referencedRelation: "voice_calls"
             referencedColumns: ["id"]
           },
         ]
@@ -18403,6 +19752,115 @@ export type Database = {
             foreignKeyName: "workspace_app_installs_business_id_fkey"
             columns: ["business_id"]
             isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_competitors: {
+        Row: {
+          aliases: string[]
+          approved_points: string[]
+          business_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          name: string
+          never_say: string[]
+          slug: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          aliases?: string[]
+          approved_points?: string[]
+          business_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name: string
+          never_say?: string[]
+          slug: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          aliases?: string[]
+          approved_points?: string[]
+          business_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          never_say?: string[]
+          slug?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_competitors_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_deletion_schedule: {
+        Row: {
+          business_id: string
+          created_at: string
+          deleted_at: string | null
+          deletion_started_at: string | null
+          ended_at: string
+          held_at: string | null
+          held_by: string | null
+          hold: boolean
+          hold_reason: string | null
+          last_result: Json | null
+          last_run_at: string | null
+          notice_day60_sent_at: string | null
+          notice_day83_sent_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          deleted_at?: string | null
+          deletion_started_at?: string | null
+          ended_at: string
+          held_at?: string | null
+          held_by?: string | null
+          hold?: boolean
+          hold_reason?: string | null
+          last_result?: Json | null
+          last_run_at?: string | null
+          notice_day60_sent_at?: string | null
+          notice_day83_sent_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          deletion_started_at?: string | null
+          ended_at?: string
+          held_at?: string | null
+          held_by?: string | null
+          hold?: boolean
+          hold_reason?: string | null
+          last_result?: Json | null
+          last_run_at?: string | null
+          notice_day60_sent_at?: string | null
+          notice_day83_sent_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_deletion_schedule_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
             referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
@@ -19041,6 +20499,19 @@ export type Database = {
         Args: { p_business_id: string; p_campaign_id: string }
         Returns: boolean
       }
+      claim_commercial_action: {
+        Args: {
+          p_action_key: string
+          p_action_kind: string
+          p_business_id: string
+          p_holder_kind: string
+          p_holder_ref: string
+          p_lead_id: string
+          p_lead_lock_id: number
+          p_lease_seconds: number
+        }
+        Returns: Json
+      }
       claim_commissions_for_payout: {
         Args: { p_affiliate_id: string; p_payout_id: string }
         Returns: {
@@ -19049,7 +20520,7 @@ export type Database = {
         }[]
       }
       claim_jobs: {
-        Args: { batch_size: number; worker: string }
+        Args: { batch_size: number; exclude_types?: string[]; worker: string }
         Returns: {
           attempts: number
           business_id: string
@@ -19506,6 +20977,38 @@ export type Database = {
           prospect_count: number
         }[]
       }
+      platform_maintenance_public: {
+        Args: never
+        Returns: {
+          announce_banner: boolean
+          ends_at: string
+          expected_back_at: string
+          id: string
+          keep_automation_running: boolean
+          keep_quote_pages_online: boolean
+          level: string
+          message: string
+          starts_at: string
+        }[]
+      }
+      platform_marketing_banners: {
+        Args: never
+        Returns: {
+          audience: string
+          body: string
+          dismissible: boolean
+          ends_at: string
+          id: string
+          link_label: string
+          link_url: string
+          placements: string[]
+          priority: number
+          starts_at: string
+          title: string
+          tone: string
+          updated_at: string
+        }[]
+      }
       process_workspace_app_event: {
         Args: { p_business_id: string; p_event_id: string }
         Returns: string
@@ -19553,6 +21056,14 @@ export type Database = {
       prune_oauth_states: { Args: never; Returns: number }
       prune_rate_limits: { Args: { older_than?: string }; Returns: number }
       prune_workspace_stream_events: { Args: never; Returns: number }
+      purge_affiliate_identifiers: {
+        Args: never
+        Returns: {
+          clicks_deleted: number
+          fingerprints_deleted: number
+          hashes_cleared: number
+        }[]
+      }
       quote_public_view: { Args: { p_token: string }; Returns: Json }
       quote_record_signature: {
         Args: {
@@ -19645,6 +21156,14 @@ export type Database = {
         Args: { p_business_id: string; p_campaign_id: string }
         Returns: undefined
       }
+      release_commercial_lease: {
+        Args: {
+          p_business_id: string
+          p_holder_kind: string
+          p_lead_id: string
+        }
+        Returns: undefined
+      }
       reserve_ai_tokens: {
         Args: {
           target_business_id: string
@@ -19653,6 +21172,19 @@ export type Database = {
           ttl_seconds?: number
         }
         Returns: string
+      }
+      restore_disputed_ai_tokens: {
+        Args: {
+          idem_key: string
+          target_period_start: string
+          target_purchase_id: string
+          tokens: number
+        }
+        Returns: number
+      }
+      restore_disputed_message_credits: {
+        Args: { idem_key: string; target_purchase_id: string; units: number }
+        Returns: number
       }
       reverse_ai_token_purchase: {
         Args: {
@@ -19775,6 +21307,34 @@ export type Database = {
           prospects: number
           sourcing_runs: number
         }[]
+      }
+      voice_call_begin_dial: {
+        Args: {
+          p_business_id: string
+          p_call_id: string
+          p_lead_lock_id: number
+          p_platform_limit: number
+          p_workspace_limit: number
+          p_workspace_lock_id: number
+        }
+        Returns: string
+      }
+      voice_minutes_apply: {
+        Args: {
+          p_business_id: string
+          p_expected_included: number
+          p_expected_pack: number
+          p_included_delta: number
+          p_ledger: Json
+          p_pack_delta: number
+          p_period?: Json
+          p_reservation?: Json
+        }
+        Returns: string
+      }
+      workspace_close_after_retention: {
+        Args: { p_business_id: string }
+        Returns: Json
       }
     }
     Enums: {
