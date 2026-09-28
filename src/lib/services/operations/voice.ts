@@ -350,7 +350,16 @@ defineOperation("voice.settings_update", {
       patch.recording_retention_days = args.recording.retentionDays;
     }
 
-    const { error } = await db().from("voice_settings").upsert(patch, { onConflict: "business_id" });
+    // Update an existing row; insert only the first time. An upsert of a
+    // partial row fails here: Postgres checks the CHECK constraints on the
+    // proposed insert row before it sees the conflict, so switching voice on
+    // ({ voice_enabled: true } alone) tripped voice_settings_identity_before_enable
+    // even with the identity already saved (owner test call, 2026-09-28).
+    const { business_id: _businessId, ...changes } = patch;
+    void _businessId;
+    const { error } = before
+      ? await db().from("voice_settings").update(changes).eq("business_id", context.businessId)
+      : await db().from("voice_settings").insert(patch);
     if (error) {
       if (error.code === "23514") throw new ServiceError("INVALID_INPUT", "Complete your calling identity before switching voice on.");
       throw new ServiceError("UNAVAILABLE", "Voice settings could not be saved. Try again.");
