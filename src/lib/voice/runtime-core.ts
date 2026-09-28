@@ -276,6 +276,8 @@ export type VoiceRepo = {
     workspaceLockId: number;
     workspaceLimit: number;
     platformLimit: number;
+    /** A person asked for this call: the takeover check is skipped (0177). */
+    personRequested?: boolean;
   }): Promise<BeginDialResult>;
   queueCall(input: { callId: string; businessId: string; priority: QueuePriority; notBefore: Date }): Promise<void>;
   dequeueCall(callId: string): Promise<void>;
@@ -753,6 +755,7 @@ export async function dialCall(deps: VoiceDeps, callId: string, opts: { personRe
     workspaceLockId: advisoryLockId(`voice:workspace:${call.business_id}`),
     workspaceLimit: ctx.settings?.workspace_concurrency ?? DEFAULT_WORKSPACE_CONCURRENCY,
     platformLimit: deps.config.platformConcurrency ?? DEFAULT_PLATFORM_CONCURRENCY,
+    personRequested,
   });
   if (begun === "NOT_QUEUED" || begun === "NOT_FOUND") {
     // Another run of this job won the transition and holds this reservation.

@@ -445,6 +445,8 @@ const repo: VoiceRepo = {
       p_workspace_lock_id: input.workspaceLockId,
       p_workspace_limit: input.workspaceLimit,
       p_platform_limit: input.platformLimit,
+      // 0177: a person's own "Call with AI" skips only the takeover check.
+      ...(input.personRequested ? { p_person_requested: true } : {}),
     });
     if (!error) return String(data) as BeginDialResult;
     if (!(error.code && MISSING.has(error.code))) throw new Error(`voice begin dial: ${error.message}`);
