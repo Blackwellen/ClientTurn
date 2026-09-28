@@ -19,6 +19,9 @@
 --                          when the workspace or platform concurrency is full.
 --                          A second dial of the same call finds it no longer
 --                          QUEUED ('NOT_QUEUED'): a double dial is impossible.
+--   voice_settings         gains transfer_mode (Settings, Voice: "Human
+--                          transfer: number, when"). The app tolerates the
+--                          column being absent until this is applied.
 --   suppression_entries    the channel CHECK gains VOICE, so "don't call me"
 --                          stops calls without stopping the texts the person
 --                          still wants. Only widened.
@@ -214,3 +217,8 @@ grant execute on function public.voice_call_begin_dial(uuid, uuid, integer, inte
 alter table public.suppression_entries drop constraint if exists suppression_entries_channel_check;
 alter table public.suppression_entries add constraint suppression_entries_channel_check
   check (channel in ('EMAIL', 'SMS', 'WHATSAPP', 'SOCIAL', 'VOICE', 'ALL'));
+
+-- ======================================================= voice_settings.transfer_mode
+alter table public.voice_settings
+  add column if not exists transfer_mode text not null default 'ON_REQUEST'
+    check (transfer_mode in ('ON_REQUEST', 'ON_REQUEST_OR_ESCALATION', 'NEVER'));
