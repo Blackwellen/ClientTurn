@@ -640,6 +640,102 @@ from the facts, and the conversation behaves the same; the per-interest
 opportunity rows, the guarded close projection and the extra CRM deals start
 when it is applied.
 
+## Commercial rules: what an agent sells, best fit, competitors (0174)
+
+Three rules about *what* the assistant may sell and say, all decided in code
+and enforced server-side. The model words the result; it never makes the
+choice (CLAUDE.md resolved conflict 1).
+
+### What an agent sells (`agents/offer-target.ts`)
+
+An agent (Agents → agent → Settings → **What it sells**, or the wizard's
+Limits step) sells the **whole catalogue** (the default, and the behaviour
+before 0174) or **specific products and services**: offers (`services`)
+and/or priced lines (`catalogue_items`). Choosing an offer covers all of its
+items; choosing one item puts its offer on the card but not the offer's other
+items. The legacy `agents.service_id` is read as a one-offer target until a
+target is saved (which clears it). Saved only through
+`agent.set_offer_target` (closed to `AGENT` callers, like `agent.configure`:
+a process may not widen what it pitches); ids are checked against the
+workspace's live catalogue.
+
+A conversation is governed by its lead's agent (`leads.agent_id`). With a
+target:
+
+* the offer card lists only in-target offers and their published prices,
+  plus a `SCOPE` line; `publishedPriceStrings` is filtered the same way, so an
+  out-of-target price fails the price check;
+* the validator refuses a draft naming an out-of-target offer or item
+  (`OFF_TARGET_OFFER`), retry then hand-over as for any claim. A name that is
+  part of an in-target name ("SEO" inside "SEO audit") is not refused;
+* the best-fit scorer excludes out-of-target candidates (`OUT_OF_TARGET`);
+* the closing agent (`ticks.ts runBookingTick`) chases only leads on in-target
+  offers, toward the goals of in-target opportunities only
+  (`closingGoalsInTarget`).
+
+Anything unreadable (0174 not applied, a failed read) falls back to the whole
+catalogue: the agent then behaves exactly as before, never sells *more*.
+
+### Best fit (`commercial/best-fit.ts`)
+
+A deterministic scorer ranks active offers and sellable items (not archived,
+not add-on-only) for one lead from facts already stored. Fixed points:
+
+| Reason | Points | Rule |
+|---|---|---|
+| `LEAD_SERVICE` | +40 | the lead came in on this offer |
+| `OPEN_INTEREST` | +30 | an open opportunity on this offer (0144) |
+| `NAMED_INTEREST` | +25 | a `PRODUCT_INTEREST` fact or a lead tag names it |
+| `BUDGET_FITS` | +15 | budget (GBP) at or above its price floor |
+| `BUDGET_MAY_BE_LOW` | -10 | an INFERRED budget below the floor |
+| `REGION_MATCH` | +10 | postcode inside the offer's `geography.postcodePrefixes` |
+| `SIZE_MATCH` / `SIZE_OUTSIDE_TARGET` | +10 / -15 | company size vs `targetCustomer.sizes` |
+
+Exclusions (not eligible): `OUT_OF_TARGET`, `BUDGET_BELOW_PRICE` (CONFIRMED
+budget only), `REGION_EXCLUDED`, `SIZE_EXCLUDED`. Lead notes (shown, never
+ranked): `ICP_FIT_STRONG`/`ICP_FIT_WEAK` (current lead score grade),
+`TIMELINE_KNOWN`, `BUDGET_UNKNOWN`. Facts are read live only: not superseded
+or expired, REJECTED/CONFLICTING never, AI-extracted only at 0.85+.
+
+**No guess.** A recommendation needs a demand reason. Otherwise the answer is
+`INSUFFICIENT_DATA` with `NO_STATED_NEED`, `TIED` (different offers score the
+same), `NONE_ELIGIBLE` or `NO_CATALOGUE`. A tie between an offer and its own
+items resolves to the single matching item (`MOST_SPECIFIC`), else the offer.
+Prices are compared, never rendered: the card line carries a name and reason
+codes only.
+
+Shown on the lead page as **Best fit** with the reasons, readable over
+Copilot/MCP as `lead.best_fit`, and given to the model as the card's
+`RECOMMENDED FIT` section.
+
+### Competitors (`sales-library/competitors.ts`)
+
+Settings → AI & selling → **Competitors**: name, aliases, approved factual
+comparison points, never-say lines (`competitor.save/remove/list`, table
+`workspace_competitors`). An approved point may not be a put-down (refused on
+save, as are dashes and pressure wording).
+
+* **Detection** is deterministic: a whole-word match of a name or alias in the
+  lead's own recent messages. Only the mentioned competitors' points and
+  never-say lines reach the card (`COMPETITOR POINTS`, `NEVER SAY ABOUT
+  COMPETITORS`), with the rule "never criticise a competitor or say anything
+  about one beyond the approved points".
+* **The validator** (`UNAPPROVED_COMPETITOR_CLAIM`) checks every draft against
+  every enabled competitor, mentioned or not: a never-say line anywhere; a
+  put-down in a sentence naming one; and a sentence naming one with
+  comparison or judgement wording that does not contain one of its approved
+  points word for word. Neutral mentions pass. Limitation: a claim that never
+  names the competitor ("they charge hidden fees") is caught only by the
+  never-say lines and the prompt.
+
+### Budget and caching
+
+The card budget (`OFFER_CARD_TOKEN_BUDGET`, 600) is unchanged; new items drop
+by priority like any other (never-say rules are priority 0). The lead-specific
+sections (`RECOMMENDED FIT`, competitor lines) render **after** every stable
+section, so the card's prefix is identical across a workspace's leads and the
+provider can keep caching it.
+
 ## Quiet hours, suppression and sending
 
 The agent does **not** own any of these. `evaluateSendGate` predicts what the
@@ -776,6 +872,19 @@ explicitly rather than falling through to the carrier. An agent reply on this
 channel is stored and performed from the social queue, or through a partner
 integration where a workspace has one. See `lib/outreach/social-partners.ts`.
 
+**LinkedIn Assist (0171, owner decision 2026-09-28).** A person pastes a reply
+into Follow-Up → LinkedIn Assist ("Log reply"). For a lead it is stored as an
+inbound `linkedin` message on the lead's thread (`li_urn:profile:<slug>`) and
+an ordinary agent turn is queued. `evaluateSendGate` returns **DRAFT, never
+SEND** on `linkedin` once the hard denials pass, because there is no
+transport: the draft appears on the person's list to copy, send from their own
+account and mark sent (`sendDraft` refuses LinkedIn drafts for the same
+reason). A logged reply counts as the connection gate passed
+(`loadSocialConnectionState` reads `linkedin_assist_contacts.state = REPLIED`).
+An opt-out phrase in the pasted reply is still decided deterministically first:
+it suppresses the lead's email, phone and LinkedIn thread address, and no draft
+is written. A prospect's reply goes through `ingestSocialReply` as before.
+
 Length is the one ordinary thing: `CHANNEL_LIMITS.linkedin` is
 `{ preferred: 700, hard: 1900 }` — the hard figure is the platform's own
 ceiling, the preferred one is far below it because the message is read in a
@@ -890,6 +999,19 @@ opening message are composed and paced here and performed by a person
 (`ASSISTED` mode in `outreach/social-outreach.ts`); replies are recorded rather
 than synced. `PARTNER_API` mode exists for workspaces holding a compliant
 integration and takes the identical path through every check above.
+
+### Instagram before Meta approves messaging (`meta-gate.ts`)
+
+Until Meta grants `instagram_manage_messages` (and `instagram_basic`), the
+connection's capability is `NEEDS_META_APPROVAL` and the send path refuses
+every Instagram send. The orchestrator therefore checks it first on an
+Instagram thread: after the binding verdicts (an opt-out or complaint is
+still recorded), before anything is composed, it records a `POLICY`
+hand-over with trigger `META_APPROVAL_REQUIRED` and a note saying Instagram
+messaging requires Meta approval and to reply from the Instagram app. No reply
+is composed or queued, and no acknowledgement is sent (it would go through the
+same refused channel). `UNVERIFIED` (scopes never recorded) is not blocked,
+matching the send path. Messenger and every other channel are untouched.
 
 ### Meta's own conduct rules for automation
 
@@ -1523,6 +1645,12 @@ a different shape. Both can coexist.
 `supabase/migrations/0024c_ai_token_allowance.sql` adds `ai_token_balances`,
 `ai_token_ledger`, `ai_token_purchases`, the `consume_ai_tokens` /
 `credit_ai_tokens` RPCs and the per-tier allowance rows.
+
+`supabase/migrations/0174_commercial_rules.sql` (not applied by its author)
+adds `agents.offer_scope`, `target_service_ids`, `target_catalogue_item_ids`
+(column-granted to members, like the rest of `agents`) and
+`workspace_competitors` (member read, service-role write, RLS forced). See
+"Commercial rules" above.
 
 All three migrations are applied to the **Client Turn** project
 (`losieaikadkadtmezini`).

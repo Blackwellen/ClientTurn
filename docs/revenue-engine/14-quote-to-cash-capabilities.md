@@ -67,6 +67,95 @@ Per-quote cost of goods:
 There is no new metered usage. Payment is collected through the customer's own Stripe account, so
 ClientTurn never holds the money and pays no processing fees.
 
+## Paying an invoice (quote -> pay)
+
+Added 2026-09-28, migration **0173_invoice_pay_links.sql (not applied yet)**. Until it is applied,
+every workspace reads as "bank transfer only" and nothing below changes behaviour.
+
+**Who holds the money.** The workspace is the merchant of record on its own Stripe account
+(CLAUDE.md, Resolved conflict 8). ClientTurn creates no Stripe object, uses no Stripe Connect and
+holds no funds. It sends the workspace's own link and reads the payment result.
+
+**Setup (Settings -> Quotes & invoices, "How invoices are paid").** Owner or admin, through
+`quote_settings.update`. There are three modes:
+
+| Mode | What the customer gets |
+|---|---|
+| `NONE` (the default) | Bank transfer only. No pay button anywhere. |
+| `WORKSPACE_LINK` | One Stripe Payment Link for every invoice. Make it a "let customers choose what to pay" link: the email and page tell the customer to enter the amount due. |
+| `PER_INVOICE` | A person pastes a fixed-price Payment Link on each invoice (lead page -> Quotes -> Add pay link, `invoice.set_pay_link`, UI-only, admin). An invoice without one shows no button. |
+
+**The link.** When an invoice is issued it gets an opaque pay token (`invoices.pay_token`, random,
+fixed once set by a 0173 trigger). The link sent is the workspace's link plus one parameter, using the
+same mechanism as tracked checkout links (`payments/tracking.ts`):
+
+- `client_reference_id=<token>` on `buy.stripe.com`;
+- `ct_ref=<token>` otherwise.
+
+The URL never contains the lead id. `invoicing/pay-link.ts` `invoicePayUrl` is the one rule. It
+returns no link when the mode is `NONE`, no link is configured, the invoice is not `OPEN` or
+`PARTIALLY_PAID`, or it has no token. Where the "Pay now" button shows:
+
+- in the invoice email and each reminder (`invoicing/store.ts` `deliverInvoice`);
+- on the public quote page, after signing, for the earliest unpaid invoice with a link
+  (`quotes/public-server.ts` `paymentNextStep`; the page only reads, and never writes);
+- as "Copy pay link" on the lead page.
+
+**Settlement.** This uses the same path as a direct sale:
+
+1. The customer's Stripe sends `checkout.session.completed` to the workspace's payments webhook.
+2. The webhook verifies the signature, writes `webhook_events`, acknowledges, and queues
+   `payment.confirm`. There is no provider I/O in the request.
+3. `payments/confirm.ts` records the `checkout_payments` row.
+4. If its token is an invoice's pay token, the payment is recorded on that invoice through the
+   invoicing append-payment path (`service-core.ts` `recordPayment`). The rest is the existing
+   machinery:
+   - the 0154 trigger moves `paid_minor` and the status;
+   - `invoice.paid` is emitted by the insert that paid the invoice off, and only by that insert;
+   - `projectOntoQuote` moves the quote to `DEPOSIT_PAID` (a deposit invoice) or `PAID` (every
+     schedule invoice paid), which also stops the sales chase.
+
+   An invoice payment closes no opportunity and sends no thank-you. The checkout row becomes
+   `MATCHED`, `match_kind = 'INVOICE'`, with `invoice_id` set.
+
+**Settlement rules** (`invoicing/settlement.ts`, `tests/invoice-pay-links.test.ts`):
+
+| Payment | Result |
+|---|---|
+| Token names an open invoice in this workspace, amount <= due, same currency | Recorded; the invoice is `PARTIALLY_PAID` or `PAID` |
+| Amount > due | The amount due is recorded; the payment is flagged `OVERPAID` and the owner told to refund or credit the rest |
+| Currency differs | `REVIEW` (`CURRENCY_MISMATCH`); nothing recorded |
+| Invoice already `PAID` | `REVIEW` (`INVOICE_ALREADY_PAID`); nothing recorded |
+| Invoice `DRAFT`, `VOID` or `UNCOLLECTIBLE`, or changed underneath | `REVIEW` (`INVOICE_NOT_PAYABLE`) |
+| Same provider payment again (duplicate webhook, retried job, crash mid-way) | Nothing recorded again. The invoice payment is unique on (workspace, provider, order id). A retry after a crash finishes the quote projection without a second `invoice.paid`. |
+| No token, or an email-only match | `REVIEW` on the payment, as for any direct sale. **Never** an automatic invoice settlement. |
+| Token names another workspace's invoice | Ignored for invoicing (lookups are workspace-scoped) |
+| `charge.refunded` / `charge.dispute.created` on a recorded payment | Flagged `REFUNDED` / `DISPUTED` and the owner told. Nothing is reversed: a refund is corrected with a credit note (`invoice.credit_note`), and a dispute is answered in Stripe. |
+
+REVIEW items appear with the other payments needing a person (Settings -> Connections -> Payments),
+and the owner gets one notification per payment and reason. Resolve an invoice REVIEW item by
+recording the payment on the invoice by hand (Record payment). Linking it to the lead would treat it
+as a direct sale.
+
+**Stripe webhook events.** `checkout.session.completed`, `checkout.session.async_payment_succeeded`
+and `invoice.paid` are needed. Add `charge.refunded` and `charge.dispute.created` to have refunds and
+disputes flagged.
+
+**Test it end to end in Stripe TEST mode (no live account, no code calls Stripe):**
+
+1. Apply 0173. In the workspace's Stripe account, switch to Test mode.
+2. Create a Payment Link: Product "Invoice payment", "Let customers choose what to pay", GBP.
+3. Paste the `https://buy.stripe.com/test_...` URL into Settings -> Quotes & invoices -> "One Stripe
+   Payment Link for every invoice". Save.
+4. Settings -> Connections -> Payments: create the Stripe endpoint. In Stripe (Test mode) ->
+   Developers -> Webhooks, add its URL with the events above, and paste the `whsec_` secret.
+5. On a lead, build a quote with a deposit, send it, then open the link and sign it.
+6. Create invoices (automatic issue on). The deposit invoice is issued and emailed with "Pay now".
+   The quote page shows the button too.
+7. Pay with `4242 4242 4242 4242`, any future date, any CVC, entering the deposit amount.
+8. Within a minute, the deposit invoice is PAID and the quote is DEPOSIT_PAID. Pay the balance
+   invoice the same way, and the quote moves to PAID.
+
 ## PDF dependency decision
 
 The repo has no PDF library, and a quote is text, rules and a table. `src/lib/quotes/pdf.ts` is a

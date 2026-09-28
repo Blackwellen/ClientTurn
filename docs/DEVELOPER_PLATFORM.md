@@ -286,7 +286,7 @@ waits, and concludes the product is broken.
 | `quote.expired` | `quotes/events.ts`, from the `quote.expire` job |
 | `signature.completed` | `quotes/events.ts`, from the public quote page when the signature is recorded |
 | `invoice.issued` | `quotes/events.ts`, from the `invoice.issue` operation or job |
-| `invoice.paid` | `quotes/events.ts`, from `invoice.record_payment` when the invoice is paid in full |
+| `invoice.paid` | `quotes/events.ts`, from `invoice.record_payment`, or from `payment.confirm` when a pay-link payment settles it (0173), when the invoice is paid in full |
 | `invoice.overdue` | `quotes/events.ts`, from the `invoice.remind` job (first overdue reminder) |
 
 The three `opportunity.*` payloads carry `lead_id`; `opportunity.created` adds
@@ -368,7 +368,7 @@ importantly, absent from all of them if it is not declared.
 
 <!-- mcp-tools:start (generated: node scripts/generate-mcp-tools-doc.mjs) -->
 
-140 tools are declared for MCP clients, across 33 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
+145 tools are declared for MCP clients, across 34 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
 
 | Domain | Tool | Kind | Scope |
 |---|---|---|---|
@@ -376,6 +376,7 @@ importantly, absent from all of them if it is not declared.
 | `agent` | `agent.get` | READ | `agents:read` |
 | `agent` | `agent.create` | WRITE | `agents:write` |
 | `agent` | `agent.configure` | WRITE | `agents:write` |
+| `agent` | `agent.set_offer_target` | WRITE | `agents:write` |
 | `agent` | `agent.start` | APPROVAL_GATED | `agents:write` |
 | `agent` | `agent.run_now` | APPROVAL_GATED | `agents:write` |
 | `agent` | `agent.pause` | WRITE | `agents:write` |
@@ -401,6 +402,9 @@ importantly, absent from all of them if it is not declared.
 | `catalogue` | `catalogue.upsert_item` | WRITE | `business:write` |
 | `catalogue` | `catalogue.upsert_bundle` | WRITE | `business:write` |
 | `catalogue` | `catalogue.archive` | WRITE | `business:write` |
+| `competitor` | `competitor.list` | READ | `business:read` |
+| `competitor` | `competitor.save` | WRITE | `business:write` |
+| `competitor` | `competitor.remove` | WRITE | `business:write` |
 | `connector` | `connector.list` | READ | `business:read` |
 | `connector` | `connector.get` | READ | `business:read` |
 | `connector` | `connector.replay_event` | WRITE | `business:write` |
@@ -426,6 +430,7 @@ importantly, absent from all of them if it is not declared.
 | `invoice` | `invoice.list` | READ | `leads:read` |
 | `lead` | `lead.get` | READ | `leads:read` |
 | `lead` | `lead.search` | READ | `leads:read` |
+| `lead` | `lead.best_fit` | READ | `leads:read` |
 | `lead` | `lead.update` | WRITE | `leads:write` |
 | `lead` | `lead.assign` | WRITE | `leads:write` |
 | `lead` | `lead.set_status` | WRITE | `leads:write` |
@@ -647,7 +652,9 @@ Stripe-Signature: t=<unix>,v1=<hex>
 
 Add the URL shown in Settings as a webhook endpoint in **your** Stripe account
 (Developers → Webhooks) with the events `checkout.session.completed`,
-`checkout.session.async_payment_succeeded` and `invoice.paid`, then paste the
+`checkout.session.async_payment_succeeded` and `invoice.paid` (plus
+`charge.refunded` and `charge.dispute.created` to have refunds and disputes
+flagged), then paste the
 endpoint's signing secret (`whsec_…`) into the card. It is sealed with
 `CREDENTIAL_ENCRYPTION_KEY` and never shown again. Verification is Stripe's
 scheme (HMAC-SHA256 over `t.rawBody`, any `v1` may match, 5 minutes'
@@ -658,6 +665,11 @@ tolerance). A delivery with no saved secret is refused.
 | `checkout.session.completed` (`payment_status` `paid` or `no_payment_required`) | the payment; `client_reference_id` is the token; a subscription session's order id is the subscription id |
 | `checkout.session.async_payment_succeeded` | the same, once a delayed method clears |
 | `invoice.paid` | a subscription's first invoice collapses onto its session (same order id) and adds the interval; later invoices are renewals, matched by subscription id; zero-amount invoices are ignored |
+| `charge.refunded`, `charge.dispute.created` | flagged for the owner against the payment with that PaymentIntent (0173); never reverses anything |
+
+A `client_reference_id` that is an invoice's pay token (0173) records the
+payment on that ClientTurn invoice instead of a checkout attempt: see
+`docs/revenue-engine/14-quote-to-cash-capabilities.md`, "Paying an invoice".
 
 This endpoint is separate from `/api/webhooks/stripe`, which is ClientTurn's
 own billing account.

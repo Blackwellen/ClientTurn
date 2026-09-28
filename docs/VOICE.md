@@ -814,6 +814,97 @@ Retell prompt is rendered from), and the scorer also fails a turn of more
 than two sentences and any **dead air**: a tool after which the agent did not
 speak before the lead did.
 
+**Adversarial QA pass (2026-09-28, second): 94 scenarios (46 before), all
+100/100 under a stricter scorer; 162 detection rows (90 before).** A suite
+that scored itself 100 was suspect, and it was: the simulator carried its own
+fallback regexes for opt-outs and "a person", so a scenario passed when
+`speech-intents.ts` missed the phrase. Those fallbacks are gone; the scripted
+agent now hears only through the product table.
+
+What the table missed, now caught (each with a scenario or a row): "you're
+alright mate", "we're sorted", "I already told you no"; "take me off your
+MAILING list", "opt me out", "don't ring me" (no "again": the old pattern
+needed a suffix), "never ring this number again", "leave me alone", "f off" /
+"piss off" (now an opt-out, not a question: a swear-off hung up on was rung
+again), "I'm on the TPS"; "she doesn't work here any more", "I never gave you
+my number"; "I want to speak to your manager"; "is this a scam", "what's
+this about"; voicemail variants ("you've reached Dave, I can't take your
+call", "switched off", "menu options have changed"); "I'm on another call",
+"call back in ten minutes", "I'm busy", "drivin".
+
+False positives fixed (negative scenarios): "not interested in the blue one,
+the red one"; "stop calling it a website"; "don't call me before ten" / "sir";
+"remove me from the invite"; "wrong number? no, the right number"; a complaint
+about their CURRENT agency (was a transfer); "our site is crap" and "it's
+ridiculous how slow our site is" (were ANGRY); "I'm driving the project"; "is
+this a real person" no longer also logs a TRUST objection. post-call.ts's
+private opt-out regex (which recorded "stop calling it a website" and "take
+me off speaker") is removed: opt-outs come only from the table.
+
+New intents in the playbook (and the general prompt): **CALL_SCREEN** (Google
+Call Screen, iOS "record your name": one sentence saying who and why, never a
+voicemail pitch; a person picking up hears the AI disclosure and recording
+notice again), **VULNERABLE** (a child, a carer, dementia, illness, a
+bereavement: stop selling, ask and note nothing, WRONG_PERSON for a person to
+review; post-call too), **DATA_REQUEST** (a subject access request: never
+refused, a colleague sends a copy), **LINE_CHECK** ("hello, are you there"),
+**PRICE_QUESTION** (a price, date, area or guarantee: only a tool, an approved
+offer line, or a colleague). LANGUAGE_BARRIER now says English only, and
+skips the slow-down step when they speak no English at all.
+
+Other product changes: the brief carries a **RECORDING** line with the locked
+answer (`opener.ts` RECORDING_ANSWER_ON / _OFF, `recordingEnabled` from
+`voice_calls.recording_enabled`), replacing "the call may be recorded", which
+was vague and wrong when recording is off (`brief.2026-09-28.v3`). Slot
+labels are spoken, not screen text: `spoken-time.ts`, used by the
+availability and booking tools ("Wednesday 30 September at 10am or 2pm", not
+"Wed 30 Sep, 10:00am or Wed 30 Sep, 2:00pm"). Conversion: the default
+qualification move is one question; NURTURE and REACTIVATION always leave a
+next step (a short call, or an agreed check-in time); "I'll have a think" is a
+NOT_NOW stall that gets a follow-up time instead of ending with none; the
+objection acknowledgement is said once.
+
+**Stricter scoring.** Consecutive agent lines are ONE turn (three lines in a
+row used to pass "two sentences"); at most one question per heard turn;
+locked text (closing, identity, recording answer, a tool's words) is exempt
+from length but not from the question count. On every scenario: never claims
+to be human; the recording answer word for word when asked; an honest "AI
+assistant" when asked; after an opt-out only the tool's confirmation, nothing
+else; no time or day that no tool returned; no area, guarantee, discount or
+start date of its own; nothing recorded with a number or address unless
+confirmed; no call-back in the past; no question to a vulnerable person. The
+scorer itself is tested to fail each of these.
+
+**Prompt budget raised, with the reason.** The general prompt is 1,250
+tokens (pinned at 1,300, was 1,100; the total at 2,550, was 2,350): the new
+intents are the same on every call so they cannot live in the per-call
+brief, and ~150 more tokens a turn is about $0.0009 on a 15-turn call on
+GPT-4.1 mini. Labels were dropped from the rendered block and actions
+tightened to pay for part of it.
+
+**Known limits: only a real call proves these.** Latency (tool round trips
+under Retell's timeout, the holding line), voice naturalness and prosody of
+the spoken slot labels, barge-in timing (interruption sensitivity 0.75 on a
+bad line), whether the model follows the LISTEN FOR block on misheard words
+the table has never seen, whether Google/iOS screens wait for a full sentence,
+and the answering-machine detection race between Retell and the model. The
+detection table is conservative regex: a sarcastic "oh brilliant, go on then"
+or a heavy accent the recogniser mangles beyond these rows will still be
+missed; the post-call net catches opt-outs only when the words survive ASR.
+**Swear-offs (owner decision 2026-09-28).** A swear-off ("f off", "piss
+off", "go away") or "leave me alone" is an objection to contact, not only to
+calls (PECR, UK GDPR Art. 21): `OPT_OUT_ALL`, so `opt_out` scope ALL runs the
+one global path (`agent/tools.ts` applySuppression: the ALL suppression row,
+`leads.opted_out`, automation off, `lead.opted_out`), which every channel's
+send guard reads (calls, SMS, WhatsApp, email; LinkedIn tasks read the same
+lead flag). The post-call net applies the same scope when the model missed
+it. Anything the lead asked for earlier in the same call ("just email me")
+is void: the tool gate (`tools/core.ts`) refuses every send, booking,
+call-back and transfer once an `opt_out` succeeded in the call, and the ALL
+opt-out overwrites a call-back or "a colleague will email you" note set
+earlier in the call. Scenario `email-me-then-f-off` proves it. A TPS mention
+stays calls only (it is about calls).
+
 ### 16.15 What the call hears, and the voice (voice QA pass, 2026-09-28)
 
 **Detection** happens in three layers, all reading one table,
@@ -825,7 +916,7 @@ speak before the lead did.
 | Model, in the call | opt-out (scope ALL or CALLS), wrong number, gatekeeper, angry caller, "speak to a person", "is this a robot", who is this / how did you get my number, privacy, language barrier, bad time / driving, not interested, "just email me", buying signals, objections | the LISTEN FOR block of `RETELL_GENERAL_PROMPT`, rendered by `renderListenFor()` |
 | Post-call safety net | a missed opt-out (with its scope), a wrong number, a voicemail greeting that reached the model | `analyseCall` (post-call.ts) runs `detectSpokenIntents` on the lead's words |
 
-`tests/voice-speech-detection.test.ts` holds 90 spoken, ASR-noisy rows
+`tests/voice-speech-detection.test.ts` holds 162 spoken, ASR-noisy rows (90 before the adversarial pass, §16.12)
 (fillers, missing apostrophes, "numba", "ro bot", "e mail", "gaffer",
 "give us a bell") and proves each intent maps to its action. Fixes that came
 out of it: "take me off your list" now opts out of **every channel**

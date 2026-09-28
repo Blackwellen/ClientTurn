@@ -173,7 +173,7 @@ The baseline also priced overage per unit (SMS, WhatsApp, verified prospects, em
 | **Total cost** | **22.08** | **11.55** | **113.45** | **46.17** | **302.49** | **118.14** |
 | **Gross profit** | **76.92** | **87.45** | **85.55** | **152.83** | **96.51** | **280.86** |
 | **Gross margin** | **77.7%** | **88.3%** | **43.0%** | **76.8%** | **24.2%** | **70.4%** |
-| Net, if affiliate-referred (− 20% of price, months 1–12) | 57.12 | 67.65 | 45.75 | 113.03 | 16.71 | 201.06 |
+| Affiliate commission, if referred (one-off, month 1 only; 6–10% of the first invoice ex-VAT, §14) | 5.94–9.90 | 5.94–9.90 | 11.94–19.90 | 11.94–19.90 | 23.94–39.90 | 23.94–39.90 |
 
 "Net" here means **net contribution before overheads (salaries, support, tooling, marketing) and before CAC**. The repo holds no overhead figures. Net profit per plan = gross profit − (monthly overheads ÷ customers) − CAC amortised (Part 8).
 
@@ -689,11 +689,11 @@ The brief's §100 rule applies: only benchmarks with source, period and geograph
 | Paid social (Meta, LinkedIn) | CAC = spend ÷ customers = CPC ÷ (click→trial × trial→paid) | CPC, click→trial %, trial→paid % |
 | Google Ads | same, with CPC from Keyword Planner for your terms | same |
 | Outbound (ClientTurn's own Find Leads + email) | CAC = (tooling + sourcing + people hours × rate) ÷ customers. Sourcing ≈ 1.2p per verified prospect (6.2); email £0 | prospects/customer, hours/customer, hourly cost |
-| **Partners / affiliates** | **Fact:** 20% recurring for 12 months, 90-day attribution, 90-day cookie, 30-day hold, £100 minimum payout (live `affiliate_commission_plans` "Standard 20% recurring"; `affiliates/programme.ts` `FALLBACK_POLICY`). **CAC = 0.20 × price × Σ survival(m), m = 1..12** | churn |
+| **Partners / affiliates** | **Fact (2026-09-28, migration 0169):** paid **once** per referred customer: tier % × the first paid subscription invoice **excluding VAT** (an annual plan's full annual invoice). Tiers: Partner 6%, Pro Partner 8% (5 paid referrals in 12 months), Elite 10% (15). No annual cap. `affiliates/ledger-rules.ts`, `affiliates/commissions.ts`. **CAC = tier % × first invoice** (§14) | tier, billing interval |
 | Content / SEO | CAC = (writing + tools) ÷ attributed customers over 12 months | cost, attributed customers |
 | Trial cost (all channels) | + £4.37 ÷ trial→paid (Part 2) | trial→paid |
 
-**Affiliate CAC (fact-based, churn as input):** max (no churn) = 0.2 × 12 × price = **£237.60 / £477.60 / £957.60** (Starter / Growth / Pro). With monthly churn *k*: 0.2 × price × (1 − (1−k)¹²) ÷ k.
+**Affiliate CAC (fact-based, one-off):** at Elite 10%, monthly = **£9.90 / £19.90 / £39.90** (Starter / Growth / Pro plan), annual = **£101 / £203 / £407**. Churn no longer changes it. The superseded model (20% recurring for 12 months) cost up to £237.60 / £477.60 / £957.60.
 
 ### 8.2 LTV, LTV:CAC and payback
 
@@ -709,9 +709,10 @@ ILLUSTRATIVE churn only (3% / 5% / 8% per month). These are **placeholders, not 
 | LTV at 5% | £1,749 | £3,057 | £5,617 |
 | LTV at 8% | £1,093 | £1,910 | £3,511 |
 | Max CAC for 3:1 at 5% | £583 | £1,019 | £1,872 |
-| Payback on an affiliate CAC at 5% churn (0.2 × price × 9.19) | £182 → **2.1 months** | £366 → 2.4 months | £733 → 2.6 months |
+| Payback on an Elite (10%) affiliate CAC, monthly billing | £9.90 → **0.1 months** | £19.90 → 0.1 months | £39.90 → 0.1 months |
+| Payback on an Elite (10%) affiliate CAC, annual billing (annual GP ÷ 12: £73.20 / £123.97 / £222.79) | £101 → **1.4 months** | £203 → 1.6 months | £407 → 1.8 months |
 
-Affiliate payback is short because the commission is paid only while the customer pays.
+Affiliate payback is short because the commission is a single payment on money already collected (§14).
 
 ---
 
@@ -1099,6 +1100,57 @@ ClientTurn is priced as a managed sales channel, not as raw minutes: several tim
 - **The liability is unused pack minutes** (they never expire). Exposure = Σ unused pack seconds ÷ 60 × £0.0994 (stressed COGS), read from `voice_minute_balances`. At 10,000 unused minutes platform-wide the exposure is about £994, against £4,490+ already collected for them.
 - **Provider float to hold:** Twilio balance ≥ 3 days of peak burn = 3 × (platform minutes a day × $0.02356 + numbers ÷ 30). At the 13,200-minute daily ceiling that is about $933; at today's volumes, a small fraction of it. Auto-recharge is on, so this is a floor, not a pre-payment.
 - **Refunds** claw back only unused pack minutes (§12), so a refund never leaves ClientTurn paying for minutes it refunded.
+
+## 14. Affiliate commission and the blended customer (2026-09-28)
+
+Owner decisions of 2026-09-28: commission is paid **once** per referred customer, it is treated as a marketing (acquisition) cost, and it replaces "20% recurring for 12 months". Code: `src/lib/affiliates/ledger-rules.ts`, `commissions.ts`; live tiers from migration 0169 (STANDARD 6% at 0 paid referrals, PARTNER 8% at 5, PREMIUM 10% at 15, counted over 12 months).
+
+### 14.1 Commission per referral (base = first paid subscription invoice, excluding VAT)
+
+| First invoice | Partner 6% | Pro Partner 8% | Elite 10% |
+|---|---|---|---|
+| Starter monthly £99 | £5.94 | £7.92 | £9.90 |
+| Growth monthly £199 | £11.94 | £15.92 | £19.90 |
+| Pro monthly £399 (+ £100 voice item when on the same invoice = £499) | £23.94 (£29.94) | £31.92 (£39.92) | £39.90 (£49.90) |
+| Starter annual £1,010 | £60.60 | £80.80 | £101.00 |
+| Growth annual £2,030 | £121.80 | £162.40 | £203.00 |
+| Pro annual £4,070 | £244.20 | £325.60 | £407.00 |
+
+The voice item has no annual discount; it is in the base only when it is billed on the plan's first invoice.
+
+### 14.2 Is an annual referral still profitable? Yes.
+
+The worry: annual is already 15% off, and the commission is taken on the whole year up front. Worst case is Elite 10% on Pro annual, typical usage (§1.3):
+
+- Year-1 gross profit = £222.79 × 12 = **£2,673**.
+- Commission = **£407** (15.2% of year-1 gross profit).
+- Year-1 contribution after commission = **£2,266**, paid back in **1.8 months** of gross profit.
+- At maximum usage (§1.3 baseline, before the §10 re-sizing that lifted every plan to ≥ 75%), the thinnest case was Pro annual at 11.6%; on the §10.2 catalogue Pro annual at max is 75.4%, so year-1 GP at max ≈ 0.754 × £4,070 − Stripe ≈ £3,000 and the £407 commission still leaves ≈ £2,600.
+
+Starter and Growth annual are proportionally the same (commission ≈ 11–14% of year-1 gross profit).
+
+### 14.3 The blended customer (typical usage, monthly, Elite referral, ILLUSTRATIVE 5% monthly churn)
+
+| £ | Starter | Growth | Pro + voice item |
+|---|---|---|---|
+| Monthly gross profit (§1.2 typical; voice item at 75.2% GM, §12) | 87.45 | 152.83 | 280.86 + 75.20 = 356.06 |
+| Expected paying months in year 1 at 5% churn, Σ 0.95ᵐ (m = 0..11) | 9.19 | 9.19 | 9.19 |
+| Year-1 gross profit | 803.7 | 1,404.5 | 3,272.2 |
+| One-off commission | 9.90 | 19.90 | 49.90 |
+| **Year-1 contribution** | **793.8** | **1,384.6** | **3,222.3** |
+| Commission as % of year-1 GP | 1.2% | 1.4% | 1.5% |
+
+Add-ons on top (not in the table): WhatsApp tokens at ~50% margin by owner choice (§5.4), minute packs at ≥ 75% standard-card margin (§12), top-up bundles at ≥ 75% (§10.3).
+
+### 14.4 Quote-to-cash costs ClientTurn nothing per transaction
+
+Quotes, e-sign and invoices are included on every paid plan. The customer is the merchant of record on **their own** Stripe account (CLAUDE.md conflict 8): card fees are theirs, ClientTurn holds no funds and takes no percentage. The only costs are infrastructure (PDF rendering, R2 storage for signed documents, a few transactional emails at U12), all inside the £2/customer infrastructure allocation of §1.1 at current volumes. **ASSUMPTION** until measured: under 10p per quote.
+
+### 14.5 What to watch
+
+- The commission is paid on the first invoice, so a quick refund must claw it back: `ledger-rules.ts` reverses commission on refunds and disputes in proportion to the VAT-inclusive refund; a negative balance is written off (owner decision), so the exposure per fraud case is capped at one commission.
+- Tier creep: Elite at 10% is the ceiling; no tier above it exists in 0169.
+- If annual share rises sharply, cash in is front-loaded while commission is too; both land in the same month, so working capital (§13.8) is unaffected.
 
 ## Appendix — sources
 
