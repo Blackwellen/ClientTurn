@@ -24,6 +24,29 @@ test("settings_update updates an existing row instead of upserting a partial one
   assert.match(update, /: await db\(\)\.from\("voice_settings"\)\.insert\(patch\)/);
 });
 
+/**
+ * A person pressing "Call with AI" on a lead they are handling themselves
+ * (human_takeover = true, e.g. a lead they added by hand) was deferred 30
+ * minutes, and re-deferred at every dial: the call never rang (owner test
+ * call, 2026-09-28). The takeover hold now applies only to calls a person
+ * did not ask for.
+ */
+const runtime = readFileSync("src/lib/voice/runtime-core.ts", "utf8");
+const handler = readFileSync("src/lib/jobs/handlers/voice.ts", "utf8");
+
+test("a person's own Call with AI is not held by their own takeover", () => {
+  assert.match(runtime, /humanTakeover: Boolean\(ctx\.lead\?\.human_takeover\) && !personRequested/);
+  assert.match(runtime, /const personRequested = input\.entryPoint === "OUTBOUND_DIAL" && Boolean\(input\.requestedBy\) && !input\.attemptNumber/);
+});
+
+test("the flag rides the dial job and survives every deferral", () => {
+  assert.match(runtime, /enqueue\("voice\.dial", \{ callId: row\.id, \.\.\.\(personRequested \? \{ personRequested: true \} : \{\}\) \}/);
+  const deferrals = runtime.match(/return deferCall\(deps, call,[^\n]*\);/g) ?? [];
+  assert.ok(deferrals.length >= 4, `${deferrals.length} deferrals`);
+  for (const d of deferrals) assert.match(d, /personRequested\);$/, d);
+  assert.match(handler, /dialCall\(serverVoiceDeps\(\), callId, \{ personRequested \}\)/);
+});
+
 test("the identity-before-enable constraint still exists in the schema", () => {
   const migration = readFileSync("supabase/migrations/0150_voice_core.sql", "utf8");
   assert.match(migration, /voice_settings_identity_before_enable/);

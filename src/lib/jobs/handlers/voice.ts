@@ -46,9 +46,11 @@ function parse<T>(schema: z.ZodType<T>, job: ClaimedJob): T {
   return r.data;
 }
 
+const dialPayload = callPayload.extend({ personRequested: z.boolean().optional() });
+
 export async function handleVoiceDial(job: ClaimedJob): Promise<void> {
-  const { callId } = parse(callPayload, job);
-  await dialCall(serverVoiceDeps(), callId);
+  const { callId, personRequested } = parse(dialPayload, job);
+  await dialCall(serverVoiceDeps(), callId, { personRequested });
 }
 
 export async function handleVoicePostCall(job: ClaimedJob): Promise<void> {

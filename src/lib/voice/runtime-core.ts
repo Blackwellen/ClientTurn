@@ -471,7 +471,22 @@ export function eligibilityInputOf(ctx: DialContext): Omit<CanCallLeadInput, "no
   };
 }
 
-function decide(deps: VoiceDeps, facts: EntitlementFacts, ctx: DialContext, call: CallRow | null, route: string, entryPoint: VoiceEntryPoint): DialDecision {
+/**
+ * `personRequested`: a signed-in person pressed "Call with AI" for this lead.
+ * The human-takeover hold exists so the AI does not call a lead a person is
+ * working; a person asking for the call is that person, so it does not apply.
+ * Every other check (entitlement, consent, calling hours, opt-outs, caps,
+ * minutes) still does. Automated, agent and retry calls never set it.
+ */
+function decide(
+  deps: VoiceDeps,
+  facts: EntitlementFacts,
+  ctx: DialContext,
+  call: CallRow | null,
+  route: string,
+  entryPoint: VoiceEntryPoint,
+  personRequested = false,
+): DialDecision {
   // The operator's controls first: an outbound pause, a suspended number or a
   // reached spend ceiling stops every AI dial, whoever asked for it.
   const blocks = adminOutboundBlocks(ctx.adminControls);
@@ -488,7 +503,7 @@ function decide(deps: VoiceDeps, facts: EntitlementFacts, ctx: DialContext, call
     entitlement: buildEntitlementSnapshot({ ...facts, platformKill: facts.platformKill || deps.config.platformKill }),
     eligibility: eligibilityInputOf(ctx),
     activeCallForLead: ctx.activeCallForLead,
-    humanTakeover: Boolean(ctx.lead?.human_takeover),
+    humanTakeover: Boolean(ctx.lead?.human_takeover) && !personRequested,
     number: ctx.number,
     concurrency: {
       workspaceActive: ctx.concurrency.workspaceActive,
@@ -583,7 +598,10 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
     return { ok: false, code: "NOT_FOUND", productState: "error", reason: "LEAD_NOT_FOUND", reasons: ["LEAD_NOT_FOUND"], message: "That lead could not be found." };
   }
 
-  const decision = decide(deps, facts, ctx, null, input.route, input.entryPoint);
+  // A person pressing "Call with AI" (the app, signed in); not MCP, API,
+  // an agent or a retry.
+  const personRequested = input.entryPoint === "OUTBOUND_DIAL" && Boolean(input.requestedBy) && !input.attemptNumber;
+  const decision = decide(deps, facts, ctx, null, input.route, input.entryPoint, personRequested);
   if (decision.kind === "CANCEL" || decision.kind === "SKIP") {
     if (decision.kind === "CANCEL") {
       await deps.repo.recordEligibility(eligibilityRecord(input.businessId, input.leadId, null, ctx, decision));
@@ -637,7 +655,7 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
   if (inserted) {
     await deps.repo.recordEligibility(eligibilityRecord(input.businessId, input.leadId, row.id, ctx, decision));
     await deps.repo.queueCall({ callId: row.id, businessId: input.businessId, priority: priorityFor(input.route, consent.basis, input.entryPoint), notBefore });
-    await deps.enqueue("voice.dial", { callId: row.id }, { businessId: input.businessId, runAt: notBefore, idempotencyKey: `voice.dial:${row.id}`, priority: 20 });
+    await deps.enqueue("voice.dial", { callId: row.id, ...(personRequested ? { personRequested: true } : {}) }, { businessId: input.businessId, runAt: notBefore, idempotencyKey: `voice.dial:${row.id}`, priority: 20 });
     await deps.repo.audit({
       businessId: input.businessId,
       action: "voice.call_queued",
@@ -676,7 +694,8 @@ export type DialResult =
   | { status: "CANCELLED"; reason: string; productState: string }
   | { status: "FAILED"; reason: string };
 
-export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialResult> {
+export async function dialCall(deps: VoiceDeps, callId: string, opts: { personRequested?: boolean } = {}): Promise<DialResult> {
+  const personRequested = Boolean(opts.personRequested);
   // 1. Re-read. A call that has left the queue is never dialled again.
   const call = await deps.repo.loadCall(callId);
   if (!call) return { status: "SKIPPED", reason: "NOT_FOUND" };
@@ -693,7 +712,7 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
   // Platform maintenance (APP_OFFLINE / SITE_OFFLINE without "keep automated
   // follow-up running"): re-scheduled for after the window, never dropped.
   const held = await maintenanceHold(deps);
-  if (held) return deferCall(deps, call, "MAINTENANCE_WINDOW", held);
+  if (held) return deferCall(deps, call, "MAINTENANCE_WINDOW", held, personRequested);
 
   const providers = deps.providers();
   if (!providers.voice) return cancelCall(deps, call, "PROVIDER_NOT_CONFIGURED", "integration-required", null);
@@ -704,13 +723,13 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
     deps.repo.loadDialContext(call.business_id, call.lead_id, call.route, call.id),
   ]);
   if (!ctx.lead) return cancelCall(deps, call, "LEAD_NOT_FOUND", "error", ctx);
-  const decision = decide(deps, facts, ctx, call, call.route, "OUTBOUND_DIAL");
+  const decision = decide(deps, facts, ctx, call, call.route, "OUTBOUND_DIAL", personRequested);
   if (decision.kind === "SKIP") return { status: "SKIPPED", reason: decision.reason };
   if (decision.kind === "CANCEL") {
     await deps.repo.recordEligibility(eligibilityRecord(call.business_id, call.lead_id, call.id, ctx, decision));
     return cancelCall(deps, call, decision.reason, decision.productState, ctx);
   }
-  if (decision.kind === "DEFER") return deferCall(deps, call, decision.reason, decision.runAt);
+  if (decision.kind === "DEFER") return deferCall(deps, call, decision.reason, decision.runAt, personRequested);
 
   // 3. Minutes: hold the full call before dialling (included first, then packs).
   let reserved;
@@ -721,7 +740,7 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
     throw error;
   }
   if (!reserved.ok) {
-    if (reserved.reason === "CONTENDED") return deferCall(deps, call, "MINUTES_CONTENDED", new Date(deps.now().getTime() + MINUTE));
+    if (reserved.reason === "CONTENDED") return deferCall(deps, call, "MINUTES_CONTENDED", new Date(deps.now().getTime() + MINUTE), personRequested);
     return cancelCall(deps, call, reserved.reason === "INSUFFICIENT_BALANCE" ? "INSUFFICIENT_MINUTES" : reserved.reason, "plan-limit-reached", ctx);
   }
 
@@ -742,7 +761,7 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
   if (begun !== "OK") {
     // Keep the hold: the call is still queued and will be dialled shortly.
     const wait = begun === "HUMAN_ACTIVE" ? 30 * MINUTE : MINUTE;
-    return deferCall(deps, call, begun, new Date(deps.now().getTime() + wait));
+    return deferCall(deps, call, begun, new Date(deps.now().getTime() + wait), personRequested);
   }
   await deps.repo.dequeueCall(call.id);
 
@@ -889,9 +908,9 @@ async function cancelCall(deps: VoiceDeps, call: CallRow, reason: string, produc
   return { status: "CANCELLED", reason, productState };
 }
 
-async function deferCall(deps: VoiceDeps, call: CallRow, reason: string, runAt: Date): Promise<DialResult> {
+async function deferCall(deps: VoiceDeps, call: CallRow, reason: string, runAt: Date, personRequested = false): Promise<DialResult> {
   await deps.repo.queueCall({ callId: call.id, businessId: call.business_id, priority: priorityFor(call.route, call.consent_basis, "OUTBOUND_DIAL"), notBefore: runAt });
-  await deps.enqueue("voice.dial", { callId: call.id }, {
+  await deps.enqueue("voice.dial", { callId: call.id, ...(personRequested ? { personRequested: true } : {}) }, {
     businessId: call.business_id,
     runAt,
     idempotencyKey: `voice.dial:${call.id}:${runAt.toISOString()}`,
