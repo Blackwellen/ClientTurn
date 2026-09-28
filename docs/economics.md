@@ -626,14 +626,30 @@ Stripe takes a further 2.2–3.5% of each charge.
 1. ~~WhatsApp credit counts **messages, not category**.~~ **Resolved (2026-09-27)**: WhatsApp is metered in tokens by category (2 per reply or utility template, 5 per marketing or unknown template), §5.4.
 2. ~~SMS bodies from sequences and campaigns are not normalised before sending.~~ **Fixed**: normalised in `send-core.ts`, and the em dashes are gone from `NEW_LEAD_SEQUENCE`.
 3. ~~`provider_price_book` has no Meta category rows.~~ **Fixed in 0138** (not yet applied). Nothing in code prices WhatsApp from the price book yet; the admin cost view will pick the rows up.
-4. `loadUnitCosts()` matches **no** price-book row (product vs capability naming) and reads USD as pence. Find Leads always runs on hard-coded fallbacks.
+4. ~~`loadUnitCosts()` matches **no** price-book row (product vs capability naming) and reads USD as pence.~~ **Fixed (2026-09-28, billing batch 2)**: rows are matched on the `capability` column and converted to pence at `USD_TO_GBP_MODEL` (`find-leads/price-book.ts`); a row in an unknown currency falls back rather than being guessed. Test: `tests/entitlement-holes.test.ts`.
 5. ~~Verified-prospect overage is **uncapped by count** once overage is on.~~ **Resolved**: there is no overage, so sourcing stops at the allowance. There is still **no per-workspace monthly provider-spend ceiling** beyond the allowance and the £500 per-run ceiling.
-6. Enterprise seeded allowances (100k SMS, 100k WhatsApp) are not tied to any price. Enterprise has **no `lead_processed` row** in `plan_entitlements`.
+6. ~~Enterprise seeded allowances (100k SMS, 100k WhatsApp) are not tied to any price. Enterprise has no `lead_processed` row.~~ **Resolved (2026-09-28)**:
+   * `lead_processed` for Enterprise is seeded in 0138 (90,000 soft / 100,000 hard), matching `plans.ts`.
+   * WhatsApp: Enterprise includes **0** messages since 0138/0141 (WhatsApp is tokens only on every plan), so the 100k WhatsApp line in §1.4 is out of date and costs £0 in allowance.
+   * SMS: the 100,000-segment Enterprise figure is a **ceiling, not a price**. It is priced per contract with the §6.3 rule: the contract price must be at least (the cost of the contract's SMS ceiling + every other allowance at maximum) ÷ 0.25 before Stripe. At the 100k ceiling SMS alone costs about **£4,511/month** (out + in, §1.4), so a contract below about **£18,050/month** must set a lower SMS ceiling (an admin grant or a per-contract `plan_entitlements` change), never inherit 100k. No Enterprise contract exists today; sales must not quote from the seeded numbers.
 7. **Vercel Hobby forbids commercial use** (A16), and `docs/CRON.md` says the deployment is on Hobby. Add Vercel Pro (£15.10/seat) before charging customers. It is already inside the £2 infrastructure allocation.
-8. **VAT.** The pricing page says "VAT is added at checkout", but `checkout.ts` sets no `automatic_tax` or tax rates. It may be set on the Stripe Price objects; **not verified**. If VAT is not collected, the prices above are VAT-inclusive, and revenue falls by a sixth (£99 → £82.50 net).
+8. **VAT (2026-09-28, billing batch 2).** Stripe Tax is ready behind `STRIPE_AUTOMATIC_TAX` (default off, `billing/tax.ts`): when on, every Checkout sets `automatic_tax`, VAT-number and billing-address collection. The pricing FAQ now says "added at checkout" only when the switch is on; otherwise it says prices exclude VAT and any VAT due is shown on the invoice. **Owner action:** register for VAT, add the registration in Stripe Tax, then set the variable. Until then no VAT is collected, and if ClientTurn turns out to be VAT-liable the prices above are effectively VAT-inclusive (revenue falls by a sixth, £99 → £82.50 net).
 9. 1 October 2026: WhatsApp service and in-window utility messages become chargeable. The token prices assume it (a service reply is 2 tokens either side of the date), and the admin cost view prices service messages from that date; the price book rows are in 0138.
 
 ---
+
+### 6.6 Costs that are not metered per workspace (estimates, 2026-09-28)
+
+These are real costs that do not appear in `cost_events` or the voice cost ledger. Metering each needs a provider usage API poll (Twilio inbound, Resend, Cloudflare) that is not worth building at today's volume, so they are **estimated** here and carried in the £2 infrastructure allocation and the SMS-in line of §1.2. Revisit when the platform passes ~200 paying workspaces or any line below exceeds £0.50 per workspace per month.
+
+| Cost | How it arises | Estimate per workspace per month | Where it is counted today |
+|---|---|---|---|
+| Inbound SMS | Twilio charges $0.0075 per inbound segment (U1). Replies are not metered as usage | Starter max £0.71, Growth £2.26, Pro £5.10 (§1.2 "Twilio SMS in", 50% reply rate at the SMS allowance) | §1.2 line "Twilio SMS in"; not in `cost_events` |
+| Resend system email | Owner alerts, notifications and receipts through Resend (U12), capped per day by `SYSTEM_EMAIL_DAILY_CAP` but not costed | ≤ 30/60/120 a day × £0.0003 = at most £0.27 / £0.54 / £1.08; typical under £0.10 | §1.2 line "Resend" (typical); the cap bounds the worst case |
+| R2 storage (logos, CSV imports) | $0.015/GB-month (U22), free egress | Under 0.1 GB: effectively £0 inside the 10 GB free tier | Infrastructure allocation |
+| R2 voice recordings | Up to 60 MB per call (`storage/r2.ts`), kept for the workspace's retention (default 90 days) | ~1 MB per connected minute; 500 minutes a month kept 90 days is ~1.5 GB = £0.02/month | Infrastructure allocation |
+| Retell storage | Retell keeps its own copy of recordings/transcripts on its side | Not billed separately by Retell at our plan (per the voice research); treat as £0 | — |
+| Dedicated number after cancellation | Rent ran on indefinitely after churn | **Now bounded**: released 14 days after the subscription ends (`billing/number-release.ts`), so at most half a month's rent (£0.95) per churned voice workspace | Number line of §12 |
 
 ## 7. Competitors
 
@@ -927,6 +943,162 @@ Everything above is **modelled** from allowances. **Admin → Economics** (`/adm
 **Code.** `src/lib/admin/economics-model.ts` (pure: pricing, totals, projection, alert rule, simulator), `economics-live.ts` (the read), `economics-alerts.ts` (the daily check), `src/components/admin/economics/*`. Tests: `tests/admin-economics.test.ts`. It replaces the earlier "Usage & Margins" page, which read `business_margin_monthly`. That rollup prices WhatsApp from the price book, which holds only Twilio's fee (§0.2 note 1), and it counts list price as revenue.
 
 ---
+
+## 12. Voice: minute packs, the Pro voice item and the number (2026-09-28)
+
+Prices are unchanged (owner decision OD-2). Source: `docs/revenue-engine/12-voice-provider-research.md` §7 and §8, recomputed in `src/lib/billing/unit-costs.ts` (`voiceMarginReport()`) and asserted in `tests/plan-margins.test.ts`.
+
+**Cost basis.**
+- Blended voice COGS (stack A: Retell, Twilio Elastic SIP, TTS, LLM, recording) is **£0.0821 a minute** at base.
+- Under the ×1.21 stress (FX +10% and provider +10%) it is **£0.0993 a minute**.
+- The dedicated UK mobile number costs **£1.887 a month** at base and **£2.283** under stress.
+
+**The binding rule.** Gross margin must be at least **75%** on the **standard** Stripe model with the ×1.21 stress applied.
+- The standard model is a UK standard card at 1.5% of the VAT-inclusive amount.
+- One-off packs also pay the 20p fee.
+- Subscription items (the £100 Pro voice item, the £11.99 number) also pay Stripe Billing at 0.7%, with no extra 20p as an invoice line.
+
+**The sensitivity.** The premium-card model uses a premium or commercial card at 2.8% of the VAT-inclusive amount. Packs are one-off Checkout payments, so no Billing fee applies to them; subscription items still pay Billing at 0.7%. On this model some items fall just under 75%. This is recorded honestly here and not hidden. It is a sensitivity, not the rule.
+
+| Item | Price | GM, standard, stress | GM, premium card, stress | Price that clears 75% on the premium card |
+|---|---|---|---|---|
+| 100 min pack | £49 | 77.5% | 76.0% | already clears (£46.83) |
+| 250 min pack | £115 | 76.4% | **74.9%** | **£116** (£115.69) |
+| 500 min pack | £225 | 76.0% | **74.5%** | **£231** (£230.46) |
+| 1,000 min pack | £449 | 76.0% | **74.5%** | **£460** (£459.99) |
+| Pro voice item (200 min + number) | £100/month | 75.2% | **73.65%** | **£107** (£106.50) |
+| Dedicated number | £11.99/month | 76.7% on its own / 78.3% as an invoice line | 75.1% / 76.8% | already clears |
+
+**Formulas.**
+- One-off packs: clearing price = (minutes × 0.0993 + 0.20) ÷ (1 − 0.0336 − 0.75).
+- The item: clearing price = (200 × 0.0993 + 2.283) ÷ (1 − 0.042 − 0.75).
+
+**Why the prices stay.**
+- These are worst-case figures. They assume every card is premium or commercial and every minute bought is used, with both stresses applied at once.
+- Unused minutes only raise the margin.
+- The gap is under 1.5 points on the packs and under 1.4 points on the item.
+
+**Re-price trigger.** Re-check if the card mix turns out mostly premium or commercial, if USD/GBP moves more than 10% from £0.7546, or if any provider rate changes. The prices in the last column are the smallest that clear the premium case.
+
+**Other voice economics.**
+- Every call's provider cost is recorded in the server-only `voice_cost_ledger`: Retell's own figure when its webhook carries one, otherwise an estimate from the destination rate table.
+- Minutes are billed to the second.
+- There is no overage.
+- A refunded pack claws back only its unused minutes (FIFO, the same rule as other top-ups).
+- Included minutes end with the Pro voice item.
+
+## 13. Voice model: cost stack, scenarios, sensitivity, capacity and cash (2026-09-28, brief §68–69)
+
+This merges `docs/revenue-engine/12-voice-provider-research.md` (sources V1–V22, fetched 2026-09-27) into one model. §12 above stays the price decision; this section is the model behind it. Every figure is either a quoted provider price, a formula over them, or a stated assumption. Recomputed with the formulas below; the margins match §12 to within 0.1 point (rounding).
+
+**Constants.**
+- FX: USD to GBP **0.7546** (the §0 rate).
+- Stress: FX +10% and provider +10% each multiply every USD cost by 1.10; together **×1.21** (research §5).
+- Stripe: UK standard card **1.5% of the VAT-inclusive amount + 20p** per payment; Stripe Billing **+0.7%** on subscription items (research §2.8, §12 above).
+
+### 13.1 Cost stack per connected minute (stack A, the standard voice)
+
+| Line | Source | $/min |
+|---|---|---|
+| Retell voice infrastructure | V1 | 0.0550 |
+| TTS (Cartesia / OpenAI via Retell) | V1 | 0.0150 |
+| LLM, GPT-4.1 mini (`scripts/retell-setup.mjs` default) | V1 | 0.0128 |
+| Telephony, Twilio Elastic SIP, 80% mobile / 20% landline: 0.8 × 0.0265 + 0.2 × 0.0118 | V4 | 0.02356 |
+| Recording | V3 | 0.0025 |
+| Retell telephony when the number is brought over SIP | V1 | 0 |
+| **Total** | | **0.10886** |
+
+- **COGS per minute** = 0.10886 × 0.7546 = **£0.0821** at base; **£0.0994** stressed.
+- **Dedicated number** (Twilio UK mobile, $2.50/month): **£1.887/month**; £2.283 stressed.
+- **Per-call fixed costs:** none charged on the standard stack. Retell's voicemail detection has no published line item (research §9, UNVERIFIED); Twilio AMD ($0.0075/call) is not used because Retell detects voicemail itself.
+- **ClientTurn's own compute per call:** the brief build (one context assembly, database reads only) and about 5–10 custom-function calls on Vercel and Supabase. At published serverless rates this is well under 0.1p a call, so it is rounded to £0 in every table below. It is not zero: it is listed so nobody wonders.
+- **Premium voice (stack A2):** GPT-4.1 ($0.045) and ElevenLabs TTS ($0.040): $0.16606/min = **£0.1253** base, £0.1516 stressed. Sold only with the +£0.20/min surcharge (research §8).
+
+### 13.2 Retail
+
+| Item | Price | Effective £/min | Notes |
+|---|---|---|---|
+| 100 / 250 / 500 / 1,000 minute packs | £49 / £115 / £225 / £449 | 0.490 / 0.460 / 0.450 / 0.449 | prepaid, never expire, billed to the second |
+| Pro voice item | £100/month | 0.500 (200 min + the number) | included minutes do not roll over |
+| Dedicated number (Starter, Growth) | £11.99/month | n/a | |
+
+### 13.3 Scenarios per workspace per month (worst case: every minute billed at the cheapest retail rate, £0.449, plus the £11.99 number)
+
+Formulas: Revenue = M × 0.449 + 11.99. COGS = M × 0.0821 + 1.887 (stressed: × 1.21). Stripe = 0.018 × (M × 0.449) + 0.20 per pack bought + 0.025 × 11.99.
+
+| Scenario | Minutes M | Revenue £ | COGS £ base / stressed | Stripe £ | GM base | GM stressed |
+|---|---|---|---|---|---|---|
+| Light | 100 | 56.89 | 10.10 / 12.22 | 1.31 | 79.9% | 76.2% |
+| Normal | 400 | 191.59 | 34.74 / 42.04 | 3.73 | 79.9% | 76.1% |
+| Heavy | 1,200 | 550.79 | 100.46 / 121.56 | 10.40 | 79.9% | 76.0% |
+| Very heavy | 3,000 | 1,358.99 | 248.32 / 300.47 | 25.15 | 79.9% | 76.0% |
+
+The margin is flat across volume because both price and cost are per minute; only the fixed number cost and the per-pack 20p move it, and they shrink with volume.
+
+### 13.4 Route mix: what a minute buys
+
+Assumptions (not measured; to be replaced by `voice_calls` data after the first month): the route targets from `voice/time-governor.ts` are the connected durations; 45% of attempts are answered; 20% reach voicemail, where a left message costs about 0.5 minute; the rest ring out at zero billed seconds.
+
+| Route | Target (min) | Share of calls |
+|---|---|---|
+| Qualification | 3.5 | 60% |
+| Booking close | 3.0 | 20% |
+| Direct close | 5.0 | 10% |
+| Nurture | 2.0 | 5% |
+| Reactivation | 2.5 | 5% |
+
+- Average connected call = Σ target × share = **3.43 minutes**.
+- Minutes per attempt = 0.45 × 3.43 + 0.20 × 0.5 = **1.64**; cost per attempt = 1.64 × £0.0821 = **£0.135** (13.5p).
+- The Pro item's 200 minutes cover about **58 answered calls** a month at this mix (39 if calls run 50% longer).
+
+### 13.5 Sensitivity (the Pro voice item at £100 and the 1,000 minute pack at £449, standard card)
+
+| Case | £/min | Pro item GM | 1,000 pack GM |
+|---|---|---|---|
+| Base | 0.0821 | 79.2% | 79.9% |
+| Provider +10% | 0.0904 | 77.1% | 78.0% |
+| FX +10% | 0.0904 | 77.1% | 78.0% |
+| Both (×1.21) | 0.0994 | 75.3% | 76.0% |
+| Mobile-heavy (100% mobile) | 0.0844 | 78.7% | 79.4% |
+| **Mobile-heavy and both stresses** | 0.1021 | **74.8%** | 75.4% |
+| Longer calls (+50%) | 0.0821 | unchanged per minute; the 200 minutes cover 39 calls instead of 58 | unchanged |
+| Premium model without the surcharge | 0.1253 | 70.6% | 70.2% |
+| Premium model, both stresses, without the surcharge | 0.1516 | 64.9% | 64.4% |
+
+Findings:
+- Longer calls do not hurt margin (minutes are prepaid and billed to the second); they only use the allowance faster.
+- The one stacked case that breaks the 75% floor on the Pro item is an all-mobile mix under both stresses (74.8%). Re-price trigger: if `voice_cost_ledger` shows a mobile share above 95% for a month together with a 10% FX move, the item price goes to £101 (clearing price (200 × 0.1021 + 2.283) ÷ (1 − 0.025 − 0.75)).
+- The premium model must never run without the +£0.20/min surcharge. The setup script defaults to GPT-4.1 mini for this reason (GPT-4.1 alone would be £0.1064/min).
+
+### 13.6 Capacity
+
+- **Concurrency.** Retell includes 20 concurrent calls, then $8 per extra concurrent call a month (V1). ClientTurn caps the platform at 20 (`DEFAULT_PLATFORM_CONCURRENCY`) and each workspace at 2 by default (`DEFAULT_WORKSPACE_CONCURRENCY`), enforced under lock in the dial RPC (0157).
+- **Minutes per day.** Default calling hours are 09:00–20:00 on weekdays (11 hours). Platform ceiling = 20 × 11 × 60 = **13,200 connected minutes a weekday**; one workspace at 2 concurrent = **1,320**. At 1.64 billed minutes an attempt, one workspace can make about 800 attempts a day before the queue grows.
+- **Queue.** A full slot defers the dial by one minute (never drops it); priority order is inbound call-back, fresh call request, booking close, direct close, qualification, nurture, reactivation (`voice/budget.ts`). The next concurrency step (21+) costs $8 × 0.7546 = £6.04 a month per call slot, which one busy workspace's pack margin covers many times over.
+- **Latency.** Tools answer inside Retell's 8-second custom-function timeout we set; a tool that fails is refused politely and the call carries on (QA scenario "tool failure").
+
+### 13.7 Competitor benchmark (prices as published 2026-09-27, research §2)
+
+| Provider | What you pay | Effective per minute | Notes |
+|---|---|---|---|
+| Retell (DIY) | $0.055 infra + TTS + LLM + telephony | about $0.09–$0.17 | a toolkit: no CRM, compliance, qualification or number provisioning |
+| Vapi (DIY) | $0.05 hosting + pass-through | about $0.11–$0.15 | same |
+| ElevenLabs Agents | plan + $0.08/min overage | from about $0.08 (plus LLM, telephony) | same |
+| HighLevel | $0.045/min engine + TTS + LLM, or AI Employee $97/month "unlimited" (fair use) | about $0.06–$0.09 | US-first; UK telephony pricing unverified |
+| Synthflow | Enterprise only, from $30,000/year | n/a | |
+| Respond.io | AI voice on Growth ($159/month) and above | not published | |
+| **ClientTurn** | £0.449–£0.49 a minute prepaid (about $0.60–$0.65), or £100/month for 200 minutes with Pro | | the same sales agent as text, UK compliance (PECR consent basis, TPS rules, calling hours, recording notice), the dedicated number, quotes and checkout in the call |
+
+ClientTurn is priced as a managed sales channel, not as raw minutes: several times a DIY per-minute rate, well below a person's time. We make no claim about competitors' outcomes (CLAUDE.md: no fabricated proof).
+
+### 13.8 Working capital
+
+- **Packs are paid before use.** The customer pays at Checkout; minutes are drawn down later. The cash arrives on Stripe's payout schedule for the account (UNVERIFIED for this account; UK accounts are typically paid out within a few days).
+- **Providers are paid as minutes are used.** Twilio runs on a prepaid balance with auto-recharge; Retell's pay-as-you-go charges the card on file as usage accrues (research V1; exact cadence UNVERIFIED). So on packs ClientTurn collects first and pays later: working capital is positive.
+- **The Pro item** is billed monthly in advance by Stripe; its minutes are used across the month. Positive.
+- **The liability is unused pack minutes** (they never expire). Exposure = Σ unused pack seconds ÷ 60 × £0.0994 (stressed COGS), read from `voice_minute_balances`. At 10,000 unused minutes platform-wide the exposure is about £994, against £4,490+ already collected for them.
+- **Provider float to hold:** Twilio balance ≥ 3 days of peak burn = 3 × (platform minutes a day × $0.02356 + numbers ÷ 30). At the 13,200-minute daily ceiling that is about $933; at today's volumes, a small fraction of it. Auto-recharge is on, so this is a floor, not a pre-payment.
+- **Refunds** claw back only unused pack minutes (§12), so a refund never leaves ClientTurn paying for minutes it refunded.
 
 ## Appendix — sources
 

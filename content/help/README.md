@@ -84,6 +84,7 @@ Use exactly one of these slugs (the folder name and the `category` value):
 | `reactivation` | Reactivation | One article per reactivation source |
 | `copilot` | Copilot | Using Copilot, its permissions, example questions |
 | `ai-agents` | AI agents | Setting up and using agents; the conversation assistant; AI guides |
+| `voice` | Voice | The AI voice agent: set-up, calls and consent, voice minutes and billing |
 | `settings` | Settings | Business profile, team, messaging, workspace controls |
 | `integrations` | Integrations | One article per integration (HubSpot, Salesforce, Zapier, …); CRM integration; mailboxes |
 | `developers` | Developers | API docs, MCP docs, webhook setup |

@@ -61,10 +61,11 @@ When a cancellation is set to take effect at the end of the paid period, **Setti
 - **WhatsApp** is a paid add-on on Growth and above. On a move to Starter, WhatsApp sending is no longer available.
 - **Top-up credit and bought AI tokens** stay on your balance. They do not expire.
 - **Seats:** if you have more people than the new plan allows, you cannot invite anyone else until you are under the limit. See [Team settings](/help/settings/team-settings).
+- **Over the new plan's limits:** a downgrade is always allowed and nothing is removed. From the day it applies, adding more of anything you are over (team members, sender identities, saved searches, intent monitors) is refused until you are back within the plan, and a campaign cannot launch while you have more active sender identities than the plan includes. When you schedule the downgrade you get a notification listing exactly what to reduce, and **Settings → Billing & Usage** shows the same list.
 
 ## After a subscription ends
 
-The workspace becomes read-only. Your data stays and can be exported. To carry on, choose **Resubscribe** from the banner, which opens the **Resubscribe to carry on** page. There is no second free trial.
+The workspace becomes read-only for 90 days. Your data stays and can be exported. To carry on, choose **Resubscribe** from the banner, which opens the **Resubscribe to carry on** page. There is no second free trial. After 90 days the workspace and its lead data are deleted, as our privacy policy sets out, and a dedicated phone number is released 14 days after the end.
 
 ## Related
 

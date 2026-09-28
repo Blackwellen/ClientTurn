@@ -279,10 +279,37 @@ waits, and concludes the product is broken.
 | `opportunity.won` | the event outbox, from `opportunities/service.ts` (closed as won) |
 | `opportunity.lost` | the event outbox, from `opportunities/service.ts` (closed as lost) |
 | `lead.intent_changed` | the event outbox, from the `lead.score` job when the qualification engine's intent state changes |
+| `quote.sent` | `quotes/events.ts`, from the `quote.send` operation |
+| `quote.viewed` | `quotes/events.ts`, from the public quote page (first view per revision) |
+| `quote.accepted` | `quotes/events.ts`, from the public quote page |
+| `quote.declined` | `quotes/events.ts` |
+| `quote.expired` | `quotes/events.ts`, from the `quote.expire` job |
+| `signature.completed` | `quotes/events.ts`, from the public quote page when the signature is recorded |
+| `invoice.issued` | `quotes/events.ts`, from the `invoice.issue` operation or job |
+| `invoice.paid` | `quotes/events.ts`, from `invoice.record_payment` when the invoice is paid in full |
+| `invoice.overdue` | `quotes/events.ts`, from the `invoice.remind` job (first overdue reminder) |
 
 The three `opportunity.*` payloads carry `lead_id`; `opportunity.created` adds
 `stage` and `motion`, and `won`/`lost` add the `reason` given when it was
 closed. `subject_id` is the opportunity id.
+
+Quote-to-cash payloads (P2). None carries a price breakdown, cost or margin,
+and none carries the customer's public link (the link is the credential):
+
+| Type | `data` |
+|---|---|
+| `quote.sent` | `quoteId`, `number`, `opportunityId`, `leadId`, `revision`, `totalGrossMinor`, `currency`, `validUntil` |
+| `quote.viewed`, `quote.accepted`, `quote.declined`, `signature.completed` | `quoteId`, `number`, `revision`, `leadId` |
+| `quote.expired` | `quoteId`, `number`, `leadId` |
+| `invoice.issued` | `invoiceId`, `number`, `totalMinor`, `currency`, `dueDate`, `quoteId`, `leadId` |
+| `invoice.paid` | `invoiceId`, `number`, `totalMinor`, `currency`, `quoteId` |
+| `invoice.overdue` | `invoiceId`, `number`, `dueDate`, `dueMinor`, `leadId` |
+
+Money is integer minor units (pence). The same events, plus `quote.created`,
+`quote.approval_requested`, `quote.approved`, `quote.approval_rejected`,
+`quote.revised`, `quote.withdrawn`, `quote.reminded`, `invoice.voided` and
+`invoice.credited`, are written to `automation_events` (CHECK in migration
+0156).
 
 `lead.intent_changed` carries `lead_id`, `intent_state`, `previous_intent_state`,
 `intent_score` (0–100), `next_action`, `qualification_completeness` (0–1) and the
@@ -341,7 +368,7 @@ importantly, absent from all of them if it is not declared.
 
 <!-- mcp-tools:start (generated: node scripts/generate-mcp-tools-doc.mjs) -->
 
-127 tools are declared for MCP clients, across 31 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
+140 tools are declared for MCP clients, across 33 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
 
 | Domain | Tool | Kind | Scope |
 |---|---|---|---|
@@ -386,6 +413,10 @@ importantly, absent from all of them if it is not declared.
 | `experiment` | `experiment.create` | WRITE | `campaigns:write` |
 | `experiment` | `experiment.start` | WRITE | `campaigns:write` |
 | `experiment` | `experiment.stop` | WRITE | `campaigns:write` |
+| `experiment` | `experiment.promotion_advice` | READ | `campaigns:read` |
+| `experiment` | `experiment.promote` | WRITE | `campaigns:write` |
+| `experiment` | `experiment.rollback` | WRITE | `campaigns:write` |
+| `experiment` | `experiment.set_auto_promote` | WRITE | `campaigns:write` |
 | `funnel` | `funnel.get` | READ | `analytics:read` |
 | `invoice` | `invoice.create_from_quote` | APPROVAL_GATED | `leads:write` |
 | `invoice` | `invoice.issue` | APPROVAL_GATED | `leads:write` |
@@ -412,6 +443,7 @@ importantly, absent from all of them if it is not declared.
 | `lead` | `lead.rescore` | WRITE | `leads:write` |
 | `lead` | `lead.takeover` | WRITE | `leads:write` |
 | `lead` | `lead.resume_follow_up` | WRITE | `leads:write` |
+| `lead` | `lead.add_tag` | WRITE | `leads:write` |
 | `legitimate_interest` | `legitimate_interest.save` | WRITE | `business:write` |
 | `meeting_type` | `meeting_type.list` | READ | `business:read` |
 | `meeting_type` | `meeting_type.save` | WRITE | `business:write` |
@@ -431,6 +463,7 @@ importantly, absent from all of them if it is not declared.
 | `opportunity` | `opportunity.add_interest` | WRITE | `leads:write` |
 | `opportunity` | `opportunity.set_stage` | WRITE | `leads:write` |
 | `opportunity` | `opportunity.close` | APPROVAL_GATED | `leads:write` |
+| `pipeline` | `pipeline.get_mapping` | READ | `business:read` |
 | `privacy_request` | `privacy_request.list` | READ | `business:read` |
 | `privacy_request` | `privacy_request.create` | WRITE | `business:write` |
 | `privacy_request` | `privacy_request.update` | WRITE | `business:write` |
@@ -468,6 +501,13 @@ importantly, absent from all of them if it is not declared.
 | `sales_settings` | `sales_settings.get` | READ | `business:read` |
 | `sales_settings` | `sales_settings.update` | WRITE | `business:write` |
 | `scoring_weights` | `scoring_weights.update` | WRITE | `business:write` |
+| `voice` | `voice.settings_get` | READ | `business:read` |
+| `voice` | `voice.settings_update` | WRITE | `business:write` |
+| `voice` | `voice.number_status` | READ | `business:read` |
+| `voice` | `voice.request_call` | APPROVAL_GATED | `leads:write` |
+| `voice` | `voice.cancel_call` | WRITE | `leads:write` |
+| `voice` | `voice.calls_list` | READ | `leads:read` |
+| `voice` | `voice.call_get` | READ | `leads:read` |
 | `whatsapp_template` | `whatsapp_template.list` | READ | `business:read` |
 | `whatsapp_template` | `whatsapp_template.sync` | WRITE | `business:write` |
 | `whatsapp_template` | `whatsapp_template.map_step` | WRITE | `business:write` |
@@ -478,6 +518,32 @@ importantly, absent from all of them if it is not declared.
 `lead.get` returns the lead and its last 20 messages as `recent_activity` (over
 the API, beside `data`). `lead.create` is the API's intake (see above);
 `create_lead` survives as the one hand-written MCP tool.
+
+### Quote-to-cash operations (P2)
+
+Catalogue (`catalogue.*`), quote settings (`quote_settings.*`), quotes
+(`quote.*`) and customer invoices (`invoice.*`) are ordinary service
+operations: one implementation (lib/quotes/service-core.ts,
+lib/invoicing/service-core.ts) for the app, the API, MCP and later the agent.
+
+- Roles: the catalogue and quote settings are owner/admin (prices, VAT, legal
+  terms). Members build, send, revise and withdraw quotes. Only an owner or
+  admin approves, and only in the app (`quote.approve`/`quote.reject` are
+  UI-only). Invoices, payments, voids and credit notes are admin.
+- Plan gates run inside each handler through `can()` (billing/capabilities.ts):
+  `quote_builder_enabled`, `esign_enabled`, `invoicing_enabled`,
+  `quote_approval_enabled`, `quote_ai_enabled`. No operation checks a plan name.
+- `quote.create` is idempotent on `requestId` (or the API `Idempotency-Key`):
+  the same request returns the existing quote. `invoice.credit_note` is
+  idempotent on its request id and `invoice.record_payment` on its reference.
+- `quote.send`, `quote.withdraw` and every invoice write except `invoice.list`
+  need a person's confirmation (MCP parks them for approval; an API key is
+  told a person is needed).
+- State changes only happen through the 0153 `quote_transition` /
+  `quote_record_signature` functions (row lock, expected status, action key).
+- The agent may later call exactly `quote.calculate`, `quote.create`,
+  `quote.submit_for_approval` and `quote.send` (`AGENT_QUOTE_OPERATIONS` in
+  the registry); the tools are wired in a later phase.
 
 ## MCP
 

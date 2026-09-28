@@ -2,7 +2,7 @@
 title: AI & selling settings
 summary: Set how much the assistant researches and how readily it asks leads to clarify, cap what AI may cost, choose your business type and qualification depth, and set brand rules and legitimate interests assessments
 category: settings
-keywords: [ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia, objections, reassurance, guarantees, case studies, try it]
+keywords: [what the ai may do, ai permissions, draft quotes, send quotes, offer discounts, discount limits, margin floor, approval, ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia, objections, reassurance, guarantees, case studies, try it]
 order: 40
 updated: 2026-09-27
 screenshots:
@@ -28,6 +28,33 @@ Whatever you choose here, the hard rules always apply: suppression and opt-outs,
 - **Risk tolerance:** **Cautious** asks the lead to clarify whenever the assistant is not clearly confident it read the reply correctly. **Balanced** (the default) asks the lead to clarify when a reply is unclear, and passes the conversation to a person only as a last resort. **Assertive** keeps the same safety floor as Balanced: it never acts on a reply it could not read, and the hard rules still hand over. Confidence alone never hands a conversation over: after two unclear replies on the same point, a person takes it. See [The handoff brief](/help/booking-and-sales/handoff-brief).
 
 Choose **Save strategy**.
+
+## What the AI may do
+
+Switches for what the assistant may do without a person. Everything starts **off** except **Qualify leads** and **Book meetings**, so turn on only what you want it to do on its own.
+
+| Switch | What it lets the assistant do |
+|---|---|
+| Qualify leads | Ask your qualification questions and record the answers. Always on while the assistant is on |
+| Book meetings | Offer real times from your calendar and book the one the lead picks. Off: a colleague arranges the time |
+| Draft quotes | Build a quote from your catalogue when a lead asks for a price |
+| Send quotes | Send a drafted quote to the lead. Off: a colleague sends it. Needs **Draft quotes** |
+| Offer discounts | Take money off a quote within the limits below. Needs **Draft quotes** |
+| Ask for a signature | Point a lead who accepted a quote to the signature step. Needs **Send quotes** |
+| Send payment links | Point a lead to the payment step after signing. Needs **Send quotes** |
+
+**Phone leads**, **Transfer live calls to a person**, **Raise invoices** and **Mark deals won** are set in their own settings, so they show here as read-only. A deal is marked won when a payment is confirmed.
+
+When you turn on **Offer discounts**, set its limits:
+
+- **When it may offer one:** only after the lead objects on price, or unprompted when they ask.
+- **Most it may take off**, as a percentage and, if you like, in pounds.
+
+Choose **More limits** for the first, smaller concession, the lowest margin to keep, and when a person must approve: a discount above a percentage or an amount, or any quote above a value. You also choose who approves: an owner or admin, or only the owner.
+
+The assistant never works out a price itself. Every figure it gives comes from your catalogue, and your discount rules decide every discount. See [Quotes from your catalogue](/help/booking-and-sales/quotes).
+
+AI quoting is included on every paid plan with AI assist. If it isn't on yours, the card says so. Choose **Save permissions**.
 
 ## AI budget
 

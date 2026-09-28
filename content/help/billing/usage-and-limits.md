@@ -31,17 +31,23 @@ When a limit reaches 80%, a card appears under its row with the options that app
 
 | Limit | When it is reached |
 |---|---|
-| New leads | Leads keep being captured and followed up. A lead is never dropped because of a limit. If you often go over, the next plan fits better |
+| New leads | Enquiries that arrive (ad forms, web forms, connectors, messages) are always captured and never dropped, but past the limit they are held without follow-up until the next period. Adding a lead yourself (Add lead, an import that starts follow-up, the API or an AI assistant) is refused until then. If you often go over, the next plan fits better |
 | SMS | Sends use top-up credit next. When that is used up too, SMS sending stops until the period resets or you buy more credit. See [What happens at zero](#running-low-on-sms-or-whatsapp) |
 | WhatsApp | WhatsApp has no included messages. It is a paid add-on on Growth and above, paid in WhatsApp tokens: 2 for a conversation reply or utility template, 5 for a marketing template. The row counts tokens. When there are too few tokens for the next message, WhatsApp sending stops until you buy more |
 | Email (outreach) | Outreach email stops at the allowance until the next period, or until you upgrade |
 | AI tokens | The assistant pauses. Follow-up and qualification rules keep running. Top up tokens to resume |
 | Team members | New invitations are refused until a seat is freed or the plan is upgraded. Pending invitations count as seats |
+| Saved searches | Active saved searches are counted. A new or resumed one is refused at the limit; pause or stop one to free a slot |
+| Sender identities | A new sending address is refused at the limit. Re-saving an existing identity is always allowed |
 | Verified prospects | Sourcing stops at the allowance until the next period, or until you upgrade |
 | Sourcing runs | New runs are refused until the next period |
 | Reactivation contacts | Counted per billing period: each contact counts once per campaign, when it joins that campaign's audience. A launch, or an added lead, that would take you past the allowance is refused with what is left and what you can do: narrow the audience, wait for the next billing period, or upgrade |
 
 There is no overage on any plan: nothing is ever charged beyond your plan and the credit you have bought.
+
+## After a downgrade
+
+You can always move to a smaller plan, even if you are using more than it includes. Nothing is removed. From the day the smaller plan starts, adding more of anything you are over (team members, sender identities, saved searches, intent monitors) is refused until you are back within the plan, and a campaign cannot launch while you have more active sender identities than the plan includes. A banner and **Settings → Billing & Usage** list exactly what to reduce.
 
 A message that is refused for a limit is not lost silently. The reason is recorded on the message, for example "This month's SMS allowance is used up and there is no top-up credit left".
 

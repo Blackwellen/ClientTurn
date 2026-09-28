@@ -1,14 +1,14 @@
 ---
 title: What are AI agents?
-summary: The four kinds of background agent (sourcing, booking, re-engagement and combined), what each actually does, and what none of them will do
+summary: The four kinds of background agent (sourcing, closing, re-engagement and combined), what each actually does, and what none of them will do
 category: ai-agents
-keywords: [agents, sourcing agent, booking agent, re-engagement agent, combined agent, background worker, automation, ai agent types]
+keywords: [agents, sourcing agent, closing agent, booking agent, sales agent, re-engagement agent, combined agent, background worker, automation, ai agent types]
 order: 5
-updated: 2026-09-27
+updated: 2026-09-28
 screenshots:
   - src: /help/screenshots/ai-agents/what-are-ai-agents-1.png
     alt: "Step 1 of creating an agent with the four agent type cards"
-    caption: "Choose what the agent does: sourcing, booking, re-engagement, or all three"
+    caption: "Choose what the agent does: sourcing, closing, re-engagement, or all three"
 ---
 
 An agent is a background worker you configure once and leave running. It works to a schedule, inside limits you set, and records everything it does. You manage agents from **Agents** in the sidebar.
@@ -20,9 +20,9 @@ Agents are different from the **conversation assistant**, which answers a lead's
 | Agent | What it does |
 |---|---|
 | **Sourcing agent** | Runs an approved Find Leads search plan on its schedule: finds companies that fit, checks each against your ideal customer, finds and verifies a work contact, and puts the results in front of you as prospects |
-| **Booking agent** | Looks for qualified leads that have gone quiet without booking: qualified, not booked, not won or lost, not opted out, nobody handling them, and nothing sent for at least a day. When it is allowed to act on its own, it hands them back to your follow-up sequence so the next step goes out. Offering times and confirming bookings is done by the conversation assistant and your booking setup |
+| **Closing agent** | Looks for qualified leads that have gone quiet short of their goal: a meeting not booked, a product or service not bought, or a subscription or trial not started. It follows each lead's own goal, so a lead who booked a demo but has not paid is still chased when the goal is a sale. Leads a checkout link or a quote is already chasing are left to that follow-up, so nobody is chased twice. When it is allowed to act on its own, it hands the rest back to your follow-up so the next step goes out |
 | **Re-engagement agent** | Picks out older leads that never converted, using the same rules as the Reactivation wizard, and drafts a reactivation campaign for them. It never launches the campaign: sending to a whole audience is always a person's decision |
-| **Combined agent** | Sourcing, booking and re-engagement together, sharing one set of limits |
+| **Combined agent** | Sourcing, closing and re-engagement together, sharing one set of limits |
 
 ## What every agent respects
 

@@ -183,7 +183,25 @@ concerns, and **2 or 3 response patterns** (`objection-responses.ts`) in the
 proven shape: acknowledge, clarify the real concern with one question when it
 is unclear, reframe with value or approved proof, then one small next step.
 The first objection of a kind gets the clarifying pattern; a repeat gets the
-reframe (`objectionRaisedBefore`). A contract **lock-in** ("tied in until
+reframe (`objectionRaisedBefore`).
+
+**Objection matrix pass (2026-09-28).** The next step now follows the goal
+(`objectionGoalFor`, `GOAL_NEXT_STEP`): a pattern that advances the sale
+closes on a meeting at two confirmed times, the checkout link, the sign-up
+link or a priced quote, so a direct-sale or trial lead is no longer steered
+into a call. A clarifying turn ends on its one question and keeps the step
+for the answer; a repeat carries "take a new angle, never repeat an earlier
+question or reason". The AI concern ("is this a bot?", "I'd rather not talk
+to a robot") is a TRUST playbook answered honestly (`trust-ai-honest`). A
+figure was removed from a library step ("a 15 minute slot"). Evidence:
+`tests/objection-matrix.test.ts`, 120 cells (objection x SMS / email /
+WhatsApp / voice x meeting / sale / trial / quote x first / repeat), each
+checked against the strategy block or call brief and graded by the reply
+grader plus a written rubric: before 54 of 120 at 90 or above (mean 84.5),
+after 120 of 120 (mean 99.6). The replies were written by Claude acting as
+the model: this proves the library and the plan, not production wording.
+
+A contract **lock-in** ("tied in until
 March") is the AI's to handle and never matches the CONTRACT hand-over, which
 is now reserved for a question about terms.
 
@@ -331,6 +349,8 @@ assemble context
 | `human-style.ts` | The "sounds like AI" lint (emoji, dashes, AI tells, lists, openers, exclamations, UK spelling, name, sign-off) and `fixHumanStyle` | ✅ |
 | `compose-policy.ts` | After a rejected draft: regenerate, repair (style only, after one regeneration) or hand over; the call-count simulator | ✅ |
 | `closing.ts` | Close lines per motion, buying signals, call requests | ✅ |
+| `quote-flow.ts` | The quote path: detection, catalogue items, inputs, the one step per turn, the tool gate, the concession, the verbatim figures and the fallback wording (see Quotes) | ✅ |
+| `quote-turn.ts` | The quote path's reads for one turn: the open quote, the path state, the catalogue, facts, the AI policy | server |
 | `question-craft.ts` | How the one question is asked: tied to the last answer, with a reason where it helps | ✅ |
 | `channel-preference.ts` / `-store.ts` | The one-time channel question and its answer (0147) | ✅ / server |
 | `reply-grader.ts` | The /100 human-style and persuasion grader | ✅ |
@@ -395,7 +415,9 @@ rejection in one turn hands over (`MAX_VALIDATOR_REJECTIONS`).
 
 | Rejected | Unless |
 |---|---|
-| Any money amount | It appears in wording the workspace published |
+| Any money amount | It appears in wording the workspace published, an approved checkout link's price text on the turn that sends it, or this turn's quote figures (`calculate_quote` / the current revision) |
+| Any VAT or tax statement | A VAT-registered quote is in play, and any rate named is on it. Never improvised |
+| A delivery, start or completion promise ("ready in two weeks", "we can start on Monday") | Never |
 | Any specific time offered | It came back from a calendar tool this turn |
 | "You're booked" | `create_booking` actually succeeded |
 | "We cover your postcode" | A service-area tool positively matched |
@@ -444,6 +466,12 @@ unconditionally.
 | `request_human_handover` | HIGH | — (a last resort only: see Hand-over policy) |
 | `request_assist` | LOW | — (a background task; ownership never moves) |
 | `apply_suppression` | HIGH | A **recognised** opt-out — only the deterministic layer can set this |
+| `propose_checkout` | HIGH | The checkout gate (direct close on, the motion, an approved link, the value ceiling) + contactability |
+| `calculate_quote` | LOW | `quoteToolGate`: AI on, `quote_ai_enabled`, "Draft quotes" (see Quotes) |
+| `draft_quote` | MEDIUM | As above; idempotent on the conversation plus the message that asked |
+| `request_quote_approval` | MEDIUM | As above; once per revision |
+| `send_quote` | HIGH | "Send quotes" (the owner's standing confirmation for this EXTERNAL operation) + contactability |
+| `propose_discount` | HIGH | "Offer discounts"; the quote core's discount policy decides |
 
 Allowed calls and refusals are both written to
 `conversation_agent_actions`. A denial is the interesting row.
@@ -476,6 +504,9 @@ to the loser, which drops its turn.
 | Outbound message | `send_key` = `agent:<run id>` |
 | Qualification answer | upsert on `(lead_id, question_id)` |
 | Handoff | one open row per conversation (partial unique index) |
+| Agent quote | `agent:<conversation>:<message that asked>` -> `quotes.request_key` |
+| Agent quote send / approval request / discount | `commercial_action_claims.action_key`, per revision |
+| Commercial actions on one lead | `claim_commercial_action` (0160): the lead's advisory lock (the voice dial's) and the one-actor lease |
 | Suppression | upsert on `(business_id, normalized_contact, channel)` |
 
 A retried job either resumes a crashed turn or finds the work done. Model
@@ -1040,6 +1071,175 @@ out on; an unengaged one by email, SMS only when affordable under the channel
 budget (`follow-up/channel-strategy.ts`). An unpaid attempt EXPIRES a week after
 its last nudge; a later payment still counts.
 
+## Quotes: the assistant quotes, and the numbers are never its own
+
+Brief §7, §13-14, §53, §72-74 (2026-09-27). The pure decisions are in
+`agent/quote-flow.ts`, the turn's reads in `agent/quote-turn.ts`, the tools in
+`agent/tools.ts` and the branch in `orchestrator.ts` (`quoteTheLead`). Quote
+follow-up is `quotes/follow-up.ts`; the locks are `commercial/locks.ts`.
+Migration **0160** (not applied until the owner applies it; see below).
+
+**Every figure comes from the quote core.** The only source of a price, total,
+VAT amount, deposit or discount the assistant may state is a
+`calculate_quote` result or the current quote revision, formatted exactly as
+the quote document shows it (`quoteFigures`). The strategy line hands the
+model those figures verbatim ("Figures you may state, exactly as written:
+£1,440.00 (total including VAT), ..."), and the validator rejects any other
+money amount, any VAT statement the quote does not support, and any
+delivery, start or completion promise. A model that states nothing is fine;
+a model that invents a figure is regenerated, then replaced by deterministic
+wording built from the same figures (`quoteFallbackText`).
+
+### The path: one move per turn
+
+| Step | When | What happens |
+|---|---|---|
+| `COLLECT` | The lead asked for a quote or price for catalogue items it names (or the turn's offer has exactly one sellable item), and an input is missing | One question: quantity (for per-unit items), then options (items with options), then timing. A fact the engine already holds (TEAM_SIZE, VOLUME, TIMING) or something the lead already wrote is never asked; an input is asked at most twice. The question is the turn's one question (question QA is skipped for this step because the quote path owns it) |
+| `DRAFT` | Nothing left to ask | `calculate_quote`, then `draft_quote` (idempotent on the conversation plus the message that asked). The policy decides approval; then `request_quote_approval`, or `send_quote` where permitted, or a person sends it (`QUOTE_REVIEW` assist) |
+| `SEND` | A quote a person approved, and "Send quotes" is on | `send_quote` |
+| `ANSWER_FROM_QUOTE` | The lead has a sent or viewed quote and asks about it | The reply answers from the quote's figures only; anything the quote does not say, a colleague confirms |
+| `DISCOUNT` | The lead asks for a lower price, or objects on price, with a live quote | `planConcession` + `propose_discount` (below) |
+| `AWAITING_APPROVAL` | The quote waits for a person | An honest "a colleague is checking it", no figure, no time |
+| `NEXT_STEP` | Accepted, signed or deposit paid | The signature or payment step on their quote page (only with "Ask for a signature" / "Send payment links" on; otherwise a colleague follows up) |
+| `DEFERRED` | Several interests, and the quote is for an offer this turn is not about | One line: it will come back to that; the coordinator's move goes ahead |
+| `NOT_PERMITTED` | A quote would be the move but the assistant may not make it | The ordinary price handling: a colleague confirms the price (`CONFIRM_PRICE`) |
+
+**Closing by quote.** An offer whose pricing model is `QUOTE`, with a sellable
+catalogue item, closes with the quote: when the engine reaches its close
+(CTA_BOOK or CTA_CHECKOUT) the quote path takes the turn instead
+(`quoteIsTheClose`). It still needs "Draft quotes" on.
+
+**Several interests.** The quote is for the coordinator's primary interest;
+another offer's quote is deferred to a later turn. One question per reply
+still holds.
+
+### The tools
+
+All five go through the service registry as caller `AGENT`
+(`AGENT_QUOTE_OPERATIONS`), never a separate implementation, after
+`quoteToolGate`: the AI switched on, `can(businessId, "quote_ai_enabled")`,
+and the workspace's own permission for that tool. A refusal is written to
+`conversation_agent_actions` as `DENIED_PERMISSION`.
+
+| Tool | Operation | Needs | Idempotent on |
+|---|---|---|---|
+| `calculate_quote` | `quote.calculate` (READ) | Draft quotes | nothing written |
+| `draft_quote` | `quote.create` | Draft quotes | `agent:<conversation>:<message that asked>` -> `quotes.request_key` |
+| `request_quote_approval` | `quote.submit_for_approval` | Draft quotes | one per quote revision (`commercial_action_claims`) |
+| `send_quote` | `quote.send` (EXTERNAL) | Send quotes | one per revision; the SEND transition's action key |
+| `propose_discount` | `quote.apply_discount` | Offer discounts | one per revision and percentage |
+
+`quote.send` is EXTERNAL, so it needs a person's confirmation. The agent
+supplies it only for this one operation, and only when the owner turned
+"Send quotes" on: that setting is the standing confirmation, and the audit
+row records `confirmation_source: standing_permission`. With it off, a
+person sends the drafted quote.
+
+### Discounts: the policy decides, never the model
+
+`quote.apply_discount` (new, AGENT only) takes a whole-quote percentage. The
+quote core decides with `approvalVerdict` and the assistant's policy
+(`discount-policy.ts aiDiscountPolicy`: the owner's AI limits, plus the
+workspace's quote approval rules and margin floor), on the full calculation,
+cost included, which the assistant never sees:
+
+| Outcome | What happens | What the lead hears |
+|---|---|---|
+| `ALLOW` | A new revision with the discount (a sent quote's old link stops working), sent where permitted | The discount and the new total, from the new calculation |
+| `REQUIRE_APPROVAL` | The discounted revision is stored needing approval; approval is requested; `QUOTE_REVIEW` assist | Honestly, that the team is looking at it. No figure, no promise |
+| `DENY` | Nothing changes | The price held politely with objection craft: acknowledge, ask what is driving it or reframe with value, one small next step |
+
+What the assistant proposes: the lead's own figure when they named one,
+otherwise the first concession. Above the limits it counters with the most
+the policy allows when that is allowed ("I can't do 20%, the most I can do
+is 5%"); a second concession always goes to a person (the two-step rule,
+`TWO_STEP_ESCALATION`). `ONLY_AFTER_OBJECTION` means a bare "any discount?"
+is held and a price objection ("it's over our budget") may be conceded;
+`PROACTIVE` may concede on the bare ask. The legacy chat discount rule
+(`discountGuidance`, the insist-then-hand-over) does not apply on a quote
+discount turn: the policy's approval replaces the hand-over.
+
+### What the AI may do (commercial authority v2)
+
+Settings -> AI & selling -> **What the AI may do** (owner/admin; stored in
+`commercial_authority.ai_permissions` and `ai_discount_policy`, 0160; read
+defensively by `ai-permissions.ts`). Least privilege: only qualify and book
+start on.
+
+| Permission | Default | Enforced by |
+|---|---|---|
+| Qualify leads | on | Always on while the assistant is on (turn the assistant off to stop it) |
+| Book meetings | on | `create_booking`, `send_booking_link` (refused, `DENIED_PERMISSION`, when off) |
+| Phone leads | off | Voice calling reads it (its own settings) |
+| Draft quotes | off | `calculate_quote`, `draft_quote`, `request_quote_approval` |
+| Send quotes | off | `send_quote`; needs Draft quotes |
+| Offer discounts | off | `propose_discount`; needs Draft quotes; with its limits below |
+| Ask for a signature | off | The step after acceptance; needs Send quotes |
+| Raise invoices | off | Invoicing reads it; the assistant has no invoice tool |
+| Send payment links | off | The payment step after signing; needs Send quotes |
+| Mark deals won | off | The assistant has no such tool: payment confirmation marks a deal won |
+| Transfer live calls to a person | off | Voice calling reads it |
+
+Discount limits (shown only with Offer discounts on; the rest behind "More
+limits"): when it may offer one (only after a price objection, or
+unprompted), the most it may take off in percent and in pounds, the first
+concession, the lowest margin kept, approval above a percentage, an amount
+off or a quote value, and who approves (an owner or admin, or the owner).
+`quote_ai_enabled` (`can()`) gates every quote tool on top, server-side.
+
+### Follow-up after the quote (§72)
+
+The quote-P2 `quote.nudge` job is still the one reminder job; `quoteNudgeDecision`
+decides each run, and every touch asks `checkAutomatedTouchAllowed` (loop
+`quote_follow_up`) and the send gate:
+
+| Situation | What happens |
+|---|---|
+| Sent, not viewed after 3 days | A reminder |
+| Viewed | No "have you seen it" reminder; the next one is the expiry reminder |
+| Viewed 3 or more times (all its links) | A HIGH buying-intent signal, `QUOTE_VIEWED_REPEATEDLY` (behavioural, strength 0.85), once per revision |
+| Viewed, and the lead asks a question | The agent answers from the quote (`ANSWER_FROM_QUOTE`) |
+| 2 days before expiry | A reminder (none within 12 hours of expiry) |
+| The lead replied since it was sent | No reminder: the conversation is live |
+| Expired | The re-engagement route: `QUOTE_EXPIRED` a week later (`reengagement/triggers.ts`), with the usual stop conditions; the agent writes it where it can ("their quote expired on ..."), else fixed copy with no figure |
+| Accepted | The signature step; then payment |
+| Paid (deposit or in full) | Every sales chase stops at once: follow-up automation off, queued quote reminders, checkout nudges and re-engagement triggers for the lead cancelled (`quotes/chasing.ts`, from the invoicing store's transition) |
+
+### No duplicate commercial actions (§73)
+
+Each commercial row has a UNIQUE idempotency key (one quote per request, one
+send per revision, one invoice per schedule row, one payment link per
+action, one booking per slot and lead, one voice call per attempt), and a
+commercial action takes the lead's lock first. `claim_commercial_action`
+(0160) takes `pg_advisory_xact_lock` on the lead's lock id, which is the voice
+dial's own (`voiceLeadLockKey`), so a dial and a quote never interleave; it
+then checks a short lease naming who is working the lead (the AI 2 minutes,
+a person 10, a voice call 30). Another kind of actor is refused while the
+lease holds: the assistant leaves the quote to a person who is sending one
+(`LEAD_HELD`), a person is asked to wait a minute while the assistant is
+mid-action, and a second voice agent is refused. Before 0160 is applied the
+claim degrades to the per-row keys alone.
+
+### Migration 0160 (not applied)
+
+`commercial_authority.ai_permissions` / `ai_discount_policy`, the lease and
+claim tables with `claim_commercial_action` / `release_commercial_lease`
+(service role only, RLS on with no policies, cleared on anonymise), and the
+`QUOTE_VIEWED_REPEATEDLY` signal type. Until it is applied every workspace
+reads the least-privilege defaults, so no quote tool runs.
+
+### Evidence
+
+* `tests/agent-quotes.test.ts`: the permissions and their defaults, the tool
+  gate by permission and capability, the service-registry-only rule, the
+  standing confirmation, the policy mapping, the figure-leak test, VAT and
+  delivery rules, the token budget, and the discount matrix end to end
+  through the quote core with approval.
+* `tests/agent-quote-journeys.test.ts`: golden conversations (a quote asked
+  for, inputs collected, sent; a discount within limits; one outside limits
+  and one refused; a lead who viewed three times), quote follow-up, paid stops
+  chasing, expired to re-engagement, and the locks.
+
 ## Working with what the assistant did
 
 `src/lib/agent/queries.ts` (reads) and `src/lib/agent/actions.ts` (writes),
@@ -1271,6 +1471,38 @@ Assistant replies, reply interpretation, and conversation summaries — every
 call that reaches `runTask`. Deterministic follow-up, the qualification engine,
 message sending and the send guard consume none, which is why they keep working
 when the allowance is gone.
+
+
+## Voice: the same agent on a call (P3, 2026-09-28)
+
+A phone call is an execution surface of this agent, not a second one
+(docs/VOICE.md §16). Three touch points in this directory:
+
+- **`tools.ts` ToolContext `holder`.** Optional. Absent, the text assistant
+  claims the lead's commercial lease as `AI` keyed by the conversation, as
+  before. A voice call's tools (`voice/tools/work.ts`) pass
+  `{ kind: "VOICE", ref: <call id> }`, so a call and a text turn never act on
+  the lead at once (commercial/locks.ts). Every other tool behaviour is
+  unchanged: the voice tools reuse `getCalendarAvailability`,
+  `createBooking`, `calculateQuoteForLead`, `draftQuote`, `sendQuoteToLead`,
+  `proposeCheckout`, `requestHumanHandover` and `applySuppression`, with
+  their gates, through `voice_agent.*` service operations as caller AGENT.
+- **`orchestrator.ts` `callTheLeadInstead`.** Before a turn is composed, a
+  call-only request ("can you give me a call?") is offered to
+  `voice/text-to-call.ts`. When the deterministic channel choice
+  (`voice/channel-orchestration.ts` rule V1: the owner's "Phone leads"
+  permission, entitlement, a buying signal or MEDIUM+ intent, calling hours)
+  says CALL, the lead's message is recorded as the CALL_REQUESTED evidence,
+  the call is requested through every voice gate, and the turn's one move is
+  a fixed line ("... will call you in the next few minutes ..."). Otherwise
+  it returns null and the turn goes on exactly as before (bookable call
+  times). It never throws.
+- **Continuity.** After a call, its summary, agreed step and objections are
+  merged into the lead's opportunity memory, and its words go through the
+  same QI extractors, so the next text turn continues from the call.
+
+The model on a call never composes a price, discount, availability or area:
+it speaks only what a tool returned (resolved conflict 1), exactly as here.
 
 ## Schema
 

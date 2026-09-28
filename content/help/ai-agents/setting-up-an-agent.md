@@ -22,10 +22,10 @@ screenshots:
 ## Create the agent
 
 1. Open **Agents** and choose **New agent**.
-2. **Role** — choose **Sourcing agent**, **Booking agent**, **Re-engagement agent** or **Combined agent**. See [What are AI agents?](/help/ai-agents/what-are-ai-agents)
+2. **Role** — choose **Sourcing agent**, **Closing agent**, **Re-engagement agent** or **Combined agent**. See [What are AI agents?](/help/ai-agents/what-are-ai-agents)
 3. **Sources** — under **Where should it look?**, tick the sources it may use. Only official APIs, licensed data and accounts you own are offered, and a source that needs connecting first is marked. For a sourcing agent:
    - choose the **Approved search plan** (or **No plan yet — save as draft**);
-   - choose whether to **Find a work email address** (addresses are verified before use) and whether to **Find a business phone number**.
+   - choose whether to **Find a work email address** (addresses are verified before use). Agents never collect phone numbers: texts and calls only go to a number the person gave you themselves.
 4. **Limits** — under **How careful should it be?**, give it an **Agent name** and optional **Description**, then set:
    - **Approval**: **Review everything**, **Review new companies only**, or **Run automatically**;
    - **Schedule**: **Only when I run it**, **Every hour**, **Once a day** or **Once a week**;

@@ -83,7 +83,7 @@ Pressing the button twice never charges you twice.
 
 - **The payment succeeds:** you move to the plan you chose, and its full allowances switch on.
 - **The payment fails:** nothing stops straight away. You get three days of full access while the charge is retried daily. See [What happens if a payment fails](/help/billing/failed-payments).
-- **You cancelled:** the workspace becomes read-only. Your data stays and can be exported.
+- **You cancelled:** the workspace becomes read-only for 90 days. Your data stays and can be exported; after 90 days it is deleted, as our privacy policy sets out.
 
 ## One trial per business
 

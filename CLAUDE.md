@@ -20,6 +20,8 @@ surface.** Do not invent features that are not in them.
 | [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | The implementation plan derived from all three. Tracks phase status. |
 | [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) | The conversation agent: architecture, guardrails, tool permissions, what the model may and may not decide. Read before changing anything under `src/lib/agent/`. |
 | [docs/CRON.md](docs/CRON.md) | How background processing runs 24/7 (Supabase pg_cron -> `/api/cron/worker`). |
+| [docs/BILLING.md](docs/BILLING.md) | Billing behaviour: dunning (subscription invoices only), disputes, cancellation (90-day read-only, number release after 14 days), downgrades over limits, where every plan allowance is enforced, VAT flag. Read before changing anything under `src/lib/billing/`. |
+| [docs/VOICE.md](docs/VOICE.md) | The AI voice agent: eligibility, providers, tools, call brief, numbers, minutes. Read before changing anything under `src/lib/voice/`. |
 | [docs/DEVELOPER_PLATFORM.md](docs/DEVELOPER_PLATFORM.md) | Workspace API keys, outgoing webhooks and the MCP endpoint: the credential model, scopes, signing and delivery. Read before changing anything under `src/lib/api-keys/`, `src/lib/webhooks/`, `src/lib/mcp/` or `src/app/api/v1/`. |
 
 Where the Bible/Spec conflict with the V3 doc on **navigation/page structure**, the **V3 doc
@@ -38,6 +40,10 @@ algorithms, commercial framing), the **Bible wins** unless listed under "Resolve
    (renamed from Campaigns) respectively. Old routes are deleted outright, not redirected. See
    APPENDIX A/B of the V3 doc for the full removed-surface map. The underlying Supabase tables are
    unaffected — this is a UI/IA consolidation only, not a data model change.
+   **Superseded 2026-09-28 (owner decision):** the app has since grown and the current menu is
+   the canonical one: Dashboard, Leads, Inbox, Find Leads, Follow-Up, Reactivation, Agents,
+   Analytics, Settings. Don't fold these back; new surfaces still go inside an existing
+   destination (usually Settings or a lead/record page) unless the owner asks for a new one.
 1. **AI.** The Bible says "no AI / no ML". The Spec (§4.4, §11.10) describes an AI layer, and
    Azure AI credentials are provisioned. **Resolution:** the qualification and follow-up engines
    are 100% deterministic and remain the system of record. Azure AI is an *optional assist layer*
@@ -81,6 +87,15 @@ algorithms, commercial framing), the **Bible wins** unless listed under "Resolve
    number is therefore never collected from an enrichment provider — holding personal data for
    a purpose the product does not have is the data-minimisation failure the compliance layer
    exists to prevent. `contact-legality.assessPhone` remains, screening lead-form numbers.
+
+7. **No paid enrichment vendors (2026-09-28).** Apollo, Hunter and Clearbit stay disabled in
+   production (Hunter unreliable; the others a compliance risk). Sources are first-party and free:
+   company websites, Companies House, Google Places (discovery only), the customer's own CRM/imports.
+   The privacy policy's "we do not enrich from data brokers" must stay true.
+
+8. **Customer payments go to the customer's own Stripe (2026-09-28).** For quotes, invoices and
+   checkout links the customer is the merchant of record; ClientTurn sends the link and reads the
+   payment result. No Stripe Connect, no funds held by ClientTurn.
 
 ## Non-negotiable rules
 
