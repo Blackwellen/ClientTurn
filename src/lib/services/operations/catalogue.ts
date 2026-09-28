@@ -11,6 +11,7 @@ import { loadQuoteSettings, loadWorkspaceCatalogue } from "@/lib/quotes/store";
 import {
   baseRowFromSettings,
   extendedRowFromSettings,
+  payRowFromSettings,
   quoteSettingsInputSchema,
   type QuoteSettings,
 } from "@/lib/quotes/settings";
@@ -216,6 +217,13 @@ defineOperation("quote_settings.update", {
     if (extended.error) {
       if (!isSchemaLag(extended.error)) throw new ServiceError("CONFLICT", "Those settings could not be saved.");
       warnings.push({ code: "pending_migration", message: "Saved. The signature and reminder switches take effect after database update 0156." });
+    }
+    const pay = await client.from("quote_settings").update(payRowFromSettings(settings)).eq("business_id", context.businessId);
+    if (pay.error) {
+      if (!isSchemaLag(pay.error)) throw new ServiceError("CONFLICT", "Those settings could not be saved.");
+      if (settings.invoicePayMode !== "NONE") {
+        warnings.push({ code: "pending_migration", message: "Saved. The invoice payment link takes effect after database update 0173." });
+      }
     }
 
     const counters = await client.from("document_counters").upsert(

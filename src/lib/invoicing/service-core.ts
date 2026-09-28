@@ -64,7 +64,8 @@ export type InvoiceRecord = {
   createdAt: string;
 };
 
-export type PaymentProvider = "manual" | "bank_transfer" | "other";
+/** "stripe" is written only by automatic settlement (payments/confirm.ts, 0173), never typed by a person. */
+export type PaymentProvider = "manual" | "bank_transfer" | "other" | "stripe";
 
 export interface InvoiceStore {
   loadSettings(businessId: string): Promise<QuoteSettings>;
@@ -79,7 +80,7 @@ export interface InvoiceStore {
   /** DRAFT -> OPEN with number and dates; false when it was no longer a draft. */
   issue(businessId: string, invoiceId: string, fields: { number: string; issueDate: string; dueDate: string; supplyDate: string }): Promise<boolean>;
   /** Append a payment; the 0154 trigger moves paid_minor and the status. */
-  insertPayment(businessId: string, input: { invoiceId: string; provider: PaymentProvider; externalId: string; amountMinor: number; receivedAt: string; recordedBy: string | null }): Promise<"RECORDED" | "DUPLICATE" | "REFUSED">;
+  insertPayment(businessId: string, input: { invoiceId: string; provider: PaymentProvider; externalId: string; amountMinor: number; receivedAt: string; recordedBy: string | null; checkoutPaymentId?: string | null }): Promise<"RECORDED" | "DUPLICATE" | "REFUSED">;
   voidInvoice(businessId: string, invoiceId: string): Promise<boolean>;
   loadCreditNotes(businessId: string, invoiceId: string): Promise<CreditNote[]>;
   findCreditNoteByKey(businessId: string, idempotencyKey: string): Promise<{ number: string; amountMinor: number; netMinor: number; vatMinor: number } | null>;
@@ -228,7 +229,7 @@ export async function recordPayment(
   deps: InvoiceDeps,
   businessId: string,
   actor: InvoiceActor,
-  args: { invoiceId: string; amountMinor: number; receivedAt: string; reference: string; provider: PaymentProvider },
+  args: { invoiceId: string; amountMinor: number; receivedAt: string; reference: string; provider: PaymentProvider; checkoutPaymentId?: string | null },
 ) {
   const invoice = await loadOrFail(deps, businessId, args.invoiceId);
   if (invoice.status !== "OPEN" && invoice.status !== "PARTIALLY_PAID") {
@@ -244,11 +245,15 @@ export async function recordPayment(
     amountMinor: args.amountMinor,
     receivedAt: args.receivedAt,
     recordedBy: actor.userId,
+    checkoutPaymentId: args.checkoutPaymentId ?? null,
   });
   if (outcome === "REFUSED") throw new InvoiceServiceError("CONFLICT", "That payment could not be applied to this invoice.");
   const after = (await deps.store.loadInvoice(businessId, invoice.id)) ?? invoice;
+  // Only the insert that paid the invoice off emits: a duplicate (a replayed
+  // webhook, a retried job) never does, so invoice.paid fires once.
   if (outcome === "RECORDED" && after.status === "PAID") {
-    await deps.effects.emit(businessId, "invoice.paid", { invoiceId: after.id, number: after.number, totalMinor: after.totalMinor, currency: after.currency, quoteId: after.quoteId });
+    const quote = after.quoteId ? await deps.store.loadQuoteForInvoicing(businessId, after.quoteId) : null;
+    await deps.effects.emit(businessId, "invoice.paid", { invoiceId: after.id, number: after.number, totalMinor: after.totalMinor, currency: after.currency, quoteId: after.quoteId, leadId: quote?.leadId ?? null });
     await projectOntoQuote(deps, businessId, after);
   }
   return { invoice: presentInvoice(after), duplicate: outcome === "DUPLICATE" };

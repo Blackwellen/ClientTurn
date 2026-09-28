@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireRole } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -24,7 +24,7 @@ const SETTINGS_PATH = "/app/settings";
 
 async function admin() {
   try {
-    return await requireRole("admin");
+    return await requireCapability("manage_integrations");
   } catch {
     return null;
   }

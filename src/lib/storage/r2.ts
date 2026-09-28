@@ -85,11 +85,19 @@ export function assertUploadAllowed(
   }
 }
 
-/** Short-lived PUT URL. The bucket is never public. */
+/**
+ * Short-lived PUT URL. The bucket is never public.
+ *
+ * When `contentLength` is given it is signed into the URL, so the browser can
+ * only upload a body of exactly the size that passed `assertUploadAllowed`.
+ * Without it the size check was advisory: a caller could declare 1KB and PUT
+ * gigabytes (internal security review 2026-09-28, IR-02).
+ */
 export async function createUploadUrl(
   key: string,
   contentType: string,
   expiresIn = 300,
+  contentLength?: number,
 ) {
   return getSignedUrl(
     r2(),
@@ -97,6 +105,7 @@ export async function createUploadUrl(
       Bucket: serverEnv.r2.bucket,
       Key: key,
       ContentType: contentType,
+      ...(contentLength !== undefined ? { ContentLength: contentLength } : {}),
     }),
     { expiresIn },
   );

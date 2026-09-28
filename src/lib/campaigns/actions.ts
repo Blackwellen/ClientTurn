@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -360,6 +361,9 @@ export async function launchCampaign(
   const access = await requireCampaignAccess();
   if (!access.ok) return fail(access.error);
   const workspace = access.workspace;
+  if (!(await workspaceCan(workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
+  }
 
   const admin = createAdminClient();
   const { data: campaign } = await admin
@@ -456,6 +460,10 @@ async function setCampaignState(
   const access = await requireCampaignAccess();
   if (!access.ok) return fail(access.error);
   const workspace = access.workspace;
+  // Resuming starts sending again.
+  if (next === "RUNNING" && !(await workspaceCan(workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
+  }
 
   const admin = createAdminClient();
   const { data: campaign } = await admin

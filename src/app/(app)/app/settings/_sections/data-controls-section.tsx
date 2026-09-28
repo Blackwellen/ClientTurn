@@ -12,6 +12,7 @@ import { listWorkspaceRequests } from "@/lib/data-rights/privacy-requests";
 import { retentionPreview } from "@/lib/data-rights/retention";
 import type { RetentionPreview, WorkspacePrivacyRequest } from "@/lib/data-rights/types";
 import { Badge } from "@/components/ui/badge";
+import { AuditLogExport } from "@/components/settings/compliance/audit-log-export";
 
 /**
  * Settings → Data Controls (Programme §14).
@@ -80,6 +81,9 @@ export async function DataControlsSection() {
         canManage={canManage}
         loadError={requests.error}
       />
+
+      {/* Owners and admins only; the export route re-checks server-side. */}
+      <AuditLogExport canExport={canManage} />
 
       {/* ----------------------------------------------------- suppression */}
       <section className="rounded-xl border border-line bg-surface p-4 shadow-xs">

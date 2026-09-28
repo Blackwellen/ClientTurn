@@ -1,5 +1,6 @@
 "use server";
 
+import { requireCapability } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
@@ -61,6 +62,31 @@ async function requireSettingsAdmin(): Promise<
       ok: false,
       error: "Only an owner or admin can change workspace settings.",
     };
+  }
+}
+
+/** Connection changes (0172): the integrations capability, not the admin role. */
+async function requireIntegrationManager(): Promise<
+  { ok: true; workspace: ActiveWorkspace } | { ok: false; error: string }
+> {
+  try {
+    return { ok: true, workspace: await requireCapability("manage_integrations") };
+  } catch {
+    return {
+      ok: false,
+      error: "Your permissions do not allow managing integrations. Ask the owner or an admin.",
+    };
+  }
+}
+
+/** Billing changes (0172): the owner, or an admin with billing delegated. */
+async function requireBillingManager(): Promise<
+  { ok: true; workspace: ActiveWorkspace } | { ok: false; error: string }
+> {
+  try {
+    return { ok: true, workspace: await requireCapability("manage_billing") };
+  } catch {
+    return { ok: false, error: "Only the owner, or an admin with billing permission, can do this." };
   }
 }
 
@@ -172,7 +198,7 @@ export async function createLogoUploadUrl(input: {
   try {
     assertUploadAllowed("logo", parsed.data.contentType, parsed.data.size);
     const key = objectKey(guard.workspace.businessId, "logo", parsed.data.filename);
-    const url = await createUploadUrl(key, parsed.data.contentType);
+    const url = await createUploadUrl(key, parsed.data.contentType, 300, parsed.data.size);
     return { ok: true, url, key };
   } catch {
     return {
@@ -506,7 +532,7 @@ export async function updateSlackChannel(input: {
     return fail(parsed.error.issues[0]?.message ?? "Enter a valid Slack channel ID.");
   }
 
-  const guard = await requireSettingsAdmin();
+  const guard = await requireIntegrationManager();
   if (!guard.ok) return fail(guard.error);
   const { workspace } = guard;
 
@@ -704,7 +730,7 @@ export async function updateBookingSettings(input: {
 /* ------------------------------------------------------------ billing tab */
 
 export async function openBillingPortal(): Promise<UrlResult> {
-  const guard = await requireOwner();
+  const guard = await requireBillingManager();
   if (!guard.ok) return { ok: false, error: guard.error };
   const { workspace } = guard;
 
@@ -756,7 +782,7 @@ export async function startPlanCheckout(input: {
   const parsed = checkoutSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a plan to continue." };
 
-  const guard = await requireOwner();
+  const guard = await requireBillingManager();
   if (!guard.ok) return { ok: false, error: guard.error };
   const { workspace } = guard;
 
@@ -807,7 +833,7 @@ export async function startPlanCheckout(input: {
 
 /** Drops a downgrade scheduled for the period end; the current plan renews. */
 export async function cancelScheduledPlanChange(): Promise<ActionResult> {
-  const guard = await requireOwner();
+  const guard = await requireBillingManager();
   if (!guard.ok) return fail(guard.error);
   const result = await cancelPendingPlanChange(guard.workspace);
   if (!result.ok) return fail(result.error);
@@ -1364,7 +1390,7 @@ export async function testConnection(
   const parsedProvider = z.enum(PROVIDER_TYPES).safeParse(providerType);
   if (!parsedProvider.success) return { ok: false, error: "Unknown connection." };
 
-  const guard = await requireSettingsAdmin();
+  const guard = await requireIntegrationManager();
   if (!guard.ok) return { ok: false, error: guard.error };
   const { workspace } = guard;
 

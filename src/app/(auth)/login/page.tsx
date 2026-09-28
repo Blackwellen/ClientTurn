@@ -1,3 +1,4 @@
+import { safeRelativePath } from "@/lib/security/safe-redirect";
 import type { Metadata } from "next";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
@@ -13,10 +14,10 @@ function one(value: string | string[] | undefined): string | undefined {
 }
 
 function safePath(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  if (!value.startsWith("/") || value.startsWith("//")) return undefined;
-  if (value.startsWith("/login") || value.startsWith("/signup")) return undefined;
-  return value;
+  const path = safeRelativePath(value);
+  if (!path) return undefined;
+  if (path.startsWith("/login") || path.startsWith("/signup")) return undefined;
+  return path;
 }
 
 export default async function LoginPage({

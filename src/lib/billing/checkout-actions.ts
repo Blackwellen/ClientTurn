@@ -1,7 +1,7 @@
 "use server";
 
+import { requireCapability } from "@/lib/auth/permissions";
 import { z } from "zod";
-import { requireRole } from "@/lib/auth/session";
 import { createCreditCheckout, createSubscriptionCheckout, type UrlOutcome } from "./checkout";
 
 /**
@@ -21,7 +21,7 @@ export async function startTrialCheckout(input: unknown): Promise<UrlOutcome> {
   const parsed = trialSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a plan to continue." };
 
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) return { ok: false, error: "Only the workspace owner can start the subscription." };
 
   return createSubscriptionCheckout(workspace, parsed.data.plan, parsed.data.interval, { includeVoice: parsed.data.includeVoice });
@@ -33,7 +33,7 @@ export async function startCreditPurchase(input: unknown): Promise<UrlOutcome> {
   const parsed = creditSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a bundle to continue." };
 
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) return { ok: false, error: "Only the workspace owner can buy credits." };
 
   return createCreditCheckout(workspace, parsed.data.bundleKey);

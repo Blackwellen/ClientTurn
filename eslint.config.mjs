@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     ".claude/skills/**",
+    // Local QA scratch output (git-ignored), not product code.
+    ".qa-artifacts/**",
   ]),
 ]);
 

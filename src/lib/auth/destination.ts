@@ -1,3 +1,4 @@
+import { safeRelativePath } from "@/lib/security/safe-redirect";
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -14,10 +15,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Only same-origin relative paths survive, so `?redirect=` cannot be a phishing hop. */
 export function sanitizeRedirectPath(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  if (value.startsWith("/login") || value.startsWith("/signup")) return null;
-  return value;
+  const path = safeRelativePath(value);
+  if (!path) return null;
+  if (path.startsWith("/login") || path.startsWith("/signup")) return null;
+  return path;
 }
 
 export async function destinationForUser(userId: string): Promise<string> {

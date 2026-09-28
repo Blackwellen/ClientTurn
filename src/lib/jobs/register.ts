@@ -2,6 +2,7 @@ import "server-only";
 import { registerHandler } from "./registry";
 import { handleLeadProcess } from "./handlers/lead-process";
 import { handleLeadScore } from "./handlers/lead-score";
+import { handleLinkedInAssistDraft } from "./handlers/linkedin-assist-draft";
 import { handleMessageSend } from "./handlers/message-send";
 import { handleMessageProcessInbound } from "./handlers/message-inbound";
 import { handleEmailPoll } from "./handlers/email-poll";
@@ -151,6 +152,7 @@ export function registerJobHandlers() {
   registerHandler("automation.dispatch", handleAutomationDispatch);
   registerHandler("voice.retention", handleVoiceRetention);
   registerHandler("billing.workspace_deletion", handleWorkspaceDeletion);
+  registerHandler("linkedin_assist.draft", handleLinkedInAssistDraft);
 }
 
 registerJobHandlers();

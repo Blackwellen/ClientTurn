@@ -1,3 +1,4 @@
+import { safeRelativePath } from "@/lib/security/safe-redirect";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   GOOGLE_LOGIN_COOKIE,
@@ -18,9 +19,7 @@ function audienceFrom(value: string | null): GoogleLoginAudience {
 
 /** Same shape as the sanitisation the login pages already apply to `?redirect=`. Full re-validation happens again at the callback -- this is only what gets carried in the cookie. */
 function rawNext(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
+  return safeRelativePath(value);
 }
 
 export function GET(request: NextRequest) {

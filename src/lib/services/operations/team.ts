@@ -20,6 +20,8 @@ import {
   type MemberFacts,
   type TeamRole,
 } from "@/lib/team/rules";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { CAPABILITIES, choiceToValue, permissionChangeProblem } from "@/lib/auth/capabilities";
 import { defineOperation, ServiceError, type HandlerInput } from "../runtime";
 import type { ServiceContext } from "../types";
 
@@ -352,6 +354,68 @@ defineOperation("member.set_role", {
       entityId: row.id,
       before: { role: row.role },
       after: { role: args.role },
+    };
+  },
+});
+
+/* ------------------------------------------------------------ permissions */
+
+const permissionsSchema = z.object({
+  membershipId: z.uuid(),
+  capability: z.enum(["send_outbound", "manage_integrations", "manage_billing"]),
+  choice: z.enum(["default", "allow", "deny"]),
+});
+
+defineOperation("member.set_permissions", {
+  schema: permissionsSchema,
+  async run({ args, context }: HandlerInput<z.infer<typeof permissionsSchema>>) {
+    const actor = actorOf(context);
+    const row = await loadMember(context.businessId, args.membershipId);
+    const problem = permissionChangeProblem({
+      actor,
+      target: { userId: row.user_id, role: row.role, status: row.status },
+      capability: args.capability,
+    });
+    if (problem) throw new ServiceError("FORBIDDEN_ROLE", problem);
+
+    const column = CAPABILITIES.find((c) => c.key === args.capability)!.column;
+    const client = createAdminClient() as unknown as SupabaseClient;
+    const { data: current, error: readError } = await client
+      .from("business_members")
+      .select(column)
+      .eq("id", row.id)
+      .eq("business_id", context.businessId)
+      .maybeSingle();
+    if (readError) {
+      throw new ServiceError(
+        "UNAVAILABLE",
+        readError.code === "42703"
+          ? "Per-person permissions are not switched on yet (database update pending)."
+          : "Could not read their permissions.",
+      );
+    }
+    const before = ((current as Record<string, unknown> | null)?.[column] ?? null) as boolean | null;
+    const next = choiceToValue(args.choice);
+
+    const { data, error } = await client
+      .from("business_members")
+      .update({ [column]: next })
+      .eq("id", row.id)
+      .eq("business_id", context.businessId)
+      // Compare-and-set on the role: a role change in between clears overrides
+      // (0172 trigger), so a stale screen cannot re-apply one to a new role.
+      .eq("role", row.role)
+      .select("id");
+    if (error) throw new ServiceError("UNAVAILABLE", "Could not update their permissions.");
+    if (!data?.length) {
+      throw new ServiceError("CONFLICT", "Their role changed while you were editing. Refresh and try again.");
+    }
+
+    return {
+      data: { membershipId: row.id, capability: args.capability, choice: args.choice },
+      entityId: row.id,
+      before: { [args.capability]: before },
+      after: { [args.capability]: next },
     };
   },
 });

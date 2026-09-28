@@ -38,6 +38,7 @@ import { queueNotification } from "@/lib/jobs/handlers/shared";
 import { requestCall } from "../runtime-core";
 import { serverVoiceDeps } from "../server-deps";
 import { classifyDestination } from "../destinations";
+import { spokenSlotChoice, spokenSlotLabel } from "../spoken-time";
 import type { VoiceToolArgs } from "./definitions";
 import { deriveToolPermissions, type PortOutcome, type ToolPermissions, type ToolCallRow } from "./core";
 
@@ -264,7 +265,8 @@ export async function checkAvailability(businessId: string, a: VoiceToolArgs<"ch
   }
   const slots = result.data.slots.slice(0, 3).map((s) => ({ start: s.startsAt, end: s.endsAt, label: s.label }));
   if (!slots.length) return { ok: true, say: "I have nothing free in the next two weeks. Shall I ask a colleague to arrange a time?", data: { slots: [] }, operation: "booking.availability" };
-  const say = slots.length === 1 ? `I have ${slots[0].label}. Does that work?` : `I have ${slots[0].label} or ${slots[1].label}. Does either work?`;
+  // Spoken, not screen, labels: "Wednesday 30 September at 10am or 2pm" (spoken-time.ts).
+  const say = slots.length === 1 ? `I have ${spokenSlotLabel(slots[0].label)}. Does that work?` : `I have ${spokenSlotChoice(slots[0].label, slots[1].label)}. Does either work?`;
   return { ok: true, say, data: { slots }, operation: "booking.availability" };
 }
 
@@ -301,8 +303,8 @@ export async function bookMeeting(businessId: string, a: VoiceToolArgs<"book_mee
   }
   const say =
     booked.data.outcome === "confirmed"
-      ? `You are booked for ${slot.label}.${booked.data.invited ? " You will get a calendar invite by email." : ""}`
-      : `I have asked for ${slot.label}. A colleague will confirm it with you.`;
+      ? `You are booked for ${spokenSlotLabel(slot.label)}.${booked.data.invited ? " You will get a calendar invite by email." : ""}`
+      : `I have asked for ${spokenSlotLabel(slot.label)}. A colleague will confirm it with you.`;
   return { ok: true, say, data: { booking_id: booked.data.bookingId, outcome: booked.data.outcome, label: slot.label }, operation: "booking.create" };
 }
 
@@ -509,8 +511,18 @@ export async function optOut(businessId: string, a: VoiceToolArgs<"opt_out"> & {
   // The lead's number: the one we called, or the one they rang from.
   await recordVoiceSuppression({ businessId, phone: call.direction === "INBOUND" ? call.from_e164 : call.to_e164, callId: call.id });
   if (a.scope === "ALL") {
+    // The one global opt-out path (agent/tools.ts applySuppression): the ALL
+    // suppression row, leads.opted_out, automation off, lead.opted_out event.
+    // Every channel's send guard reads these before each send.
     const l = await load(businessId, a.callId);
     if (l) await applySuppression(toolContext(l, { optOutRecognised: true }), { reason: "opt_out", scope: "all" });
+    // A call-back or "a colleague will email you" set earlier in THIS call is
+    // void: nothing is sent or rung once they objected (owner decision 2026-09-28).
+    await db()
+      .from("leads")
+      .update({ next_action: "Opted out on an AI call: no further contact." })
+      .eq("business_id", businessId)
+      .eq("id", call.lead_id);
   }
   return {
     ok: true,

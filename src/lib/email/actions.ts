@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/permissions";
 import { recordAudit } from "@/lib/audit";
 import { canStoreSecrets } from "@/lib/security/secret-box";
 import type { ActionResult } from "@/lib/campaigns/types";
@@ -41,11 +42,11 @@ async function requireEmailAdmin() {
   try {
     // A mail password is a workspace-wide credential, so only owners and
     // admins may set or replace one.
-    return { ok: true as const, workspace: await requireRole("admin") };
+    return { ok: true as const, workspace: await requireCapability("manage_integrations") };
   } catch {
     return {
       ok: false as const,
-      error: "Only owners and admins can change the email connection.",
+      error: "Your permissions do not allow changing the email connection. Ask the owner or an admin.",
     };
   }
 }

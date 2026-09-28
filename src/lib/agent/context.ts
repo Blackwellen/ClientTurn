@@ -45,6 +45,9 @@ import { loadSellingPreferencesOrDefault, loadWorkspaceObjectionsOrEmpty } from 
 import { reassuranceLines, type WorkspaceObjectionSet } from "@/lib/sales-library/workspace-objections";
 import type { ChannelPreferenceState } from "./channel-preference-store";
 import { buildOfferCard, buildVoiceProfile, type MemoryFactRow, type OfferCard, type OfferCardInput } from "./offer-card";
+import { loadConversationRules, NO_CONVERSATION_RULES, type ConversationRules } from "@/lib/commercial/rules-queries";
+import { renderRecommendation } from "@/lib/commercial/best-fit";
+import { competitorCardLines } from "@/lib/sales-library/competitors";
 import { logWriteError } from "@/lib/supabase/write-result";
 import { availabilityIsQueryable } from "./availability";
 import { meetingTypeForLead } from "@/lib/bookings/meeting-type-store";
@@ -230,6 +233,11 @@ export type AgentContext = {
    * approved list shown to the model.
    */
   commerce?: { authority: CommercialAuthority; directClose: boolean };
+  /**
+   * Commercial rules (0174): the lead's agent's target, the deterministic
+   * best fit, and the workspace's competitors. Absent = pre-0174 behaviour.
+   */
+  commercialRules?: ConversationRules;
 };
 
 // ----------------------------------------------------------------- loaders
@@ -494,6 +502,7 @@ function offerInput(
 async function loadVoiceAndOffer(
   business: BusinessContext,
   services: ServiceFact[],
+  rules: ConversationRules = NO_CONVERSATION_RULES,
 ): Promise<{ offer: OfferCard; sales: SalesContext }> {
   const admin = createAdminClient();
   const [rows, facts, preferences, objections] = await Promise.all([
@@ -521,11 +530,17 @@ async function loadVoiceAndOffer(
 
   return {
     offer: buildOfferCard({
-      ...offerInput(business, rows, services, factRows),
+      // The agent's target (0174): only the offers it sells reach the card.
+      ...offerInput(business, rows, servicesInTarget(services, rules), factRows),
       // Tone examples only, labelled as such inside the card's budget.
       examples: { good: preferences.goodExamples, bad: preferences.badExamples },
       // The business's own reassurance facts, as approved claims.
       reassurance: reassuranceLines(objections.assets),
+      targetNote: rules.targetNote,
+      // Decided by rules (commercial/best-fit.ts); the model only words it.
+      recommendation: renderRecommendation(rules.bestFit),
+      // Approved points for the competitors this lead named, nothing else.
+      competitors: competitorCardLines(rules.mentioned),
     }),
     sales: {
       archetypeKey: rows.profile?.archetype_key ?? null,
@@ -534,6 +549,12 @@ async function loadVoiceAndOffer(
       objections,
     },
   };
+}
+
+/** The offers the lead's agent sells (0174); every active offer for the whole catalogue. */
+function servicesInTarget(services: ServiceFact[], rules: ConversationRules | undefined): ServiceFact[] {
+  const ids = rules?.inTargetServiceIds ?? null;
+  return ids ? services.filter((service) => ids.includes(service.id)) : services;
 }
 
 /**
@@ -652,10 +673,18 @@ export async function assembleContext(input: {
 
   // Second stage: the question selector needs the motion (from the profile),
   // the service name and the question asked last turn.
-  const [{ offer, sales }, authority, opportunityMemory] = await Promise.all([
-    loadVoiceAndOffer(business, services),
+  // Commercial rules (0174): the lead's agent's target, the best fit and
+  // competitor mentions in the lead's own words. Never throws.
+  const rulesLoad = loadConversationRules(
+    input.businessId,
+    lead.id,
+    conversation.recentMessages.filter((message) => message.role === "lead").map((message) => message.body),
+  );
+  const [{ offer, sales }, authority, opportunityMemory, commercialRules] = await Promise.all([
+    rulesLoad.then((rules) => loadVoiceAndOffer(business, services, rules)),
     loadCommercialAuthority(input.businessId),
     loadOpportunityMemory(input.businessId, lead.id),
+    rulesLoad,
   ]);
   const qualification = await loadQualification({
     businessId: input.businessId,
@@ -767,6 +796,7 @@ export async function assembleContext(input: {
       authority,
       directClose: authority.enabled && motionAllowsDirectClose(sales.motion),
     },
+    commercialRules,
   };
 }
 
@@ -924,7 +954,8 @@ export function renderContextBlock(
 
 /** Price wording the validator will accept in an outbound message. */
 export function publishedPriceStrings(context: AgentContext): string[] {
-  return context.workspace.services
+  // Only the offers the lead's agent sells (0174).
+  return servicesInTarget(context.workspace.services, context.commercialRules)
     .map((service) => service.publicPriceText)
     .filter((text): text is string => Boolean(text));
 }
@@ -963,15 +994,29 @@ async function loadSocialConnectionState(
     .eq("promoted_to_lead_id", leadId)
     .maybeSingle();
 
-  if (!prospect) return null;
+  if (prospect) {
+    const { data } = await admin
+      .from("social_connection_states")
+      .select("state")
+      .eq("business_id", businessId)
+      .eq("prospect_id", prospect.id)
+      .eq("platform", channel.toUpperCase())
+      .maybeSingle();
+    if (data?.state) return data.state;
+  }
 
-  const { data } = await admin
-    .from("social_connection_states")
-    .select("state")
-    .eq("business_id", businessId)
-    .eq("prospect_id", prospect.id)
-    .eq("platform", channel.toUpperCase())
-    .maybeSingle();
+  // LinkedIn Assist (0171): a reply a person logged from their own LinkedIn
+  // conversation is the platform's gate passed -- they wrote to us. An opted-out
+  // or stopped contact is not.
+  if (channel === "linkedin") {
+    const { data: assist } = await (admin as unknown as SupabaseClient)
+      .from("linkedin_assist_contacts")
+      .select("state, stopped_reason")
+      .eq("business_id", businessId)
+      .eq("lead_id", leadId)
+      .maybeSingle();
+    if (assist?.state === "REPLIED") return "REPLIED";
+  }
 
-  return data?.state ?? null;
+  return null;
 }

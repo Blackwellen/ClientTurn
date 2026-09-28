@@ -2,9 +2,9 @@ import "server-only";
 import { z } from "zod";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { PermanentJobError } from "@/lib/jobs/registry";
-import { applyLinked, confirmPayment } from "@/lib/payments/confirm";
+import { applyLinked, confirmPayment, flagReversal } from "@/lib/payments/confirm";
 import { confirmDeps } from "@/lib/payments/store";
-import { BILLING_INTERVALS } from "@/lib/payments/facts";
+import { BILLING_INTERVALS, STRIPE_REVERSAL_EVENTS } from "@/lib/payments/facts";
 import { parsePayload } from "./parse";
 
 /**
@@ -32,11 +32,23 @@ const factSchema = z.object({
   intervalCount: z.number().int().min(1).max(365),
   subscriptionId: z.string().max(200).nullable(),
   paidAt: z.string().max(40),
+  paymentIntentId: z.string().max(200).nullable().optional(),
+});
+
+const reversalSchema = z.object({
+  provider: z.literal("stripe"),
+  eventId: z.string().min(1).max(200),
+  eventType: z.enum(STRIPE_REVERSAL_EVENTS),
+  paymentIntentId: z.string().min(1).max(200),
+  amountMinor: z.number().int().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
 });
 
 export const paymentConfirmPayload = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("delivery"), businessId: z.uuid(), fact: factSchema }),
   z.object({ mode: z.literal("linked"), businessId: z.uuid(), paymentId: z.uuid() }),
+  // 0173: a refund or dispute. Flagged for a person, never applied to money.
+  z.object({ mode: z.literal("reversal"), businessId: z.uuid(), reversal: reversalSchema }),
 ]);
 
 export async function handlePaymentConfirm(job: ClaimedJob): Promise<void> {
@@ -47,6 +59,8 @@ export async function handlePaymentConfirm(job: ClaimedJob): Promise<void> {
   const result =
     payload.mode === "delivery"
       ? await confirmPayment(confirmDeps, { businessId: payload.businessId, fact: payload.fact })
-      : await applyLinked(confirmDeps, payload.businessId, payload.paymentId);
+      : payload.mode === "reversal"
+        ? await flagReversal(confirmDeps, { businessId: payload.businessId, reversal: payload.reversal })
+        : await applyLinked(confirmDeps, payload.businessId, payload.paymentId);
   console.info("[payment.confirm]", { businessId: payload.businessId, ...result });
 }

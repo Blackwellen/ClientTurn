@@ -77,8 +77,8 @@ export const SUBPROCESSORS: SubProcessor[] = [
     entity: "Cloudflare, Inc. (United States) and Cloudflare Limited (United Kingdom)",
     name: "Cloudflare R2",
     purpose:
-      "Object storage for workspace logos and uploaded CSV import files, and network protection in front of the site. Stored files are served only through short-lived signed URLs.",
-    data: "Uploaded logo images; CSV import files, which may contain contact names, phone numbers and email addresses; network request metadata.",
+      "Object storage for workspace logos, uploaded CSV import files, support attachments, quote and invoice PDFs and, where voice recording is turned on, call recordings; and network protection in front of the site. Stored files are served only through short-lived signed URLs.",
+    data: "Uploaded logo images; CSV import files, which may contain contact names, phone numbers and email addresses; support attachments; quote and invoice PDFs (names, addresses, prices); call recordings where enabled; network request metadata.",
     location: "European Union jurisdictional restriction applied to stored objects",
     transfer: "UK International Data Transfer Addendum to the EU Standard Contractual Clauses.",
     role: "core",
@@ -133,6 +133,21 @@ export const SUBPROCESSORS: SubProcessor[] = [
     data: "The text of an inbound message and the configured question it is being matched against.",
     location: "European Union (EU data boundary; customer data is not used to train models)",
     transfer: "UK adequacy regulations for the European Economic Area.",
+    role: "core",
+    optional: true,
+  },
+  {
+    // Added 28 September 2026 (enterprise readiness review): used by Find
+    // Leads since launch but missing from the register. Discovery only: the
+    // provider stores the place ID and website domain, nothing else
+    // (find-leads/server/providers/google-places.ts).
+    entity: "Google Ireland Limited (Google Maps Platform)",
+    name: "Google Places",
+    purpose:
+      "Company discovery for Find Leads: finds businesses matching the customer's search (industry and area) so their own websites can be read. Only used when a customer runs a Find Leads search.",
+    data: "The search terms (business type and location). No lead or contact personal data is sent. Only the place identifier and the company's website domain are kept.",
+    location: "European Union and United States",
+    transfer: "EU Standard Contractual Clauses with the UK Addendum, under the Google Maps Platform terms.",
     role: "core",
     optional: true,
   },
@@ -209,6 +224,11 @@ export const SUBPROCESSOR_CHANGES: { date: string; change: string }[] = [
     date: "27 September 2026",
     change:
       "Added Retell AI for the optional AI Voice Sales Agent, and extended Twilio's role to the phone number and call connection for voice. Neither processes call data unless a customer turns voice on.",
+  },
+  {
+    date: "28 September 2026",
+    change:
+      "Listed Google Places (company discovery for Find Leads, search terms only), which had been in use without appearing here, and corrected Cloudflare R2's description to include support attachments, quote and invoice PDFs and call recordings.",
   },
 ];
 

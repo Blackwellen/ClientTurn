@@ -65,6 +65,7 @@ export async function LeadQuotesCard({
         quotes: details,
         invoices,
         defaultDepositBps: settings.defaultDepositBps,
+        invoicePayMode: settings.invoicePayMode,
       };
     }
   } catch (error) {

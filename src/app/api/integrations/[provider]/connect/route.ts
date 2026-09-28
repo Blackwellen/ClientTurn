@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { requireRole } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/permissions";
 import { createOAuthState, buildAuthorizeUrl } from "@/lib/integrations/oauth";
 import { getOAuthProviderConfig, isOAuthProvider } from "@/lib/integrations/providers/registry";
 import { OAUTH_RETURN_COOKIE, safeOAuthReturnPath } from "@/lib/integrations/catalog";
@@ -24,7 +24,7 @@ export async function GET(
 
   let workspace;
   try {
-    workspace = await requireRole("admin");
+    workspace = await requireCapability("manage_integrations");
   } catch {
     return NextResponse.json({ error: "Not permitted." }, { status: 403 });
   }

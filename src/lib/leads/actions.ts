@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -409,6 +410,9 @@ export async function sendManualMessage(input: {
   } catch {
     return fail("You do not have permission to send messages.");
   }
+  if (!(await workspaceCan(workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
+  }
 
   try {
     await assertEntitlement(
@@ -614,6 +618,9 @@ export async function sendBookingLink(input: {
     workspace = await requireRole("member");
   } catch {
     return fail("You do not have permission to send a booking link.");
+  }
+  if (!(await workspaceCan(workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
   }
 
   const admin = createAdminClient();

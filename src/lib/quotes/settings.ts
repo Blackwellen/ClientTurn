@@ -19,6 +19,7 @@ import { DEFAULT_REMINDER_OFFSETS } from "../invoicing/reminders.ts";
 import { PREFIX_PATTERN, DEFAULT_CREDIT_NOTE_PREFIX, DEFAULT_INVOICE_PREFIX } from "../invoicing/numbering.ts";
 import { isValidUkVatNumber, normaliseVatNumber } from "../invoicing/vat-invoice.ts";
 import { DEFAULT_DISCOUNT_POLICY, discountPolicySchema, type DiscountPolicy } from "./discount-policy.ts";
+import { INVOICE_PAY_MODES, PAY_LINK_MAX_LENGTH, payLinkProblem, type InvoicePayMode } from "../invoicing/pay-link.ts";
 
 export const DEFAULT_QUOTE_PREFIX = "Q-";
 
@@ -41,6 +42,10 @@ export type QuoteSettings = {
   requireDrawnSignature: boolean;
   /** 0156: remind a customer who has not opened / accepted a sent quote. */
   quoteNudgesEnabled: boolean;
+  /** 0173: how invoices are paid online (invoicing/pay-link.ts). */
+  invoicePayMode: InvoicePayMode;
+  /** 0173: the workspace's own Stripe Payment Link, for WORKSPACE_LINK. */
+  invoicePayLinkUrl: string | null;
   prefixes: { quote: string; invoice: string; creditNote: string };
 };
 
@@ -59,6 +64,8 @@ export const DEFAULT_QUOTE_SETTINGS: QuoteSettings = {
   discountPolicy: DEFAULT_DISCOUNT_POLICY,
   requireDrawnSignature: false,
   quoteNudgesEnabled: true,
+  invoicePayMode: "NONE",
+  invoicePayLinkUrl: null,
   prefixes: { quote: DEFAULT_QUOTE_PREFIX, invoice: DEFAULT_INVOICE_PREFIX, creditNote: DEFAULT_CREDIT_NOTE_PREFIX },
 };
 
@@ -100,6 +107,14 @@ export const quoteSettingsInputSchema = z
     discountPolicy: discountPolicySchema.default(DEFAULT_DISCOUNT_POLICY),
     requireDrawnSignature: z.boolean().default(false),
     quoteNudgesEnabled: z.boolean().default(true),
+    invoicePayMode: z.enum(INVOICE_PAY_MODES).default("NONE"),
+    invoicePayLinkUrl: z
+      .string()
+      .trim()
+      .max(PAY_LINK_MAX_LENGTH)
+      .nullable()
+      .optional()
+      .transform((value) => (value ? value : null)),
     prefixes: z
       .object({ quote: prefixSchema, invoice: prefixSchema, creditNote: prefixSchema })
       .default({ ...DEFAULT_QUOTE_SETTINGS.prefixes }),
@@ -125,6 +140,11 @@ export const quoteSettingsInputSchema = z
     if (new Set(prefixes).size !== prefixes.length) {
       ctx.addIssue({ code: "custom", path: ["prefixes"], message: "Quotes, invoices and credit notes need different prefixes." });
     }
+    if (value.invoicePayMode === "WORKSPACE_LINK" && !value.invoicePayLinkUrl) {
+      ctx.addIssue({ code: "custom", path: ["invoicePayLinkUrl"], message: "Paste your Stripe Payment Link, or choose bank transfer only." });
+    }
+    const linkProblem = value.invoicePayLinkUrl ? payLinkProblem(value.invoicePayLinkUrl) : null;
+    if (linkProblem) ctx.addIssue({ code: "custom", path: ["invoicePayLinkUrl"], message: `Payment link: ${linkProblem}` });
   });
 export type QuoteSettingsInput = z.input<typeof quoteSettingsInputSchema>;
 
@@ -160,6 +180,8 @@ export type QuoteSettingsRow = {
   discount_policy?: unknown;
   require_drawn_signature?: boolean | null;
   quote_nudges_enabled?: boolean | null;
+  invoice_pay_mode?: string | null;
+  invoice_pay_link_url?: string | null;
 };
 
 export type CounterRow = { kind: string; prefix: string };
@@ -184,6 +206,10 @@ export function settingsFromRow(row: QuoteSettingsRow | null, counters: readonly
     discountPolicy: policy.success ? policy.data : DEFAULT_DISCOUNT_POLICY,
     requireDrawnSignature: row?.require_drawn_signature ?? d.requireDrawnSignature,
     quoteNudgesEnabled: row?.quote_nudges_enabled ?? d.quoteNudgesEnabled,
+    invoicePayMode: (INVOICE_PAY_MODES as readonly string[]).includes(row?.invoice_pay_mode ?? "")
+      ? (row!.invoice_pay_mode as InvoicePayMode)
+      : d.invoicePayMode,
+    invoicePayLinkUrl: row?.invoice_pay_link_url ?? null,
     prefixes: {
       quote: prefix("QUOTE", d.prefixes.quote),
       invoice: prefix("INVOICE", d.prefixes.invoice),
@@ -215,6 +241,15 @@ export function extendedRowFromSettings(settings: QuoteSettings) {
   return {
     require_drawn_signature: settings.requireDrawnSignature,
     quote_nudges_enabled: settings.quoteNudgesEnabled,
+  };
+}
+
+/** The 0173 columns: written separately, as the 0156 ones are. */
+export function payRowFromSettings(settings: QuoteSettings) {
+  return {
+    invoice_pay_mode: settings.invoicePayMode,
+    // Kept when the mode is switched off, so switching back does not lose it.
+    invoice_pay_link_url: settings.invoicePayLinkUrl,
   };
 }
 

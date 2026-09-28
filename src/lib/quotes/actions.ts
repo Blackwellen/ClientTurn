@@ -87,3 +87,10 @@ export async function recordPaymentAction(input: { leadId: string; invoiceId: st
   if (result.ok) refresh(input.leadId);
   return result;
 }
+
+/** Called from the invoice's payment-link dialog (0173). Null removes the link. */
+export async function setInvoicePayLinkAction(input: { leadId: string; invoiceId: string; url: string | null }): Promise<QuoteActionResult> {
+  const result = await runForUser("invoice.set_pay_link", { invoiceId: input.invoiceId, url: input.url });
+  if (result.ok) refresh(input.leadId);
+  return result;
+}

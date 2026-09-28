@@ -1,5 +1,6 @@
+import { workspaceCan } from "@/lib/auth/permissions";
 import * as React from "react";
-import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { requireWorkspace } from "@/lib/auth/session";
 import { getIntegrationsView } from "@/lib/integrations/queries";
 import { loadEmailAccount } from "@/lib/email/store";
 import { canStoreSecrets } from "@/lib/security/secret-box";
@@ -19,7 +20,8 @@ import { PaymentsSection, PaymentsSectionSkeleton } from "@/components/settings/
 
 export async function ConnectionsSection() {
   const workspace = await requireWorkspace();
-  const canManage = hasRole(workspace.role, "admin");
+  // Integrations capability (0172): role default is owner/admin.
+  const canManage = await workspaceCan(workspace, "manage_integrations");
 
   const [view, emailAccount, status, senderHealth, extras, socialAccounts] = await Promise.all([
     getIntegrationsView(workspace.businessId),

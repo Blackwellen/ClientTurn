@@ -128,7 +128,6 @@ export const DETECTION_TABLE: Row[] = [
   // ---- angry
   { said: "this is harassment i'm sick of these calls", want: "ANGRY" },
   { said: "how dare you ring me on a sunday", want: "ANGRY" },
-  { said: "piss off", want: "ANGRY" },
   { said: "i want to make a complaint", want: "ANGRY" },
   // ---- ordinary answers: nothing to act on beyond the plan
   { said: "yeah go on i've got a minute", want: null },
@@ -138,7 +137,91 @@ export const DETECTION_TABLE: Row[] = [
   { said: "", want: null },
   { said: "no i didn't ask about the price yet", want: null },
   { said: "is this a real company", want: "OBJECTION", objection: "TRUST" },
-  { said: "leave it with me i'll have a think", want: null },
+  // Adversarial QA pass (2026-09-28): a stall is a NOT_NOW objection now, so
+  // the call agrees a follow-up time instead of ending with no next step.
+  { said: "leave it with me i'll have a think", want: "OBJECTION", objection: "NOT_NOW" },
+  { said: "i'll go away and think about it", want: "OBJECTION", objection: "NOT_NOW" },
+  // ---- UK refusals the table missed
+  { said: "you're alright mate ta", want: "NOT_INTERESTED" },
+  { said: "your alright thanks", want: "NOT_INTERESTED" },
+  { said: "nah not interested mate", want: "NOT_INTERESTED" },
+  { said: "we're sorted", want: "NOT_INTERESTED" },
+  { said: "i already told you no", want: "NOT_INTERESTED" },
+  // ---- stops the table missed. A swear-off or "leave me alone" moved from ANGRY
+  // to OPT_OUT_ALL: an objection to contact on every channel (owner decision 2026-09-28).
+  { said: "take me off your mailing list", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "i want to opt out", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "don't want to be contacted", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "don't ring me", want: "OPT_OUT_CALLS", scope: "CALLS" },
+  { said: "don't call", want: "OPT_OUT_CALLS", scope: "CALLS" },
+  { said: "never ring this number again", want: "OPT_OUT_CALLS", scope: "CALLS" },
+  { said: "piss off", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "oh f off", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "fuck off", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "just leave me alone", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "go away", want: "OPT_OUT_ALL", scope: "ALL" },
+  { said: "i'll go away and read it", want: null },
+  { said: "i'm registered with the tps", want: "OPT_OUT_CALLS", scope: "CALLS" },
+  // ---- negatives: must NOT stop, refuse or escalate
+  { said: "i'm not interested in the blue one the red one", want: null },
+  { said: "not interested in the price just the timeline", want: null },
+  { said: "stop calling it a website it's a shop", want: null },
+  { said: "don't call me before ten", want: null },
+  { said: "don't call me sir", want: null },
+  { said: "remove me from the invite", want: null },
+  { said: "take me off speaker", want: null },
+  { said: "wrong number no it's the right number go on", want: null },
+  { said: "i want to complain about our current agency", want: null },
+  { said: "our current site is crap to be honest", want: null },
+  { said: "it's ridiculous how slow our site is", want: null },
+  { said: "i'm driving the project", want: null },
+  { said: "yeah you're alright go on", want: null },
+  { said: "she's left a message for you", want: null },
+  // ---- wrong person
+  { said: "i never gave you my number", want: "WRONG_NUMBER" },
+  { said: "she doesn't work here anymore", want: "WRONG_NUMBER" },
+  { said: "he left the company", want: "WRONG_NUMBER" },
+  { said: "that's not me", want: "WRONG_NUMBER" },
+  // ---- machines and screens
+  { said: "please state your name and why you're calling", want: "CALL_SCREEN" },
+  { said: "the person you're calling is using a screening service from google go ahead and say your name", want: "CALL_SCREEN" },
+  { said: "if you record your name and reason for calling i'll see if this person is available", want: "CALL_SCREEN" },
+  { said: "hi you've reached dave sorry i can't take your call right now", want: "VOICEMAIL" },
+  { said: "the mobile phone you are calling is switched off", want: "VOICEMAIL" },
+  { said: "please listen carefully as our menu options have changed", want: "IVR" },
+  // ---- vulnerable people
+  { said: "mummy there's a lady on the phone", want: "VULNERABLE" },
+  { said: "i'm only twelve", want: "VULNERABLE" },
+  { said: "i'm her carer she has dementia", want: "VULNERABLE" },
+  { said: "my dad's not well he can't talk", want: "VULNERABLE" },
+  { said: "he passed away last month", want: "VULNERABLE" },
+  // ---- identity, a person, data
+  { said: "is this a scam", want: "WHO_IS_THIS" },
+  { said: "what's this about", want: "WHO_IS_THIS" },
+  { said: "who gave you my number", want: "HOW_GOT_NUMBER" },
+  { said: "is this a real person", want: "ASKS_IF_AI" },
+  { said: "i want to speak to your manager", want: "WANTS_PERSON" },
+  { said: "what data do you hold on me", want: "DATA_REQUEST" },
+  { said: "i want a copy of my data", want: "DATA_REQUEST" },
+  { said: "subject access request", want: "DATA_REQUEST" },
+  { said: "are you recording this call", want: "PRIVACY" },
+  // ---- language, line, time
+  { said: "hola no hablo ingles", want: "LANGUAGE_BARRIER" },
+  { said: "do you speak polish", want: "LANGUAGE_BARRIER" },
+  { said: "hello hello are you there", want: "LINE_CHECK" },
+  { said: "can you hear me", want: "LINE_CHECK" },
+  { said: "i'm on another call", want: "BAD_TIME" },
+  { said: "call back in ten minutes", want: "BAD_TIME" },
+  { said: "i'm drivin mate", want: "BAD_TIME" },
+  { said: "sorry i'm busy", want: "BAD_TIME" },
+  // ---- prices, dates, areas
+  { said: "how much is it", want: "PRICE_QUESTION" },
+  { said: "can you give me a ballpark", want: "PRICE_QUESTION" },
+  { said: "do you cover manchester", want: "PRICE_QUESTION" },
+  { said: "are you free on saturday", want: "PRICE_QUESTION" },
+  { said: "can you guarantee it'll be live by march", want: "PRICE_QUESTION" },
+  { said: "just drop me an email", want: "SEND_DETAILS" },
+  { said: "i'm not the decision maker", want: "OBJECTION", objection: "AUTHORITY" },
 ];
 
 describe("part A: spoken intent detection on ASR text", () => {
@@ -154,7 +237,7 @@ describe("part A: spoken intent detection on ASR text", () => {
   test("the table covers every intent", () => {
     const covered = new Set(DETECTION_TABLE.map((r) => r.want).filter(Boolean));
     for (const key of SPOKEN_INTENTS) assert.ok(covered.has(key), `${key} has no row`);
-    assert.ok(DETECTION_TABLE.length >= 80);
+    assert.ok(DETECTION_TABLE.length >= 160);
   });
 
   test("an opt-out always outranks everything a person says with it", () => {
@@ -265,5 +348,15 @@ describe("part A: the post-call safety net", () => {
     assert.equal(r.leadText, "");
     assert.equal(isMachineOnly(["please hold your call is important to us"]), true);
     assert.equal(isMachineOnly(["please hold", "yeah hi sorry about that"]), false);
+  });
+
+  test("adversarial pass: a call screen nobody answered is no conversation; a swear-off is an opt-out; a vulnerable signal is WRONG_PERSON", () => {
+    assert.equal(isMachineOnly(["please state your name and why you're calling"]), true);
+    const swore = analyseCall({ ...base, transcript: [a("Is now OK?"), t("oh f off")] });
+    assert.equal(swore.disposition, "OPTED_OUT");
+    assert.equal(swore.optOutScope, "ALL");
+    assert.equal(analyseCall({ ...base, transcript: [t("i'm her carer she has dementia")] }).disposition, "WRONG_PERSON");
+    // The negative stays a conversation.
+    assert.notEqual(analyseCall({ ...base, transcript: [t("stop calling it a website it's a shop")] }).disposition, "OPTED_OUT");
   });
 });

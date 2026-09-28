@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AGENT_TYPES, SOURCE_DEFINITIONS, type SourceKey } from "./types";
+import { offerTargetSchema } from "./offer-target";
 
 /**
  * Agent mutations.
@@ -32,6 +33,8 @@ const saveSchema = z.object({
   monthlyCap: z.coerce.number().int().min(1).max(10000),
   sources: z.array(z.enum(SOURCE_KEYS)).max(SOURCE_KEYS.length).default([]),
   autonomy: z.enum(["REVIEW_ALL", "REVIEW_NEW", "AUTO"]).default("REVIEW_ALL"),
+  /** What it sells (0174). Absent = the whole catalogue. */
+  target: offerTargetSchema.optional(),
 });
 
 type Workspace = Awaited<ReturnType<typeof requireRole>>;
@@ -60,7 +63,9 @@ async function adminOrError(): Promise<Workspace | null> {
  * Creates an agent through `agent.create`, so the wizard, Copilot, MCP and the
  * API share one implementation and one set of checks.
  */
-export async function saveAgent(input: unknown): Promise<{ id?: string; error?: string }> {
+export async function saveAgent(
+  input: unknown,
+): Promise<{ id?: string; error?: string; warning?: string }> {
   const parsed = saveSchema.safeParse(input);
   if (!parsed.success) {
     return { error: "Check the agent name, sources and limits, then try again." };
@@ -89,7 +94,43 @@ export async function saveAgent(input: unknown): Promise<{ id?: string; error?: 
 
   revalidatePath("/app/agents");
   const data = result.data as { agent: { id: string } };
+
+  // What it sells is its own operation (agent.set_offer_target). The agent
+  // exists either way; a failed target leaves it on the whole catalogue and
+  // says so, rather than pretending the agent was not created.
+  if (value.target && value.target.scope === "SELECTED") {
+    const target = await runOperation(
+      "agent.set_offer_target",
+      { agentId: data.agent.id, ...value.target },
+      uiContext(workspace),
+    );
+    if (!target.success) {
+      return {
+        id: data.agent.id,
+        warning: `The agent was created, but what it sells could not be saved (${target.message}). It sells the whole catalogue until you change it in its settings.`,
+      };
+    }
+  }
   return { id: data.agent.id };
+}
+
+const targetActionSchema = z.object({ id: z.uuid() }).and(offerTargetSchema);
+
+/** The agent's Settings tab: what it sells, through `agent.set_offer_target`. */
+export async function saveAgentOfferTarget(
+  input: unknown,
+): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+  const parsed = targetActionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check what the agent sells and try again." };
+  }
+  const workspace = await adminOrError();
+  if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
+  const { id, ...target } = parsed.data;
+  const result = await runOperation("agent.set_offer_target", { agentId: id, ...target }, uiContext(workspace));
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/agents", "layout");
+  return { ok: true, summary: (result.data as { summary: string }).summary };
 }
 
 const updateSchema = z.object({

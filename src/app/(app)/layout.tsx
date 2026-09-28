@@ -1,7 +1,8 @@
+import { workspaceCan } from "@/lib/auth/permissions";
 import * as React from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { requireWorkspace } from "@/lib/auth/session";
 import { analyticsAllowed } from "@/lib/billing/allowance-gates";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
@@ -68,6 +69,8 @@ export default async function AppLayout({
       getBillingNotice(workspace.businessId, entitlements).catch(() => null),
     ]);
 
+  // Billing capability (0172): the owner, or an admin the owner delegated it to.
+  const canManageBilling = await workspaceCan(workspace, "manage_billing");
   const profile = profileResult.data;
   const displayName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
@@ -89,7 +92,7 @@ export default async function AppLayout({
         plan={entitlements.selectedPlan}
         // Only an owner can open Billing, so only an owner is offered the
         // upgrade prompt in the rail.
-        canManageBilling={hasRole(workspace.role, "owner")}
+        canManageBilling={canManageBilling}
         primaryNav={primaryNavFor({
           sourcing: v4Entitlements.sourcingEnabled,
           // Analytics is a depth tier rather than an on/off capability: every
@@ -124,7 +127,7 @@ export default async function AppLayout({
                   node: (
                     <BillingBanner
                       notice={billingNotice}
-                      canManageBilling={hasRole(workspace.role, "owner")}
+                      canManageBilling={canManageBilling}
                       className=""
                     />
                   ),

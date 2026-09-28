@@ -94,6 +94,23 @@ export type OfferCardInput = {
    * owns, response-time commitments. Approved claims: quoted as written.
    */
   reassurance?: readonly string[];
+  /**
+   * Commercial rules (0174). The agent's target: when it sells only some of
+   * the catalogue, `services` above is already filtered to it and this line
+   * says so. Null or absent = the whole catalogue.
+   */
+  targetNote?: string | null;
+  /**
+   * The deterministic best fit for this lead (commercial/best-fit.ts
+   * renderRecommendation): an offer name and reason codes, never a price.
+   * Lead-specific, so it renders after every stable section.
+   */
+  recommendation?: string | null;
+  /**
+   * Approved points and never-say lines for the competitors THIS lead
+   * mentioned (sales-library/competitors.ts), detected by name. Lead-specific.
+   */
+  competitors?: { approved: readonly string[]; neverSay: readonly string[] };
 };
 
 export type VoiceProfile = {
@@ -282,7 +299,16 @@ export function buildVoiceProfile(input: OfferCardInput): VoiceProfile {
 
 // ------------------------------------------------------------------- card
 
-type Item = { id: string; section: string; line: string; priority: number };
+/**
+ * `volatile` items are lead-specific (recommended fit, competitor points).
+ * They render after every stable section, so the card's prefix stays the same
+ * across the workspace's leads and the provider can still cache it.
+ */
+type Item = { id: string; section: string; line: string; priority: number; volatile?: boolean };
+
+export const RECOMMENDED_FIT_SECTION = "RECOMMENDED FIT (decided by rules, not by you)";
+export const COMPETITOR_SECTION = "COMPETITOR POINTS (approved: word for word or not at all, only if they raise it)";
+export const COMPETITOR_NEVER_SECTION = "NEVER SAY ABOUT COMPETITORS";
 
 /**
  * Builds the card. Deterministic: same input, same bytes, which is what lets
@@ -292,9 +318,9 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
   const budget = input.tokenBudget ?? OFFER_CARD_TOKEN_BUDGET;
   const voice = buildVoiceProfile(input);
   const items: Item[] = [];
-  const push = (id: string, section: string, text: string | null, priority: number) => {
+  const push = (id: string, section: string, text: string | null, priority: number, volatile = false) => {
     const line = text ? capSentences(text) : null;
-    if (line) items.push({ id, section, line, priority });
+    if (line) items.push({ id, section, line, priority, ...(volatile ? { volatile } : {}) });
   };
 
   // Priority 0: dropped only if nothing else is left to drop. The rules of
@@ -313,6 +339,9 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
   voice.styleNotes.forEach((note, i) => push(`voice:style:${i}`, "VOICE", `Style: ${note}`, 1));
   push("voice:cta", "VOICE", voice.callToAction ? `Preferred call to action: ${voice.callToAction}` : null, 1);
   push("voice:signature", "VOICE", voice.signature ? `Sign-off (email only): ${voice.signature}` : null, 1);
+
+  // The agent's target (0174): the services below are already only these.
+  push("scope", "SCOPE", input.targetNote ?? null, 1);
 
   // Priority 2: what they sell, with published prices only.
   const priced = input.services.filter((service) => clean(service.publicPriceText));
@@ -374,6 +403,23 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
     push(`example:bad:${i}`, EXAMPLE_BAD_SECTION, capSentences(clean(example), EXAMPLE_CHAR_CAP), 8),
   );
 
+  // Lead-specific, rendered last (volatile). Competitor rules are priority 0
+  // like every never-say rule; the approved points and the recommended fit
+  // sit with what the business sells.
+  const competitors = input.competitors ?? { approved: [], neverSay: [] };
+  if (competitors.approved.length + competitors.neverSay.length > 0) {
+    push(
+      "competitor:rule",
+      COMPETITOR_NEVER_SECTION,
+      "Never criticise a competitor or say anything about one beyond the approved points.",
+      0,
+      true,
+    );
+  }
+  competitors.neverSay.forEach((line, i) => push(`competitor:never:${i}`, COMPETITOR_NEVER_SECTION, line, 0, true));
+  competitors.approved.forEach((line, i) => push(`competitor:point:${i}`, COMPETITOR_SECTION, line, 2, true));
+  push("fit", RECOMMENDED_FIT_SECTION, input.recommendation ?? null, 2, true);
+
   // ---- budget: drop whole items, lowest priority (highest number) first,
   // later items before earlier ones within a priority.
   const header = [
@@ -386,16 +432,20 @@ export function buildOfferCard(input: OfferCardInput): OfferCard {
     .join("\n");
 
   const render = (kept: Item[]): string => {
-    const sections = new Map<string, string[]>();
-    for (const item of kept) {
-      const lines = sections.get(item.section) ?? [];
-      lines.push(`- ${item.line}`);
-      sections.set(item.section, lines);
-    }
-    const body = [...sections.entries()].map(([section, lines]) => `${section}\n${lines.join("\n")}`);
+    const group = (list: Item[]) => {
+      const sections = new Map<string, string[]>();
+      for (const item of list) {
+        const lines = sections.get(item.section) ?? [];
+        lines.push(`- ${item.line}`);
+        sections.set(item.section, lines);
+      }
+      return [...sections.entries()].map(([section, lines]) => `${section}\n${lines.join("\n")}`);
+    };
+    const body = group(kept.filter((item) => !item.volatile));
     if (priced.length === 0) {
       body.push("PUBLISHED PRICES\n- None. Do not state any price, in digits or words.");
     }
+    body.push(...group(kept.filter((item) => item.volatile)));
     return [header, ...body].join("\n\n");
   };
 

@@ -22,6 +22,7 @@ import {
 } from "@/components/leads/detail/lead-page-header";
 import { LeadPageActions } from "@/components/leads/detail/lead-page-actions";
 import { LeadInterestsCard, LeadInterestsSkeleton } from "@/components/leads/detail/lead-interests-card";
+import { BestFitCard, BestFitSkeleton } from "@/components/leads/detail/best-fit-card";
 import {
   NextBestActionCard,
   NextBestActionSkeleton,
@@ -179,6 +180,10 @@ export default async function LeadDetailPage({
               leadId={lead.id}
               canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
             />
+          </React.Suspense>
+          {/* The catalogue's best fit for this lead, decided by rules (0174). */}
+          <React.Suspense fallback={<BestFitSkeleton />}>
+            <BestFitCard businessId={workspace.businessId} leadId={lead.id} />
           </React.Suspense>
           {/* AI calls (voice P2): call with AI, latest summary, callback, history. */}
           <React.Suspense fallback={<LeadVoiceSkeleton />}>

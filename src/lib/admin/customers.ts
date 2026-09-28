@@ -367,6 +367,8 @@ const AUDIT_LABELS: Record<string, string> = {
   "member.invite": "Team member invited",
   "member.resend_invite": "Invitation resent",
   "member.set_role": "Team member role changed",
+  "member.set_permissions": "Team member permissions changed",
+  "audit_log.exported": "Audit log exported",
   "member.remove": "Team member removed",
   "member.transfer_ownership": "Workspace ownership transferred",
   "billing.plan_changed": "Plan changed",

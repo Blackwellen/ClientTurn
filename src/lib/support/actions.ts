@@ -128,7 +128,7 @@ export async function createAttachmentUploadUrl(
   }
 
   const key = objectKey(workspace.businessId, "support", parsed.data.filename);
-  const url = await createUploadUrl(key, parsed.data.contentType);
+  const url = await createUploadUrl(key, parsed.data.contentType, 300, parsed.data.size);
   return ok({ key, url });
 }
 

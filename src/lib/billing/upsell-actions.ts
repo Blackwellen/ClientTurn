@@ -1,9 +1,10 @@
 "use server";
 
+import { requireCapability } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireRole, requireWorkspace } from "@/lib/auth/session";
+import { requireWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { canSeeUpsells, isUpsellMomentKey, shouldRecordImpression } from "./upsell-moments";
@@ -72,7 +73,7 @@ const settingSchema = z.object({ enabled: z.boolean() });
 export async function setUpgradeSuggestionsAction(input: unknown): Promise<UpsellEventResult> {
   const parsed = settingSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid setting." };
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) return { ok: false, error: "Only the workspace owner can change this." };
 
   const { data, error } = await db()

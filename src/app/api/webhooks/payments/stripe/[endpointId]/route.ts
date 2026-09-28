@@ -2,7 +2,7 @@ import { z } from "zod";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 import { openSecret } from "@/lib/security/secret-box";
 import { verifyStripeSignature } from "@/lib/payments/signatures";
-import { stripePaymentFact } from "@/lib/payments/facts";
+import { stripePaymentFact, stripeReversalFact } from "@/lib/payments/facts";
 import { endpointForDelivery, noteEndpointDelivery } from "@/lib/payments/store";
 import { acceptPaymentDelivery } from "@/lib/payments/inbound";
 
@@ -13,7 +13,9 @@ export const dynamic = "force-dynamic";
  * direct-sale loop). No Stripe Connect: the customer adds this URL as a
  * webhook endpoint in their Stripe dashboard (events
  * `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
- * `invoice.paid`) and pastes its signing secret into Settings -> Connections.
+ * `invoice.paid`, and -- to have refunds and disputes flagged (0173) --
+ * `charge.refunded` and `charge.dispute.created`) and pastes its signing
+ * secret into Settings -> Connections.
  *
  * Verify the signature with that workspace's secret -> write `webhook_events`
  * -> queue `payment.confirm` -> acknowledge. This route never calls Stripe
@@ -64,6 +66,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ end
   }
 
   const normalised = stripePaymentFact(event);
+  // Pure parsing only: a refund or dispute is queued to be flagged, never acted on here.
+  const reversal = normalised.kind === "fact" ? null : stripeReversalFact(event);
   return acceptPaymentDelivery({
     endpointId: endpoint.id,
     businessId: endpoint.business_id,
@@ -71,6 +75,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ end
     eventId: envelope.id,
     eventType: envelope.type,
     fact: normalised.kind === "fact" ? normalised.fact : null,
-    ignoredReason: normalised.kind === "ignore" ? normalised.reason : undefined,
+    reversal,
+    ignoredReason: normalised.kind === "ignore" && !reversal ? normalised.reason : undefined,
   });
 }

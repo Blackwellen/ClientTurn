@@ -30,6 +30,19 @@ export const OPENER_TEMPLATE =
 export const RECORDING_NOTICE =
   "Just so you know, this call is recorded so we have an accurate note of what we discuss.";
 
+/**
+ * The answer to "are you recording this?" (adversarial QA pass, 2026-09-28).
+ * Locked like the notice: the model says it word for word from the brief's
+ * RECORDING line, and never "it may be recorded" (vague, and wrong when
+ * recording is off).
+ */
+export const RECORDING_ANSWER_ON = "Yes, this call is recorded so we have an accurate note of what we discuss.";
+export const RECORDING_ANSWER_OFF = "No, this call is not recorded.";
+
+export function recordingAnswer(recordingEnabled: boolean): string {
+  return recordingEnabled ? RECORDING_ANSWER_ON : RECORDING_ANSWER_OFF;
+}
+
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",

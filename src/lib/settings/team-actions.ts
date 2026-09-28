@@ -96,3 +96,19 @@ export async function transferOwnershipAction(input: {
   const result = await runOperation("member.transfer_ownership", input, context(workspace, true));
   return settle(result, "Ownership transferred. You are now an admin.");
 }
+
+/**
+ * Per-person permissions (0172). The capability and choice are validated by
+ * the operation's Zod schema; every guardrail (owner fixed, viewers read-only,
+ * billing delegated by the owner only) lives in `permissionChangeProblem`.
+ */
+export async function setMemberPermissionAction(input: {
+  membershipId: string;
+  capability: string;
+  choice: string;
+}): Promise<TeamActionResult> {
+  const workspace = await actor("admin");
+  if (!workspace) return DENIED;
+  const result = await runOperation("member.set_permissions", input, context(workspace));
+  return settle(result, "Permissions updated.");
+}

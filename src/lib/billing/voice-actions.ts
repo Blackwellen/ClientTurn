@@ -7,9 +7,10 @@
  * the number item into grants (`voice-subscription-sync.ts`).
  */
 
+import { requireCapability, workspaceCan } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { hasRole, requireRole } from "@/lib/auth/session";
+import { requireRole } from "@/lib/auth/session";
 import { VOICE_MINUTE_PACKS } from "./plans";
 import { addVoiceNumber, readVoicePurchaseState, removeProVoice, startVoicePackCheckout, type RemoveVoiceOutcome } from "./voice-checkout";
 import type { VoiceNumberOutcome, VoicePackCheckoutOutcome, VoicePurchaseState } from "./voice-purchase";
@@ -23,7 +24,7 @@ export async function startVoicePackCheckoutAction(minutes: unknown): Promise<Vo
   const parsed = packSchema.safeParse(minutes);
   if (!parsed.success) return { ok: false, state: "invalid", error: "Choose a minute pack to continue." };
 
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) {
     return { ok: false, state: "plan-limit-reached", error: "Only the workspace owner can buy voice minutes." };
   }
@@ -32,7 +33,7 @@ export async function startVoicePackCheckoutAction(minutes: unknown): Promise<Vo
 
 /** Adds the £11.99/month dedicated-number item to the live subscription (prorated). */
 export async function addVoiceNumberAction(): Promise<VoiceNumberOutcome> {
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) {
     return { ok: false, state: "plan-limit-reached", error: "Only the workspace owner can add a dedicated number." };
   }
@@ -43,7 +44,7 @@ export async function addVoiceNumberAction(): Promise<VoiceNumberOutcome> {
 
 /** OD-2: removes the £100 voice item from Pro (prorated); the number is kept to the period end. Owner only. */
 export async function removeProVoiceAction(): Promise<RemoveVoiceOutcome> {
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) return { ok: false, error: "Only the workspace owner can change the subscription." };
   const outcome = await removeProVoice(workspace);
   if (outcome.ok) revalidatePath("/app/settings");
@@ -53,5 +54,5 @@ export async function removeProVoiceAction(): Promise<RemoveVoiceOutcome> {
 /** What the voice panel may offer this user (any member may look; only the owner may buy). */
 export async function getVoicePurchaseStateAction(): Promise<VoicePurchaseState> {
   const workspace = await requireRole("member");
-  return readVoicePurchaseState({ businessId: workspace.businessId, isOwner: hasRole(workspace.role, "owner") });
+  return readVoicePurchaseState({ businessId: workspace.businessId, isOwner: await workspaceCan(workspace, "manage_billing") });
 }

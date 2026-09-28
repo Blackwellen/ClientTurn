@@ -13,6 +13,7 @@ import {
   parseMetaStatus,
   verifyMetaHmac,
 } from "./meta-protocol";
+import { metaChannelCapability, metaSendPermitted } from "@/lib/social/meta-capability";
 
 /**
  * Facebook Messenger and Instagram Direct, through the workspace's own Page.
@@ -51,6 +52,8 @@ export type MetaSendingAccount = {
   pageId: string;
   pageToken: string;
   instagramUserId: string | null;
+  /** Permissions Meta reported as granted at connect time (empty if never recorded). */
+  scopes: string[];
 };
 
 /**
@@ -67,7 +70,7 @@ export async function metaSendingAccount(
 
   const { data } = await admin
     .from("integrations")
-    .select("id, config, status")
+    .select("id, config, status, scopes")
     .eq("business_id", businessId)
     .eq("provider_type", "meta")
     .maybeSingle();
@@ -116,6 +119,27 @@ export async function metaSendingAccount(
     pageToken,
     instagramUserId:
       typeof config.instagramUserId === "string" ? config.instagramUserId : null,
+    scopes: Array.isArray(data.scopes) ? (data.scopes as string[]) : [],
+  };
+}
+
+/**
+ * Refuses a send Meta has not permitted this app to make, before it is made.
+ * Returns null when the send may be attempted.
+ */
+function permissionRefusal(channel: MetaChannel, account: MetaSendingAccount): SendResult | null {
+  const capability = metaChannelCapability(channel, {
+    connected: true,
+    pageId: account.pageId,
+    instagramUserId: account.instagramUserId,
+    scopes: account.scopes,
+  });
+  if (metaSendPermitted(capability)) return null;
+  return {
+    ok: false,
+    errorCode: capability.state === "NEEDS_META_APPROVAL" ? "meta_permission_missing" : "no_instagram_account",
+    errorMessage: "message" in capability ? capability.message : "Meta has not permitted this send.",
+    permanent: true,
   };
 }
 
@@ -182,6 +206,9 @@ async function sendSocial(request: SendRequest): Promise<SendResult> {
       permanent: true,
     };
   }
+
+  const refused = permissionRefusal(channel, account);
+  if (refused) return refused;
 
   // The **Page** id, for Instagram as well as Messenger.
   //
@@ -294,6 +321,16 @@ export async function sendPrivateReply(input: {
       errorCode: "no_instagram_account",
       errorMessage:
         "The connected Page has no Instagram professional account linked to it.",
+      permanent: true,
+    };
+  }
+
+  const refused = permissionRefusal(input.channel, account);
+  if (refused && !refused.ok) {
+    return {
+      ok: false,
+      errorCode: refused.errorCode,
+      errorMessage: refused.errorMessage,
       permanent: true,
     };
   }

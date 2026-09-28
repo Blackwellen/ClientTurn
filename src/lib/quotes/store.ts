@@ -116,6 +116,15 @@ export async function loadQuoteSettings(businessId: string): Promise<QuoteSettin
     .maybeSingle();
   if (!extended.error && extended.data && row) row = { ...row, ...(extended.data as QuoteSettingsRow) };
   else if (extended.error && !isSchemaLag(extended.error)) throw new Error(`quote settings read failed: ${extended.error.message}`);
+  // 0173 columns (invoice pay links): the same pattern. Before the migration
+  // every workspace reads as "bank transfer only".
+  const pay = await client
+    .from("quote_settings")
+    .select("invoice_pay_mode, invoice_pay_link_url")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!pay.error && pay.data && row) row = { ...row, ...(pay.data as QuoteSettingsRow) };
+  else if (pay.error && !isSchemaLag(pay.error)) throw new Error(`quote settings read failed: ${pay.error.message}`);
   return settingsFromRow(row, (counters.data ?? []) as CounterRow[]);
 }
 

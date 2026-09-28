@@ -1,6 +1,11 @@
 import "server-only";
 import { z } from "zod";
-import { liveInvoiceDeps } from "@/lib/invoicing/store";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { ensureInvoicePayToken, liveInvoiceDeps } from "@/lib/invoicing/store";
+import { setInvoicePayLinkSchema } from "@/lib/invoicing/pay-link";
+import { loadQuoteSettings } from "@/lib/quotes/store";
 import { INVOICE_STATUSES } from "@/lib/invoicing/types";
 import {
   createInvoicesFromQuote,
@@ -127,5 +132,56 @@ defineOperation("invoice.list", {
   async run({ args, context }: HandlerInput<z.infer<typeof listSchema>>) {
     const result = await guarded(() => listInvoices(liveInvoiceDeps(context.businessId), context.businessId, { ...args, limit: args.limit ?? 50 }));
     return { data: result, entityId: null };
+  },
+});
+
+/**
+ * 0173: the Stripe Payment Link for ONE invoice (Settings -> Quotes &
+ * invoices, "A link pasted on each invoice"). The link is the workspace's
+ * own, made in its own Stripe account; ClientTurn only adds the invoice's
+ * opaque token when it sends it. Null removes it (the invoice then shows no
+ * pay button). A paid, void or written-off invoice keeps what it had.
+ */
+defineOperation("invoice.set_pay_link", {
+  schema: setInvoicePayLinkSchema,
+  async run({ args, context }: HandlerInput<z.infer<typeof setInvoicePayLinkSchema>>) {
+    const client = createAdminClient() as unknown as SupabaseClient;
+    const { data, error } = await client
+      .from("invoices")
+      .select("id, status, pay_link_url")
+      .eq("business_id", context.businessId)
+      .eq("id", args.invoiceId)
+      .maybeSingle();
+    if (error) {
+      if (isSchemaLag(error)) throw new ServiceError("CONFLICT", "Invoice payment links need database update 0173.");
+      throw new ServiceError("UNAVAILABLE", "Invoices could not be read.");
+    }
+    if (!data) throw new ServiceError("NOT_FOUND", "That invoice could not be found.");
+    const before = data as { id: string; status: string; pay_link_url: string | null };
+    if (!["DRAFT", "OPEN", "PARTIALLY_PAID"].includes(before.status)) {
+      throw new ServiceError("CONFLICT", `A ${before.status.toLowerCase().replace("_", " ")} invoice cannot take a new payment link.`);
+    }
+    const { data: updated, error: updateError } = await client
+      .from("invoices")
+      .update({ pay_link_url: args.url })
+      .eq("business_id", context.businessId)
+      .eq("id", args.invoiceId)
+      .in("status", ["DRAFT", "OPEN", "PARTIALLY_PAID"])
+      .select("id")
+      .maybeSingle();
+    if (updateError || !updated) throw new ServiceError("CONFLICT", "That invoice changed while you were editing it. Refresh and try again.");
+    // An issued invoice needs its token for the link to be tracked.
+    if (args.url && before.status !== "DRAFT") await ensureInvoicePayToken(context.businessId, args.invoiceId);
+    const settings = await loadQuoteSettings(context.businessId);
+    return {
+      data: { invoiceId: args.invoiceId, hasPayLink: Boolean(args.url) },
+      entityId: args.invoiceId,
+      before: { pay_link: Boolean(before.pay_link_url) },
+      after: { pay_link: Boolean(args.url) },
+      warnings:
+        settings.invoicePayMode === "PER_INVOICE"
+          ? []
+          : [{ code: "mode_not_per_invoice", message: "Saved. It is used only while Settings > Quotes & invoices is set to a link pasted on each invoice." }],
+    };
   },
 });

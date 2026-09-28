@@ -25,6 +25,18 @@
  *        - a renewal is recorded as revenue against the lead; no second WON,
  *          no second thank-you;
  *        - the payment is stamped applied (the revenue ledger entry).
+ *
+ * An invoice payment (0173) goes a different way at step 2: when the token
+ * names an INVOICE's pay token (invoicing/pay-link.ts) rather than a checkout
+ * attempt, the payment is recorded on that invoice through the invoicing
+ * append-payment path (the 0154 trigger moves paid_minor and the status; a
+ * paid invoice emits `invoice.paid` once and moves the quote to DEPOSIT_PAID
+ * or PAID). The rules -- currency, over-payment, idempotency -- are
+ * invoicing/settlement.ts. Only a token settles an invoice: a payment matched
+ * by email alone stays REVIEW.
+ *
+ * Refunds and disputes (flagReversal) are never applied to money: the
+ * payment is flagged and the owner told to issue a credit note.
  */
 
 import {
@@ -39,6 +51,14 @@ import {
   type PaymentMatch,
 } from "./facts.ts";
 import { thankYouMessage } from "./abandoned.ts";
+import {
+  decideInvoiceSettlement,
+  invoicePaymentExternalId,
+  invoicePaymentProvider,
+  settlementReviewSummary,
+  type SettlementReviewReason,
+} from "../invoicing/settlement.ts";
+import { formatMoney, type PaymentReversal } from "./facts.ts";
 import { paymentThanksSendKey } from "./send-keys.ts";
 
 export type PaymentRow = {
@@ -61,6 +81,58 @@ export type PaymentRow = {
   checkout_attempt_id: string | null;
   opportunity_id: string | null;
   applied_at: string | null;
+  /** 0173: the invoice this payment settled (or is under review for). */
+  invoice_id?: string | null;
+  /** 0173: why a person should look at it (settlement.ts reasons). */
+  review_reason?: string | null;
+};
+
+/** An invoice a pay token names, as settlement needs it. */
+export type PayableInvoice = {
+  id: string;
+  business_id: string;
+  number: string | null;
+  status: string;
+  currency: string;
+  total_minor: number;
+  paid_minor: number;
+  /** The quote's lead, for the payment row and the timeline. */
+  lead_id: string | null;
+};
+
+/**
+ * The invoice half of payment.confirm (0173). Optional so a deployment
+ * without invoicing -- and the direct-sale tests -- keep the checkout-only
+ * behaviour.
+ */
+export type InvoiceSettlementDeps = {
+  invoiceByPayToken(businessId: string, token: string): Promise<PayableInvoice | null>;
+  /**
+   * The amount already recorded on an invoice for this provider payment
+   * (invoice_payments unique key), or null when it is not there yet.
+   */
+  invoicePaymentRecorded(businessId: string, provider: "stripe" | "other", externalId: string): Promise<number | null>;
+  /**
+   * The invoicing append-payment path (service-core recordPayment): inserts
+   * the invoice_payments row, emits invoice.paid when it paid the invoice
+   * off, and projects onto the quote. CONFLICT when the invoice changed
+   * underneath (the trigger or the status check refused it).
+   */
+  recordInvoicePayment(input: {
+    businessId: string;
+    invoiceId: string;
+    provider: "stripe" | "other";
+    externalId: string;
+    amountMinor: number;
+    receivedAt: string;
+    checkoutPaymentId: string;
+  }): Promise<"RECORDED" | "DUPLICATE" | "CONFLICT">;
+  /** Idempotent: a paid invoice's quote moves to DEPOSIT_PAID / PAID (retry after a crash). */
+  reprojectQuote(businessId: string, invoiceId: string): Promise<void>;
+  /** Finds the payment a refund or dispute names (Stripe PaymentIntent). */
+  paymentByIntent(businessId: string, paymentIntentId: string): Promise<PaymentRow | null>;
+  /** Tells the owner; deduped on (payment, reason). */
+  notify(input: { businessId: string; paymentId: string; invoiceId: string | null; reason: SettlementReviewReason; summary: string }): Promise<void>;
 };
 
 export type AttemptRow = {
@@ -121,6 +193,8 @@ export type ConfirmDeps = {
   notifyOwner(input: { businessId: string; paymentId: string; status: "REVIEW" | "UNMATCHED"; summary: string }): Promise<void>;
   audit(input: { businessId: string; action: string; entityId: string; metadata: Record<string, unknown> }): Promise<void>;
   now(): Date;
+  /** 0173: invoice pay links. Absent = checkout-attempt matching only. */
+  invoices?: InvoiceSettlementDeps;
 };
 
 export type ConfirmOutcome =
@@ -129,7 +203,9 @@ export type ConfirmOutcome =
   | "REVIEW"
   | "UNMATCHED"
   | "DUPLICATE"
-  | "ALREADY_APPLIED";
+  | "ALREADY_APPLIED"
+  /** Recorded on an invoice through its pay token (0173). */
+  | "INVOICE_SETTLED";
 
 /** The thank-you's send key: one per payment, whatever retries. */
 export const thankYouSendKey = paymentThanksSendKey;
@@ -187,6 +263,14 @@ async function matchAndApply(
   const payment = await deps.loadPayment(businessId, paymentId);
   if (!payment) throw new Error("payment.confirm: the payment is gone");
   if (payment.applied_at) return { outcome: "ALREADY_APPLIED", paymentId };
+
+  // An invoice's pay token settles that invoice (0173). Checked first: the
+  // two token spaces never overlap (both random), and an invoice payment is
+  // not a direct sale -- no opportunity is closed and no thank-you is sent.
+  if (payment.reference && deps.invoices) {
+    const invoice = await deps.invoices.invoiceByPayToken(businessId, payment.reference);
+    if (invoice && invoice.business_id === businessId) return settleInvoice(deps, deps.invoices, payment, invoice, options);
+  }
 
   const attempt = payment.reference ? await deps.attemptByToken(businessId, payment.reference) : null;
   const subscriptionLeadId =
@@ -370,4 +454,155 @@ async function apply(
   });
 
   return { outcome: firstPayment ? "APPLIED" : "RENEWAL_RECORDED", paymentId: payment.id };
+}
+
+/* ------------------------------------------------------ invoice settlement */
+
+async function settleInvoice(
+  deps: ConfirmDeps,
+  invoices: InvoiceSettlementDeps,
+  payment: PaymentRow,
+  invoice: PayableInvoice,
+  options: { reportUncertain: boolean },
+): Promise<{ outcome: ConfirmOutcome; paymentId: string }> {
+  const businessId = payment.business_id;
+  const provider = invoicePaymentProvider(payment.provider);
+  const externalId = invoicePaymentExternalId(payment);
+  // Re-read at the moment of acting: was this provider payment already put
+  // on the invoice (a retry after a crash, a duplicate webhook)?
+  const recordedMinor = await invoices.invoicePaymentRecorded(businessId, provider, externalId);
+  const decision = decideInvoiceSettlement({
+    businessId,
+    invoice,
+    payment: { amountMinor: payment.amount_minor, currency: payment.currency },
+    alreadyRecorded: recordedMinor !== null,
+  });
+
+  if (decision.kind === "NOT_THIS_WORKSPACE") return { outcome: "UNMATCHED", paymentId: payment.id };
+  if (decision.kind === "REVIEW") return reviewInvoicePayment(deps, invoices, payment, invoice, decision.reason, options);
+
+  let recorded: number;
+  if (decision.kind === "SETTLE") {
+    const outcome = await invoices.recordInvoicePayment({
+      businessId,
+      invoiceId: invoice.id,
+      provider,
+      externalId,
+      amountMinor: decision.amountMinor,
+      receivedAt: deps.now().toISOString(),
+      checkoutPaymentId: payment.id,
+    });
+    // The invoice changed between the read and the insert (paid by hand, voided): a person decides.
+    if (outcome === "CONFLICT") return reviewInvoicePayment(deps, invoices, payment, invoice, "INVOICE_NOT_PAYABLE", options);
+    if (outcome === "DUPLICATE") await invoices.reprojectQuote(businessId, invoice.id);
+    recorded = decision.amountMinor;
+  } else {
+    // ALREADY_RECORDED: finish what a crashed run started. invoice.paid is
+    // not emitted again; the quote projection is idempotent on its action key.
+    await invoices.reprojectQuote(businessId, invoice.id);
+    recorded = recordedMinor ?? payment.amount_minor;
+  }
+
+  const excessMinor = Math.max(0, payment.amount_minor - recorded);
+  await deps.updatePayment(businessId, payment.id, {
+    status: "MATCHED",
+    match_kind: "INVOICE",
+    invoice_id: invoice.id,
+    lead_id: invoice.lead_id ?? payment.lead_id,
+    applied_at: deps.now().toISOString(),
+    review_reason: excessMinor > 0 ? "OVERPAID" : null,
+  });
+  if (excessMinor > 0) {
+    await invoices.notify({
+      businessId,
+      paymentId: payment.id,
+      invoiceId: invoice.id,
+      reason: "OVERPAID",
+      summary: settlementReviewSummary("OVERPAID", { invoiceNumber: invoice.number, excess: formatMoney(excessMinor, payment.currency) }),
+    });
+  }
+  await deps.audit({
+    businessId,
+    action: "payment.confirmed",
+    entityId: payment.id,
+    metadata: {
+      match: "INVOICE",
+      invoice_id: invoice.id,
+      lead_id: invoice.lead_id,
+      amount_minor: payment.amount_minor,
+      recorded_minor: recorded,
+      excess_minor: excessMinor,
+      currency: payment.currency,
+      retry: decision.kind === "ALREADY_RECORDED",
+    },
+  });
+  return { outcome: "INVOICE_SETTLED", paymentId: payment.id };
+}
+
+async function reviewInvoicePayment(
+  deps: ConfirmDeps,
+  invoices: InvoiceSettlementDeps,
+  payment: PaymentRow,
+  invoice: PayableInvoice,
+  reason: SettlementReviewReason,
+  options: { reportUncertain: boolean },
+): Promise<{ outcome: ConfirmOutcome; paymentId: string }> {
+  // Already recorded and reported on the first delivery: not reported twice.
+  if (!options.reportUncertain && payment.status === "REVIEW") return { outcome: "DUPLICATE", paymentId: payment.id };
+  const businessId = payment.business_id;
+  await deps.updatePayment(businessId, payment.id, {
+    status: "REVIEW",
+    match_kind: "INVOICE",
+    invoice_id: invoice.id,
+    lead_id: invoice.lead_id ?? payment.lead_id,
+    review_reason: reason,
+  });
+  await invoices.notify({ businessId, paymentId: payment.id, invoiceId: invoice.id, reason, summary: settlementReviewSummary(reason, { invoiceNumber: invoice.number }) });
+  await deps.audit({
+    businessId,
+    action: "payment.received",
+    entityId: payment.id,
+    metadata: { status: "REVIEW", match: "INVOICE", reason, invoice_id: invoice.id, amount_minor: payment.amount_minor, currency: payment.currency },
+  });
+  return { outcome: "REVIEW", paymentId: payment.id };
+}
+
+/* ---------------------------------------------------- refunds and disputes */
+
+/**
+ * A refund or dispute from the customer's own Stripe. Never reverses
+ * anything: the payment it names is flagged (review_reason) and the owner is
+ * told what to do -- issue a credit note for a refund (credit-notes.ts), answer
+ * a dispute in Stripe. Idempotent: the notification is keyed on the payment
+ * and the reason, and flagging twice writes the same value.
+ */
+export async function flagReversal(
+  deps: ConfirmDeps,
+  input: { businessId: string; reversal: PaymentReversal },
+): Promise<{ outcome: "FLAGGED" | "UNKNOWN_PAYMENT" | "NOT_SUPPORTED"; paymentId: string | null }> {
+  if (!deps.invoices) return { outcome: "NOT_SUPPORTED", paymentId: null };
+  const payment = await deps.invoices.paymentByIntent(input.businessId, input.reversal.paymentIntentId);
+  if (!payment) return { outcome: "UNKNOWN_PAYMENT", paymentId: null };
+  const reason: SettlementReviewReason = input.reversal.eventType === "charge.refunded" ? "REFUNDED" : "DISPUTED";
+  if (payment.review_reason !== reason) await deps.updatePayment(input.businessId, payment.id, { review_reason: reason });
+  const invoiceId = payment.invoice_id ?? null;
+  const summary = invoiceId
+    ? settlementReviewSummary(reason, { invoiceNumber: null })
+    : reason === "REFUNDED"
+      ? "A payment was refunded in your payment provider. Nothing was changed in ClientTurn."
+      : "The customer disputed a payment. Respond to it in your payment provider. Nothing was changed in ClientTurn.";
+  await deps.invoices.notify({ businessId: input.businessId, paymentId: payment.id, invoiceId, reason, summary });
+  await deps.audit({
+    businessId: input.businessId,
+    action: "payment.received",
+    entityId: payment.id,
+    metadata: {
+      reversal: input.reversal.eventType,
+      reason,
+      invoice_id: invoiceId,
+      amount_minor: input.reversal.amountMinor,
+      currency: input.reversal.currency,
+    },
+  });
+  return { outcome: "FLAGGED", paymentId: payment.id };
 }

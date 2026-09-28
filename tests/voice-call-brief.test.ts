@@ -243,3 +243,28 @@ describe("the closing attribution line (owner decision 2026-09-28)", () => {
     assert.match(b.text, /end without the closing line/);
   });
 });
+
+describe("adversarial QA pass (2026-09-28)", () => {
+  test("the recording answer is locked, and honest when recording is off", async () => {
+    const { RECORDING_ANSWER_ON, RECORDING_ANSWER_OFF } = await import("../src/lib/voice/opener.ts");
+    assert.ok(buildVoiceCallBrief(input({ recordingEnabled: true })).text.includes(`say exactly: "${RECORDING_ANSWER_ON}"`));
+    assert.ok(buildVoiceCallBrief(input({ recordingEnabled: false })).text.includes(`say exactly: "${RECORDING_ANSWER_OFF}"`));
+    assert.match(buildVoiceCallBrief(input()).text, /RECORDING\. If asked, say it is recorded only if your opening line said so/);
+    assert.doesNotMatch(buildVoiceCallBrief(input({ recordingEnabled: true })).text, /may be recorded/);
+  });
+
+  test("every route leaves a next step, and the default question is one question", () => {
+    assert.match(voiceMove(input({ route: "NURTURE", nba: null })), /next step.*schedule_callback/);
+    assert.match(voiceMove(input({ route: "REACTIVATION", nba: null })), /close on the goal's step.*schedule_callback/);
+    assert.doesNotMatch(voiceMove(input({ route: "QUALIFICATION", nba: null, permissions: { book: false, quote: false, sendQuote: false, checkout: false } })), / and what /);
+  });
+
+  test("slot labels are spoken, not read off a screen", async () => {
+    const { spokenSlotChoice, spokenSlotLabel } = await import("../src/lib/voice/spoken-time.ts");
+    assert.equal(spokenSlotLabel("Wed 30 Sep, 10:00am"), "Wednesday 30 September at 10am");
+    assert.equal(spokenSlotLabel("Tue 9 Sep, 1:30pm"), "Tuesday 9 September at 1:30pm");
+    assert.equal(spokenSlotChoice("Wed 30 Sep, 10:00am", "Wed 30 Sep, 2:00pm"), "Wednesday 30 September at 10am or 2pm");
+    assert.equal(spokenSlotChoice("Wed 30 Sep, 10:00am", "Thu 1 Oct, 2:00pm"), "Wednesday 30 September at 10am or Thursday 1 October at 2pm");
+    assert.equal(spokenSlotLabel("tomorrow morning"), "tomorrow morning");
+  });
+});

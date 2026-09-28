@@ -30,6 +30,7 @@ import {
   type ThreadMessage,
 } from "@/lib/inbox/types";
 import { InboxControls } from "./inbox-controls";
+import { IntegrationRequiredState } from "@/components/ui/feedback";
 
 /**
  * The unified inbox.
@@ -53,6 +54,7 @@ export function InboxView({
   agentState,
   canManage,
   hrefFor,
+  channelNotice = null,
 }: {
   channel: InboxChannel;
   view: InboxView;
@@ -67,6 +69,12 @@ export function InboxView({
   agentState: ConversationAgentState | null;
   canManage: boolean;
   hrefFor: (conversationId: string) => string;
+  /**
+   * Set when the open thread's channel cannot be answered from ClientTurn:
+   * Instagram or Messenger messaging not yet approved by Meta, or no Page
+   * connected. Shown as an integration-required state, never a silent failure.
+   */
+  channelNotice?: string | null;
 }) {
   return (
     <div className="space-y-5" data-tour="inbox">
@@ -103,6 +111,7 @@ export function InboxView({
           agentState={agentState}
           archived={archived}
           canManage={canManage}
+          channelNotice={channelNotice}
         />
       </div>
     </div>
@@ -339,6 +348,7 @@ function ThreadPane({
   agentState,
   archived,
   canManage,
+  channelNotice,
 }: {
   channel: InboxChannel;
   selected: ConversationRow | null;
@@ -346,6 +356,7 @@ function ThreadPane({
   agentState: ConversationAgentState | null;
   archived: boolean;
   canManage: boolean;
+  channelNotice: string | null;
 }) {
   if (!selected) {
     const definition = CHANNEL_DEFINITIONS[channel];
@@ -476,9 +487,10 @@ function ThreadPane({
       {replyState.state === "HUMAN_ONLY" && (
         <p className="border-t border-line bg-warn-50 px-4 py-3 text-[12.5px] text-content">
           The assistant has stopped replying here: {channelLabel(selected.channel)}{" "}
-          only allows automated replies for 24 hours. You can still answer
-          yourself for another {replyState.daysLeft}{" "}
-          {replyState.daysLeft === 1 ? "day" : "days"}.
+          only allows automated replies for 24 hours. A person can still answer
+          for another {replyState.daysLeft}{" "}
+          {replyState.daysLeft === 1 ? "day" : "days"} from Meta Business Suite
+          (Meta&apos;s Human Agent tag); ClientTurn only sends inside the 24 hours.
         </p>
       )}
 
@@ -489,12 +501,30 @@ function ThreadPane({
         </p>
       )}
 
+      {channelNotice && (
+        <div className="border-t border-line px-4 py-3">
+          <IntegrationRequiredState
+            title={`${channelLabel(selected.channel)} replies are not available here yet`}
+            description={channelNotice}
+          />
+        </div>
+      )}
+
       {canManage && replyState.state !== "CLOSED" && (
         <InboxControls
           id={selected.id}
           channel={selected.channel}
           hasLead={Boolean(selected.leadId)}
           archived={archived}
+          replyBlockedReason={
+            channelNotice
+              ? channelNotice
+              : replyState.state === "HUMAN_ONLY"
+                ? "Past 24 hours, reply from Meta Business Suite."
+                : selected.channel === "linkedin"
+                  ? "Send LinkedIn replies from your own account: Follow-Up, LinkedIn Assist."
+                  : null
+          }
         />
       )}
     </section>

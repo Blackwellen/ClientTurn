@@ -289,6 +289,19 @@ export function evaluateSendGate(snapshot: SendGateSnapshot): SendGateResult {
     };
   }
 
+  // LinkedIn has no send transport at all (messaging/registry.ts refuses it):
+  // a person sends every LinkedIn message from their own account, through
+  // LinkedIn Assist (owner decision 2026-09-28). So a reply the gates above
+  // allow is always a DRAFT for them to copy, never a SEND that the carrier
+  // would then refuse. After the hard denials, so an opted-out or
+  // disconnected thread still gets no draft at all.
+  if (snapshot.channel === "linkedin") {
+    return {
+      decision: "DRAFT",
+      detail: "LinkedIn replies are sent by a person from their own account (LinkedIn Assist).",
+    };
+  }
+
   // SUGGEST_ONLY never sends -- but it still draws a draft, which is the
   // whole point of the mode, so it is decided after the hard denials so a
   // workspace does not review drafts it could never have sent.

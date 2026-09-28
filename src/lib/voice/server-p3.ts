@@ -132,6 +132,7 @@ export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: 
     textFollowUpLawful: !context.lead.opted_out && (Boolean(context.lead.email) || (phone.startsWith("+") && classifyDestination(phone) === "UK_MOBILE")),
     conversationSummary: summary,
     closingLine: closing.text,
+    recordingEnabled: call.recording_enabled,
   };
   const brief = buildVoiceCallBrief(input);
   return {

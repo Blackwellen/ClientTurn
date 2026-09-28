@@ -7,6 +7,7 @@ import { getAgentWizardOptions } from "@/lib/agents/queries";
 import { AGENT_TYPES, type AgentType } from "@/lib/agents/types";
 import { AgentWizard } from "@/components/agents/agent-wizard";
 import { PageHeader } from "@/components/app/page-header";
+import { loadCatalogueOptions } from "@/lib/commercial/rules-queries";
 
 export const metadata: Metadata = { title: "New agent" };
 export const dynamic = "force-dynamic";
@@ -17,9 +18,11 @@ export default async function NewAgentPage({
   searchParams: Promise<{ type?: string }>;
 }) {
   const workspace = await requireRole("admin");
-  const [params, options] = await Promise.all([
+  const [params, options, catalogue] = await Promise.all([
     searchParams,
     getAgentWizardOptions(workspace.businessId),
+    // What the agent may sell (0174). A failed read leaves the whole catalogue.
+    loadCatalogueOptions(workspace.businessId).catch(() => null),
   ]);
 
   const supabase = await createClient();
@@ -49,6 +52,7 @@ export default async function NewAgentPage({
         }))}
         sourceAvailability={options.sourceAvailability}
         initialType={initialType}
+        catalogue={catalogue}
       />
     </div>
   );

@@ -9,6 +9,8 @@ import { AgentBlocked, chooseReengagementChannel } from "./policy";
 import { channelUsable } from "@/lib/integrations/platform-channels";
 import { platformConfigured } from "@/lib/integrations/queries";
 import { closingVerdict } from "./closing-rules";
+import { closingGoalsInTarget, resolveTarget } from "./offer-target";
+import { loadAgentOfferTargetOrWhole, loadRulesCatalogue } from "@/lib/commercial/rules-queries";
 import type { GoalKey } from "@/lib/qualification-intelligence/types";
 
 /**
@@ -80,7 +82,21 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
     .or(`last_contact_at.is.null,last_contact_at.lt.${dayAgo}`)
     .limit(agent.daily_prospect_cap);
 
-  if (agent.service_id) query = query.eq("service_id", agent.service_id);
+  // What this agent sells (0174; the legacy service_id is read as a
+  // one-offer target). It chases only leads on those offers, toward the goals
+  // of those offers' opportunities only.
+  const target = await loadAgentOfferTargetOrWhole(agent.business_id, agent.id);
+  const items =
+    target.scope === "SELECTED"
+      ? (await loadRulesCatalogue(agent.business_id).catch(() => ({ items: [] }))).items
+      : [];
+  const resolved = resolveTarget(target, items);
+  if (resolved.serviceIds) {
+    if (resolved.serviceIds.size === 0) {
+      return { examined: 0, actioned: 0, blocked: 0, detail: "None of the products or services this agent sells is still in the catalogue." };
+    }
+    query = query.in("service_id", [...resolved.serviceIds]);
+  }
 
   const { data: candidates, error } = await query;
   if (error) throw new Error("Qualified leads could not be read.");
@@ -89,7 +105,7 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
   const leads = (candidates ?? []).filter((lead) =>
     closingVerdict({
       booked: Boolean(lead.booked_at),
-      openGoals: verdicts.goals.get(lead.id) ?? [],
+      openGoals: closingGoalsInTarget(verdicts.goals.get(lead.id) ?? [], resolved),
       checkoutInFlight: verdicts.checkout.has(lead.id),
       quoteInFlight: verdicts.quote.has(lead.id),
     }).stalled,
@@ -193,15 +209,19 @@ async function closingContext(
   admin: ReturnType<typeof createAdminClient>,
   businessId: string,
   leadIds: string[],
-): Promise<{ goals: Map<string, (GoalKey | null)[]>; checkout: Set<string>; quote: Set<string> }> {
-  const goals = new Map<string, (GoalKey | null)[]>();
+): Promise<{
+  goals: Map<string, { serviceId: string | null; goal: GoalKey | null }[]>;
+  checkout: Set<string>;
+  quote: Set<string>;
+}> {
+  const goals = new Map<string, { serviceId: string | null; goal: GoalKey | null }[]>();
   const checkout = new Set<string>();
   const quote = new Set<string>();
   if (leadIds.length === 0) return { goals, checkout, quote };
 
   const { data: opps, error: oppError } = await admin
     .from("opportunities")
-    .select("id, lead_id, goal")
+    .select("id, lead_id, goal, service_id")
     .eq("business_id", businessId)
     .eq("outcome", "OPEN")
     .in("lead_id", leadIds);
@@ -210,7 +230,10 @@ async function closingContext(
   for (const opp of opps ?? []) {
     if (!opp.lead_id) continue;
     leadByOpp.set(opp.id, opp.lead_id);
-    goals.set(opp.lead_id, [...(goals.get(opp.lead_id) ?? []), (opp.goal as GoalKey | null) ?? null]);
+    goals.set(opp.lead_id, [
+      ...(goals.get(opp.lead_id) ?? []),
+      { serviceId: opp.service_id ?? null, goal: (opp.goal as GoalKey | null) ?? null },
+    ]);
   }
 
   const { data: attempts, error: attemptError } = await admin

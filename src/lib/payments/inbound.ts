@@ -1,7 +1,7 @@
 import "server-only";
 import { enqueue } from "@/lib/jobs/queue";
 import { db, noteEndpointDelivery } from "./store";
-import type { PaymentFact } from "./facts";
+import type { PaymentFact, PaymentReversal } from "./facts";
 
 /**
  * The shared tail of both payment webhooks, after the signature is verified:
@@ -20,8 +20,12 @@ export async function acceptPaymentDelivery(input: {
   eventType: string;
   /** Null when the event is verified but not a payment we act on. */
   fact: PaymentFact | null;
+  /** 0173: a refund or dispute to flag (Stripe only). Queued like a fact. */
+  reversal?: PaymentReversal | null;
   ignoredReason?: string;
 }): Promise<Response> {
+  const reversal = input.fact ? null : (input.reversal ?? null);
+  const actionable = Boolean(input.fact || reversal);
   const externalEventId = `${input.endpointId}:${input.eventId}`.slice(0, 400);
 
   const { error: inboxError } = await db()
@@ -31,10 +35,10 @@ export async function acceptPaymentDelivery(input: {
       external_event_id: externalEventId,
       business_id: input.businessId,
       event_type: input.eventType.slice(0, 80),
-      status: input.fact ? "received" : "ignored",
+      status: actionable ? "received" : "ignored",
       // The normalised fact only, never the provider's raw body: the raw
       // event carries billing details this product has no use for.
-      payload: (input.fact ?? { ignored: input.ignoredReason ?? "not a payment" }) as never,
+      payload: (input.fact ?? reversal ?? { ignored: input.ignoredReason ?? "not a payment" }) as never,
     });
 
   if (inboxError?.code === "23505") {
@@ -48,12 +52,14 @@ export async function acceptPaymentDelivery(input: {
 
   await noteEndpointDelivery(input.endpointId, null);
 
-  if (!input.fact) return Response.json({ received: true, ignored: input.ignoredReason ?? true });
+  if (!actionable) return Response.json({ received: true, ignored: input.ignoredReason ?? true });
 
   try {
     await enqueue(
       "payment.confirm",
-      { mode: "delivery", businessId: input.businessId, fact: input.fact },
+      input.fact
+        ? { mode: "delivery", businessId: input.businessId, fact: input.fact }
+        : { mode: "reversal", businessId: input.businessId, reversal },
       {
         businessId: input.businessId,
         priority: 40,

@@ -173,6 +173,9 @@ import {
 import { agentQuoteRequestId } from "@/lib/commercial/locks";
 import { aiAuthorityOf } from "@/lib/commercial/authority";
 import { aiMay } from "@/lib/commercial/ai-permissions";
+import { competitorRules } from "@/lib/sales-library/competitors";
+import { getMetaChannelCapability } from "@/lib/social/meta-capability-query";
+import { instagramReplyGate, META_APPROVAL_TRIGGER } from "./meta-gate";
 import { maybeRefreshSummary } from "./summary";
 import { matchOfferedSlot, type Slot } from "./availability/slots";
 import { bookingFailureRoute, bookingReplyText } from "@/lib/bookings/confirmation";
@@ -849,6 +852,22 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
   // ---- binding deterministic outcomes ----------------------------------
   if (input.binding) {
     return handleBindingVerdict(input, input.binding.intent);
+  }
+
+  // ---- Instagram without Meta approval (meta-gate.ts) -------------------
+  // After the binding verdicts, so an opt-out or a complaint is still
+  // recorded; before anything is composed, because a reply Meta will refuse
+  // is a queued message that can only fail. The hand-over says why and asks a
+  // person to reply from the Instagram app. Nothing is sent: the
+  // acknowledgement would go through the same refused channel.
+  if (input.channel === "instagram") {
+    const instagram = instagramReplyGate(
+      input.channel,
+      await getMetaChannelCapability(context.business.businessId, "instagram").catch(() => null),
+    );
+    if (instagram.blocked) {
+      return handover(input, "POLICY", instagram.detail, { acknowledged: true, trigger: META_APPROVAL_TRIGGER });
+    }
   }
 
   // ---- abandoned-checkout nudge (the direct-sale loop) -----------------
@@ -2573,6 +2592,10 @@ function validationFactsForTurn(input: ExecuteInput, confirmedSlots: string[], c
     // The quote in play: only its calculated figures may be stated
     // (quote-flow.ts quoteFigures; brief §7).
     quote: input.quote?.validation ?? null,
+    // Commercial rules (0174): approved competitor points only, and nothing
+    // outside the lead's agent's target.
+    competitors: competitorRules(input.context.commercialRules?.competitors ?? []),
+    offTargetNames: input.context.commercialRules?.offTargetNames ?? [],
   };
 }
 

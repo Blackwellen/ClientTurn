@@ -34,6 +34,10 @@ import {
   SourcesTab,
 } from "@/components/agents/agent-tabs";
 
+import { loadAgentOfferTarget, loadCatalogueOptions } from "@/lib/commercial/rules-queries";
+import { WHOLE_CATALOGUE } from "@/lib/agents/offer-target";
+import type { AgentOfferView } from "@/components/agents/agent-tabs";
+
 export const metadata: Metadata = { title: "Agent" };
 export const dynamic = "force-dynamic";
 
@@ -104,6 +108,16 @@ export default async function AgentPage({
     name: `${plan.search_sessions?.title ?? "Approved search"} · v${plan.version}`,
   }));
   const runState = agentRunState(agent);
+
+  // What it sells (0174): read only for the Settings tab, and failing on its
+  // own (the panel says so) rather than taking the page down.
+  const offer: AgentOfferView | null =
+    tab === "settings"
+      ? await Promise.all([loadAgentOfferTarget(workspace.businessId, id), loadCatalogueOptions(workspace.businessId)]).then(
+          ([target, catalogue]): AgentOfferView => ({ state: "ok", target: target ?? WHOLE_CATALOGUE, catalogue }),
+          (): AgentOfferView => ({ state: "error" }),
+        )
+      : null;
 
   const runs = (runsResult.data ?? []).map((run) => ({
     id: run.id,
@@ -181,6 +195,7 @@ export default async function AgentPage({
           canManage={canManage}
           controls={<AgentControls id={id} status={agent.status} cadence={agent.cadence} />}
           plans={plans}
+          offer={offer}
         />
       )}
     </div>

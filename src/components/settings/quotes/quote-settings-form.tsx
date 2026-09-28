@@ -13,6 +13,7 @@ import { saveQuoteSettings } from "@/lib/quotes/settings-actions";
 import { bpsToInput, minorToInput, parseMoneyInput, parsePercentInput } from "@/lib/quotes/money-input";
 import type { QuoteSettings } from "@/lib/quotes/settings";
 import type { ApprovalRule } from "@/lib/quotes/discount-policy";
+import { INVOICE_PAY_MODE_LABEL, INVOICE_PAY_MODES, payLinkProblem, payLinkSettlementNote, type InvoicePayMode } from "@/lib/invoicing/pay-link";
 
 type Capability = { allowed: boolean; message: string | null };
 
@@ -131,6 +132,45 @@ export function QuoteSettingsForm({
             <Input id="qs-deposit" inputMode="decimal" value={draft.deposit} onChange={(e) => set("deposit", e.target.value)} disabled={disabled} placeholder="e.g. 50" />
           </FormField>
         </div>
+
+        <fieldset className="space-y-3 rounded-lg border border-line-subtle p-4" aria-describedby="qs-pay-help">
+          <legend className="px-1 text-[13.5px] font-semibold text-content">How invoices are paid</legend>
+          <p id="qs-pay-help" className="text-[12.5px] text-content-muted">
+            Customers pay you directly, through your own Stripe account; ClientTurn never holds the money. With a link set, each invoice email and the quote page show a Pay now button, and a payment through it is recorded on the invoice automatically.
+          </p>
+          <FormField label="Payment method" htmlFor="qs-pay-mode">
+            <Select native id="qs-pay-mode" value={draft.payMode} onChange={(e) => set("payMode", e.target.value as InvoicePayMode)} disabled={disabled}>
+              {INVOICE_PAY_MODES.map((mode) => (
+                <option key={mode} value={mode}>{INVOICE_PAY_MODE_LABEL[mode]}</option>
+              ))}
+            </Select>
+          </FormField>
+          {draft.payMode === "WORKSPACE_LINK" && (
+            <FormField
+              label="Stripe Payment Link"
+              htmlFor="qs-pay-link"
+              required
+              hint={'In your Stripe dashboard, create a Payment Link and choose "Let customers choose what to pay", so the customer enters the amount on the invoice.'}
+            >
+              <Input id="qs-pay-link" value={draft.payLink} onChange={(e) => set("payLink", e.target.value)} disabled={disabled} maxLength={2000} placeholder="https://buy.stripe.com/..." />
+            </FormField>
+          )}
+          {draft.payMode === "PER_INVOICE" && (
+            <p className="text-[12.5px] text-content-muted">Add a link to each invoice from the lead page (Quotes, then Add pay link). An invoice without one shows no pay button.</p>
+          )}
+          {draft.payMode === "WORKSPACE_LINK" && payLinkSettlementNote(draft.payLink.trim()) && (
+            <p className="text-[12.5px] text-content-muted">{payLinkSettlementNote(draft.payLink.trim())}</p>
+          )}
+          {draft.payMode !== "NONE" && (
+            <p className="text-[12.5px] text-content-muted">
+              Payments are read from your Stripe webhook.{" "}
+              <Link href="/app/settings?section=connections#payments" className="font-medium text-content-accent underline-offset-4 hover:underline">
+                Connect it in Connections
+              </Link>
+              . A payment without the invoice&apos;s reference, or in another currency, waits for you to check it.
+            </p>
+          )}
+        </fieldset>
 
         <FormField label="Quote terms" htmlFor="qs-terms" hint="Printed on every quote and its PDF. Frozen into each quote when it is sent.">
           <Textarea id="qs-terms" rows={4} value={draft.termsText} onChange={(e) => set("termsText", e.target.value)} disabled={disabled} maxLength={20000} />
@@ -294,6 +334,8 @@ type Draft = {
   nudges: boolean;
   reminderOffsets: string;
   rules: RuleDraft[];
+  payMode: InvoicePayMode;
+  payLink: string;
   // Kept as-is: fields this form does not edit.
   keep: Pick<QuoteSettings, "currency" | "discountPolicy">;
 };
@@ -315,6 +357,8 @@ function toDraft(s: QuoteSettings): Draft {
     requireDrawn: s.requireDrawnSignature,
     nudges: s.quoteNudgesEnabled,
     reminderOffsets: s.reminderOffsets.join(", "),
+    payMode: s.invoicePayMode,
+    payLink: s.invoicePayLinkUrl ?? "",
     rules: s.discountPolicy.approvalRules.map((rule) => ({
       id: rule.id,
       kind: rule.valueAboveMinor !== undefined ? "value" : "discount",
@@ -336,6 +380,10 @@ function fromDraft(d: Draft): Record<string, unknown> | string {
   if (d.deposit.trim() !== "" && (deposit === null || deposit === 0)) return "Default deposit: enter a percentage, e.g. 50.";
   const offsets = d.reminderOffsets.split(",").map((part) => part.trim()).filter(Boolean).map(Number);
   if (offsets.some((n) => !Number.isInteger(n))) return "Invoice reminders: whole numbers separated by commas, e.g. -3, 0, 7.";
+  const payLink = d.payLink.trim();
+  if (d.payMode === "WORKSPACE_LINK" && !payLink) return "How invoices are paid: paste your Stripe Payment Link, or choose bank transfer only.";
+  const payProblem = payLink ? payLinkProblem(payLink) : null;
+  if (payProblem && d.payMode === "WORKSPACE_LINK") return `Payment link: ${payProblem}`;
   const rules: ApprovalRule[] = [];
   for (const rule of d.rules) {
     if (rule.kind === "discount") {
@@ -363,6 +411,9 @@ function fromDraft(d: Draft): Record<string, unknown> | string {
     discountPolicy: { ...d.keep.discountPolicy, approvalRules: rules },
     requireDrawnSignature: d.requireDrawn,
     quoteNudgesEnabled: d.nudges,
+    invoicePayMode: d.payMode,
+    // A link that is not valid is not kept once the mode no longer uses it.
+    invoicePayLinkUrl: payLink && !payProblem ? payLink : null,
     prefixes: { quote: d.prefixQuote.trim(), invoice: d.prefixInvoice.trim(), creditNote: d.prefixCredit.trim() },
   };
 }

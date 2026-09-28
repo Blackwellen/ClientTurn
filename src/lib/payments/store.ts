@@ -8,7 +8,10 @@ import { parseAuthority } from "@/lib/commercial/authority";
 import { queueNotification, queueOutboundMessage, stopAutomationRuns } from "@/lib/jobs/handlers/shared";
 import { recordAudit, type AnyAuditAction } from "@/lib/audit";
 import { mrrMinor, type PaymentFact } from "./facts";
-import type { AttemptRow, ConfirmDeps, LeadLite, PaymentRow } from "./confirm";
+import type { AttemptRow, ConfirmDeps, InvoiceSettlementDeps, LeadLite, PayableInvoice, PaymentRow } from "./confirm";
+import { liveInvoiceDeps } from "@/lib/invoicing/store";
+import { InvoiceServiceError, projectOntoQuote, recordPayment as recordInvoicePayment } from "@/lib/invoicing/service-core";
+import type { SettlementReviewReason } from "@/lib/invoicing/settlement";
 import type { Channel } from "@/lib/messaging/types";
 
 /**
@@ -57,7 +60,10 @@ export const confirmDeps: ConfirmDeps = {
       paid_at: fact.paidAt,
     };
     const { data, error } = await db().from("checkout_payments").insert(row).select(PAYMENT_FIELDS).single();
-    if (!error && data) return { row: data as PaymentRow, inserted: true };
+    if (!error && data) {
+      await notePaymentIntent(businessId, (data as PaymentRow).id, fact.paymentIntentId ?? null);
+      return { row: data as PaymentRow, inserted: true };
+    }
     if (error?.code !== "23505") throw new Error(`payment.confirm: record failed: ${error?.message ?? "no row"}`);
     const { data: existing, error: readError } = await db()
       .from("checkout_payments")
@@ -318,7 +324,137 @@ export const confirmDeps: ConfirmDeps = {
   },
 
   now: () => new Date(),
+
+  invoices: invoiceSettlementDeps(),
 };
+
+/**
+ * 0173: the PaymentIntent a refund or dispute will name. Written apart from
+ * the insert so a database behind the code still records the payment.
+ */
+async function notePaymentIntent(businessId: string, paymentId: string, paymentIntentId: string | null): Promise<void> {
+  if (!paymentIntentId) return;
+  const { error } = await db()
+    .from("checkout_payments")
+    .update({ provider_payment_intent: paymentIntentId.slice(0, 200) })
+    .eq("id", paymentId)
+    .eq("business_id", businessId);
+  if (error && !isSchemaLag(error)) console.error("[payment.confirm] payment intent not recorded", { paymentId, code: error.code });
+}
+
+const REVIEW_TITLE: Record<SettlementReviewReason, string> = {
+  CURRENCY_MISMATCH: "Check an invoice payment",
+  ZERO_AMOUNT: "Check an invoice payment",
+  INVOICE_ALREADY_PAID: "An invoice was paid twice",
+  INVOICE_NOT_PAYABLE: "Check an invoice payment",
+  OVERPAID: "An invoice was overpaid",
+  REFUNDED: "A payment was refunded",
+  DISPUTED: "A payment was disputed",
+};
+
+/**
+ * The invoice half of payment.confirm (0173): the pay-token lookup, the
+ * invoicing append-payment path, and the owner's review notices.
+ */
+function invoiceSettlementDeps(): InvoiceSettlementDeps {
+  return {
+    async invoiceByPayToken(businessId, token) {
+      const { data, error } = await db()
+        .from("invoices")
+        .select("id, business_id, number, status, currency, total_minor, paid_minor, opportunity_id")
+        .eq("business_id", businessId)
+        .eq("pay_token", token)
+        .maybeSingle();
+      if (error) {
+        // Before 0173 there are no invoice tokens: the token is a checkout attempt's or nobody's.
+        if (isSchemaLag(error)) return null;
+        throw new Error(`payment.confirm: invoice token lookup failed: ${error.message}`);
+      }
+      if (!data) return null;
+      const row = data as Omit<PayableInvoice, "lead_id"> & { opportunity_id: string };
+      const { data: opp } = await db()
+        .from("opportunities")
+        .select("lead_id")
+        .eq("id", row.opportunity_id)
+        .eq("business_id", businessId)
+        .maybeSingle();
+      return {
+        id: row.id,
+        business_id: row.business_id,
+        number: row.number,
+        status: row.status,
+        currency: row.currency,
+        total_minor: Number(row.total_minor),
+        paid_minor: Number(row.paid_minor),
+        lead_id: (opp as { lead_id: string | null } | null)?.lead_id ?? null,
+      };
+    },
+
+    async invoicePaymentRecorded(businessId, provider, externalId) {
+      const { data, error } = await db()
+        .from("invoice_payments")
+        .select("amount_minor")
+        .eq("business_id", businessId)
+        .eq("provider", provider)
+        .eq("external_payment_id", externalId)
+        .maybeSingle();
+      if (error) throw new Error(`payment.confirm: invoice payment read failed: ${error.message}`);
+      return data ? Number((data as { amount_minor: number }).amount_minor) : null;
+    },
+
+    async recordInvoicePayment(input) {
+      try {
+        const result = await recordInvoicePayment(liveInvoiceDeps(input.businessId), input.businessId, { kind: "SYSTEM", userId: null }, {
+          invoiceId: input.invoiceId,
+          amountMinor: input.amountMinor,
+          receivedAt: input.receivedAt,
+          reference: input.externalId,
+          provider: input.provider,
+          checkoutPaymentId: input.checkoutPaymentId,
+        });
+        return result.duplicate ? "DUPLICATE" : "RECORDED";
+      } catch (error) {
+        if (error instanceof InvoiceServiceError && (error.code === "CONFLICT" || error.code === "NOT_FOUND")) return "CONFLICT";
+        throw error;
+      }
+    },
+
+    async reprojectQuote(businessId, invoiceId) {
+      const deps = liveInvoiceDeps(businessId);
+      const invoice = await deps.store.loadInvoice(businessId, invoiceId);
+      if (invoice?.status === "PAID") await projectOntoQuote(deps, businessId, invoice);
+    },
+
+    async paymentByIntent(businessId, paymentIntentId) {
+      const { data, error } = await db()
+        .from("checkout_payments")
+        .select(`${PAYMENT_FIELDS}, invoice_id, review_reason`)
+        .eq("business_id", businessId)
+        .eq("provider_payment_intent", paymentIntentId)
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        if (isSchemaLag(error)) return null;
+        throw new Error(`payment.confirm: payment intent lookup failed: ${error.message}`);
+      }
+      return (data as PaymentRow | null) ?? null;
+    },
+
+    async notify(input) {
+      await queueNotification({
+        businessId: input.businessId,
+        type: "lead_attention",
+        title: REVIEW_TITLE[input.reason],
+        body: input.summary,
+        severity: "warning",
+        linkUrl: "/app/settings?section=connections#payments",
+        entityType: input.invoiceId ? "invoice" : "checkout_payment",
+        entityId: input.invoiceId ?? input.paymentId,
+        dedupeKey: `invoice-payment:${input.paymentId}:${input.reason}`,
+      });
+    },
+  };
+}
 
 /* --------------------------------------------------------------- reads */
 

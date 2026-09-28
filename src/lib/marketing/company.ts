@@ -58,6 +58,10 @@ export const LEGAL_LAST_UPDATED = "5 September 2026";
 /** Date the current version of the legal pack takes effect. */
 export const LEGAL_EFFECTIVE_FROM = "5 September 2026";
 
+/** The customer Data Processing Agreement (/dpa) is versioned on its own. */
+export const DPA_VERSION = "1.0 — 28 September 2026";
+export const DPA_EFFECTIVE_FROM = "28 September 2026";
+
 /** One-line attribution used in the footer and at the head of each policy. */
 export const COMPANY_LINE = `${COMPANY.registeredName} · Registered in ${COMPANY.jurisdiction} no. ${COMPANY.companyNumber} · ${COMPANY.registeredAddress}`;
 

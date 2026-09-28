@@ -468,8 +468,9 @@ const SECTIONS: LegalSection[] = [
           This section, together with the{" "}
           <a href="/terms">Terms of Service</a>, is the written contract required
           by Article 28(3) UK GDPR between a customer as controller and us as
-          processor. A separate signed data processing agreement is available on
-          request from{" "}
+          processor. The same terms, with security and sub-processor annexes,
+          are published as our <a href="/dpa">Data Processing Agreement</a>; a
+          countersigned copy is available on request from{" "}
           <a href={`mailto:${COMPANY.legalEmail}`}>{COMPANY.legalEmail}</a>.
         </p>
         <ul>
@@ -705,8 +706,8 @@ const SECTIONS: LegalSection[] = [
             need-to-know basis and reviewed when someone changes role or leaves.
           </li>
           <li>
-            <strong>Backups.</strong> Encrypted, taken continuously, and
-            restore-tested.
+            <strong>Backups.</strong> Encrypted daily database backups, held in
+            the United Kingdom by our database provider.
           </li>
           <li>
             <strong>Change control.</strong> Changes are reviewed before release,

@@ -115,7 +115,10 @@ export type JobType =
   | "voice.retention"
   // Daily: day-60/83 notices and the day-90 deletion of cancelled workspaces
   // (billing/workspace-deletion.ts, 0170).
-  | "billing.workspace_deletion";
+  | "billing.workspace_deletion"
+  // LinkedIn Assist (0171): the AI draft of one task a person will send
+  // themselves. Re-reads the task; the template is already in place.
+  | "linkedin_assist.draft";
 
 export type EnqueueOptions = {
   businessId?: string | null;

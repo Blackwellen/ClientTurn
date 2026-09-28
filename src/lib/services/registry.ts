@@ -59,6 +59,15 @@ export const SERVICE_OPERATIONS = [
     entityType: "lead",
   },
   {
+    name: "lead.best_fit",
+    domain: "lead",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Which product or service in the catalogue best fits a lead, and why (rules, not AI)",
+    entityType: "lead",
+  },
+  {
     name: "lead.update",
     domain: "lead",
     risk: "REVERSIBLE_WRITE",
@@ -306,6 +315,18 @@ export const SERVICE_OPERATIONS = [
     // configure an agent could raise its own daily and monthly spend caps, or
     // set its own autonomy to AUTO and stop routing its work for review. A
     // process must not be able to widen the limits it is running under.
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "agent.set_offer_target",
+    domain: "agent",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "agents:write",
+    summary: "Choose what an agent sells: the whole catalogue, or specific products and services",
+    entityType: "agent",
+    // Excludes AGENT, as agent.configure does: a process must not widen what
+    // it is allowed to pitch.
     callers: ["UI", "COPILOT", "MCP", "API"],
   },
   {
@@ -1107,6 +1128,42 @@ export const SERVICE_OPERATIONS = [
     summary: "Try an objection offline: which playbook fires, the plan and an example reply (no AI spend)",
     entityType: "business",
   },
+  /*
+   * Competitor positioning (0174): the competitors leads mention, the factual
+   * comparison points the business approves, and the lines never to say. The
+   * assistant may only quote an approved point; the validator enforces it.
+   * Writes are closed to an unattended agent: it must not approve its own
+   * claims.
+   */
+  {
+    name: "competitor.list",
+    domain: "competitor",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read the competitors this workspace lists, with their approved comparison points",
+    entityType: "business",
+  },
+  {
+    name: "competitor.save",
+    domain: "competitor",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Add or edit a competitor, its approved comparison points and its never-say lines",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "competitor.remove",
+    domain: "competitor",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Remove a competitor from the workspace's list",
+    entityType: "business",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
   {
     name: "ai_budget.update",
     domain: "ai_budget",
@@ -1278,6 +1335,19 @@ export const SERVICE_OPERATIONS = [
     summary: "Change a team member's role",
     entityType: "business_member",
     callers: ["UI", "MCP", "API"],
+  },
+  {
+    // Per-person capability overrides (0172, lib/auth/capabilities.ts):
+    // outbound sending, integrations, billing. Same guardrails as a role
+    // change; billing is only ever delegated by the owner.
+    name: "member.set_permissions",
+    domain: "member",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change a team member's permissions",
+    entityType: "business_member",
+    callers: ["UI"],
   },
   {
     name: "member.remove",
@@ -1624,6 +1694,16 @@ export const SERVICE_OPERATIONS = [
     effect: "The payment is added to the invoice permanently. A mistaken payment is corrected with a credit note, not deleted.",
     entityType: "invoice",
     callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "invoice.set_pay_link",
+    domain: "invoice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Set or remove the Stripe Payment Link for one invoice",
+    entityType: "invoice",
+    callers: ["UI"],
   },
   {
     name: "invoice.void",
@@ -2085,6 +2165,94 @@ export const SERVICE_OPERATIONS = [
     scope: "business:write",
     summary: "Change how system events map onto the pipeline stages",
     entityType: "pipeline_stage_map",
+    callers: ["UI"],
+  },
+  /* ------------------------------------------------------ LinkedIn Assist
+   *
+   * Owner decision 2026-09-28: the AI drafts, a person sends. Nothing here
+   * touches LinkedIn: every write records what a person did (or plans what
+   * they will do) on their own account. UI only: these are a person's own
+   * daily list, not something another program acts on
+   * (lib/services/operations/linkedin-assist.ts).
+   */
+  {
+    name: "linkedin_assist.add_contact",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Add a lead or prospect to your LinkedIn Assist list",
+    entityType: "linkedin_assist_contact",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.redraft",
+    domain: "linkedin_assist",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Write a LinkedIn Assist draft again",
+    entityType: "linkedin_assist_task",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.mark_sent",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record that you sent a LinkedIn Assist message",
+    entityType: "linkedin_assist_task",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.skip",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Skip a LinkedIn Assist task",
+    entityType: "linkedin_assist_task",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.snooze",
+    domain: "linkedin_assist",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Check again later whether a LinkedIn request was accepted",
+    entityType: "linkedin_assist_task",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.log_reply",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record a LinkedIn reply so the assistant can draft the answer",
+    entityType: "linkedin_assist_task",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.move_channel",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Move a LinkedIn conversation to email, SMS or a call",
+    entityType: "linkedin_assist_contact",
+    callers: ["UI"],
+  },
+  {
+    name: "linkedin_assist.update_settings",
+    domain: "linkedin_assist",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Change your LinkedIn Assist pacing",
+    entityType: "linkedin_assist_settings",
     callers: ["UI"],
   },
 ] as const satisfies readonly ServiceDeclaration[];

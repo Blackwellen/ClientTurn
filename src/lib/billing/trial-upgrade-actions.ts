@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -30,7 +31,7 @@ export async function loadTrialUpgradeOfferAction(): Promise<OfferResult> {
   try {
     const offer = await getTrialUpgradeOffer(workspace.businessId);
     if (!offer) return { ok: false, error: "This workspace is not in a trial." };
-    return { ok: true, offer, canUpgrade: hasRole(workspace.role, "owner") };
+    return { ok: true, offer, canUpgrade: await workspaceCan(workspace, "manage_billing") };
   } catch {
     return { ok: false, error: "Your plan could not be loaded. Try again." };
   }
@@ -45,7 +46,7 @@ export async function previewTrialUpgradeAction(input: unknown): Promise<Preview
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { ok: false };
   const workspace = await requireWorkspace().catch(() => null);
-  if (!workspace || !hasRole(workspace.role, "owner")) return { ok: false };
+  if (!workspace || !(await workspaceCan(workspace, "manage_billing"))) return { ok: false };
   const preview = await previewTrialConversion(workspace.businessId, parsed.data.plan);
   return preview ? { ok: true, ...preview } : { ok: false };
 }

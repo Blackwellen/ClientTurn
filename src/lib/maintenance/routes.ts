@@ -68,6 +68,7 @@ const LEGAL_PREFIXES = [
   "/terms",
   "/cookies",
   "/sub-processors",
+  "/dpa",
   "/data-deletion",
   "/unsubscribe",
   "/api/unsubscribe",

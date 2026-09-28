@@ -11,7 +11,7 @@ import { z } from "zod";
 import { fieldsForSurface } from "../messaging/merge-fields.ts";
 import { MAX_EMAIL_SUBJECT_LENGTH } from "../automations/types.ts";
 
-export const FOLLOW_UP_VIEWS = ["follow-up", "qualification"] as const;
+export const FOLLOW_UP_VIEWS = ["follow-up", "qualification", "linkedin"] as const;
 export type FollowUpViewValue = (typeof FOLLOW_UP_VIEWS)[number];
 
 /**
@@ -32,6 +32,14 @@ export const FOLLOW_UP_VIEW_META: Record<
     label: "Qualification",
     description:
       "Put all day-to-day automation and qualification configuration in one understandable place.",
+  },
+  // LinkedIn Assist (owner decision 2026-09-28): the AI drafts, you send. It
+  // lives here because it is follow-up work -- scheduled, paced, stopped by the
+  // same conditions -- performed by a person rather than a carrier.
+  linkedin: {
+    label: "LinkedIn Assist",
+    description:
+      "Today's LinkedIn actions, written for you. You send them from your own account, so it stays safe.",
   },
 };
 

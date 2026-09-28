@@ -35,8 +35,10 @@ const layerStack: object[] = [];
  * not two; a hook called without a key is a layer of its own.
  */
 function useLayer(active: boolean, key?: object): () => boolean {
-  const own = React.useRef<object>({});
-  const layerKey = key ?? own.current;
+  // A stable per-hook identity for callers that pass no key (state, not a
+  // ref: reading ref.current during render is not allowed).
+  const [own] = React.useState<object>(() => ({}));
+  const layerKey = key ?? own;
   React.useEffect(() => {
     if (!active) return;
     layerStack.push(layerKey);

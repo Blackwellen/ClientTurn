@@ -160,6 +160,8 @@ export type AuditAction =
   | "profile.password_reset_requested"
   | "billing.portal_opened"
   | "export.performed"
+  // Settings -> Data Controls: the workspace audit trail itself exported.
+  | "audit_log.exported"
   | "campaign.created"
   | "campaign.paused"
   | "campaign.resumed"

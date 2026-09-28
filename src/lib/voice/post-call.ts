@@ -59,7 +59,10 @@ export type CallAnalysis = {
   leadText: string;
 };
 
-const OPT_OUT = /\b(stop calling|don'?t call (me|us)( again)?|do not call|never call|remove (me|my number)|take me off|no more calls)\b/i;
+// Adversarial QA pass (2026-09-28): the private opt-out regex that lived here
+// ("stop calling", "take me off") recorded "stop calling it a website" and
+// "take me off speaker" as opt-outs. Opt-outs now come only from
+// speech-intents.ts (with its negatives) and the UNSUBSCRIBE text signal.
 const CALLBACK = /\b(call (me|us) back|ring (me|us) back|call (me|us) (later|tomorrow|next week|on \w+day)|another time|bad time|not a good time)\b/i;
 const QUOTE = /\b(quote|quotation|proposal|price it up|estimate)\b/i;
 
@@ -130,7 +133,7 @@ export function analyseCall(input: {
   }
 
   const spokenOptOut = spoken.find((i) => i.key === "OPT_OUT_ALL") ?? spoken.find((i) => i.key === "OPT_OUT_CALLS");
-  const voiceOptOut = OPT_OUT.test(leadText) || types.has("UNSUBSCRIBE") || Boolean(spokenOptOut);
+  const voiceOptOut = types.has("UNSUBSCRIBE") || Boolean(spokenOptOut);
   const optOutScope: CallAnalysis["optOutScope"] = voiceOptOut ? (spokenOptOut?.optOutScope ?? (types.has("UNSUBSCRIBE") ? "ALL" : "CALLS")) : null;
   const callbackHit = signals.find((s) => s.type === ("NOT_NOW") || s.type === ("CALLBACK_REQUEST"));
   const callback = CALLBACK.test(leadText) || Boolean(callbackHit);
@@ -140,7 +143,7 @@ export function analyseCall(input: {
   else if (input.outcome === "TRANSFERRED") disposition = "TRANSFERRED_TO_HUMAN";
   else if (turns.length === 0) disposition = "NO_CONVERSATION";
   else if (voiceOptOut) disposition = "OPTED_OUT";
-  else if (types.has("WRONG_PERSON") || spoken.some((i) => i.key === "WRONG_NUMBER")) disposition = "WRONG_PERSON";
+  else if (types.has("WRONG_PERSON") || spoken.some((i) => i.key === "WRONG_NUMBER" || i.key === "VULNERABLE")) disposition = "WRONG_PERSON";
   else if (types.has("NOT_INTERESTED") || seen.has("NOT_INTERESTED")) disposition = "NOT_INTERESTED";
   else if (callback) disposition = "CALLBACK_REQUESTED";
   else if (types.has("QUOTE_REQUEST") || QUOTE.test(leadText)) disposition = "QUOTE_REQUESTED";

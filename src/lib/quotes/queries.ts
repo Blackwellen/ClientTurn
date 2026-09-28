@@ -8,6 +8,8 @@ import { toPublicItem } from "@/lib/catalogue/rows";
 import type { Catalogue } from "@/lib/catalogue/types";
 import { loadQuoteSettings, loadWorkspaceCatalogue } from "./store";
 import type { QuoteSettings } from "./settings";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { invoicePayUrl } from "@/lib/invoicing/pay-link";
 
 /**
  * Reads for Settings -> Quotes & invoices and the lead page's Quotes card.
@@ -100,6 +102,10 @@ export type LeadInvoiceView = {
   paidMinor: number;
   currency: string;
   dueDate: string | null;
+  /** 0173: the link pasted on this invoice (PER_INVOICE mode). */
+  payLinkUrl: string | null;
+  /** 0173: the tracked link the customer is sent, or null (no pay button). */
+  payUrl: string | null;
 };
 
 export async function leadInvoices(businessId: string, opportunityIds: string[]): Promise<LeadInvoiceView[]> {
@@ -110,7 +116,22 @@ export async function leadInvoices(businessId: string, opportunityIds: string[])
     .eq("business_id", businessId)
     .in("opportunity_id", opportunityIds)
     .order("created_at", { ascending: true });
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+  const rows = (data ?? []) as Record<string, unknown>[];
+  // 0173 pay fields, read apart so a database behind the code still lists invoices.
+  const [settings, payRead] = await Promise.all([
+    loadQuoteSettings(businessId),
+    rows.length > 0
+      ? db().from("invoices").select("id, pay_token, pay_link_url").eq("business_id", businessId).in("id", rows.map((row) => String(row.id)))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (payRead.error && !isSchemaLag(payRead.error)) console.error("[lead invoices] pay fields not read", { code: payRead.error.code });
+  const pay = new Map(
+    ((payRead.error ? [] : (payRead.data ?? [])) as { id: string; pay_token: string | null; pay_link_url: string | null }[]).map((row) => [
+      row.id,
+      { payToken: row.pay_token, payLinkUrl: row.pay_link_url },
+    ]),
+  );
+  return rows.map((row) => ({
     id: String(row.id),
     quoteId: (row.quote_id as string | null) ?? null,
     kind: String(row.kind),
@@ -120,5 +141,15 @@ export async function leadInvoices(businessId: string, opportunityIds: string[])
     paidMinor: Number(row.paid_minor),
     currency: String(row.currency),
     dueDate: (row.due_date as string | null) ?? null,
-  }));
+    payLinkUrl: null as string | null,
+    payUrl: null as string | null,
+  })).map((invoice) => {
+    const fields = pay.get(invoice.id);
+    if (!fields) return invoice;
+    return {
+      ...invoice,
+      payLinkUrl: fields.payLinkUrl,
+      payUrl: invoicePayUrl({ mode: settings.invoicePayMode, workspaceLinkUrl: settings.invoicePayLinkUrl }, { status: invoice.status, ...fields }),
+    };
+  });
 }

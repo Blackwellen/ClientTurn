@@ -6,7 +6,7 @@ import { SegmentedControl } from "@/components/ui/tabs";
 import { FOLLOW_UP_VIEW_META, type FollowUpViewValue } from "@/lib/follow-up/types";
 
 /**
- * Toggles between the Follow-Up and Qualification views. State lives in the
+ * Toggles between the Follow-Up, Qualification and LinkedIn Assist views. State lives in the
  * `view` search param — never local state — so the active view is linkable,
  * bookmarkable, and browser back/forward moves between them.
  */
@@ -30,11 +30,14 @@ export function SegmentedViewSwitch({ value }: { value: FollowUpViewValue }) {
   return (
     <SegmentedControl
       accent
+      // Three segments: scroll rather than overflow the page on a phone.
+      className="max-w-full overflow-x-auto"
       value={value}
       onChange={update}
       items={[
         { value: "follow-up", label: FOLLOW_UP_VIEW_META["follow-up"].label },
         { value: "qualification", label: FOLLOW_UP_VIEW_META.qualification.label },
+        { value: "linkedin", label: FOLLOW_UP_VIEW_META.linkedin.label },
       ]}
     />
   );

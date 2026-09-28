@@ -63,6 +63,27 @@ export function isPlatformChannel(channel: Channel): channel is PlatformChannel 
 }
 
 /**
+ * Where an inbound opt-out is filed on the suppression list.
+ *
+ * Decided by the channel, never by the shape of the address. A Messenger or
+ * Instagram sender is `meta_psid:` / `meta_igsid:`, which contains no "@" and
+ * which `normalisePhone` would happily turn into a plausible "+1784..." that
+ * matches nobody -- so a STOP on Instagram used to be filed against a phone
+ * number that does not exist, and the thread's own address stayed contactable.
+ * Platform addresses go in the `social` slot, verbatim, exactly as
+ * `isSuppressed` looks them up.
+ */
+export function optOutDestination(
+  channel: Channel,
+  from: string,
+): { email: string | null; phone: string | null; social: string | null } {
+  const address = from.trim();
+  if (isPlatformChannel(channel)) return { email: null, phone: null, social: address || null };
+  if (channel === "email" || address.includes("@")) return { email: address || null, phone: null, social: null };
+  return { email: null, phone: normalisePhone(address) ?? (address || null), social: null };
+}
+
+/**
  * The channels a message can be *scheduled* on.
  *
  * The complement of `PLATFORM_CHANNELS`, and the distinction is a real one

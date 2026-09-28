@@ -9,6 +9,9 @@ import { emitQuoteEvent } from "@/lib/quotes/events";
 import { queueLeadEmail } from "@/lib/quotes/effects";
 import { loadOpportunityInfo, loadQuoteSettings } from "@/lib/quotes/store";
 import { stopSalesChasing } from "@/lib/quotes/chasing";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { newCheckoutToken } from "@/lib/payments/tracking-token";
+import { invoicePayUrl, type InvoicePayFields } from "./pay-link";
 import type { DueRule, QuoteCalculation, VatBucket } from "@/lib/quotes/types";
 import type {
   InvoiceDeps,
@@ -227,7 +230,10 @@ export function createInvoiceStore(): InvoiceStore {
         .eq("status", "DRAFT")
         .select("id");
       if (error) throw new Error(`invoice issue failed: ${error.message}`);
-      return Boolean(data && data.length > 0);
+      const issued = Boolean(data && data.length > 0);
+      // 0173: the opaque token its pay link carries. Set once, never changed.
+      if (issued) await ensureInvoicePayToken(businessId, invoiceId);
+      return issued;
     },
 
     async insertPayment(businessId, input) {
@@ -239,6 +245,7 @@ export function createInvoiceStore(): InvoiceStore {
         amount_minor: input.amountMinor,
         received_at: input.receivedAt,
         recorded_by: input.recordedBy,
+        checkout_payment_id: input.checkoutPaymentId ?? null,
       });
       if (!error) return "RECORDED";
       if (error.code === "23505") return "DUPLICATE";
@@ -342,10 +349,14 @@ export const invoiceEffects: InvoiceEffects = {
     const due = Math.max(0, invoice.totalMinor - invoice.paidMinor);
     const amount = formatMinor(due, invoice.currency);
     const subject = kind === "REMINDER" ? `Reminder: invoice ${invoice.number} from ${seller}` : `Invoice ${invoice.number} from ${seller}`;
+    // 0173: the pay link, only when the workspace configured one. It carries
+    // the invoice's opaque token, never the lead.
+    const payUrl = await invoicePayUrlFor(businessId, invoice.id);
+    const pay = payUrl ? `\n\nPay now: ${payUrl}\nIf the payment page asks for an amount, enter ${amount}.` : "";
     const body =
       kind === "REMINDER"
-        ? `Hello,\n\nThis is a reminder that invoice ${invoice.number} for ${amount} is due on ${invoice.dueDate}. If you have already paid, thank you, and please ignore this message.\n\n${seller}`
-        : `Hello,\n\nPlease find invoice ${invoice.number} for ${amount}, due on ${invoice.dueDate}. Reply to this email if you need a copy or have any questions.\n\n${seller}`;
+        ? `Hello,\n\nThis is a reminder that invoice ${invoice.number} for ${amount} is due on ${invoice.dueDate}.${pay}\n\nIf you have already paid, thank you, and please ignore this message.\n\n${seller}`
+        : `Hello,\n\nPlease find invoice ${invoice.number} for ${amount}, due on ${invoice.dueDate}.${pay}\n\nReply to this email if you need a copy or have any questions.\n\n${seller}`;
     return queueLeadEmail({ businessId, leadId, subject, body, sendKey, origin: kind === "REMINDER" ? "automation" : "manual" });
   },
   async enqueue(type, payload, options) {
@@ -355,6 +366,68 @@ export const invoiceEffects: InvoiceEffects = {
     await emitQuoteEvent(businessId, type, payload);
   },
 };
+
+/* ------------------------------------------------------------ pay links */
+
+/**
+ * Gives an issued invoice its pay token (0173) when it has none. Conditional
+ * on `pay_token is null`, so a retry or a race never replaces a token a
+ * customer may already hold. Never throws: before 0173 there is no column
+ * and no pay link.
+ */
+export async function ensureInvoicePayToken(businessId: string, invoiceId: string): Promise<string | null> {
+  const client = db();
+  const read = await client.from("invoices").select("pay_token").eq("business_id", businessId).eq("id", invoiceId).maybeSingle();
+  if (read.error) {
+    if (!isSchemaLag(read.error)) console.error("[invoice pay link] token read failed", { invoiceId, code: read.error.code });
+    return null;
+  }
+  const existing = (read.data as { pay_token: string | null } | null)?.pay_token ?? null;
+  if (existing || !read.data) return existing;
+  const { error } = await client
+    .from("invoices")
+    .update({ pay_token: newCheckoutToken() })
+    .eq("business_id", businessId)
+    .eq("id", invoiceId)
+    .is("pay_token", null);
+  if (error) {
+    console.error("[invoice pay link] token write failed", { invoiceId, code: error.code });
+    return null;
+  }
+  const again = await client.from("invoices").select("pay_token").eq("business_id", businessId).eq("id", invoiceId).maybeSingle();
+  return (again.data as { pay_token: string | null } | null)?.pay_token ?? null;
+}
+
+/** An invoice's pay fields; null before 0173 or when it is not this workspace's. */
+export async function loadInvoicePayFields(businessId: string, invoiceId: string): Promise<InvoicePayFields | null> {
+  const { data, error } = await db()
+    .from("invoices")
+    .select("status, pay_token, pay_link_url")
+    .eq("business_id", businessId)
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as { status: string; pay_token: string | null; pay_link_url: string | null };
+  return { status: row.status, payToken: row.pay_token, payLinkUrl: row.pay_link_url };
+}
+
+/**
+ * The tagged pay link for an invoice, or null (bank transfer only, no link,
+ * not payable, or before 0173). An issued invoice from before 0173 gets its
+ * token here, the first time a link is asked for.
+ */
+export async function invoicePayUrlFor(businessId: string, invoiceId: string): Promise<string | null> {
+  try {
+    const [settings, fields] = await Promise.all([loadQuoteSettings(businessId), loadInvoicePayFields(businessId, invoiceId)]);
+    if (!fields || settings.invoicePayMode === "NONE") return null;
+    const payToken = fields.payToken ?? (fields.status === "OPEN" || fields.status === "PARTIALLY_PAID" ? await ensureInvoicePayToken(businessId, invoiceId) : null);
+    return invoicePayUrl({ mode: settings.invoicePayMode, workspaceLinkUrl: settings.invoicePayLinkUrl }, { ...fields, payToken });
+  } catch (error) {
+    // A pay button is a convenience: the invoice still goes out without it.
+    console.error("[invoice pay link] not resolved", { invoiceId, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
 
 export function liveInvoiceDeps(businessId: string): InvoiceDeps {
   return {

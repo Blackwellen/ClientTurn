@@ -9,6 +9,9 @@ import { parseAuthority } from "@/lib/commercial/authority";
 import { createDownloadUrl } from "@/lib/storage/r2";
 import { emitQuoteEvent } from "./events";
 import { loadQuoteSettings } from "./store";
+import { formatMinor } from "./money";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
+import { invoicePayUrl } from "@/lib/invoicing/pay-link";
 import { hashToken, verifyPublicToken } from "./tokens";
 import { signatureRpcPayload, type NextStep, type PublicDeps, type PublicQuoteContext } from "./public-sign";
 import type { QuoteState } from "./lifecycle";
@@ -172,6 +175,10 @@ export async function publicPdfUrl(context: PublicQuoteContext): Promise<string 
  */
 export async function paymentNextStep(context: PublicQuoteContext): Promise<NextStep> {
   const noPayment: NextStep = { kind: "NONE", message: "Thank you. We have your acceptance and will be in touch about the next steps." };
+  // 0173: an issued invoice with a pay link comes first. Its link carries
+  // the invoice's opaque token, so the payment is recorded on that invoice.
+  const invoiceStep = await invoicePayStep(context);
+  if (invoiceStep) return invoiceStep;
   const direct = await can(context.businessId, "direct_close_enabled").catch(() => null);
   if (!direct?.allowed) return noPayment;
   const client = db();
@@ -196,6 +203,52 @@ export async function paymentNextStep(context: PublicQuoteContext): Promise<Next
   if (!link) return noPayment;
   const amount = context.renderModel.deposit ?? context.renderModel.firstPayment;
   return { kind: "PAY", label: context.renderModel.deposit ? `Pay the ${amount} deposit` : `Pay ${amount} now`, url: link.url };
+}
+
+/**
+ * The earliest unpaid invoice of this quote that has a pay link, as the
+ * page's Pay now step. Null when the workspace takes bank transfer only, no
+ * invoice is issued yet, or none has a link. Reads only: a GET never writes.
+ */
+async function invoicePayStep(context: PublicQuoteContext): Promise<NextStep | null> {
+  try {
+    const settings = await loadQuoteSettings(context.businessId);
+    if (settings.invoicePayMode === "NONE") return null;
+    const { data, error } = await db()
+      .from("invoices")
+      .select("id, number, status, total_minor, paid_minor, currency, pay_token, pay_link_url, schedule_seq, created_at")
+      .eq("business_id", context.businessId)
+      .eq("quote_id", context.quoteId)
+      .in("status", ["OPEN", "PARTIALLY_PAID"])
+      .order("schedule_seq", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (error) {
+      if (!isSchemaLag(error)) console.error("[quote page] invoice pay step not read", { quoteId: context.quoteId, code: error.code });
+      return null;
+    }
+    for (const row of (data ?? []) as {
+      number: string | null;
+      status: string;
+      total_minor: number;
+      paid_minor: number;
+      currency: string;
+      pay_token: string | null;
+      pay_link_url: string | null;
+    }[]) {
+      const url = invoicePayUrl(
+        { mode: settings.invoicePayMode, workspaceLinkUrl: settings.invoicePayLinkUrl },
+        { status: row.status, payToken: row.pay_token, payLinkUrl: row.pay_link_url },
+      );
+      if (!url) continue;
+      const due = formatMinor(Math.max(0, Number(row.total_minor) - Number(row.paid_minor)), row.currency);
+      return { kind: "PAY", label: `Pay now: ${due}${row.number ? ` (invoice ${row.number})` : ""}`, url };
+    }
+    return null;
+  } catch (error) {
+    console.error("[quote page] invoice pay step failed", { quoteId: context.quoteId, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
 }
 
 /**

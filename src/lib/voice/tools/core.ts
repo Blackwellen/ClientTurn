@@ -250,7 +250,13 @@ const REFUSAL_SAY: Readonly<Record<string, string>> = {
   // once and move the step to a text follow-up; never guess the answer.
   UNAVAILABLE: "Sorry, I cannot do that just now. I will get the details sent to you by text or email, and a colleague will follow up.",
   NO_BOOKING_LINK: "I do not have a link to send, so a colleague will send you the details.",
+  // After an opt-out nothing else is sent, booked or arranged in this call,
+  // not even what they asked for earlier ("email me", then "f off").
+  OPTED_OUT: "",
 };
+
+/** The only tools a call may still run once the lead has opted out in it. */
+const AFTER_OPT_OUT: ReadonlySet<VoiceToolName> = new Set(["opt_out", "end_call_summary", "log_objection", "get_call_status"]);
 
 function refusal(tool: string, code: string, call: ToolCallRow | null, now: Date, say?: string): VoiceToolResponse {
   const t = call
@@ -274,6 +280,12 @@ export function voiceToolGate<N extends VoiceToolName>(input: {
   const { name, call, permissions: p } = input;
   // An opt-out is always honoured, whatever else is switched off.
   if (name === "opt_out") return { allowed: true };
+  // Owner decision 2026-09-28: once they opted out on this call (a swear-off
+  // included), nothing more is sent or arranged, even a send they asked for
+  // earlier in the same call. Deterministic: read from this call's own results.
+  if (!AFTER_OPT_OUT.has(name) && input.prior.some((r) => r.tool === "opt_out" && r.status === "OK")) {
+    return { allowed: false, code: "OPTED_OUT" };
+  }
   if (!p.aiEnabled && name !== "end_call_summary" && name !== "log_objection" && name !== "get_call_status") {
     return { allowed: false, code: "NOT_PERMITTED" };
   }

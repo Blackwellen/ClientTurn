@@ -35,6 +35,8 @@ import "./operations/invoices";
 import "./operations/admin-voice";
 import "./operations/voice-agent";
 import "./operations/automation";
+import "./operations/linkedin-assist";
+import "./operations/commercial-rules";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

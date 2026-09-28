@@ -5,8 +5,11 @@ import { getEntitlements } from "@/lib/billing/entitlements";
 import { countRecentlyRemoved, listTeamMembers } from "@/lib/settings/queries";
 import { planLabel } from "@/lib/settings/types";
 import { inviteExpired, seatsInUse } from "@/lib/team/rules";
-import { EmptyState } from "@/components/ui/feedback";
+import { EmptyState, ErrorState } from "@/components/ui/feedback";
 import { TeamSettings } from "@/components/settings/team/team-settings";
+import { MemberPermissions } from "@/components/settings/team/member-permissions";
+import { readWorkspaceOverrides } from "@/lib/auth/permissions";
+import { memberDisplayName } from "@/lib/settings/types";
 
 export async function TeamSection() {
   const workspace = await requireWorkspace();
@@ -39,7 +42,23 @@ export async function TeamSection() {
     .filter((member) => member.status === "invited" && inviteExpired(member.invitedAt, now))
     .map((member) => member.membershipId);
 
+  // Per-person permissions (0172). A failed read shows its own error rather
+  // than taking the team list down with it.
+  const overrides = await readWorkspaceOverrides(workspace.businessId).then(
+    (value) => ({ ...value, error: false }),
+    () => ({ available: false, byMembership: new Map(), error: true }),
+  );
+  const permissionRows = members.map((member) => ({
+    membershipId: member.membershipId,
+    userId: member.userId,
+    name: memberDisplayName(member),
+    role: member.role,
+    status: member.status,
+    overrides: overrides.byMembership.get(member.membershipId) ?? {},
+  }));
+
   return (
+    <div className="space-y-4">
     <TeamSettings
       members={members}
       currentUserId={workspace.userId}
@@ -51,5 +70,20 @@ export async function TeamSection() {
       planName={planLabel(entitlements.plan)}
       removedRecently={removedRecently}
     />
+    {overrides.error ? (
+      <ErrorState
+        title="Permissions could not be loaded"
+        description="The team list above is correct. Refresh to try loading per-person permissions again."
+      />
+    ) : (
+      <MemberPermissions
+        rows={permissionRows}
+        actorRole={workspace.role}
+        currentUserId={workspace.userId}
+        canManage={hasRole(workspace.role, "admin")}
+        available={overrides.available}
+      />
+    )}
+    </div>
   );
 }

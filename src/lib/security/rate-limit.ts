@@ -89,6 +89,9 @@ export const RATE_LIMITS = {
   // CSV exports (/api/exports/*), per signed-in user. Each one reads up to the
   // export row cap, so a script looping over them is bounded here.
   "app:export": { limit: 10, windowSeconds: 600 },
+  // Audit log export (Settings -> Data Controls), per signed-in user. Each one
+  // can stream up to a year of history, so it is bounded tighter than CSVs.
+  "app:audit_export": { limit: 5, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

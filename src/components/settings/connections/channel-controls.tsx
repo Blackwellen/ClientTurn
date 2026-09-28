@@ -1,7 +1,8 @@
+import { workspaceCan } from "@/lib/auth/permissions";
 import "server-only";
 import * as React from "react";
 import { randomUUID } from "node:crypto";
-import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { requireWorkspace } from "@/lib/auth/session";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { runOperation } from "@/lib/services";
 import type { CrmPullView, WhatsAppStepView } from "@/lib/services/operations/channels";
@@ -28,7 +29,8 @@ function LoadError({ title }: { title: string }) {
  */
 export async function ChannelControls() {
   const workspace = await requireWorkspace();
-  const canManage = hasRole(workspace.role, "admin");
+  // Integrations capability (0172): role default is owner/admin.
+  const canManage = await workspaceCan(workspace, "manage_integrations");
   const context = {
     businessId: workspace.businessId,
     userId: workspace.userId,

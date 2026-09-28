@@ -40,9 +40,9 @@ import { GOAL_LABEL, type GoalKey, type NextBestAction } from "../qualification-
 import { BUILT_BY_ANSWER } from "./identity.ts";
 import { ESCALATION_LINES } from "./anti-loop.ts";
 import { ROUTE_TARGETS, thresholdsFor, PROVIDER_MAX_DURATION_SEC, type VoiceRouteKey } from "./time-governor.ts";
-import { houseStyleViolations } from "./opener.ts";
+import { houseStyleViolations, recordingAnswer } from "./opener.ts";
 
-export const CALL_BRIEF_VERSION = "brief.2026-09-28.v2";
+export const CALL_BRIEF_VERSION = "brief.2026-09-28.v3";
 /** ~4 characters per token (strategy.ts estimateTokens). */
 export const CALL_BRIEF_MAX_TOKENS = 1100;
 export const MAX_OFFER_LINES = 6;
@@ -136,6 +136,11 @@ export type CallBriefInput = {
    * label. Spoken word for word as the call wraps up.
    */
   closingLine: string;
+  /**
+   * The call is recorded (voice_calls.recording_enabled). Decides the locked
+   * RECORDING answer; absent reads as "answer from your opening line".
+   */
+  recordingEnabled?: boolean;
 };
 
 export type CallBrief = {
@@ -259,15 +264,15 @@ export function voiceMove(input: CallBriefInput): string {
     case "DIRECT_CLOSE":
       return checkoutClose(input);
     case "NURTURE":
-      return "Check in: ask how things are going with what they enquired about. Share one useful point. No pitch.";
+      return "Check in: ask how things are going with what they enquired about. Share one useful point, no pitch. Always leave a next step: a short call if they are keen, else agree when to check in (schedule_callback).";
     case "REACTIVATION":
-      return "They enquired a while ago. Ask whether it is still something they are looking at. If yes, find out what changed.";
+      return "They enquired a while ago. Ask whether it is still something they are looking at. If yes, ask what has changed, then close on the goal's step. If not now, agree when to check in (schedule_callback) and accept a no.";
     case "RETURN_CALL":
       return "They rang back. Thank them, ask how you can help, then follow the plan for their goal.";
     default:
       return goal === "B_BOOK_MEETING" || goal === "E_HUMAN_CLOSER"
         ? `Ask what prompted their enquiry, then ${meetingClose(input).replace(/^Close on a meeting: /, "").replace(/\.$/, "")}.`
-        : "Ask what prompted their enquiry and what they hope to get from it. When they answer, call record_fact.";
+        : "Ask what prompted their enquiry (one question). When they answer, call record_fact, then move toward the goal's step.";
   }
 }
 
@@ -278,7 +283,7 @@ function closeFor(input: CallBriefInput, move?: string): string {
   const target = MOTIONS[input.motion ?? "BOOK_MEETING_B2B"].closeTarget;
   if (goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL" || input.route === "DIRECT_CLOSE") return checkoutClose(input);
   if (goal === "F_NURTURE" || goal === "G_DISQUALIFY") {
-    return "No close today. If they want to go further, offer a meeting; otherwise agree how to keep in touch.";
+    return "No hard close. Keen: offer a short call. Otherwise agree when to check in next (schedule_callback).";
   }
   // The motion's own close wording (agent/closing.ts), for how a good closer
   // phrases it. The tools to take it are in the move (or meetingClose).
@@ -341,7 +346,7 @@ function objectionSection(input: CallBriefInput): { text: string; keys: Objectio
   return {
     keys: [...keys],
     text:
-      "OBJECTIONS. Every time, call log_objection with its key and acknowledge it in a few words, without agreeing or arguing. " +
+      "OBJECTIONS. Every time, call log_objection with its key and acknowledge it in a few words (once: some questions below start with it), without agreeing or arguing. " +
       "The first time, ask its one question below and stop. If they raise it again, never ask it twice. Timing, not now or happy with a supplier: accept it and agree when to follow up (schedule_callback). " +
       `Anything else: one approved reason from the offer lines, then offer ${voiceGoalStep(input)}. A legal or contract question is a colleague's. ` +
       lines.join(" "),
@@ -415,6 +420,12 @@ const MONEY_RULES =
   "MONEY, TIMES AND AREAS. Never say a price, quote, discount, delivery date, availability or service area from your own knowledge. " +
   "Say only what a tool returned in this call, exactly. If a tool refused, a colleague will confirm it.";
 
+/** The locked answer to "are you recording this?" (opener.ts), never "it may be". */
+export function recordingLine(recordingEnabled: boolean | undefined): string {
+  if (recordingEnabled == null) return "RECORDING. If asked, say it is recorded only if your opening line said so.";
+  return `RECORDING. If asked whether the call is recorded, say exactly: "${recordingAnswer(recordingEnabled)}"`;
+}
+
 function permissionLine(p: BriefPermissions): string {
   const can: string[] = [];
   const cannot: string[] = [];
@@ -458,6 +469,7 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
     { key: "money", text: `${MONEY_RULES} ${permissionLine(input.permissions)}` },
     { key: "speech", text: SPEECH_RULES },
     { key: "hearing", text: HEARING_RULES },
+    { key: "recording", text: recordingLine(input.recordingEnabled) },
     { key: "loops", text: `${LOOP_RULES}${input.textFollowUpLawful ? "" : " Texting is not allowed for this lead, so skip that step."}` },
     { key: "ethics", text: ETHICS_RULES },
     { key: "objections", text: objections.text },
@@ -470,7 +482,7 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
     },
     {
       key: "stop",
-      text: "STOP. If they ask not to be called again, call opt_out at once (scope ALL if they want no contact at all), confirm it in one sentence, and end without the closing line.",
+      text: "STOP. If they ask not to be called again, call opt_out at once (scope ALL if they want no contact at all, swear or say leave me alone), confirm it in one sentence, and end without the closing line.",
     },
   ];
 

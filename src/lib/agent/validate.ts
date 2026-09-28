@@ -22,6 +22,8 @@ import type { AgentChannel } from "./types.ts";
 import type { QaCode } from "../qualification-intelligence/types.ts";
 import type { QuoteValidationFacts } from "./quote-flow.ts";
 import { humanStyleFailures, type HumanStyleCode } from "./human-style.ts";
+import { competitorClaimFailures, type CompetitorRule } from "../sales-library/competitors.ts";
+import { offTargetMentions } from "../agents/offer-target.ts";
 
 export type ValidationFacts = {
   channel: AgentChannel;
@@ -86,6 +88,18 @@ export type ValidationFacts = {
    * no VAT or tax statement of any kind.
    */
   quote?: QuoteValidationFacts | null;
+  /**
+   * Competitor positioning (0174): every enabled competitor's names, approved
+   * points and never-say lines. A draft may say about a competitor only one of
+   * its approved points, word for word, and never disparage one. Absent or
+   * empty = no competitors configured, no check.
+   */
+  competitors?: CompetitorRule[];
+  /**
+   * Agent targeting (0174): names of offers and items outside the lead's
+   * agent's target. A draft naming one is rejected. Absent = whole catalogue.
+   */
+  offTargetNames?: string[];
 };
 
 export type ValidationFailure = {
@@ -111,6 +125,8 @@ export type ValidationCode =
   | "CHECKOUT_PRICE_MISMATCH"
   | "UNSUPPORTED_VAT_CLAIM"
   | "UNSUPPORTED_DELIVERY_CLAIM"
+  | "UNAPPROVED_COMPETITOR_CLAIM"
+  | "OFF_TARGET_OFFER"
   | StyleCode
   | QaCode;
 
@@ -471,6 +487,21 @@ export function validateResponse(
       detail: "The reply denied being automated.",
       correction:
         "If asked, say plainly that you are an automated assistant for the business and offer to pass them to the team.",
+    });
+  }
+
+  // ---- competitors: approved points only, never a put-down (0174)
+  failures.push(...competitorClaimFailures(trimmed, facts.competitors ?? []));
+
+  // ---- the agent's target: never pitch an offer it does not sell (0174)
+  const offTarget = offTargetMentions(trimmed, facts.offTargetNames ?? []);
+  if (offTarget.length > 0) {
+    failures.push({
+      code: "OFF_TARGET_OFFER",
+      detail: `Named ${offTarget.map((n) => `"${n}"`).join(", ")}, outside what this agent sells.`,
+      correction:
+        `Do not name or offer ${offTarget.map((n) => `"${n}"`).join(", ")}. Talk only about what is on the offer card; ` +
+        "if they asked about something else, say a colleague will pick that up.",
     });
   }
 

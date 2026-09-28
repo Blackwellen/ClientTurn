@@ -502,6 +502,20 @@ export const PERSONAL_DATA_RULES: readonly PersonalDataRule[] = [
     retainedBecause: "Rate-limit ledger of actions taken (type and time). No personal values.",
   },
   {
+    table: "linkedin_assist_contacts",
+    link: "lead_id / prospect_id",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "LinkedIn Assist profile link and outreach state",
+  },
+  {
+    table: "linkedin_assist_tasks",
+    link: "lead_id / prospect_id",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "LinkedIn Assist drafts and logged replies",
+  },
+  {
     table: "social_outbound_messages",
     link: "prospect_id",
     anonymise: "REDACT",

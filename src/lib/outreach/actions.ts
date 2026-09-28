@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { transition } from "./campaigns/lifecycle";
@@ -193,6 +194,7 @@ export async function launchCampaignAction(
 
   const access = await requireOutreachAdmin();
   if (!access.ok) return access;
+  if (!(await workspaceCan(access.workspace, "send_outbound"))) return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
 
   const admin = createAdminClient();
 

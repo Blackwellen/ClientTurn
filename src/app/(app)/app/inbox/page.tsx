@@ -14,6 +14,7 @@ import { InboxView } from "@/components/inbox/inbox-view";
 import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
 import { getConversationAgentState } from "@/lib/agent/queries";
 import type { ConversationAgentState } from "@/lib/agent/views";
+import { getMetaChannelCapability } from "@/lib/social/meta-capability-query";
 
 export const metadata: Metadata = { title: "Inbox" };
 export const dynamic = "force-dynamic";
@@ -142,6 +143,14 @@ export default async function InboxPage({
     if (draftIds.size > 0) messages = messages.filter((message) => !draftIds.has(message.id));
   }
 
+  // Messenger and Instagram: whether Meta permits this workspace to reply at
+  // all (approval, a linked Instagram account). Stated, not failed silently.
+  let channelNotice: string | null = null;
+  if (selected && (selected.channel === "messenger" || selected.channel === "instagram")) {
+    const capability = await getMetaChannelCapability(workspace.businessId, selected.channel);
+    if (capability.state !== "READY" && capability.state !== "UNVERIFIED") channelNotice = capability.message;
+  }
+
   const hrefFor = (conversationId: string) => {
     const next = new URLSearchParams({
       channel,
@@ -169,6 +178,7 @@ export default async function InboxPage({
       agentState={agentState}
       canManage={hasRole(workspace.role, "member")}
       hrefFor={hrefFor}
+      channelNotice={channelNotice}
     />
     </>
   );

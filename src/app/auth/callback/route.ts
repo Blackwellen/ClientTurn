@@ -1,12 +1,11 @@
+import { safeRelativePath } from "@/lib/security/safe-redirect";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { activatePendingInvites } from "@/lib/auth/invites";
 
 function safeNext(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
+  return safeRelativePath(value);
 }
 
 /**

@@ -21,6 +21,8 @@ import {
   type Channel,
   type InboundMessage,
   type MessagingProvider,
+  isPlatformChannel,
+  optOutDestination,
 } from "@/lib/messaging/types";
 import { parseMetaInbound } from "@/lib/messaging/meta";
 import { resolveMetaBusinessId, resolveSocialThread } from "@/lib/social/meta-inbound";
@@ -154,6 +156,7 @@ async function recordOptOut(
   lead: LeadRecord,
   contact: string,
   scope: "ALL" | "SMS" | "WHATSAPP",
+  channel: Channel,
 ) {
   const admin = createAdminClient();
 
@@ -162,13 +165,15 @@ async function recordOptOut(
   // SMS or WhatsApp is about that channel, which is how the carrier itself
   // treats it and what START later re-permits; "stop contacting me", or STOP
   // anywhere else, is about everything.
+  // Filed by channel (optOutDestination): a Messenger or Instagram sender's
+  // platform address goes in the social slot the agent's check reads, never
+  // through normalisePhone into a phone number that matches nobody.
   await suppress({
     businessId: business.businessId,
     channel: scope,
     reason: "OPT_OUT",
     source: "INBOUND_REPLY",
-    phone: contact.includes("@") ? null : contact,
-    email: contact.includes("@") ? contact : null,
+    ...optOutDestination(channel, contact),
   });
 
   // `leads.opted_out` is derived from the list (0123): the suppression above
@@ -218,7 +223,7 @@ async function recordOptOut(
     title: "A lead opted out",
     body:
       scope === "ALL"
-        ? `${contact} will not receive any further messages.`
+        ? `${isPlatformChannel(channel) ? `This ${channel} contact` : contact} will not receive any further messages.`
         : `${contact} will not receive any further ${scope === "SMS" ? "text" : "WhatsApp"} messages.`,
     entityType: "lead",
     entityId: lead.id,
@@ -691,7 +696,13 @@ export async function applyInboundMessage(
     .eq("lead_id", lead.id)
     .in("state", ["pending", "scheduled", "sent", "delivered"]);
 
-  const contact = normalisePhone(message.from) ?? message.from;
+  // The sender's address in its own channel's form. Only a phone channel is
+  // normalised: a platform address or a mailbox run through normalisePhone
+  // becomes a "+<digits>" string that matches nobody.
+  const contact =
+    isPlatformChannel(channel) || channel === "email"
+      ? message.from.trim()
+      : (normalisePhone(message.from) ?? message.from);
 
   // Two deterministic layers: the carrier keywords ("STOP", "UNSUBSCRIBE") and
   // the plain-English instructions that carry the same legal weight ("do not
@@ -703,6 +714,7 @@ export async function applyInboundMessage(
       lead,
       contact,
       optOutScope(channel, message.body),
+      channel,
     );
     await recordReplyInterest(businessId, conversationId, "UNSUBSCRIBE", { leadId: lead.id });
     return "applied";

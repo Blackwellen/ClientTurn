@@ -21,6 +21,13 @@ import {
 } from "@/lib/agents/types";
 import type { AgentDetail } from "@/lib/agents/queries";
 import { AgentSettingsForm } from "./agent-settings-form";
+import { AgentOfferTargetForm } from "./agent-offer-target-form";
+import { describeTarget, type CatalogueOptions, type OfferTarget } from "@/lib/agents/offer-target";
+
+/** The Settings tab's "What it sells" data (0174). */
+export type AgentOfferView =
+  | { state: "ok"; target: OfferTarget; catalogue: CatalogueOptions }
+  | { state: "error" };
 
 /**
  * The Agent detail tabs.
@@ -413,11 +420,13 @@ export function SettingsTab({
   canManage,
   controls,
   plans,
+  offer = null,
 }: {
   agent: AgentDetail["agent"];
   canManage: boolean;
   controls: React.ReactNode;
   plans: { id: string; name: string }[];
+  offer?: AgentOfferView | null;
 }) {
   const problems = readinessProblems({
     agentType: agent.agentType,
@@ -473,6 +482,36 @@ export function SettingsTab({
           </p>
         )}
       </Panel>
+
+      {offer && (
+        <Panel title="What it sells">
+          <p className="mb-3 text-[12.5px] text-content-muted">
+            The assistant pitches, recommends and chases only what this agent sells, and never offers anything else to
+            its leads. Changes apply to the next message.
+          </p>
+          {offer.state === "error" ? (
+            <p role="alert" className="flex items-start gap-2 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2.5 text-[12.5px] text-warning-700">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              What this agent sells could not be loaded. Refresh to try again.
+            </p>
+          ) : canManage ? (
+            <AgentOfferTargetForm
+              key={JSON.stringify(offer.target)}
+              agentId={agent.id}
+              target={offer.target}
+              catalogue={offer.catalogue}
+            />
+          ) : (
+            <dl>
+              <Field
+                label="Sells"
+                value={describeTarget(offer.target, offer.catalogue.services, offer.catalogue.items)}
+                hint="Only a workspace owner or admin can change this."
+              />
+            </dl>
+          )}
+        </Panel>
+      )}
 
       {canManage && (
         <Panel title="Run state">

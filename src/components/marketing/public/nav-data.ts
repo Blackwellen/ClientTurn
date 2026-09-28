@@ -189,6 +189,7 @@ const RESOURCES_MENU: MegaColumn[] = [
       { label: "AI call compliance", href: "/compliance#voice-calls", description: "Consent, disclosure and calling hours." },
       { label: "Privacy notice", href: "/privacy", description: "What we process, and why." },
       { label: "Sub-processors", href: "/sub-processors", description: "Every third party in the chain." },
+      { label: "Data Processing Agreement", href: "/dpa", description: "Our Article 28 terms, in one place." },
       { label: "Terms of service", href: "/terms", description: "The contract behind a subscription." },
     ],
   },
@@ -264,5 +265,6 @@ export const FOOTER_LEGAL: NavLink[] = [
   { label: "Terms", href: "/terms" },
   { label: "Cookie policy", href: "/cookies" },
   { label: "Sub-processors", href: "/sub-processors" },
+  { label: "DPA", href: "/dpa" },
   { label: "Privacy request", href: "/privacy-request" },
 ];

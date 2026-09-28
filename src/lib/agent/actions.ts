@@ -19,6 +19,7 @@
  *    else, so suppression, stop conditions and quiet hours apply identically.
  */
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
@@ -293,11 +294,14 @@ export async function sendDraft(input: unknown): Promise<AgentActionResult> {
 
   const workspace = await requireRole("member").catch(() => null);
   if (!workspace) return fail("You do not have permission to do that.");
+  if (!(await workspaceCan(workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
+  }
 
   const admin = createAdminClient();
   const { data: draft, error: draftError } = await admin
     .from("messages")
-    .select("id, lead_id, send_key, status, created_at")
+    .select("id, lead_id, send_key, status, created_at, channel")
     .eq("id", parsed.data.draftId)
     .eq("business_id", workspace.businessId)
     .maybeSingle();
@@ -305,6 +309,13 @@ export async function sendDraft(input: unknown): Promise<AgentActionResult> {
   if (draftError) return fail("That draft could not be read.");
   if (!draft || draft.status !== "DRAFT") {
     return fail("That draft has already been sent or discarded.");
+  }
+  // There is no LinkedIn transport: queueing this would only fail at the
+  // carrier. A person sends it from their own account (LinkedIn Assist).
+  if (draft.channel === "linkedin") {
+    return fail(
+      "LinkedIn replies are sent from your own LinkedIn account. Copy it from Follow-Up, LinkedIn Assist, send it there, then mark it sent.",
+    );
   }
   if (!draft.lead_id) return fail("That draft is not attached to a lead.");
 

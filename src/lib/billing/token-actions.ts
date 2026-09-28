@@ -9,6 +9,7 @@
  * because nothing here has seen any money.
  */
 
+import { requireCapability } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
@@ -44,7 +45,7 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
   if (!parsed.success) return { ok: false, error: "Choose a top-up to continue." };
 
   // Buying spends money, so it is an owner action, not an admin one.
-  const workspace = await requireRole("owner").catch(() => null);
+  const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) {
     return { ok: false, error: "Only the workspace owner can buy AI tokens." };
   }

@@ -1,4 +1,5 @@
 import "server-only";
+import { grantedPermissions } from "@/lib/social/meta-capability";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getLiveAccessToken, type OAuthConfig, type TokenResponse } from "@/lib/integrations/oauth";
@@ -319,12 +320,29 @@ registerOAuthProvider("meta", {
       // outcome than an OAuth callback that 500s after the token was granted.
     }
 
+    // What Meta actually granted. A permission the app has not been approved
+    // for cannot be granted in the dialog, so this is how the product knows
+    // whether Instagram messaging is really available (social/meta-capability.ts)
+    // instead of discovering it on the first refused send.
+    let scopes: string[] = [];
+    try {
+      const permissionsResponse = await fetch(
+        `${GRAPH}/me/permissions?access_token=${encodeURIComponent(token.accessToken)}`,
+        { cache: "no-store" },
+      );
+      if (permissionsResponse.ok) {
+        scopes = grantedPermissions(await permissionsResponse.json().catch(() => null));
+      }
+    } catch {
+      // Unknown is recorded as empty, which reads as UNVERIFIED, never as granted.
+    }
+
     return {
       externalAccountId: json?.id ?? null,
       // The Page name, not the person's — this row is shown as "which account
       // is connected", and the Page is what the customer recognises.
       displayName: pageName ?? json?.name ?? null,
-      scopes: [],
+      scopes,
       config: {
         ...(pageId ? { pageId } : {}),
         ...(instagramUserId ? { instagramUserId } : {}),

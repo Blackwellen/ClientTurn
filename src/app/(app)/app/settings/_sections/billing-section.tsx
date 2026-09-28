@@ -1,3 +1,4 @@
+import { workspaceCan } from "@/lib/auth/permissions";
 import * as React from "react";
 import { requireWorkspace } from "@/lib/auth/session";
 import { getBillingView } from "@/lib/settings/queries";
@@ -26,12 +27,14 @@ export async function BillingSection({
 } = {}) {
   const workspace = await requireWorkspace();
 
-  // Billing is owner-only, enforced here and again in every billing action.
-  if (workspace.role !== "owner") {
+  // Billing is the owner's, or an admin's the owner delegated it to (0172),
+  // enforced here and again in every billing action.
+  const canManageBilling = await workspaceCan(workspace, "manage_billing");
+  if (!canManageBilling) {
     return (
       <PermissionDenied
-        title="Billing is owner-only"
-        description="Only the workspace owner can see plan details, usage against limits and invoices. Ask them if you need a change to the plan."
+        title="Billing is restricted"
+        description="Only the workspace owner, or an admin they have given billing permission to, can see plan details, usage against limits and invoices. Ask the owner if you need a change to the plan."
       />
     );
   }
@@ -62,7 +65,7 @@ export async function BillingSection({
         rows={limits.rows}
         credits={limits.credits}
         purchases={creditPurchases}
-        canBuy={workspace.role === "owner"}
+        canBuy={canManageBilling}
         whatsappEnabled={limits.whatsappEnabled}
         // Only a pack this workspace can buy is pre-selected; in a trial
         // there are none (packs start with the plan).
@@ -84,7 +87,7 @@ export async function BillingSection({
         <AiTokenMeter
           status={tokenStatus}
           purchases={tokenPurchases}
-          canBuy={workspace.role === "owner"}
+          canBuy={canManageBilling}
         />
       </div>
 

@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sealSecret } from "@/lib/security/secret-box";
 import { recordAudit } from "@/lib/audit";
@@ -40,7 +40,7 @@ export type AppInstall = {
 };
 
 export async function listAppInstalls(): Promise<AppInstall[]> {
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const db = createAdminClient();
 
   const { data, error } = await db
@@ -77,7 +77,7 @@ export async function listAppInstalls(): Promise<AppInstall[]> {
 /** A cryptographically strong secret for the "generate one for me" button,
  *  so nobody is nudged into inventing a memorable one by hand. */
 export async function generateConnectorSecret(): Promise<string> {
-  await requireRole("admin");
+  await requireCapability("manage_integrations");
   return randomBytes(32).toString("base64url");
 }
 
@@ -161,7 +161,7 @@ export async function installWorkspaceApp(input: unknown) {
   );
   if (!credentials.ok) return { error: credentials.error };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const db = createAdminClient();
 
   let sealed: string;
@@ -220,7 +220,7 @@ export async function uninstallWorkspaceApp(id: unknown) {
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) return { error: "Invalid installation." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const db = createAdminClient();
   const { data: install } = await db
     .from("workspace_app_installs")
@@ -262,7 +262,7 @@ export async function rotateConnectorSecretAction(input: unknown) {
   const parsed = z.uuid().safeParse(input);
   if (!parsed.success) return { error: "Invalid installation." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const result = await rotateSigningSecret({
     businessId: workspace.businessId,
     userId: workspace.userId,
@@ -280,7 +280,7 @@ export async function testConnectorAction(input: unknown) {
   const parsed = z.uuid().safeParse(input);
   if (!parsed.success) return { error: "Invalid installation." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const result = await sendTestEvent({
     businessId: workspace.businessId,
     installId: parsed.data,
@@ -295,7 +295,7 @@ export async function replayConnectorEventAction(input: unknown) {
   const parsed = z.uuid().safeParse(input);
   if (!parsed.success) return { error: "Invalid event." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const result = await replayFailedEvent({
     businessId: workspace.businessId,
     userId: workspace.userId,
@@ -311,7 +311,7 @@ export async function dismissConnectorEventAction(input: unknown) {
   const parsed = z.uuid().safeParse(input);
   if (!parsed.success) return { error: "Invalid event." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const done = await dismissFailedEvent({
     businessId: workspace.businessId,
     userId: workspace.userId,
@@ -338,7 +338,7 @@ export async function connectorActivityAction(input: unknown) {
     .safeParse(input);
   if (!parsed.success) return { error: "Invalid installation." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireCapability("manage_integrations");
   const activity = await loadConnectorActivity(workspace.businessId, [
     parsed.data.installId,
   ]);

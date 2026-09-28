@@ -129,6 +129,15 @@ export function LeadConversionIntegrations() {
           ))}
         </div>
 
+        {/* Owner decision 2026-09-28. True as written: nothing connects to
+            LinkedIn; the AI drafts and a person sends (lib/linkedin-assist). */}
+        <div className="lcp-int-foot">
+          <p>
+            <b>LinkedIn Assist</b> — assisted by design, your account stays safe.
+            We draft your connection notes and follow-ups; you send them yourself.
+          </p>
+        </div>
+
         <div className="lcp-int-foot">
           <p>
             “Webhook connector”: the other system posts to our signed endpoint;

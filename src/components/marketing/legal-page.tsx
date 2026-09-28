@@ -19,6 +19,7 @@ const RELATED = [
   { label: "Terms of Service", href: "/terms" },
   { label: "Cookie Policy", href: "/cookies" },
   { label: "Sub-processors", href: "/sub-processors" },
+  { label: "Data Processing Agreement", href: "/dpa" },
 ] as const;
 
 /**
@@ -34,6 +35,8 @@ export function LegalPage({
   sections,
   operatorNote,
   currentPath,
+  version = LEGAL_LAST_UPDATED,
+  effectiveFrom = LEGAL_EFFECTIVE_FROM,
 }: {
   title: string;
   intro: string;
@@ -42,6 +45,9 @@ export function LegalPage({
   operatorNote?: string;
   /** Path of this page, so it is not listed as a related policy. */
   currentPath?: string;
+  /** A document versioned on its own (the DPA); defaults to the pack's dates. */
+  version?: string;
+  effectiveFrom?: string;
 }) {
   const related = RELATED.filter((item) => item.href !== currentPath);
 
@@ -62,13 +68,13 @@ export function LegalPage({
             <div className="flex gap-2">
               <dt>Version</dt>
               <dd className="font-medium text-content-secondary">
-                {LEGAL_LAST_UPDATED}
+                {version}
               </dd>
             </div>
             <div className="flex gap-2">
               <dt>In force from</dt>
               <dd className="font-medium text-content-secondary">
-                {LEGAL_EFFECTIVE_FROM}
+                {effectiveFrom}
               </dd>
             </div>
             <div className="flex gap-2">

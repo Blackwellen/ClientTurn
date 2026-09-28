@@ -18,7 +18,7 @@
  */
 
 import { buildVoiceCallBrief, briefGoal, ROUTE_GOAL, type BriefPermissions, type BriefRoute, type CallBrief, type CallBriefInput } from "../../../src/lib/voice/call-brief.ts";
-import { buildLockedPreamble, houseStyleViolations, renderClosingLine, validateFirstUtterance } from "../../../src/lib/voice/opener.ts";
+import { buildLockedPreamble, houseStyleViolations, recordingAnswer, renderClosingLine, validateFirstUtterance } from "../../../src/lib/voice/opener.ts";
 import { agentTargets, checkAgentTurn, countWords, measurePace, type Utterance } from "../../../src/lib/voice/pacing.ts";
 import { ESCALATION_LINES, initialLoopState, observeTurn, type LoopState } from "../../../src/lib/voice/anti-loop.ts";
 import { evaluateExtension, governTime, ROUTE_TARGETS, PROVIDER_MAX_DURATION_SEC, EXTENSION_STEP_SEC, type VoiceRouteKey } from "../../../src/lib/voice/time-governor.ts";
@@ -29,6 +29,7 @@ import { OBJECTIONS } from "../../../src/lib/sales-library/objections.ts";
 import { detectBuyingSignal } from "../../../src/lib/agent/closing.ts";
 import { detectDiscountAsk, detectQuoteRequest } from "../../../src/lib/agent/quote-flow.ts";
 import { detectSpokenIntents } from "../../../src/lib/voice/speech-intents.ts";
+import { spokenSlotChoice, spokenSlotLabel } from "../../../src/lib/voice/spoken-time.ts";
 import type { NextBestAction } from "../../../src/lib/qualification-intelligence/types.ts";
 
 /* ================================================================ scenario */
@@ -57,6 +58,8 @@ export type Scenario = {
   leadLatencyMs?: number;
   lines: LeadLine[];
   failTools?: VoiceToolName[];
+  /** The call is recorded (default true): decides the opener's notice and the locked RECORDING answer. */
+  recording?: boolean;
   expect: {
     disposition: string;
     tools: VoiceToolName[];
@@ -128,7 +131,14 @@ export function asrGarble(text: string): string {
 }
 
 function numberIn(text: string): number | null {
-  const digits = /\b(\d{1,5})\b/.exec(text);
+  // "fifteen grand", "15k", "twenty thousand": the figure the lead meant, not 15 (a read-back of "15" is wrong).
+  const times = /\b(grand|thousand)\b|\d\s?k\b/i.test(text) ? 1000 : 1;
+  const n = plainNumberIn(text);
+  return n == null ? null : n * times;
+}
+
+function plainNumberIn(text: string): number | null {
+  const digits = /\b(\d{1,5})(?:k\b|\b)/i.exec(text);
   if (digits) return Number(digits[1]);
   let total = 0;
   let seen = false;
@@ -202,7 +212,8 @@ function toolPorts(s: Scenario, clock: { now: Date }, answeredAt: Date): VoiceTo
         case "check_availability":
           return {
             ok: true,
-            say: "I have Wed 30 Sep, 10:00am or Wed 30 Sep, 2:00pm. Does either work?",
+            // The production wording (tools/work.ts): spoken labels, not screen labels.
+            say: `I have ${spokenSlotChoice("Wed 30 Sep, 10:00am", "Wed 30 Sep, 2:00pm")}. Does either work?`,
             data: {
               slots: [
                 { start: "2026-09-30T09:00:00.000Z", end: "2026-09-30T09:30:00.000Z", label: "Wed 30 Sep, 10:00am" },
@@ -213,7 +224,7 @@ function toolPorts(s: Scenario, clock: { now: Date }, answeredAt: Date): VoiceTo
           };
         case "book_meeting": {
           const label = (args as { start_iso: string }).start_iso.startsWith("2026-09-30T13") ? "Wed 30 Sep, 2:00pm" : "Wed 30 Sep, 10:00am";
-          return { ok: true, say: `You are booked for ${label}. You will get a calendar invite by email.`, data: { outcome: "confirmed", label }, operation: "booking.create" };
+          return { ok: true, say: `You are booked for ${spokenSlotLabel(label)}. You will get a calendar invite by email.`, data: { outcome: "confirmed", label }, operation: "booking.create" };
         }
         case "calculate_quote": {
           const items = (args as { items: unknown[] }).items.length;
@@ -244,8 +255,10 @@ function toolPorts(s: Scenario, clock: { now: Date }, answeredAt: Date): VoiceTo
 
 type Heard =
   | { kind: "MACHINE" }
+  | { kind: "SCREEN" }
   | { kind: "OPT_OUT"; scope: "CALLS" | "ALL" }
   | { kind: "WRONG_NUMBER" }
+  | { kind: "VULNERABLE" }
   | { kind: "GATEKEEPER" }
   | { kind: "ANGRY"; complaint: boolean }
   | { kind: "NOT_NOW" }
@@ -253,10 +266,13 @@ type Heard =
   | { kind: "HUMAN" }
   | { kind: "AI_Q" }
   | { kind: "IDENTITY"; how: boolean }
-  | { kind: "PRIVACY" }
-  | { kind: "LANGUAGE" }
+  | { kind: "DATA_REQUEST" }
+  | { kind: "PRIVACY"; recording: boolean }
+  | { kind: "LANGUAGE"; noEnglish: boolean; asksOther: boolean }
+  | { kind: "LINE_CHECK" }
   | { kind: "DISCOUNT" }
   | { kind: "QUOTE" }
+  | { kind: "TERMS" }
   | { kind: "BUY" }
   | { kind: "BOOK" }
   | { kind: "SEND" }
@@ -265,22 +281,61 @@ type Heard =
   | { kind: "SLOT"; index: number }
   | { kind: "YES" }
   | { kind: "NO" }
-  | { kind: "TIME"; hour: number; tomorrow: boolean }
+  | { kind: "TIME"; at: Date }
+  | { kind: "EMAIL"; address: string }
   | { kind: "FACT"; text: string };
 
-const OPT_OUT = /\b(stop calling|don'?t call (me|us)( again)?|do not call|never call|remove (me|my number)|take me off)\b/i;
-const NOT_NOW = /\b(not a good time|bad time|i'?m driving|in a meeting|call (me )?back later|busy right now)\b/i;
-const HUMAN = /\b(real person|a human|speak to (someone|a person|a human)|put me through|talk to someone)\b/i;
+// The simulator hears ONLY through voice/speech-intents.ts for everything the
+// playbook owns (opt-outs, a person, bad time...). The adversarial QA pass
+// removed its private fallback regexes: they had been passing scenarios the
+// product table missed ("don't ring me", "take me off your mailing list").
 const BUY = /\b(buy it|buy now|sign up|get started|pay now|purchase|order it)\b/i;
 const BOOK = /\b(book (a|the) (call|meeting)|arrange a (call|meeting)|meeting with your team|call with your team)\b/i;
-const HUH = /\b(sorry,? what|pardon|didn'?t catch|say that again|what was that)\b/i;
-const YES = /\b(yes|yeah|yep|yup|aye|sure|ok|okay|fine|go on|sounds good|please do|that works|absolutely|righto|go ahead)\b/i;
+const HUH = /\b(sorry,? what|pardon|didn'?t catch|say that again|say (those|them|the)( times)? again|what was that)\b/i;
+const YES = /\b(yes|yeah|yep|yup|aye|sure|ok|okay|fine|go on|sounds good|please do|that works|absolutely|righto|go ahead|that's right|correct)\b/i;
 const NO = /\b(no|nope|not really|nah)\b/i;
 const DECLINE = /\b(no|not yet|i'?ll (read|have a look|look)|let me (read|look)|i'?ll use the link|leave it there)\b/i;
+/** Within a BAD_TIME hit: a bad line mid-call (offer a text) rather than a bad moment (a call-back). */
 const BAD_LINE = /\b(breaking up|bad line|line('s| is) (bad|terrible)|on (a|the) train|can'?t hear you)\b/i;
 
 function clean(text: string): string {
   return text.replace(/\[(noise|inaudible|crosstalk)\]/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+/** "priya at northwind dot co dot uk" -> priya@northwind.co.uk (the recogniser spells it out in words). */
+export function spokenEmail(text: string): string | null {
+  const t = text.toLowerCase().replace(/[’']/g, "").replace(/[.,!?]/g, " ").replace(/\s+/g, " ");
+  const m = /^(.*?)\bat ((?!dot\b)[a-z]+(?: (?!dot\b)[a-z]+)?) dot ([a-z]+(?: dot [a-z]+)*)\b/.exec(t);
+  if (!m) return null;
+  const before = m[1].trim().split(" ").filter(Boolean);
+  if (!before.length) return null;
+  const singles: string[] = [];
+  for (let i = before.length - 1; i >= 0 && before[i].length === 1; i--) singles.unshift(before[i]);
+  const local = singles.length >= 2 ? singles.join("") : before[before.length - 1];
+  return `${local}@${m[2].replace(/ /g, "")}.${m[3].replace(/ dot /g, ".")}`;
+}
+
+/** Read an address back the way the brief says: the name letter by letter, the domain in words. */
+export function readBackEmail(address: string): string {
+  const [local, domain] = address.split("@");
+  return `${local.split("").join(", ")}, at ${domain.replace(/\./g, " dot ")}`;
+}
+
+/** "In ten minutes", "after five", "tomorrow at two": a time in the future, or null. */
+function timeIn(text: string, now: Date): Date | null {
+  const rel = /\bin (\w+|half an|an|a) (minutes?|mins?|hours?|hour)\b/i.exec(text);
+  if (rel) {
+    const n = rel[1] === "half an" ? 30 : rel[1] === "an" || rel[1] === "a" ? 60 : numberIn(rel[1]);
+    if (n != null) return new Date(now.getTime() + (rel[1] === "half an" || rel[1] === "an" || rel[1] === "a" ? n : /hour/.test(rel[2]) ? n * 60 : n) * 60_000);
+  }
+  const hour = numberIn(text);
+  if (hour == null) return null;
+  const h = hour < 8 ? hour + 12 : hour;
+  const tomorrow = /tomorrow/i.test(text);
+  // 2026-09-29 is the call day (Tuesday), London is UTC+1.
+  let at = new Date(Date.UTC(2026, 8, tomorrow ? 30 : 29, h - 1, 0, 0));
+  if (at <= now) at = new Date(at.getTime() + 86_400_000);
+  return at;
 }
 
 function hear(raw: string, state: AgentState): Heard {
@@ -288,30 +343,39 @@ function hear(raw: string, state: AgentState): Heard {
   if (!text || countWords(text) === 0) return { kind: "MISUNDERSTOOD", who: "AGENT" };
   const intents = detectSpokenIntents(text);
   const has = (k: string) => intents.some((i) => i.key === k);
-  // A machine and a stop come before everything else (speech-intents order).
+  // A screen, a machine and a stop come before everything else (speech-intents order).
+  if (has("CALL_SCREEN")) return { kind: "SCREEN" };
   if (has("VOICEMAIL") || has("IVR")) return { kind: "MACHINE" };
   const optOut = intents.find((i) => i.key === "OPT_OUT_ALL" || i.key === "OPT_OUT_CALLS");
-  if (optOut || OPT_OUT.test(text)) return { kind: "OPT_OUT", scope: optOut?.optOutScope ?? "CALLS" };
+  if (optOut) return { kind: "OPT_OUT", scope: optOut.optOutScope ?? "CALLS" };
   if (state.awaiting === "STOP_OFFER" && YES.test(text)) return { kind: "OPT_OUT", scope: "CALLS" };
   if (has("WRONG_NUMBER")) return { kind: "WRONG_NUMBER" };
+  if (has("VULNERABLE")) return { kind: "VULNERABLE" };
   if (has("GATEKEEPER")) return { kind: "GATEKEEPER" };
   if (has("ANGRY")) return { kind: "ANGRY", complaint: /\bcomplain|complaint\b/i.test(text) };
-  if ((state.phase === "PERMISSION" || state.awaiting === "CALLBACK_TIME" || state.awaiting === "GATEKEEPER_TIME") && (NOT_NOW.test(text) || has("BAD_TIME")) && !BAD_LINE.test(text)) {
-    const hour = numberIn(text);
-    if (hour != null) return { kind: "TIME", hour: hour < 8 ? hour + 12 : hour, tomorrow: /tomorrow/i.test(text) };
-    return { kind: "NOT_NOW" };
+  if ((state.phase === "PERMISSION" || state.awaiting === "CALLBACK_TIME" || state.awaiting === "GATEKEEPER_TIME") && has("BAD_TIME") && !BAD_LINE.test(text)) {
+    const at = timeIn(text, state.now());
+    return at ? { kind: "TIME", at } : { kind: "NOT_NOW" };
   }
   if (state.awaiting === "CALLBACK_TIME" || state.awaiting === "GATEKEEPER_TIME") {
-    const hour = numberIn(text);
-    if (hour != null) return { kind: "TIME", hour: hour < 8 ? hour + 12 : hour, tomorrow: /tomorrow/i.test(text) };
+    const at = timeIn(text, state.now());
+    if (at) return { kind: "TIME", at };
   }
-  if (HUMAN.test(text) || has("WANTS_PERSON")) return { kind: "HUMAN" };
+  if (has("WANTS_PERSON")) return { kind: "HUMAN" };
   if (has("ASKS_IF_AI")) return { kind: "AI_Q" };
   if (has("HOW_GOT_NUMBER") || has("WHO_IS_THIS")) return { kind: "IDENTITY", how: has("HOW_GOT_NUMBER") };
-  if (has("PRIVACY")) return { kind: "PRIVACY" };
-  if (has("LANGUAGE_BARRIER")) return { kind: "LANGUAGE" };
+  if (has("DATA_REQUEST")) return { kind: "DATA_REQUEST" };
+  if (has("PRIVACY")) return { kind: "PRIVACY", recording: /\brecord/i.test(text) };
+  const lang = intents.find((i) => i.key === "LANGUAGE_BARRIER");
+  // After English was already hard, "I don't understand" is the language again, not the offer.
+  if (!lang && state.languageTries > 0 && /\b(don'?t|do not|can'?t) understand\b/i.test(text)) return { kind: "LANGUAGE", noEnglish: false, asksOther: false };
+  if (lang) return { kind: "LANGUAGE", noEnglish: Boolean(lang.noEnglish), asksOther: /\bspeak (in )?(?!english|slow)[a-z]+\b/i.test(text) && /\b(do|can) you\b/i.test(text) };
+  if (has("LINE_CHECK")) return { kind: "LINE_CHECK" };
+  const email = spokenEmail(text);
+  if (email) return { kind: "EMAIL", address: email };
   if (detectDiscountAsk(text)) return { kind: "DISCOUNT" };
-  if (detectQuoteRequest(text) || /\bhow much (is it|does it cost|would it be)\b/i.test(text)) return { kind: "QUOTE" };
+  if (detectQuoteRequest(text) || (has("PRICE_QUESTION") && /\b(how much|price|cost|charge|ballpark|rate|fee)\b/i.test(text))) return { kind: "QUOTE" };
+  if (has("PRICE_QUESTION")) return { kind: "TERMS" };
   if (BUY.test(text)) return { kind: "BUY" };
   if (state.awaiting === "SLOT") {
     if (/^(no|nah|not yet)\b|\bi'?ll (read|have a look|look|use the link)\b|\blet me (read|look)\b/i.test(text)) return { kind: "NO" };
@@ -320,9 +384,9 @@ function hear(raw: string, state: AgentState): Heard {
     if (DECLINE.test(text) && !YES.test(text)) return { kind: "NO" };
   }
   // An answer to what the agent is waiting on beats a new topic.
-  if (state.awaiting && state.awaiting !== "SLOT" && YES.test(text) && !has("SEND_DETAILS")) return { kind: "YES" };
+  if (state.awaiting && state.awaiting !== "SLOT" && YES.test(text) && !has("SEND_DETAILS") && !has("NOT_INTERESTED")) return { kind: "YES" };
   if (state.awaiting === "TEXT_OFFER" && YES.test(text)) return { kind: "YES" };
-  if (BAD_LINE.test(text) || has("BAD_TIME")) return { kind: "BAD_LINE" };
+  if (has("BAD_TIME")) return BAD_LINE.test(text) ? { kind: "BAD_LINE" } : { kind: "NOT_NOW" };
   if (has("SEND_DETAILS")) return { kind: "SEND" };
   if (BOOK.test(text) || ((has("BUYING_SIGNAL") || detectBuyingSignal(text)) && state.permissions.book && state.plan !== "CHECKOUT")) return { kind: "BOOK" };
   if (has("NOT_INTERESTED")) return { kind: "OBJECTION", key: "NOT_INTERESTED", refusal: true };
@@ -344,8 +408,9 @@ type AgentState = {
   phase: "PERMISSION" | "MAIN" | "DONE";
   plan: Plan;
   question: string | null;
-  awaiting: "SLOT" | "CONFIRM_NUMBER" | "CONFIRM_SLOT" | "SEND_QUOTE" | "SEND_LINK" | "CALLBACK_TIME" | "GATEKEEPER_TIME" | "TEXT_OFFER" | "STOP_OFFER" | null;
+  awaiting: "SLOT" | "CONFIRM_NUMBER" | "CONFIRM_EMAIL" | "CONFIRM_SLOT" | "SEND_QUOTE" | "SEND_LINK" | "CALLBACK_TIME" | "GATEKEEPER_TIME" | "TEXT_OFFER" | "STOP_OFFER" | "SCREENED" | null;
   pendingFact: { dimension: string; value: string } | null;
+  now: () => Date;
   pendingSlot: number | null;
   slots: { start: string; label: string }[];
   slotOffers: number;
@@ -360,15 +425,19 @@ type AgentState = {
   detailsSent: "LINK" | "COLLEAGUE" | null;
   callbackScheduled: boolean;
   objections: Record<string, number>;
+  /** The last question the agent asked, repeated after "can you hear me". */
+  lastQuestion: string | null;
+  pendingEmail: string | null;
+  lineChecks: number;
 };
 
 /** Different words for the same ask, so a rephrase is never a repeated question (anti-loop). */
 const REPHRASINGS = [
   "In other words, roughly how big is the team?",
   "Put simply, how many of you would use it?",
-  "Just a rough number is fine. Is it a small team or a large one?",
+  "Just roughly, is it a small team or a large one?",
 ];
-const MISSED = ["Sorry, I missed that. Could you say it once more?", "Sorry, the line dropped for a second. What was that?", "I did not quite catch that, sorry. Could you repeat it?"];
+const MISSED = ["Sorry, I missed that, could you say it once more?", "Sorry, the line dropped for a second, what was that?", "I did not quite catch that, sorry, could you repeat it?"];
 
 function planOf(brief: CallBrief): { plan: Plan; question: string | null } {
   const move = brief.move;
@@ -406,6 +475,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     textFollowUpLawful: true,
     conversationSummary: null,
     closingLine: closing.text,
+    recordingEnabled: s.recording ?? true,
   });
   const goal = briefGoal({ route: s.route, motion: s.route === "DIRECT_CLOSE" ? "SAAS_SELF_SERVE" : "BOOK_MEETING_B2B", goal: ROUTE_GOAL[s.route], nba: s.nba ?? null, permissions } as CallBriefInput);
 
@@ -427,7 +497,8 @@ export async function simulate(s: Scenario): Promise<SimResult> {
   const state: AgentState = {
     phase: "PERMISSION", plan: "ASK", question: null, awaiting: null, pendingFact: null, pendingSlot: null, slots: [], slotOffers: 0, quoteRef: null,
     permissions, loops: initialLoopState(), amberHandled: false, factsRecorded: 0, extensionsUsed: 0, rephrases: 0, languageTries: 0,
-    detailsSent: null, callbackScheduled: false, objections: {},
+    detailsSent: null, callbackScheduled: false, objections: {}, now: () => clock.now,
+    lastQuestion: null, pendingEmail: null, lineChecks: 0,
   };
   const p = planOf(brief);
   state.plan = p.plan;
@@ -443,6 +514,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     transcript.push({ speaker: "AGENT", text: t, startMs: start, endMs: ms() });
     agentLines.push(t);
     state.loops = observeTurn(state.loops, { speaker: "AGENT", text: t, questionKey: questionKey ?? null }, avail).state;
+    if (questionKey && t.includes("?")) state.lastQuestion = t.split(/(?<=[.!?])\s+/).filter((x) => x.endsWith("?")).pop() ?? null;
     if (t.includes(closing.text)) closingSpoken = true;
   };
 
@@ -468,6 +540,12 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     await finish("CALLBACK_REQUESTED", true, `A colleague will follow up: ${reason}`, "A colleague follows up");
   };
 
+  /** The two offered times in words: only the tool's labels, never a time of our own. */
+  const slotWords = () => {
+    const [a, b] = state.slots;
+    return spokenSlotChoice(a.label, b.label);
+  };
+
   /** The assumptive two-slot offer; a second offer in the same call is worded afresh. */
   const offerSlots = async (lead?: string): Promise<boolean> => {
     const r = await tool("check_availability", {});
@@ -478,10 +556,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     }
     state.slots = ((r.data.slots as { start: string; label: string }[]) ?? []).slice(0, 2);
     state.slotOffers += 1;
-    const [a, b] = state.slots;
-    if (lead) say(lead);
+    // A lead-in is a clause of the same sentence: one question, two sentences at most.
     if (state.slotOffers === 1 && !lead) say(r.say ?? "", "SLOTS");
-    else say(`I can do ${a.label.replace(/^Wed 30 Sep, /, "Wednesday at ")} or ${b.label.replace(/^Wed 30 Sep, /, "")}. Which is better?`, `SLOTS_${state.slotOffers}`);
+    else say(`${lead ? `${lead}: ` : ""}I can do ${slotWords()}, which is better?`, `SLOTS_${state.slotOffers}`);
     state.awaiting = "SLOT";
     return true;
   };
@@ -521,7 +598,8 @@ export async function simulate(s: Scenario): Promise<SimResult> {
       state.awaiting = "SEND_LINK";
     } else if (state.permissions.book) {
       state.plan = "BOOK";
-      await offerSlots(`${REASON_LINE}. A short call might help you weigh it up.`);
+      say(`${REASON_LINE}, so a short call might help you weigh it up.`);
+      await offerSlots();
     } else {
       say(`${REASON_LINE}. A colleague can take you through it properly.`);
       await callbackFallback("follow up the objection");
@@ -559,7 +637,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
   };
 
   // ---- the locked opener, spoken by Retell before any model output.
-  const preamble = buildLockedPreamble({ callingAsName: "Acme Studio", enquiryAt: new Date(START.getTime() - 86_400_000), now: START, timezone: "Europe/London", recordingEnabled: true });
+  const preamble = buildLockedPreamble({ callingAsName: "Acme Studio", enquiryAt: new Date(START.getTime() - 86_400_000), now: START, timezone: "Europe/London", recordingEnabled: s.recording ?? true });
   say(preamble.text);
   const firstUtteranceOk = validateFirstUtterance(agentLines[0], preamble).ok;
 
@@ -579,7 +657,35 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     const loopStep = observeTurn(state.loops, { speaker: "LEAD", text: heardText, misunderstanding: misunderstood, objectionKey: h.kind === "OBJECTION" ? h.key : null }, avail);
     state.loops = loopStep.state;
 
+    // ---- after a call screen: silence is nobody; a person gets the disclosure again
+    if (state.awaiting === "SCREENED") {
+      if (!clean(heardText)) {
+        await finish("VOICEMAIL", false, "A call screen; nobody picked up.");
+        break;
+      }
+      if (["LINE_CHECK", "YES", "FACT", "MISUNDERSTOOD", "IDENTITY", "NO"].includes(h.kind)) {
+        state.awaiting = null;
+        state.phase = "PERMISSION";
+        // They may not have heard the opener: the AI disclosure and the recording notice again.
+        say(`Thanks for picking up, this is Acme Studio's AI assistant about your enquiry${(s.recording ?? true) ? ", and the call is recorded" : ""}. Is now an OK time?`, "PERMISSION_SCREEN");
+        continue;
+      }
+      state.awaiting = null;
+    }
+
     // ---- what must be handled whatever the phase (speech-intents playbook)
+    if (h.kind === "SCREEN") {
+      // One sentence to the screen: who and why, nothing sold, no details.
+      say("This is Acme Studio's AI assistant, calling about an enquiry.");
+      state.awaiting = "SCREENED";
+      continue;
+    }
+    if (h.kind === "VULNERABLE") {
+      // Stop selling: ask nothing, note nothing, agree nothing.
+      say("I'm so sorry to have troubled you. I'll let you go.");
+      await finish("WRONG_PERSON", false, "Vulnerability signal (a child, a carer, illness or a bereavement): a person checks before any further contact.", "A person reviews before any contact");
+      break;
+    }
     if (h.kind === "MACHINE") {
       // A machine: say nothing more, no pitch, no closing line.
       await finish("VOICEMAIL", false, "Reached a voicemail greeting or phone menu.");
@@ -605,7 +711,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     }
     if (h.kind === "ANGRY") {
       if (h.complaint) {
-        say("I am sorry about that. Let me get a colleague to deal with it properly.");
+        say("I am sorry about that, let me get a colleague to deal with it properly.");
         const r = await tool("transfer_to_human", { reason: "COMPLAINT" });
         if (r.ok) {
           say(r.say ?? "Putting you through now.");
@@ -625,7 +731,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
       continue;
     }
     if (h.kind === "AI_Q") {
-      const honest = "Yes, I am an AI assistant calling for Acme Studio. A person can follow up if you would prefer.";
+      const honest = "Yes, I am Acme Studio's AI assistant, and a person can follow up if you would prefer.";
       if (state.phase === "PERMISSION") {
         // Nothing is pitched before they said now is all right.
         say(honest);
@@ -635,7 +741,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     }
     if (h.kind === "IDENTITY") {
       const answer = h.how
-        ? "You gave us this number when you enquired yesterday. I can stop calling if you would rather."
+        ? "You gave us this number when you enquired yesterday, and I can stop calling if you would rather."
         : "This is Acme Studio Ltd. You can reach us at 1 High Street, London, EC1A 1AA.";
       if (state.phase === "PERMISSION") {
         say(answer);
@@ -645,19 +751,35 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     }
     if (h.kind === "PRIVACY") {
       await tool("log_objection", { key: "COMPLIANCE", excerpt: clean(heardText).slice(0, 200), handled: "PARTIALLY_RESOLVED" });
-      await carryOn("The call may be recorded, as I said. Acme Studio's privacy notice covers the rest, and a colleague can answer anything more.");
+      // The brief's RECORDING answer word for word; never "it may be recorded".
+      await carryOn(h.recording ? recordingAnswer(s.recording ?? true) : "Acme Studio's privacy notice covers that, and a colleague can answer anything more.");
+      continue;
+    }
+    if (h.kind === "DATA_REQUEST") {
+      // A subject access request: never refused, never questioned, passed to a person.
+      await tool("log_objection", { key: "COMPLIANCE", excerpt: clean(heardText).slice(0, 200), handled: "ESCALATED" });
+      await tool("schedule_callback", { by: "PERSON", note: "Data request: send the lead a copy of what we hold" });
+      state.callbackScheduled = true;
+      say("Of course. A colleague will send you a copy of what we hold.");
+      await finish("CALLBACK_REQUESTED", true, "The lead asked what data we hold: passed to a colleague.", "Send the lead a copy of their data");
+      break;
+    }
+    if (h.kind === "LINE_CHECK") {
+      state.lineChecks += 1;
+      if (state.phase === "PERMISSION") say("Yes, I'm here, it's Acme Studio's AI assistant about your enquiry. Is now an OK time?", `LINE_${state.lineChecks}`);
+      else say(`Yes, I'm here. ${state.lastQuestion ?? "Where were we?"}`, `LINE_${state.lineChecks}`);
       continue;
     }
     if (h.kind === "LANGUAGE") {
-      state.languageTries += 1;
+      state.languageTries += h.noEnglish ? 2 : 1;
       if (state.languageTries === 1) {
-        say("No problem. I will speak slowly.");
+        say(h.asksOther ? "Sorry, I can only speak English, so I will go slowly." : "No problem, I will speak slowly.");
         say(state.phase === "PERMISSION" ? "Is now a good time?" : "Would a call with our team help?", "SLOW_1");
         continue;
       }
       if (state.permissions.bookingLink) {
         const r = await tool("send_booking_link", { channel: "sms" });
-        say(r.ok ? "I will text you the details instead. Thank you." : "A colleague will send you the details.");
+        say(r.ok ? "I have texted you the details instead. Thank you." : "A colleague will send you the details.");
         if (!r.ok) await tool("schedule_callback", { by: "PERSON", note: "Send the details in writing" });
         await finish(r.ok ? "CONVERSATION" : "CALLBACK_REQUESTED", true, "Language barrier: the details go by text.", "Details sent by text");
       } else {
@@ -675,13 +797,21 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         state.awaiting = "CALLBACK_TIME";
         state.phase = "MAIN";
         continue;
-      } else if (h.kind === "QUOTE" || h.kind === "BUY" || h.kind === "SEND" || h.kind === "HUMAN" || h.kind === "DISCOUNT") {
+      } else if (["QUOTE", "BUY", "SEND", "HUMAN", "DISCOUNT", "TERMS", "OBJECTION", "EMAIL", "BOOK"].includes(h.kind)) {
         // "Yes, go on, how much is it?": answer what they asked first.
         state.phase = "MAIN";
       } else {
         state.phase = "MAIN";
-        await startPlan();
-        if (await timeCheck()) break;
+        // A question: the clock first, never ask it and then wrap up before they can answer.
+        // A close (slots, the link): start it, so it can earn the time governor's extension.
+        const closePlan = state.plan === "BOOK" || state.plan === "CHECKOUT";
+        if (!closePlan && (await timeCheck())) break;
+        if (state.awaiting == null) {
+          // Brief FIRST: one sentence on why, tied to their enquiry, then the move (no cold slot list).
+          if (closePlan) say(state.plan === "BOOK" ? "Great, it's about your website enquiry, and the best next step is a short call with the team." : "Great, it's about the care plan you looked at.");
+          await startPlan();
+        }
+        if (closePlan && (await timeCheck())) break;
         continue;
       }
     }
@@ -716,7 +846,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
 
     switch (h.kind) {
       case "MISUNDERSTOOD":
-        if (h.who === "LEAD") {
+        if (h.who === "LEAD" && state.awaiting === "SLOT" && state.slots.length) {
+          say(`Of course, ${slotWords()}, which suits you?`, `SLOTS_AGAIN_${state.rephrases}`);
+        } else if (h.who === "LEAD") {
           // They did not follow the agent: the same ask in different words.
           say(REPHRASINGS[state.rephrases % REPHRASINGS.length], `REPHRASE_${state.rephrases}`);
         } else {
@@ -768,6 +900,27 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         state.awaiting = "SEND_QUOTE";
         break;
       }
+      case "TERMS": {
+        // An area, a date or a guarantee: only a tool answers, else a colleague.
+        if (/\b(free|available|start|soon|when)\b/i.test(heardText) && state.permissions.book && state.awaiting !== "SLOT") {
+          state.plan = "BOOK";
+          await offerSlots();
+        } else if (state.awaiting === "SLOT" && state.slots.length) {
+          say(`A colleague will confirm that on the call, and I can do ${slotWords()}, which suits you?`, `SLOTS_TERMS_${state.rephrases}`);
+          state.rephrases += 1;
+        } else {
+          say("I can't confirm that myself, so I will ask a colleague to.");
+          await callbackFallback("confirm an area, date or guarantee");
+        }
+        break;
+      }
+      case "EMAIL":
+        // Read it back before it is recorded (brief HEARING): the name letter by letter.
+        // A second read-back (a correction) is worded afresh: never the same question twice.
+        say(state.pendingEmail ? `Thanks, so that is ${readBackEmail(h.address)}, have I got it right now?` : `Let me read that back: ${readBackEmail(h.address)}. Is that right?`, `EMAIL_${h.address}`);
+        state.pendingEmail = h.address;
+        state.awaiting = "CONFIRM_EMAIL";
+        break;
       case "BUY":
         if (!state.permissions.checkout) {
           say("A colleague will send you the details to get started.");
@@ -780,7 +933,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         break;
       case "BOOK":
         state.plan = "BOOK";
-        if (state.slotOffers > 0) await offerSlots("Great.");
+        if (state.slotOffers > 0) await offerSlots("Great");
         else await startPlan();
         break;
       case "SEND": {
@@ -798,16 +951,16 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           say(r.say ?? "A colleague will send it.");
           state.detailsSent = r.ok ? "LINK" : "COLLEAGUE";
         } else {
-          say("Happy to. A colleague will email the details over today.");
+          say("Happy to, a colleague will email the details over today.");
           await tool("schedule_callback", { by: "PERSON", note: "Send the details by email" });
           state.detailsSent = "COLLEAGUE";
           state.callbackScheduled = true;
         }
         if (state.permissions.book && state.slotOffers === 0) {
           state.plan = "BOOK";
-          await offerSlots("And a quick follow-up once you have read it?");
+          await offerSlots("And for a quick follow-up once you have read it");
         } else if (state.permissions.book) {
-          say("Or if you would rather, I can hold one of those times for a quick follow-up. Shall I?", "HOLD_SLOT");
+          say("Or I can hold one of those times for a quick follow-up, shall I?", "HOLD_SLOT");
           state.awaiting = "SLOT";
         } else {
           await finish(state.detailsSent === "LINK" ? "CONVERSATION" : "CALLBACK_REQUESTED", true, "Details sent on request.", "Follow up after they read it");
@@ -827,6 +980,12 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           await finish("NOT_INTERESTED", true, "The lead is not interested.");
           break;
         }
+        if ((h.key === "NOT_NOW" || h.key === "TIMING") && !/\b(next|quarter|month|week|year|january|february|march|april|may|june|july|august|september|october|november|december|spring|summer|autumn|christmas|after)\b/i.test(heardText)) {
+          // "I'll have a think": no time named, so agree one (a clear next step).
+          say("Of course. When would be a good time for a quick follow-up?", "FOLLOW_UP_WHEN");
+          state.awaiting = "CALLBACK_TIME";
+          break;
+        }
         if (h.key === "TIMING" || h.key === "NOT_NOW" || h.key === "CALL_LATER") {
           // The playbook: accept the timing, offer to follow up then, record it.
           await tool("record_fact", { dimension: "TIMING", value: clean(heardText).slice(0, 200), confirmed: false });
@@ -841,7 +1000,11 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           break;
         }
         // First time: acknowledge in a few words, then the one clarifying question.
-        say(`Fair enough. ${OBJECTIONS[h.key as keyof typeof OBJECTIONS].clarifyingQuestion}`, `OBJ_${h.key}`);
+        {
+          const q = OBJECTIONS[h.key as keyof typeof OBJECTIONS].clarifyingQuestion;
+          // Some library questions already start with the acknowledgement: never "Fair enough. Fair enough."
+          say(/^(fair enough|makes sense|no problem|understood|happy to|of course)\b/i.test(q) ? q : `Fair enough. ${q}`, `OBJ_${h.key}`);
+        }
         break;
       }
       case "SLOT": {
@@ -852,7 +1015,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         break;
       }
       case "TIME": {
-        const at = new Date(Date.UTC(2026, 8, h.tomorrow ? 30 : 29, h.hour - 1, 0, 0));
+        const at = h.at;
         const byAi = (s.consentBasis ?? "CALL_REQUESTED") === "CALL_REQUESTED" && state.awaiting !== "GATEKEEPER_TIME";
         const r = await tool("schedule_callback", { at_iso: at.toISOString(), by: byAi ? "AI" : "PERSON", ...(state.awaiting === "GATEKEEPER_TIME" ? { note: "A colleague answered; call the lead then" } : {}) });
         say(r.say ?? "We will call back then.");
@@ -864,7 +1027,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           // "Yes" to "X or Y?" names neither: confirm before booking (never guess a time).
           state.pendingSlot = 0;
           state.awaiting = "CONFIRM_SLOT";
-          say(`Just to check, shall I book ${state.slots[0].label.replace(/^Wed 30 Sep, /, "Wednesday at ")}?`, "CONFIRM_SLOT");
+          say(`Just to check, shall I book ${spokenSlotLabel(state.slots[0].label)}?`, "CONFIRM_SLOT");
         } else if (state.awaiting === "CONFIRM_SLOT") {
           const slot = state.slots[state.pendingSlot ?? 0];
           const r = await tool("book_meeting", { start_iso: slot.start });
@@ -878,6 +1041,19 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           const r = await tool("send_quote", { quote_ref: state.quoteRef, channel: "email" });
           say(r.say ?? "A colleague will send it.");
           await finish("QUOTE_REQUESTED", true, "Quote priced and emailed.", "Review the quote");
+        } else if (state.awaiting === "CONFIRM_EMAIL" && state.pendingEmail) {
+          await tool("record_fact", { dimension: "EMAIL", value: state.pendingEmail, confirmed: true });
+          state.factsRecorded += 1;
+          state.pendingEmail = null;
+          state.awaiting = null;
+          if (state.permissions.book) {
+            say("Thanks, I've got that, and the best next step is a short call with the team.");
+            state.plan = "BOOK";
+            await startPlan();
+          } else {
+            say("Thanks, I've got that. A colleague will follow up by email.");
+            await finish("CONVERSATION", true, "Email confirmed on the call.", "Follow up by email");
+          }
         } else if (state.awaiting === "CONFIRM_NUMBER" && state.pendingFact) {
           await tool("record_fact", { ...state.pendingFact, confirmed: true });
           state.factsRecorded += 1;
@@ -915,7 +1091,11 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         }
         break;
       case "NO":
-        if (state.awaiting === "SLOT" && state.detailsSent) {
+        if (state.awaiting === "CONFIRM_EMAIL" || state.awaiting === "CONFIRM_NUMBER") {
+          // Never record what they did not confirm: ask again, in new words.
+          say(state.awaiting === "CONFIRM_EMAIL" ? "Sorry, could you spell it out for me?" : "Sorry, what was the number again?", `REASK_${state.rephrases}`);
+          state.rephrases += 1;
+        } else if (state.awaiting === "SLOT" && state.detailsSent) {
           say("No problem at all.");
           await finish(state.detailsSent === "LINK" ? "CONVERSATION" : "CALLBACK_REQUESTED", true, "Details sent; no follow-up call for now.", "Follow up after they read it");
         } else if (state.awaiting === "SEND_QUOTE" || state.awaiting === "SEND_LINK") {
@@ -946,12 +1126,15 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         } else {
           await tool("record_fact", { dimension, value: clean(heardText).slice(0, 200), confirmed: false });
           state.factsRecorded += 1;
-          if (state.plan === "CHECK_IN" || !state.permissions.book) {
+          if (state.plan === "CHECKOUT" && state.permissions.checkout) {
+            say("Thanks, that helps. Shall I text you the link so you can look it over properly?", "LINK_AFTER_FACT");
+            state.awaiting = "SEND_LINK";
+          } else if (state.plan === "CHECK_IN" || !state.permissions.book) {
             say("Thanks for letting me know. I will make a note of that.");
             await finish("CONVERSATION", true, "Checked in; noted their update.", "Check in again later");
           } else if (dimension === "AUTHORITY") {
             state.plan = "BOOK";
-            await offerSlots("Shall we get them on the call too?");
+            await offerSlots("It would be good to get them on the call too");
           } else {
             say("Thanks, that helps. The best next step is a short call with the team.");
             state.plan = "BOOK";
@@ -989,6 +1172,12 @@ export async function simulate(s: Scenario): Promise<SimResult> {
 /* ================================================================== scoring */
 
 const MONEY = /£[\d,]+(?:\.\d{2})?|\b\d{1,3}\s?%/g;
+/** A clock time or a day the agent said: an availability claim unless a tool (or the lead) said it first. */
+const TIME_CLAIM = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi;
+/** An area, a guarantee, a discount or a start date of the agent's own: never allowed (Resolved conflict 1). */
+const COMMITMENT_CLAIM = /\bwe (?:do )?(?:cover|serve|work in)\b|\bguarantee(?:d)?\b(?! (?:that )?myself)|\byes,? we(?:'re| are) (?:free|available)\b|\b\d+\s?% off\b|\bdiscount of\b|\bwe can (?:start|deliver|have it)\b/i;
+/** The agent claiming to be a person (OD-1: never). */
+const CLAIMS_HUMAN = /\bI(?:'m| am) (?:a )?(?:real|human|person)\b|\bI(?:'m| am) not an? (?:ai|robot|bot|machine)\b|\bnot an? (?:ai|robot|bot) assistant\b/i;
 
 function sentenceCount(text: string): number {
   return text.split(/(?<=[.!?])\s+/).filter((x) => x.trim()).length;
@@ -1012,27 +1201,133 @@ export function deadAirAfter(r: SimResult): string[] {
   return out;
 }
 
+/**
+ * What the lead heard as ONE turn: every agent utterance between two lead
+ * utterances (adversarial QA pass: the scorer used to check each utterance
+ * alone, so three back-to-back lines passed "at most two sentences").
+ * The locked opener (turn 0) is excluded.
+ */
+export function agentTurnsMerged(r: SimResult): { text: string; index: number }[] {
+  const out: { text: string; index: number }[] = [];
+  let cur: { text: string; index: number } | null = null;
+  r.transcript.forEach((u, i) => {
+    if (i === 0) return;
+    if (u.speaker === "AGENT") {
+      if (cur) cur.text = `${cur.text} ${u.text}`;
+      else cur = { text: u.text, index: i };
+    } else if (cur) {
+      out.push(cur);
+      cur = null;
+    }
+  });
+  if (cur) out.push(cur);
+  return out;
+}
+
+/** Fixed text the model does not compose (it is read word for word): exempt from the length rules. */
+function lockedTexts(r: SimResult, s: Scenario): string[] {
+  const closingText = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false }).text;
+  return [
+    closingText,
+    "This is Acme Studio Ltd. You can reach us at 1 High Street, London, EC1A 1AA.",
+    recordingAnswer(s.recording ?? true),
+    ...r.tools.map((t) => t.say ?? "").filter(Boolean),
+  ];
+}
+
+function withoutLocked(text: string, locked: readonly string[]): string {
+  let t = text;
+  for (const l of locked) if (l) t = t.split(l).join(" ");
+  return t.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Compliance and money rules checked on EVERY scenario, whatever it
+ * expects (adversarial QA pass). Returns the failures.
+ */
+export function complianceFailures(s: Scenario, r: SimResult): string[] {
+  const out: string[] = [];
+  const agent = r.transcript.filter((u, i) => u.speaker === "AGENT" && i > 0);
+  const lead = r.transcript.filter((u) => u.speaker === "LEAD");
+  const toolSays = r.tools.map((t) => `${t.say ?? ""} ${JSON.stringify(t.args)}`).join(" ");
+  const leadWords = lead.map((u) => u.text).join(" ");
+  const composed = agent.map((u) => withoutLocked(u.text, r.tools.map((t) => t.say ?? "").filter(Boolean))).join(" \n ");
+
+  if (CLAIMS_HUMAN.test(composed)) out.push("claimed to be human");
+  if (COMMITMENT_CLAIM.test(composed)) out.push(`a commitment of its own: "${composed.match(COMMITMENT_CLAIM)?.[0]}"`);
+  // Times and days: only as a tool returned them (or echoing the lead's own words).
+  const allowed = `${toolSays} ${leadWords}`.toLowerCase();
+  for (const claim of composed.match(TIME_CLAIM) ?? []) {
+    const c = claim.toLowerCase().replace(/\s+/g, "");
+    const day = c.slice(0, 3);
+    const ok = /^[a-z]+day$/.test(c) ? allowed.includes(day) : allowed.replace(/\s+/g, "").includes(c);
+    if (!ok) out.push(`time or day not from a tool: ${claim}`);
+  }
+  // An opt-out is confirmed with the tool's own words, and nothing is said after it.
+  const optIdx = r.tools.findIndex((t) => t.name === "opt_out");
+  if (optIdx >= 0) {
+    const opt = r.tools[optIdx];
+    const after = agent.filter((u) => u.startMs >= opt.atMs);
+    if (s.expect.disposition === "OPTED_OUT") {
+      if (after.length !== 1 || after[0].text !== opt.say) out.push(`after opt_out the agent said: ${after.map((u) => u.text).join(" / ") || "(nothing)"}`);
+    }
+    if (r.closingSpoken) out.push("the closing line after an opt-out");
+  }
+  // Asked whether the call is recorded: the locked answer, word for word.
+  if (lead.some((u) => detectSpokenIntents(u.text).some((i) => i.key === "PRIVACY") && /\brecord/i.test(u.text))) {
+    if (!agent.some((u) => u.text.includes(recordingAnswer(s.recording ?? true)))) out.push("the recording answer was not the locked line");
+  }
+  if (/\bmay be recorded\b/i.test(composed)) out.push('"may be recorded" (vague)');
+  // Asked if it is an AI: an honest yes.
+  if (lead.some((u) => detectSpokenIntents(u.text).some((i) => i.key === "ASKS_IF_AI")) && !/\bAI assistant\b/.test(composed)) out.push("no honest AI answer");
+  // A call screen: the AI disclosure and who is calling, nothing else.
+  if (lead.some((u) => detectSpokenIntents(u.text).some((i) => i.key === "CALL_SCREEN")) && !/Acme Studio's AI assistant/.test(composed)) out.push("the screen was not told who is calling");
+  // A vulnerable person: no question, nothing recorded, nothing booked.
+  if (lead.some((u) => detectSpokenIntents(u.text).some((i) => i.key === "VULNERABLE"))) {
+    const vIdx = r.transcript.findIndex((u) => u.speaker === "LEAD" && detectSpokenIntents(u.text).some((i) => i.key === "VULNERABLE"));
+    if (r.transcript.slice(vIdx).some((u) => u.speaker === "AGENT" && u.text.includes("?"))) out.push("asked a vulnerable person a question");
+    if (r.tools.some((t) => ["record_fact", "book_meeting", "schedule_callback", "send_booking_link"].includes(t.name))) out.push("acted on a vulnerable person's call");
+  }
+  // Nothing unconfirmed with a number or an address in it is recorded (§20).
+  for (const t of r.tools.filter((x) => x.name === "record_fact")) {
+    const a = t.args as { value?: string; confirmed?: boolean };
+    if (/@|\d/.test(a.value ?? "") && !a.confirmed) out.push(`recorded an unconfirmed ${a.value}`);
+  }
+  // A call-back is always in the future.
+  for (const t of r.tools.filter((x) => x.name === "schedule_callback")) {
+    const at = (t.args as { at_iso?: string | null }).at_iso;
+    if (at && new Date(at).getTime() <= START.getTime() + t.atMs - (s.startElapsedSec ?? 0) * 1000) out.push(`call-back in the past: ${at}`);
+  }
+  return out;
+}
+
 export function score(s: Scenario, r: SimResult, route: VoiceRouteKey): Score {
   const notes: string[] = [];
-  const closingText = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false }).text;
-  // Naturalness proxies: turn length (the pace targets for THIS lead), one
-  // question, at most two sentences, no dashes, emoji, lists or links. The
-  // locked opener and the fixed closing line are excluded (fixed text).
-  const agentTurns = r.transcript.filter((u, i) => u.speaker === "AGENT" && i > 0 && u.text !== closingText);
+  // Naturalness proxies, on what the lead heard as one turn: length (the pace
+  // targets for THIS lead), at most one question, at most two sentences of
+  // the agent's own words, no dashes, emoji, lists or links. Locked text (the
+  // closing line, the identity answer, the recording answer, a tool's own
+  // words) is read word for word and is not counted against length.
+  const locked = lockedTexts(r, s);
+  const closingText = locked[0];
+  const turns = agentTurnsMerged(r);
   let natural = 0;
-  for (let i = 0; i < agentTurns.length; i++) {
-    const idx = r.transcript.indexOf(agentTurns[i]);
-    const targets = agentTargets(measurePace(r.transcript.slice(0, idx)));
-    const problems = [...checkAgentTurn(agentTurns[i].text, targets), ...houseStyleViolations(agentTurns[i].text)];
-    if (sentenceCount(agentTurns[i].text) > MAX_SENTENCES_PER_TURN) problems.push("TOO_MANY_SENTENCES" as never);
-    if (problems.length) notes.push(`turn "${agentTurns[i].text.slice(0, 40)}": ${problems.join(",")}`);
+  for (const turn of turns) {
+    const targets = agentTargets(measurePace(r.transcript.slice(0, turn.index)));
+    const own = withoutLocked(turn.text, locked);
+    const heard = turn.text.split(closingText).join(" ");
+    const problems: string[] = [...houseStyleViolations(turn.text)];
+    if (own) problems.push(...checkAgentTurn(own, targets).filter((x) => x !== "MULTIPLE_QUESTIONS"));
+    if ((heard.match(/\?/g) ?? []).length > targets.maxQuestionsPerTurn) problems.push("MULTIPLE_QUESTIONS");
+    if (own && sentenceCount(own) > MAX_SENTENCES_PER_TURN) problems.push("TOO_MANY_SENTENCES");
+    if (problems.length) notes.push(`turn "${turn.text.slice(0, 60)}": ${problems.join(",")}`);
     else natural++;
   }
   // Dead air (Retell speak_after_execution): every tool except the final
   // summary is followed by an agent line before the lead speaks again.
   const silent = deadAirAfter(r);
   if (silent.length) notes.push(`dead air after ${silent.join(",")}`);
-  const naturalness = silent.length ? 0 : agentTurns.length ? Math.round((25 * natural) / agentTurns.length) : 25;
+  const naturalness = silent.length ? 0 : turns.length ? Math.round((25 * natural) / turns.length) : 25;
 
   const repeated = r.loops.loopsDetected.filter((k) => k === "REPEATED_QUESTION").length;
   const loops = repeated === 0 ? 15 : 0;
@@ -1041,6 +1336,7 @@ export function score(s: Scenario, r: SimResult, route: VoiceRouteKey): Score {
   const routeOk = r.brief.route === s.route && r.brief.record.route === s.route;
   const routeScore = routeOk ? 10 : 0;
 
+  const agentTurns = r.transcript.filter((u, i) => u.speaker === "AGENT" && i > 0 && u.text !== closingText);
   const called = new Set(r.tools.filter((t) => t.ok).map((t) => t.name));
   const missing = s.expect.tools.filter((t) => !called.has(t));
   const forbidden = (s.expect.forbiddenTools ?? []).filter((t) => r.tools.some((x) => x.name === t));
@@ -1054,6 +1350,7 @@ export function score(s: Scenario, r: SimResult, route: VoiceRouteKey): Score {
   const scopeWrong = s.expect.optOutScope && (optOut?.args as { scope?: string } | undefined)?.scope !== s.expect.optOutScope;
   const quote = r.tools.find((t) => t.name === "calculate_quote");
   const itemsWrong = s.expect.quoteItems != null && ((quote?.args as { items?: unknown[] } | undefined)?.items?.length ?? 0) !== s.expect.quoteItems;
+  const compliance = complianceFailures(s, r);
   if (missing.length) notes.push(`missing tools: ${missing.join(",")}`);
   if (forbidden.length) notes.push(`forbidden tools: ${forbidden.join(",")}`);
   if (invented.length) notes.push(`invented figures: ${invented.join(",")}`);
@@ -1061,7 +1358,8 @@ export function score(s: Scenario, r: SimResult, route: VoiceRouteKey): Score {
   if (saysForbidden.length) notes.push(`said: ${saysForbidden.map(String).join(",")}`);
   if (scopeWrong) notes.push(`opt_out scope ${(optOut?.args as { scope?: string } | undefined)?.scope}, expected ${s.expect.optOutScope}`);
   if (itemsWrong) notes.push("quote items wrong");
-  const commercial = !missing.length && !forbidden.length && !invented.length && !saysMissing.length && !saysForbidden.length && !scopeWrong && !itemsWrong ? 20 : 0;
+  for (const c of compliance) notes.push(`compliance: ${c}`);
+  const commercial = !missing.length && !forbidden.length && !invented.length && !saysMissing.length && !saysForbidden.length && !scopeWrong && !itemsWrong && !compliance.length ? 20 : 0;
 
   const maxSec = s.expect.maxSec ?? ROUTE_TARGETS[route].maxSec;
   const durationOk = r.elapsedSec <= maxSec && r.elapsedSec <= PROVIDER_MAX_DURATION_SEC;

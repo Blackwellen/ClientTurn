@@ -252,3 +252,23 @@ export async function previewObjectionAction(input: unknown): Promise<SettingsAc
   if (!result.success) return { ok: false, error: result.message };
   return { ok: true, message: "Preview ready.", data: result.data };
 }
+
+/* ------------------------------------------------------------- competitors */
+
+// Settings -> AI & selling -> Competitors (0174). Each write runs a registry
+// operation (`competitor.*`), so Copilot and MCP change the same rows with
+// the same checks (no put-downs in an approved point, no dashes or pressure).
+
+export async function saveCompetitorAction(input: unknown): Promise<SettingsActionResult> {
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation("competitor.save", input, context(workspace));
+  return finish(result, "Competitor saved.");
+}
+
+export async function removeCompetitorAction(input: unknown): Promise<SettingsActionResult> {
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: DENIED };
+  const result = await runOperation("competitor.remove", input, context(workspace));
+  return finish(result, "Competitor removed.");
+}

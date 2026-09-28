@@ -47,6 +47,13 @@ export type PaymentFact = {
   intervalCount: number;
   subscriptionId: string | null;
   paidAt: string;
+  /**
+   * Stripe only: the PaymentIntent behind the payment, so a later refund or
+   * dispute (which names the PaymentIntent, not the session) can be traced
+   * back to it and flagged (stripeReversalFact). Optional: order-paid
+   * webhooks have none.
+   */
+  paymentIntentId?: string | null;
 };
 
 /** Currencies with no minor unit (Stripe's list, the common ones). */
@@ -171,6 +178,7 @@ export function stripePaymentFact(event: unknown): NormaliseResult {
         intervalCount: 1,
         subscriptionId,
         paidAt: created,
+        paymentIntentId: idOf(object.payment_intent),
       },
     };
   }
@@ -210,8 +218,44 @@ export function stripePaymentFact(event: unknown): NormaliseResult {
         typeof statusTransitions.paid_at === "number"
           ? new Date(statusTransitions.paid_at * 1000).toISOString()
           : created,
+      paymentIntentId: idOf(object.payment_intent),
     },
   };
+}
+
+/* ------------------------------------------------- Stripe refunds/disputes */
+
+export const STRIPE_REVERSAL_EVENTS = ["charge.refunded", "charge.dispute.created"] as const;
+export type StripeReversalEvent = (typeof STRIPE_REVERSAL_EVENTS)[number];
+
+/**
+ * A refund or a dispute on a payment, from the customer's own Stripe. Never
+ * applied to money automatically: payment.confirm finds the payment by its
+ * PaymentIntent and flags it for a person (a refund is corrected with a
+ * credit note, a dispute is answered in Stripe).
+ */
+export type PaymentReversal = {
+  provider: "stripe";
+  eventId: string;
+  eventType: StripeReversalEvent;
+  paymentIntentId: string;
+  amountMinor: number;
+  currency: string;
+};
+
+export function stripeReversalFact(event: unknown): PaymentReversal | null {
+  if (!event || typeof event !== "object") return null;
+  const e = event as { id?: unknown; type?: unknown; data?: { object?: unknown } };
+  const eventId = str(e.id);
+  const type = str(e.type);
+  if (!eventId || !type || !(STRIPE_REVERSAL_EVENTS as readonly string[]).includes(type)) return null;
+  const object = (e.data?.object ?? {}) as Record<string, unknown>;
+  const paymentIntentId = idOf(object.payment_intent);
+  const currency = str(object.currency)?.toUpperCase();
+  if (!paymentIntentId || !currency || !/^[A-Z]{3}$/.test(currency)) return null;
+  const raw = type === "charge.refunded" ? object.amount_refunded : object.amount;
+  const amountMinor = typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : 0;
+  return { provider: "stripe", eventId, eventType: type as StripeReversalEvent, paymentIntentId, amountMinor, currency };
 }
 
 /* ------------------------------------------------------- order-paid webhook */

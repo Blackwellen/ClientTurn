@@ -24,6 +24,8 @@ import { ComplianceCard } from "@/components/settings/ai-selling/compliance-card
 import { SectionLoadError } from "@/components/settings/ai-selling/section-load-error";
 import { QualificationPolicyCard } from "@/components/settings/ai-selling/qualification-policy-card";
 import { ObjectionsCard } from "@/components/settings/ai-selling/objections-card";
+import { CompetitorsCard } from "@/components/settings/ai-selling/competitors-card";
+import { loadCompetitors } from "@/lib/commercial/rules-queries";
 import { AiPermissionsCard } from "@/components/settings/ai-selling/ai-permissions-card";
 import { loadCommercialAuthoritySettings } from "@/lib/commercial/queries";
 import { aiAuthorityOf } from "@/lib/commercial/authority";
@@ -90,6 +92,8 @@ export async function AiSellingSection() {
   ]);
   const policy = await settle(() => loadQualificationPolicyView(workspace.businessId, workspace.role));
   const objections = await settle(() => loadWorkspaceObjections(workspace.businessId));
+  // Competitor positioning (0174): approved points and never-say lines.
+  const competitors = await settle(() => loadCompetitors(workspace.businessId));
   // What the AI may do (brief §74): commercial authority v2 and the plan's AI quoting.
   const aiAuthority = await settle(async () => ({
     authority: aiAuthorityOf(await loadCommercialAuthoritySettings(workspace.businessId)),
@@ -202,6 +206,19 @@ export async function AiSellingSection() {
         />
       ) : (
         <SectionLoadError title="Objections" />
+      )}
+
+      {competitors.ok ? (
+        <CompetitorsCard
+          // Remount after a save so the editor shows what was stored.
+          key={JSON.stringify(competitors.value.competitors)}
+          competitors={competitors.value.competitors}
+          invalid={competitors.value.invalid}
+          schemaReady={competitors.value.schemaReady}
+          canManage={canManage}
+        />
+      ) : (
+        <SectionLoadError title="Competitors" />
       )}
 
       {senders.ok ? <ChannelsCard health={senders.value} /> : <SectionLoadError title="Channels" />}

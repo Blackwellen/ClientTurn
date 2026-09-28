@@ -220,7 +220,7 @@ describe("the development harnesses cannot be reached in production", () => {
  */
 const MECHANISMS: Record<string, RegExp> = {
   // A signed-in workspace member.
-  session: /\b(requireWorkspace|requireRole|getActiveWorkspace)\s*\(/,
+  session: /\b(requireWorkspace|requireRole|requireCapability|getActiveWorkspace)\s*\(/,
   // The pg_cron shared secret (docs/CRON.md).
   "cron-secret": /serverEnv\.cronSecret/,
   // An HMAC over the raw body, compared in constant time.
@@ -307,6 +307,7 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/exports/attribution/route.ts": "session",
   "api/exports/leads/route.ts": "session",
   "api/exports/prospects/route.ts": "session",
+  "api/exports/audit/route.ts": "session",
   "api/find-leads/runs/[runId]/route.ts": "session",
   "api/integrations/[provider]/callback/route.ts": "public",
   "api/integrations/[provider]/connect/route.ts": "session",

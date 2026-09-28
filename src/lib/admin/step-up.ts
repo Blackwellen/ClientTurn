@@ -12,13 +12,15 @@ export class StepUpRequiredError extends Error {
   }
 }
 
+// Production signs only with the dedicated secret (internal review IR-06):
+// reusing the service-role key would let anyone holding it mint step-up
+// cookies. Development and tests may fall back to it.
 function signingKey(): string {
   const key =
-    process.env.ADMIN_STEP_UP_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.ADMIN_STEP_UP_SECRET ||
+    (process.env.NODE_ENV === "production" ? undefined : process.env.SUPABASE_SERVICE_ROLE_KEY);
   if (!key) {
-    throw new Error(
-      "Missing ADMIN_STEP_UP_SECRET (or SUPABASE_SERVICE_ROLE_KEY) for admin step-up signing",
-    );
+    throw new Error("Missing ADMIN_STEP_UP_SECRET for admin step-up signing");
   }
   return key;
 }

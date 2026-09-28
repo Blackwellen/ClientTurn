@@ -31,11 +31,14 @@ export function InboxControls({
   channel,
   hasLead,
   archived,
+  replyBlockedReason = null,
 }: {
   id: string;
   channel: string;
   hasLead: boolean;
   archived: boolean;
+  /** Why a reply cannot be sent from here right now (Meta approval, the 24-hour window, LinkedIn). */
+  replyBlockedReason?: string | null;
 }) {
   const router = useRouter();
   const [body, setBody] = React.useState("");
@@ -50,7 +53,7 @@ export function InboxControls({
   const [error, setError] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
-  const canReply = canReplyOn(channel, hasLead);
+  const canReply = canReplyOn(channel, hasLead) && !replyBlockedReason;
 
   function run(action: "read" | "archive" | "restore" | "reply") {
     startTransition(async () => {
@@ -116,7 +119,9 @@ export function InboxControls({
         </div>
       ) : (
         <p className="text-[11.5px] text-content-muted">
-          {hasLead
+          {replyBlockedReason
+            ? replyBlockedReason
+            : hasLead
             ? `Sending from ${channelLabel(channel)} is not connected yet. Reply in the original app.`
             : "This conversation is not linked to a lead, so replies are sent from the original app."}
         </p>

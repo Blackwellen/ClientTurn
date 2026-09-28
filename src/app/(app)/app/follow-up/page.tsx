@@ -10,12 +10,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { SegmentedViewSwitch } from "@/components/follow-up/view-switch";
 import { FollowUpView } from "@/components/follow-up/follow-up-view";
 import { QualificationView } from "@/components/follow-up/qualification-view";
+import { LinkedInAssistView } from "@/components/follow-up/linkedin-assist-view";
 
 export const metadata: Metadata = { title: "Follow-Up" };
 export const dynamic = "force-dynamic";
 
 /**
- * One route, two views. Follow-Up and Qualification live together because
+ * One route, three views. Follow-Up and Qualification live together because
  * they are two halves of the same decision — who to chase, and who is worth
  * chasing — and the switch between them is URL state, so each is linkable.
  */
@@ -43,7 +44,15 @@ export default async function FollowUpPage({
         }
       />
 
-      {filters.view === "qualification" ? (
+      {filters.view === "linkedin" ? (
+        <LinkedInAssistView
+          businessId={workspace.businessId}
+          userId={workspace.userId}
+          role={workspace.role}
+          timezone={workspace.timezone}
+          entitlements={entitlements}
+        />
+      ) : filters.view === "qualification" ? (
         <QualificationView
           businessId={workspace.businessId}
           canEdit={canEdit}

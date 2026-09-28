@@ -24,6 +24,8 @@ import {
 } from "@/lib/agents/types";
 import { saveAgent } from "@/lib/agents/actions";
 import { Select } from "@/components/ui/form";
+import { WHOLE_CATALOGUE, type CatalogueOptions, type OfferTarget } from "@/lib/agents/offer-target";
+import { OfferTargetPicker } from "./offer-target-picker";
 
 /**
  * The Agent setup wizard.
@@ -44,10 +46,13 @@ export function AgentWizard({
   plans,
   sourceAvailability,
   initialType = "SOURCING",
+  catalogue = null,
 }: {
   plans: { id: string; name: string }[];
   sourceAvailability: SourceAvailability;
   initialType?: AgentType;
+  /** What the agent may sell (0174). Null = the catalogue could not be read. */
+  catalogue?: CatalogueOptions | null;
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState(0);
@@ -66,6 +71,7 @@ export function AgentWizard({
   const [cadence, setCadence] = React.useState<Cadence>("DAILY");
   const [dailyCap, setDailyCap] = React.useState(25);
   const [monthlyCap, setMonthlyCap] = React.useState(250);
+  const [target, setTarget] = React.useState<OfferTarget>(WHOLE_CATALOGUE);
 
   const definition = AGENT_TYPE_DEFINITIONS[type];
   const availableSources = sourcesForType(type);
@@ -88,6 +94,9 @@ export function AgentWizard({
       if (dailyCap < 1) return "The daily limit must be at least 1.";
       if (monthlyCap < dailyCap) {
         return "The monthly limit cannot be lower than the daily limit.";
+      }
+      if (target.scope === "SELECTED" && target.serviceIds.length + target.catalogueItemIds.length === 0) {
+        return "Choose at least one product or service, or pick the whole catalogue.";
       }
     }
     return "";
@@ -116,8 +125,11 @@ export function AgentWizard({
           monthlyCap,
           sources: usesSources ? sources : [],
           autonomy,
+          target,
         });
         if (result.error) setError(result.error);
+        // Created, but what it sells was not saved: open its settings to fix it.
+        else if (result.warning) router.push(`/app/agents/${result.id}?tab=settings`);
         else router.push(`/app/agents/${result.id}`);
       } catch {
         setError("Could not create the agent. Check your access and try again.");
@@ -310,6 +322,18 @@ export function AgentWizard({
               />
             </Field>
 
+            <div className="min-w-0">
+              <p className="mb-1.5 block text-[12px] font-medium text-content-secondary">What it sells</p>
+              {catalogue ? (
+                <OfferTargetPicker value={target} onChange={setTarget} catalogue={catalogue} />
+              ) : (
+                <p className="text-[12.5px] text-content-muted">
+                  Your catalogue could not be loaded, so this agent will sell the whole catalogue. You can narrow it in the
+                  agent&rsquo;s settings after creating it.
+                </p>
+              )}
+            </div>
+
             <Field label="Approval">
               <Select
                 value={autonomy}
@@ -404,6 +428,7 @@ export function AgentWizard({
               }
             />
             {usesSources && <Summary label="Contact details" value="Verified work email only" />}
+            <Summary label="Sells" value={describeWizardTarget(target, catalogue)} />
           </dl>
 
           <p className="mt-4 flex gap-3 rounded-lg border border-line bg-surface-sunken/50 p-3.5 text-[12.5px] text-content-secondary">
@@ -486,6 +511,15 @@ function Field({
       {hint && <p className="mt-1 text-[11.5px] text-content-muted">{hint}</p>}
     </div>
   );
+}
+
+function describeWizardTarget(target: OfferTarget, catalogue: CatalogueOptions | null): string {
+  if (target.scope === "CATALOGUE" || !catalogue) return "Whole catalogue";
+  const names = [
+    ...target.serviceIds.map((id) => catalogue.services.find((s) => s.id === id)?.name),
+    ...target.catalogueItemIds.map((id) => catalogue.items.find((i) => i.id === id)?.name),
+  ].filter((name): name is string => Boolean(name));
+  return names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ") || "Nothing chosen";
 }
 
 function Summary({ label, value }: { label: string; value: string }) {

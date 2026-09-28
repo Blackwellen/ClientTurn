@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceCan } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -209,6 +210,7 @@ export async function launchAcquisitionCampaignAction(
 
   const access = await requireCampaignAdmin();
   if (!access.ok) return access;
+  if (!(await workspaceCan(access.workspace, "send_outbound"))) return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
 
   const result = await launchCampaign({
     businessId: access.workspace.businessId,
@@ -238,6 +240,10 @@ export async function setCampaignStateAction(input: unknown): Promise<ActionResu
 
   const access = await requireCampaignAdmin();
   if (!access.ok) return access;
+  // Resuming starts sending again.
+  if (parsed.data.status === "ACTIVE" && !(await workspaceCan(access.workspace, "send_outbound"))) {
+    return fail("Your permissions in this workspace do not allow sending. Ask the owner or an admin.");
+  }
 
   const result = await transition({
     businessId: access.workspace.businessId,

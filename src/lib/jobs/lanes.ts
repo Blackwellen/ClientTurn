@@ -132,6 +132,7 @@ export const JOB_CLASSES: Partial<Record<JobType, JobClass>> = {
   "social.tick": c("STANDARD", "standard", "outreach_sourcing"),
   "social.advance": c("STANDARD", "slow", "outreach_sourcing"),
   "social.execute": c("STANDARD", "slow", "outreach_sourcing"),
+  "linkedin_assist.draft": c("STANDARD", "standard", "outreach_sourcing"),
   "reengage.sweep": c("STANDARD", "slow", "message_dispatch"),
   "crm.push": c("STANDARD", "slow", "events_integrations"),
   "webhook.dispatch": c("STANDARD", "standard", "events_integrations"),

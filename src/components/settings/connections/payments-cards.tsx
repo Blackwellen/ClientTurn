@@ -174,7 +174,8 @@ function StripeCard({ endpoint, canManage, secretsAvailable }: { endpoint: Endpo
             <div className="space-y-2">
               <p className="text-[12.5px] text-content-muted">
                 Create this workspace&apos;s endpoint, then add it in Stripe under Developers, Webhooks with the events
-                checkout.session.completed, checkout.session.async_payment_succeeded and invoice.paid.
+                checkout.session.completed, checkout.session.async_payment_succeeded and invoice.paid. Add charge.refunded and
+                charge.dispute.created too, so a refund or dispute on an invoice payment is flagged for you.
               </p>
               <Button size="sm" loading={busy} onClick={() => run(createStripePaymentEndpoint, "Stripe endpoint created")}>
                 <Webhook className="size-3.5" aria-hidden />

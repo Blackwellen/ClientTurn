@@ -163,8 +163,8 @@ export const SECURITY_CONTROLS: SecurityControl[] = [
     group: "governance",
     name: "Data processing agreement",
     detail:
-      "A DPA is available as part of an Enterprise agreement. Send us your paper and we will review it, or use ours.",
-    status: "on_request",
+      "Our Article 28 DPA is published at /dpa, with security and sub-processor annexes, and applies to every workspace. Enterprise customers can send their own paper for review.",
+    status: "in_place",
   },
   {
     id: "certifications",

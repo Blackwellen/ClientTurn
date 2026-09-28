@@ -122,6 +122,7 @@ export default async function QuotesPreviewPage({ searchParams }: { searchParams
       ],
       invoices: [],
       defaultDepositBps: 5000,
+      invoicePayMode: "NONE",
     };
     return (
       <DevShell>

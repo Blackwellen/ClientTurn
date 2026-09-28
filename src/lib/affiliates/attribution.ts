@@ -57,8 +57,10 @@ export function parseReferralToken(raw: string | null | undefined): ReferralCook
  */
 
 function cookieSecret(): string {
+  // Production uses the dedicated secret only (internal review IR-06).
   const key =
-    process.env.AFFILIATE_COOKIE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.AFFILIATE_COOKIE_SECRET ||
+    (process.env.NODE_ENV === "production" ? undefined : process.env.SUPABASE_SERVICE_ROLE_KEY);
   if (!key) throw new Error("Missing AFFILIATE_COOKIE_SECRET for referral signing");
   return key;
 }

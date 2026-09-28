@@ -20,11 +20,13 @@ import {
   quoteStepAction,
   recordPaymentAction,
   sendQuoteAction,
+  setInvoicePayLinkAction,
   withdrawQuoteAction,
 } from "@/lib/quotes/actions";
 import type { CatalogueBundle, CatalogueItem } from "@/lib/catalogue/types";
 import type { getQuote } from "@/lib/quotes/service-core";
 import type { CapabilityView, LeadInvoiceView, LeadOpportunityOption } from "@/lib/quotes/queries";
+import { payLinkProblem, type InvoicePayMode } from "@/lib/invoicing/pay-link";
 import { QuoteEditor } from "./quote-editor";
 
 export type QuoteDetail = Awaited<ReturnType<typeof getQuote>>;
@@ -41,6 +43,8 @@ export type QuoteCardData = {
   quotes: QuoteDetail[];
   invoices: LeadInvoiceView[];
   defaultDepositBps: number | null;
+  /** 0173: how invoices are paid online (Settings -> Quotes & invoices). */
+  invoicePayMode: InvoicePayMode;
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -85,6 +89,7 @@ export function LeadQuotesPanel({ data }: { data: QuoteCardData }) {
   const [autoIssue, setAutoIssue] = React.useState(true);
   const [issuing, setIssuing] = React.useState<LeadInvoiceView | null>(null);
   const [paying, setPaying] = React.useState<LeadInvoiceView | null>(null);
+  const [linking, setLinking] = React.useState<LeadInvoiceView | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const isAdmin = data.role === "owner" || data.role === "admin";
@@ -252,6 +257,28 @@ export function LeadQuotesPanel({ data }: { data: QuoteCardData }) {
                               {isAdmin && (inv.status === "OPEN" || inv.status === "PARTIALLY_PAID") && (
                                 <Button size="xs" variant="secondary" onClick={() => setPaying(inv)}>Record payment</Button>
                               )}
+                              {isAdmin && data.invoicePayMode === "PER_INVOICE" && ["DRAFT", "OPEN", "PARTIALLY_PAID"].includes(inv.status) && (
+                                <Button size="xs" variant="secondary" onClick={() => setLinking(inv)}>
+                                  {inv.payLinkUrl ? "Change pay link" : "Add pay link"}
+                                </Button>
+                              )}
+                              {inv.payUrl && (
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(inv.payUrl!);
+                                      toast({ variant: "success", title: "Pay link copied", description: "It carries this invoice's reference, so the payment is recorded on it." });
+                                    } catch {
+                                      toast({ variant: "error", title: "Could not copy the link" });
+                                    }
+                                  }}
+                                >
+                                  <Copy className="size-3.5" aria-hidden />
+                                  Copy pay link
+                                </Button>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -384,6 +411,7 @@ export function LeadQuotesPanel({ data }: { data: QuoteCardData }) {
       />
 
       {paying && <PaymentDialog invoice={paying} leadId={data.leadId} onClose={() => setPaying(null)} onDone={done} />}
+      {linking && <PayLinkDialog invoice={linking} leadId={data.leadId} onClose={() => setLinking(null)} onDone={done} />}
     </section>
   );
 }
@@ -443,6 +471,66 @@ function PaymentDialog({
         </FormField>
         <FormField label="Reference" htmlFor="pay-ref" hint="Recorded once: the same reference is never counted twice.">
           <Input id="pay-ref" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={200} />
+        </FormField>
+        <FormError message={error} />
+      </div>
+    </Modal>
+  );
+}
+
+/** 0173: paste the Stripe Payment Link for one invoice (PER_INVOICE mode). */
+function PayLinkDialog({
+  invoice,
+  leadId,
+  onClose,
+  onDone,
+}: {
+  invoice: LeadInvoiceView;
+  leadId: string;
+  onClose: () => void;
+  onDone: (result: { ok: boolean; error?: string; warnings?: string[] }, success: string) => void;
+}) {
+  const [url, setUrl] = React.useState(invoice.payLinkUrl ?? "");
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState<"save" | "remove" | null>(null);
+  const due = invoice.totalMinor - invoice.paidMinor;
+  async function submit(value: string | null) {
+    setError(null);
+    if (value !== null) {
+      const problem = payLinkProblem(value);
+      if (problem) return setError(problem);
+    }
+    setSaving(value === null ? "remove" : "save");
+    const result = await setInvoicePayLinkAction({ leadId, invoiceId: invoice.id, url: value });
+    setSaving(null);
+    if (!result.ok) return setError(result.error);
+    onClose();
+    onDone(result, value === null ? "Pay link removed" : "Pay link saved");
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title={`Payment link for ${invoice.number ?? "this invoice"}`}
+      description={`Create a Payment Link for ${formatMinor(due, invoice.currency)} in your own Stripe dashboard and paste it here. The invoice email and the quote page then show a Pay now button, and the payment is recorded on this invoice automatically.`}
+      footer={
+        <>
+          {invoice.payLinkUrl && (
+            <Button variant="ghost" loading={saving === "remove"} disabled={saving !== null} onClick={() => submit(null)}>
+              Remove link
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button loading={saving === "save"} disabled={saving !== null} onClick={() => submit(url.trim())}>
+            Save link
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <FormField label="Stripe Payment Link" htmlFor="inv-pay-link" hint="Starts with https://buy.stripe.com/. ClientTurn adds this invoice's reference when it sends it.">
+          <Input id="inv-pay-link" value={url} onChange={(e) => setUrl(e.target.value)} maxLength={2000} placeholder="https://buy.stripe.com/..." />
         </FormField>
         <FormError message={error} />
       </div>

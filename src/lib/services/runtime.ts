@@ -4,6 +4,8 @@ import { recordAudit, recordUsage } from "@/lib/audit";
 import type { UsageFeature, UsageMetric } from "@/lib/billing/usage-metrics";
 import { serviceOperation, type RegisteredOperation } from "./registry";
 import { maintenanceWriteBlock } from "@/lib/maintenance/state";
+import { capabilityAllowed, operationCapability, PERSON_CALLERS } from "@/lib/auth/capabilities";
+import { readCapabilityOverrides } from "@/lib/auth/capability-overrides";
 import {
   callerAllowed,
   isWrite,
@@ -194,7 +196,34 @@ export async function runOperation<T = unknown>(
 
   /* ------------------------------------------------------------ 2. role */
 
-  if (!roleMeets(context.role, declaration.minimumRole)) {
+  // Per-person capabilities (0172, lib/auth/capabilities.ts). Only for callers
+  // acting as a signed-in person; the agent and system jobs act under the
+  // workspace's own settings. `replaces_role` capabilities reproduce the
+  // operation's minimumRole when no override is set (asserted in tests).
+  const gate = operationCapability(declaration.name);
+  const personal = Boolean(gate && context.userId && PERSON_CALLERS.has(context.caller));
+  let permitted = gate?.mode === "replaces_role" && personal
+    ? true
+    : roleMeets(context.role, declaration.minimumRole);
+  if (permitted && gate && personal) {
+    try {
+      const overrides = await readCapabilityOverrides(context.businessId, context.userId!);
+      permitted = capabilityAllowed(context.role, gate.capability, overrides);
+    } catch {
+      permitted = false;
+    }
+    if (!permitted) {
+      await auditDenial(declaration, context, `capability:${gate.capability}`);
+      return fail(
+        name,
+        context,
+        "FORBIDDEN_ROLE",
+        `Your permissions in this workspace do not allow you to ${declaration.summary.toLowerCase()}. Ask the owner or an admin.`,
+      );
+    }
+  }
+
+  if (!permitted) {
     await auditDenial(declaration, context, "insufficient_role");
     return fail(
       name,
