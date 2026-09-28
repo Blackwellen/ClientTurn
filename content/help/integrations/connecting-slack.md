@@ -5,6 +5,13 @@ category: integrations
 keywords: [slack, alerts, notifications, channel id, handover alert, daily digest, slack bot, invite bot]
 order: 60
 updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/integrations/connecting-slack-1.png
+    alt: "The Slack alerts card with the channel ID, and What goes to Slack with new lead, handover, booking and warm prospect alerts ticked"
+    caption: "Choose the channel and which alerts it receives"
+  - src: /help/screenshots/integrations/connecting-slack-2.png
+    alt: "The Slack panel showing the alert channel and the link to change it in Workspace settings"
+    caption: "Check which channel alerts are posted to"
 ---
 
 Slack is a notification channel only. Connecting it changes nothing about how leads are handled.

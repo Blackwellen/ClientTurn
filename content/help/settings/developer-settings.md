@@ -7,8 +7,8 @@ order: 60
 updated: 2026-09-27
 screenshots:
   - src: /help/screenshots/settings/developer-settings-1.png
-    alt: "The Developer section with the API keys, Webhooks and Assistant connections cards"
-    caption: "Every credential with access to your workspace in one place: API keys, webhooks and assistant connections"
+    alt: "The Developer section with one API key, one webhook endpoint and one assistant connection"
+    caption: "Every credential with access to your workspace, in one place"
 ---
 
 **Settings → Developer** gathers the three ways into your workspace from outside: API keys for your own code, endpoints that ClientTurn sends events to, and assistant connections. They sit together because they are one decision: what can reach your workspace, and where its data goes. Revoking a key in one place and leaving an assistant connected in another is how access gets forgotten.

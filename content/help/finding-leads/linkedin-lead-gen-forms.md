@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [linkedin, lead gen forms, linkedin ads, campaign manager, linkedin leads, lead sync, company page]
 order: 40
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/linkedin-lead-gen-forms-1.png
+    alt: "The LinkedIn Lead Gen Forms card, connected, naming the LinkedIn organisation"
+    caption: "Check the card names the Page that runs your lead-gen ads"
 ---
 
 LinkedIn Lead Gen Forms are the forms that open inside a LinkedIn ad. The person submits their own details, usually including their work email, so a submission is an inbound enquiry: it becomes a lead, not a prospect.

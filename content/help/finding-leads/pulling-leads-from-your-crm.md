@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [crm import, crm pull, hubspot import, salesforce import, zoho import, two-way sync, inbound sync, record only, loop prevention]
 order: 120
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/pulling-leads-from-your-crm-1.png
+    alt: "The Import contacts from your CRM card with HubSpot switched on and its last check, and Salesforce and Zoho CRM off"
+    caption: "The last check shows records imported and skipped"
 ---
 
 Once HubSpot, Salesforce or Zoho CRM is connected, ClientTurn can also read new and changed records **from** your CRM and add them to **Leads**. This is off by default, and it never messages anyone.

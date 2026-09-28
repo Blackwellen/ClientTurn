@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [zapier, webhooks by zapier, make, n8n, pipedrive, inbound webhook, custom webhook, endpoint, hmac, automation]
 order: 110
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/leads-from-zapier-and-webhooks-1.png
+    alt: "The Zapier inbound endpoint set-up with Bearer token chosen as the authentication method and the Create endpoint button"
+    caption: "Choose Bearer token or API key header for Zapier"
 ---
 
 Any tool that can send an HTTP request can post contacts to ClientTurn. There are two destinations, and the difference matters:

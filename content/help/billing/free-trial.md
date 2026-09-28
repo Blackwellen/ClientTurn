@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/billing/free-trial-1.png
     alt: "The start-trial page with the Monthly and Yearly toggle, a Start trial button and the no charge today line"
     caption: "Pick a billing interval, then start the trial on the plan you want"
+  - src: /help/screenshots/billing/free-trial-2.png
+    alt: "The Subscription status card during a trial, showing when the trial ends and the card on file ending 4242"
+    caption: "Billing & Usage shows when the trial ends and the card on file"
 ---
 
 Every new workspace starts with a **14-day free trial**. You choose a plan and add a card to begin. Nothing is charged on the day you start.

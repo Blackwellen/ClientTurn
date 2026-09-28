@@ -5,6 +5,10 @@ category: developers
 keywords: [webhooks, events, signature, hmac, signing secret, clientturn-signature, retries, retrying, gave up, delivery log, endpoint, event catalogue, verify, opportunity.won, opportunity.lost, opportunity.created]
 order: 20
 updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/developers/webhooks-1.png
+    alt: "The Webhooks panel with one endpoint and its recent deliveries marked Retrying, Delivered and Gave up"
+    caption: "What was sent and what your server answered"
 ---
 
 A webhook endpoint is an HTTPS address on your server that ClientTurn POSTs to whenever an event you subscribed to happens. To add one, follow [Setting up a webhook](/help/developers/setting-up-a-webhook).

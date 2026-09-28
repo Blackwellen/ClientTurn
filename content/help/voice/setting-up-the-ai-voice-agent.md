@@ -4,7 +4,7 @@ summary: What the AI voice agent does, what it needs before it can call anyone, 
 category: voice
 keywords: [voice, ai calls, phone calls, calling agent, voice agent, dedicated number, calling number, caller id, calling identity, legal entity, freephone, twilio, regulatory review, call recording, calling hours, release number]
 order: 10
-updated: 2026-09-27
+updated: 2026-09-28
 ---
 
 The AI voice agent phones a lead for you. It calls from your own dedicated UK number, tells the person at the start that it is an AI assistant calling on behalf of your business, and has a short conversation to qualify the enquiry or move it towards a booking or a sale. What was said and decided is recorded on the lead.
@@ -79,6 +79,8 @@ Calls are sorted into routes (qualification, booking, direct close, nurture and 
 
 Any team member with the member role or above can ask the agent to call a lead with **Call with AI** on the lead. Because a call is real and uses minutes, you confirm it first.
 
+**Call with AI** is in the **AI calls** panel on the lead's full page, and next to **Call yourself** in the lead panel that opens from **Leads** (on a narrow screen, under **More**). When it is greyed out, the reason is shown beside it; owners and admins also get a link to **Settings → Voice** when the fix is there. Viewers cannot place calls.
+
 - If it is within the lead's calling hours, the call is queued and starts shortly.
 - If it is outside them, the call is booked for when their calling hours next open.
 - You can cancel a call until it starts.
@@ -86,6 +88,10 @@ Any team member with the member role or above can ask the agent to call a lead w
 The same checks run again just before the number is dialled, so a call that has stopped being allowed in the meantime (for example because the lead opted out) is cancelled rather than placed. See [Calls and consent](/help/voice/calls-and-consent) for who can be called.
 
 If nobody answers, the agent tries again later within the lead's calling hours, up to your attempt limit. After the last attempt the lead's next action suggests following up by text or email.
+
+## Calls from your agents
+
+A closing or combined agent can also phone leads for you automatically. Switch on **Phone leads with AI** when you create the agent, or later in its **Settings** tab. See [Setting up an agent](/help/ai-agents/setting-up-an-agent#ai-phone-calls). Every call it asks for goes through exactly the same checks as **Call with AI**, and the call card says **Called by** and the agent's name.
 
 ## After a call
 

@@ -5,6 +5,10 @@ category: integrations
 keywords: [meta, facebook, instagram, facebook page, business manager, permissions, messenger, lead ads, reconnect meta, use this page, token expiry, access expires, change page]
 order: 55
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-meta-1.png
+    alt: "The Meta panel with the access expiry warning, the Facebook Page select and the Use this Page button"
+    caption: "Choose the Page, and reconnect before access expires"
 ---
 
 One Meta connection covers your Facebook Page's lead forms, including Instagram lead ads, and messages sent to the Page on Messenger and Instagram.

@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/developers/setting-up-a-webhook-1.png
     alt: "The Add a webhook endpoint dialog with the endpoint URL and three events ticked"
     caption: "Enter the https address and tick the events to send"
+  - src: /help/screenshots/developers/setting-up-a-webhook-2.png
+    alt: "An active webhook endpoint row with its Test, Edit, pause, rotate secret and delete controls"
+    caption: "Endpoint controls: test, edit, pause, rotate the secret, delete"
 ---
 
 ## Before you start

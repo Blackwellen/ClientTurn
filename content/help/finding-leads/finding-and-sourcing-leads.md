@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [find leads, sourcing, prospects, search plan, sourcing agent, limits, provenance, get started]
 order: 1
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/finding-and-sourcing-leads-1.png
+    alt: "Step 2 of creating an agent, with the sources to use and the approved Manchester search plan selected"
+    caption: "A sourcing agent reuses a plan you approved"
 ---
 
 ClientTurn finds new business in two ways.

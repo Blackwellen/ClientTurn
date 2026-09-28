@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/reactivation/reactivation-overview-1.png
     alt: "The Reactivation page with Create campaign, a campaign status and a campaign's actions menu marked"
     caption: "Your campaigns and their results; create a campaign, check its status, or open its actions"
+  - src: /help/screenshots/reactivation/reactivation-overview-2.png
+    alt: "The Review and Launch step of a reactivation campaign with the launch checklist, the suppression reasons and the ready-to-launch summary (the campaign was not launched)"
+    caption: "Check the summary and exclusions, then launch"
 ---
 
 A reactivation campaign sends one message, and optionally one follow-up, to leads who went quiet, to get the conversation going again. When someone replies, the conversation carries on like any other lead: qualification, the assistant if you use it, and booking.

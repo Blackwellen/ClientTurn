@@ -15,6 +15,9 @@ screenshots:
   - src: /help/screenshots/finding-leads/find-leads-discovery-3.png
     alt: "A prospect drawer with the verification card and the Approve for outreach and Promote to lead buttons"
     caption: "Check verification and the company details, then approve for outreach or promote to a lead"
+  - src: /help/screenshots/finding-leads/find-leads-discovery-4.png
+    alt: "A structured search plan for SaaS and ecommerce companies in Manchester with 10 to 50 staff, and the Sourcing controls with Start sourcing run"
+    caption: "Check the plan, then start the run; nothing is spent until you do"
 ---
 
 **Find Leads** searches for companies that match what you sell, checks them, finds a published work contact, and grades each one against your ideal customer. Everything it finds is a **prospect**: nothing is contacted until a person approves it.

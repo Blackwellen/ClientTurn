@@ -5,6 +5,10 @@ category: integrations
 keywords: [google calendar, availability, free busy, slots, appointments, booking, calendar events, gmail calendar]
 order: 75
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-google-calendar-1.png
+    alt: "How qualified leads book with Google Calendar selected and the appointment duration and buffer fields"
+    caption: "Set the shape of appointments offered from your calendar"
 ---
 
 With Google Calendar connected, ClientTurn can offer a qualified lead times when you are actually free, and put the appointment in your calendar once they choose one.

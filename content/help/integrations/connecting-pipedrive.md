@@ -5,6 +5,10 @@ category: integrations
 keywords: [pipedrive, pipedrive automations, webhook, crm, raw json, inbound endpoint, persons]
 order: 45
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-pipedrive-1.png
+    alt: "The Pipedrive inbound endpoint set-up with Basic authentication chosen and the Create endpoint button"
+    caption: "Basic authentication works with Pipedrive's webhook field"
 ---
 
 Pipedrive connects in one direction: Pipedrive sends contacts to ClientTurn. ClientTurn never signs in to Pipedrive and cannot read or change anything there. Contacts arrive in **Find Leads** as prospects for review.

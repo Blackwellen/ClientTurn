@@ -5,6 +5,10 @@ category: integrations
 keywords: [whatsapp, templates, 24 hour window, message template, approved template, content sid, template variables, marketing, utility]
 order: 85
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/whatsapp-templates-1.png
+    alt: "A WhatsApp follow-up step with its approved template chosen and each template variable mapped to a lead field"
+    caption: "Choose the approved template each step sends after 24 hours"
 ---
 
 WhatsApp only lets a business send free-form messages within 24 hours of the person's last message. Outside that window, only a template WhatsApp has already approved may be sent. ClientTurn keeps a list of your approved templates and lets you choose one for each WhatsApp follow-up step.

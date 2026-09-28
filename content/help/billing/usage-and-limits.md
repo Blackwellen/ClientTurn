@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/billing/usage-and-limits-1.png
     alt: "The Usage and limits table with the This period, Today and At the limit columns marked"
     caption: "Every limit, this period and today, with what happens when it is reached"
+  - src: /help/screenshots/billing/usage-and-limits-2.png
+    alt: "Communication allocation with the Daily sending limits for email, SMS and WhatsApp, their per-day ceilings and Save daily limits"
+    caption: "Lower a daily limit to pace sending; you cannot raise it above the ceiling"
 ---
 
 Every limit on your plan is shown in one place: **Settings → Billing & Usage → Usage & limits**. Limits are enforced at the moment a message is sent, not only shown on this page. Only the workspace owner can open Billing & Usage.

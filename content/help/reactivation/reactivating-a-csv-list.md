@@ -5,6 +5,10 @@ category: reactivation
 keywords: [csv, import list, upload contacts, spreadsheet, old customer list, past clients, column mapping, invalid rows, 2mb, 5000 rows, imported contacts, reactivation import]
 order: 30
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/reactivation/reactivating-a-csv-list-1.png
+    alt: "The reactivation CSV import after the columns were mapped and the file validated: total, valid and invalid rows, and the Import button (not pressed)"
+    caption: "Map your columns and fix invalid rows before importing"
 ---
 
 You can reactivate a list you hold outside ClientTurn, such as past enquiries exported from another system, by uploading it as a CSV file in the campaign builder.

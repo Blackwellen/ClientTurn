@@ -5,6 +5,10 @@ category: integrations
 keywords: [make, n8n, integromat, custom webhook, other crm, hmac, bearer token, automations, inbound endpoint]
 order: 50
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-pipedrive-and-other-crms-1.png
+    alt: "The Custom webhook inbound endpoint set-up with Signed request (HMAC-SHA256) chosen"
+    caption: "Use a signed request wherever the tool supports it"
 ---
 
 If your CRM or automation tool is not listed under **Settings → Connections**, it can still send contacts to ClientTurn through a **Custom webhook** endpoint. The same endpoint works for Make, n8n, a script of your own, or any system that can make an HTTPS request.

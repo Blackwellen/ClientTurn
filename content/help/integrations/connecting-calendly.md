@@ -5,6 +5,10 @@ category: integrations
 keywords: [calendly, booking link, scheduling, appointments, invitee, meeting booked, calendar]
 order: 70
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-calendly-1.png
+    alt: "How qualified leads book with Calendly selected, the Calendly event type and the booking link"
+    caption: "Choose the event type the assistant offers times from"
 ---
 
 With Calendly connected, a qualified lead is sent your Calendly link, and when they book, the booking is recorded against them in ClientTurn.

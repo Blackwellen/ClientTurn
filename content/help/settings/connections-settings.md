@@ -9,6 +9,15 @@ screenshots:
   - src: /help/screenshots/settings/connections-settings-1.png
     alt: "Connection health totals, the ads and lead sources group with a Connect button and the TikTok Beta badge"
     caption: "Each connection shows its status and what you can do next; TikTok is in beta"
+  - src: /help/screenshots/settings/connections-settings-2.png
+    alt: "The confirmation message Meta Lead Ads connected, shown after connecting Meta"
+    caption: "A message confirms each connection"
+  - src: /help/screenshots/settings/connections-settings-3.png
+    alt: "Social sending accounts with one LinkedIn Sales Navigator account and the add form open with Platform and Subscription"
+    caption: "Tell ClientTurn which accounts your team sends from"
+  - src: /help/screenshots/settings/connections-settings-4.png
+    alt: "The WhatsApp templates card with two approved templates and a follow-up step mapped to a template"
+    caption: "Sync approved templates and choose one for each WhatsApp step"
 ---
 
 **Settings → Connections** is where ClientTurn links to the other services you use. Owners and admins can connect and change things here. Everyone else can see the status of each connection.

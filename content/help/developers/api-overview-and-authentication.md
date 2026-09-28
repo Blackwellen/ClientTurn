@@ -5,6 +5,10 @@ category: developers
 keywords: [api, rest, bearer, authorization header, scopes, permissions, rate limit, 429, errors, endpoints, base url, api reference]
 order: 5
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/developers/api-overview-and-authentication-1.png
+    alt: "The Build on ClientTurn panel showing the API base URL, the MCP endpoint and example requests"
+    caption: "Your base URL and MCP endpoint"
 ---
 
 The ClientTurn API lets your own server read and update your workspace over HTTPS. It uses the same permission checks, rules and audit trail as the app.

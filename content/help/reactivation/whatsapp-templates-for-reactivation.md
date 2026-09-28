@@ -5,6 +5,10 @@ category: reactivation
 keywords: [whatsapp template, approved template, message template, 24-hour window, service window, twilio content, meta template, template variables, sync templates, whatsapp campaign, whatsapp opt-in]
 order: 50
 updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/reactivation/whatsapp-templates-for-reactivation-1.png
+    alt: "The Message and Timing step for a WhatsApp reactivation campaign with the approved WhatsApp template select and its variables"
+    caption: "Choose the approved template and fill each variable"
 ---
 
 WhatsApp only allows a business to send free-form messages within 24 hours of the person's last message to it. Reactivation is, by definition, to people who have not messaged you recently. So a WhatsApp reactivation message is almost always sent as a **template** that Meta has approved in advance.

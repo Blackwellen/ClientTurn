@@ -12,6 +12,9 @@ screenshots:
   - src: /help/screenshots/compliance/suppression-and-unsubscribe-2.png
     alt: "The unsubscribe page for an invalid link explaining the other ways to opt out"
     caption: "An invalid link explains the other ways to opt out"
+  - src: /help/screenshots/compliance/suppression-and-unsubscribe-3.png
+    alt: "The public unsubscribe page asking the person to confirm unsubscribing from Blackwellen Ltd"
+    caption: "The unsubscribe link asks the person to confirm"
 ---
 
 The suppression list is your workspace's **do-not-contact list**. Every message is checked against it **at the moment it is sent**, not when it was scheduled. So someone who opts out at 9:00 is not sent a follow-up queued at 8:00.

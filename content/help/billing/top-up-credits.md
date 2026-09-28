@@ -7,11 +7,14 @@ order: 30
 updated: 2026-09-27
 screenshots:
   - src: /help/screenshots/billing/top-up-credits-1.png
-    alt: "The Message credits card with SMS and WhatsApp balances, bundles with Buy buttons and purchase history"
+    alt: "The Message credits card with the SMS credit and WhatsApp token balances, the bundles with Buy buttons and the refund notice"
     caption: "Buy SMS credit or WhatsApp tokens here; neither expires"
   - src: /help/screenshots/billing/top-up-credits-2.png
     alt: "The AI allowance card with tokens left and the token packs, one marked Best value"
     caption: "AI token packs top up the assistant's allowance and carry over"
+  - src: /help/screenshots/billing/top-up-credits-3.png
+    alt: "The Message credits card on the Starter plan with SMS bundles only and the note that WhatsApp is a paid add-on on Growth and above"
+    caption: "WhatsApp token packs appear only on plans with WhatsApp"
 ---
 
 When a monthly allowance is not enough, you can buy more at any point in the month without changing plan. Top-up credit is prepaid, and it is the only way to go past an allowance: there is no overage and nothing is billed after the fact. There are two kinds of top-up:

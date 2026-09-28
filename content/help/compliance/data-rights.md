@@ -12,6 +12,9 @@ screenshots:
   - src: /help/screenshots/compliance/data-rights-2.png
     alt: "The Privacy requests card with Record a request, the acknowledge and respond deadlines and an Identity not verified badge"
     caption: "Log each privacy request so the acknowledge and respond deadlines are tracked"
+  - src: /help/screenshots/compliance/data-rights-3.png
+    alt: "The outcome of erasing a throwaway demo lead: what changed and what was kept"
+    caption: "After erasing, ClientTurn lists what was removed and what was kept"
 ---
 
 ClientTurn gives you a separate action for each thing a person can ask you to do with their data. Every action says what it removes and what it keeps before you confirm it. None of them claims something was "deleted" when part of it was kept.

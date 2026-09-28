@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [facebook, instagram, meta, lead ads, lead forms, instant forms, leadgen, page, facebook leads]
 order: 20
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/meta-lead-ads-1.png
+    alt: "The Meta Lead Ads card marked Connected, with the business account and the last successful sync"
+    caption: "A connected Meta card shows its last successful sync"
 ---
 
 When someone submits a lead form on one of your Facebook or Instagram ads, Meta notifies ClientTurn straight away and the lead appears in **Leads**. Follow-up starts on its own, using your published follow-up sequence.

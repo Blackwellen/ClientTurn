@@ -5,6 +5,10 @@ category: developers
 keywords: [mcp tools, tools list, approval, approve, refuse, approval gated, waiting for your decision, lead.get, message.send, agent.start, audit]
 order: 35
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/developers/mcp-tools-and-approvals-1.png
+    alt: "Assistant connections with a request to start an agent waiting for a decision, and Approve and Refuse buttons"
+    caption: "Nothing happens until someone approves"
 ---
 
 Over MCP, an assistant is offered the same operations the ClientTurn app uses, with the same rules. Tool names follow the pattern `area.action`, for example `lead.get` or `agent.pause`.

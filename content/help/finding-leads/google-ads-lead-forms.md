@@ -5,6 +5,10 @@ category: finding-leads
 keywords: [google ads, lead form extension, lead form asset, google_key, webhook, gclid, search ads, google leads]
 order: 30
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/google-ads-lead-forms-1.png
+    alt: "The Google Ads connection panel with the instant delivery webhook URL, the hidden key and the four set-up steps"
+    caption: "Copy the webhook URL and key into each lead form"
 ---
 
 ClientTurn can receive Google Ads lead-form submissions in two ways. You can use either or both: every submission carries Google's own lead ID, so a lead that arrives by both routes is recorded once.

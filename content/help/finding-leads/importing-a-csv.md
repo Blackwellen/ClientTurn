@@ -5,6 +5,13 @@ category: finding-leads
 keywords: [csv, import, upload, spreadsheet, bulk upload, excel, list import, migrate from crm, import wizard]
 order: 70
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/finding-leads/importing-a-csv-1.png
+    alt: "Step 3 of the CSV import, How do you know these people?, with Existing business relationship chosen and the Start follow-up on imported leads option"
+    caption: "This answer decides whether rows become leads or prospects"
+  - src: /help/screenshots/finding-leads/importing-a-csv-2.png
+    alt: "The import review listing rows ClientTurn is unsure about, including a duplicate and an opted-out person, each with Lead, Prospect and Skip choices"
+    caption: "Decide the rows ClientTurn is unsure about"
 ---
 
 The import wizard turns a CSV file into leads, prospects, or both. It asks how you know the people on the list, because that decides whether a row becomes a lead you can follow up, or a prospect that waits for review.

@@ -5,6 +5,10 @@ category: booking-and-sales
 keywords: [calendly, booking link, scheduling link, calendly webhook, reschedule, cancel, booked, event type, connect calendly]
 order: 30
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/booking-and-sales/booking-with-calendly-1.png
+    alt: "The booking card with the Calendly option selected, the Calendly event type and the booking link field"
+    caption: "Choose Calendly, its event type and the link leads should use"
 ---
 
 With Calendly, qualified leads are sent your Calendly link and book the time themselves on Calendly. ClientTurn cannot create a Calendly booking on the lead's behalf, so it never tells a lead they are booked until Calendly reports that they are.

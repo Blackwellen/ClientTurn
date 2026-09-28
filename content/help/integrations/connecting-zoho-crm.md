@@ -5,6 +5,10 @@ category: integrations
 keywords: [zoho, zoho crm, crm, data centre, region, oauth, leads, sync, zoho leads]
 order: 40
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-zoho-crm-1.png
+    alt: "The Zoho CRM card marked Connected with the account name and last successful sync"
+    caption: "Zoho CRM connected in your data centre"
 ---
 
 ## Connect

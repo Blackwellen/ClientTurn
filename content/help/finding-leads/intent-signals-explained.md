@@ -5,6 +5,13 @@ category: finding-leads
 keywords: [buying signals, intent, series a, seed round, funding, new hire, head of growth, hiring, rebrand, new office, tender, companies house, sh01, combination, segment, why this lead]
 order: 11
 updated: 2026-09-27
+screenshots:
+  - src: /help/screenshots/finding-leads/intent-signals-explained-1.png
+    alt: "The Buying signals editor with the Companies House signals greyed out because no Companies House key is set, and the More buying signals catalogue"
+    caption: "Pick signals backed by a free source; unavailable ones say why"
+  - src: /help/screenshots/finding-leads/intent-signals-explained-2.png
+    alt: "The Combine signals editor for Raised funds and hiring marketing, with All conditions (AND) selected and two conditions"
+    caption: "Combine signals with AND or OR, each with its own time window"
 ---
 
 A buying signal is something a company did recently that suggests it may be ready to buy: it raised money, appointed a new Head of Growth, opened an office or started hiring marketers. Find Leads looks for these signals in free, public sources and shows you the evidence for each one.

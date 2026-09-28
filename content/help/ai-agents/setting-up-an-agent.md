@@ -2,9 +2,9 @@
 title: Setting up an agent
 summary: Create an agent step by step, choose its sources, limits, schedule and approval level, then start it when you are ready
 category: ai-agents
-keywords: [new agent, create agent, agent wizard, daily limit, monthly limit, schedule, approval, review everything, sources, start agent]
+keywords: [new agent, create agent, agent wizard, daily limit, monthly limit, schedule, approval, review everything, sources, start agent, phone leads with ai, ai calls, agent calls]
 order: 10
-updated: 2026-09-27
+updated: 2026-09-28
 screenshots:
   - src: /help/screenshots/ai-agents/setting-up-an-agent-1.png
     alt: "The Limits step with Approval, Schedule, Daily limit and Monthly limit"
@@ -30,6 +30,7 @@ screenshots:
    - **Approval**: **Review everything**, **Review new companies only**, or **Run automatically**;
    - **Schedule**: **Only when I run it**, **Every hour**, **Once a day** or **Once a week**;
    - **Daily limit** and **Monthly limit**: the most it may process. The daily limit must be at least 1, and the monthly limit cannot be lower than the daily one.
+   - **Phone leads with AI** (closing and combined agents only, off unless you tick it): see [AI phone calls](#ai-phone-calls).
 5. **Review** — check the summary and choose **Create agent**.
 
 The agent is created as a **Draft** and does nothing until you start it.
@@ -39,6 +40,21 @@ The agent is created as a **Draft** and does nothing until you start it.
 ## Start it
 
 Open the agent and choose **Start agent**. It runs straight away and then on its schedule. An agent set to **Only when I run it** runs once each time you choose **Run now**.
+
+## AI phone calls
+
+A **Closing agent** or **Combined agent** can ask the AI voice agent to phone its leads. It is off unless you switch on **Phone leads with AI**, in the **Limits** step or later in the agent's **Settings** tab under **AI phone calls**.
+
+- **Who it calls.** A closing agent calls qualified leads that have gone quiet short of their goal (a meeting, or a sale or sign-up). A combined agent also calls new leads from the last 7 days to qualify them. Sourcing and re-engagement agents never phone anyone.
+- **Only callable leads.** Each call goes through the same checks as **Call with AI**: the lead gave you the number and asked or agreed to be called, TPS and CTPS, their calling hours, your attempt limits, opt-outs, one call at a time, and your voice minutes. See [Calls and consent](/help/voice/calls-and-consent).
+- **Once per purpose.** The agent asks for a lead's first call for each purpose. Retries after no answer follow your Voice attempt settings.
+- **Your approval setting applies.** An agent set to **Run automatically** places its calls itself. On **Review everything** or **Review new companies only**, each call waits under **Waiting for you** on the agent's **Queue** tab. Anyone with the member role or above can choose **Approve call** or **Decline**. An approved call still goes through every check above. A declined call is not placed, and the lead goes back to your normal follow-up.
+- **No double contact.** A lead the agent is calling, or has a call waiting for approval, gets no text follow-up from the same run: the call is the touch. If the call is cancelled, refused or declined, normal follow-up resumes on the next run.
+- **Daily limit.** **Calls per day, at most** (20 unless you change it, up to 100). Calls waiting for approval count toward it.
+- **Voice must be ready.** If your workspace cannot place calls yet, the option is greyed out with the reason, and owners and admins get a link to **Settings → Voice**.
+- **Phone leads permission.** The agent also needs **Phone leads** switched on in **Settings → AI & selling → What the AI may do**. Switching the agent on does not change that setting. If it is off, the agent says it will not call yet, and an owner or admin can choose **Allow the AI to phone leads**. That change applies to the whole workspace and is recorded in your audit log.
+
+Every call the agent asks for, and every lead it could not call, is on its **Activity** tab. The agent card and **Overview** show whether AI calls are on and how many it asked for in the last 7 days.
 
 ## The agent page
 

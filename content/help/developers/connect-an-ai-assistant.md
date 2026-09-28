@@ -5,6 +5,13 @@ category: developers
 keywords: [mcp, model context protocol, ai assistant, claude, claude code, codex, gemini, cursor, approvals, tools, mcp server, new connection, replace key, issue key, client configuration]
 order: 30
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/developers/connect-an-ai-assistant-1.png
+    alt: "The new assistant connection dialog with the MCP server URL, the key and the client configuration (the connection was deleted straight after)"
+    caption: "Copy the key and configuration into your assistant; it is shown once"
+  - src: /help/screenshots/developers/connect-an-ai-assistant-2.png
+    alt: "An assistant connection row with its permissions and the Replace key button"
+    caption: "Replace a lost key without recreating the connection"
 ---
 
 ClientTurn is an MCP server. An AI assistant that supports the Model Context Protocol, such as Claude, Codex or Gemini, can connect to it and read or work your leads, prospects, agents and settings, within the permissions you give it.

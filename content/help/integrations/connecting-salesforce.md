@@ -5,6 +5,10 @@ category: integrations
 keywords: [salesforce, sfdc, crm, opportunity, lead object, connected app, sandbox, stage, salesforce crm]
 order: 35
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-salesforce-1.png
+    alt: "The Salesforce card marked Connected with the org name and last successful sync"
+    caption: "A connected Salesforce org"
 ---
 
 ## Connect

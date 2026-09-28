@@ -5,6 +5,10 @@ category: settings
 keywords: [business facts, website analysis, analyse website, verified facts, lock fact, offer card, what the assistant says, ideal customer profile, icp, conversion goals, outreach guidance, value proposition, proof points, claims, direct close]
 order: 30
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/settings/business-profile-settings-1.png
+    alt: "Business facts read from the website with source badges, and an inferred fact marked Worth checking"
+    caption: "Confirm facts ClientTurn found so the assistant can use them"
 ---
 
 **Settings → Business Profile** holds what ClientTurn believes about your business, who you want to reach, and what counts as success. The conversation assistant, Find Leads and your agents all work from it. Owners and admins can edit it.

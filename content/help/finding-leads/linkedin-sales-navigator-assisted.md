@@ -9,6 +9,15 @@ screenshots:
   - src: /help/screenshots/finding-leads/linkedin-sales-navigator-assisted-1.png
     alt: "A prospect drawer whose company shows Website unknown with an Add website button"
     caption: "Website unknown: add the company website so ClientTurn can look for a work email"
+  - src: /help/screenshots/finding-leads/linkedin-sales-navigator-assisted-2.png
+    alt: "The LinkedIn queue with Ready to message, Ready to invite and Waiting on them lists"
+    caption: "You send in LinkedIn, then record it here"
+  - src: /help/screenshots/finding-leads/linkedin-sales-navigator-assisted-3.png
+    alt: "The LinkedIn filters for the search plan with Search LinkedIn, Copy filters and Import your list (CSV)"
+    caption: "Apply the filters in LinkedIn, or import your own list"
+  - src: /help/screenshots/finding-leads/linkedin-sales-navigator-assisted-4.png
+    alt: "The LinkedIn InMail credits panel with credits left, InMails awaiting a reply and Reply received buttons"
+    caption: "The credit balance is worked out from what you record"
 ---
 
 ClientTurn does not send anything on LinkedIn for you. It prepares, paces and records; you press send inside your own LinkedIn account. This article explains the split.

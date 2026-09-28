@@ -5,6 +5,10 @@ category: integrations
 keywords: [google ads, adwords, lead form asset, oauth, google account, google_key, webhook, webhook url, customer id, use this account, mcc, manager account, reconnect google]
 order: 56
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-google-ads-1.png
+    alt: "The Google Ads panel with the Google Ads account select listing two accounts and the Use this account button"
+    caption: "Choose which Google Ads account leads are read from"
 ---
 
 ## Connect

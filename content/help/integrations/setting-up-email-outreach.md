@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/integrations/setting-up-email-outreach-1.png
     alt: "The sending mailbox form with the Google preset, Test connection and Connect mailbox"
     caption: "Pick your mail provider, test the connection, then connect the mailbox"
+  - src: /help/screenshots/integrations/setting-up-email-outreach-2.png
+    alt: "The Sending domain health table with SPF, DKIM and DMARC passing for the demo sending domain"
+    caption: "SPF, DKIM and DMARC are checked daily"
 ---
 
 Campaign email is sent from your own address, through your own mail server, so replies come back to your inbox and your domain's reputation is your own. You connect the mailbox once, in **Settings → Connections**, under **Your sending mailbox**.

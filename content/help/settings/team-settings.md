@@ -7,8 +7,11 @@ order: 50
 updated: 2026-09-27
 screenshots:
   - src: /help/screenshots/settings/team-settings-1.png
-    alt: "The Team members table with Invite member, a role select and the Roles card"
-    caption: "Invite people, set each person's role, and check what each role can do"
+    alt: "The Team members table with an owner, an admin, a member and an expired invitation"
+    caption: "Invite people, set roles and manage invitations"
+  - src: /help/screenshots/settings/team-settings-2.png
+    alt: "The Remove member dialog for Tom Ashby with the Give their open work to select"
+    caption: "Choose who inherits their open work before removing someone"
 ---
 
 **Settings → Team** lists everyone with access to the workspace and what they can do.

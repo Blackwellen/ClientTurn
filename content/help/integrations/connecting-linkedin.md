@@ -5,6 +5,13 @@ category: integrations
 keywords: [linkedin, linkedin ads, campaign manager, lead gen forms, company page, oauth, lead sync, organisation, use this organisation, agency, several company pages]
 order: 57
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/connecting-linkedin-1.png
+    alt: "The LinkedIn panel with the LinkedIn organisation select and the Use this organisation button"
+    caption: "Choose which Company Page's lead forms are read"
+  - src: /help/screenshots/integrations/connecting-linkedin-2.png
+    alt: "The LinkedIn Lead Gen Forms card in Reconnect required, showing LinkedIn's error message"
+    caption: "LinkedIn's reason is shown on the card"
 ---
 
 The LinkedIn connection, shown as **LinkedIn Lead Gen Forms** in **Settings → Connections**, collects submissions from the lead forms on your LinkedIn ads.

@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/developers/api-keys-1.png
     alt: "The New API key dialog with the permissions list, the expiry and the allowed addresses field"
     caption: "Give a key only the permissions it needs, an expiry and, if you can, the addresses it may be used from"
+  - src: /help/screenshots/developers/api-keys-2.png
+    alt: "The Copy this key now dialog showing a newly created API key (deleted straight after this screenshot)"
+    caption: "The key is shown once"
 ---
 
 ## Create a key

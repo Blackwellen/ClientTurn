@@ -5,6 +5,10 @@ category: integrations
 keywords: [troubleshooting, connection, action required, reconnect required, needs attention, test connection, sync, status page, integration health]
 order: 90
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/troubleshooting-integrations-1.png
+    alt: "The Connection health summary above the lead-source cards, with LinkedIn Lead Gen Forms needing a reconnect"
+    caption: "Problems at a glance"
 ---
 
 ## Connection health

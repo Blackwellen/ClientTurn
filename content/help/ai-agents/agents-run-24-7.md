@@ -9,6 +9,9 @@ screenshots:
   - src: /help/screenshots/ai-agents/agents-run-24-7-1.png
     alt: "The Delete this agent dialog explaining that leads, prospects and sourcing runs are kept"
     caption: "Deleting an agent keeps the leads, prospects and sourcing runs it produced"
+  - src: /help/screenshots/ai-agents/agents-run-24-7-2.png
+    alt: "The agent's activity history showing a scheduled sourcing run queued at about 2am each night"
+    caption: "Runs continue with nobody logged in"
 ---
 
 ## Nobody needs to be logged in

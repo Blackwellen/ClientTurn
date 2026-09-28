@@ -5,6 +5,13 @@ category: integrations
 keywords: [crm, crm sync, two-way, push, pull, push status, failed push, last push, pipedrive, salesforce, zoho, deals, opportunities, crm integration]
 order: 25
 updated: 2026-09-26
+screenshots:
+  - src: /help/screenshots/integrations/integrating-with-your-crm-1.png
+    alt: "The CRM group of Connections with HubSpot, Zoho CRM and Salesforce all connected"
+    caption: "Connected CRMs receive qualified and booked leads"
+  - src: /help/screenshots/integrations/integrating-with-your-crm-2.png
+    alt: "The HubSpot panel's Push status with the last push, the count pushed in the last 30 days and one failed push"
+    caption: "See what reached your CRM and what did not"
 ---
 
 ClientTurn works alongside your CRM rather than replacing it. There are two directions, and you choose each separately.
