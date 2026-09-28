@@ -378,7 +378,8 @@ to a Messaging Service under the wrong account.
 Declared in `services/registry.ts` (domain `voice`), handled in
 `services/operations/voice.ts`. The runtime checks role, scope, caller and
 confirmation; the handlers enforce section-level RBAC, the OD-1 identity and
-the entitlement gate server-side. `AGENT` is deliberately not a caller.
+the entitlement gate server-side. `AGENT` is a caller of `voice.request_call`
+only, and only for a background agent with "Phone leads with AI" on (§9a).
 
 | Operation | Risk | Minimum role | Callers | Notes |
 |---|---|---|---|---|
@@ -387,11 +388,73 @@ the entitlement gate server-side. `AGENT` is deliberately not a caller.
 | `voice.number_request` | REVERSIBLE_WRITE | admin | UI | Starts provisioning. Refused in a trial and without the number item or Pro voice item. |
 | `voice.number_status` | READ | member | UI, COPILOT, MCP, API | Stage, timeline, rejection reason. |
 | `voice.number_release` | DESTRUCTIVE | owner | UI | Requires typing the number. Cancels queued calls. |
-| `voice.request_call` | EXTERNAL | member | UI, MCP, API | Places a real call and spends minutes, so a person confirms it. `recordCallRequest` (a team member recording that the lead asked to be called) is UI only. |
+| `voice.request_call` | EXTERNAL | member | UI, MCP, API, AUTOMATION, AGENT | Places a real call and spends minutes, so a person confirms it (an agent's standing confirmation is its admin-set switch, §9a). `recordCallRequest` (a team member recording that the lead asked to be called) is UI only. `agentId` is required from, and only accepted from, caller AGENT. |
 | `voice.cancel_call` | REVERSIBLE_WRITE | member | UI, MCP, API | Only before the call starts. Releases held minutes. |
 | `voice.calls_list` | READ | viewer | UI, COPILOT, MCP, API | Call cards; cost only for owner/admin. |
 | `voice.call_get` | READ | viewer | UI, COPILOT, MCP, API | One call with transcript and a signed recording URL. |
 | `voice.admin_disable_workspace` | REVERSIBLE_WRITE | admin | SYSTEM | The per-workspace kill switch, called by the admin shell after platform-admin check and step-up. Cancels queued calls. |
+
+### 9a. Calls from agents ("Phone leads with AI", 0176)
+
+Owner feedback 2026-09-28: calling should be automatic from agents and manual
+from the Leads drawer. Both use the one calling path above.
+
+- **Manual.** The Leads drawer's call control is a split: "Call yourself"
+  (`tel:`) and "Call with AI" (on narrow screens, in More). It opens the same
+  `CallWithAiDialog` and server action as the lead page, and its disabled
+  reason comes from the same `callDisabledReason` (`voice/call-button-state.ts`).
+  A viewer, or a drawer whose voice state could not be read, never gets an
+  enabled button.
+- **Automatic.** `agents.voice_calls_enabled` (off by default) and
+  `agents.voice_daily_call_cap` (default 20, 1..100). Offered in the new-agent
+  wizard and the agent's Settings tab only when `assertVoiceAllowed` passes and
+  calling is connected; otherwise shown disabled with the reason and, for
+  admins, the link to Settings, Voice (or to plans when locked). Closing agents
+  call stalled qualified leads on `BOOKING_CLOSE` or `DIRECT_CLOSE` (by the
+  goal not reached); combined agents also call new leads (7 days, PENDING or
+  REVIEW) on `QUALIFICATION`. Sourcing and re-engagement agents never phone.
+- **The tick** (`agents/voice-calls.ts` `runAgentVoiceCalls`, wired in the
+  scheduler BEFORE the agent's own work). On **Run automatically** (AUTO) it
+  asks `voice.request_call` as caller AGENT with `{ leadId, route, agentId }`,
+  `confirmationSource: standing_permission`, idempotency key
+  `agent-voice:<agent>:<lead>:<route>`. It skips leads with a call queued or
+  live, leads with a call waiting for approval, and leads already called on
+  that route (retries belong to `planCallRetry` and the configured attempts).
+  It stops for maintenance, unusable voice, the "Phone leads" permission off,
+  or the daily cap (open approvals count toward it).
+- **Approval levels (owner decision 2026-09-28).** Any other level
+  (**Review everything**, **Review new companies only**) never dials: each
+  call becomes the agent queue's existing review item (`item_type REVIEW`,
+  `subject_type LEAD`, status BLOCKED, shown under "Waiting for you" with
+  **Approve call** / **Decline**). `agent.decide_call` (EXTERNAL, member, UI
+  only, capability `send_outbound`) claims the item conditionally, works out
+  the route from where the lead is now (`routeForApproval`: not qualified ->
+  QUALIFICATION; qualified -> the unmet goal's close route; goal reached or
+  disqualified -> not called), then runs `voice.request_call` as caller
+  AGENT (`userId: null`, `confirmationSource: person`, idempotency key
+  `agent-call-approval:<item>`), so every agent and calling check applies and
+  it is never `personRequested`. Declining cancels the item.
+- **No double contact (owner decision 2026-09-28).** The call is the touch:
+  the leads a run's call covers (asked for, already queued or live, or
+  waiting for approval; `touchedLeadIds`) get no text nudge from that run's
+  closing tick (`runBookingTick(agent, calledLeadIds)` via
+  `leadsForFollowUp`). A cancelled, refused or declined call leaves the lead
+  to follow-up on the next run.
+- **The handler** refuses an AGENT caller unless the named agent is ACTIVE,
+  has the option on, makes that route, is under its daily cap (counted from
+  `voice_calls.requested_by_agent_id` since UTC midnight) and the workspace's
+  "What the AI may do -> Phone leads" is on (`agentCallRefusal`). Then
+  `requestCall` runs exactly as for the button; an agent is never a person,
+  so it keeps the human-takeover hold.
+- **Permission is never widened implicitly.** `agent.set_voice_calls`
+  (FINANCIAL, admin, not AGENT) never touches `commercial_authority`. When
+  "Phone leads" is off the agent screens say it will not call yet and offer
+  `ai_settings.allow_calls` (UI only, admin), which sets only `call` and writes
+  `commercial_authority.ai_updated` with the before and after.
+- **Surfaces.** The call card shows "Called by <agent>"; the agents list and
+  Overview show on/off and the calls asked for in 7 days; every request and
+  refusal is on the agent's Activity timeline.
+- Tests: `tests/agent-voice-calls.test.ts`.
 
 Billing (outside the service layer): `billing/voice-actions.ts` (owner-only
 server actions: buy a pack, add the number item), `voice-purchase.ts`
@@ -629,11 +692,16 @@ NURTURE, REACTIVATION and RETURN_CALL. Sections, in order:
 - **Earlier conversation**: the text conversation's summary, so the call does
   not repeat it (continuity).
 
-**Bounded.** `CALL_BRIEF_MAX_TOKENS = 1,100` (about 4 characters a token).
-Optional detail is dropped in a fixed order (history, the business's
-answers, offer lines, then the known list) and the move, the money rule and
-the stop rule are never cut. `tests/voice-call-brief.test.ts` pins a worst
-case. The time plan is a separate variable of about 100 tokens.
+**Bounded.** `CALL_BRIEF_MAX_TOKENS = 1,500` (about 4 characters a token;
+raised from 1,100 by the live-call fixes, see 16.16). Optional detail is
+dropped in a fixed order (history, the business's answers, the objection
+example questions, offer lines down to two, the known list, the enquiry
+detail, optional plan questions, the rest of the offer lines, the opener
+remainder) and the move, the plan's required questions, the booking-off and
+no-claims lines, the money rule and the stop rule are never cut.
+`tests/voice-call-brief.test.ts` pins a worst case. The time plan is a
+separate variable of about 170 tokens (it now carries the local date and
+time).
 
 ### 16.4 Tools and endpoints
 
@@ -1028,6 +1096,78 @@ cheapest pack rate one premium minute costs at least £0.651); the extra TTS
 cost is an estimated `PREMIUM_VOICE_MINUTE` line in `voice_cost_ledger`
 (Retell's own figure, when present, already includes it). Settling above the
 hold draws on the balance and never goes below zero (no overage).
+
+### 16.16 The first real calls (2026-09-28): what failed and what changed
+
+The 95 simulated scenarios all scored 100 while the owner's first real call
+failed. The call (route QUALIFICATION, lead "jamahl thomas", service "Roof
+replacement", qualification PENDING, calling as "Blackwellen", booking not
+permitted):
+
+> AI: ...Is now an OK time for a couple of minutes? / Lead: Yes. /
+> AI: ...One useful point: we offer tailored solutions to fit your specific
+> needs. Does that sound like it would help to talk further? / Lead: Yes. /
+> AI: Great. A colleague will send you the details to get started. When
+> would be a good time for a quick follow-up call? I can offer times this
+> afternoon or tomorrow morning. / Lead: Tomorrow. / AI: One moment while I
+> check availability for tomorrow morning. [check_availability refused
+> NOT_PERMITTED] A colleague will handle arranging the follow-up call... /
+> summary: "Qualified lead interested in tailored solutions..."
+
+Root causes and fixes:
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| No qualification | The brief carried ONE move from the lead's NBA (that day an INFORM, "share one useful point"). The loader (`server-p3.ts`) never read the workspace's configured `qualification_questions` (the live workspace has four), so no plan could reach the call; the INFORM move plus "one light trial close" took the call straight to a close. | `voice/question-plan.ts` `buildQuestionPlan`: the NBA's own question first, then the configured questions for the lead's service (or for every service) in the owner's order, else a catalogue default (need or scope for the named service, timeline, budget range, decision-maker, the postcode when the business works to service areas), skipping what is known. At most 5 questions; required floor 3, ceiling 4. A QUALIFICATION brief always carries a `QUESTION PLAN` section (keys in brackets for `record_fact`) and "ask 1 to N before any close, next step or closing line, unless they opt out, say it is a bad time, want a person or it is the wrong person". The plan is never dropped for space. The engine's own decisions stand: ESCALATE, DISQUALIFY, NO_ACTION, WAIT and CTA_* NBAs get no plan. The trial close is not in a plan brief. A confirmed answer to a configured question with no dimension (`Q.<id>`) is written as an UNMAPPED fact against that question. |
+| Invented claim | "Share one useful point from the approved offer lines" with no offer lines. | With no approved lines the brief says `NO APPROVED CLAIMS. Do not describe the business or its offer beyond the service name (...)`; INFORM / NURTURE / ANSWER moves and the objection step never mention offer lines that do not exist. The general prompt adds "nothing about the business beyond its APPROVED OFFER LINES". `voice/call-lint.ts` (reusing the text agent's AI-tell list) flags claim-like sentences no approved line supports, in post-call analysis and in the QA scorer. |
+| Times before the tool | The booking-off rule was only inside the close ("you may not book"). | `BOOKING IS OFF. Never offer, suggest or check times or days, never say you are checking availability, never call check_availability or book_meeting.` up front whenever booking is off. The next step is a call-back window: ask which day and time of day suits a colleague, `schedule_callback` by PERSON with the window in the note, say only its line. |
+| False summary | `end_call_summary` stored the model's label. | `voice/summary-guard.ts`: before the summary is stored (tool core) and again in post-call analysis, "qualified" is replaced unless `leads.qualification_state` is QUALIFIED, and the summary states what `record_fact` recorded in the call, or "No qualifying answers were recorded on the call; qualification stays pending." |
+| "A colleague will... A colleague will" | A two-sentence NOT_PERMITTED refusal, the model's own line on top, and a holding line for a tool it was not allowed. | Refusals are one sentence; a calendar tool refused for booking-off says "A colleague will arrange a time with you." with `data.next` (ask for a call-back window). The general prompt: "If a tool refuses, say its say line once and add nothing." No holding line, because the brief forbids the tool. |
+| Harness gap | The scripted agent took the brief's one move; the scorer never checked what the call learned or claimed. | The scripted agent reads the `QUESTION PLAN` from the brief TEXT and follows it (so a brief without a plan fails the suite). New checks on every scenario (`liveCallFailures`): the required plan questions asked (or answered) before any close on QUALIFICATION, unless the lead took it elsewhere, the call looped or the time plan said wrap up; no availability before a successful `check_availability`; no "checking availability" with booking off; no claim outside the offer lines; no "qualified" in the model's summary. `scoreRecorded` replays a real transcript: the live call (`live-2026-09-28-no-qualification`) fails on all five, and the same lead lines through the fixed brief score 100. |
+
+**Second real call** (the same day; service "Flat roof / GRP", the lead's
+notes and postcode on file, the workspace's AI assistant switched off):
+
+| Defect | Fix |
+|---|---|
+| Every tool refused: the tool gate required the text assistant (`aiEnabled`) | Decision: `record_fact`, `schedule_callback` by PERSON, `end_call_summary`, `log_objection` and `opt_out` are core call functions and follow the call, not the text assistant's switch (they decide nothing commercial; an AI call-back still needs `aiMay(call)`). And a call is not placed with a crippled agent: new entitlement reason `AI_ASSISTANT_OFF` (integration-required), "Switch on the AI assistant in Settings, Workspace before AI calls...", read by `loadEntitlementFacts` with the text agent's own rule (switch, plan allowance, a mode other than OFF). It shows wherever the entitlement message shows (the dial decision, the drawer's "Call with AI" reason, the Settings, Voice notice) and as a Set-up checklist item. |
+| A call-back agreed for 5pm at 17:3x, the correction to 6 lost | The time plan carries `NOW: ... Monday 28 September, 5:32pm their time` and "a call-back time must be later than now; if they correct a time, the latest one wins; read the exact time back once". `schedule_callback` with a past `at_iso` is refused `PAST_TIME` with one natural reprompt ("5pm has already gone today. Did you mean 6pm today, or 5pm tomorrow?", `spoken-time.ts pastTimeReprompt`); an accepted one is read back exactly ("A colleague will call you back at 6pm today."). |
+| "What prompted your enquiry?" with the service, notes and postcode on file | The brief carries `They enquired about: <service>`, `THEIR ENQUIRY` (the lead's notes, up to 280 characters: "open on it; never ask what prompted the enquiry; confirm instead of asking where it answers a plan question") and the postcode as known. On unclear speech: one reprompt, then a yes or no question from what is known, not a hand-over. |
+| Talking over and restarting sentences | Default feel: interruption sensitivity 0.75 -> 0.6, responsiveness 0.85 -> 0.8, backchannel 0.5 -> 0.3 (stored profiles keep their values); turns "under 25 words; if they talk over you, stop and let them finish". |
+
+Budgets (reasons in the code): `CALL_BRIEF_MAX_TOKENS` 1,100 -> 1,500; the
+QA prompt total 2,550 -> 3,000; the general prompt stays under 1,300. The
+brief for the first live lead now reads, in order: who and why (with "They
+enquired about: Roof replacement"), FIRST, the move ("Ask question 1 of the
+QUESTION PLAN (What does the roof replacement involve, roughly?)"), the plan
+(scope, timing, budget, decision-maker; ask 1 to 4 before any next step),
+BOOKING IS OFF, NO APPROVED CLAIMS, CLOSE (only after the plan: a
+colleague's call-back window), then the unchanged rules. Tests:
+`tests/voice-live-call-fixes.test.ts`, `tests/voice-call-qa.test.ts`
+("live call 2026-09-28"). To re-test on a real call the Retell LLM must be
+updated (`scripts/retell-setup.mjs`) so the new general prompt is live.
+
+**Live dry run** (`node scripts/voice-brief-dry-run.mjs <leadId> [route]`,
+read-only: a fetch guard refuses every Supabase write and any other host;
+the only POST allowed is the STABLE `check_suppression` RPC) builds the
+exact brief, time plan and dynamic variables from the live database through
+the real loader. Its first run found three more loader faults, fixed:
+(1) the offer card was flattened, so its NEVER CLAIM items ("cheapest",
+"best in London") were listed as APPROVED OFFER LINES along with the card's
+header; now only the approved sections are used (`voiceOfferLines`:
+APPROVED CLAIMS, published prices, value proposition, key messages, what
+they sell, differentiators) and the never-say items become a `NEVER SAY OR
+CLAIM` line; (2) the owner's proof points were dropped by the text card's
+600-token budget, so the voice loader reads them itself (profile outreach
+proof points and the default playbook's `proof_points`), puts them first
+with the lead's own service line, and removes restatements
+(`dedupeApproved`); (3) with booking allowed but no readable calendar
+(`ASK_PREFERRED_TIME`, `LINK`), the close said "call book_meeting with
+their time", which the gate always refuses (no `check_availability` in the
+call): now `NO CALENDAR ON THIS CALL` plus a colleague-confirmed time via
+`schedule_callback` (or the booking link). Plan order: the lead's service's
+own questions, then the workspace-wide ones (`service_id` null), each by
+position, one per dimension or intent.
 
 ### 16.13 Migration 0162 (written, NOT applied)
 

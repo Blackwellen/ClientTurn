@@ -6,7 +6,67 @@
 
 ---
 
-## Owner summary
+## Update 2026-09-28: full revenue engine upgrade (brief §0–76) — release readiness
+
+**Repo:** `main` @ `277f0fe` (pushed, deployed to production), plus the final wrap-up commit listed at the end of this section. **Database:** migrations 0143–0175 applied and verified live. **Checks on the release tree:** `npm run build` ✓, `npx tsc --noEmit` ✓, lint 0 errors, tests g1 7,367 / g2 146 / g3 224, all passing.
+
+### What was built on 2026-09-27/28
+
+| Area | Delivered | Evidence |
+|---|---|---|
+| AI voice sales agent | Locked opener (AI disclosure, who and why, "is now OK", recording notice; ClientTurn named at the end), calling hours and bank holidays, eligibility (lead-supplied numbers only, consent basis, TPS/CTPS, attempt caps), minutes ledger (no overage), dedicated numbers (subaccount → bundle → UK mobile), post-call into qualification, maintenance pause, admin pause/limit/suspend | `docs/VOICE.md`; 95 adversarial call scenarios 100/100; voice suites in g1/g2 |
+| Voice QA (two rounds) | 162 spoken-intent rows incl. UK colloquial opt-outs, call screening, vulnerable callers, data requests, price questions, false-positive guards; a swear-off stops all contact; spoken dates/times | VOICE.md §16.12 |
+| Retell | Agent + LLM created (en-GB, Cartesia Willa, 7-min cap), Twilio Elastic SIP trunk, platform number imported for outbound | `scripts/retell-setup.mjs`; env in Vercel |
+| Quote-to-cash | Catalogue, calculator, approvals, public quote + e-sign + PDF, invoices, **pay links on the customer's own Stripe with token-matched automatic settlement**, review queue for anything uncertain | 0156, 0173, 0175; `docs/revenue-engine/14-quote-to-cash-capabilities.md` |
+| Closing agent + commercial rules | Goal-aware closing (meeting, sale, subscription, trial); agents target products or the whole catalogue; deterministic best fit; approved-only competitor positioning with a validator | 0174; `tests/commercial-rules.test.ts` |
+| Channels | LinkedIn Assist (AI drafts, a person sends; account-safe pacing); Messenger/Instagram opt-out, permission and copy fixes; Instagram gated until Meta approval | 0171; `tests/linkedin-assist.test.ts` |
+| Enterprise | Audit log export, per-person permissions, `/dpa`, security questionnaire, data flow, uptime, pen-test scope, internal review (IR-01..05 fixed, IR-06 key part fixed) | 0172; `docs/security/` |
+| Billing and affiliates | Dunning, disputes, downgrades, day-90 deletion; one-off 6/8/10% commission, consent-only referral cookie, write-off, no self-billing; terms approved with independent-business status | 0165, 0169, 0170; `tests/affiliate-owner-decisions.test.ts` |
+| Admin | Maintenance mode + banners, voice ops, support signals for every new feature, payment-review counts, LinkedIn Assist hold | 0161, 0175 |
+| Accessibility | WCAG 2.2 AA pass: 34 fixed (18 serious), 0 critical/serious open | `docs/ACCESSIBILITY_AUDIT_2026-09-28.md`; axe on 21 public routes |
+| Public site | Voice and quote sections, SDR cost calculator, ~30% less text, card padding | `/sdr-cost-calculator` |
+| Economics | Voice model, WhatsApp tokens, one-off affiliate CAC, blended customer | `docs/economics.md` §12–14 |
+
+### §101 release gates, re-assessed 2026-09-28
+
+| Gate | Verdict |
+|---|---|
+| Cross-tenant leak / broken RLS | **PASS** — 290 tables with RLS (internal review), every new table forced RLS + member-read-only grants, verified live after each migration |
+| Suppression / opt-out bypass | **PASS** — plus voice swear-off → global opt-out; Messenger/Instagram opt-outs now stick |
+| Fake product claim / price | **PASS** — AI never quotes; competitor validator added |
+| Broken billing | **PASS (unit + TEST prices set); end-to-end TEST checkout and quote → pay not yet run** (owner steps in doc 14) |
+| Critical accessibility issue | **PASS** — none critical or serious open; signed-in screens reviewed statically only |
+| Voice works on a real call | **OPEN** — Retell + trunk ready; the capped test call to the owner is waiting on the owner's go-ahead for two test database writes (10 minutes, temporary number) |
+| Significant P0/P1 | **PASS** — none known |
+
+### Scores (re-rated 2026-09-28)
+
+| Score | Before | Now | Why |
+|---|---|---|---|
+| Functional | 82 | 88 | voice, quote-to-cash with settlement, LinkedIn Assist, commercial rules, enterprise pack; −F3 harness, −real call not yet made |
+| Conversation quality | 64 | 76 | MI-1..5 fixed, objection matrix 120/120 (Claude-graded), 95 voice scenarios; −no live-model grading |
+| Sales architecture | 80 | 86 | goal-aware closing, best fit, targeting, competitor rules |
+| Data quality | 76 | 78 | invoice/payment linkage, permission audit trail |
+| AI architecture | 84 | 85 | Instagram gate, off-target validator |
+| Cost efficiency | 78 | 84 | economics complete incl. voice and affiliates; −live per-turn cost unmeasured |
+| Compliance | 86 | 89 | DPA, swear-off, LinkedIn no-automation, affiliate status terms; −no solicitor review, ICO no. placeholder |
+| Security | 80 | 85 | internal review with fixes; −no pen test, no MFA |
+| Analytics | 72 | 74 | revenue journey, quote/voice analytics; −no production cohort |
+| Reliability | 72 | 78 | lanes, reaper, alerts, heartbeat; −PITR off, Sentry DSN unset |
+| UX | 66 | 78 | UI sweep, accessibility pass, friendly errors |
+| **Overall** | **74** | **80** | mean 81.5, capped at 80 while the real voice call and the TEST checkout/quote-pay run are outstanding |
+
+### Decision: 🟡 CONDITIONAL RELEASE → 🟢 once three owner items are done
+
+1. The capped voice test call (approve the two test database writes).
+2. One Stripe TEST checkout and one quote → sign → pay run (doc 14 steps).
+3. Vercel Pro before taking paying customers (Hobby is non-commercial).
+
+Also before promotion: set `SENTRY_DSN` and `OPS_ALERT_EMAIL`; decide PITR ($100/mo); fill the DPA placeholders (ICO number, Retell region); Stripe Smart Retries off; Stripe Tax or VAT-inclusive prices; `CREDENTIAL_ENCRYPTION_KEY` in Vercel.
+
+---
+
+## Owner summary (2026-09-27)
 
 1. **Done.** The engine is built and wired end to end. Every intake converges on one `ingestLead()`; identity is reversible; lead scoring v2 is explainable; the qualification and intent engine includes a next-best-action planner; the agent calls one model per turn, with QA; bookings are confirmed by the provider and checkout is policy-gated; hand-off comes with a brief; data rights have four distinct operations; and budgets, tiers and ledgers control AI spend.
 2. **Phase 0 release blockers:** all 26 discovery defects (B1–B26) are fixed with tests (02; tracker rows 10, 14, 23, 24, 98). B13 was also confirmed live (09). The 02 status table still shows B11–B16 and B24 as "in progress"; that label is stale.

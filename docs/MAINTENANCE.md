@@ -45,8 +45,11 @@ the conversation `AGENT` through). **Outbound sends** are held during App
 offline and Site offline (rescheduled to the end of the window, re-checked every
 15 minutes) unless "Keep automated follow-up running" is ticked. Read only never
 holds sends. Opt-outs and stop conditions still abort as normal; a hold never
-outranks a stop. Voice dialling is not held by this switch (use the voice
-controls in Admin → System).
+outranks a stop. Outbound AI calls follow the same rule (docs/VOICE.md 16.10):
+a dial is re-scheduled to the end of the window, never dropped; inbound return
+calls are still answered. Admin → System → Voice shows a "held for
+maintenance" notice while this is in force; the per-workspace voice controls
+there are separate and still work.
 
 ## Schedule maintenance
 

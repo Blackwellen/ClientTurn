@@ -368,7 +368,7 @@ importantly, absent from all of them if it is not declared.
 
 <!-- mcp-tools:start (generated: node scripts/generate-mcp-tools-doc.mjs) -->
 
-145 tools are declared for MCP clients, across 34 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
+146 tools are declared for MCP clients, across 34 domains. A declared operation whose handler is not implemented is not advertised by `tools/list`, and `tools/list` shows each credential only the tools its scopes allow.
 
 | Domain | Tool | Kind | Scope |
 |---|---|---|---|
@@ -377,6 +377,7 @@ importantly, absent from all of them if it is not declared.
 | `agent` | `agent.create` | WRITE | `agents:write` |
 | `agent` | `agent.configure` | WRITE | `agents:write` |
 | `agent` | `agent.set_offer_target` | WRITE | `agents:write` |
+| `agent` | `agent.set_voice_calls` | APPROVAL_GATED | `agents:write` |
 | `agent` | `agent.start` | APPROVAL_GATED | `agents:write` |
 | `agent` | `agent.run_now` | APPROVAL_GATED | `agents:write` |
 | `agent` | `agent.pause` | WRITE | `agents:write` |
