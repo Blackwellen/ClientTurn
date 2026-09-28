@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/proxy-session";
+import { refreshSessionWithUser, updateSession } from "@/lib/supabase/proxy-session";
+import { maintenanceGate } from "@/lib/maintenance/proxy-gate";
 
 /**
  * Host-based routing for the status subdomain.
@@ -83,6 +84,12 @@ export async function proxy(request: NextRequest) {
     // outage.
     return NextResponse.next();
   }
+
+  // Maintenance mode (docs/MAINTENANCE.md): a cached, fail-open read of the
+  // platform setting; admin, status, webhooks, cron and legal pages are never
+  // touched. Returns a 503 page/response, an admin-bypass response, or null.
+  const maintenance = await maintenanceGate(request, refreshSessionWithUser);
+  if (maintenance) return maintenance;
 
   return await updateSession(request);
 }
