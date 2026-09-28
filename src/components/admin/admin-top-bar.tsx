@@ -28,19 +28,19 @@ export function AdminTopBar({
 
   return (
     <header
-      className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-md sm:px-6"
+      className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-surface/95 px-4 backdrop-blur-md sm:px-6"
       style={{ height: "var(--lr-topbar-height)" }}
     >
       <IconButton
         size="sm"
         label="Open navigation"
-        className="lg:hidden"
+        className="shrink-0 lg:hidden"
         onClick={onOpenNav}
       >
         <Menu className="size-4" />
       </IconButton>
 
-      <h1 className="min-w-0 shrink-0 truncate text-[15px] font-semibold text-content lg:hidden">
+      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
         {titleForAdminPath(pathname)}
       </h1>
 
@@ -48,7 +48,7 @@ export function AdminTopBar({
         <AdminSearch />
       </div>
 
-      <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2.5">
         {/* Scope selector. Choosing a customer opens their support drawer —
             it is navigation, not a hidden global filter. */}
         <DropdownMenu

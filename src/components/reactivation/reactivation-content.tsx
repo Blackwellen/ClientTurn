@@ -89,7 +89,7 @@ export function ReactivationContent({
           <EmptyState
             icon={SearchX}
             title="No campaigns match these filters"
-            description="Try a different search, status or date range — or clear the filters to see every campaign in this workspace."
+            description="Try a different search, status or date range. Or clear the filters to see every campaign in this workspace."
             action={
               <Button variant="secondary" size="sm" onClick={clearFilters}>
                 Clear filters

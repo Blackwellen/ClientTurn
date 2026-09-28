@@ -11,6 +11,7 @@ import {
   formatShort,
 } from "@/components/status/status-parts";
 import { cn } from "@/lib/cn";
+import { StatusMaintenanceCard } from "@/components/site/status-maintenance-card";
 
 const statusDescription =
   "Real-time status and performance information for ClientTurn services and integrations.";
@@ -180,6 +181,12 @@ export default async function StatusPage() {
 
         {/* -------------------------------------------------------- services */}
         <div className="mx-auto max-w-[1180px] px-5 py-8">
+          {snapshot.maintenance ? (
+            <div className="mb-6">
+              <StatusMaintenanceCard maintenance={snapshot.maintenance} />
+            </div>
+          ) : null}
+
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <h2 className="text-[20px] font-bold text-content">Services</h2>

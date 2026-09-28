@@ -83,7 +83,7 @@ const CONFIRM: Record<
     title: "Delete this draft?",
     scope: "The draft and its settings are removed.",
     consequence:
-      "This cannot be undone. Only drafts can be deleted — a campaign that has sent anything must be cancelled instead, so its results survive.",
+      "This cannot be undone. Only drafts can be deleted. A campaign that has sent anything must be cancelled instead, so its results survive.",
     confirm: "Delete draft",
     danger: true,
   },

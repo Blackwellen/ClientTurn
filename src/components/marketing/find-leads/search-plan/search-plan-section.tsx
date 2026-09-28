@@ -70,9 +70,8 @@ export function SearchPlanSection() {
         </div>
         <div className="fl-chapter-aside">
           <p>
-            Natural language becomes a structured plan covering companies,
-            roles, locations, intent, exclusions, the result target and the
-            review mode.
+            Companies, roles, locations, intent, exclusions, target and review
+            mode, all editable.
           </p>
         </div>
       </div>

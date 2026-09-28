@@ -2,6 +2,7 @@ import { getAffiliateAccount, listPortalPayouts } from "@/lib/affiliates/portal"
 import { csvCell } from "@/lib/csv";
 import { getPayoutBreakdown } from "@/lib/affiliates/payouts";
 import { formatMinor } from "@/lib/affiliates/types";
+import { selfBillingLines } from "@/lib/affiliates/payout-rules";
 
 /**
  * A payout statement, as CSV.
@@ -46,11 +47,20 @@ export async function GET(
     ["", ""],
     ["Referrals", String(breakdown.referrals)],
     ["Paid customers", String(breakdown.paidCustomers)],
-    ["New customer commission", formatMinor(breakdown.newCustomerMinor, currency)],
-    ["Renewal commission", formatMinor(breakdown.renewalMinor, currency)],
+    ["One-off commission", formatMinor(breakdown.newCustomerMinor, currency)],
+    ["Renewal commission (legacy)", formatMinor(breakdown.renewalMinor, currency)],
     ["Adjustments", formatMinor(breakdown.adjustmentMinor, currency)],
     ["Reversals", formatMinor(breakdown.reversalMinor, currency)],
     ["Total payout", formatMinor(payout.amountMinor, currency)],
+    ["", ""],
+    // Remittance advice, never a VAT invoice: no self-billing at launch
+    // (owner decision 2026-09-28, payout-rules.ts SELF_BILLING_AT_LAUNCH).
+    ...selfBillingLines({
+      taxCountry: affiliate.taxCountry,
+      vatRegistered: false,
+      selfBillingAgreement: false,
+    }).map((line): [string, string] => ["Note", line]),
+    ["Issued by", "Blackwellen Limited, trading as ClientTurn"],
   ];
 
   const csv = rows.map(([label, value]) => `${csvCell(label)},${csvCell(value)}`).join("\r\n");

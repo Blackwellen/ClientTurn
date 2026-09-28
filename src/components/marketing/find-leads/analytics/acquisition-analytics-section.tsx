@@ -22,9 +22,9 @@ export function AcquisitionAnalyticsSection() {
     <FlSection id="analytics" glow="right">
       <ChapterHead
         eyebrow="Acquisition analytics"
-        title="See what it costs to build pipeline —"
+        title="See what it costs to build pipeline,"
         accent="and what converts."
-        aside="Sourcing, verification, outreach and prospect-to-lead performance, measured from one acquisition journey."
+        aside="Sourcing, verification, outreach and promotion, measured in one journey."
       />
 
       <div className="fl-split">
@@ -42,8 +42,7 @@ export function AcquisitionAnalyticsSection() {
         >
           <ProviderBars rows={PROVIDER_ROWS} />
           <p className="fl-note-line">
-            Capability, not vendor pricing. Raw provider unit costs stay
-            internal — what you see is your own spend against your own
+            Capability, not vendor pricing: your own spend against your own
             allowance.
           </p>
         </AppSurface>

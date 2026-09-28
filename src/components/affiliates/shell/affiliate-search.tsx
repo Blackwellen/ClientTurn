@@ -44,7 +44,7 @@ export function AffiliateSearch({
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   useBodyScrollLock(open);
-  useEscape(open, onClose);
+  useEscape(open, onClose, panelRef);
   useFocusTrap(panelRef, open);
 
   React.useEffect(() => {

@@ -431,7 +431,7 @@ export function AudienceStep({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-line bg-surface-sunken/50 px-4 py-4 text-[12.5px] text-content-muted">
-              Unable to estimate audience right now. You can still continue — the campaign
+              Unable to estimate audience right now. You can still continue. The campaign
               re-checks who it can reach before it sends.
             </div>
           )}

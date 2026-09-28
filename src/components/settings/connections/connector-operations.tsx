@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Check, Copy, KeyRound, RotateCw, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -284,7 +285,7 @@ export function ConnectorOperations({
           {rotated && (
             <div className="mt-2 rounded-md border border-warning-100 bg-warning-50/70 p-2.5">
               <p className="text-xs font-medium text-warning-800">
-                Copy this now — it will not be shown again
+                Copy this now. It will not be shown again
               </p>
               <p className="mt-0.5 text-[11px] text-content-secondary">
                 The old secret stopped working the moment this was issued.
@@ -314,7 +315,7 @@ export function ConnectorOperations({
           {notice}
         </p>
       )}
-      {error && <p className="text-xs text-danger-700">{error}</p>}
+      <FormError message={error} />
     </div>
   );
 }

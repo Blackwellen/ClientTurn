@@ -475,7 +475,7 @@ function ThreadPane({
       */}
       {replyState.state === "HUMAN_ONLY" && (
         <p className="border-t border-line bg-warn-50 px-4 py-3 text-[12.5px] text-content">
-          The assistant has stopped replying here — {channelLabel(selected.channel)}{" "}
+          The assistant has stopped replying here: {channelLabel(selected.channel)}{" "}
           only allows automated replies for 24 hours. You can still answer
           yourself for another {replyState.daysLeft}{" "}
           {replyState.daysLeft === 1 ? "day" : "days"}.

@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import { useRouter } from "next/navigation";
 import {
   Archive,
-  ArrowLeft,
   ArrowUp,
   Copy,
   EllipsisVertical,
@@ -78,13 +77,7 @@ export function CampaignDetailHeader({
 
   return (
     <div className="space-y-3">
-      <Link
-        href="/app/find-leads?view=campaigns"
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Back to Campaigns
-      </Link>
+      <BackLink href="/app/find-leads?view=campaigns">Back to Campaigns</BackLink>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -233,7 +226,7 @@ export function CampaignDetailHeader({
         }}
         title="Stop this campaign?"
         scope="No further messages will be sent from this campaign."
-        consequence="Replies already received are kept, and so is its history. A stopped campaign cannot be restarted — duplicate it to send again."
+        consequence="Replies already received are kept, and so is its history. A stopped campaign cannot be restarted. Duplicate it to send again."
         confirmLabel="Stop campaign"
         variant="danger"
         loading={pending}
@@ -259,7 +252,7 @@ export function CampaignDetailHeader({
             ? "It will appear in the Campaigns list again."
             : "It will be hidden from the Campaigns list. Its history and results are kept."
         }
-        consequence="Archiving does not change what a campaign is doing — pause or stop it first if it is still sending."
+        consequence="Archiving does not change what a campaign is doing. Pause or stop it first if it is still sending."
         confirmLabel={campaign.archivedAt ? "Restore" : "Archive"}
         loading={pending}
       />

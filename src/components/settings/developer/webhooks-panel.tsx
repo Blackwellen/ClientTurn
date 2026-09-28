@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import {
   Check,
@@ -216,7 +217,7 @@ function EndpointRow({
               {endpoint.consecutiveFailures} failed{" "}
               {endpoint.consecutiveFailures === 1 ? "delivery" : "deliveries"} in a
               row
-              {endpoint.lastError ? ` — ${endpoint.lastError}` : "."}
+              {endpoint.lastError ? `: ${endpoint.lastError}` : "."}
             </p>
           )}
 
@@ -303,7 +304,7 @@ function EndpointRow({
       </div>
 
       {notice && <p className="mt-2 text-[12px] text-content-secondary">{notice}</p>}
-      {error && <p className="mt-2 text-[12px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
 
       {editing && (
         <EndpointDialog
@@ -317,7 +318,7 @@ function EndpointRow({
         open={confirmRotate}
         onClose={() => setConfirmRotate(false)}
         title="Issue a new signing secret?"
-        description="The current secret stops working immediately — there is no overlap. Events signed with it will fail your verification until you update your server with the new one."
+        description="The current secret stops working immediately. There is no overlap. Events signed with it will fail your verification until you update your server with the new one."
         size="sm"
         footer={
           <>
@@ -584,7 +585,7 @@ function EndpointDialog({
           </ul>
         </fieldset>
 
-        {error && <p className="text-[12px] text-danger-700">{error}</p>}
+        <FormError message={error} />
       </div>
     </Modal>
   );

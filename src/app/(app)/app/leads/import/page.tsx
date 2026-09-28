@@ -1,3 +1,4 @@
+import { BackLink } from "@/components/app/back-link";
 import * as React from "react";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/session";
@@ -14,6 +15,7 @@ export default async function ImportPage() {
 
   return (
     <div className="space-y-6">
+      <BackLink href="/app/leads">Back to Leads</BackLink>
       <PageHeader
         title="Import"
         description="Bring an existing list in. Every row is checked before anything is created, and nothing is contacted without your say-so."

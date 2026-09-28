@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 import { z } from "zod";
 import { getBillingView } from "@/lib/admin/billing";
 import { BILLING_VIEWS, SUBSCRIPTION_STATUSES } from "@/lib/admin/billing-types";
@@ -66,6 +67,11 @@ export default async function AdminBillingPage({
         <p className="mt-1 text-[14px] text-content-muted">
           Manage subscriptions, invoices, credits and entitlements across all customers.
           Stripe remains the source of truth; changes made here are made in Stripe.
+        </p>
+        <p className="mt-2 text-[13px]">
+          <Link href="/admin/billing/deletions" className="font-medium text-content-accent hover:underline">
+            Scheduled deletions of cancelled workspaces →
+          </Link>
         </p>
       </div>
 

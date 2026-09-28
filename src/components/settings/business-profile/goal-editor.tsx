@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -170,11 +171,7 @@ export function GoalEditor({
         </label>
       </div>
 
-      {error && (
-        <p role="alert" className="mt-3 text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} className="mt-3" />
 
       <div className="mt-4 flex gap-2">
         <Button size="sm" loading={pending} onClick={submit} disabled={!name.trim()}>

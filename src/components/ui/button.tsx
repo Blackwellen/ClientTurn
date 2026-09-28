@@ -24,6 +24,15 @@ const VARIANTS: Record<Variant, string> = {
   link: "text-content-accent underline-offset-4 hover:underline p-0 h-auto",
 };
 
+/**
+ * On touch screens every button gets a 44px hit area (WCAG 2.5.5 / Apple HIG)
+ * without changing how it looks or lays out: an invisible `::after` extends the
+ * target by 6px on each side. 32px buttons become 44px targets; larger ones
+ * simply get a more forgiving edge. Mouse users see no difference.
+ */
+export const TOUCH_TARGET =
+  "pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
+
 const SIZES: Record<Size, string> = {
   xs: "h-7 px-2.5 text-xs gap-1.5 rounded-sm",
   sm: "h-8 px-3 text-[13px] gap-1.5 rounded-md",
@@ -71,6 +80,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
       VARIANTS[variant],
       variant !== "link" && SIZES[size],
+      variant !== "link" && TOUCH_TARGET,
       fullWidth && "w-full",
       className,
     );
@@ -127,6 +137,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
           VARIANTS[variant],
           ICON_SIZES[size],
+          TOUCH_TARGET,
           className,
         )}
         {...props}

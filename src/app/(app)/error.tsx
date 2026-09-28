@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
 export default function AppError({
   error,
   reset,
@@ -10,19 +10,15 @@ export default function AppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
-
   return (
-    <ErrorState
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="app"
       title="This page could not be loaded"
-      description={
-        error.digest
-          ? `The problem has been logged. Try again, and quote reference ${error.digest} if it keeps happening.`
-          : "The problem has been logged. Try again, and contact support if it keeps happening."
-      }
-      onRetry={reset}
+      description="The problem has been logged. Try again, and contact support if it keeps happening."
+      backHref="/app"
+      backLabel="Back to Dashboard"
     />
   );
 }

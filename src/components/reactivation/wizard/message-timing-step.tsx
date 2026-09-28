@@ -430,7 +430,7 @@ export function MessageTimingStep({
             <IconTile icon={MessageSquare} tone="success" />
             <div>
               <h2 className="text-content text-[17px] font-semibold">
-                Step 2 — Message &amp; Timing
+                Step 2: Message &amp; Timing
               </h2>
               <p className="text-content-muted mt-0.5 text-[13px]">
                 Create your outreach and choose when it should send.
@@ -473,7 +473,7 @@ export function MessageTimingStep({
                       disabled={!option.available}
                     >
                       {option.label}
-                      {option.available ? "" : " — not available"}
+                      {option.available ? "" : ": not available"}
                     </option>
                   ))}
                 </Select>

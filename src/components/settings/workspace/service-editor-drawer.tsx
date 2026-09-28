@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
@@ -197,11 +198,7 @@ export function ServiceEditorDrawer({
             />
           </div>
 
-          {error && (
-            <p role="alert" className="text-[13px] text-danger-600">
-              {error}
-            </p>
-          )}
+          <FormError message={error} />
         </form>
       )}
     </Drawer>

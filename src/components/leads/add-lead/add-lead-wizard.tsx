@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
@@ -519,14 +520,7 @@ export function AddLeadWizard({
           </div>
 
           <footer className="shrink-0 border-t border-line-subtle bg-surface px-5 py-3.5 sm:rounded-b-2xl sm:px-6">
-            {submitError && (
-              <p
-                role="alert"
-                className="mb-2.5 rounded-lg border border-danger-100 bg-danger-50/60 px-3 py-2 text-[12.5px] text-danger-700"
-              >
-                {submitError}
-              </p>
-            )}
+            <FormError message={submitError} className="mb-2.5" />
             <div className="flex items-center justify-between gap-3">
               <Button
                 variant="secondary"

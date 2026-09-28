@@ -27,16 +27,19 @@ const TONE = {
 export function BillingBanner({
   notice,
   canManageBilling,
+  className,
 }: {
   notice: BillingNotice;
   canManageBilling: boolean;
+  /** Replaces the page margins when the banner sits in the notice stack. */
+  className?: string;
 }) {
   const tone = TONE[notice.tone];
   const Icon = tone.icon;
   return (
     <div
       role={notice.tone === "danger" ? "alert" : "status"}
-      className={cn("mx-4 mt-3 rounded-lg border px-4 py-3 sm:mx-6", tone.box)}
+      className={cn("rounded-lg border px-4 py-3", className ?? "mx-4 mt-3 sm:mx-6", tone.box)}
     >
       <div className="flex flex-wrap items-start gap-3">
         <Icon className={cn("mt-0.5 size-4 shrink-0", tone.iconClass)} aria-hidden />

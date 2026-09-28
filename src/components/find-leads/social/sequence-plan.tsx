@@ -44,7 +44,7 @@ export function SequencePlan({
       <h3 className="text-[13px] font-semibold text-content">What happens to each prospect</h3>
       <p className="mt-1.5 max-w-[70ch] text-[12.5px] leading-relaxed text-content-muted">
         {socialPlanSummary(settings)} Every step re-checks suppression, quiet hours and the
-        account&rsquo;s limits in the moment before it runs — so this is the plan, not a promise.
+        account&rsquo;s limits in the moment before it runs. So this is the plan, not a promise.
       </p>
 
       <ol className="mt-5 space-y-0">

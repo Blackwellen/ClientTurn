@@ -5,9 +5,9 @@ export default function Loading() {
   return (
     <div role="status" aria-busy="true" className="animate-pulse space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
+        <div className="min-w-0 flex-1 space-y-2">
           <div className="h-8 w-40 rounded-md bg-surface-sunken" />
-          <div className="h-4 w-96 max-w-full rounded bg-surface-sunken" />
+          <div className="h-4 w-full max-w-96 rounded bg-surface-sunken" />
         </div>
         <div className="h-10 w-32 rounded-lg bg-surface-sunken" />
       </div>

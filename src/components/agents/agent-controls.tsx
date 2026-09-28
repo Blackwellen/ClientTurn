@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Pause, Play, Square, Trash2 } from "lucide-react";
@@ -105,11 +106,7 @@ export function AgentControls({
 
       <p className="max-w-lg text-[11.5px] text-content-muted">{primary.hint}</p>
 
-      {error && (
-        <p role="alert" className="max-w-lg text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} className="max-w-lg" />
 
       <ConfirmDialog
         open={confirmStop}
@@ -120,7 +117,7 @@ export function AgentControls({
         }}
         title="Stop this agent?"
         scope="The agent stops after the work it is currently doing finishes."
-        consequence="Prospects it has already found are kept, and so is its history. A stopped agent has to be started again — it will not resume on its schedule."
+        consequence="Prospects it has already found are kept, and so is its history. A stopped agent has to be started again. It will not resume on its schedule."
         confirmLabel="Stop agent"
         variant="danger"
         loading={pending}

@@ -492,6 +492,7 @@ function ChipSelect({
       <button
         type="button"
         disabled
+        title={`No ${label.toLowerCase()} options yet. They appear once a campaign uses one.`}
         className="inline-flex h-8 cursor-not-allowed items-center rounded-lg border border-line bg-surface-sunken/60 px-3 text-[12.5px] font-medium text-content-subtle"
       >
         {label}

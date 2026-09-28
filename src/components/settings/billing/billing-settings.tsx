@@ -618,8 +618,58 @@ export function BillingSettings({
                 {billing.paymentMethod.last4}, verified by Stripe
               </p>
             ) : null}
+            {billing.retention.phase === "ending" && billing.retention.endsAt ? (
+              <p className="text-[13px] text-content">
+                Access ends {formatDate(billing.retention.endsAt)}. The workspace then stays read-only until{" "}
+                {billing.retention.readOnlyUntil ? formatDate(billing.retention.readOnlyUntil) : "90 days later"}.
+              </p>
+            ) : null}
+            {billing.retention.phase === "read_only" && billing.retention.readOnlyUntil ? (
+              <p className="text-[13px] text-content">
+                Read-only until {formatDate(billing.retention.readOnlyUntil)}. Export anything you need before then, or
+                resubscribe to keep everything.
+                {billing.retention.numberReleaseAt
+                  ? ` A dedicated number is released on ${formatDate(billing.retention.numberReleaseAt)}.`
+                  : ""}
+              </p>
+            ) : null}
+            {billing.retention.phase === "deletion_due" ? (
+              <p className="text-[13px] text-content">
+                The read-only period has ended and this workspace is due for deletion under our privacy policy.
+                Resubscribe now if you still need it.
+              </p>
+            ) : null}
+            <p className="pt-1.5 text-[12px] text-content-muted">{billing.retention.policy}</p>
           </CardContent>
         </Card>
+
+        {billing.overLimit.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <SectionHeader icon={Info} title="Over your plan's limits" tone="warning" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-[13px] text-content-muted">
+                Nothing has been removed. Until you are back within the plan, adding more of these is refused.
+              </p>
+              <ul className="space-y-2">
+                {billing.overLimit.map((item) => (
+                  <li key={item.key} className="text-[13px]">
+                    <p className="font-medium text-content">
+                      {item.label}: {item.used} of {item.limit}
+                    </p>
+                    <p className="text-content-secondary">
+                      {item.action}{" "}
+                      <Link href={item.href} className="font-medium text-content-accent">
+                        Manage
+                      </Link>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* The "Need to make changes?" card opened the same Stripe portal as
             Manage billing (Stripe) in the plan card; one control is kept (8.8). */}

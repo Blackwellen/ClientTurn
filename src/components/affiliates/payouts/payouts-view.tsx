@@ -254,13 +254,15 @@ export function PayoutHistory({ payouts }: { payouts: PortalPayout[] }) {
               <Section title="Commission Breakdown">
                 <dl className="divide-y divide-line-subtle">
                   <Row
-                    label="New customer commissions"
+                    label="One-off commissions"
                     value={formatMinor(breakdown.newCustomerMinor, selected.currency)}
                   />
-                  <Row
-                    label="Renewal commissions"
-                    value={formatMinor(breakdown.renewalMinor, selected.currency)}
-                  />
+                  {breakdown.renewalMinor !== 0 && (
+                    <Row
+                      label="Renewal commissions (legacy)"
+                      value={formatMinor(breakdown.renewalMinor, selected.currency)}
+                    />
+                  )}
                   <Row
                     label="Adjustments"
                     value={formatMinor(breakdown.adjustmentMinor, selected.currency)}
@@ -401,9 +403,10 @@ export function TaxInfoCard({
       icon={FileText}
       title="Tax information"
       description={
-        taxStatus === "VERIFIED"
+        (taxStatus === "VERIFIED"
           ? "Your tax profile is complete."
-          : "We need your tax details before we can pay you."
+          : "We need your tax details before we can pay you.") +
+        " Statements are remittance advice, not VAT invoices. We do not self-bill: if you are VAT registered, send us a VAT invoice for each payout."
       }
       action={
         <Link

@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -234,7 +235,7 @@ export function EmailMailboxPanel({
     toast({
       variant: "success",
       title: "Test email sent",
-      description: `Check ${result.data.to} — it should arrive within a minute.`,
+      description: `Check ${result.data.to}: it should arrive within a minute.`,
     });
   }
 
@@ -322,14 +323,7 @@ export function EmailMailboxPanel({
           </div>
         )}
 
-        {error && (
-          <div
-            role="alert"
-            className="border-danger-100 bg-danger-50 text-danger-700 rounded-lg border px-3.5 py-3 text-[13px]"
-          >
-            {error}
-          </div>
-        )}
+        <FormError message={error} />
 
         <fieldset disabled={!canManage || busy !== null} className="space-y-4">
           {/* ------------------------------------------------- identity --- */}

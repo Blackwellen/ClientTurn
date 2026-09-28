@@ -4,14 +4,17 @@ import * as React from "react";
 import { FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FormField, Input, Textarea } from "@/components/ui/form";
+import { Checkbox, FormField, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { formatGbp } from "@/lib/dates";
 import type { CampaignExperimentView } from "@/lib/learning/experiments";
 import {
   createCampaignExperiment,
+  setCampaignExperimentAutoPromote,
+  setCampaignExperimentPromotion,
   setCampaignExperimentState,
 } from "@/lib/campaigns/experiment-actions";
+import type { ExperimentPromotionView } from "@/lib/learning/experiments";
 
 /**
  * Reactivation A/B test for one campaign: set up (draft campaigns), start,
@@ -156,9 +159,13 @@ export function CampaignExperimentPanel({
                 : experiment.explanation}
             </p>
           )}
-          <p className="text-[11px] text-content-subtle">
-            Nothing changes automatically. If a variant wins, edit the campaign message yourself.
-          </p>
+          {experiment.promotion ? (
+            <PromotionSection experimentId={experiment.id} promotion={experiment.promotion} canManage={canManage} />
+          ) : (
+            <p className="text-[11px] text-content-subtle">
+              Nothing changes automatically. If a variant wins, edit the campaign message yourself.
+            </p>
+          )}
 
           {canManage && experiment.status === "DRAFT" && (
             <Button size="sm" onClick={() => move("start")} loading={pending}>
@@ -173,5 +180,126 @@ export function CampaignExperimentPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Promote / roll back (§43). The advice comes from the server
+ * (learning/promotion.ts): HOLD until every arm has the minimum sample and a
+ * variant beats control; then SUGGEST, and a person confirms. Automatic
+ * promotion is opt-in and never allowed for opener, disclosure or pricing
+ * changes. Rollback always returns everyone to the control copy.
+ */
+function PromotionSection({
+  experimentId,
+  promotion,
+  canManage,
+}: {
+  experimentId: string;
+  promotion: ExperimentPromotionView;
+  canManage: boolean;
+}) {
+  const { toast } = useToast();
+  const [pending, startTransition] = React.useTransition();
+  const [reason, setReason] = React.useState("");
+  const [confirmed, setConfirmed] = React.useState(false);
+  const advice = promotion.advice;
+  const promoted = promotion.promotedArm;
+  const canAct = canManage && (promoted !== null || advice.action !== "HOLD");
+
+  function act(to: "promote" | "rollback") {
+    startTransition(async () => {
+      const result = await setCampaignExperimentPromotion({ experimentId, to, reason, confirm: confirmed });
+      toast(
+        result.ok
+          ? { variant: "success", title: to === "promote" ? "Variant promoted to every contact." : "Rolled back to the control copy." }
+          : { variant: "error", title: result.error },
+      );
+      if (result.ok) {
+        setReason("");
+        setConfirmed(false);
+      }
+    });
+  }
+
+  function toggleAuto(enabled: boolean) {
+    startTransition(async () => {
+      const result = await setCampaignExperimentAutoPromote({ experimentId, enabled });
+      toast(result.ok ? { variant: "success", title: enabled ? "Automatic promotion allowed." : "Automatic promotion off." } : { variant: "error", title: result.error });
+    });
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-line-subtle bg-surface-sunken/40 p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[12px] font-semibold text-content">Promotion</p>
+        {promoted ? (
+          <Badge tone="success">Variant {promoted} serving everyone</Badge>
+        ) : advice.action === "HOLD" ? (
+          <Badge tone="neutral">Keep testing</Badge>
+        ) : (
+          <Badge tone="info">Suggest promoting {advice.candidate}</Badge>
+        )}
+      </div>
+      <ul className="list-disc space-y-0.5 pl-4 text-[11.5px] leading-[1.45] text-content-muted">
+        {(promoted ? [`Promoted ${promotion.promotedAt ? new Date(promotion.promotedAt).toLocaleString("en-GB") : ""}. Roll back to send everyone the control copy again.`] : advice.reasons).map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+        {!promoted && advice.pValue !== null && <li>Confidence {Math.round((1 - advice.pValue) * 1000) / 10}% (p = {advice.pValue.toFixed(3)}).</li>}
+      </ul>
+      {advice.sensitiveFields.length > 0 && (
+        <p className="text-[11.5px] text-warning-700">Changes {advice.sensitiveFields.join(", ")}: never promoted automatically.</p>
+      )}
+
+      {canAct && (
+        <div className="space-y-2">
+          <FormField label="Reason" htmlFor={`promo-reason-${experimentId}`}>
+            <Input id={`promo-reason-${experimentId}`} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder={promoted ? "e.g. Opt-outs rose after rollout" : "e.g. B booked more meetings"} />
+          </FormField>
+          <label className="flex items-start gap-2 text-[12px] text-content">
+            <Checkbox className="mt-0.5" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            {promoted ? "Send every contact the control copy from now on." : `Send every contact variant ${advice.candidate} from now on.`}
+          </label>
+          <Button
+            size="sm"
+            variant={promoted ? "secondary" : "primary"}
+            loading={pending}
+            disabled={!confirmed || reason.trim().length < 3}
+            onClick={() => act(promoted ? "rollback" : "promote")}
+          >
+            {promoted ? "Roll back to control" : `Promote variant ${advice.candidate}`}
+          </Button>
+        </div>
+      )}
+
+      {canManage && !promoted && (
+        <label className="flex items-start gap-2 text-[11.5px] text-content-muted">
+          <Checkbox
+            className="mt-0.5"
+            checked={promotion.autoPromote}
+            disabled={pending || advice.sensitiveFields.length > 0}
+            onChange={(e) => toggleAuto(e.target.checked)}
+          />
+          Allow automatic promotion once every arm has the minimum sample and the result is significant (p &lt; 0.05). Off by default.
+        </label>
+      )}
+
+      {promotion.history.length > 0 && (
+        <details className="text-[11.5px]">
+          <summary className="cursor-pointer text-content-muted">History (version {promotion.version})</summary>
+          <ul className="mt-1 space-y-1">
+            {promotion.history.map((h) => (
+              <li key={`${h.version}-${h.at}`} className="text-content-muted">
+                v{h.version} · {h.action === "PROMOTE" ? `Promoted ${h.arm}` : `Rolled back ${h.fromArm ?? ""} to ${h.arm}`} · {h.decidedBy === "AUTO" ? "automatic" : "by a person"} ·{" "}
+                {new Date(h.at).toLocaleString("en-GB")}
+                {h.pValue !== null && ` · p = ${h.pValue.toFixed(3)}`}
+                {Object.keys(h.sampleByArm).length > 0 && ` · n ${Object.entries(h.sampleByArm).map(([arm, n]) => `${arm}=${n}`).join(", ")}`}
+                <span className="block text-content-subtle">{h.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }

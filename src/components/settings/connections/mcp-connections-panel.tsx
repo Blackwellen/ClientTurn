@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Check, Copy, KeyRound, Plug, ShieldAlert, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +77,7 @@ export function McpConnectionsPanel({
             <p className="mt-0.5 text-[12.5px] text-content-muted">
               Let an AI assistant read and act on this workspace through the
               ClientTurn MCP server. Each connection gets only the permissions
-              you choose, and acts with your own access — never more.
+              you choose, and acts with your own access. Never more.
             </p>
           </div>
         </div>
@@ -254,13 +255,13 @@ function ConnectionRow({
         )}
       </div>
 
-      {error && <p className="mt-2 text-[12px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
 
       <Modal
         open={confirmRevoke}
         onClose={() => setConfirmRevoke(false)}
         title={`Revoke ${connection.name}?`}
-        description="This connection's key stops working immediately. The assistant using it will lose access straight away, and this cannot be undone — you would need to create a new connection and reconfigure it."
+        description="This connection's key stops working immediately. The assistant using it will lose access straight away, and this cannot be undone. You would need to create a new connection and reconfigure it."
         size="sm"
         footer={
           <>
@@ -355,7 +356,7 @@ function ApprovalRow({
           </div>
         )}
       </div>
-      {error && <p className="mt-1.5 text-[12px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-1.5" />
     </li>
   );
 }
@@ -470,7 +471,7 @@ function CreateConnectionDialog({
           </ul>
         </fieldset>
 
-        {error && <p className="text-[12px] text-danger-700">{error}</p>}
+        <FormError message={error} />
       </div>
     </Modal>
   );
@@ -520,7 +521,7 @@ function SecretDialog({
       open
       onClose={onClose}
       title="Copy this key now"
-      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again — if you lose it, replace the key on the connection."
+      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again. If you lose it, replace the key on the connection."
       footer={<Button onClick={onClose}>I have copied it</Button>}
     >
       <div className="space-y-3">

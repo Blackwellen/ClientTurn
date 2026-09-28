@@ -199,10 +199,8 @@ export default function HowItWorksPage() {
                 <span className="pub-accent">final action.</span>
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
-                ClientTurn connects inbound lead conversion and outbound
-                acquisition in one operating system — with reviewable targeting,
-                policy-aware contact, rules you configure and outcomes you can
-                measure end to end.
+                Inbound conversion and outbound acquisition in one system, run
+                by rules you configure and measured end to end.
               </p>
 
               <ActionRow>
@@ -255,9 +253,8 @@ export default function HowItWorksPage() {
                     Turn enquiries into booked opportunities.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Respond quickly, follow up consistently, qualify every
-                    enquiry against your own criteria and route it to the right
-                    next step — without anyone having to remember to chase.
+                    Every enquiry is followed up, qualified against your criteria
+                    and routed, without anyone remembering to chase.
                   </p>
 
                   <StepRail steps={INBOUND_STEPS} />
@@ -286,10 +283,8 @@ export default function HowItWorksPage() {
                     Find and reach the right customers.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Describe the customer you want. ClientTurn builds a
-                    structured search plan, shows it to you before it runs,
-                    sources from licensed providers, verifies what it finds and
-                    coordinates permitted outreach.
+                    Describe your ideal customer. You approve the search plan
+                    before anything is sourced, verified or contacted.
                   </p>
 
                   <StepRail steps={OUTBOUND_STEPS} />
@@ -316,9 +311,8 @@ export default function HowItWorksPage() {
                 Automation with clear boundaries.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Your rules decide what qualifies, who can be contacted and when
-                to stop. AI assists inside those boundaries — it never invents
-                your criteria, and it never makes a commitment on your behalf.
+                Your rules decide what qualifies, who is contacted and when to
+                stop. AI assists inside them and never commits on your behalf.
               </p>
 
               <div className="pub-split pub-split-narrow mt-10">
@@ -327,8 +321,7 @@ export default function HowItWorksPage() {
                     <GlyphTile icon={ListChecks} size={38} glyph={18} />
                     <h3 className="mt-4">Qualification rules</h3>
                     <p>
-                      Use your questions, rules and service scope to define what
-                      a qualified opportunity is.
+                      You define what a qualified opportunity is.
                     </p>
                     <ul className="pub-ticks">
                       {[
@@ -349,8 +342,7 @@ export default function HowItWorksPage() {
                     <GlyphTile icon={ShieldCheck} size={38} glyph={18} />
                     <h3 className="mt-4">Contactability &amp; consent</h3>
                     <p>
-                      Only contact records that are eligible, based on
-                      verification, consent and your policies.
+                      Only eligible records are contacted.
                     </p>
                     <ul className="pub-ticks">
                       {[
@@ -371,9 +363,7 @@ export default function HowItWorksPage() {
                     <GlyphTile icon={Gauge} size={38} glyph={18} />
                     <h3 className="mt-4">Stop conditions</h3>
                     <p>
-                      Automatically stop or pause outreach when a reply, a
-                      booking or any other condition is met. None of them can be
-                      bypassed.
+                      Outreach stops automatically. None can be bypassed.
                     </p>
                     <ul className="pub-ticks">
                       {[
@@ -414,9 +404,8 @@ export default function HowItWorksPage() {
                 See what works and make better decisions.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Every stage is attributed, so you can tell which sources produce
-                business rather than which produce volume — and exactly where
-                the journey stalls.
+                Every stage is attributed, so you see which sources produce
+                business, not just volume, and where the journey stalls.
               </p>
 
               <div className="pub-split pub-split-narrow mt-10">
@@ -451,8 +440,7 @@ export default function HowItWorksPage() {
                       </StatePill>
                     </div>
                     <p>
-                      How long a new enquiry waits before it is contacted, and
-                      how that has moved across the period.
+                      How long a new enquiry waits before first contact.
                     </p>
                     <div className="mt-4">
                       <TrendLine
@@ -530,7 +518,7 @@ export default function HowItWorksPage() {
                   <span className="pub-accent">real business.</span>
                 </>
               }
-              body="Start with your own leads and your own rules. Connect a source, configure your questions and watch the whole path run before you pay anything."
+              body="Connect a source, set your questions and watch the whole path run before you pay anything."
               assurances={["Quick setup", "Nothing charged for 14 days", "Cancel anytime"]}
               actions={
                 <>

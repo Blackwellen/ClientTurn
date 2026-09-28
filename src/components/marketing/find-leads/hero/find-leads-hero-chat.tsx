@@ -396,8 +396,8 @@ export function FindLeadsHeroChat() {
           </motion.dl>
 
           <p className="fl-callout">
-            Website analysed — review and edit everything ClientTurn learns
-            before it is used for sourcing.
+            Website analysed. Review and edit what ClientTurn learned before
+            sourcing.
           </p>
         </section>
 

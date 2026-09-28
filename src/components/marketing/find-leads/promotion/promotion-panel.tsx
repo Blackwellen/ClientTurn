@@ -208,9 +208,8 @@ export function PromotionPanel() {
               <div>
                 <strong>Promoted to lead</strong>
                 <p>
-                  The conversation, campaign context and sourcing evidence moved
-                  with the record. The warm lead workflow starts with the full
-                  history.
+                  Conversation, campaign context and sourcing evidence moved
+                  with the record.
                 </p>
               </div>
             </div>
@@ -243,8 +242,8 @@ export function PromotionPanel() {
             <div>
               <strong>Ready to promote</strong>
               <p>
-                Convert to a lead and keep the full history — messages, intent
-                signals and campaign details.
+                Convert to a lead, keeping messages, intent signals and campaign
+                details.
               </p>
             </div>
             <motion.button

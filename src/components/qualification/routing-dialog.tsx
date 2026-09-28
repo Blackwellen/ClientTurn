@@ -327,7 +327,7 @@ export function QuestionTypesDialog({
       onClose={onClose}
       size="lg"
       title="Question types"
-      description="Every type is validated deterministically. An answer that cannot be matched goes to review — it is never guessed at."
+      description="Every type is validated deterministically. An answer that cannot be matched goes to review. It is never guessed at."
     >
       <dl className="divide-line divide-y">
         {(

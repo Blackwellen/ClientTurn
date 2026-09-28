@@ -912,7 +912,7 @@ export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      intro="What ClientTurn does with personal data — both the data of the businesses who hold an account, and the data of the leads those businesses contact through the product. This page also contains our Article 28 processing terms and our full sub-processor register."
+      intro="How ClientTurn handles personal data: our account holders' data and the data of the leads they contact through the product. It also contains our Article 28 processing terms and full sub-processor register."
       currentPath="/privacy"
       sections={SECTIONS}
     />

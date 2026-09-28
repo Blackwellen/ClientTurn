@@ -7,7 +7,7 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox, FormField, Input, Select, Switch, Textarea } from "@/components/ui/form";
 import { Badge, StatusBadge } from "@/components/ui/badge";
-import { PlanLimitState } from "@/components/ui/feedback";
+import { PlanLimitState, FormError } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/app/page-header";
 import { MOTIONS } from "@/lib/sales-library/motions";
 import { SALES_MOTIONS } from "@/lib/sales-library/types";
@@ -618,11 +618,7 @@ export function QualificationPolicyCard({
           .
         </p>
 
-        {error && (
-          <p role="alert" className="text-[12.5px] font-medium text-danger-700">
-            {error}
-          </p>
-        )}
+        <FormError message={error} />
         {!canManage && (
           <p className="text-[12.5px] text-content-muted">Only an owner or admin can change the qualification policy.</p>
         )}

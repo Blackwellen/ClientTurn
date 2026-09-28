@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getActiveWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { globalSearch } from "@/lib/search/queries";
+import { checkRateLimit, tooManyRequests } from "@/lib/security/rate-limit";
 import {
   allGroupsFailed,
   EMPTY_SEARCH_RESULT,
@@ -45,6 +46,11 @@ export async function GET(request: Request) {
     const body: SearchResponse = { query: term, results: EMPTY_SEARCH_RESULT, failed: [] };
     return NextResponse.json(body, { headers: NO_STORE });
   }
+
+  // Per signed-in user (gap audit 15 §3). Only real queries count: the empty
+  // and too-short answers above cost nothing.
+  const limit = await checkRateLimit("app:search", workspace.userId);
+  if (!limit.allowed) return tooManyRequests(limit);
 
   try {
     const entitlements = await getV4Entitlements(workspace.businessId);

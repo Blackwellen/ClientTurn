@@ -335,7 +335,8 @@ export function OnboardingWizard({
               <span>
                 I have read and accept the{" "}
                 <Link
-                  href="/terms"
+                  href="/affiliates/terms"
+                  target="_blank"
                   className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
                 >
                   programme terms
@@ -493,12 +494,8 @@ function Summary({
           </p>
           <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--auth-text-muted)]">
             {plan.commissionType === "FLAT_AMOUNT"
-              ? `${formatMinor(plan.flatAmountMinor ?? 0, plan.currency)} per paying customer.`
-              : plan.commissionType === "FIRST_PAYMENT_PERCENT"
-                ? `${plan.percent ?? 0}% of the first payment.`
-                : plan.recurringMonths
-                  ? `${plan.percent ?? 0}% of every payment for ${plan.recurringMonths} months.`
-                  : `${plan.percent ?? 0}% of every payment, for the life of the customer.`}{" "}
+              ? `A one-off ${formatMinor(plan.flatAmountMinor ?? 0, plan.currency)} per paying customer.`
+              : `A one-off ${plan.percent ?? 0}% commission on each referred customer's first payment, including the full amount of an annual plan.`}{" "}
             Confirmed after a {plan.holdDays}-day hold, paid once your approved
             balance reaches{" "}
             {formatMinor(plan.minimumPayoutMinor, plan.currency)}. Final terms

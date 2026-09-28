@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { SignupForm } from "./signup-form";
+import { ReferralCapture } from "@/components/marketing/referral-capture";
+import { looksLikeReferralToken, REFERRAL_PARAM } from "@/lib/affiliates/referral-param";
 
 export const metadata: Metadata = {
   title: "Create your account",
@@ -19,7 +21,12 @@ export default async function SignupPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const plan = pickedPlan((await searchParams).plan);
+  const params = await searchParams;
+  const plan = pickedPlan(params.plan);
+  // A partner referral carried in the URL (no cookie without consent). Only
+  // its shape is checked here; the signature is verified at signup.
+  const rawRef = Array.isArray(params[REFERRAL_PARAM]) ? params[REFERRAL_PARAM][0] : params[REFERRAL_PARAM];
+  const referral = looksLikeReferralToken(rawRef) ? rawRef : null;
   return (
     <AuthShell variant="signup">
       <AuthCard width="lg">
@@ -28,8 +35,9 @@ export default async function SignupPage({
           title="Get started with ClientTurn"
           description="Set up your account in minutes and start converting more leads into paying clients."
         />
-        <SignupForm plan={plan} />
+        <SignupForm plan={plan} referral={referral} />
       </AuthCard>
+      <ReferralCapture />
     </AuthShell>
   );
 }

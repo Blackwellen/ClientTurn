@@ -39,36 +39,48 @@ export { RECORDING_NOTICE };
 
 /* ------------------------------------------------------------ the call --- */
 
-export type TranscriptLine =
-  | { kind: "agent"; text: string; tag?: string }
-  | { kind: "lead"; text: string }
-  | { kind: "chip"; tone: "objection" | "fact"; text: string }
-  | { kind: "event"; text: string };
+/**
+ * The call as live captions: one line at a time, each at the call time it is
+ * spoken. The first caption is always the locked AI-disclosure opener. The
+ * recording notice is shown as a chip, not a caption. `event` lights one of
+ * the in-call event chips when the caption is reached.
+ */
+export type CallEvent = "objection" | "quote" | "booked";
 
-export const CALL_TRANSCRIPT: readonly TranscriptLine[] = [
-  { kind: "agent", text: EXAMPLE_OPENER, tag: "AI disclosure" },
-  { kind: "agent", text: RECORDING_NOTICE, tag: "Recording notice" },
-  { kind: "lead", text: "Yes, go ahead. We need the site rebuilt before spring." },
-  { kind: "agent", text: "Great. Roughly how many pages, and is a brand refresh in scope as well?" },
-  { kind: "lead", text: "About ten pages. Honestly, the last quote we had felt expensive." },
-  { kind: "chip", tone: "objection", text: "Objection detected: price" },
-  {
-    kind: "agent",
-    text: "That's fair. Your quote is itemised, so you can see what each part costs and drop anything you don't need. Shall I send it now?",
-  },
-  { kind: "lead", text: "Please do." },
-  { kind: "event", text: `Quote ${EXAMPLE.quoteNumber} sent by email and text` },
+export type Caption = {
+  speaker: "agent" | "lead";
+  text: string;
+  /** Call time when the line is spoken, in seconds. */
+  at: number;
+  event?: CallEvent;
+};
+
+export const CALL_CAPTIONS: readonly Caption[] = [
+  { speaker: "agent", text: EXAMPLE_OPENER, at: 4 },
+  { speaker: "lead", text: "Yes, go ahead. We need the site rebuilt before spring.", at: 21 },
+  { speaker: "agent", text: "Roughly how many pages, and is a brand refresh in scope?", at: 48 },
+  { speaker: "lead", text: "About ten. Honestly, the last quote felt expensive.", at: 92, event: "objection" },
+  { speaker: "agent", text: "Fair. Yours is itemised, so you can drop anything you don't need.", at: 125 },
+  { speaker: "agent", text: `I've sent quote ${EXAMPLE.quoteNumber} by email and text.`, at: 161, event: "quote" },
+  { speaker: "lead", text: "Great. Can we talk it through on Tuesday?", at: 182 },
+  { speaker: "agent", text: "Booked: Tuesday at 10:00 with the team.", at: 204, event: "booked" },
 ];
 
-/** Elapsed time shown on the call, in seconds (3:24). */
-export const CALL_ELAPSED_SEC = 204;
+export const CALL_EVENTS: readonly { key: CallEvent; label: string; tone: "amber" | "lime" }[] = [
+  { key: "objection", label: "Objection: price", tone: "amber" },
+  { key: "quote", label: `Quote ${EXAMPLE.quoteNumber} sent`, tone: "lime" },
+  { key: "booked", label: "Meeting booked Tue 10:00", tone: "lime" },
+];
 
-/** Qualification facts captured on the call, shown beside the transcript. */
+/** Elapsed time shown on the call, in seconds (3:24): the last caption. */
+export const CALL_ELAPSED_SEC = CALL_CAPTIONS[CALL_CAPTIONS.length - 1].at;
+
+/** Qualification facts captured on the call. */
 export const CALL_FACTS = [
-  { label: "Project", value: "Website rebuild, about 10 pages" },
-  { label: "Timeline", value: "Live before spring" },
+  { label: "Project", value: "Site rebuild, ~10 pages" },
+  { label: "Timeline", value: "Before spring" },
   { label: "Decision maker", value: "Yes, co-founder" },
-  { label: "Next step", value: "Itemised quote" },
+  { label: "Next step", value: "Call Tue 10:00" },
 ] as const;
 
 /* ------------------------------------------------------------- the quote --- */
@@ -118,49 +130,49 @@ export const CHANNEL_TIMELINE: readonly TimelineEvent[] = [
     channelLabel: "Call",
     time: "Tue 10:14",
     title: "AI call, 3 min 24 s",
-    detail: "Sam asked for a call on the form. Qualified, price objection handled, quote requested.",
+    detail: "Requested on the form. Qualified, quote requested.",
   },
   {
     channel: "email",
     channelLabel: "Email",
     time: "Tue 10:18",
     title: `Quote ${EXAMPLE.quoteNumber} sent`,
-    detail: "From your own mailbox, with the branded quote link and PDF.",
+    detail: "From your mailbox, with link and PDF.",
   },
   {
     channel: "sms",
     channelLabel: "SMS",
     time: "Tue 10:18",
     title: "Quote link by text",
-    detail: "To the mobile Sam gave on the form, inside quiet hours rules.",
+    detail: "To the mobile Sam gave on the form.",
   },
   {
     channel: "whatsapp",
     channelLabel: "WhatsApp",
     time: "Wed 09:40",
     title: "Question answered",
-    detail: "Sam messaged about the launch date. The agent answered from your delivery terms.",
+    detail: "Launch date, answered from your terms.",
   },
   {
     channel: "signature",
     channelLabel: "Signed",
     time: "Wed 11:05",
     title: "Quote signed",
-    detail: "Simple electronic signature, sealed with an audit trail.",
+    detail: "Simple electronic signature, audit trail.",
   },
   {
     channel: "payment",
     channelLabel: "Payment",
     time: "Wed 11:07",
     title: `Deposit ${money(QUOTE_DEPOSIT_PENCE)} paid`,
-    detail: "Collected through your own Stripe account.",
+    detail: "Through your own Stripe account.",
   },
   {
     channel: "crm",
     channelLabel: "CRM",
     time: "Wed 11:07",
     title: "Deal marked won",
-    detail: "Your CRM updated and the revenue attributed to the lead form that started it.",
+    detail: "CRM updated, revenue attributed.",
   },
 ];
 

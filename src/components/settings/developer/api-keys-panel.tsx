@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Check, Copy, KeyRound, ShieldAlert, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -75,7 +76,7 @@ export function ApiKeysPanel({
             <p className="mt-0.5 text-[12.5px] text-content-muted">
               Let your own software read and update this workspace over HTTPS.
               Each key gets only the permissions you choose, and acts with your
-              access — never more.
+              access. Never more.
             </p>
           </div>
         </div>
@@ -220,13 +221,13 @@ function KeyRow({ apiKey, canManage }: { apiKey: ApiKeyView; canManage: boolean 
         )}
       </div>
 
-      {error && <p className="mt-2 text-[12px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
 
       <Modal
         open={confirming}
         onClose={() => setConfirming(false)}
         title={`Revoke ${apiKey.name}?`}
-        description="Anything using this key stops working immediately. This cannot be undone — you would need to create a new key and update whatever uses it."
+        description="Anything using this key stops working immediately. This cannot be undone. You would need to create a new key and update whatever uses it."
         size="sm"
         footer={
           <>
@@ -325,7 +326,7 @@ function CreateKeyDialog({
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={80}
-            placeholder="Zapier — lead sync"
+            placeholder="Zapier: lead sync"
             className="mt-1 h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-[13px] text-content outline-none focus:border-accent-400"
           />
           <span className="mt-1 block text-[11.5px] text-content-subtle">
@@ -416,7 +417,7 @@ function CreateKeyDialog({
             &ldquo;{badIp}&rdquo; is not a valid IP address or range.
           </p>
         )}
-        {error && <p className="text-[12px] text-danger-700">{error}</p>}
+        <FormError message={error} />
       </div>
     </Modal>
   );
@@ -449,7 +450,7 @@ function KeyRevealDialog({
       open
       onClose={onClose}
       title="Copy this key now"
-      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again — if you lose it, create a new one."
+      description="This is the only time it will be shown. ClientTurn stores only a fingerprint of it, so it cannot be shown again. If you lose it, create a new one."
       footer={<Button onClick={onClose}>I have copied it</Button>}
     >
       <div className="space-y-3">
@@ -475,7 +476,7 @@ function KeyRevealDialog({
         <p className="text-[12px] text-content-muted">
           Send it as{" "}
           <code className="font-mono">Authorization: Bearer …</code> from your own
-          server. Never put it in a web page or a mobile app — anyone who can view
+          server. Never put it in a web page or a mobile app. Anyone who can view
           the page can read the key.
         </p>
       </div>

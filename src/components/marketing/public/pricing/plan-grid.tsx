@@ -57,10 +57,9 @@ function cardFeatures(plan: PlanDefinition): string[] {
 
   if (plan.id === "enterprise") {
     return [
-      "Custom inbound lead volume",
-      "Custom sourcing and verified prospect allowance",
-      "Custom messaging volume",
-      "Custom user and workspace limits",
+      "Custom lead and messaging volume",
+      "Custom verified prospect allowance",
+      "Custom users and workspaces",
       "AI assistant included",
       planVoiceOffer(plan.id).cardLine,
       "Quotes, e-signature and invoices",
@@ -72,9 +71,9 @@ function cardFeatures(plan: PlanDefinition): string[] {
     `${NUMBER.format(plan.leadLimit)} new leads a month`,
     `${NUMBER.format(sourcing.verifiedProspects)} verified prospects a month`,
     `${NUMBER.format(sourcing.emailSends)} outbound emails a month`,
-    `${NUMBER.format(plan.smsSegmentAllowance)} UK SMS segments (a first text for every lead)`,
+    `${NUMBER.format(plan.smsSegmentAllowance)} UK SMS segments`,
     "Follow-up email from your own mailbox",
-    ...(plan.whatsappEnabled ? ["WhatsApp add-on, prepaid WhatsApp tokens"] : []),
+    ...(plan.whatsappEnabled ? ["WhatsApp add-on (prepaid tokens)"] : []),
     `${plan.userLimit} ${plan.userLimit === 1 ? "user" : "users"}`,
     "AI assistant included",
     planVoiceOffer(plan.id).cardLine,
@@ -90,7 +89,7 @@ function PriceBlock({ plan, cycle }: { plan: PlanDefinition; cycle: Cycle }) {
           <b>Custom</b>
         </p>
         <p className="pub-plan-sub">
-          Priced against your lead volume, sourcing allowance and team.
+          Priced against your volume and team.
         </p>
       </>
     );
@@ -127,7 +126,7 @@ function PriceBlock({ plan, cycle }: { plan: PlanDefinition; cycle: Cycle }) {
       </p>
       <p className="pub-plan-sub">
         {cycle === "annual"
-          ? `£${NUMBER.format(plan.yearlyPrice)} billed yearly — save £${NUMBER.format(saving)}`
+          ? `£${NUMBER.format(plan.yearlyPrice)} billed yearly, save £${NUMBER.format(saving)}`
           : "Billed monthly, excluding VAT"}
       </p>
     </>
@@ -176,8 +175,8 @@ export function PlanGrid() {
       </div>
 
       <p className="pub-small mt-8 text-center">
-        All plans include a {TRIAL_DAYS}-day free trial. A card is required to
-        start; nothing is charged until the trial ends. Prices exclude VAT.{" "}
+        {TRIAL_DAYS}-day free trial on every plan. Card required; nothing is
+        charged until it ends. Prices exclude VAT.{" "}
         {VOICE_TRIAL_NOTE}
       </p>
     </>

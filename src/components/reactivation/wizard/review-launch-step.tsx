@@ -144,7 +144,7 @@ export function ReviewLaunchStep({
             <IconTile icon={Rocket} tone="success" />
             <div>
               <h2 className="text-content text-[17px] font-semibold">
-                Step 3 — Review &amp; Launch
+                Step 3: Review &amp; Launch
               </h2>
               <p className="text-content-muted mt-0.5 text-[13px]">
                 Review your audience, message, and timing before you launch.
@@ -468,7 +468,7 @@ export function ReviewLaunchStep({
             </li>
             <li>You can pause or cancel the campaign later.</li>
             <li>
-              Message counts are estimates — the audience is recalculated on the
+              Message counts are estimates. The audience is recalculated on the
               server the moment you launch.
             </li>
           </ul>

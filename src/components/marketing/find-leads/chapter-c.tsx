@@ -35,7 +35,7 @@ export function ChapterC() {
         eyebrow="Intent, campaigns & growth"
         title="Find the right opportunities."
         accent="Take the next step."
-        aside="Prioritise in-market prospects, run bounded outreach and move engaged prospects into your lead pipeline with full context."
+        aside="Prioritise in-market prospects, run bounded outreach and promote the ones who engage."
         action={
           <Link href="#promotion" className="fl-btn fl-btn-ghost">
             See it in action
@@ -51,7 +51,7 @@ export function ChapterC() {
           index="01"
           eyebrow="Buying intent"
           title="Prioritise companies showing a reason to care now."
-          body="Named intent categories and permitted signals help prioritise prospects whose business context suggests a more immediate need."
+          body="Permitted signals flag prospects with a more immediate need."
         >
           <IntentPanel />
         </ChapterCard>
@@ -62,8 +62,8 @@ export function ChapterC() {
           id="fl-campaigns-title"
           index="02"
           eyebrow="Campaigns"
-          title="Coordinate acquisition without building a generic automation maze."
-          body="Set the conversion goal, audience, minimum fit, intent requirement, sequence, review mode and limits in one controlled workflow."
+          title="Coordinate acquisition without an automation maze."
+          body="Goal, audience, minimum fit, intent, sequence, review mode and limits in one workflow."
         >
           <CampaignPanel />
         </ChapterCard>
@@ -75,7 +75,7 @@ export function ChapterC() {
           index="03"
           eyebrow="Prospect → Lead"
           title="When a prospect engages, the history moves with them."
-          body="Cold outreach and research stay attached to the prospect until promotion. On promotion, the conversation and campaign context come too."
+          body="On promotion, the conversation and campaign context move with them."
         >
           <div id="promotion">
             <PromotionPanel />

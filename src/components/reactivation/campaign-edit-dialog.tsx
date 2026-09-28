@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -80,7 +81,7 @@ export function CampaignEditDialog({
       open={open}
       onClose={busy ? () => {} : onClose}
       title="Edit campaign"
-      description="Audience rules, messages and schedule are fixed once a campaign exists — duplicate it to change those."
+      description="Audience rules, messages and schedule are fixed once a campaign exists. Duplicate it to change those."
       footer={
         <>
           <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
@@ -93,14 +94,7 @@ export function CampaignEditDialog({
       }
     >
       <div className="space-y-4">
-        {error && (
-          <p
-            role="alert"
-            className="rounded-lg border border-danger-100 bg-danger-50 px-3 py-2 text-[13px] text-danger-700"
-          >
-            {error}
-          </p>
-        )}
+        <FormError message={error} />
 
         <div>
           <Label htmlFor="campaign-name" required className="mb-1.5">

@@ -162,7 +162,7 @@ function DataRightsConfirm({
       link.download = outcome.data.filename;
       link.click();
       URL.revokeObjectURL(url);
-      toast({ variant: "success", title: "Export downloaded. It contains personal data — store it securely." });
+      toast({ variant: "success", title: "Export downloaded. It contains personal data. Store it securely." });
       onClose();
       return;
     }

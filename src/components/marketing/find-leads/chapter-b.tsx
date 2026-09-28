@@ -35,7 +35,7 @@ export function ChapterB() {
         eyebrow="From prompt to prospects"
         title="Transparent sourcing."
         accent="Higher quality opportunities."
-        aside="See the work, review the results and understand why each prospect is a good fit before you act on it."
+        aside="See the work, review the results and see why each prospect fits."
         action={
           <Link href="#prospects" className="fl-btn fl-btn-ghost">
             Learn more about sourcing
@@ -51,7 +51,7 @@ export function ChapterB() {
           index="1"
           eyebrow="Sourcing run"
           title="See what ClientTurn is doing while it builds the list."
-          body="Sourcing runs in the background, but you should still know which stage the system is in, how far it has got and whether anything needs attention."
+          body="See the current stage, progress and anything that needs attention."
         >
           <SourcingAgentChat />
         </ChapterCard>
@@ -63,7 +63,7 @@ export function ChapterB() {
           index="2"
           eyebrow="Prospects"
           title="Review sourced prospects before they become leads."
-          body="Prospects stay separate from warm leads until they engage or you approve a promotion step, so cold research never lands in your live pipeline."
+          body="Prospects stay out of your live pipeline until they engage or you approve them."
         >
           <div id="prospects">
             <ProspectsPanel />
@@ -77,7 +77,7 @@ export function ChapterB() {
           index="3"
           eyebrow="Explainable scoring"
           title="A score should explain itself."
-          body="ClientTurn combines deterministic scoring with evidence drawn from company fit, role relevance, geography, need, intent and data quality."
+          body="Deterministic scoring across fit, role, geography, need, intent and data quality, with evidence."
         >
           <ScoringPanel />
         </ChapterCard>

@@ -238,9 +238,8 @@ export function CampaignPanel() {
           Add step
         </span>
         <p className="fl-note-line">
-          Cold outreach starts by email. SMS and WhatsApp are not used for cold
-          contact, and social channels are manual or API-gated — never browser
-          automation.
+          Cold outreach starts by email, never cold SMS or WhatsApp. Social is
+          manual or API-gated.
         </p>
       </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownLeft, Mail } from "lucide-react";
@@ -132,7 +133,7 @@ export function InMailPanel({
         </ul>
       )}
 
-      {error && <p className="px-4 pb-3 text-[11.5px] text-danger-700">{error}</p>}
+      <FormError message={error} />
     </section>
   );
 }
@@ -171,7 +172,7 @@ export function MarkInMailSentButton({ prospectId }: { prospectId: string }) {
         <Mail className="size-3.5" aria-hidden />
         {done ? "InMail recorded" : "Mark InMail sent"}
       </Button>
-      {error && <span className="text-[11px] text-danger-700">{error}</span>}
+      <FormError message={error} />
     </span>
   );
 }

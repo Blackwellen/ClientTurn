@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -196,7 +197,7 @@ export function AgentWizard({
           description={
             usesSources
               ? "The agent runs your approved Find Leads plan using only the sources you switch on here. Public ad libraries and engagement on your own social accounts are used when your plan and connections allow."
-              : "This agent works on the leads already in your workspace, however they arrived — lead forms, imports, your CRM or your website. It has no sources to choose."
+              : "This agent works on the leads already in your workspace, however they arrived: lead forms, imports, your CRM or your website. It has no sources to choose."
           }
         >
           {usesSources && (
@@ -259,7 +260,7 @@ export function AgentWizard({
                   onChange={(event) => setStrategyId(event.target.value)}
                   
                 >
-                  <option value="">No plan yet — save as draft</option>
+                  <option value="">No plan yet: save as draft</option>
                   {plans.map((plan) => (
                     <option key={plan.id} value={plan.id}>
                       {plan.name}
@@ -409,18 +410,14 @@ export function AgentWizard({
             <ShieldCheck className="size-4 shrink-0 text-content-accent" aria-hidden />
             <span>
               The agent is created as a draft and does nothing until you start it. Finding
-              someone&rsquo;s details is not permission to contact them — opt-outs, consent and
+              someone&rsquo;s details is not permission to contact them: opt-outs, consent and
               channel rules are checked before every message, whatever this agent is set to.
             </span>
           </p>
         </Panel>
       )}
 
-      {error && (
-        <p role="alert" className="text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <div className="flex items-center justify-between">
         <Button

@@ -117,8 +117,8 @@ export async function DataControlsSection() {
             not to be contacted; taking one off is a decision that needs an
             audited reason and platform support, not a delete icon in settings. */}
         <p className="mt-3 text-[12px] text-content-subtle">
-          Suppressions cannot be removed here. If one is wrong — a bounce from a
-          mailbox that has since been fixed, say — contact support, and the
+          Suppressions cannot be removed here. If one is wrong, a bounce from a
+          mailbox that has since been fixed, say, contact support, and the
           removal is recorded against whoever authorised it.
         </p>
       </section>

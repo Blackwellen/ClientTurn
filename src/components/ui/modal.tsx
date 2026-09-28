@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton } from "./button";
@@ -36,12 +37,22 @@ export function Modal({
 
   useBodyScrollLock(open);
   useFocusTrap(panelRef, open);
-  useEscape(open, onClose);
+  useEscape(open, onClose, panelRef);
 
-  if (!open) return null;
+  // Portalled to the body, one level above drawers (z-50). A confirm dialog is
+  // usually opened FROM a drawer (every connection's "Disconnect"), and
+  // rendered in place it sat under the portalled drawer: invisible and
+  // unclickable (owner report, 2026-09-28). Same SSR guard as the Drawer.
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <Overlay onClick={onClose} />
       <div
         ref={panelRef}
@@ -92,7 +103,8 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

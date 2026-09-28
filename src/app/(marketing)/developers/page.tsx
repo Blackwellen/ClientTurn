@@ -178,7 +178,7 @@ const ENDPOINTS = [
     path: "/api/v1/me",
     scope: "business:read",
     role: "Viewer",
-    body: "The workspace, the key's scopes and the live role behind it. Start here.",
+    body: "The workspace, the key's scopes and its live role. Start here.",
   },
   {
     method: "GET",
@@ -192,7 +192,7 @@ const ENDPOINTS = [
     path: "/api/v1/leads",
     scope: "leads:write",
     role: "Member",
-    body: "Record an inbound lead through the same intake as the ad forms. Needs an Idempotency-Key header and a stated relationship; 201 created, 200 merged or duplicate, 409 when the contact is suppressed (nothing stored).",
+    body: "Record an inbound lead through the ad-form intake. Needs an Idempotency-Key and a warm relationship. 201 created, 200 merged or duplicate, 409 if suppressed (nothing stored).",
   },
   {
     method: "GET",
@@ -206,14 +206,14 @@ const ENDPOINTS = [
     path: "/api/v1/leads/{id}",
     scope: "leads:write",
     role: "Member",
-    body: "Change details, move status, add a note. Runs the same status rules as the app.",
+    body: "Change details, move status, add a note. Same status rules as the app.",
   },
   {
     method: "GET",
     path: "/api/v1/events",
     scope: "business:read",
     role: "Viewer",
-    body: "Recent webhook deliveries — what was sent, what your server said, whether it will retry.",
+    body: "Recent webhook deliveries: what was sent, your server's reply, and whether it will retry.",
   },
 ] as const;
 
@@ -223,40 +223,40 @@ const ERRORS = [
   { code: "invalid_request", http: "400", body: "The body or a parameter did not validate. The message names the field." },
   { code: "not_found", http: "404", body: "No such record in this workspace." },
   { code: "rate_limited", http: "429", body: "300 requests a minute per key. `retry_after` says how long to wait." },
-  { code: "needs_confirmation", http: "409", body: "The action requires a person to agree, so it cannot be done through the API. `effect` says what would have happened." },
-  { code: "server_error", http: "500", body: "Our fault. Quote the `request_id` — it identifies the exact attempt." },
+  { code: "needs_confirmation", http: "409", body: "A person must agree, so the API cannot do it. `effect` says what would have happened." },
+  { code: "server_error", http: "500", body: "Our fault. Quote the `request_id`; it identifies the exact attempt." },
 ] as const;
 
 const GUARANTEES = [
   {
     icon: Fingerprint,
     title: "Shown once, stored as a digest",
-    body: "We keep a SHA-256 fingerprint of your key and nothing else. There is no screen, and no support process, that can show it to you again — because there is no code that could.",
+    body: "We keep only a SHA-256 fingerprint. No screen or support process can show the key again.",
   },
   {
     icon: UserCheck,
     title: "A key is one person's authority",
-    body: "It stores who it acts as, never what role they had. Every request re-reads their current membership, so removing someone from the workspace disables their keys on the next call. Nobody has to remember to go and find them.",
+    body: "Every request re-reads the owner's membership. Remove someone and their keys stop on the next call.",
   },
   {
     icon: Layers,
     title: "Scopes narrow, never widen",
-    body: "A key granted write access on a viewer's authority still cannot write. Both checks run on every request, and the narrower of the two wins.",
+    body: "Write access on a viewer's authority still cannot write. Both checks run; the narrower wins.",
   },
   {
     icon: Lock,
     title: "Never usable from a browser",
-    body: "The API sends no CORS headers at all, so a key pasted into front-end JavaScript simply will not work. A key in a web page is a key in the hands of every visitor.",
+    body: "No CORS headers are sent, so a key pasted into front-end JavaScript will not work.",
   },
   {
     icon: ListChecks,
     title: "Every request is on the record",
-    body: "Allowed or refused, with the key that made it, visible to your admins in Settings. A key being refused repeatedly is either a misconfiguration or someone probing, and you can see both.",
+    body: "Allowed or refused, with the key that made it, visible to your admins in Settings.",
   },
   {
     icon: ShieldCheck,
     title: "Optional IP allowlist",
-    body: "If your integration runs from a fixed address, list it. A stolen key is then useless from anywhere else — and if we cannot determine the caller's address, the request is refused rather than waved through.",
+    body: "List your fixed addresses. If the caller's address is unknown, the request is refused.",
   },
 ] as const;
 
@@ -267,43 +267,35 @@ const RETRY_TOTAL_HOURS = Math.round(
 const FAQS: FaqItem[] = [
   {
     q: "Who can create an API key?",
-    a: "Workspace owners and admins, in Settings → Developer. Handing out a credential that can read your leads from anywhere on the internet is an administrative act, and the key outlives the session that made it — which is exactly why a member cannot mint one for themselves.",
-  },
-  {
-    q: "What happens to a key when someone leaves?",
-    a: "It stops working on the next request. A key records whose authority it carries, and we re-read that person's membership every time it is used — so an offboarding disables their integrations immediately, without anyone having to hunt for keys they issued.",
+    a: "Workspace owners and admins, in Settings → Developer. A key outlives the session that made it, so members cannot mint their own. It stops working on the next request once its owner leaves the workspace.",
   },
   {
     q: "Can I create leads through the API?",
-    a: "Not yet, and deliberately so. Creating a lead in ClientTurn means deduplication, capturing a lawful basis for contacting them, and starting follow-up. An endpoint that skipped those would leave you with duplicate records and leads nobody is following up — worse than not having one. Use a lead source integration or the Add Lead form, both of which do all three.",
+    a: "Yes. POST /api/v1/leads runs the same intake as the ad forms, with deduplication, the suppression check and attribution. It needs an Idempotency-Key and a warm relationship, and never starts follow-up; a person does that.",
   },
   {
     q: "Why did my write get a 409 rather than a 200?",
-    a: "Some actions need a person to agree before they happen — archiving a lead, sending a message. The API has nobody at a keyboard, so it refuses rather than guessing, and returns what would have happened so you can tell your user and offer to do it in the app.",
+    a: "Some actions, such as archiving a lead or sending a message, need a person to agree. The API refuses rather than guessing, and returns what would have happened.",
   },
   {
     q: "Do I have to expose an endpoint to receive events?",
-    a: "No. If you cannot accept inbound requests, poll GET /api/v1/events instead — it returns the same payloads, with what we sent, what your server answered and whether we will try again.",
+    a: "No. Poll GET /api/v1/events instead. It returns the same payloads, your server's replies and whether we will retry.",
   },
   {
     q: "How is the MCP endpoint different from the API?",
-    a: "It is the same permission model reached over JSON-RPC, for AI assistants rather than your own code, and it exposes more: leads, appointments, campaigns, prospects, connections, your metrics and your AI agents. The important difference is that anything needing a person's confirmation does not execute — it parks in your workspace for someone to approve, and the assistant is told plainly that nothing has happened yet.",
+    a: "Same permission model over JSON-RPC, for AI assistants, with more reach: appointments, campaigns, prospects, connections, metrics and AI agents. Anything needing confirmation parks for a person to approve, and the assistant is told nothing has happened yet.",
   },
   {
-    q: "Can an assistant really set up my AI agents?",
-    a: "Yes — it can create one, choose its sources, set its schedule and its daily and monthly limits, and adjust how the conversation assistant behaves. It cannot start one. A new agent is always a draft, so configuring it changes nothing until you say go, and starting it parks for your approval because it spends money on a schedule without anyone watching.",
-  },
-  {
-    q: "Can it change what model or prompt you use?",
-    a: "No, and neither can you. Models, temperatures, token budgets and system prompts are not exposed through any surface — not the API, not MCP, not the app. A caller that could set them could talk the assistant out of its own guardrails, which is exactly why they stay internal.",
+    q: "Can an assistant set up my AI agents, or change the model?",
+    a: "It can create an agent and set its sources, schedule and limits, but a new agent is a draft and starting one parks for your approval. Models, temperatures, token budgets and system prompts are not exposed to anyone, through any surface.",
   },
   {
     q: "Which assistants can connect?",
-    a: "Any MCP client that can send a bearer header, which includes Claude, Codex and Gemini. Your workspace API key is the credential — there is nothing else to set up.",
+    a: "Any MCP client that can send a bearer header, including Claude, Codex and Gemini. Your workspace API key is the only credential.",
   },
   {
     q: "Is there a sandbox?",
-    a: "Keys are labelled Live or Test so you can tell them apart in your own configuration and revoke the right one. Both read the same workspace — we do not run a separate sandbox environment, and saying otherwise would be misleading.",
+    a: "No. Keys are labelled Live or Test so you can tell them apart, but both read the same workspace.",
   },
 ];
 
@@ -348,14 +340,13 @@ export default function DevelopersPage() {
             <Reveal>
               <SectionEyebrow className="mb-5">For developers</SectionEyebrow>
               <h1 id="dev-hero" className="pub-h1">
-                Your leads, <span className="pub-accent">in your systems</span> —
-                and an <span className="pub-accent">assistant</span> that can act
-                on them.
+                Your leads <span className="pub-accent">in your systems</span>,
+                and an <span className="pub-accent">assistant</span> to act on
+                them.
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
                 A scoped REST API, signed webhooks and an MCP endpoint. One
-                permission model, one audit trail, and a key you can revoke in a
-                click — all set up from Settings, with no sales call.
+                permission model, one audit trail, set up in Settings.
               </p>
 
               <ActionRow>
@@ -412,7 +403,7 @@ export default function DevelopersPage() {
                   <span className="pub-accent">hand it to an assistant.</span>
                 </>
               }
-              description="They share one set of permissions and one audit trail, and they live in one place in Settings — because they are one decision: what leaves this workspace, and who may act on it."
+              description="One set of permissions, one audit trail, one place in Settings."
             />
 
             <RevealGrid className="pub-grid pub-grid-3 mt-10">
@@ -420,21 +411,21 @@ export default function DevelopersPage() {
                 {
                   icon: Braces,
                   title: "REST API",
-                  body: "Read and update leads from your own code over HTTPS. Scoped per key, rate limited per key, and every call goes through the same rules the app itself uses.",
+                  body: "Create, read and update leads over HTTPS. Scoped and rate limited per key, under the app's rules.",
                   href: "#api",
                   cta: "Read the reference",
                 },
                 {
                   icon: Webhook,
                   title: "Webhooks",
-                  body: "We POST a signed JSON body to your server the moment a lead arrives, qualifies, books, replies, or needs a person. Retried on failure, with a delivery log you can read.",
+                  body: "A signed JSON POST when a lead arrives, qualifies, books, replies or needs a person. Retried on failure.",
                   href: "#webhooks",
                   cta: "See the events",
                 },
                 {
                   icon: Bot,
                   title: "MCP",
-                  body: "Connect Claude, Codex or Gemini with the same key. It can work your leads, set up and run your AI agents, and check your connections — within the permissions you grant, and anything risky waits for a person.",
+                  body: "Connect Claude, Codex or Gemini with the same key. Anything risky waits for a person.",
                   href: "#mcp",
                   cta: "Connect an assistant",
                 },
@@ -460,24 +451,22 @@ export default function DevelopersPage() {
                   Three minutes, no sales call.
                 </h2>
                 <p className="pub-lead mt-5">
-                  Create a key in Settings → Developer, choose exactly what it may
-                  do, and call the API. The key is shown once — we store only a
-                  fingerprint of it, so it cannot be shown again.
+                  The key is shown once; we store only its fingerprint.
                 </p>
 
                 <ol className="pub-timeline mt-8">
                   {[
                     {
                       title: "Create a key",
-                      body: "Settings → Developer → New key. Nothing is pre-selected: you choose the permissions and the expiry, and can restrict it to your own IP addresses.",
+                      body: "Settings → Developer → New key. Choose scopes, expiry and optional IP limits.",
                     },
                     {
                       title: "Send it as a bearer token",
-                      body: "From your own server. Never from a browser — the API sends no CORS headers, so it will not work there by design.",
+                      body: "From your own server only. No CORS headers, so browsers cannot use it.",
                     },
                     {
                       title: "Check it with /me",
-                      body: "It returns the workspace, the key's scopes and the live role behind it. If a later call is refused, this tells you which of the three is the reason.",
+                      body: "Shows the workspace, scopes and live role, so you can see why a call is refused.",
                     },
                   ].map((step, index) => (
                     <li key={step.title} className="pub-step">
@@ -517,7 +506,7 @@ export default function DevelopersPage() {
                   <span className="pub-accent">through the same rules.</span>
                 </>
               }
-              description="No endpoint reads the database directly. Each one calls the same internal operation the app, the copilot and your assistant use, so the workspace scoping, the status rules and the audit trail apply without any endpoint having to remember them."
+              description="Each endpoint calls the same operation the app uses, so scoping, status rules and audit always apply."
             />
 
             <div className="pub-ref-scroll mt-9">
@@ -557,17 +546,13 @@ export default function DevelopersPage() {
                 <GlyphTile icon={ListChecks} size={34} glyph={17} />
                 <div>
                   <h3 className="pub-h3">
-                    Creating a lead is deliberately not here
+                    Creating a lead uses the same intake
                   </h3>
                   <p className="pub-body mt-2">
-                    Creating a lead in ClientTurn means deduplicating it against
-                    what you already have, recording a lawful basis for contacting
-                    that person, and starting follow-up. An endpoint that skipped
-                    those three would hand you duplicate records and leads nobody
-                    is chasing — which is worse than not having one. Use a lead
-                    source integration or the Add Lead form, both of which do all
-                    three. The endpoint exists and says exactly this, rather than
-                    returning a bare error.
+                    <code className="pub-inline-code">POST /api/v1/leads</code>{" "}
+                    runs the same deduplication, suppression check and
+                    attribution as every other source. It records and qualifies
+                    the lead, but never starts follow-up; a person does that.
                   </p>
                 </div>
               </div>
@@ -583,10 +568,8 @@ export default function DevelopersPage() {
                   A key can only narrow what its owner could already do.
                 </h2>
                 <p className="pub-lead mt-5">
-                  Scopes are a ceiling, never a floor. Both checks run on every
-                  request — what the key was granted, and what its owner can still
-                  do today — and the narrower wins. There is no all-access scope
-                  and nothing is selected by default.
+                  Every request checks the key&rsquo;s scopes and its owner&rsquo;s
+                  current role; the narrower wins.
                 </p>
 
                 <ul className="pub-assurances mt-7">
@@ -601,6 +584,10 @@ export default function DevelopersPage() {
                   <li>
                     <Clock aria-hidden className="size-3.5" />
                     Keys expire in 90 days unless you choose otherwise
+                  </li>
+                  <li>
+                    <Lock aria-hidden className="size-3.5" />
+                    No all-access scope, and nothing selected by default
                   </li>
                 </ul>
               </div>
@@ -639,11 +626,11 @@ export default function DevelopersPage() {
               eyebrow="Webhooks"
               title={
                 <>
-                  Told the moment it happens —{" "}
-                  <span className="pub-accent">and provably by us.</span>
+                  Told the moment it happens,{" "}
+                  <span className="pub-accent">provably by us.</span>
                 </>
               }
-              description="Add an https endpoint in Settings, choose your events, and we POST a signed JSON body to it. Every request carries an HMAC-SHA256 signature over the timestamp and the raw body, so you can prove it came from us and refuse a replay."
+              description="Each POST carries an HMAC-SHA256 signature over the timestamp and raw body, so you can verify it and refuse replays."
             />
 
             <div className="pub-split mt-9">
@@ -665,9 +652,7 @@ export default function DevelopersPage() {
               <div>
                 <h3 className="pub-h3">Events</h3>
                 <p className="pub-body mt-2">
-                  An event appears in this list only once something actually sends
-                  it. A subscription you can tick for an event that never fires is
-                  worse than a missing feature.
+                  Only events that something actually sends are listed.
                 </p>
 
                 <div className="pub-ref-scroll mt-5">
@@ -736,24 +721,24 @@ export default function DevelopersPage() {
               <div>
                 <SectionEyebrow>Model Context Protocol</SectionEyebrow>
                 <h2 id="dev-mcp" className="pub-h2">
-                  Give an assistant a key to the workspace — and a leash.
+                  Give an assistant a key to the workspace, and a leash.
                 </h2>
                 <p className="pub-lead mt-5">
-                  ClientTurn is an MCP server. Point Claude, Codex or Gemini at it
-                  with your API key and it works inside your workspace — inside
-                  the permissions you granted, and never beyond what you can do
-                  yourself.
+                  Point Claude, Codex or Gemini at ClientTurn&rsquo;s MCP server
+                  with your API key; it acts only within the permissions you grant.
                 </p>
 
-                <p className="pub-body mt-4">
-                  It reaches the same operations the app does, not a thinner copy
-                  of them: leads and their conversations, appointments,
-                  reactivation campaigns, sourced prospects, your connected
-                  systems, and your headline numbers. It can also set your AI
-                  agents up end to end — create one, choose its sources, schedule
-                  and limits, and start or pause it — and change how the
-                  conversation assistant behaves.
-                </p>
+                <ul className="pub-assurances mt-5">
+                  <li>
+                    <Braces aria-hidden className="size-3.5" />
+                    Leads, conversations, appointments, campaigns, prospects and
+                    connections
+                  </li>
+                  <li>
+                    <Bot aria-hidden className="size-3.5" />
+                    Sets up AI agents: sources, schedule and limits
+                  </li>
+                </ul>
 
                 <ul className="pub-assurances mt-7">
                   <li>
@@ -767,8 +752,7 @@ export default function DevelopersPage() {
                   </li>
                   <li>
                     <Layers aria-hidden className="size-3.5" />
-                    It cannot set a model, a prompt or a token budget — those are
-                    not exposed to anyone
+                    No model, prompt or token budget settings, for anyone
                   </li>
                   <li>
                     <ListChecks aria-hidden className="size-3.5" />
@@ -805,13 +789,9 @@ export default function DevelopersPage() {
                     <div>
                       <h3 className="pub-h3">The approval gate</h3>
                       <p className="pub-body mt-2">
-                        High-impact actions do not run when an assistant asks for
-                        them. They park in your workspace with a plain-English
-                        summary of what was requested and what it would do, and
-                        the assistant is told clearly that nothing has happened —
-                        so it cannot report success. Approving runs the action on
-                        the approver&rsquo;s authority, once, however many times
-                        it is clicked.
+                        High-impact requests park with a plain-English summary,
+                        and the assistant is told nothing has happened. Approval
+                        runs it once, on the approver&rsquo;s authority.
                       </p>
                     </div>
                   </div>
@@ -827,11 +807,11 @@ export default function DevelopersPage() {
               eyebrow="AI agents"
               title={
                 <>
-                  Set an agent up in a sentence —{" "}
+                  Set an agent up in a sentence,{" "}
                   <span className="pub-accent">start it on purpose.</span>
                 </>
               }
-              description="An assistant can create an agent, choose its sources, set its schedule and its daily and monthly limits, and read back everything it has done. What it cannot do is set one running: that spends real money on a schedule with nobody watching, so it waits for you."
+              description="Running an agent spends money on a schedule, so starting one always waits for you."
             />
 
             <RevealGrid className="pub-grid pub-grid-3 mt-10">
@@ -839,17 +819,17 @@ export default function DevelopersPage() {
                 {
                   icon: Bot,
                   title: "Configured by conversation",
-                  body: "Describe what you want the agent to do and the assistant sets the parameters — type, cadence, sources, enrichment, and how much it may do without your review. Every new agent is a draft, so getting it wrong costs nothing.",
+                  body: "The assistant sets type, cadence, sources, limits and review level. New agents start as drafts.",
                 },
                 {
                   icon: UserCheck,
                   title: "Started only by you",
-                  body: "Starting an agent, or running one immediately, parks for approval with a summary of what it will do. An agent can never configure an agent either — including itself — so nothing running can widen the limits it runs under. Pausing and stopping are never gated.",
+                  body: "Starting or running now parks for approval. Agents cannot configure agents. Pausing is never gated.",
                 },
                 {
                   icon: Lock,
                   title: "The model stays ours",
-                  body: "There is no way — for an assistant, an API caller or anyone else — to set a model, a temperature, a token budget or a system prompt. Anything that could talk an agent out of its own guardrails is not exposed at all.",
+                  body: "No one can set a model, temperature, token budget or system prompt, through any surface.",
                 },
               ].map((card) => (
                 <PublicCard key={card.title} className="pub-cell">
@@ -872,7 +852,7 @@ export default function DevelopersPage() {
                   <span className="pub-accent">a small problem.</span>
                 </>
               }
-              description="These are properties of the code, not policies we intend to follow. Each one is covered by a test that fails if it stops being true."
+              description="Properties of the code, each covered by a test that fails if it stops being true."
             />
 
             <RevealGrid className="pub-grid pub-grid-3 mt-10">
@@ -895,16 +875,13 @@ export default function DevelopersPage() {
                   A stable code, a readable message, and an id to quote.
                 </h2>
                 <p className="pub-lead mt-5">
-                  Refusals never say which check failed — telling a caller their
-                  key exists but expired would tell someone holding a stolen key
-                  exactly what they have. Your admins see the specific reason in
-                  Settings, where it belongs.
+                  Refusals never say which check failed; your admins see the
+                  reason in Settings.
                 </p>
                 <p className="pub-body mt-4">
-                  A <code className="pub-inline-code">PATCH</code> asking for
-                  several changes is not a transaction, so if one step fails the
-                  response names what was applied before it. You are never left
-                  unable to tell an untouched record from a half-changed one.
+                  A multi-change <code className="pub-inline-code">PATCH</code> is
+                  not a transaction. If a step fails, the response names what was
+                  already applied.
                 </p>
               </div>
 
@@ -957,7 +934,7 @@ export default function DevelopersPage() {
                   <span className="pub-accent">today.</span>
                 </>
               }
-              body={`Everything on this page is available on every plan, from the free trial upward. No integration tier, no per-call pricing, and nothing to unlock at ${siteHost}.`}
+              body={`Everything here is on every plan, including the free trial. No integration tier and no per-call pricing at ${siteHost}.`}
               actions={
                 <>
                   <PrimaryCta placement="developers_final" size="lg">
@@ -981,7 +958,7 @@ export default function DevelopersPage() {
                 {
                   icon: <Terminal className="size-3.5" />,
                   title: "REST API",
-                  body: "Read and update your leads from your own systems.",
+                  body: "Create, read and update leads from your own systems.",
                 },
                 {
                   icon: <Webhook className="size-3.5" />,

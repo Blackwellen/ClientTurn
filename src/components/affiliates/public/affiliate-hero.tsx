@@ -40,8 +40,8 @@ const BENEFITS = [
   },
   {
     icon: Coins,
-    title: "Earn recurring commission",
-    body: "Get paid for every customer you refer, with ongoing earnings.",
+    title: "Earn a one-off commission",
+    body: "Get paid once for every customer you refer, on their first payment.",
   },
   {
     icon: TrendingUp,
@@ -59,11 +59,14 @@ const ASSURANCES = ["Free to join", "Simple tracking", "Real commission"] as con
 
 export function AffiliateHero({
   policy,
+  rateRange,
   ctaHref,
   ctaLabel,
   signedIn,
 }: {
   policy: ProgrammePolicy;
+  /** "6% to 10%", from the live tier table. */
+  rateRange?: string;
   ctaHref: string;
   ctaLabel: string;
   signedIn: boolean;
@@ -103,9 +106,10 @@ export function AffiliateHero({
               Earn by helping <span>businesses grow.</span>
             </motion.h1>
             <motion.p className="afp-lead" {...enter(0.12)}>
-              Join the ClientTurn affiliate programme and earn{" "}
-              {describeRate(policy)} for every new customer you refer. It is a
-              win for you, and a bigger future for the businesses you support.
+              Join the ClientTurn affiliate programme and earn a one-off{" "}
+              {rateRange ?? describeRate(policy)} commission on the first
+              payment of every new customer you refer. It is a win for you, and
+              a bigger future for the businesses you support.
             </motion.p>
 
             <motion.div className="afp-hero-actions" {...enter(0.18)}>

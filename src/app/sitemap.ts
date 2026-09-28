@@ -13,6 +13,7 @@ const routes: { path: string; priority: number; changeFrequency: MetadataRoute.S
   { path: "product/lead-conversion", priority: 0.9, changeFrequency: "monthly" },
   { path: "pricing", priority: 0.9, changeFrequency: "monthly" },
   { path: "results", priority: 0.7, changeFrequency: "monthly" },
+  { path: "sdr-cost-calculator", priority: 0.7, changeFrequency: "monthly" },
   { path: "enterprise", priority: 0.7, changeFrequency: "monthly" },
   { path: "developers", priority: 0.6, changeFrequency: "monthly" },
   { path: "help", priority: 0.6, changeFrequency: "weekly" },

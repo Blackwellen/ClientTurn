@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -300,11 +301,7 @@ function CreateRequestDialog({ onClose }: { onClose: () => void }) {
             </span>
           </span>
         </label>
-        {error && (
-          <p role="alert" className="text-[12px] text-danger-600">
-            {error}
-          </p>
-        )}
+        <FormError message={error} />
       </div>
     </Modal>
   );

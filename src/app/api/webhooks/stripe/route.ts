@@ -17,13 +17,28 @@ import {
   applyMessageCreditCheckout,
   applyMessageCreditRefund,
 } from "@/lib/billing/message-credits";
+import { accrueCommission } from "@/lib/affiliates/commissions";
+import { commissionBaseMinor, isCommissionableInvoice } from "@/lib/affiliates/ledger-rules";
 import {
-  accrueCommission,
-  reverseCommission,
-} from "@/lib/affiliates/commissions";
+  billingEventJobKey,
+  disputeEvent,
+  refundEvent,
+  type AffiliateBillingEvent,
+} from "@/lib/affiliates/billing-event-rules";
 import { enqueue } from "@/lib/jobs/queue";
 import { recordUpsellConversion } from "@/lib/billing/upsell-service";
-import { applyVoicePackCheckout } from "@/lib/billing/voice-webhook";
+import { applyVoicePackCheckout, applyVoicePackRefund } from "@/lib/billing/voice-webhook";
+import { recordInvoiceActionRequired } from "@/lib/billing/dunning";
+import { recordPaidInvoice } from "@/lib/billing/invoice-ledger";
+import { recordDisputeClosed, recordDisputeOpened } from "@/lib/billing/disputes";
+import {
+  asCompletedCheckoutEvent,
+  asyncPaymentFailedNotice,
+  checkoutEventMeaning,
+  invoiceAmounts,
+  oneOffKindOf,
+} from "@/lib/billing/stripe-events";
+import { queueNotification } from "@/lib/jobs/handlers/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -35,17 +50,27 @@ const HANDLED = new Set([
   "customer.subscription.trial_will_end",
   "invoice.paid",
   "invoice.payment_failed",
+  // 3-D Secure (SCA) on a renewal: the owner is sent to confirm it
+  // (dunning.ts `recordInvoiceActionRequired`). No access change by itself.
+  "invoice.payment_action_required",
   // One-off AI token top-ups. `checkout.session.completed` is the only place
   // tokens are ever granted -- nothing in the app credits an allowance,
   // because nothing in the app has seen the money.
   "checkout.session.completed",
   "checkout.session.expired",
+  // Delayed payment methods (bank debits): a completed session is "unpaid"
+  // and grants nothing until one of these arrives (stripe-events.ts).
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
   "charge.refunded",
   // Affiliate commission is accrued and reversed from these, never from a page.
   // A dispute is treated as a reversal at the point it is opened rather than
   // when it is lost: money that is being clawed back should stop looking
   // payable immediately.
   "charge.dispute.created",
+  // A chargeback also claws back the disputed purchase's unused tokens,
+  // minutes or credit, and a won dispute gives them back (billing/disputes.ts).
+  "charge.dispute.closed",
 ]);
 
 /**
@@ -184,16 +209,23 @@ export async function POST(request: Request) {
 }
 
 async function applyEvent(event: Stripe.Event) {
-  if (
-    event.type === "checkout.session.completed" ||
-    event.type === "checkout.session.expired"
-  ) {
+  const checkoutMeaning = checkoutEventMeaning(event.type);
+  if (checkoutMeaning === "async_failed") {
+    await applyAsyncPaymentFailed(event);
+    return;
+  }
+  if (checkoutMeaning) {
+    // A delayed payment that has now cleared is applied exactly as a paid
+    // `checkout.session.completed`: every grant below is keyed on its
+    // purchase or session, so nothing is credited twice.
+    const grantEvent = asCompletedCheckoutEvent(event);
     // Each is a no-op for the others' sessions (keyed on metadata.kind).
-    await applyTokenCheckout(event);
-    await applyMessageCreditCheckout(event);
-    await applyWhatsappUpsellConversion(event);
+    await applyTokenCheckout(grantEvent);
+    await applyMessageCreditCheckout(grantEvent);
+    await applyWhatsappUpsellConversion(grantEvent);
     // Voice minute packs (OD-2): credits minutes, keyed on the session id.
-    await applyVoicePackCheckout(event);
+    await applyVoicePackCheckout(grantEvent);
+    // Terms and customer id are recorded from the original completion only.
     if (event.type === "checkout.session.completed") {
       await applySubscriptionCheckout(event.data.object as Stripe.Checkout.Session, {
         eventId: event.id,
@@ -210,12 +242,30 @@ async function applyEvent(event: Stripe.Event) {
     // reverses the purchase's UNUSED credit off the request path.
     await applyTokenRefund(event);
     await applyMessageCreditRefund(event);
-    await applyAffiliateRefund(event);
+    await applyVoicePackRefund(event);
+    // Affiliate commission: queued, never applied here (the invoice may have
+    // to be resolved through Stripe, which a webhook must not call).
+    await enqueueAffiliateBillingEvent(refundEvent(event.id, event.data.object));
     return;
   }
 
   if (event.type === "charge.dispute.created") {
-    await applyAffiliateChargeback(event);
+    await enqueueAffiliateBillingEvent(disputeEvent(event.id, event.type, event.data.object));
+    // Records the dispute and QUEUES the clawback of the purchase's unused
+    // units (no ledger work on the request path), and tells the owner.
+    await recordDisputeOpened(event.data.object as Stripe.Dispute, event.id);
+    return;
+  }
+
+  if (event.type === "charge.dispute.closed") {
+    await recordDisputeClosed(event.data.object as Stripe.Dispute, event.id);
+    // A WON dispute re-accrues the commission it reversed (affiliate audit 17).
+    await enqueueAffiliateBillingEvent(disputeEvent(event.id, event.type, event.data.object));
+    return;
+  }
+
+  if (event.type === "invoice.payment_action_required") {
+    await recordInvoiceActionRequired(event.data.object as Stripe.Invoice, event.id);
     return;
   }
 
@@ -239,6 +289,9 @@ async function applyEvent(event: Stripe.Event) {
     // Stops any daily retry of this invoice immediately, then accrues
     // affiliate commission for the payment.
     await recordInvoicePaid(event.data.object as Stripe.Invoice, event.id);
+    // The real amounts (paid, discounts, tax) and the subscription's real MRR,
+    // for admin revenue (billing/invoice-ledger.ts).
+    await recordPaidInvoice(event.data.object as Stripe.Invoice, event.id);
     await applyAffiliateAccrual(event);
     return;
   }
@@ -270,7 +323,8 @@ async function applyAffiliateAccrual(event: Stripe.Event) {
   const businessId = await businessForInvoice(invoice);
   if (!businessId) return;
 
-  // Net of discounts and credit, which is what the customer actually paid.
+  // What the customer actually paid, VAT included (the invite rule and the
+  // scale a later refund is measured on).
   const amountPaidMinor = invoice.amount_paid ?? 0;
   if (amountPaidMinor <= 0) return;
 
@@ -294,19 +348,33 @@ async function applyAffiliateAccrual(event: Stripe.Event) {
     );
   }
 
+  // Only subscription money earns commission, on the amount actually paid
+  // net of VAT, discounts and credit (ledger-rules.ts, audit 17 §2).
+  if (!isCommissionableInvoice(invoice.billing_reason ?? null)) return;
+  const amounts = invoiceAmounts(invoice as unknown as Parameters<typeof invoiceAmounts>[0]);
+  const baseMinor = commissionBaseMinor({
+    amountPaidMinor: amounts.amountPaidMinor,
+    totalMinor: Math.max(0, Number(invoice.total ?? 0)),
+    totalExcludingTaxMinor: amounts.totalExcludingTaxMinor,
+  });
+  if (baseMinor <= 0) return;
+
   const periodStart = invoice.period_start
     ? new Date(invoice.period_start * 1000)
     : new Date();
+  const paidAtUnix = (invoice as unknown as { status_transitions?: { paid_at?: number | null } })
+    .status_transitions?.paid_at;
 
   const result = await accrueCommission({
     businessId,
-    amountPaidMinor,
+    amountPaidMinor: baseMinor,
+    grossPaidMinor: amountPaidMinor,
     currency: (invoice.currency ?? "gbp").toUpperCase(),
     invoiceId: invoice.id ?? `invoice_${event.id}`,
-    paymentIndex: await paymentIndexFor(businessId, invoice),
     periodMonth: `${periodStart.getUTCFullYear()}-${String(
       periodStart.getUTCMonth() + 1,
     ).padStart(2, "0")}-01`,
+    paidAt: paidAtUnix ? new Date(paidAtUnix * 1000).toISOString() : undefined,
   });
 
   if (result.status === "created") {
@@ -349,30 +417,6 @@ function isFirstPaidInviteCandidate(billingReason: string | null, amountPaidMino
   );
 }
 
-/**
- * How many payments this subscription has already made.
- *
- * Decides whether a payment earns the new-customer rate or a renewal rate, and
- * whether it is still inside a recurring plan's month window. Counted from our
- * own ledger rather than from Stripe, because the ledger is what the commission
- * plan is applied against and a mismatch there is a mispayment.
- */
-async function paymentIndexFor(
-  businessId: string,
-  invoice: Stripe.Invoice,
-): Promise<number> {
-  // A subscription's very first invoice is unambiguous.
-  if (invoice.billing_reason === "subscription_create") return 0;
-
-  const { count } = await createAdminClient()
-    .from("affiliate_commissions")
-    .select("id", { count: "exact", head: true })
-    .eq("business_id", businessId)
-    .in("entry_type", ["NEW_CUSTOMER", "RENEWAL"]);
-
-  return count ?? 0;
-}
-
 /** Resolves the tenant an invoice belongs to, via the mirrored subscription. */
 async function businessForInvoice(
   invoice: Stripe.Invoice,
@@ -386,65 +430,68 @@ async function businessForInvoice(
   return data?.business_id ?? null;
 }
 
-/** Reverses commission when a subscription charge is refunded. */
-async function applyAffiliateRefund(event: Stripe.Event) {
-  const charge = event.data.object as Stripe.Charge;
-  // Top-ups are handled by their own refund handlers and never earn commission.
-  if (
-    charge.metadata?.kind === "ai_tokens" ||
-    charge.metadata?.kind === "message_credits" ||
-    charge.metadata?.kind === "voice_pack"
-  ) {
-    return;
-  }
-
-  const invoiceId = invoiceIdOf(charge);
-  if (!invoiceId) return;
-
-  await reverseCommission({
-    invoiceId,
-    reason: "REFUND",
-    // Proportional, so a partial refund takes back a proportional commission.
-    refundedMinor: charge.amount_refunded ?? undefined,
+/**
+ * Queues a refund or dispute for the affiliate ledger (`affiliate.billing_event`).
+ * One job per Stripe event; the job resolves the invoice and applies the
+ * keyed reversal or re-accrual (lib/affiliates/billing-events.ts).
+ */
+async function enqueueAffiliateBillingEvent(payload: AffiliateBillingEvent | null) {
+  if (!payload) return;
+  await enqueue("affiliate.billing_event", payload as unknown as Record<string, unknown>, {
+    idempotencyKey: billingEventJobKey(payload),
   });
 }
 
-/** Reverses commission the moment a chargeback is opened. */
-async function applyAffiliateChargeback(event: Stripe.Event) {
-  const dispute = event.data.object as Stripe.Dispute;
-
-  const chargeId =
-    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
-  if (!chargeId) return;
-
-  let invoiceId: string | null = null;
-  try {
-    invoiceId = invoiceIdOf(await stripe.charges.retrieve(chargeId));
-  } catch {
-    return;
-  }
-
-  if (!invoiceId) return;
-
-  await reverseCommission({ invoiceId, reason: "CHARGEBACK" });
-}
+/* ------------------------------------------------ delayed payment failed */
 
 /**
- * The invoice a charge belongs to.
- *
- * Read through a cast because the pinned Stripe typings for this API version
- * no longer declare `invoice` on `Charge`, while the API still returns it. The
- * shape is narrowed here rather than trusted: anything that is not a string or
- * an object with a string id yields null, and the caller then does nothing.
+ * `checkout.session.async_payment_failed`: a bank-debit payment for a one-off
+ * pack failed after Checkout completed. The purchase row (AI tokens, SMS or
+ * WhatsApp credit) moves PENDING -> FAILED; a voice pack has no row until it
+ * is paid. Nothing was ever granted, the subscription is untouched, and the
+ * owner is told. Replay-safe: the status move is conditional and the notice
+ * is keyed on the session.
  */
-function invoiceIdOf(charge: unknown): string | null {
-  const value = (charge as { invoice?: unknown }).invoice;
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "id" in value) {
-    const id = (value as { id?: unknown }).id;
-    return typeof id === "string" ? id : null;
+async function applyAsyncPaymentFailed(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const kind = oneOffKindOf(session.metadata?.kind);
+  const businessId = session.metadata?.business_id;
+  if (!kind || !businessId) return;
+
+  const purchaseId = session.metadata?.purchase_id;
+  const table =
+    kind === "ai_tokens" ? "ai_token_purchases" : kind === "message_credits" ? "message_credit_purchases" : null;
+  if (table && purchaseId) {
+    assertWrite(
+      await (createAdminClient() as unknown as import("@supabase/supabase-js").SupabaseClient)
+        .from(table)
+        .update({ status: "FAILED" })
+        .eq("id", purchaseId)
+        .eq("status", "PENDING"),
+      "stripe webhook: mark delayed payment failed",
+      { eventId: event.id, purchaseId },
+    );
   }
-  return null;
+
+  const notice = asyncPaymentFailedNotice(kind);
+  await queueNotification({
+    businessId,
+    type: "billing",
+    severity: "warning",
+    title: notice.title,
+    body: notice.body,
+    linkUrl: "/app/settings?section=billing",
+    dedupeKey: `async_payment_failed:${session.id}`,
+  });
+  await recordAudit({
+    businessId,
+    actorUserId: null,
+    actorType: "provider",
+    action: "billing.async_payment_failed",
+    entityType: kind === "ai_tokens" ? "ai_token_purchase" : kind === "message_credits" ? "message_credit_purchase" : "voice_minute_pack",
+    entityId: purchaseId ?? null,
+    metadata: { sessionId: session.id, stripe_event: event.type },
+  });
 }
 
 /* ------------------------------------------------------------ ai tokens */

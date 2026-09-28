@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Calculator, CircleDollarSign, Gauge, Info } from "lucide-react";
 import { Input, Switch } from "@/components/ui/form";
@@ -178,7 +179,7 @@ export function BudgetStep({
           note={
             <NoteBox icon={Info} tone="info">
               Off by default for budget-affecting behaviour. If enabled, optimisation will
-              remain within your set limits — it can never raise spend, go past a limit or
+              remain within your set limits. It can never raise spend, go past a limit or
               weaken contact rules.
             </NoteBox>
           }
@@ -353,7 +354,7 @@ function ToggleRow({
           <Info className="size-3.5 text-content-subtle" aria-hidden />
         </div>
         <p className="mt-1 text-[12px] leading-snug text-content-muted">{description}</p>
-        {error && <p className="mt-1.5 text-[12px] text-danger-600">{error}</p>}
+        <FormError message={error} className="mt-1.5" />
       </div>
       <div className={cn("flex shrink-0 items-start gap-3", "lg:max-w-[22rem]")}>
         <Switch

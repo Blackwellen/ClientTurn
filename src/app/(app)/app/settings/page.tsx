@@ -16,6 +16,7 @@ import { DeveloperSection } from "./_sections/developer-section";
 import { BusinessProfileSectionLoader } from "./_sections/business-profile-section";
 import { AiSellingSection } from "./_sections/ai-selling-section";
 import { QuotesSection } from "./_sections/quotes-section";
+import { VoiceSection } from "./_sections/voice-section";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export default async function SettingsPage({
       <SettingsTableSkeleton />
     ) : (
       <SettingsFormSkeleton
-        cards={section === "connections" || section === "developer" || section === "ai-selling" || section === "quotes" ? 4 : 2}
+        cards={section === "connections" || section === "developer" || section === "ai-selling" || section === "quotes" || section === "voice" ? 4 : 2}
       />
     );
 
@@ -59,6 +60,7 @@ export default async function SettingsPage({
         {section === "business-profile" && <BusinessProfileSectionLoader />}
         {section === "ai-selling" && <AiSellingSection />}
         {section === "quotes" && <QuotesSection />}
+        {section === "voice" && <VoiceSection panel={params.panel} />}
         {section === "team" && <TeamSection />}
         {section === "developer" && <DeveloperSection />}
         {section === "data-controls" && <DataControlsSection />}

@@ -206,7 +206,7 @@ type Step = {
 
 function SummaryStrip({ steps }: { steps: Step[] }) {
   return (
-    <ol className="pub-fragment mt-8 flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
+    <ol className="pub-fragment mt-8 flex flex-col gap-4 p-4 sm:flex-row sm:flex-wrap sm:items-start">
       {steps.map((step, index) => (
         <React.Fragment key={step.title}>
           {index > 0 ? (
@@ -214,7 +214,7 @@ function SummaryStrip({ steps }: { steps: Step[] }) {
               <span className="pub-node-dot block" />
             </li>
           ) : null}
-          <li className="flex min-w-0 flex-1 items-center gap-3">
+          <li className="flex min-w-0 flex-1 items-center gap-3 sm:min-w-[8.5rem]">
             <span className="pub-tile" style={{ width: 34, height: 34, borderRadius: 9 }}>
               <step.icon className="size-4" strokeWidth={2.1} />
             </span>
@@ -344,7 +344,7 @@ export function GrowthPathSection() {
               Choose the growth path <span className="pub-accent">you need.</span>
             </>
           }
-          description="Whether you want to convert more of the leads already coming in, or find new customers, ClientTurn gives you the tools to grow — your way."
+          description="Convert the leads you already get, find new customers, or both."
         />
         </Reveal>
 
@@ -353,7 +353,7 @@ export function GrowthPathSection() {
             eyebrow="Inbound lead conversion"
             title="Convert"
             titleAccent="Existing Leads"
-            copy="Respond, follow up, qualify, book and reactivate the enquiries already coming into your business."
+            copy="Respond, follow up, qualify, book and reactivate the enquiries you already get."
             ctaLabel="Explore Lead Conversion"
             href="/product/lead-conversion"
             steps={[
@@ -426,7 +426,7 @@ export function GrowthPathSection() {
             eyebrow="Outbound prospecting"
             title="Find"
             titleAccent="New Customers"
-            copy="Describe your target, source and verify prospects, monitor intent and coordinate permitted outbound outreach."
+            copy="Describe your target, verify prospects, watch intent and run permitted outreach."
             ctaLabel="Explore Find Leads"
             href="/product/find-leads"
             steps={[

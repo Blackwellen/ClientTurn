@@ -137,7 +137,7 @@ export function ProspectIntentCell({ row }: { row: ProspectListRow }) {
   const extra = row.intent.matchCount - 1;
   return (
     <Tooltip
-      content={`${row.intent.categoryName} — ${row.intent.matchCount} live signal${
+      content={`${row.intent.categoryName}: ${row.intent.matchCount} live signal${
         row.intent.matchCount === 1 ? "" : "s"
       }`}
     >

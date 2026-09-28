@@ -162,9 +162,8 @@ export function PricingPreviewSection() {
               <span className="pub-accent">Scale when the pipeline does.</span>
             </h2>
             <p className="pub-lead mt-6">
-              Every plan starts with a {TRIAL_DAYS}-day free trial, with nothing charged until it ends, and no
-              long-term contract — self-serve plans run to the end of the period you have paid
-              for and can be cancelled from billing settings.
+              Every plan starts with a {TRIAL_DAYS}-day free trial and nothing charged until it ends.
+              No long-term contract: cancel any time from billing settings.
             </p>
           </div>
 
@@ -183,10 +182,9 @@ export function PricingPreviewSection() {
         </div>
 
         <p className="pub-small mt-8">
-          Prices exclude VAT. Annual billing saves 15%. Included allowances —
-          {" "}
+          Prices exclude VAT. Annual billing saves 15%. Plans include{" "}
           {PLANS.starter.leadLimit} to {PLANS.pro.leadLimit.toLocaleString("en-GB")} new leads a
-          month depending on plan — are enforced in the product, not just described here.
+          month, enforced in the product.
           {" "}Pro with the AI Voice Sales Agent is {gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month.{" "}
           {VOICE_TRIAL_NOTE}
         </p>

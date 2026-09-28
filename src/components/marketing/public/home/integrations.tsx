@@ -46,8 +46,7 @@ export function IntegrationsSection() {
               Connect the tools around <span className="pub-accent">your pipeline.</span>
             </h2>
             <p className="pub-lead mt-6 max-w-lg">
-              Bring supported lead sources, communication, booking and CRM systems into the same
-              operating flow.
+              Lead sources, messaging, booking and CRM in one flow.
             </p>
             <Link href="#integration-catalogue" className={buttonClass("primary", "lg", "mt-9")}>
               View all integrations

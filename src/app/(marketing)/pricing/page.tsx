@@ -48,6 +48,7 @@ import {
 import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/public/faq";
 import { PlanGrid } from "@/components/marketing/public/pricing/plan-grid";
+import { automaticTaxEnabled, vatCopy } from "@/lib/billing/tax";
 import { PlanComparison } from "@/components/marketing/public/pricing/comparison";
 import { Columns } from "@/components/marketing/public/charts";
 import { VoicePricingBand } from "@/components/marketing/public/revenue/voice-pricing";
@@ -158,67 +159,61 @@ const WHATSAPP_FROM_COVERS = whatsappTokenCoverage(WHATSAPP_FROM.credits);
 const FAQS: FaqItem[] = [
   {
     q: "How much does the AI Voice Sales Agent cost?",
-    a: `Pro with Voice is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month and includes ${VOICE_ADDON.includedMinutes} minutes of AI calls a month and a dedicated UK number. Don't need voice? Pro is ${gbp(PLANS.pro.monthlyPrice as number)}. On ${PLANS.starter.name} and ${PLANS.growth.name}, voice is a prepaid add-on: minute packs (${packSummary()}) plus a dedicated number at ${gbp(VOICE_NUMBER_MONTHLY_GBP)} a month. Premium voices add ${gbp(PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN)} a minute. Included minutes don't roll over, packs never expire, and there is no overage. ${VOICE_TRIAL_NOTE}`,
+    a: `Pro with Voice is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} a month with ${VOICE_ADDON.includedMinutes} minutes of AI calls and a dedicated UK number, or Pro alone is ${gbp(PLANS.pro.monthlyPrice as number)}. On ${PLANS.starter.name} and ${PLANS.growth.name}, voice is a prepaid add-on: minute packs (${packSummary()}) plus a number at ${gbp(VOICE_NUMBER_MONTHLY_GBP)} a month, and premium voices add ${gbp(PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN)} a minute. Included minutes don't roll over, packs never expire, and there is no overage. ${VOICE_TRIAL_NOTE}`,
   },
   {
     q: "Who does the voice agent call?",
-    a: "Only leads who asked for a call or agreed to be called on your form, inside calling hours in their own time zone. It opens every call by saying it is an AI assistant calling from your business. It never makes cold calls.",
+    a: "Only leads who asked for a call or agreed to one on your form, inside calling hours in their own time zone. Every call opens by saying it is an AI assistant calling from your business. It never makes cold calls.",
   },
   {
     q: "Are quotes, signatures and invoices extra?",
-    a: "No. Branded quotes, a simple electronic signature with an audit trail, and invoices with payment links are part of every paid plan. Payments are taken through your own Stripe account, so Stripe's processing fees apply there and ClientTurn takes no share of the payment.",
+    a: "No. Branded quotes, a simple electronic signature with an audit trail, and invoices with payment links come with every paid plan. Payments go through your own Stripe account, so Stripe's fees apply and ClientTurn takes no share.",
   },
   {
-    q: "Is there a free trial?",
-    a: `Yes — ${TRIAL_DAYS} days. A card is required to start and is checked by Stripe, but nothing is charged until the trial ends, and you can cancel before then. You can connect a lead source, configure your follow-up and qualification and watch the whole flow run before you pay anything. Trial workspaces have smaller allowances than any paid plan, and sourcing and cold email are off during the trial.`,
-  },
-  {
-    q: "Do I need a card to start?",
-    a: `Yes. A card is needed to start the ${TRIAL_DAYS}-day trial and Stripe checks it is valid, but nothing is charged until the trial ends. Cancel before then and you pay nothing.`,
+    q: "Is there a free trial, and do I need a card?",
+    a: `Yes, ${TRIAL_DAYS} days. A card is required and checked by Stripe, but nothing is charged until the trial ends, and you can cancel before then. Trial allowances are smaller than any paid plan, and sourcing and cold email are off.`,
   },
   {
     q: "Can I cancel at any time?",
-    a: "Yes. Self-serve plans are cancelled from your billing settings and run to the end of the period you have already paid for. There is no cancellation fee and no minimum term.",
+    a: "Yes. Cancel from your billing settings and the plan runs to the end of the period you paid for. No cancellation fee and no minimum term.",
   },
   {
     q: "Can I change plan later?",
-    a: "Yes, in either direction. Upgrades take effect immediately with your allowances raised straight away; downgrades take effect at the end of the current billing period, so you keep what you paid for.",
+    a: "Yes, in either direction. Upgrades apply immediately; downgrades take effect at the end of the current billing period, so you keep what you paid for. If your usage is above the lower plan's allowance, you are told which limits will apply before you confirm.",
   },
   {
     q: "Do you offer annual billing?",
-    a: `Yes. Annual billing is ${ANNUAL_DISCOUNT_PERCENT}% cheaper than paying monthly for the same plan, charged once for the year.`,
+    a: `Yes. Annual billing is ${ANNUAL_DISCOUNT_PERCENT}% cheaper than monthly for the same plan, charged once for the year.`,
   },
   {
     q: "What happens if I exceed an allowance?",
-    a: `There is no overage, so you are never billed after the fact. You are warned as you approach a limit, and when you reach it the affected activity stops rather than continuing to bill you. For SMS and WhatsApp you can keep going with prepaid top-up credit, bought in fixed bundles; everything else waits for the next period or an upgrade.`,
+    a: "There is no overage, so you are never billed after the fact. You are warned near a limit, and at it the affected activity stops. SMS and WhatsApp can continue on prepaid bundles; everything else waits for the next period or an upgrade.",
   },
   {
     q: "How does sourcing usage work?",
-    a: `Each plan includes a monthly allowance of verified prospects and sourcing runs. A prospect counts once it has been sourced and verified, not when it appears in a search estimate — you review the targeting before a run happens, so you are never charged for a search you did not want. Starter includes ${NUMBER.format(SOURCING_ALLOWANCES.starter.verifiedProspects)} verified prospects a month, Growth ${NUMBER.format(SOURCING_ALLOWANCES.growth.verifiedProspects)} and Pro ${NUMBER.format(SOURCING_ALLOWANCES.pro.verifiedProspects)}.`,
+    a: `Each plan includes a monthly allowance of verified prospects: ${NUMBER.format(SOURCING_ALLOWANCES.starter.verifiedProspects)} on Starter, ${NUMBER.format(SOURCING_ALLOWANCES.growth.verifiedProspects)} on Growth and ${NUMBER.format(SOURCING_ALLOWANCES.pro.verifiedProspects)} on Pro. A prospect counts once it is sourced and verified, not when it appears in an estimate. You approve the targeting first, so no allowance goes on a search you did not want.`,
   },
   {
     q: "How do communication allowances work?",
-    a: `By default the first message to a new lead goes instantly by SMS when they gave a mobile number, and the follow-up after it goes by email from your own connected mailbox, which is not counted against an SMS allowance. Each plan includes a number of UK SMS segments sized for that first text to every lead (${NUMBER.format(PLANS.starter.smsSegmentAllowance)} on ${PLANS.starter.name}, ${NUMBER.format(PLANS.growth.smsSegmentAllowance)} on ${PLANS.growth.name}, ${NUMBER.format(PLANS.pro.smsSegmentAllowance)} on ${PLANS.pro.name}). A long SMS is billed as more than one segment, which is why the allowance is counted in segments rather than messages. Additional SMS credits can be bought in prepaid bundles from £${SMS_FROM.priceGbp} for ${NUMBER.format(SMS_FROM.credits)} segments. WhatsApp is a paid add-on from ${PLANS.growth.name} upward, with no included messages: it is paid in prepaid WhatsApp tokens (from £${WHATSAPP_FROM.priceGbp} for ${NUMBER.format(WHATSAPP_FROM.credits)} tokens, about ${NUMBER.format(WHATSAPP_FROM_COVERS.replies)} conversation replies or ${NUMBER.format(WHATSAPP_FROM_COVERS.marketing)} marketing messages; a reply or utility template uses ${WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} tokens and a marketing template ${WHATSAPP_TOKENS_PER_MESSAGE.MARKETING}), with no monthly WhatsApp platform fee, and needs an approved business sender. Find Leads plans also include a monthly outbound email allowance for cold outreach.`,
+    a: `Each plan includes UK SMS segments for a first text to every lead (${NUMBER.format(PLANS.starter.smsSegmentAllowance)} on ${PLANS.starter.name}, ${NUMBER.format(PLANS.growth.smsSegmentAllowance)} on ${PLANS.growth.name}, ${NUMBER.format(PLANS.pro.smsSegmentAllowance)} on ${PLANS.pro.name}), counted in segments because a long SMS uses more than one; follow-up email from your own mailbox is not counted. Extra SMS comes in prepaid bundles from £${SMS_FROM.priceGbp} for ${NUMBER.format(SMS_FROM.credits)} segments. WhatsApp is a paid add-on from ${PLANS.growth.name} with no included messages or platform fee, paid in prepaid tokens (from £${WHATSAPP_FROM.priceGbp} for ${NUMBER.format(WHATSAPP_FROM.credits)} tokens, about ${NUMBER.format(WHATSAPP_FROM_COVERS.replies)} replies or ${NUMBER.format(WHATSAPP_FROM_COVERS.marketing)} marketing messages), and needs an approved business sender.`,
   },
   {
     q: "Can I get a refund on top-up credit?",
-    a: "Top-up credit is prepaid and does not expire. A purchase can be refunded only if none of its credit has been used; once any of it has been used, that purchase is non-refundable. Credit is used oldest purchase first, has no cash value and cannot be transferred. The same applies to WhatsApp tokens: they are units of use, not money, with no cash value, and cannot be exchanged or transferred.",
+    a: "Top-up credit is prepaid and does not expire. A purchase can be refunded only if none of it has been used. Credit and WhatsApp tokens are used oldest purchase first, have no cash value and cannot be exchanged or transferred.",
   },
   {
     q: "Are taxes included?",
-    a: "No. All prices shown exclude VAT, which is added at checkout where it applies.",
-  },
-  {
-    q: "Can I downgrade?",
-    a: "Yes. A downgrade applies from the start of your next billing period. If your current usage is above the lower plan's allowance, you will be told which limits will apply before you confirm.",
+    // True either way: "added at checkout" only once Stripe Tax is switched
+    // on (STRIPE_AUTOMATIC_TAX, billing/tax.ts).
+    a: vatCopy(automaticTaxEnabled()).faq,
   },
   {
     q: "How does Enterprise pricing work?",
-    a: "Enterprise is priced against your actual requirements — lead volume, sourcing allowance, messaging volume, users and workspaces — rather than from a public rate card. It also covers the things procurement usually asks for: a data processing agreement, a dedicated support contact and onboarding assistance. Talk to sales and we will put a number against your numbers.",
+    a: "Enterprise is priced against your requirements: lead volume, sourcing, messaging, users and workspaces. It includes a data processing agreement, a dedicated support contact and onboarding assistance. Talk to sales for a quote.",
   },
   {
     q: "Do you charge per user or per workspace?",
-    a: "Per workspace. Each plan includes a number of users, and the price does not change as you add people up to that limit. If you need more users than your plan includes, that is a reason to move up a plan or to talk to us about Enterprise.",
+    a: "Per workspace. Each plan includes a number of users, and the price does not change as you add people up to that limit. Beyond it, move up a plan or talk to us about Enterprise.",
   },
 ];
 
@@ -265,9 +260,8 @@ export default function PricingPage() {
                 </span>
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
-                Choose a plan around your lead, sourcing, communication and team
-                requirements. Clear monthly allowances, no hidden usage, and
-                nothing runs past a limit you have not agreed to.
+                Clear monthly allowances, no hidden usage, and nothing runs past
+                a limit you have not agreed to.
               </p>
 
               <TrustRow
@@ -325,8 +319,7 @@ export default function PricingPage() {
                   ]}
                 />
                 <p className="pub-small mt-5">
-                  Enterprise allowances are a starting point, not a ceiling —
-                  they are set against your requirements.
+                  Enterprise allowances are set against your requirements.
                 </p>
               </PublicCard>
             </Reveal>
@@ -353,9 +346,8 @@ export default function PricingPage() {
                 Simple allowances. Clear limits.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Everything you need to find, engage and convert opportunities,
-                counted in units you actually recognise — leads, prospects,
-                messages and people.
+                Counted in units you recognise: leads, prospects, messages and
+                people.
               </p>
 
               <RevealGrid className="pub-grid pub-grid-4 mt-10">
@@ -363,9 +355,8 @@ export default function PricingPage() {
                   <GlyphTile icon={Inbox} size={38} glyph={18} />
                   <h3 className="mt-4">Inbound leads</h3>
                   <p>
-                    Enquiries from your website, forms, connected lead sources,
-                    imports and manual entry. Counted once, when the lead is
-                    created.
+                    Forms, lead sources, imports and manual entry. Counted once,
+                    when the lead is created.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">
                     Included on every plan
@@ -376,9 +367,8 @@ export default function PricingPage() {
                   <GlyphTile icon={Database} size={38} glyph={18} />
                   <h3 className="mt-4">Sourcing and prospects</h3>
                   <p>
-                    Verified prospects from licensed data providers, with an
-                    explainable fit score. A prospect counts when it is sourced
-                    and verified — never at the estimate stage.
+                    Verified prospects from licensed providers. Counted when
+                    verified, never at the estimate stage.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">
                     Monthly allowance per plan
@@ -389,10 +379,9 @@ export default function PricingPage() {
                   <GlyphTile icon={Mail} size={38} glyph={18} />
                   <h3 className="mt-4">Communications</h3>
                   <p>
-                    A first text to every lead by SMS, follow-up email from
-                    your own mailbox and — from {PLANS.growth.name}, as a paid
-                    add-on — WhatsApp. Every send passes permission,
-                    contactability and compliance checks first.
+                    A first SMS to every lead, email from your own mailbox, and
+                    a WhatsApp add-on from {PLANS.growth.name}. Every send is
+                    checked first.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">
                     Monthly allowance per plan
@@ -403,9 +392,8 @@ export default function PricingPage() {
                   <GlyphTile icon={Users} size={38} glyph={18} />
                   <h3 className="mt-4">Users and teams</h3>
                   <p>
-                    Add team members, set roles and manage who can change what.
-                    Billing is per workspace, not per seat, up to the plan
-                    limit.
+                    Roles and permissions included. Billed per workspace, not
+                    per seat, up to the plan limit.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">
                     Varies by plan
@@ -421,9 +409,8 @@ export default function PricingPage() {
                 Find the right plan for your business.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Every figure below is the allowance the product actually
-                enforces. A tick means included; a dash means not included on
-                that plan.
+                Every figure is the allowance the product enforces. A dash means
+                not included.
               </p>
 
               <PlanComparison />
@@ -449,42 +436,40 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <p className="pub-lead mt-5">
-                    Each plan includes enough UK SMS segments for an instant
-                    first text to every lead, and follow-up email goes from your
-                    own connected mailbox. WhatsApp is a paid add-on from{" "}
-                    {PLANS.growth.name}, paid per message in prepaid WhatsApp tokens. A
-                    long SMS costs more than one segment, which is why the
-                    allowance is counted that way rather than in messages.
+                    Enough UK SMS segments for a first text to every lead, with
+                    follow-up email from your own mailbox.
                   </p>
                   <ul className="pub-ticks">
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        Every send is checked for opt-out, eligibility and quiet
-                        hours immediately beforehand.
+                        Every send checked for opt-out, eligibility and quiet
+                        hours just beforehand.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        Additional SMS credits are sold in fixed prepaid bundles
-                        — from £{SMS_FROM.priceGbp} for{" "}
-                        {NUMBER.format(SMS_FROM.credits)} segments — so a top-up
-                        is never open-ended.
+                        Extra SMS in fixed prepaid bundles, from £
+                        {SMS_FROM.priceGbp} for {NUMBER.format(SMS_FROM.credits)}{" "}
+                        segments.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        WhatsApp has no included messages and no monthly
-                        platform fee: it is paid per message in prepaid WhatsApp
-                        tokens — {WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} for a
-                        conversation reply or utility template,{" "}
-                        {WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} for a marketing
+                        WhatsApp add-on from {PLANS.growth.name}: prepaid tokens,{" "}
+                        {WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} per reply,{" "}
+                        {WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} per marketing
                         template, from £{WHATSAPP_FROM.priceGbp} for{" "}
-                        {NUMBER.format(WHATSAPP_FROM.credits)} tokens. It needs
-                        an approved business sender and approved templates for
-                        first contact. Tokens have no cash value.
+                        {NUMBER.format(WHATSAPP_FROM.credits)}.
+                      </span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>
+                        No platform fee. Needs an approved business sender.
+                        Tokens have no cash value.
                       </span>
                     </li>
                   </ul>
@@ -508,31 +493,29 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <p className="pub-lead mt-5">
-                    Your sourcing allowance covers verified prospects, the runs
-                    that produce them, the searches you keep, and the intent
-                    monitors watching for buying signals.
+                    Covers verified prospects, sourcing runs, saved searches and
+                    intent monitors.
                   </p>
                   <ul className="pub-ticks">
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        You review and approve the targeting before a run
-                        executes, so allowance is never spent on a search you did
-                        not want.
+                        You approve the targeting before a run, so no allowance
+                        goes on unwanted searches.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        A prospect counts once, when it has been sourced and
-                        verified — not when it appears in an estimate.
+                        A prospect counts once, when sourced and verified, not
+                        at the estimate stage.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        Sourcing and cold email are off during the free trial and
-                        switch on with your first paid plan.
+                        Sourcing and cold email are off in the trial and switch
+                        on with a paid plan.
                       </span>
                     </li>
                   </ul>
@@ -560,29 +543,25 @@ export default function PricingPage() {
                     <strong className="text-[var(--pub-text)]">
                       no overage
                     </strong>
-                    . Reaching a limit stops the activity rather than quietly
-                    billing you for more.
+                    . Reaching a limit stops the activity rather than billing
+                    you for more.
                   </p>
                   <ul className="pub-ticks">
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
+                      <span>In-product warnings as you approach a limit.</span>
+                    </li>
+                    <li>
+                      <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        You are warned as you approach a limit, in the product.
+                        At the limit, only the affected activity stops.
                       </span>
                     </li>
                     <li>
                       <ShieldCheck className="size-3.5" aria-hidden />
                       <span>
-                        At the limit, the affected activity stops. Everything else
-                        keeps running.
-                      </span>
-                    </li>
-                    <li>
-                      <ShieldCheck className="size-3.5" aria-hidden />
-                      <span>
-                        For SMS, prepaid top-up credit is the only way past the
-                        allowance; WhatsApp runs on prepaid WhatsApp tokens. Nothing is charged beyond what you
-                        have bought.
+                        Prepaid SMS credit and WhatsApp tokens are the only way
+                        past. Nothing beyond what you bought.
                       </span>
                     </li>
                   </ul>
@@ -606,9 +585,8 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <p className="pub-lead mt-5">
-                    Custom lead volume, sourcing allowance, messaging volume, user
-                    and workspace limits — plus the commercial and security
-                    requirements procurement will ask about.
+                    Custom volumes, users and workspaces, plus the terms
+                    procurement will ask about.
                   </p>
                   <ActionRow>
                     <SecondaryCta
@@ -659,7 +637,7 @@ export default function PricingPage() {
                   <span className="pub-accent">real business.</span>
                 </>
               }
-              body={`Start on the ${TRIAL_DAYS}-day trial: add a card, pay nothing until it ends, and cancel before then if it is not working on your own leads.`}
+              body={`${TRIAL_DAYS}-day trial: add a card, pay nothing until it ends, cancel any time before.`}
               actions={
                 <>
                   <PrimaryCta placement="pricing_page_final" size="lg">

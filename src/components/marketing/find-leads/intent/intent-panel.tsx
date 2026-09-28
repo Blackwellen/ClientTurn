@@ -177,9 +177,7 @@ export function IntentPanel() {
       </div>
 
       <p className="fl-note-line">
-        Intent is bounded and it expires. A fresh signal can lift a good-fit
-        prospect over a threshold; it can never carry a poor-fit one there on
-        its own.
+        Intent expires, and can never lift a poor-fit prospect on its own.
       </p>
     </AppSurface>
   );

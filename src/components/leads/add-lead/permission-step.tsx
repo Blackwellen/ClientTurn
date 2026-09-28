@@ -79,7 +79,7 @@ const GUIDANCE = [
   },
   {
     label: "Referral / introduction",
-    detail: "May be a warm lead — review the context and evidence.",
+    detail: "May be a warm lead. Review the context and evidence.",
     tone: "warning" as const,
   },
   {

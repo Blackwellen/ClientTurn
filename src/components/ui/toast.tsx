@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./button";
+import { friendlyErrorMessage } from "@/lib/errors/friendly";
 
 type Variant = "success" | "error" | "warning" | "info";
 
@@ -63,11 +64,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toast = React.useCallback((options: ToastOptions) => {
+    const variant = options.variant ?? "info";
+    // The net under every action error: a toast fed `result.error` from a
+    // server action shows a sentence, never a database or network string
+    // (src/lib/errors/friendly.ts). Hand-written messages pass unchanged.
+    const isProblem = variant === "error" || variant === "warning";
     const next: Toast = {
       id: crypto.randomUUID(),
-      variant: options.variant ?? "info",
-      title: options.title,
-      description: options.description,
+      variant,
+      title: isProblem ? friendlyErrorMessage(options.title, "That did not work") : options.title,
+      description:
+        isProblem && options.description
+          ? friendlyErrorMessage(options.description, "Please try again in a moment.")
+          : options.description,
       duration: options.duration ?? 5000,
     };
     setToasts((t) => [...t, next].slice(-MAX_VISIBLE));
@@ -81,7 +90,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div
         role="region"
         aria-label="Notifications"
-        className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2"
+        className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[90] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2"
       >
         {toasts.map((t) => (
           <ToastCard key={t.id} toast={t} onDismiss={dismiss} />

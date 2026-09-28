@@ -9,10 +9,9 @@ import {
   Plus,
   QrCode as QrIcon,
   Search,
-  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Badge } from "@/components/ui/badge";
+
 import { useToast } from "@/components/ui/toast";
 import {
   CopyButton,
@@ -24,11 +23,9 @@ import {
 } from "@/components/affiliates/portal-ui";
 import { QrCode } from "./qr-code";
 import { createLink } from "@/lib/affiliates/actions";
-import { requestPromoCode } from "@/lib/affiliates/link-actions";
 import { ALLOWED_DESTINATIONS } from "@/lib/affiliates/types";
 import { formatPercent } from "@/lib/affiliates/programme";
 import type { LinkMetrics } from "@/lib/affiliates/analytics";
-import type { PortalPromoCode, PromoOffer } from "@/lib/affiliates/portal";
 import { Select } from "@/components/ui/form";
 
 /**
@@ -44,16 +41,12 @@ export function LinksView({
   affiliateCode,
   origin,
   links,
-  promoCodes,
-  promoOffers,
   clickSeries,
   monthly,
 }: {
   affiliateCode: string;
   origin: string;
   links: LinkMetrics[];
-  promoCodes: PortalPromoCode[];
-  promoOffers: PromoOffer[];
   clickSeries: number[];
   monthly: { clicks: number; signups: number; conversionRate: number | null };
 }) {
@@ -122,9 +115,10 @@ export function LinksView({
         </Panel>
       </div>
 
-      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)_minmax(0,0.8fr)]">
-        <PromoCodes codes={promoCodes} offers={promoOffers} />
-
+      {/* Promo codes were removed (owner decision 2026-09-28): a partner is
+          credited by their referral link, carried in the URL or, with cookie
+          consent, the ct_ref cookie. See /affiliates/terms. */}
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <Panel
           icon={QrIcon}
           title="QR Generator"
@@ -264,7 +258,6 @@ export function LinksView({
                 { label: "Link name" },
                 { label: "Destination" },
                 { label: "UTM campaign" },
-                { label: "Promo code" },
                 { label: "Clicks", numeric: true },
                 { label: "Signups", numeric: true },
                 { label: "Trials", numeric: true },
@@ -285,9 +278,6 @@ export function LinksView({
                   </Td>
                   <Td className="text-content-secondary">
                     {link.utmCampaign ?? "—"}
-                  </Td>
-                  <Td className="text-content-secondary">
-                    {link.promoCode ?? "—"}
                   </Td>
                   <Td numeric>{link.clicks.toLocaleString("en-GB")}</Td>
                   <Td numeric>{link.signups.toLocaleString("en-GB")}</Td>
@@ -561,152 +551,6 @@ function UtmBuilder({
   );
 }
 
-/* ----------------------------------------------------------- promo codes -- */
-
-function PromoCodes({
-  codes,
-  offers,
-}: {
-  codes: PortalPromoCode[];
-  offers: PromoOffer[];
-}) {
-  const { toast } = useToast();
-  const [creating, setCreating] = React.useState(false);
-  const [offerId, setOfferId] = React.useState(offers[0]?.id ?? "");
-  const [pending, startTransition] = React.useTransition();
-
-  function onCreate() {
-    if (!offerId) return;
-    startTransition(async () => {
-      const result = await requestPromoCode({ offerId, suffix: "" });
-      if (result.ok) {
-        toast({ variant: "success", title: `Code ${result.code} created.` });
-        setCreating(false);
-      } else {
-        toast({ variant: "error", title: "Code not created", description: result.error });
-      }
-    });
-  }
-
-  return (
-    <Panel
-      icon={Tag}
-      title="Promo Codes"
-      description="Create and manage promo codes for your audience."
-      action={
-        offers.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setCreating((open) => !open)}
-            aria-expanded={creating}
-            className="inline-flex items-center gap-1.5 rounded-[8px] border border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-content hover:bg-surface-hover"
-          >
-            Create promo code
-            <Plus className="size-3.5" aria-hidden />
-          </button>
-        )
-      }
-    >
-      {creating && (
-        <div className="mx-4 mb-3 rounded-[10px] border border-line bg-surface-sunken p-3">
-          <label
-            htmlFor="promo-offer"
-            className="text-[12px] font-medium text-content-secondary"
-          >
-            Choose an approved offer
-          </label>
-          <Select
-            id="promo-offer"
-            value={offerId}
-            onChange={(event) => setOfferId(event.target.value)}
-            className="mt-1 h-9 w-full rounded-[9px] text-[13px]"
-          >
-            {offers.map((offer) => (
-              <option key={offer.id} value={offer.id}>
-                {offer.name} — {offer.description}
-              </option>
-            ))}
-          </Select>
-          <p className="mt-2 text-[11.5px] leading-relaxed text-content-muted">
-            The discount comes from the offer. Your code is issued with your own
-            prefix so it is always attributable to you.
-          </p>
-          <button
-            type="button"
-            onClick={onCreate}
-            disabled={pending}
-            className="mt-2.5 inline-flex h-9 items-center rounded-[9px] bg-accent-500 px-3.5 text-[13px] font-semibold text-brand-midnight disabled:opacity-60"
-          >
-            {pending ? "Creating…" : "Create code"}
-          </button>
-        </div>
-      )}
-
-      {codes.length === 0 ? (
-        <PanelEmpty
-          title="No promo codes yet."
-          description={
-            offers.length === 0
-              ? "There are no offers available to you right now."
-              : "Create one from an approved offer to give your audience a reason to sign up."
-          }
-        />
-      ) : (
-        <Table
-          minWidth={600}
-          headers={[
-            { label: "Code" },
-            { label: "Offer" },
-            { label: "Status" },
-            { label: "Uses", numeric: true },
-            { label: "Expiry date" },
-            { label: "Actions", srOnly: true },
-          ]}
-        >
-          {codes.map((code) => (
-            <tr key={code.id} className="hover:bg-surface-hover">
-              <Td className="font-semibold">{code.code}</Td>
-              <Td className="text-content-secondary">{code.offer}</Td>
-              <Td>
-                <Badge tone={PROMO_TONE[code.status]} dot dense>
-                  {PROMO_LABEL[code.status]}
-                </Badge>
-              </Td>
-              <Td numeric>{code.redemptionCount.toLocaleString("en-GB")}</Td>
-              <Td className="whitespace-nowrap text-content-secondary">
-                {code.expiresAt
-                  ? new Date(code.expiresAt).toLocaleDateString("en-GB", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })
-                  : "No expiry"}
-              </Td>
-              <Td>
-                <CopyButton value={code.code} label="Copy" />
-              </Td>
-            </tr>
-          ))}
-        </Table>
-      )}
-    </Panel>
-  );
-}
-
-const PROMO_LABEL: Record<string, string> = {
-  ACTIVE: "Active",
-  PAUSED: "Paused",
-  EXPIRED: "Expired",
-  SCHEDULED: "Scheduled",
-};
-
-const PROMO_TONE: Record<string, "success" | "warning" | "neutral" | "info"> = {
-  ACTIVE: "success",
-  PAUSED: "warning",
-  EXPIRED: "neutral",
-  SCHEDULED: "info",
-};
-
 /* ------------------------------------------------------------- fragments -- */
 
 function Field({
@@ -760,8 +604,8 @@ const TIPS = [
     body: "Track your best performing channels, campaigns and content.",
   },
   {
-    title: "Share promo codes",
-    body: "Give your audience a reason to sign up with your link.",
+    title: "Share your link",
+    body: "Your link is how a referral is credited to you.",
   },
   {
     title: "Monitor performance",

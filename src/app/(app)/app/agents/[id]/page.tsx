@@ -1,9 +1,9 @@
 import * as React from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { ArrowLeft, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -114,13 +114,7 @@ export default async function AgentPage({
 
   return (
     <div className="space-y-5">
-      <Link
-        href="/app/agents"
-        className="inline-flex items-center gap-1.5 text-[12.5px] text-content-muted hover:text-content"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        All agents
-      </Link>
+      <BackLink href="/app/agents">Back to Agents</BackLink>
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 gap-4">

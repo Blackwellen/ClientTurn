@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  *
  * The programme answers are generated from the live policy rather than typed
  * out, so changing the rate or the attribution window in the database changes
- * what this page says. Hard-coding "20%" here is how a help page ends up
+ * what this page says. Hard-coding a rate here is how a help page ends up
  * contradicting the ledger.
  */
 export default async function AffiliateHelpPage() {
@@ -32,7 +32,22 @@ export default async function AffiliateHelpPage() {
     {
       question: "What happens if a customer refunds?",
       answer:
-        "The commission for that payment is reversed. If it had not been paid out yet, your balance simply drops. If it had already been paid, a matching adjustment is applied against future earnings — we never edit a payout you have already received.",
+        "Commission is one-off, on the customer's first payment. If that first payment is refunded or charged back, its commission is reversed. If it had not been paid out yet, your balance simply drops. If it had already been paid, a matching adjustment is applied against future earnings; we never edit a payout you have already received. If the partnership ends before a negative balance is recovered, we write it off: you are never invoiced for it. A customer cancelling later does not reverse anything.",
+    },
+    {
+      question: "Do I earn on renewals?",
+      answer:
+        "No. You earn once per referred customer, on their first paid subscription invoice: the full amount, excluding VAT, so an annual plan pays on the whole annual invoice. Renewals, add-ons and top-ups do not earn commission.",
+    },
+    {
+      question: "Do I need to send you an invoice?",
+      answer:
+        "Only if you are VAT registered. Your payout statements are remittance advice, not VAT invoices, and we do not self-bill, so a VAT-registered partner sends us a VAT invoice for each payout.",
+    },
+    {
+      question: "Are there promo codes?",
+      answer:
+        "No. Your referral link is how a customer is credited to you. If a visitor accepts cookies it is remembered for your referral window; if not, it is carried to sign-up during that visit.",
     },
     {
       question: "Can I refer my own business?",
@@ -93,7 +108,7 @@ export default async function AffiliateHelpPage() {
               {[
                 { href: "/affiliates/app/settings?section=payments", label: "Payout setup" },
                 { href: "/affiliates/app/resources", label: "Brand and campaign assets" },
-                { href: "/affiliates", label: "Programme terms" },
+                { href: "/affiliates/terms", label: "Programme terms" },
               ].map((entry) => (
                 <li key={entry.href}>
                   <Link

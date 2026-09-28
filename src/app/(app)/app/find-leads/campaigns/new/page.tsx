@@ -1,8 +1,9 @@
 import * as React from "react";
 import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowLeft, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -26,13 +27,7 @@ export const dynamic = "force-dynamic";
 function WizardHeader({ subtitle }: { subtitle?: string }) {
   return (
     <div>
-      <Link
-        href="/app/find-leads?view=campaigns"
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Back to Campaigns
-      </Link>
+      <BackLink href="/app/find-leads?view=campaigns">Back to Campaigns</BackLink>
       <h1 className="mt-3 text-[26px] font-bold leading-tight text-content">
         New Acquisition Campaign
       </h1>

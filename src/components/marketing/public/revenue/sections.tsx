@@ -109,11 +109,11 @@ export function RevenueJourneySection() {
                     <span className="pub-accent">The whole revenue journey.</span>
                   </>
                 }
-                description="Most tools answer the lead and stop. ClientTurn's AI sales agent carries the same conversation from the first enquiry to the paid invoice: it understands what the lead wants, calls when they asked for a call, qualifies, handles objections, quotes, books or closes, collects payment and follows up, then tells you which source earned the revenue."
+                description="Most tools answer the lead and stop. ClientTurn carries one conversation from first enquiry to paid invoice."
               />
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <IllustrativeTag>{ILLUSTRATIVE_LABEL}</IllustrativeTag>
-                <span className="pub-small">Names and figures in the cards are invented.</span>
+                <span className="pub-small">Names and figures are invented.</span>
               </div>
               <div className="mt-8 flex flex-wrap gap-3">
                 <PublicCta placement="revenue_journey" size="md" arrow>
@@ -137,33 +137,33 @@ export function RevenueJourneySection() {
 const VOICE_POINTS: readonly Point[] = [
   {
     icon: BadgeCheck,
-    title: "It says it is an AI, on every call",
-    body: "The opening line is fixed and cannot be edited away: an AI assistant, calling from your business, about the enquiry they sent.",
+    title: "Says it is an AI, every call",
+    body: "A fixed opening line that cannot be edited away.",
   },
   {
     icon: PhoneIncoming,
     title: "Calls only people who asked",
-    body: "Leads who asked for a call or agreed on your form. It never cold calls, and an opt-out on the call is honoured at once.",
+    body: "Leads who asked for a call or agreed on your form. Never cold calls.",
   },
   {
     icon: CalendarClock,
     title: "Calling hours in their time zone",
-    body: "Weekday and Saturday windows in the lead's own local time, with no Sundays or UK bank holidays unless you choose otherwise.",
+    body: "No Sundays or bank holidays by default.",
   },
   {
     icon: Clock,
     title: `A ${CALL_BUDGET_MINUTES} minute time budget`,
-    body: "A time governor steers each call to its next step, so minutes go on qualified conversations rather than small talk.",
+    body: "Each call is steered to its next step, so minutes are not wasted.",
   },
   {
     icon: Landmark,
     title: "Your own dedicated UK number",
-    body: "One number for your business, never shared or rotated, so leads recognise you when you call back.",
+    body: "Never shared or rotated, so leads recognise you.",
   },
   {
     icon: UserRound,
     title: "A person when it matters",
-    body: "Anything outside its rules, from a discount it may not give to a question it cannot answer, is handed to your team with the context.",
+    body: "Anything outside its rules goes to your team, with context.",
   },
 ];
 
@@ -192,7 +192,7 @@ export function VoiceAgentSection() {
                 <span className="pub-accent">Your AI sales agent makes it.</span>
               </>
             }
-            description="When a B2B lead asks to be called, the AI Voice Sales Agent rings them from your number, tells them it is an AI assistant, qualifies the opportunity, answers objections honestly and sends the quote or books the meeting. Then the same conversation carries on by email, SMS and WhatsApp."
+            description="It calls B2B leads who asked for a call, qualifies them, and sends the quote or books the meeting."
           />
         </Reveal>
 
@@ -205,13 +205,11 @@ export function VoiceAgentSection() {
           <div className="min-w-0">
             <h3 className="pub-h3">One conversation across every channel.</h3>
             <p className="pub-lead mt-4">
-              The call, the quote email, the text with the link and the WhatsApp question the next
-              morning are one thread with one memory. Stop conditions, opt-outs and quiet hours are
-              checked again immediately before every message and every call.
+              Call, email, SMS and WhatsApp share one thread and one memory. Opt-outs and quiet
+              hours are checked before every send.
             </p>
             <p className="pub-small mt-4">
-              SMS and WhatsApp go only to a mobile number the lead gave you themselves. Cold
-              outreach stays on business email.
+              SMS and WhatsApp only go to a mobile the lead gave you.
             </p>
           </div>
           <ChannelTimeline />
@@ -227,8 +225,8 @@ export function VoiceAgentSection() {
                 Pro {gbp(PRO_WITH_VOICE_MONTHLY_GBP)}/month with Voice
               </strong>
               : {minutes(VOICE_ADDON.includedMinutes)} a month and a dedicated number. Don&rsquo;t
-              need voice? Pro {gbp(PRO_MONTHLY_GBP)}. On Starter and Growth, add minute packs from{" "}
-              {gbp(VOICE_PACKS_FROM_GBP)} and a number at {gbp(VOICE_NUMBER_MONTHLY_GBP)}/month.
+              need voice? Pro {gbp(PRO_MONTHLY_GBP)}. Starter and Growth: packs from{" "}
+              {gbp(VOICE_PACKS_FROM_GBP)} plus a {gbp(VOICE_NUMBER_MONTHLY_GBP)}/month number.
             </p>
             <p className="pub-small mt-2">{VOICE_TRIAL_NOTE} Prices exclude VAT.</p>
           </div>
@@ -271,22 +269,22 @@ const QUOTE_POINTS: readonly Point[] = [
   {
     icon: Scale,
     title: "Deterministic pricing",
-    body: "Prices, VAT, deposits and discounts come from your catalogue and rules. The AI can propose; it never sets a price.",
+    body: "Prices, VAT and discounts come from your rules. The AI never sets a price.",
   },
   {
     icon: ShieldCheck,
     title: "Approval when it matters",
-    body: "Quotes over your value or discount thresholds wait for the right person before they go out.",
+    body: "Quotes over your thresholds wait for the right person.",
   },
   {
     icon: FileSignature,
     title: "Simple electronic signature",
-    body: "Signed on a branded page with an audit trail and a fingerprint of the exact version accepted. A signed quote cannot be edited.",
+    body: "Branded signing page with an audit trail. Signed quotes cannot be edited.",
   },
   {
     icon: Wallet,
     title: "Paid into your Stripe",
-    body: "Deposits, balances and instalment invoices with payment links from your own Stripe account, with reminders until they are paid.",
+    body: "Deposit and balance invoices, with reminders, through your own Stripe.",
   },
 ];
 
@@ -314,7 +312,7 @@ export function QuotesPaymentsSection() {
                 <span className="pub-accent">to paid.</span>
               </>
             }
-            description="The agent collects the details your pricing needs, your rules price the job, and a branded quote goes out in minutes. The lead views it, signs it and pays the deposit, your CRM updates and the revenue is attributed to the source that started it."
+            description="The agent collects the details, your rules price the job, and the lead signs and pays in one flow."
           />
         </Reveal>
 

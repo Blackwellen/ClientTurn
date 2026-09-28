@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Lock, Paperclip, Send, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -314,7 +315,7 @@ export function NewTicketForm({
             <p className="text-[12.5px] leading-[1.45] text-content-secondary">
               We only include information that is{" "}
               <strong className="font-semibold">safe and relevant</strong> to
-              your support request — the page you were on, your browser, and
+              your support request: the page you were on, your browser, and
               your workspace reference. No message content, passwords or
               provider credentials are shared.
             </p>
@@ -322,11 +323,7 @@ export function NewTicketForm({
         )}
       </div>
 
-      {error && (
-        <p role="alert" className="text-[13px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <Button
         fullWidth

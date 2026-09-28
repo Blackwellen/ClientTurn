@@ -1,44 +1,54 @@
 "use client";
 
 import * as React from "react";
-import { Bot, FileText, PhoneCall, ShieldCheck, TriangleAlert, User } from "lucide-react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
+import { Bot, CalendarCheck, FileText, Mic, ShieldCheck, TriangleAlert, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { CALL_BUDGET_MINUTES } from "@/lib/marketing/voice-offer";
 import { IllustrativeTag } from "../shell";
 import {
+  CALL_CAPTIONS,
   CALL_ELAPSED_SEC,
+  CALL_EVENTS,
   CALL_FACTS,
-  CALL_TRANSCRIPT,
   EXAMPLE,
   ILLUSTRATIVE_LABEL,
+  type CallEvent,
 } from "./data";
 
 /**
- * The live-call mock: waveform, call timer inside the 5 minute time-governor
- * ring, the locked AI-disclosure opener, a detected objection and the "quote
- * sent" event.
+ * The live-call visual: a compact voice call, not a chat.
  *
- * Built from product-like markup, not an image. Every name and figure is an
- * illustrative example and labelled as one; the opener and the recording
- * notice are the real locked strings from `lib/voice/opener.ts`.
+ * Two parties with their own waveform (only the active speaker's moves), the
+ * call timer inside the 5 minute time-governor ring, one live caption at a
+ * time that swaps as the call plays, and the in-call events lighting up as
+ * chips. The first caption is always the locked AI-disclosure opener from
+ * `lib/voice/opener.ts`; the recording notice is a chip.
  *
- * Motion is lazy: nothing moves until the card scrolls into view, and under
- * `prefers-reduced-motion` the timer shows its final value, the waveform is
- * static and the transcript is simply there.
+ * Motion: captions cycle through Motion only while the card is on screen.
+ * Under `prefers-reduced-motion` nothing cycles: the card shows the opener as
+ * the representative caption with every event lit, which is also exactly what
+ * the server renders, so hydration never mismatches.
  */
 
 const BUDGET_SEC = CALL_BUDGET_MINUTES * 60;
 /** Qualification route target is 210 s; amber from 75% of it (time-governor.ts). */
 const AMBER_FROM_SEC = Math.round(210 * 0.75);
-const RING_R = 30;
+const RING_R = 27;
 const RING_C = 2 * Math.PI * RING_R;
-const BARS = 36;
+const STEP_MS = 2800;
+const LOOP_PAUSE_MS = 2200;
+const BARS = 14;
 
 /** Deterministic bar heights, so server and client render the same markup. */
-const BAR_HEIGHTS = Array.from({ length: BARS }, (_, i) => {
-  const v = Math.abs(Math.sin(i * 1.7) * 0.6 + Math.sin(i * 0.53) * 0.4);
-  return Math.round(18 + v * 82);
-});
+function barHeights(seed: number): number[] {
+  return Array.from({ length: BARS }, (_, i) => {
+    const v = Math.abs(Math.sin((i + seed) * 1.7) * 0.6 + Math.sin((i + seed) * 0.53) * 0.4);
+    return Math.round(22 + v * 78);
+  });
+}
+const AGENT_BARS = barHeights(0);
+const LEAD_BARS = barHeights(5);
 
 function clock(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -46,60 +56,76 @@ function clock(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function useInViewOnce<T extends Element>(amount = 0.35) {
-  const ref = React.useRef<T>(null);
-  const [inView, setInView] = React.useState(false);
-  React.useEffect(() => {
-    const node = ref.current;
-    if (!node || inView || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setInView(true);
-      },
-      { threshold: amount },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [amount, inView]);
-  return [ref, inView] as const;
+/** Index -1 is the resting state: opener caption, every event lit, final time. */
+const REST = -1;
+
+function Party({
+  role,
+  name,
+  sub,
+  bars,
+  speaking,
+}: {
+  role: "agent" | "lead";
+  name: string;
+  sub: string;
+  bars: number[];
+  speaking: boolean;
+}) {
+  const Icon = role === "agent" ? Bot : User;
+  return (
+    <div className="rv-party" data-role={role} data-speaking={speaking ? "true" : undefined}>
+      <span className="rv-avatar" data-tone={role === "agent" ? "agent" : undefined}>
+        <Icon className="size-4" strokeWidth={2.1} />
+      </span>
+      <span className="min-w-0">
+        <b>{name}</b>
+        <small>{sub}</small>
+        <span className="rv-party-wave" aria-hidden>
+          {bars.map((h, i) => (
+            <i key={i} style={{ "--h": `${h}%`, "--i": i } as React.CSSProperties} />
+          ))}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 export function LiveCallMock({ className }: { className?: string }) {
-  const [ref, inView] = useInViewOnce<HTMLElement>();
-  const [armed, setArmed] = React.useState(false);
-  const [elapsed, setElapsed] = React.useState(CALL_ELAPSED_SEC);
+  const ref = React.useRef<HTMLElement>(null);
+  const onScreen = useInView(ref, { amount: 0.4 });
+  const reduced = useReducedMotion();
+  const [step, setStep] = React.useState<number>(REST);
 
+  // Cycle the captions only while on screen and only when motion is allowed.
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only: enables the entrance once JS runs.
-    setArmed(true);
-  }, []);
+    if (reduced || !onScreen) return;
+    const last = CALL_CAPTIONS.length - 1;
+    const delay = step === last ? STEP_MS + LOOP_PAUSE_MS : step === REST ? 400 : STEP_MS;
+    const timer = window.setTimeout(() => {
+      setStep((current) => (current === REST || current >= last ? 0 : current + 1));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [step, onScreen, reduced]);
 
-  React.useEffect(() => {
-    if (!inView) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const duration = 3600;
-    const start = performance.now();
-    let frame = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setElapsed(Math.round(eased * CALL_ELAPSED_SEC));
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [inView]);
-
+  const resting = step === REST;
+  const caption = CALL_CAPTIONS[resting ? 0 : step];
+  const elapsed = resting ? CALL_ELAPSED_SEC : caption.at;
+  const reached = new Set<CallEvent>(
+    resting
+      ? CALL_EVENTS.map((event) => event.key)
+      : CALL_CAPTIONS.slice(0, step + 1).flatMap((line) => (line.event ? [line.event] : [])),
+  );
+  const speaker = resting ? null : caption.speaker;
   const amber = elapsed >= AMBER_FROM_SEC;
   const offset = RING_C * (1 - Math.min(1, elapsed / BUDGET_SEC));
 
   return (
     <figure
       ref={ref}
-      data-armed={armed ? "true" : undefined}
-      data-inview={inView ? "true" : undefined}
-      className={cn("rv-frame rv-call rv-inview", className)}
-      aria-label={`${ILLUSTRATIVE_LABEL}: a live AI sales call. The assistant opens by saying it is an AI calling from ${EXAMPLE.business}, gives the recording notice, qualifies the project, detects a price objection, answers it and sends quote ${EXAMPLE.quoteNumber}. Call time 3 minutes 24 seconds of a ${CALL_BUDGET_MINUTES} minute budget.`}
+      className={cn("rv-frame rv-call", className)}
+      data-live={!resting && onScreen ? "true" : undefined}
+      aria-label={`${ILLUSTRATIVE_LABEL}: a live AI sales call. It opens by saying it is an AI assistant calling from ${EXAMPLE.business}, gives a recording notice, handles a price objection, sends quote ${EXAMPLE.quoteNumber} and books a meeting. Call time ${clock(CALL_ELAPSED_SEC)} of a ${CALL_BUDGET_MINUTES} minute budget.`}
     >
       <div className="rv-frame-bar">
         <span className="rv-live">
@@ -110,91 +136,87 @@ export function LiveCallMock({ className }: { className?: string }) {
         <IllustrativeTag>{ILLUSTRATIVE_LABEL}</IllustrativeTag>
       </div>
 
-      <div className="rv-call-head" aria-hidden>
-        <div className="rv-party">
-          <span className="rv-avatar" data-tone="agent">
-            <Bot className="size-4" strokeWidth={2.1} />
-          </span>
-          <span className="min-w-0">
-            <b>AI Sales Agent</b>
-            <small>for {EXAMPLE.business}</small>
-          </span>
-        </div>
-        <PhoneCall className="rv-call-link size-4" strokeWidth={2} />
-        <div className="rv-party">
-          <span className="rv-avatar">
-            <User className="size-4" strokeWidth={2.1} />
-          </span>
-          <span className="min-w-0">
-            <b>{EXAMPLE.lead}</b>
-            <small>{EXAMPLE.company}</small>
-          </span>
-        </div>
-
-        <div className="rv-governor" data-amber={amber ? "true" : undefined}>
-          <svg viewBox="0 0 72 72" width="72" height="72">
-            <circle cx="36" cy="36" r={RING_R} className="rv-ring-track" />
-            <circle
-              cx="36"
-              cy="36"
-              r={RING_R}
-              className="rv-ring-fill"
-              strokeDasharray={RING_C}
-              strokeDashoffset={offset}
-              transform="rotate(-90 36 36)"
+      <div className="rv-call-grid">
+        <div className="rv-call-main">
+          <div className="rv-call-parties" aria-hidden>
+            <Party
+              role="agent"
+              name="AI Sales Agent"
+              sub={`for ${EXAMPLE.business}`}
+              bars={AGENT_BARS}
+              speaking={speaker === "agent"}
             />
-          </svg>
-          <span className="rv-clock">{clock(elapsed)}</span>
-          <small>of {clock(BUDGET_SEC)}</small>
-        </div>
-      </div>
+            <div className="rv-governor" data-amber={amber ? "true" : undefined}>
+              <svg viewBox="0 0 64 64" width="64" height="64">
+                <circle cx="32" cy="32" r={RING_R} className="rv-ring-track" />
+                <circle
+                  cx="32"
+                  cy="32"
+                  r={RING_R}
+                  className="rv-ring-fill"
+                  strokeDasharray={RING_C}
+                  strokeDashoffset={offset}
+                  transform="rotate(-90 32 32)"
+                />
+              </svg>
+              <span className="rv-clock">{clock(elapsed)}</span>
+              <small>of {clock(BUDGET_SEC)}</small>
+            </div>
+            <Party
+              role="lead"
+              name={EXAMPLE.lead}
+              sub={EXAMPLE.company}
+              bars={LEAD_BARS}
+              speaking={speaker === "lead"}
+            />
+          </div>
 
-      <div className="rv-wave" aria-hidden>
-        {BAR_HEIGHTS.map((h, i) => (
-          <span key={i} style={{ "--h": `${h}%`, "--i": i } as React.CSSProperties} />
-        ))}
-      </div>
-
-      <div className="rv-call-body">
-        <ol className="rv-transcript">
-          {CALL_TRANSCRIPT.map((line, index) => {
-            const style = { "--i": index } as React.CSSProperties;
-            if (line.kind === "chip") {
-              return (
-                <li key={index} className="rv-stagger rv-line-chip" style={style}>
-                  <span className="rv-chip" data-tone="amber">
-                    <TriangleAlert aria-hidden className="size-3.5" />
-                    {line.text}
-                  </span>
-                </li>
-              );
-            }
-            if (line.kind === "event") {
-              return (
-                <li key={index} className="rv-stagger rv-line-event" style={style}>
-                  <span className="rv-chip" data-tone="lime">
-                    <FileText aria-hidden className="size-3.5" />
-                    {line.text}
-                  </span>
-                </li>
-              );
-            }
-            return (
-              <li key={index} className="rv-stagger rv-line" data-speaker={line.kind} style={style}>
-                <span className="rv-speaker">
-                  {line.kind === "agent" ? "Agent" : EXAMPLE.lead.split(" ")[0]}
-                  {line.kind === "agent" && line.tag ? (
+          <div className="rv-caption" aria-live="off">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.p
+                key={resting ? "rest" : step}
+                className="rv-caption-line"
+                initial={reduced ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduced ? { opacity: 1 } : { opacity: 0, y: -6 }}
+                transition={{ duration: reduced ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <span className="rv-caption-who">
+                  <Mic aria-hidden className="size-3" />
+                  {caption.speaker === "agent" ? "Agent" : EXAMPLE.lead.split(" ")[0]}
+                  {(resting || step === 0) && (
                     <span className="rv-tag">
                       <ShieldCheck aria-hidden className="size-3" />
-                      {line.tag}
+                      AI disclosure
                     </span>
-                  ) : null}
+                  )}
                 </span>
-                <q>{line.text}</q>
-              </li>
-            );
-          })}
-        </ol>
+                <span className="rv-caption-text">{caption.text}</span>
+              </motion.p>
+            </AnimatePresence>
+          </div>
+
+          <ul className="rv-events" aria-label="Call events">
+            <li className="rv-chip" data-tone="muted" data-on="true">
+              <ShieldCheck aria-hidden className="size-3.5" />
+              Recording notice given
+            </li>
+            {CALL_EVENTS.map((event) => {
+              const Icon = event.key === "objection" ? TriangleAlert : event.key === "quote" ? FileText : CalendarCheck;
+              return (
+                <li
+                  key={event.key}
+                  className="rv-chip"
+                  data-tone={event.tone}
+                  data-on={reached.has(event.key) ? "true" : undefined}
+                >
+                  <Icon aria-hidden className="size-3.5" />
+                  {event.label}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
 
         <aside className="rv-facts" aria-label="Captured on the call">
           <p className="rv-facts-title">Captured on the call</p>
@@ -206,10 +228,6 @@ export function LiveCallMock({ className }: { className?: string }) {
               </div>
             ))}
           </dl>
-          <p className="rv-facts-note">
-            Written to the lead record against your qualification questions. Your rules decide the
-            verdict, not the model.
-          </p>
         </aside>
       </div>
     </figure>

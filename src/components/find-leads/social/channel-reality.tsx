@@ -44,19 +44,19 @@ type SocialRouteKey = Extract<
 
 const CANNOT: Record<SocialRouteKey, string[]> = {
   facebook_social: [
-    "Follow a person from your Page — Facebook has no such API for Pages.",
+    "Follow a person from your Page. Facebook has no such API for Pages.",
     "Message somebody who has never interacted with you.",
   ],
   instagram_social: [
-    "Follow an account automatically — Instagram offers no API for it, and doing it another way gets the account blocked.",
+    "Follow an account automatically. Instagram offers no API for it, and doing it another way gets the account blocked.",
     "Message somebody who has never commented, mentioned you or written to you.",
   ],
   linkedin_social: [
-    "Read your LinkedIn inbox — no API exists that lets an application do that.",
+    "Read your LinkedIn inbox. No API exists that lets an application do that.",
     "Send a connection request or a message automatically without a partner agreement.",
   ],
   tiktok_social: [
-    "Read direct messages — TikTok publishes no API for it.",
+    "Read direct messages. TikTok publishes no API for it.",
     "Message an account that has not followed you back.",
   ],
 };
@@ -94,7 +94,7 @@ export function ChannelReality({
       <p className="mt-1.5 max-w-[68ch] text-[12.5px] leading-relaxed text-content-muted">
         Social platforms decide who a business may message, and the rules are
         stricter than most people expect. None of the limits below are choices
-        ClientTurn made — they are what the platforms permit, and working inside
+        ClientTurn made. They are what the platforms permit, and working inside
         them is what keeps your accounts from being restricted.
       </p>
 
@@ -152,7 +152,7 @@ export function ChannelReality({
           Where a person is still needed.
         </strong>{" "}
         On LinkedIn and TikTok the connection request, the follow and the opening
-        message are performed by you, from the queue above — the product finds
+        message are performed by you, from the queue above: the product finds
         the person, checks they are contactable, paces the action inside your
         account&rsquo;s limits and writes the message, and you send it. Automating
         that step would breach those platforms&rsquo; terms and put your account at

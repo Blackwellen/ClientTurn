@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
 export default function InboxError({
   error,
   reset,
@@ -10,17 +10,16 @@ export default function InboxError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  React.useEffect(() => {
-    console.error("Inbox failed to load", error.digest ?? error.message);
-  }, [error]);
-
   return (
-    <div className="rounded-xl border border-line bg-surface">
-      <ErrorState
-        title="Your inbox could not be loaded"
-        description="No messages have been lost. This is usually a temporary problem with one connected channel."
-        onRetry={reset}
-      />
-    </div>
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="inbox"
+      title="Your inbox could not be loaded"
+      description="No messages have been lost. This is usually a temporary problem with one connected channel."
+      backHref="/app"
+      backLabel="Back to Dashboard"
+      framed
+    />
   );
 }

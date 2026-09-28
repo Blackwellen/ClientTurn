@@ -20,11 +20,40 @@ export function useBodyScrollLock(active: boolean) {
   }, [active]);
 }
 
+/**
+ * Open overlay layers, innermost last. A confirm dialog opened from inside a
+ * drawer is two layers at once, and both used to answer every key: Escape in
+ * the dialog also closed the drawer behind it, and both focus traps ran. Only
+ * the top layer now handles keys. Found on the connection drawer's
+ * "Disconnect" confirmation (owner report, 2026-09-28).
+ */
+const layerStack: object[] = [];
+
+/**
+ * Registers one overlay layer. An overlay that uses both useFocusTrap and
+ * useEscape passes the SAME key (its panel ref) to both, so it is one layer,
+ * not two; a hook called without a key is a layer of its own.
+ */
+function useLayer(active: boolean, key?: object): () => boolean {
+  const own = React.useRef<object>({});
+  const layerKey = key ?? own.current;
+  React.useEffect(() => {
+    if (!active) return;
+    layerStack.push(layerKey);
+    return () => {
+      const at = layerStack.lastIndexOf(layerKey);
+      if (at >= 0) layerStack.splice(at, 1);
+    };
+  }, [active, layerKey]);
+  return React.useCallback(() => layerStack[layerStack.length - 1] === layerKey, [layerKey]);
+}
+
 /** Traps Tab within the container and restores focus to the opener on close. */
 export function useFocusTrap(
   ref: React.RefObject<HTMLElement | null>,
   active: boolean,
 ) {
+  const isTop = useLayer(active, ref);
   React.useEffect(() => {
     if (!active) return;
     const opener = document.activeElement as HTMLElement | null;
@@ -33,7 +62,7 @@ export function useFocusTrap(
     (first ?? node)?.focus();
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Tab" || !ref.current) return;
+      if (e.key !== "Tab" || !ref.current || !isTop()) return;
       const items = Array.from(
         ref.current.querySelectorAll<HTMLElement>(FOCUSABLE),
       ).filter((el) => el.offsetParent !== null);
@@ -54,21 +83,23 @@ export function useFocusTrap(
       document.removeEventListener("keydown", onKeyDown);
       opener?.focus?.();
     };
-  }, [ref, active]);
+  }, [ref, active, isTop]);
 }
 
-export function useEscape(active: boolean, onEscape: () => void) {
+/** Pass the same `layerKey` (the panel ref) given to useFocusTrap, so the overlay is one layer. */
+export function useEscape(active: boolean, onEscape: () => void, layerKey?: object) {
+  const isTop = useLayer(active, layerKey);
   React.useEffect(() => {
     if (!active) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && isTop()) {
         e.stopPropagation();
         onEscape();
       }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [active, onEscape]);
+  }, [active, onEscape, isTop]);
 }
 
 export function Overlay({
@@ -141,7 +172,7 @@ export function Drawer({
 
   useBodyScrollLock(open);
   useFocusTrap(panelRef, open);
-  useEscape(open, onClose);
+  useEscape(open, onClose, panelRef);
 
   // Portalled to the body rather than rendered where it is written.
   //

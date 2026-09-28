@@ -4,7 +4,7 @@ import * as React from "react";
 import { Archive, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/feedback";
+import { EmptyState, FormError } from "@/components/ui/feedback";
 import { Checkbox, FormField, Input, Select, Textarea } from "@/components/ui/form";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -81,7 +81,7 @@ export function CatalogueCard({
           <ul className="divide-y divide-line-subtle">
             {visible.map((item) => (
               <li key={item.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
                   <p className="truncate text-[13.5px] font-medium text-content">
                     {item.name}
                     {!item.active && <span className="ml-2 text-[11.5px] font-normal text-content-subtle">Archived</span>}
@@ -93,7 +93,7 @@ export function CatalogueCard({
                     {checkoutByItem[item.id] ? " · payment link" : ""}
                   </p>
                 </div>
-                <p className="text-[13.5px] font-semibold tabular-nums text-content">
+                <p className="mr-auto text-[13.5px] font-semibold tabular-nums text-content sm:mr-0">
                   {formatMinor(item.unitPriceMinor, currency)} <span className="text-[12px] font-normal text-content-muted">/ {item.unit}</span>
                 </p>
                 {canEdit && (
@@ -112,7 +112,7 @@ export function CatalogueCard({
             ))}
             {bundles.map((bundle) => (
               <li key={`b-${bundle.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
                   <p className="truncate text-[13.5px] font-medium text-content">
                     <Package className="mr-1.5 inline size-3.5 text-content-muted" aria-hidden />
                     {bundle.name}
@@ -392,7 +392,7 @@ function ItemEditor({
           </label>
         </div>
       </details>
-      {error && <p role="alert" className="mt-3 rounded-md border border-danger-100 bg-danger-50 px-3 py-2 text-[13px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-3" />
     </Modal>
   );
 }
@@ -484,7 +484,7 @@ function BundleEditor({ currency, items, existingKeys, onClose }: { currency: st
             <Input id="cb-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </FormField>
         </div>
-        {error && <p role="alert" className="rounded-md border border-danger-100 bg-danger-50 px-3 py-2 text-[13px] text-danger-700">{error}</p>}
+        <FormError message={error} />
       </div>
     </Modal>
   );

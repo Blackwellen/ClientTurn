@@ -6,7 +6,7 @@ import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormField, Input, Switch } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
-import { Skeleton } from "@/components/ui/feedback";
+import { Skeleton, FormError } from "@/components/ui/feedback";
 import { useToast } from "@/components/ui/toast";
 import {
   loadAccountPreferences,
@@ -244,11 +244,7 @@ export function AccountPreferencesDialog({
               </Button>
             </div>
 
-            {error && (
-              <p role="alert" className="text-[13px] text-danger-600">
-                {error}
-              </p>
-            )}
+            <FormError message={error} />
           </div>
 
           <div className="space-y-1 md:pl-6">

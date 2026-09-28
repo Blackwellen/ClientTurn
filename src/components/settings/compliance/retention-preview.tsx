@@ -28,7 +28,7 @@ function Row({
       <div className="min-w-0">
         <p className="font-medium text-content">{label}</p>
         <p className="text-content-muted">
-          {days === null ? "No period set — kept until removed by hand." : `After ${days} days: ${effect}`}
+          {days === null ? "No period set. Kept until removed by hand." : `After ${days} days: ${effect}`}
         </p>
       </div>
       <span className="font-semibold text-content">

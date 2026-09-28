@@ -79,7 +79,7 @@ export function RunControls({
       }}
       title="Stop this sourcing run?"
       scope="The run stops after the step it is currently on."
-      consequence="The prospects it has already found are kept, and so is anything already spent. A stopped run cannot be resumed — start a new run to continue looking."
+      consequence="The prospects it has already found are kept, and so is anything already spent. A stopped run cannot be resumed. Start a new run to continue looking."
       confirmLabel="Stop run"
       variant="danger"
       loading={pending}

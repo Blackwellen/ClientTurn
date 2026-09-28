@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
@@ -140,9 +141,9 @@ export function QuoteSettingsForm({
             type="button"
             onClick={() => setMore((m) => !m)}
             aria-expanded={more}
-            className="inline-flex items-center gap-1.5 rounded-xs text-[13px] font-medium text-content-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
+            className="inline-flex items-start gap-1.5 rounded-xs text-left text-[13px] font-medium text-content-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
           >
-            <ChevronDown className={cn("size-4 transition-transform", more && "rotate-180")} aria-hidden />
+            <ChevronDown className={cn("mt-0.5 size-4 shrink-0 transition-transform", more && "rotate-180")} aria-hidden />
             {more ? "Fewer options" : "More options: numbering, signatures, reminders, approvals"}
           </button>
         </div>
@@ -201,11 +202,7 @@ export function QuoteSettingsForm({
           </div>
         )}
 
-        {error && (
-          <p role="alert" className="rounded-md border border-danger-100 bg-danger-50 px-3 py-2 text-[13px] text-danger-700">
-            {error}
-          </p>
-        )}
+        <FormError message={error} />
       </CardContent>
       {canEdit && (
         <CardFooter className="justify-end">

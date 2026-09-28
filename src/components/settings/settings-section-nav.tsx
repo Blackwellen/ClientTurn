@@ -6,6 +6,7 @@ import {
   FileSignature,
   CreditCard,
   Link2,
+  Phone,
   ShieldCheck,
   Sparkles,
   Terminal,
@@ -23,6 +24,7 @@ const ICONS: Record<
   "business-profile": Brain,
   "ai-selling": Sparkles,
   quotes: FileSignature,
+  voice: Phone,
   team: Users,
   developer: Terminal,
   "data-controls": ShieldCheck,
@@ -43,9 +45,9 @@ const ICONS: Record<
 export function SettingsSectionNav({ active }: { active: SettingsSection }) {
   return (
     <nav aria-label="Settings sections" data-tour="settings-nav">
-      {/* Nine sections: three even rows of three on wide screens; on mobile
-          they stack rather than wrapping into an uneven grid. */}
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Ten sections: two even rows of five on wide screens, five rows of
+          two on tablets; on mobile they stack. */}
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = ICONS[section.id];
           const isActive = section.id === active;

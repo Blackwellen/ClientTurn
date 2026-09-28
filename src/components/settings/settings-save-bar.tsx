@@ -56,7 +56,7 @@ export function SettingsSaveBar({
             Make sure to save your changes before leaving this page.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             size="sm"

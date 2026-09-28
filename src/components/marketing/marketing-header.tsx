@@ -178,7 +178,7 @@ export function MarketingHeader() {
   const close = React.useCallback(() => setOpen(false), []);
   useBodyScrollLock(open);
   useFocusTrap(panelRef, open);
-  useEscape(open, close);
+  useEscape(open, close, panelRef);
 
   return (
     <header

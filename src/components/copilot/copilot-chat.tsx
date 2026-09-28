@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import {
@@ -246,11 +247,7 @@ export function CopilotChat({
           </ol>
         )}
 
-        {error && (
-          <p role="alert" className="mt-3 text-[12.5px] text-danger-600">
-            {error}
-          </p>
-        )}
+        <FormError message={error} className="mt-3" />
       </div>
 
       {/* -------------------------------------------------------- composer */}

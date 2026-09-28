@@ -161,7 +161,7 @@ export function ProspectsView({
     },
     {
       key: "eligibility",
-      header: <HeaderWithHelp label="Eligibility" help="Whether this person may lawfully be contacted. Independent of the score — a high-scoring prospect can still be suppressed." />,
+      header: <HeaderWithHelp label="Eligibility" help="Whether this person may lawfully be contacted. Independent of the score. A high-scoring prospect can still be suppressed." />,
       width: "126px",
       render: (row) => <ProspectEligibilityCell row={row} />,
     },

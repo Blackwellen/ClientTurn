@@ -12,7 +12,7 @@ export default function ReactivationLoading() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Skeleton className="h-8 w-52" />
-          <Skeleton className="mt-2 h-4 w-[520px] max-w-full" />
+          <Skeleton className="mt-2 h-4 w-full max-w-[520px]" />
         </div>
         <div className="flex items-center gap-2">
           <Skeleton className="h-10 w-[152px] rounded-lg" />

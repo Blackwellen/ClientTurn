@@ -102,7 +102,7 @@ export function WorkspacePreview({
 
 const TIPS = [
   "Keep your business information up to date so customers know how to reach you.",
-  "Use a clear, high-quality square logo — it appears on booking links.",
+  "Use a clear, high-quality square logo. It appears on booking links.",
   "Set accurate business hours so follow-up never lands out of hours.",
   "Be specific about your service area to attract better-qualified leads.",
   "Add every service you offer, with a typical value, to improve qualification.",

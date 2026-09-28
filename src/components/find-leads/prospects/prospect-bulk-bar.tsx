@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Ban, CheckCircle2, Download, Flag, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
-import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { Label, Select, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { SUPPRESSION_REASON_OPTIONS } from "@/lib/prospects/types";
@@ -45,6 +45,7 @@ export function ProspectBulkBar({
   const { toast } = useToast();
   const [pending, startTransition] = React.useTransition();
   const [suppressOpen, setSuppressOpen] = React.useState(false);
+  const [confirmRemove, setConfirmRemove] = React.useState(false);
 
   if (selected.length === 0) return null;
 
@@ -88,7 +89,7 @@ export function ProspectBulkBar({
                   .data;
                 if (!data) return "Approved for outreach.";
                 return data.skipped > 0
-                  ? `${data.approved} approved. ${data.skipped} skipped — not eligible or not ready.`
+                  ? `${data.approved} approved. ${data.skipped} skipped. Not eligible or not ready.`
                   : `${data.approved} approved for outreach.`;
               },
             )
@@ -130,18 +131,31 @@ export function ProspectBulkBar({
           size="sm"
           variant="secondary"
           disabled={pending}
-          onClick={() =>
+          onClick={() => setConfirmRemove(true)}
+        >
+          Remove from campaign
+        </Button>
+
+        <ConfirmDialog
+          open={confirmRemove}
+          onClose={() => setConfirmRemove(false)}
+          onConfirm={() => {
+            setConfirmRemove(false);
             run(
               () => removeProspectsFromCampaignAction(selected),
               (result) => {
                 const data = (result as { data?: { removed: number } }).data;
                 return `${data?.removed ?? 0} removed from their campaign.`;
               },
-            )
-          }
-        >
-          Remove from campaign
-        </Button>
+            );
+          }}
+          title={`Remove ${selected.length.toLocaleString("en-GB")} from their campaign?`}
+          scope="The selected prospects leave the campaign they are in."
+          consequence="Any steps not yet sent to them are cancelled. The prospects stay in your list and can be added to a campaign again."
+          confirmLabel="Remove from campaign"
+          variant="warning"
+          loading={pending}
+        />
 
         <Button
           size="sm"
@@ -284,7 +298,7 @@ function BulkSuppressDialog({
 
         <p className="text-[12px] text-content-muted">
           An opt-out or a complaint is the recipient&rsquo;s decision and cannot be lifted
-          from here. The records are kept, not deleted — deleting them would let the next
+          from here. The records are kept, not deleted. Deleting them would let the next
           search find and contact these people again.
         </p>
       </div>

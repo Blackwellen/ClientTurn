@@ -106,14 +106,14 @@ const GROUPS: Group[] = [
       { label: "Follow-up email from your own mailbox", value: () => true },
       { label: "SMS", value: () => true },
       {
-        label: "SMS top-up credit (prepaid segments)",
+        label: "SMS top-ups (prepaid segments)",
         value: (plan) => bundles(plan, "sms"),
       },
       {
         label: "WhatsApp",
         value: (plan) =>
           plan.whatsappEnabled
-            ? `Add-on, prepaid tokens (${WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} per reply, ${WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} per marketing message)`
+            ? `Add-on: ${WHATSAPP_TOKENS_PER_MESSAGE.SERVICE} tokens per reply, ${WHATSAPP_TOKENS_PER_MESSAGE.MARKETING} per marketing message`
             : false,
       },
       {
@@ -172,7 +172,7 @@ const GROUPS: Group[] = [
   {
     heading: "Quotes and payments",
     rows: [
-      { label: "Branded quotes, priced by your rules", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
+      { label: "Branded quotes", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
       { label: "Simple electronic signature", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
       { label: "Invoices and payment links (your Stripe)", value: (plan) => QUOTES_ON_PLAN[plan.id] ?? false },
     ],

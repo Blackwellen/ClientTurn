@@ -707,7 +707,7 @@ function ContactabilityCard({ detail }: { detail: ProspectDetail }) {
           }
         />
         <p className="mt-1.5 text-[11px] text-content-subtle">
-          A found number is not a usable cold channel — UK policy blocks cold SMS, and the
+          A found number is not a usable cold channel. UK policy blocks cold SMS, and the
           policy engine decides that at send time.
         </p>
       </div>
@@ -1159,7 +1159,7 @@ function ResearchControls({ detail }: { detail: ProspectDetail }) {
         scope={`This calls an enrichment provider and uses about ${formatMinor(
           state.estimatedCostMinor,
         )} of your sourcing budget.`}
-        consequence="Only fields the provider actually returns are updated — a blank answer never overwrites something you already know. It can be run again tomorrow."
+        consequence="Only fields the provider actually returns are updated. A blank answer never overwrites something you already know. It can be run again tomorrow."
         confirmLabel="Refresh research"
         loading={pending}
         onConfirm={() => {
@@ -1610,7 +1610,7 @@ function SuppressDialog({
         </div>
 
         <p className="text-[12px] text-content-muted">
-          The record is kept, not deleted — deleting it would let the next search find and
+          The record is kept, not deleted. Deleting it would let the next search find and
           contact them again.
         </p>
       </div>

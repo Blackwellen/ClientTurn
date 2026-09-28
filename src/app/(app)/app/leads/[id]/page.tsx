@@ -43,7 +43,9 @@ import {
 import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
 import { UpsellMomentMount } from "@/components/billing/upsell-moment-mount";
 import { CheckoutPaymentsCard, CheckoutPaymentsSkeleton } from "@/components/leads/detail/checkout-payments-card";
+import { RevenueJourneyCard, RevenueJourneySkeleton } from "@/components/leads/detail/revenue-journey-card";
 import { LeadQuotesCard, LeadQuotesSkeleton } from "@/components/quotes/lead-quotes-card";
+import { LeadCallsTimeline, LeadVoiceCard, LeadVoiceSkeleton } from "@/components/voice/lead-voice-card";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +180,22 @@ export default async function LeadDetailPage({
               canWrite={canWrite && !lead.anonymised_at && !lead.archived_at}
             />
           </React.Suspense>
+          {/* AI calls (voice P2): call with AI, latest summary, callback, history. */}
+          <React.Suspense fallback={<LeadVoiceSkeleton />}>
+            <LeadVoiceCard
+              businessId={workspace.businessId}
+              userId={workspace.userId}
+              role={workspace.role}
+              lead={{
+                id: lead.id,
+                name: leadDisplayName(lead),
+                phone: lead.phone,
+                optedOut: lead.opted_out,
+                anonymised: Boolean(lead.anonymised_at),
+                archived: Boolean(lead.archived_at),
+              }}
+            />
+          </React.Suspense>
           {/* Quotes on this lead's opportunities: build, approve, send, sign, invoice (P2). */}
           <React.Suspense fallback={<LeadQuotesSkeleton />}>
             <LeadQuotesCard
@@ -212,7 +230,16 @@ export default async function LeadDetailPage({
                 fallback={<TabSkeleton rows={tab === "conversation" ? 4 : 6} />}
               >
                 {tab === "conversation" && (
-                  <ConversationTab {...tabProps} canWrite={canWrite} />
+                  <div className="space-y-4">
+                    <ConversationTab {...tabProps} canWrite={canWrite} />
+                    {/* AI calls (voice P2) in the lead's timeline, beside the message thread. */}
+                    <LeadCallsTimeline
+                      businessId={workspace.businessId}
+                      userId={workspace.userId}
+                      role={workspace.role}
+                      leadId={lead.id}
+                    />
+                  </div>
                 )}
                 {tab === "qualification" && (
                   <QualificationTab
@@ -238,6 +265,7 @@ export default async function LeadDetailPage({
             <ContactabilityStrip workspace={workspace} leadId={lead.id} />
           </React.Suspense>
           <React.Suspense fallback={<CheckoutPaymentsSkeleton />}><div className="mt-4"><CheckoutPaymentsCard businessId={workspace.businessId} leadId={lead.id} /></div></React.Suspense>
+          <React.Suspense fallback={<RevenueJourneySkeleton />}><div className="mt-4"><RevenueJourneyCard businessId={workspace.businessId} leadId={lead.id} /></div></React.Suspense>
         </div>
       </div>
     </div>

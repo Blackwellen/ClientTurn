@@ -81,12 +81,12 @@ export function CampaignStepper({
                   </span>
                   <span className="sr-only">
                     {isDone
-                      ? " — complete"
+                      ? ": complete"
                       : isCurrent
-                        ? " — current step"
+                        ? ": current step"
                         : reachable
-                          ? " — available"
-                          : " — finish the earlier steps first"}
+                          ? ": available"
+                          : ". Finish the earlier steps first"}
                   </span>
                 </span>
               </button>

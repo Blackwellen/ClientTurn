@@ -132,7 +132,7 @@ export function LogoUploader({
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          accept="image/png,image/jpeg,image/webp"
           className="sr-only"
           aria-label="Upload a business logo"
           onChange={onFile}
@@ -160,7 +160,7 @@ export function LogoUploader({
       </div>
 
       <p className="text-[12px] text-content-muted">
-        Square PNG, JPG, WebP or SVG — at least 512 × 512px, up to 10MB.
+        Square PNG, JPG or WebP. At least 512 × 512px, up to 10MB.
       </p>
     </div>
   );

@@ -80,7 +80,7 @@ function SetupCard({
       toast({
         variant: "success",
         title: "Analysing your website",
-        description: "This runs in the background — you can carry on searching.",
+        description: "This runs in the background. You can carry on searching.",
       });
       router.refresh();
     });

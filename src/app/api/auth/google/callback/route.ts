@@ -27,6 +27,20 @@ import { attributeSignup } from "@/lib/affiliates/attribution";
  *    card-first trial checkout; everyone else goes where they were going.
  */
 
+/**
+ * The partner referral a Google signup carried in its return path
+ * (`/start-trial?ct_ref=…`), for a visitor who did not accept cookies. The
+ * signature is verified inside `attributeSignup`.
+ */
+function referralFromNext(next: string | null | undefined): string | null {
+  if (!next) return null;
+  try {
+    return new URL(next, "https://placeholder.invalid").searchParams.get("ct_ref");
+  } catch {
+    return null;
+  }
+}
+
 function doorFor(audience: "customer" | "affiliate"): string {
   return audience === "affiliate" ? "/affiliates/login" : "/login";
 }
@@ -93,7 +107,7 @@ export async function GET(request: NextRequest) {
         return fail(origin, audience, "signup_failed");
       }
       // Referral credit must never block account creation.
-      await attributeSignup({ userId, businessId }).catch(() => undefined);
+      await attributeSignup({ userId, businessId, referralToken: referralFromNext(next) }).catch(() => undefined);
 
       // Card and terms first (8.10); onboarding follows once Stripe confirms.
       // Only a trial-checkout destination is honoured here (it carries the plan

@@ -17,7 +17,7 @@ export default function Loading() {
         <div className="h-9 w-56 rounded-lg bg-surface-sunken" />
       </div>
 
-      <div className="h-11 w-[420px] max-w-full rounded-lg bg-surface-sunken" />
+      <div className="h-11 w-full max-w-[420px] rounded-lg bg-surface-sunken" />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((n) => (

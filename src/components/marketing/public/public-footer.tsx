@@ -52,8 +52,7 @@ export function PublicFooter() {
           <div className="flex flex-col items-center text-center sm:col-span-2 sm:items-start sm:text-left lg:col-span-4 xl:col-span-1">
             <Logo href="/" height={80} imgClassName="h-16 w-auto" />
             <p className="pub-small mt-5 max-w-xs">
-              AI-assisted lead acquisition, follow-up, qualification and conversion — in one
-              connected system.
+              Lead acquisition, follow-up and conversion in one system.
             </p>
             <Link href="/signup" className={`${buttonClass("primary", "sm")} mt-6`}>
               Start Free

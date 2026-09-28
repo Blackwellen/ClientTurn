@@ -13,7 +13,6 @@ import {
   describeAttribution,
   describeCommission,
   describePayout,
-  describeRate,
   type ProgrammePolicy,
 } from "@/lib/affiliates/programme";
 import {
@@ -48,11 +47,17 @@ import { AffiliateHero } from "./affiliate-hero";
  */
 export function AffiliateLanding({
   policy,
+  rateRange,
+  tierLine,
   ctaHref,
   ctaLabel,
   signedIn,
 }: {
   policy: ProgrammePolicy;
+  /** "6% to 10%", from the live tier table. */
+  rateRange: string;
+  /** The tier ladder in one sentence, from the live tier table. */
+  tierLine: string;
   ctaHref: string;
   ctaLabel: string;
   signedIn: boolean;
@@ -61,6 +66,7 @@ export function AffiliateLanding({
     <>
       <AffiliateHero
         policy={policy}
+        rateRange={rateRange}
         ctaHref={ctaHref}
         ctaLabel={ctaLabel}
         signedIn={signedIn}
@@ -68,7 +74,7 @@ export function AffiliateLanding({
 
       <PublicContainer>
         <BandStack>
-          <CommissionExplainer policy={policy} />
+          <CommissionExplainer policy={policy} tierLine={tierLine} />
           <WhoItIsFor />
 
           <Band aria-labelledby="affiliate-faq-heading">
@@ -76,7 +82,7 @@ export function AffiliateLanding({
               id="affiliate-faq"
               eyebrow="Questions"
               title="Everything about how the programme works."
-              items={faqs(policy)}
+              items={faqs(policy, rateRange, tierLine)}
             />
           </Band>
 
@@ -119,8 +125,8 @@ export function AffiliateLanding({
                 },
                 {
                   icon: <Coins className="size-4" />,
-                  title: describeRate(policy),
-                  body: "Commission on referred customers who pay.",
+                  title: `${rateRange} one-off`,
+                  body: "On each referred customer's first payment.",
                 },
                 {
                   icon: <ShieldCheck className="size-4" />,
@@ -144,7 +150,7 @@ export function AffiliateLanding({
 
 /* ----------------------------------------------------------- how it works -- */
 
-function CommissionExplainer({ policy }: { policy: ProgrammePolicy }) {
+function CommissionExplainer({ policy, tierLine }: { policy: ProgrammePolicy; tierLine: string }) {
   const steps = [
     {
       title: "What counts as a referral",
@@ -152,7 +158,7 @@ function CommissionExplainer({ policy }: { policy: ProgrammePolicy }) {
     },
     {
       title: "When you start earning",
-      body: `Commission is earned when a referred account becomes a paying customer. ${describeCommission(policy)}`,
+      body: `Commission is earned once, when a referred account makes its first payment. ${describeCommission(policy)} Your tier sets the rate: ${tierLine}.`,
     },
     {
       title: "Approval and hold",
@@ -171,9 +177,7 @@ function CommissionExplainer({ policy }: { policy: ProgrammePolicy }) {
         The whole programme, in one place.
       </h2>
       <p className="pub-lead mt-5 max-w-3xl">
-        No small print that contradicts the headline. These are the same terms
-        your partner dashboard and your payout statements use, generated from
-        the same policy the ledger applies.
+        The same terms your dashboard and payout statements use.
       </p>
 
       <StepRail steps={steps} />
@@ -185,10 +189,8 @@ function CommissionExplainer({ policy }: { policy: ProgrammePolicy }) {
             <div>
               <h3>Refunds and chargebacks</h3>
               <p>
-                If a customer refunds or charges back, the commission for that
-                payment is reversed. If it had already been paid to you, an
-                adjustment is applied against future earnings — we never rewrite
-                a payout you have already received.
+                The commission for that payment is reversed. If already paid, it
+                is adjusted against future earnings.
               </p>
             </div>
           </div>
@@ -233,9 +235,8 @@ function WhoItIsFor() {
             If you already talk to people who run these businesses.
           </h2>
           <p className="pub-lead mt-5">
-            Agencies, web studios, SaaS founders, accountancy practices. You are not selling —
-            you are pointing them at something that answers their leads faster
-            than they can.
+            Agencies, studios, SaaS founders and accountants. You point them at
+            faster lead replies; no selling required.
           </p>
         </div>
 
@@ -261,21 +262,29 @@ function WhoItIsFor() {
 
 /* -------------------------------------------------------------------- faq -- */
 
-function faqs(policy: ProgrammePolicy): FaqItem[] {
+function faqs(policy: ProgrammePolicy, rateRange: string, tierLine: string): FaqItem[] {
   return [
     {
       q: "How much can I earn?",
-      a: `${describeCommission(policy)} There is no cap, and no minimum you have to hit to stay in the programme. What you earn depends entirely on how many customers you refer — we publish no average, because we have no honest one to publish.`,
+      a: `A one-off commission of ${rateRange} on each referred customer's first payment, including the full amount of an annual plan. Renewals do not earn commission. No cap on the number of customers. We publish no average earnings, because we have no honest one.`,
+    },
+    {
+      q: "Is the commission recurring?",
+      a: "No. You are paid once per referred customer, when they make their first payment. It is calculated on that whole first payment, excluding VAT, so an annual plan pays on the full annual amount.",
+    },
+    {
+      q: "How do tiers work?",
+      a: `Your tier sets your one-off rate: ${tierLine}. Tiers are checked daily; a lower tier only applies at the monthly review.`,
     },
     {
       q: "How does tracking work?",
-      a: "Your link sets a signed, server-side cookie when someone clicks it. When they sign up, we resolve that cookie to your account. The cookie cannot be edited by the visitor, and a query parameter alone is not trusted after signup.",
+      a: "Your link carries a signed referral that cannot be edited. If the visitor accepts cookies, we keep it in a first-party cookie for your referral window. If they do not, it travels in the page address to sign-up during that visit, with nothing stored on their device. There are no promo codes: your link is how a customer is credited to you.",
     },
     { q: "How long does attribution last?", a: describeAttribution(policy) },
     { q: "When do I get paid?", a: describePayout(policy) },
     {
       q: "What if a customer refunds?",
-      a: "The commission for that payment is reversed. If it was still pending, your balance simply drops. If it had already been paid to you, a matching adjustment is applied to future earnings.",
+      a: "If the first payment is refunded or charged back, its commission is reversed. If it was still pending, your balance simply drops. If it had already been paid to you, a matching adjustment is applied to future earnings; if the partnership ends before that is recovered, we write it off rather than invoice you.",
     },
     {
       q: "Can I promote through paid ads?",
@@ -283,7 +292,7 @@ function faqs(policy: ProgrammePolicy): FaqItem[] {
     },
     {
       q: "Can I use ClientTurn branding?",
-      a: "Yes — the Resources Hub in your partner portal has approved logos, screenshots, ad creative and copy, all versioned. Please use those rather than recreating our brand yourself.",
+      a: "Yes. The Resources Hub in your partner portal has approved logos, screenshots, ad creative and copy.",
     },
     {
       q: "Can I refer my own business?",
@@ -295,7 +304,7 @@ function faqs(policy: ProgrammePolicy): FaqItem[] {
     },
     {
       q: "How are tax details handled?",
-      a: "Payouts run through Stripe, which collects and holds your identity and bank details. We store only your tax country, entity type and the last four characters of your tax reference — never the full reference, and never your bank details.",
+      a: "Payouts run through Stripe, which collects and holds your identity and bank details. We store only your tax country, entity type and the last four characters of your tax reference, never your bank details. Payout statements are remittance advice, not VAT invoices; if you are VAT registered, you send us a VAT invoice for each payout (we do not self-bill).",
     },
   ];
 }

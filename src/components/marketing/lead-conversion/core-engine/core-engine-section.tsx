@@ -22,7 +22,7 @@ const COLUMNS = [
   {
     eyebrow: "Capture",
     title: "Every lead starts with context.",
-    lead: "All your enquiries come into one place with source, full details and history, so nothing gets lost.",
+    lead: "Every enquiry lands in one place with its source, details and history.",
     panel: <CapturePanel />,
     benefits: [
       { icon: <Inbox {...ICON} />, label: <>All lead sources in one inbox</> },
@@ -33,7 +33,7 @@ const COLUMNS = [
   {
     eyebrow: "Follow-up",
     title: "Consistent follow-up without a workflow maze.",
-    lead: "Automated, multi-channel follow-up with the right message, at the right time, until you get a response.",
+    lead: "Multi-channel follow-up that keeps going until the lead responds.",
     panel: <FollowUpPanel />,
     benefits: [
       { icon: <MessagesSquare {...ICON} />, label: <>Email, SMS &amp; WhatsApp from one workflow</> },
@@ -44,7 +44,7 @@ const COLUMNS = [
   {
     eyebrow: "Qualification",
     title: "Define what a good opportunity actually looks like.",
-    lead: "Use your own questions, rules and scoring to qualify each enquiry and route it to the right next step.",
+    lead: "Your own questions and rules qualify each enquiry and route it onwards.",
     panel: <QualificationPanel />,
     benefits: [
       { icon: <ListChecks {...ICON} />, label: <>Your questions and criteria</> },
@@ -102,9 +102,8 @@ export function CoreEngineSection() {
             </h2>
           </RevealItem>
           <RevealItem as="p">
-            Capture leads, run personalised follow-up and qualify each enquiry
-            automatically — so your team can focus on the opportunities that are
-            ready to move forward.
+            Capture, follow up and qualify automatically, so your team works the
+            leads that are ready.
           </RevealItem>
           <RevealItem>
           <LcpCta

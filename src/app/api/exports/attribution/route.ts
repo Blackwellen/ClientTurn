@@ -5,8 +5,11 @@ import { getAttributionRows } from "@/lib/analytics/queries";
 import { parseAnalyticsParams, sortAttribution } from "@/lib/analytics/types";
 import { resolveRange, toDayString } from "@/lib/dates";
 import { recordAudit } from "@/lib/audit";
+import { checkRateLimit, tooManyRequests } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+const MAX_ROWS = 5000;
 
 const HEADERS = [
   "Source",
@@ -28,15 +31,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Per signed-in user (gap audit 15 §3): an export reads up to its row cap,
+  // so a script looping over it is bounded here.
+  const limit = await checkRateLimit("app:export", workspace.userId);
+  if (!limit.allowed) return tooManyRequests(limit);
+
   const url = new URL(request.url);
   const query = parseAnalyticsParams(Object.fromEntries(url.searchParams));
   const range = resolveRange(query);
 
+  // Bounded like the prospect export: one row per source/campaign/ad, so a
+  // long range over many ads cannot build an unbounded response in memory.
   const rows = sortAttribution(
     await getAttributionRows(workspace.businessId, range),
     query.sort,
     query.dir,
-  );
+  ).slice(0, MAX_ROWS);
 
   const lines = [
     HEADERS.map(csvCell).join(","),

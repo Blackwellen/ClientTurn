@@ -342,7 +342,7 @@ export function AiAgentForm({
           <FormField
             label="Extra handover rule"
             htmlFor="agent-handover"
-            hint="Optional. Anything else that should always go to a person — for example a specific service or a job over a certain size."
+            hint="Optional. Anything else that should always go to a person. For example a specific service or a job over a certain size."
           >
             <textarea
               id="agent-handover"

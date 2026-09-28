@@ -116,7 +116,7 @@ export function TestFollowUpPanel({
                   disabled={option === "whatsapp" && !whatsappEnabled}
                 >
                   {CHANNEL_LABEL[option]}
-                  {option === "whatsapp" && !whatsappEnabled ? ` — ${unlockPlanLabel("whatsapp")}` : ""}
+                  {option === "whatsapp" && !whatsappEnabled ? `: ${unlockPlanLabel("whatsapp")}` : ""}
                 </option>
               ))}
             </Select>

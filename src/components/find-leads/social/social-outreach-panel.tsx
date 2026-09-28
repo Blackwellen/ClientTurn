@@ -123,7 +123,7 @@ export function SocialOutreachPanel({
       </h3>
       <p className="mt-0.5 text-[12px] text-content-muted">
         You connect first and message once they accept. That order is the platform&rsquo;s
-        rule, not ours — a message sent before then either cannot be delivered or is never
+        rule, not ours. A message sent before then either cannot be delivered or is never
         seen.
       </p>
       <p className="mt-1 text-[12px] text-content-muted">
@@ -328,7 +328,7 @@ function PlatformRow({
       {awaiting && pendingDays !== null && pendingDays >= 21 && (
         <p className="mt-2 text-[11.5px] text-warning-700">
           Pending for {pendingDays} days. A pending invite keeps counting against your
-          weekly allowance — withdrawing it frees that up.
+          weekly allowance. Withdrawing it frees that up.
         </p>
       )}
 
@@ -456,7 +456,7 @@ function SocialComposer({
           >
             {noteAvailable
               ? `${notesLeft} personalised notes left this month on this account. A note roughly doubles acceptance.`
-              : "No invitation notes left this month. Send the request without one — it still works, and it is not capped as tightly."}
+              : "No invitation notes left this month. Send the request without one. It still works, and it is not capped as tightly."}
           </p>
         )}
 

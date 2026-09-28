@@ -58,7 +58,8 @@ export function CookieConsent() {
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-content-secondary">
             We use strictly necessary cookies to run the site and keep you signed
-            in. With your permission we also store campaign attribution and
+            in. With your permission we also store campaign attribution, partner
+            referrals and
             product analytics, so we can tell which adverts and pages bring
             people here. Nothing optional is stored until you accept, and you can
             change your mind at any time.{" "}

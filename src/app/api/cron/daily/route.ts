@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { enqueue } from "@/lib/jobs/queue";
 import { scheduleSlackDigests } from "@/lib/jobs/handlers/slack-digest";
+import { isCronAuthorized } from "@/lib/security/cron-auth";
+import { runOpsAlertChecks } from "@/lib/ops/alerts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -15,12 +17,7 @@ export const maxDuration = 30;
  * job types had handlers registered but nothing that ever enqueued them.
  */
 export async function GET(request: Request) {
-  const secret = serverEnv.cronSecret;
-  const provided =
-    request.headers.get("authorization")?.replace("Bearer ", "") ??
-    new URL(request.url).searchParams.get("secret");
-
-  if (!secret || provided !== secret) {
+  if (!isCronAuthorized(request, serverEnv.cronSecret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -38,6 +35,11 @@ export async function GET(request: Request) {
 
   await enqueue("retention.cleanup", {}, { idempotencyKey: `retention-cleanup:${dateKey}` });
   enqueued.push("retention.cleanup");
+
+  // Voice recordings and transcripts past each workspace's retention, then
+  // the R2 objects of every tombstone (deleted rows and deleted workspaces).
+  await enqueue("voice.retention", {}, { idempotencyKey: `voice-retention:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("voice.retention");
 
   // Expires stale intent matches and releases reservations left behind by a
   // worker that died mid-flight. Without this, expired signals keep inflating
@@ -109,6 +111,22 @@ export async function GET(request: Request) {
   await enqueue("billing.daily", {}, { idempotencyKey: `billing-daily:${dateKey}`, maxAttempts: 3 });
   enqueued.push("billing.daily");
 
+  // Cancelled workspaces (docs/BILLING.md §3): the day-60 and day-83 notices,
+  // then the day-90 deletion through the data-rights path. A dry run until
+  // WORKSPACE_DELETION_ENABLED=true; a held workspace is never touched.
+  await enqueue("billing.workspace_deletion", {}, { idempotencyKey: `workspace-deletion:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("billing.workspace_deletion");
+
+  // Voice gross margin (Admin -> Economics): an alert for any workspace whose
+  // voice margin this month is under the floor.
+  await enqueue("voice.margin_check", {}, { idempotencyKey: `voice-margin-check:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("voice.margin_check");
+
+  // Experiments: one pass that promotes a significant winner ONLY where an
+  // owner or admin switched auto-promote on (off by default).
+  await enqueue("experiment.auto_promote", {}, { idempotencyKey: `experiment-auto-promote:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("experiment.auto_promote");
+
   // Admin -> Economics margin alerts: month-to-date or projected month-end
   // margin below 75%, raised at most once per workspace per month.
   await enqueue("economics.margin_check", {}, { idempotencyKey: `economics-margin-check:${dateKey}` });
@@ -123,5 +141,12 @@ export async function GET(request: Request) {
     enqueued.push("cost.rollup_monthly");
   }
 
-  return NextResponse.json({ enqueued });
+  // Push alerts (lib/ops/alerts.ts): the full set, including a stopped worker
+  // schedule and provider probes, bounded well inside maxDuration.
+  const ops = await Promise.race([
+    runOpsAlertChecks("daily", { now, probeProviders: true }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+  ]);
+
+  return NextResponse.json({ enqueued, ops: ops ? ops.sent : ["timeout"] });
 }

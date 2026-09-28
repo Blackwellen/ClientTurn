@@ -250,7 +250,7 @@ export default function SubProcessorsPage() {
   return (
     <LegalPage
       title="Sub-processors"
-      intro="Every third party that can touch personal data in ClientTurn, what it does, the data it sees, where it processes it, and how transfers out of the UK are protected."
+      intro="Every third party that can touch personal data in ClientTurn: what it does, what it sees, where it processes it and how transfers out of the UK are protected."
       currentPath="/sub-processors"
       sections={SECTIONS}
     />

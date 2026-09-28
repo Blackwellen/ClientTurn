@@ -236,7 +236,7 @@ export function ConnectLeadsStep({
         <OPanel className="bg-[#0c151d]">
           <p className="text-[13px] font-medium text-[#f0f3f8]">Need help?</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-[#8c98ab]">
-            You do not need Meta connected to finish setup — continue now and connect it any
+            You do not need Meta connected to finish setup. Continue now and connect it any
             time from{" "}
             <Link
               href="/app/settings?section=connections"

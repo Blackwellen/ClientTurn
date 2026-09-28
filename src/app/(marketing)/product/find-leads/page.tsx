@@ -97,7 +97,7 @@ const structuredData = {
           name: "Can I review the search before ClientTurn spends anything?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Yes. Your description becomes a structured search plan covering industries, locations, roles, company size, intent, exclusions, minimum grade, result target and review mode. You review and edit it before a sourcing run starts, and the plan allowance is checked first.",
+            text: "Yes. Your description becomes a structured search plan you review and edit before any sourcing run starts. The plan allowance is checked first.",
           },
         },
         {
@@ -105,7 +105,7 @@ const structuredData = {
           name: "How is a prospect scored?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "AI extracts features and evidence; deterministic code computes the score. Six weighted factors — ideal customer fit, role and authority, geography, likely need, buying intent and data quality — each carry their own evidence, source, freshness and confidence.",
+            text: "AI extracts evidence; deterministic code computes the score. Six weighted factors (ideal customer fit, role and authority, geography, likely need, buying intent and data quality) each carry evidence, source, freshness and confidence.",
           },
         },
         {
@@ -129,7 +129,7 @@ const structuredData = {
           name: "What happens when a prospect replies?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "The prospect can be promoted to a lead. The same conversation is carried across rather than restarted, so qualification and follow-up begin with the full outreach and sourcing history attached.",
+            text: "The prospect can be promoted to a lead, carrying the same conversation across. Qualification and follow-up start with the full history attached.",
           },
         },
       ],

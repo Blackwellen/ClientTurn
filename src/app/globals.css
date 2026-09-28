@@ -454,6 +454,17 @@
 }
 
 /* ------------------------------------------------------------- base --- */
+
+/* Grid items default to min-width:auto, so a one-column grid (no grid-cols-1,
+   as in "grid sm:grid-cols-2") sizes its only track to the widest nowrap child
+   and pushes the page sideways on a 320px phone or at 400% zoom (UI sweep 16,
+   WCAG 1.4.10). In the base layer so any min-w-* utility still wins. */
+@layer base {
+  .grid > * {
+    min-width: 0;
+  }
+}
+
 * {
   border-color: var(--lr-border);
 }

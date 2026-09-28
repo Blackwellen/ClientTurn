@@ -265,13 +265,12 @@ export default function ResultsPage() {
             <Reveal>
               <SectionEyebrow className="mb-5">Results</SectionEyebrow>
               <h1 id="results-hero" className="pub-h1">
-                Know what turns into business —{" "}
+                Know what turns into business,{" "}
                 <span className="pub-accent">and what does not.</span>
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
-                ClientTurn gives you visibility across acquisition, outreach and
-                conversion, so you can see where opportunities come from, how
-                they move, and where they stall.
+                See where opportunities come from, how they move and where they
+                stall, across acquisition, outreach and conversion.
               </p>
 
               <ActionRow>
@@ -329,9 +328,8 @@ export default function ResultsPage() {
                 From opportunity to outcome.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Every stage is counted and attributed, with the same definition
-                used everywhere it appears — so two reports can never disagree
-                about what a &ldquo;qualified lead&rdquo; is.
+                Every stage is counted and attributed, with one definition used
+                everywhere it appears.
               </p>
 
               <ol className="pub-journey">
@@ -367,9 +365,8 @@ export default function ResultsPage() {
                     See which channels create your best opportunities.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Compare inbound, ClientTurn sourcing, manual entry,
-                    reactivation and your connected integrations — not by
-                    volume, but by what each one actually produced.
+                    Compare every source by what it actually produced, not by
+                    volume.
                   </p>
 
                   <PublicCard className="pub-cell mt-8">
@@ -418,8 +415,8 @@ export default function ResultsPage() {
                     Measure the efficiency of your prospecting.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Sourcing runs, verification quality, grading and intent — so
-                    you can judge the pipeline you are building, not just its size.
+                    Judge the quality of the pipeline you are building, not just
+                    its size.
                   </p>
   
                   <StatStrip
@@ -468,9 +465,8 @@ export default function ResultsPage() {
                     Understand engagement across your campaigns.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Delivery, bounces, replies and opt-outs across every supported
-                    channel — email, SMS and WhatsApp, where your plan and the
-                    contact&rsquo;s eligibility allow it.
+                    Delivery, bounces, replies and opt-outs across email, SMS and
+                    WhatsApp, where plan and eligibility allow.
                   </p>
   
                   <StatStrip
@@ -519,8 +515,8 @@ export default function ResultsPage() {
                     See what leads to real business.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Qualification, bookings, wins and the rates between them,
-                    with the median time it took to get there.
+                    Qualified, booked and won, the rates between them and the
+                    median time taken.
                   </p>
 
                   <StatStrip
@@ -546,8 +542,7 @@ export default function ResultsPage() {
                       <StatePill tone="info">Median 12 days</StatePill>
                     </div>
                     <p>
-                      How long a lead takes to reach its conversion goal, and
-                      whether that is shortening.
+                      How long a lead takes to reach its goal.
                     </p>
                     <div className="mt-4">
                       <TrendLine
@@ -622,10 +617,8 @@ export default function ResultsPage() {
                     Explore your data in depth.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Four views — overview, acquisition, outreach and conversion
-                    — each filterable by period, source and campaign, and each
-                    exportable as CSV from the same aggregation the screen
-                    itself is drawn from.
+                    Filter by period, source and campaign, then export exactly
+                    what you see.
                   </p>
 
                   <RevealGrid className="pub-grid pub-grid-2 mt-8">
@@ -635,8 +628,7 @@ export default function ResultsPage() {
                         <div>
                           <h3>Four analytics views</h3>
                           <p>
-                            Overview, acquisition, outreach and conversion, each
-                            with its own metric set.
+                            Overview, acquisition, outreach and conversion.
                           </p>
                         </div>
                       </div>
@@ -648,8 +640,7 @@ export default function ResultsPage() {
                         <div>
                           <h3>Filters that carry</h3>
                           <p>
-                            Period, source and campaign filters live in the URL,
-                            so a view can be shared as a link.
+                            Filters live in the URL, so views share as links.
                           </p>
                         </div>
                       </div>
@@ -661,8 +652,7 @@ export default function ResultsPage() {
                         <div>
                           <h3>CSV export</h3>
                           <p>
-                            Exports reuse the identical aggregation, so the file
-                            can never disagree with the screen.
+                            The file can never disagree with the screen.
                           </p>
                         </div>
                       </div>
@@ -674,8 +664,7 @@ export default function ResultsPage() {
                         <div>
                           <h3>One definition each</h3>
                           <p>
-                            Every metric has a single published definition,
-                            shown wherever the metric appears.
+                            A single published definition per metric.
                           </p>
                         </div>
                       </div>
@@ -706,12 +695,11 @@ export default function ResultsPage() {
                 <div>
                   <h3>No customer results are published here yet.</h3>
                   <p>
-                    Every figure on this page is illustrative sample data used to
-                    show what the product measures. None of it describes a real
-                    customer, an average, or an outcome you should expect.
-                    Verified customer stories will appear here when the evidence,
-                    the methodology and the timeframe can all be published
-                    responsibly — and not before.
+                    Every figure on this page is illustrative sample data. None
+                    of it describes a real customer, an average or an outcome you
+                    should expect. Verified customer stories will appear only when
+                    the evidence, methodology and timeframe can be published
+                    responsibly.
                   </p>
                 </div>
               </div>
@@ -727,7 +715,7 @@ export default function ResultsPage() {
                   <span className="pub-accent">Improve the next one.</span>
                 </>
               }
-              body="Connect a source, run your first sequence and watch the whole funnel populate with your own data rather than ours."
+              body="Connect a source and watch the funnel fill with your own data."
               actions={
                 <>
                   <PrimaryCta placement="results_final" size="lg">

@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Handshake, Plus } from "lucide-react";
@@ -237,11 +238,7 @@ export function SocialAccountsCard({
                 onChange={(event) => setProfileUrl(event.target.value)}
               />
             </FormField>
-            {error && (
-              <p role="alert" className="text-[12.5px] text-danger-600">
-                {error}
-              </p>
-            )}
+            <FormError message={error} />
             <div className="flex justify-end gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(false)}>
                 Cancel

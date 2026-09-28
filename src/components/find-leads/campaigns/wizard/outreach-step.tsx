@@ -173,7 +173,7 @@ export function OutreachStep({
       toast({
         variant: "success",
         title: `${result.data.variants.length} variant${result.data.variants.length === 1 ? "" : "s"} suggested.`,
-        description: "Review them before using one — nothing is sent until you launch.",
+        description: "Review them before using one. Nothing is sent until you launch.",
       });
     } finally {
       setGenerating(false);

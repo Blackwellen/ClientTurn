@@ -20,7 +20,7 @@ export default function Loading() {
         </div>
       </div>
 
-      <div className="h-11 w-[460px] max-w-full rounded-lg bg-surface-sunken" />
+      <div className="h-11 w-full max-w-[460px] rounded-lg bg-surface-sunken" />
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="h-[420px] w-full rounded-xl border border-line bg-surface lg:w-[268px]" />

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox, FormField, Input, Select } from "@/components/ui/form";
-import { EmptyState } from "@/components/ui/feedback";
+import { EmptyState, FormError } from "@/components/ui/feedback";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
@@ -249,11 +249,7 @@ function MeetingTypeForm({
         Use this when no other meeting type fits the lead
       </label>
 
-      {error && (
-        <p role="alert" className="text-danger-600 text-[13px]">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>

@@ -50,145 +50,89 @@ const STEPS: Step[] = [
     id: "arrives",
     icon: Inbox,
     title: "A high-intent lead arrives",
-    body: "From your Meta lead form, website, Google Ads or CRM, the moment it is submitted.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">New lead · Meta lead form</span>
-        <b>
-          {EXAMPLE.lead}, {EXAMPLE.company}
-        </b>
-        <span className="rv-mini-row">
-          <span className="rv-pill">Asked for a call</span>
-          <span className="rv-pill" data-tone="muted">
-            {EXAMPLE.enquiry}
-          </span>
-        </span>
-      </div>
-    ),
+    body: "From your Meta form, website, Google Ads or CRM.",
+    ui: <Mini k="Meta lead form" v={`${EXAMPLE.lead}, ${EXAMPLE.company}`} />,
   },
   {
     id: "intent",
     icon: ScanSearch,
     title: "It understands the intent",
-    body: "What they asked for, how they want to be contacted and what they have agreed to, before anyone replies.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Intent</span>
-        <b>Quote request · wants a call</b>
-        <span className="rv-mini-row">
-          <span className="rv-pill">Consent to call: on the form</span>
-        </span>
-      </div>
-    ),
+    body: "What they want, and what they agreed to.",
+    ui: <Mini k="Intent" v="Quote · wants a call" />,
   },
   {
     id: "calls",
     icon: PhoneCall,
     title: "The AI Sales Agent calls",
-    body: "Only leads who asked for a call or agreed on your form, inside calling hours in their own time zone.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Call · 10:14 their time</span>
-        <b>&ldquo;This is an AI assistant calling from {EXAMPLE.business}&hellip;&rdquo;</b>
-      </div>
-    ),
+    body: "Only if they asked, within their calling hours.",
+    ui: <Mini k="Opens with" v="“This is an AI assistant…”" />,
   },
   {
     id: "qualifies",
     icon: SquareCheckBig,
     title: "It qualifies",
-    body: "Your questions, asked naturally. Your deterministic rules give the verdict.",
-    ui: (
-      <ul className="rv-mini rv-checks">
-        <li>Project scope captured</li>
-        <li>Timeline: before spring</li>
-        <li>Decision maker on the call</li>
-      </ul>
-    ),
+    body: "Your questions. Your rules give the verdict.",
+    ui: <Mini k="Verdict" v="Qualified" pill />,
   },
   {
     id: "objections",
     icon: ShieldQuestion,
     title: "It handles objections",
-    body: "Honest answers from your sales library. No pressure tactics, and no discount you have not allowed.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-chip" data-tone="amber">
-          Objection: price
-        </span>
-        <span className="rv-mini-k mt-2">Answered with the itemised quote</span>
-      </div>
-    ),
+    body: "Honest answers, no discount you have not allowed.",
+    ui: <Mini k="Objection" v="Price" amber />,
   },
   {
     id: "quotes",
     icon: FileText,
     title: "It quotes",
-    body: "Priced by your catalogue and rules, never by the model. Branded, versioned, sent in minutes.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Quote {EXAMPLE.quoteNumber}</span>
-        <b>{money(QUOTE_NET_PENCE, true)} + VAT</b>
-        <span className="rv-mini-row">
-          <span className="rv-pill">Sent</span>
-          <span className="rv-pill" data-tone="muted">
-            Viewed
-          </span>
-        </span>
-      </div>
-    ),
+    body: "Priced by your catalogue and rules, never the model.",
+    ui: <Mini k={`Quote ${EXAMPLE.quoteNumber}`} v={`${money(QUOTE_NET_PENCE, true)} + VAT`} />,
   },
   {
     id: "closes",
     icon: CalendarCheck,
     title: "It books or closes",
-    body: "A meeting in your calendar, or a signed quote. Whichever your route says is the next step.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Signed · simple electronic signature</span>
-        <b>Kick-off booked, Thu 10:30</b>
-      </div>
-    ),
+    body: "A meeting in your calendar, or a signed quote.",
+    ui: <Mini k="Signed" v="Kick-off Tue 10:00" />,
   },
   {
     id: "payment",
     icon: CreditCard,
     title: "Payment is collected",
-    body: "Deposit, balance or instalments, through your own Stripe account.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Deposit invoice</span>
-        <b>{money(QUOTE_DEPOSIT_PENCE)} paid</b>
-      </div>
-    ),
+    body: "Deposit or balance, through your own Stripe.",
+    ui: <Mini k="Deposit" v={`${money(QUOTE_DEPOSIT_PENCE)} paid`} />,
   },
   {
     id: "follows",
     icon: MessagesSquare,
-    title: "It follows up across channels",
-    body: "Call, email, SMS and WhatsApp in one thread, with stop conditions and quiet hours checked before every send.",
-    ui: (
-      <div className="rv-mini rv-mini-row">
-        <span className="rv-pill">Call</span>
-        <span className="rv-pill">Email</span>
-        <span className="rv-pill">SMS</span>
-        <span className="rv-pill">WhatsApp</span>
-      </div>
-    ),
+    title: "It follows up everywhere",
+    body: "Call, email, SMS and WhatsApp in one thread.",
+    ui: <Mini k="Channels" v="4 in one thread" />,
   },
   {
     id: "analytics",
     icon: BarChart3,
     title: "Analytics update",
-    body: "Revenue attributed to the source, campaign and conversation that produced it.",
-    ui: (
-      <div className="rv-mini">
-        <span className="rv-mini-k">Attributed to</span>
-        <b>Meta lead form · Studio rebuilds</b>
-      </div>
-    ),
+    body: "Revenue attributed to the source that earned it.",
+    ui: <Mini k="Attributed to" v="Meta lead form" />,
   },
 ];
+
+/** One line of product UI: a muted key and a value. */
+function Mini({ k, v, pill, amber }: { k: string; v: string; pill?: boolean; amber?: boolean }) {
+  return (
+    <div className="rv-mini">
+      <span className="rv-mini-k">{k}</span>
+      {pill || amber ? (
+        <span className="rv-pill" data-tone={amber ? "amber" : undefined}>
+          {v}
+        </span>
+      ) : (
+        <b>{v}</b>
+      )}
+    </div>
+  );
+}
 
 export function JourneyRail() {
   const ref = React.useRef<HTMLOListElement>(null);

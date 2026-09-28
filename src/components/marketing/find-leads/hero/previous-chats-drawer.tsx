@@ -24,7 +24,7 @@ export function PreviousChatsDrawer({
 
   useBodyScrollLock(open);
   useFocusTrap(panelRef, open);
-  useEscape(open, close);
+  useEscape(open, close, panelRef);
 
   if (!open) return null;
 

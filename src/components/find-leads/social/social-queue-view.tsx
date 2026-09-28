@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/feedback";
+import { EmptyState, FormError } from "@/components/ui/feedback";
 import { ChannelReality } from "./channel-reality";
 import { AutopilotToggle } from "./autopilot-toggle";
 import { InMailPanel, MarkInMailSentButton } from "./inmail-panel";
@@ -164,7 +164,7 @@ export function SocialQueueView({
               <Capacity
                 label="Notes"
                 value={account.capacity.notesLeftThisMonth}
-                hint="Personalised invitation notes left this month. Running out is not a blocker — invites still send without one."
+                hint="Personalised invitation notes left this month. Running out is not a blocker. Invites still send without one."
               />
             </dl>
 
@@ -194,7 +194,7 @@ export function SocialQueueView({
             <span>
               <strong className="font-semibold">{staleInvites.length}</strong> invite
               {staleInvites.length === 1 ? " has" : "s have"} been pending for three weeks or
-              more. Each one keeps consuming your weekly allowance — withdrawing them frees
+              more. Each one keeps consuming your weekly allowance. Withdrawing them frees
               that capacity up.
             </span>
           </p>
@@ -213,7 +213,7 @@ export function SocialQueueView({
             </h2>
             <p className="mt-1 text-[12px] text-content-muted">
               ClientTurn decided these were due, checked the limits and contactability, and
-              wrote them. All that is left is sending them from your own account — copy the
+              wrote them. All that is left is sending them from your own account: copy the
               message, open the profile, then mark it sent so the follow-up is timed from
               the right moment.
             </p>
@@ -229,7 +229,7 @@ export function SocialQueueView({
       <QueueSection
         icon={MessageSquare}
         title="Ready to message"
-        description="They accepted. This is the most perishable list in the product — they remember you now."
+        description="They accepted. This is the most perishable list in the product. They remember you now."
         rows={readyToMessage}
         empty="Nobody is waiting on a message."
         tone="success"
@@ -251,7 +251,7 @@ export function SocialQueueView({
       <QueueSection
         icon={Clock}
         title="Waiting on them"
-        description="Invites sent. Nothing further can happen until they accept — that wait is the platform's, not a delay we set."
+        description="Invites sent. Nothing further can happen until they accept. That wait is the platform's, not a delay we set."
         rows={awaitingAcceptance}
         empty="No invites are outstanding."
         tone="neutral"
@@ -437,7 +437,7 @@ function DraftRow({ draft, canManage }: { draft: SocialDraft; canManage: boolean
         </div>
       )}
 
-      {error && <p className="mt-2 text-[11.5px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
     </li>
   );
 }

@@ -1,9 +1,8 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
 export default function SearchSessionError({
   error,
   reset,
@@ -11,25 +10,16 @@ export default function SearchSessionError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  React.useEffect(() => {
-    console.error("Search session failed to load", error.digest ?? error.message);
-  }, [error]);
-
   return (
-    <div className="space-y-4">
-      <Link
-        href="/app/find-leads"
-        className="inline-flex text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        ← Find Leads
-      </Link>
-      <div className="rounded-xl border border-line bg-surface">
-        <ErrorState
-          title="This search session could not be loaded"
-          description="Your search plan is saved. Nothing has been spent, and no sourcing has started."
-          onRetry={reset}
-        />
-      </div>
-    </div>
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="find-leads.search"
+      title="This search session could not be loaded"
+      description="Your search plan is saved. Nothing has been spent, and no sourcing has started."
+      backHref="/app/find-leads"
+      backLabel="Back to Find Leads"
+      framed
+    />
   );
 }

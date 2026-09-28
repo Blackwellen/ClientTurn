@@ -1,3 +1,4 @@
+import { friendlyErrorMessage } from "@/lib/errors/friendly";
 import * as React from "react";
 import { AlertCircle, Bot, ShieldOff, User } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -135,7 +136,7 @@ export function ConversationThread({
                         ) : (
                           <AlertCircle className="mt-px size-3 shrink-0" aria-hidden />
                         )}
-                        {message.error_message}
+                        {friendlyErrorMessage(message.error_message, "This message could not be delivered.")}
                       </p>
                     )}
                   </div>

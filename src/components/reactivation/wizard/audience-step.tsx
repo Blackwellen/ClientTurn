@@ -244,7 +244,7 @@ export function AudienceStep({
             <IconTile icon={Users} tone="info" />
             <div>
               <h2 className="text-content text-[17px] font-semibold">
-                Step 1 — Audience
+                Step 1: Audience
               </h2>
               <p className="text-content-muted mt-0.5 text-[13px]">
                 Choose who you want to reach with this reactivation campaign.
@@ -352,7 +352,7 @@ export function AudienceStep({
             />
             <p className="text-content-muted mt-1 text-[12px]">
               {fieldErrors.audienceLabel ??
-                "The label only — who is contacted comes from the rules below."}
+                "The label only. Who is contacted comes from the rules below."}
             </p>
           </div>
 
@@ -429,7 +429,7 @@ export function AudienceStep({
             )}
             {state.audienceSource === "existing" && (
               <p className="text-content-muted text-[12px]">
-                Not sure? Start with your existing ClientTurn leads — you can
+                Not sure? Start with your existing ClientTurn leads. You can
                 always import a custom list later.
               </p>
             )}
@@ -690,7 +690,7 @@ export function AudienceStep({
                     </p>
                     <p className="text-content-muted mt-0.5 text-[12px]">
                       Based on your filters and suppression rules. This is an
-                      estimate and may change — the audience is recalculated
+                      estimate and may change. The audience is recalculated
                       when you launch.
                     </p>
                   </>
@@ -700,7 +700,7 @@ export function AudienceStep({
                       No eligible contacts match this audience.
                     </p>
                     <p className="text-content-muted mt-0.5 text-[12px]">
-                      Widen the filters — try a shorter age, a different status,
+                      Widen the filters: try a shorter age, a different status,
                       or turn off &ldquo;has no reply&rdquo;.
                     </p>
                   </>
@@ -797,7 +797,7 @@ export function AudienceStep({
             <Skeleton className="mt-3 h-28 w-full rounded-lg" />
           ) : breakdown.length === 0 ? (
             <p className="text-content-muted mt-3 text-[12px]">
-              Nothing to break down yet — no leads match these filters.
+              Nothing to break down yet. No leads match these filters.
             </p>
           ) : (
             <ul className="mt-3 space-y-2">

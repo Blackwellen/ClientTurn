@@ -143,7 +143,7 @@ export function HelpSearchResults({
       {results.length === 0 ? (
         <div className="rounded-xl border border-line bg-surface-sunken/60 px-5 py-8 text-center">
           <p className="text-[14px] text-content-secondary">
-            Try fewer or different words — for example the name of the tool you are connecting, or the page you are on.
+            Try fewer or different words. For example the name of the tool you are connecting, or the page you are on.
           </p>
           {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
         </div>

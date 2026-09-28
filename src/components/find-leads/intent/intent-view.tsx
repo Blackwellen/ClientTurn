@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyErrorMessage } from "@/lib/errors/friendly";
 import * as React from "react";
 import Link from "next/link";
 import {
@@ -255,7 +256,7 @@ function CategoryTable({
         <EmptyState
           icon={Sparkles}
           title="No intent categories yet"
-          description="Name the signals that mean someone is likely to buy — a tender, a new location, a visit to your site — and prospects showing them are prioritised."
+          description="Name the signals that mean someone is likely to buy, a tender, a new location, a visit to your site, and prospects showing them are prioritised."
           action={
             canManage ? (
               <Button size="sm" onClick={onNew}>
@@ -548,7 +549,7 @@ function MonitorsCard({
                   {monitor.targetCount > 0 && ` · ${monitor.targetCount} target(s)`}
                 </p>
                 {monitor.lastError && (
-                  <p className="mt-0.5 text-[11.5px] text-danger-600">{monitor.lastError}</p>
+                  <p className="mt-0.5 text-[11.5px] text-warning-700">{friendlyErrorMessage(monitor.lastError, "The last check did not complete. It retries automatically.")}</p>
                 )}
                 <p className="mt-0.5 text-[11px] text-content-subtle">
                   {monitor.lastRunAt ? `Last run ${shortAgo(monitor.lastRunAt)}` : "Not run yet"}

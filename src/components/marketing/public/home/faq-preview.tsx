@@ -95,8 +95,7 @@ export function FaqPreviewSection() {
               Questions before you start?
             </h2>
             <p className="pub-lead mt-6">
-              Here are the questions people ask most often. For the commercial detail, see the
-              pricing section above or the Terms.
+              The questions people ask most. Commercial detail is on the pricing page and in the Terms.
             </p>
           </div>
           <Link href={"/pricing"} className={buttonClass("secondary", "lg", "shrink-0 lg:mt-14")}>

@@ -38,9 +38,8 @@ export function FindLeadsHero() {
             <span>Build a verified prospect pipeline.</span>
           </h1>
           <p className="fl-lead">
-            ClientTurn learns your business context, converts natural language
-            into a structured search and lets you review the plan before
-            sourcing begins.
+            ClientTurn turns plain English into a structured search you review
+            before sourcing begins.
           </p>
 
           <div className="fl-hero-actions">

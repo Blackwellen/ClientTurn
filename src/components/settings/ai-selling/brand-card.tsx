@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Megaphone, Plus, X } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/button";
@@ -204,11 +205,7 @@ function ExampleList({
           )}
         </div>
       ))}
-      {error && (
-        <p role="alert" className="text-[12px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
       {!locked && items.length < MAX_EXAMPLES && (
         <Button variant="ghost" size="sm" onClick={() => onChange([...items, ""])}>
           <Plus className="size-3.5" />

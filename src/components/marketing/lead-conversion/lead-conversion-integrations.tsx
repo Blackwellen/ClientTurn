@@ -98,8 +98,7 @@ export function LeadConversionIntegrations() {
             <span className="lcp-accent">connected.</span>
           </h2>
           <p>
-            Bring supported lead sources, communication, booking and CRM systems
-            into the same operating flow.
+            Lead sources, messaging, booking and CRM in one flow.
           </p>
         </div>
 
@@ -132,10 +131,9 @@ export function LeadConversionIntegrations() {
 
         <div className="lcp-int-foot">
           <p>
-            “Webhook connector” means the other system posts to a signed inbound
-            endpoint — ClientTurn does not read or write in that account.
-            “Team-assisted” means there is no self-serve Connect button yet —
-            our team sets the connection up by hand.
+            “Webhook connector”: the other system posts to our signed endpoint;
+            we never read or write in that account. “Team-assisted”: no self-serve
+            connect yet, so our team sets it up.
           </p>
           <Link href="/#integrations" className="lcp-card-link">
             See all integrations

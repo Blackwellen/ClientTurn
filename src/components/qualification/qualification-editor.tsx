@@ -212,7 +212,7 @@ export function QualificationEditor({
                 icon={FileText}
                 tone="info"
                 title="Qualification questions"
-                description="Create the questions you want to ask new enquiries. Keep it simple — we'll handle the logic."
+                description="Create the questions you want to ask new enquiries. Keep it simple. We'll handle the logic."
               />
               <Button
                 variant="secondary"

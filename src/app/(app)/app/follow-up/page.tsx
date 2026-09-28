@@ -52,6 +52,8 @@ export default async function FollowUpPage({
       ) : (
         <FollowUpView
           businessId={workspace.businessId}
+          userId={workspace.userId}
+          role={workspace.role}
           timezone={workspace.timezone}
           canEdit={canEdit}
           entitlements={entitlements}

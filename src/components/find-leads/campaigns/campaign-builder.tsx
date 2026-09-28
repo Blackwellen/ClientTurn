@@ -51,7 +51,7 @@ export function CampaignBuilder({
         disabled={blocked}
         title={
           usable.length === 0
-            ? "Create a verified sending identity first — a campaign cannot send without one."
+            ? "Create a verified sending identity first. A campaign cannot send without one."
             : undefined
         }
       >
@@ -123,7 +123,7 @@ function SenderDialog({ onClose }: { onClose: () => void }) {
         description:
           result.data.status === "VERIFIED"
             ? "Campaigns can now send from your connected mailbox."
-            : "Test your mailbox connection — cold campaigns will not run until it passes.",
+            : "Test your mailbox connection. Cold campaigns will not run until it passes.",
       });
       onClose();
       router.refresh();

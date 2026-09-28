@@ -29,10 +29,20 @@ import {
   approveCommission,
   markPayoutPaid,
   reinstateAffiliate,
+  endPartnership,
   rejectAffiliate,
   reverseCommission,
   suspendAffiliate,
 } from "@/lib/admin/affiliate-actions";
+import Link from "next/link";
+import {
+  AffiliateDetailPanel,
+  ExportLinks,
+  FlagsQueue,
+  PayoutRowActions,
+  PayoutRunBar,
+  TiersPanel,
+} from "./programme-panels";
 
 /**
  * Admin -> Affiliates (V4 section 41).
@@ -78,6 +88,9 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
         />
       </div>
 
+      {data.detail && <AffiliateDetailPanel key={data.detail.id} detail={data.detail} pending={pending} run={run} />}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {AFFILIATE_TABS.map((tab) => (
           <button
@@ -100,6 +113,8 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
             )}
           </button>
         ))}
+      </div>
+      <ExportLinks />
       </div>
 
       <div className={cn(navPending && "opacity-60 transition-opacity")}>
@@ -130,6 +145,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                   "Partner",
                   "Status",
                   "Plan",
+                  "Tier",
                   "Clicks",
                   "Referrals",
                   "Paying",
@@ -140,7 +156,12 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                 {data.affiliates.map((row) => (
                   <tr key={row.id}>
                     <Td>
-                      <span className="font-medium">{row.displayName}</span>
+                      <Link
+                        href={`/admin/affiliates?tab=affiliates&affiliate=${row.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {row.displayName}
+                      </Link>
                       <span className="block text-[11.5px] text-content-subtle">
                         {row.code} · {row.contactEmail}
                       </span>
@@ -151,6 +172,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                       </Badge>
                     </Td>
                     <Td>{row.planName ?? "—"}</Td>
+                    <Td>{titleise(row.tier)}</Td>
                     <Td numeric>{formatNumber(row.clicks)}</Td>
                     <Td numeric>{formatNumber(row.referrals)}</Td>
                     <Td numeric>{formatNumber(row.paying)}</Td>
@@ -178,6 +200,13 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                             `reinstate:${row.id}`,
                             () => reinstateAffiliate({ affiliateId: row.id }),
                             "Reinstated.",
+                          )
+                        }
+                        onEnd={(reason) =>
+                          run(
+                            `end:${row.id}`,
+                            () => endPartnership({ affiliateId: row.id, reason }),
+                            "Partnership ended.",
                           )
                         }
                       />
@@ -314,8 +343,13 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
           <Panel
             icon={Wallet}
             title="Payouts"
-            description="Marking a payout paid records a transfer someone has already made. It does not send money."
+            description="Pending approval → approved → sent (Stripe Connect) or marked paid (a transfer someone already made). Failed and cancelled payouts release their commission back to the balance."
           >
+            <PayoutRunBar
+              drafts={data.payouts.filter((row) => row.status === "DRAFT").length}
+              pending={pending}
+              run={run}
+            />
             {data.payouts.length === 0 ? (
               <PanelEmpty>No payouts have been raised yet.</PanelEmpty>
             ) : (
@@ -340,11 +374,16 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                     <Td numeric>{row.commissionCount}</Td>
                     <Td>
                       <Badge tone={statusTone(row.status)} dense>
-                        {titleise(row.status)}
+                        {row.status === "DRAFT" ? "Pending approval" : titleise(row.status)}
                       </Badge>
+                      {row.failureReason && (
+                        <span className="block text-[11.5px] text-danger-600">{row.failureReason}</span>
+                      )}
                     </Td>
                     <Td>{row.paidAt ? formatRelative(row.paidAt, { style: "ago" }) : "—"}</Td>
                     <Td className="text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <PayoutRowActions row={row} pending={pending} run={run} />
                       {(row.status === "APPROVED" || row.status === "PROCESSING") && (
                         <Button
                           size="xs"
@@ -369,12 +408,19 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                           Mark paid
                         </Button>
                       )}
+                      </div>
                     </Td>
                   </tr>
                 ))}
               </Grid>
             )}
           </Panel>
+        )}
+
+        {data.tab === "flags" && <FlagsQueue rows={data.flags} pending={pending} run={run} />}
+
+        {data.tab === "tiers" && (
+          <TiersPanel tiers={data.tiers} settings={data.settings} pending={pending} run={run} />
         )}
 
         {data.tab === "resources" && (
@@ -535,13 +581,33 @@ function StatusActions({
   onApprove,
   onSuspend,
   onReinstate,
+  onEnd,
 }: {
   row: AdminAffiliateRow;
   pending: string | null;
   onApprove: () => void;
   onSuspend: (reason: string) => void;
   onReinstate: () => void;
+  /** Ends the partnership; a negative balance is written off, never invoiced. */
+  onEnd: (reason: string) => void;
 }) {
+  const endButton = (
+    <Button
+      size="xs"
+      variant="ghost"
+      loading={pending === `end:${row.id}`}
+      onClick={() => {
+        const reason = window.prompt(
+          "Why is this partnership ending? The partner will see this. Any negative balance is written off (not invoiced).",
+        );
+        if (!reason) return;
+        onEnd(reason);
+      }}
+    >
+      End partnership
+    </Button>
+  );
+
   if (row.status === "APPLIED") {
     return (
       <Button size="xs" loading={pending === `approve:${row.id}`} onClick={onApprove}>
@@ -552,33 +618,39 @@ function StatusActions({
 
   if (row.status === "ACTIVE") {
     return (
-      <Button
-        size="xs"
-        variant="ghost"
-        loading={pending === `suspend:${row.id}`}
-        onClick={() => {
-          const reason = window.prompt(
-            "Why is this partner being suspended? They will see this.",
-          );
-          if (!reason) return;
-          onSuspend(reason);
-        }}
-      >
-        Suspend
-      </Button>
+      <span className="inline-flex gap-1">
+        <Button
+          size="xs"
+          variant="ghost"
+          loading={pending === `suspend:${row.id}`}
+          onClick={() => {
+            const reason = window.prompt(
+              "Why is this partner being suspended? They will see this.",
+            );
+            if (!reason) return;
+            onSuspend(reason);
+          }}
+        >
+          Suspend
+        </Button>
+        {endButton}
+      </span>
     );
   }
 
   if (row.status === "SUSPENDED") {
     return (
-      <Button
-        size="xs"
-        variant="secondary"
-        loading={pending === `reinstate:${row.id}`}
-        onClick={onReinstate}
-      >
-        Reinstate
-      </Button>
+      <span className="inline-flex gap-1">
+        <Button
+          size="xs"
+          variant="secondary"
+          loading={pending === `reinstate:${row.id}`}
+          onClick={onReinstate}
+        >
+          Reinstate
+        </Button>
+        {endButton}
+      </span>
     );
   }
 

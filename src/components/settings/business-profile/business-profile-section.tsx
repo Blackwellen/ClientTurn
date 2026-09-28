@@ -290,7 +290,7 @@ export function BusinessProfileSection({
         {data.icpProfiles.length === 0 && !editingIcp ? (
           <EmptyState
             title="No customer profiles yet"
-            description="Describe the kind of business you sell to — industry, area, and who you need to speak to. Sourcing cannot score anyone without one."
+            description="Describe the kind of business you sell to: industry, area, and who you need to speak to. Sourcing cannot score anyone without one."
             action={
               canManage ? (
                 <Button size="sm" onClick={() => setEditingIcp("new")}>

@@ -40,7 +40,7 @@ export function StopConditionsPanel({
           ))}
           <li className="py-2.5 last:pb-0">
             <p className="text-content text-[13px] font-medium">
-              Quiet hours{quietHoursLabel ? ` — ${quietHoursLabel}` : ""}
+              Quiet hours{quietHoursLabel ? `: ${quietHoursLabel}` : ""}
             </p>
             <p className="text-content-muted mt-0.5 text-[12px]">
               {QUIET_HOURS_NOTE}

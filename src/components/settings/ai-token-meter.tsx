@@ -156,7 +156,7 @@ export function AiTokenMeter({
           <div className="border-danger-300 bg-danger-50/60 rounded-lg border p-3">
             <p className="text-content text-[12.5px] leading-relaxed">
               <strong>The assistant has paused.</strong> Your follow-up sequences and
-              qualification rules are still running exactly as configured — only the AI
+              qualification rules are still running exactly as configured. Only the AI
               wording and interpretation stop. Top up to switch it back on.
             </p>
           </div>

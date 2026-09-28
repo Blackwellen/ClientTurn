@@ -4,11 +4,14 @@ import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
 import {
   clampCookieDays,
   looksAutomated,
-  REFERRAL_COOKIE_NAME,
+  REFERRAL_PARAM,
   signReferralCookie,
   visitorHash,
 } from "@/lib/affiliates/attribution";
 import { isAllowedDestination } from "@/lib/affiliates/types";
+import { hashesFor } from "@/lib/affiliates/fraud";
+import { isPrefetch, proxySuspected } from "@/lib/affiliates/fraud-rules";
+import { isSchemaMissing } from "@/lib/billing/stripe-events";
 
 /**
  * Referral link entry point (V4 §31).
@@ -25,7 +28,23 @@ import { isAllowedDestination } from "@/lib/affiliates/types";
  * - **Never redirects anywhere the affiliate chose freely.** The destination is
  *   re-checked against the allow-list here as well as at creation, so a row
  *   edited by any other path still cannot produce an open redirect.
- * - **Never stores a raw IP.** The visitor is a salted hash.
+ * - **Never stores a raw IP.** The visitor is a salted hash, the network a
+ *   keyed HMAC, and both are purged after 120 days (migration 0166).
+ *
+ * Attribution is **last click**: every counted click carries a fresh signed
+ * referral, so the most recent affiliate link before signup earns the credit,
+ * inside the crediting partner's own plan window (clamped to 90 days). This is
+ * the rule the public terms, the FAQ and `describeAttribution` state.
+ *
+ * **No cookie is set here** (owner decision 2026-09-28). The `ct_ref` cookie
+ * is an affiliate-tracking cookie and needs consent, which only the site's
+ * banner can give. The signed referral travels in the landing URL as
+ * `?ct_ref=`; `ReferralCapture` turns it into the cookie once the visitor
+ * accepts, and otherwise carries it in the URL to signup in the same visit.
+ *
+ * Not counted (and not cookied): automation, link-preview fetches and browser
+ * prefetches, and anything over 20 clicks per network per 10 minutes. The
+ * visitor still reaches the page either way.
  */
 
 export const dynamic = "force-dynamic";
@@ -38,14 +57,6 @@ export async function GET(
   const origin = request.nextUrl.origin;
   const home = NextResponse.redirect(new URL("/", origin), 302);
 
-  const limit = await checkRateLimit(
-    "affiliate:click",
-    clientIdentifier(request.headers),
-  );
-  // Over the limit: still send the visitor where they were going, just do not
-  // record the click. A rate limit is our problem, not theirs.
-  if (!limit.allowed) return home;
-
   const db = createAdminClient();
 
   const { data: link } = await db
@@ -53,7 +64,7 @@ export async function GET(
     .select(
       `id, affiliate_id, campaign_id, destination_path, archived,
        utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-       affiliates ( id, status, code )`,
+       affiliates ( id, status, code, commission_plan_id )`,
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -62,6 +73,7 @@ export async function GET(
     id: string;
     status: string;
     code: string;
+    commission_plan_id: string | null;
   } | null;
 
   if (!link || link.archived || !affiliate || affiliate.status !== "ACTIVE") {
@@ -83,15 +95,31 @@ export async function GET(
     if (value) destination.searchParams.set(key, value);
   }
 
-  const userAgent = request.headers.get("user-agent") ?? "";
-  const isBot = looksAutomated(userAgent);
+  // Returned when the click is not counted (rate limit, automation): the
+  // visitor still lands, with no referral attached.
+  const response = NextResponse.redirect(destination, 302);
 
-  const { data: plan } = await db
-    .from("affiliate_commission_plans")
-    .select("cookie_window_days")
-    .eq("is_default", true)
-    .eq("active", true)
-    .maybeSingle();
+  const ip = clientIdentifier(request.headers);
+  const userAgent = request.headers.get("user-agent") ?? "";
+  const hashes = ip !== "unknown" ? hashesFor(ip, userAgent) : null;
+
+  // Keyed by the network hash, so the limiter's own table holds no address.
+  const limit = await checkRateLimit("affiliate:click", hashes?.ipHash ?? "unknown");
+  // Over the limit: still send the visitor where they were going, just do not
+  // record the click or set the cookie. A rate limit is our problem, not theirs.
+  if (!limit.allowed) return response;
+
+  const prefetch = isPrefetch(request.headers);
+  const isBot = looksAutomated(userAgent) || prefetch;
+  const suspect: string[] = [];
+  if (proxySuspected(request.headers)) suspect.push("PROXY");
+  if (prefetch) suspect.push("PREFETCH");
+
+  // The crediting partner's own plan decides the window, not the default.
+  const planQuery = db.from("affiliate_commission_plans").select("cookie_window_days");
+  const { data: plan } = affiliate.commission_plan_id
+    ? await planQuery.eq("id", affiliate.commission_plan_id).maybeSingle()
+    : await planQuery.eq("is_default", true).eq("active", true).maybeSingle();
 
   const windowDays = clampCookieDays(plan?.cookie_window_days ?? 60);
   const now = new Date();
@@ -100,39 +128,40 @@ export async function GET(
   // Recorded even when it looks automated, flagged rather than dropped: an
   // affiliate's click count and our attribution record are allowed to disagree,
   // but only visibly.
-  await db.from("affiliate_clicks").insert({
+  const click = {
     affiliate_id: affiliate.id,
     link_id: link.id,
     campaign_id: link.campaign_id,
-    visitor_hash: visitorHash(clientIdentifier(request.headers), userAgent),
+    visitor_hash: visitorHash(ip, userAgent),
     landing_path: destinationPath,
     referrer_host: hostOf(request.headers.get("referer")),
     country: request.headers.get("x-vercel-ip-country"),
     device_type: /mobile|android|iphone/i.test(userAgent) ? "mobile" : "desktop",
     is_bot: isBot,
-  });
-
-  const response = NextResponse.redirect(destination, 302);
+  };
+  const withHashes = await (db as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("affiliate_clicks")
+    .insert({ ...click, ip_hash: hashes?.ipHash ?? null, suspect_reasons: suspect });
+  // Before migration 0166 the two new columns do not exist: record the click without them.
+  if (withHashes.error && isSchemaMissing(withHashes.error)) {
+    await db.from("affiliate_clicks").insert(click);
+  }
 
   if (!isBot) {
     await db.rpc("increment_affiliate_link_click", { p_link_id: link.id });
 
-    response.cookies.set(
-      REFERRAL_COOKIE_NAME,
+    // The signed referral rides in the URL; nothing is stored on the device.
+    const referred = new URL(destination);
+    referred.searchParams.set(
+      REFERRAL_PARAM,
       signReferralCookie({
         affiliateId: affiliate.id,
         linkId: link.id,
         clickedAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
       }),
-      {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: windowDays * 24 * 60 * 60,
-      },
     );
+    return NextResponse.redirect(referred, 302);
   }
 
   return response;

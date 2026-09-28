@@ -1,8 +1,9 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
-import Link from "next/link";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { BackLink } from "@/components/app/back-link";
+import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import {
@@ -72,19 +73,13 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/app/find-leads"
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Find Leads
-      </Link>
+      <BackLink href="/app/find-leads">Back to Find Leads</BackLink>
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="truncate text-[26px] font-semibold leading-tight tracking-tight text-content">
-              Sourcing run — {run.title}
+              Sourcing run: {run.title}
             </h1>
             <Badge tone={runStatusTone(run.status)} dot>
               {RUN_STATUS_LABELS[run.status]}
@@ -105,12 +100,11 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
       </header>
 
       {run.status === "FAILED" && run.errorMessage && (
-        <p
-          role="alert"
-          className="rounded-lg border border-danger-100 bg-danger-50 px-4 py-3 text-[13px] text-danger-700"
-        >
-          {run.errorMessage}
-        </p>
+        <FormError
+          message={run.errorMessage}
+          fallback="This run stopped unexpectedly. The problem has been logged, and the prospects found so far are kept."
+          className="px-4 py-3 text-[13px]"
+        />
       )}
 
       {run.status === "PAUSED" && (
@@ -120,7 +114,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
         >
           {run.pausedReason === "BUDGET_LIMIT_REACHED"
             ? "This run paused because it reached its cost limit. Raise the limit or start a new run to continue."
-            : "This run is paused. Resume it to carry on from where it stopped — nothing is repeated."}
+            : "This run is paused. Resume it to carry on from where it stopped. Nothing is repeated."}
         </p>
       )}
 
@@ -151,11 +145,11 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
           <div className="border-t border-line-subtle px-5 py-4">
             <ChatComposer
               onSend={() => {}}
-              placeholder="This run is in progress — you can pause, stop, or review results."
+              placeholder="This run is in progress: you can pause, stop, or review results."
               disabled
               disabledReason={
                 live
-                  ? "This run is in progress — you can pause, stop, or review results."
+                  ? "This run is in progress: you can pause, stop, or review results."
                   : "This run has finished. Start a new search to look for more prospects."
               }
             />

@@ -5,7 +5,6 @@ import {
   CreditCard,
   Eye,
   FileSignature,
-  FileText,
   Mail,
   MessageCircle,
   MessageSquareText,
@@ -76,11 +75,13 @@ export function ChannelTimeline() {
                 <Icon className="size-3.5" strokeWidth={2.2} />
               </span>
               <div className="min-w-0">
-                <p className="rv-timeline-meta">
-                  <span>{event.channelLabel}</span>
-                  <time>{event.time}</time>
+                <p className="rv-timeline-row">
+                  <span className="rv-timeline-title">{event.title}</span>
+                  <span className="rv-timeline-meta">
+                    <span>{event.channelLabel}</span>
+                    <time>{event.time}</time>
+                  </span>
                 </p>
-                <p className="rv-timeline-title">{event.title}</p>
                 <p className="rv-timeline-detail">{event.detail}</p>
               </div>
             </li>
@@ -165,18 +166,13 @@ export function QuoteSequence() {
           <p className="rv-sign-name" aria-hidden>
             {EXAMPLE.lead}
           </p>
-          <p className="rv-sign-line">
-            {EXAMPLE.lead}, co-founder, {EXAMPLE.company}
-          </p>
+          <p className="rv-sign-line">Co-founder, {EXAMPLE.company}</p>
           <ul className="rv-sign-audit">
             <li>
               <Check aria-hidden className="size-3" /> Simple electronic signature
             </li>
             <li>
-              <Check aria-hidden className="size-3" /> Audit trail: time, email, IP address
-            </li>
-            <li>
-              <Check aria-hidden className="size-3" /> Fingerprint of this exact quote version
+              <Check aria-hidden className="size-3" /> Audit trail and version fingerprint
             </li>
           </ul>
         </div>
@@ -196,10 +192,7 @@ export function QuoteSequence() {
           <p className="rv-paid-note">Paid through your Stripe account</p>
           <div className="rv-paid-rows">
             <span>
-              <FileText aria-hidden className="size-3.5" /> Balance invoice scheduled
-            </span>
-            <span>
-              <BarChart3 aria-hidden className="size-3.5" /> CRM deal moved to won
+              <BarChart3 aria-hidden className="size-3.5" /> CRM deal won, balance invoice scheduled
             </span>
           </div>
         </div>
@@ -223,21 +216,21 @@ export function RoiCard() {
           <p className="rv-roi-k">What it cost</p>
           <p className="rv-roi-v">{money(ROI_VOICE_COST_PENCE)}</p>
           <p className="rv-roi-note">
-            {callMinutes.toFixed(1)} voice minutes at the {minutes(ROI_PACK.minutes)} pack rate (
-            {gbp(ROI_PACK.priceGbp)} for {minutes(ROI_PACK.minutes)}).
+            {callMinutes.toFixed(1)} voice minutes at the {gbp(ROI_PACK.priceGbp)} /{" "}
+            {minutes(ROI_PACK.minutes)} pack rate.
           </p>
         </div>
         <div>
           <p className="rv-roi-k">What it earned</p>
           <p className="rv-roi-v rv-roi-lime">{money(QUOTE_NET_PENCE, true)}</p>
           <p className="rv-roi-note">
-            Signed quote, ex VAT. {money(QUOTE_DEPOSIT_PENCE)} deposit already paid.
+            Signed quote, ex VAT. Deposit {money(QUOTE_DEPOSIT_PENCE)} paid.
           </p>
         </div>
       </div>
       <p className="rv-roi-foot">
-        {ILLUSTRATIVE_LABEL}, not a customer result or a forecast. What a call costs depends on
-        your plan, your pack and how long the call runs; what it earns depends on your offer.
+        {ILLUSTRATIVE_LABEL}, not a customer result or a forecast. Costs depend on your plan and
+        call length.
       </p>
     </div>
   );

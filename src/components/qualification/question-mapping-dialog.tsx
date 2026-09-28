@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FormField, Select } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { Skeleton } from "@/components/ui/feedback";
+import { Skeleton, FormError } from "@/components/ui/feedback";
 import { getQuestionMapping, saveQuestionMapping } from "@/lib/qualification/actions";
 import { dimensionLabel } from "@/lib/qualification-intelligence/explain";
 import { QI_DIMENSION_KEYS, type QiDimensionKey } from "@/lib/qualification-intelligence/types";
@@ -167,11 +167,7 @@ export function QuestionMappingDialog({
               ))}
             </Select>
           </FormField>
-          {error && (
-            <p role="alert" className="text-[12.5px] font-medium text-danger-700">
-              {error}
-            </p>
-          )}
+          <FormError message={error} />
         </div>
       )}
     </Modal>

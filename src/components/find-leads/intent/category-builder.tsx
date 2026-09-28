@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { CircleCheck, Plus, X } from "lucide-react";
@@ -39,6 +40,7 @@ const SOURCE_KEY: Record<IntentSource, SignalSourceKey> = {
   COMPANY_CAREERS: "JOB_POSTING",
   CUSTOMER_DATA: "CUSTOMER_DATASET",
   GOOGLE_PLACES: "COMPANY_WEBSITE",
+  PUBLIC_TENDERS: "TENDER_NOTICE",
 };
 
 const STRENGTH_IMPACT = { STRONG: 15, MODERATE: 10, WEAK: 5 } as const;
@@ -410,7 +412,7 @@ export function CategoryBuilder({
               return (
                 <option key={option} value={option} disabled={!available}>
                   {cadenceLabel(option)}
-                  {available ? "" : " — not on your plan"}
+                  {available ? "" : ". Not on your plan"}
                 </option>
               );
             })}
@@ -423,11 +425,7 @@ export function CategoryBuilder({
         </div>
       </div>
 
-      {error && (
-        <p role="alert" className="mt-3 text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} className="mt-3" />
 
       <div className="mt-4 flex justify-end gap-2">
         <Button size="sm" variant="secondary" onClick={onClose} disabled={pending}>

@@ -7,8 +7,8 @@ export default function Loading() {
     <div role="status" aria-busy="true" className="animate-pulse space-y-5">
       <div className="space-y-2">
         <div className="h-4 w-32 rounded bg-surface-sunken" />
-        <div className="h-8 w-[420px] max-w-full rounded-md bg-surface-sunken" />
-        <div className="h-4 w-96 max-w-full rounded bg-surface-sunken" />
+        <div className="h-8 w-full max-w-[420px] rounded-md bg-surface-sunken" />
+        <div className="h-4 w-full max-w-96 rounded bg-surface-sunken" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">

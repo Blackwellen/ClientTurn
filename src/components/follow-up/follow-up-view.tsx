@@ -21,6 +21,8 @@ import { TestFollowUpPanel } from "@/components/follow-up/test-follow-up-panel";
 import { FollowUpPerformancePanel } from "@/components/follow-up/performance-panel";
 import { EnrolmentRulesPanel } from "@/components/follow-up/enrolment-rules-panel";
 import { StopConditionsPanel } from "@/components/automations/stop-conditions";
+import { AutomationRulesPanel } from "@/components/automations/automation-rules-panel";
+import type { BusinessRoleName } from "@/lib/services/types";
 import { AUTOMATION_TYPE_META, isWiredAutomationType } from "@/lib/automations/types";
 import {
   FOLLOW_UP_TABS,
@@ -43,6 +45,8 @@ import {
  */
 export async function FollowUpView({
   businessId,
+  userId,
+  role,
   timezone,
   canEdit,
   entitlements,
@@ -50,6 +54,8 @@ export async function FollowUpView({
   currentParams,
 }: {
   businessId: string;
+  userId: string;
+  role: BusinessRoleName;
   timezone: string;
   canEdit: boolean;
   entitlements: Entitlements;
@@ -221,6 +227,10 @@ export async function FollowUpView({
 
       {filters.tab === "enrolment" && (
         <EnrolmentRulesPanel sequences={sequences} canEdit={canEdit} />
+      )}
+
+      {filters.tab === "rules" && (
+        <AutomationRulesPanel businessId={businessId} userId={userId} role={role} canEdit={canEdit} />
       )}
 
       {filters.tab === "performance" && (

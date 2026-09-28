@@ -20,6 +20,9 @@ import { SystemEventsView } from "@/components/admin/system/system-events-view";
 import { SystemErrorsView } from "@/components/admin/system/system-errors-view";
 import { SystemJobsView } from "@/components/admin/system/system-jobs-view";
 import { SystemComplianceView } from "@/components/admin/system/system-compliance-view";
+import { SystemVoiceView } from "@/components/admin/system/system-voice-view";
+import { getVoiceOps } from "@/lib/admin/voice-ops";
+import { requirePlatformAdmin } from "@/lib/admin/guard";
 import { SystemReadinessView } from "@/components/admin/system/system-readiness-view";
 import { getJobsView } from "@/lib/admin/jobs";
 import { getComplianceView } from "@/lib/admin/compliance";
@@ -215,6 +218,7 @@ export default async function AdminSystemPage({
           pageSize={params.size}
         />
       )}
+      {params.view === "voice" && <VoiceOpsView />}
       {params.view === "compliance" && (
         <ComplianceView
           suppressionQuery={params.sq}
@@ -264,6 +268,14 @@ async function AuditView(props: {
 }) {
   const result = await listAuditLog(props);
   return <SystemAuditView result={result} filters={props} />;
+}
+
+async function VoiceOpsView() {
+  // The layout guards already; this view reads raw provider cost and holds the
+  // emergency controls, so it asserts the operator role itself (as Economics does).
+  await requirePlatformAdmin();
+  const ops = await getVoiceOps();
+  return <SystemVoiceView ops={ops} />;
 }
 
 async function ReadinessView() {

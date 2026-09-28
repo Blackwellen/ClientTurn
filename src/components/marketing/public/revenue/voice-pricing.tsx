@@ -35,9 +35,8 @@ export function VoicePricingBand() {
         Voice pricing. <span className="pub-accent">Prepaid, capped, no overage.</span>
       </h2>
       <p className="pub-lead mt-5 max-w-3xl">
-        The AI Voice Sales Agent calls leads who asked for a call or agreed on your form. It comes
-        bundled with Pro, or as a prepaid add-on on Starter and Growth. Quotes, signatures and
-        invoices are part of every paid plan.
+        Bundled with Pro, or a prepaid add-on on Starter and Growth. Quotes and invoices come with
+        every paid plan.
       </p>
 
       <div className="rv-vp-grid">
@@ -53,9 +52,7 @@ export function VoicePricingBand() {
           <ul className="pub-ticks">
             <li>
               <Check className="size-3.5" aria-hidden />
-              <span>
-                {minutes(VOICE_ADDON.includedMinutes)} of AI calls a month, reset monthly
-              </span>
+              <span>{minutes(VOICE_ADDON.includedMinutes)} of AI calls a month</span>
             </li>
             <li>
               <Check className="size-3.5" aria-hidden />
@@ -63,21 +60,15 @@ export function VoicePricingBand() {
             </li>
             <li>
               <Check className="size-3.5" aria-hidden />
-              <span>Everything in Pro, with the same allowances</span>
-            </li>
-            <li>
-              <Check className="size-3.5" aria-hidden />
-              <span>Top up with minute packs if you need more</span>
+              <span>Everything in Pro</span>
             </li>
           </ul>
           <p className="rv-vp-alt">
-            <strong>Don&rsquo;t need voice? Pro {gbp(PRO_MONTHLY_GBP)}</strong> a month. Voice can be
-            removed from Pro in billing settings; the change is prorated.
+            <strong>Don&rsquo;t need voice? Pro {gbp(PRO_MONTHLY_GBP)}</strong> a month.
           </p>
           <p className="pub-small mt-3">
-            On annual billing Pro with Voice is {gbp(PRO_WITH_VOICE_ANNUAL_MONTHLY_GBP)} a month: the
-            annual discount applies to the platform price, and the voice item stays{" "}
-            {gbp(VOICE_ADDON.monthlyPriceGbp)} a month.
+            Annual: {gbp(PRO_WITH_VOICE_ANNUAL_MONTHLY_GBP)} a month. The discount excludes the{" "}
+            {gbp(VOICE_ADDON.monthlyPriceGbp)} voice item.
           </p>
           <div className="mt-auto flex flex-wrap gap-3 pt-6">
             <PrimaryCta placement="pricing_voice_pro" href="/signup?plan=pro">
@@ -90,10 +81,7 @@ export function VoicePricingBand() {
           <h3 className="text-lg font-semibold text-[var(--pub-text)]">
             Starter and Growth: voice add-on
           </h3>
-          <p className="pub-small mt-2">
-            Prepaid minute packs plus a dedicated number. Packs never expire and are spent after any
-            included minutes.
-          </p>
+          <p className="pub-small mt-2">Prepaid minute packs plus a dedicated number.</p>
           <div className="pub-screen-scroll">
             <table className="rv-vp-table">
               <caption className="sr-only">Voice minute packs</caption>
@@ -125,9 +113,7 @@ export function VoicePricingBand() {
               </tbody>
             </table>
           </div>
-          <p className="pub-small mt-3">
-            Packs and the number are bought in Billing once your plan is active.
-          </p>
+          <p className="pub-small mt-3">Bought in Billing once your plan is active.</p>
           <div className="mt-auto flex flex-wrap gap-3 pt-6">
             <SecondaryCta placement="pricing_voice_addon" href="/signup?plan=growth" withArrow>
               Start on Growth
@@ -156,7 +142,7 @@ export function VoicePricingBand() {
           <ul className="pub-ticks">
             <li>
               <Check className="size-3.5" aria-hidden />
-              <span>Branded quotes priced by your catalogue and rules, on every paid plan.</span>
+              <span>Branded quotes priced by your rules, on every paid plan.</span>
             </li>
             <li>
               <Check className="size-3.5" aria-hidden />
@@ -165,9 +151,7 @@ export function VoicePricingBand() {
             <li>
               <Check className="size-3.5" aria-hidden />
               <span>
-                Deposit, balance and instalment invoices with payment links from your own Stripe
-                account. Stripe&rsquo;s processing fees apply on your account; ClientTurn takes no
-                share of the payment.
+                Invoices paid through your own Stripe. ClientTurn takes no share.
               </span>
             </li>
           </ul>

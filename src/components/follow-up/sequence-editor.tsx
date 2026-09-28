@@ -388,7 +388,7 @@ function SequenceRow({
                 >
                   {CHANNEL_LABEL[channel]}
                   {channel === "whatsapp" && !whatsappEnabled
-                    ? ` — ${unlockPlanLabel("whatsapp")}`
+                    ? `: ${unlockPlanLabel("whatsapp")}`
                     : ""}
                 </option>
               ))}
@@ -398,7 +398,7 @@ function SequenceRow({
               on the row rather than only in the policy card. */}
           {!available[step.channel] && (
             <p className="mt-1 text-[11px] leading-tight text-warning-700">
-              Not available right now — ClientTurn evaluates each lead before
+              Not available right now. ClientTurn evaluates each lead before
               sending.
             </p>
           )}

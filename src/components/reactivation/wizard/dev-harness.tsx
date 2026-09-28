@@ -91,13 +91,13 @@ function seed(channel: WizardChannel): WizardState {
     initialMessage:
       channel === "email"
         ? "Hi {{first_name}},\n\nWe quoted you for {{service_name}} a while back and I wanted to check whether it is still something you are considering.\n\nIf it is, reply to this email and I will get you a fresh price this week.\n\nThanks,\n{{business_name}}"
-        : "Hi {{first_name}}, it's {{business_name}}. You asked about {{service_name}} a while back — still need a hand? Reply YES for a fresh quote.",
+        : "Hi {{first_name}}, it's {{business_name}}. You asked about {{service_name}} a while back. Still need a hand? Reply YES for a fresh quote.",
     followUpEnabled: true,
     followUpSubject: channel === "email" ? "One last check on your roof" : "",
     followUpMessage:
       channel === "email"
-        ? "Hi {{first_name}},\n\nJust closing the loop on this. If the timing is not right, no problem at all — reply STOP and I will not chase again.\n\n{{business_name}}"
-        : "Hi {{first_name}}, just closing the loop — still want that {{service_name}} quote? Reply STOP to opt out.",
+        ? "Hi {{first_name}},\n\nJust closing the loop on this. If the timing is not right, no problem at all. Reply STOP and I will not chase again.\n\n{{business_name}}"
+        : "Hi {{first_name}}, just closing the loop. Still want that {{service_name}} quote? Reply STOP to opt out.",
     followUpDelayDays: 3,
   };
 }

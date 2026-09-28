@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { FileText, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,7 @@ function AddServiceInline({
           </Button>
         </div>
       </div>
-      {error && <p className="mt-2 text-[12px] text-danger-600">{error}</p>}
+      <FormError message={error} className="mt-2" />
     </div>
   );
 }
@@ -164,7 +165,7 @@ export function EnquiryStep({
             >
               <option value="">
                 {services.length === 0
-                  ? "No active services — add one"
+                  ? "No active services: add one"
                   : "Choose a service"}
               </option>
               {services.map((service) => (

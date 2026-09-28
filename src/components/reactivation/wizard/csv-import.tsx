@@ -345,7 +345,7 @@ export function CsvImportPanel({
             <details className="border-line rounded-lg border px-3 py-2">
               <summary className="text-content-secondary cursor-pointer text-[12px]">
                 {formatCount(preview.errors.length)} issue
-                {preview.errors.length === 1 ? "" : "s"} found — these rows are
+                {preview.errors.length === 1 ? "" : "s"} found. These rows are
                 skipped
               </summary>
               <ul className="text-content-muted mt-2 space-y-1 text-[12px]">

@@ -26,8 +26,8 @@ export function FindLeadsFinalCta() {
             Tell ClientTurn <em>who you want to reach.</em>
           </h2>
           <p className="fl-lead">
-            Turn a natural-language target into a structured sourcing plan, a
-            verified prospect list and a controlled acquisition workflow.
+            From a plain-English target to a verified prospect list and
+            controlled outreach.
           </p>
 
           <StaggerReveal as="ol" className="fl-final-flow" step={0.09}>
@@ -56,8 +56,7 @@ export function FindLeadsFinalCta() {
           </div>
 
           <p className="fl-body" style={{ marginTop: 40 }}>
-            Already using something for outbound? Prospects and replies can be
-            pushed onward through the app and webhook connector.
+            Already use an outbound tool? Push prospects and replies onward.
           </p>
           <StaggerReveal
             as="ul"

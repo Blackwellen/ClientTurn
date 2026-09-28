@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { MessageSquareWarning, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { FormField, Input, Select, Switch, Textarea } from "@/components/ui/form";
 import { SectionHeader } from "@/components/app/page-header";
+import { ConfirmDialog } from "@/components/ui/modal";
 import { OBJECTIONS } from "@/lib/sales-library/objections";
 import { OBJECTION_KEYS } from "@/lib/sales-library/types";
 import {
@@ -88,6 +90,7 @@ function toDraft(objection: WorkspaceObjection | null): Draft {
 
 export function ObjectionsCard({ set, canManage }: { set: WorkspaceObjectionSet; canManage: boolean }) {
   const [draft, setDraft] = React.useState<Draft | null>(null);
+  const [removing, setRemoving] = React.useState<{ key: string; label: string } | null>(null);
   const { save, saving } = useSettingsSave();
   const locked = !canManage || saving;
 
@@ -158,7 +161,7 @@ export function ObjectionsCard({ set, canManage }: { set: WorkspaceObjectionSet;
                       size="sm"
                       variant="ghost"
                       disabled={saving}
-                      onClick={() => save(() => removeObjectionAction({ key: objection.key }))}
+                      onClick={() => setRemoving({ key: objection.key, label: objection.label })}
                     >
                       <Trash2 className="size-4" />
                     </IconButton>
@@ -304,6 +307,21 @@ export function ObjectionsCard({ set, canManage }: { set: WorkspaceObjectionSet;
           </Button>
         </CardFooter>
       )}
+      <ConfirmDialog
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        onConfirm={async () => {
+          const target = removing;
+          setRemoving(null);
+          if (target) await save(() => removeObjectionAction({ key: target.key }));
+        }}
+        title={removing ? `Remove "${removing.label}"?` : "Remove objection?"}
+        scope="The agent stops recognising this objection and stops using your response to it."
+        consequence="Your custom wording is deleted. You can add the objection again from the library."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={saving}
+      />
     </Card>
   );
 }
@@ -426,11 +444,7 @@ function TryIt() {
           Try it
         </Button>
       </div>
-      {error && (
-        <p role="alert" className="text-[12.5px] text-danger-700">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
       {result && (
         <div className="space-y-2 text-[12.5px]" aria-live="polite">
           <div className="flex flex-wrap items-center gap-2">

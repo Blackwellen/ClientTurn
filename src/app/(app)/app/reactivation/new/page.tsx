@@ -1,8 +1,9 @@
 import * as React from "react";
 import { unlockPlanLabel } from "@/lib/billing/plans";
 import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import type { Metadata } from "next";
-import { ArrowLeft, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getFilterOptions } from "@/lib/leads/queries";
@@ -65,13 +66,7 @@ export const dynamic = "force-dynamic";
 function WizardHeader() {
   return (
     <div>
-      <Link
-        href="/app/reactivation"
-        className="text-content-accent hover:text-accent-700 inline-flex items-center gap-1.5 text-[13px] font-medium"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Back to Reactivation
-      </Link>
+      <BackLink href="/app/reactivation">Back to Reactivation</BackLink>
       <h1 className="text-content mt-3 text-[26px] font-bold leading-tight">
         Create Reactivation Campaign
       </h1>

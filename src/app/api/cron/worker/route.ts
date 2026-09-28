@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claimJobs, completeJob, enqueue, failJob, type ClaimedJob } from "@/lib/jobs/queue";
+import { completeJob, enqueue, failJob, type ClaimedJob } from "@/lib/jobs/queue";
+import { claimJobBatch, releaseJobs } from "@/lib/jobs/claim";
+import { jobClassOf, typesWithDuration } from "@/lib/jobs/lanes";
+import { runWorkerLoop } from "@/lib/jobs/worker-loop";
+import { isCronAuthorized } from "@/lib/security/cron-auth";
+import { runOpsAlertChecks } from "@/lib/ops/alerts";
+import { isOpsCheckTick, isProviderProbeTick } from "@/lib/ops/alert-model";
 import { handleJob } from "@/lib/jobs/registry";
 // Side-effect import: registers every job handler before the loop runs.
 import "@/lib/jobs/register";
@@ -13,8 +19,6 @@ import { scheduleReengageSweep } from "@/lib/jobs/handlers/reengage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const BATCH_SIZE = 25;
 
 /**
  * Queues the outreach sequence sweep, at most once every five minutes.
@@ -58,62 +62,103 @@ async function scheduleSocialTick() {
   await enqueue("social.tick", {}, { idempotencyKey: `social.tick:${bucket}` });
 }
 
-export async function GET(request: Request) {
-  const startedAt = Date.now();
-  const secret = serverEnv.cronSecret;
-  const provided =
-    request.headers.get("authorization")?.replace("Bearer ", "") ??
-    new URL(request.url).searchParams.get("secret");
+/**
+ * The schedulers that ride on every tick. Run concurrently, and each one's
+ * failure is logged and contained: one scheduler throwing used to fail the
+ * whole request before a single job was claimed.
+ */
+async function runSchedulers(): Promise<void> {
+  const contained = async (name: string, run: () => Promise<void>) => {
+    try {
+      await run();
+    } catch (error) {
+      console.error(`[cron/worker] scheduler ${name} failed`, error);
+    }
+  };
+  await Promise.all([
+    // Customer mailboxes cannot call us, so each tick re-queues a poll per
+    // connected workspace. The per-workspace idempotency key means a poll
+    // already pending or running is never queued twice.
+    contained("email.poll", async () => { await scheduleEmailPolls(); }),
+    contained("agents", async () => { await scheduleAgents(); }),
+    contained("outreach.tick", async () => { await scheduleOutreachTick(); }),
+    contained("social.tick", async () => { await scheduleSocialTick(); }),
+    // Opt-in CRM pull (§29): one sweep per fifteen-minute bucket, which queues a
+    // pull for each integration whose pull is switched on.
+    contained("crm.pull", async () => { await scheduleCrmPullSweep(); }),
+    // Qualification intelligence (design 08 §B.5): one intent sweep per six-hour
+    // bucket re-assesses leads whose intent has decayed past a boundary, which
+    // is how silence and an expired timeframe re-score a lead nobody touched.
+    contained("intent.sweep", async () => { await scheduleIntentSweep(); }),
+    // Intent-driven re-engagement: one sweep per hour bucket plans any NOT_NOW
+    // resume, stated deadline, no-show or win-back that is due and has no
+    // trigger job yet (the domain-event consumer plans most of them at once).
+    contained("reengage.sweep", async () => { await scheduleReengageSweep(); }),
+  ]);
+}
 
-  if (!secret || provided !== secret) {
+/** The ops alert check gets at most this long, and only with time to spare. */
+const OPS_CHECK_TIMEOUT_MS = 8_000;
+const OPS_CHECK_LATEST_START_MS = 45_000;
+
+export async function GET(request: Request) {
+  // The time box is measured from here: Vercel's maxDuration counts from the
+  // start of the request, not from the first claim (worker-loop.ts).
+  const startedAt = Date.now();
+  const tickAt = new Date(startedAt);
+
+  if (!isCronAuthorized(request, serverEnv.cronSecret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const supabase = createAdminClient();
-  await supabase.rpc("reap_stalled_jobs", { stale_after: "5 minutes" });
+  // Also dead-letters a job that has stalled on its last attempt (0164).
+  const { error: reapError } = await supabase.rpc("reap_stalled_jobs", { stale_after: "5 minutes" });
+  if (reapError) console.error("[cron/worker] reap_stalled_jobs failed", reapError.message);
 
-  // Customer mailboxes cannot call us, so each tick re-queues a poll per
-  // connected workspace. The per-workspace idempotency key means a poll
-  // already pending or running is never queued twice.
-  await scheduleEmailPolls();
-  await scheduleAgents();
-  await scheduleOutreachTick();
-  await scheduleSocialTick();
-  // Opt-in CRM pull (§29): one sweep per fifteen-minute bucket, which queues a
-  // pull for each integration whose pull is switched on.
-  await scheduleCrmPullSweep();
-  // Qualification intelligence (design 08 §B.5): one intent sweep per six-hour
-  // bucket re-assesses leads whose intent has decayed past a boundary, which
-  // is how silence and an expired timeframe re-score a lead nobody touched.
-  await scheduleIntentSweep();
-  // Intent-driven re-engagement: one sweep per hour bucket plans any NOT_NOW
-  // resume, stated deadline, no-show or win-back that is due and has no
-  // trigger job yet (the domain-event consumer plans most of them at once).
-  await scheduleReengageSweep();
+  await runSchedulers();
 
   const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
-  let claimed = 0;
-  let completed = 0;
-  let failed = 0;
 
-  // Claim one at a time. A sourcing handler can use 45s; claiming a batch of
-  // 25 upfront leaves unstarted work locked when Vercel ends the invocation.
-  // Stop starting work after 10s, leaving 50s for the last bounded handler.
-  while (claimed < BATCH_SIZE && Date.now() - startedAt < 10_000) {
-    const [job] = await claimJobs(1, workerId);
-    if (!job) break;
-    claimed += 1;
-    try {
-      await handleJob(job as ClaimedJob);
-      await completeJob(job.id);
-      completed += 1;
-    } catch (error) {
-      const permanent =
-        error instanceof Error && error.name === "PermanentJobError";
-      await failJob(job as ClaimedJob, error, permanent);
-      failed += 1;
-    }
+  const result = await runWorkerLoop<ClaimedJob>(startedAt, {
+    now: Date.now,
+    claim: (limit, excludeTypes) => claimJobBatch(limit, workerId, excludeTypes),
+    release: (jobs) => releaseJobs(jobs, workerId),
+    durationOf: (type) => jobClassOf(type).duration,
+    typesFor: typesWithDuration,
+    run: async (job) => {
+      try {
+        await handleJob(job);
+        await completeJob(job.id);
+        return true;
+      } catch (error) {
+        const permanent =
+          error instanceof Error && error.name === "PermanentJobError";
+        await failJob(job, error, permanent);
+        return false;
+      }
+    },
+  });
+
+  // Push alerts (lib/ops/alerts.ts): one tick in each five minutes, and only
+  // when the jobs above left room inside the function limit.
+  let ops: string[] | undefined;
+  if (isOpsCheckTick(tickAt) && Date.now() - startedAt < OPS_CHECK_LATEST_START_MS) {
+    const check = runOpsAlertChecks("worker", { now: tickAt, probeProviders: isProviderProbeTick(tickAt) });
+    const outcome = await Promise.race([
+      check,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), OPS_CHECK_TIMEOUT_MS)),
+    ]);
+    ops = outcome ? outcome.sent : ["timeout"];
   }
 
-  return NextResponse.json({ claimed, completed, failed });
+  return NextResponse.json({
+    claimed: result.claimed,
+    completed: result.completed,
+    failed: result.failed,
+    released: result.released,
+    stoppedBy: result.stoppedBy,
+    elapsedMs: Date.now() - startedAt,
+    ...(ops ? { ops } : {}),
+  });
 }

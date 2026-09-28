@@ -699,7 +699,7 @@ export async function AiTab({ businessId, leadId }: TabProps) {
                 {run.method && (
                   <p className="mt-1 text-[12.5px] text-content-secondary">
                     Method: <span className="font-medium">{salesMethodLabel(run.method)}</span>
-                    {run.methodReason && ` — ${run.methodReason}`}
+                    {run.methodReason && `: ${run.methodReason}`}
                     <span className="ml-1 text-[11.5px] text-content-subtle">
                       (
                       {(METHOD_EVIDENCE[run.method as SalesMethod]?.grade ?? run.evidenceGrade ?? "ungraded")

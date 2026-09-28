@@ -1,37 +1,25 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
-export default function SourcingRunError({
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
+export default function RunError({
   error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  React.useEffect(() => {
-    console.error("Sourcing run failed to load", error.digest ?? error.message);
-  }, [error]);
-
   return (
-    <div className="space-y-4">
-      <Link
-        href="/app/find-leads"
-        className="inline-flex text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        ← Find Leads
-      </Link>
-      <div className="rounded-xl border border-line bg-surface">
-        <ErrorState
-          title="This sourcing run could not be loaded"
-          // The run itself is a background job: it carries on regardless of
-          // whether this page can render it.
-          description="The run is unaffected — it continues in the background, and its prospects are safe."
-          onRetry={reset}
-        />
-      </div>
-    </div>
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="find-leads.run"
+      title="This sourcing run could not be loaded"
+      description="The run is unaffected. It continues in the background, and its prospects are safe."
+      backHref="/app/find-leads"
+      backLabel="Back to Find Leads"
+      framed
+    />
   );
 }

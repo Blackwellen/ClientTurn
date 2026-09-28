@@ -42,7 +42,7 @@ import { FIRST_COPILOT_PROMPTS } from "@/lib/onboarding/steps";
  */
 
 const CAN_DO = [
-  { icon: Search, title: "Answer from your data", body: "Leads, bookings, campaigns and settings — every answer names where it came from." },
+  { icon: Search, title: "Answer from your data", body: "Leads, bookings, campaigns and settings. Every answer names where it came from." },
   { icon: BarChart3, title: "Explain performance", body: "Which sources convert, what needs attention and why." },
   { icon: Wand2, title: "Draft and prepare", body: "Campaign drafts and next steps, ready for you to review." },
   { icon: MessageSquareText, title: "Take actions for you", body: "Routine changes you ask for, using the same checks as the rest of the app." },

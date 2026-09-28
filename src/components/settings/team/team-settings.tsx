@@ -475,7 +475,7 @@ export function TeamSettings({
         title="Remove this member?"
         scope={
           removing
-            ? `${memberDisplayName(removing)} (${removing.email}) — ${ROLE_LABELS[removing.role]} — loses access to this workspace immediately.`
+            ? `${memberDisplayName(removing)} (${removing.email}): ${ROLE_LABELS[removing.role]}: loses access to this workspace immediately.`
             : ""
         }
         consequence="Their open leads, conversations and handovers go to the person you choose below. Their message history stays on every record."
@@ -491,7 +491,7 @@ export function TeamSettings({
             value={reassignTo}
             onChange={(event) => setReassignTo(event.target.value)}
           >
-            <option value="">Nobody — leave unassigned</option>
+            <option value="">Nobody: leave unassigned</option>
             {recipients.map((member) => (
               <option key={member.membershipId} value={member.userId ?? ""}>
                 {memberDisplayName(member)} ({ROLE_LABELS[member.role]})

@@ -1197,6 +1197,9 @@
 
 .fl-stages {
   display: grid;
+  /* One shrinkable track, so an unwrapped stage name ellipsises instead of
+     pushing the duration past the card edge on a phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
   margin: 16px 0 0;
   padding: 0;
@@ -3475,7 +3478,10 @@
     display: none;
   }
   .fl-cards {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not 1fr: a bare 1fr track is minmax(auto, 1fr), so a
+       card's min-content (about 460px) set the column and the whole chapter
+       ran off the right edge of a 360px screen. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
   .fl-split {

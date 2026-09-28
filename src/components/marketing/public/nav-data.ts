@@ -53,17 +53,17 @@ const PRODUCT_MENU: MegaColumn[] = [
       {
         label: "AI Voice Sales Agent",
         href: ANCHORS.voiceAgent,
-        description: "Calls leads who asked for a call, qualifies and books or quotes.",
+        description: "Calls leads who asked, then qualifies, quotes or books.",
       },
       {
         label: "Quotes and payments",
         href: ANCHORS.quotesPayments,
-        description: "Branded quotes, simple e-signature and invoices paid via your Stripe.",
+        description: "Branded quotes, e-signature and Stripe invoices.",
       },
       {
         label: "The revenue journey",
         href: ANCHORS.revenueJourney,
-        description: "One AI sales agent from first enquiry to paid invoice.",
+        description: "From first enquiry to paid invoice.",
       },
     ],
   },
@@ -73,32 +73,32 @@ const PRODUCT_MENU: MegaColumn[] = [
       {
         label: "Lead Conversion",
         href: "/product/lead-conversion",
-        description: "Respond, follow up, qualify and route every warm enquiry.",
+        description: "Respond, follow up, qualify and route enquiries.",
       },
       {
         label: "Lead Management",
         href: ANCHORS.capabilities,
-        description: "Every warm lead and its history in one operational inbox.",
+        description: "Every lead and its history in one inbox.",
       },
       {
         label: "Follow-Up",
         href: ANCHORS.capabilities,
-        description: "Coordinated email, SMS and WhatsApp follow-up.",
+        description: "Email, SMS and WhatsApp follow-up.",
       },
       {
         label: "Qualification",
         href: ANCHORS.capabilities,
-        description: "Your questions and rules applied to every enquiry.",
+        description: "Your questions and rules on every enquiry.",
       },
       {
         label: "Booking",
         href: ANCHORS.howItWorks,
-        description: "Route a qualified lead to an appointment or a person.",
+        description: "Qualified leads to an appointment or person.",
       },
       {
         label: "Reactivation",
         href: ANCHORS.capabilities,
-        description: "Re-engage older eligible leads with suppression built in.",
+        description: "Re-engage older leads, with suppression built in.",
       },
     ],
   },
@@ -108,17 +108,17 @@ const PRODUCT_MENU: MegaColumn[] = [
       {
         label: "Find Leads",
         href: "/product/find-leads",
-        description: "A verified prospect pipeline from a plain-language target.",
+        description: "Verified prospects from a plain-English target.",
       },
       {
         label: "Prospecting",
         href: "/product/find-leads",
-        description: "Source and verify contact data before you reach out.",
+        description: "Verify contact data before you reach out.",
       },
       {
         label: "Acquisition campaigns",
         href: ANCHORS.proof,
-        description: "Coordinate permitted outbound outreach in one place.",
+        description: "Permitted outbound outreach in one place.",
       },
     ],
   },
@@ -128,12 +128,12 @@ const PRODUCT_MENU: MegaColumn[] = [
       {
         label: "Analytics",
         href: ANCHORS.capabilities,
-        description: "Acquisition, outreach and conversion performance together.",
+        description: "Acquisition, outreach and conversion in one view.",
       },
       {
         label: "Integrations",
         href: ANCHORS.integrations,
-        description: "Connect the tools already around your pipeline.",
+        description: "Connect the tools you already use.",
       },
     ],
   },
@@ -170,9 +170,14 @@ const RESOURCES_MENU: MegaColumn[] = [
   {
     heading: "Get answers",
     links: [
-      { label: "Help centre", href: "/help", description: "Step-by-step guides for every part of ClientTurn." },
-      { label: "FAQ", href: ANCHORS.faq, description: "The questions people ask before starting." },
+      { label: "Help centre", href: "/help", description: "Step-by-step guides for ClientTurn." },
+      { label: "FAQ", href: ANCHORS.faq, description: "Common questions before you start." },
       { label: "Results", href: "/results", description: "What ClientTurn measures, end to end." },
+      {
+        label: "SDR cost calculator",
+        href: "/sdr-cost-calculator",
+        description: "AI SDR vs hiring an SDR, on your numbers.",
+      },
       { label: "Contact sales", href: "/contact-sales", description: "Talk to us about a larger rollout." },
       { label: "System status", href: "/status", description: "Live availability of the platform." },
     ],
@@ -180,8 +185,8 @@ const RESOURCES_MENU: MegaColumn[] = [
   {
     heading: "Trust",
     links: [
-      { label: "Compliance", href: "/compliance", description: "How PECR and UK GDPR are applied to every message." },
-      { label: "AI call compliance", href: "/compliance#voice-calls", description: "Consent, disclosure and calling hours for AI calls." },
+      { label: "Compliance", href: "/compliance", description: "How PECR and UK GDPR apply." },
+      { label: "AI call compliance", href: "/compliance#voice-calls", description: "Consent, disclosure and calling hours." },
       { label: "Privacy notice", href: "/privacy", description: "What we process, and why." },
       { label: "Sub-processors", href: "/sub-processors", description: "Every third party in the chain." },
       { label: "Terms of service", href: "/terms", description: "The contract behind a subscription." },
@@ -231,6 +236,7 @@ export const FOOTER_SOLUTIONS: NavLink[] = [
 export const FOOTER_RESOURCES: NavLink[] = [
   { label: "How it works", href: "/how-it-works" },
   { label: "Results", href: "/results" },
+  { label: "SDR cost calculator", href: "/sdr-cost-calculator" },
   { label: "For developers", href: "/developers" },
   { label: "Help centre", href: "/help" },
   { label: "FAQ", href: ANCHORS.faq },

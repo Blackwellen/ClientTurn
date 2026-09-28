@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth/session";
 import { getAffiliateAccount, getPublicPolicy } from "@/lib/affiliates/portal";
+import { loadTiers } from "@/lib/affiliates/programme-settings";
+import { tierRateRangeLabel, tierSummary } from "@/lib/affiliates/tier-rules";
 import { AffiliateLanding } from "@/components/affiliates/public/affiliate-landing";
 import "./affiliates.css";
 
 const affiliatesTitle = "Affiliate Programme";
 const affiliatesDescription =
-  "Earn commission introducing UK agencies, software and ecommerce businesses to ClientTurn. Free to join, simple tracking, real commission.";
+  "Earn a one-off commission of 6% to 10% on the first payment of every UK agency, software or ecommerce business you refer to ClientTurn. Free to join, simple tracking.";
 const affiliatesPath = "/affiliates";
 const affiliatesSiteUrl = (
   process.env.NEXT_PUBLIC_SITE_URL || "https://clientturn.com"
@@ -73,10 +75,11 @@ export const dynamic = "force-dynamic";
  *   which is a better answer than a page inviting them to apply again.
  */
 export default async function AffiliateProgrammePage() {
-  const [user, affiliate, policy] = await Promise.all([
+  const [user, affiliate, policy, tiers] = await Promise.all([
     getUser(),
     getAffiliateAccount(),
     getPublicPolicy(),
+    loadTiers(),
   ]);
 
   if (affiliate && (affiliate.status === "ACTIVE" || affiliate.status === "APPROVED")) {
@@ -98,6 +101,8 @@ export default async function AffiliateProgrammePage() {
       />
       <AffiliateLanding
         policy={policy}
+        rateRange={tierRateRangeLabel(tiers, policy.commissionPercent)}
+        tierLine={tierSummary(tiers, policy.commissionPercent)}
         ctaHref={ctaHref}
         ctaLabel="Become an Affiliate"
         signedIn={Boolean(user)}

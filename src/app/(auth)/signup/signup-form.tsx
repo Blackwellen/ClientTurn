@@ -19,7 +19,7 @@ import {
 } from "../_components/auth-form-parts";
 import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
-export function SignupForm({ plan = null }: { plan?: string | null }) {
+export function SignupForm({ plan = null, referral = null }: { plan?: string | null; referral?: string | null }) {
   const router = useRouter();
   const [state, formAction] = useActionState<AuthResult | null, FormData>(
     signUp,
@@ -49,6 +49,8 @@ export function SignupForm({ plan = null }: { plan?: string | null }) {
   return (
     <form action={submit} className="space-y-5" noValidate>
       {plan && <input type="hidden" name="plan" value={plan} />}
+      {/* The partner referral carried in the URL, for a visitor without cookie consent. */}
+      {referral && <input type="hidden" name="ct_ref" value={referral} />}
       <AuthError message={formError} />
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -137,7 +139,9 @@ export function SignupForm({ plan = null }: { plan?: string | null }) {
         variant="signup"
         // Carries the plan chosen on the pricing page through Google, so a new
         // account lands on trial checkout with it already picked.
-        redirectTo={plan ? `/start-trial?plan=${encodeURIComponent(plan)}` : undefined}
+        // The partner referral rides along too, so a Google signup without
+        // cookie consent is still credited (read back in the callback).
+        redirectTo={googleRedirect(plan, referral)}
       />
 
       <p className="text-center text-[13.5px] text-[var(--auth-text-muted)]">
@@ -148,4 +152,13 @@ export function SignupForm({ plan = null }: { plan?: string | null }) {
       </p>
     </form>
   );
+}
+
+/** The Google return path: the picked plan and any URL-carried partner referral. */
+function googleRedirect(plan: string | null, referral: string | null): string | undefined {
+  if (!plan && !referral) return undefined;
+  const params = new URLSearchParams();
+  if (plan) params.set("plan", plan);
+  if (referral) params.set("ct_ref", referral);
+  return `/start-trial?${params.toString()}`;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { CheckCircle2, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -136,11 +137,7 @@ export function SignPanel({
         <span>{CONSENT_TEXT}</span>
       </label>
       <p className="text-[11.5px] leading-5 text-content-muted">{SIGNATURE_NOTICE}</p>
-      {error && (
-        <p role="alert" className="rounded-md border border-danger-100 bg-danger-50 px-3 py-2 text-[13px] text-danger-700">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
       <Button type="submit" loading={busy} fullWidth>
         {esign ? "Sign and accept" : "Accept quote"}
       </Button>

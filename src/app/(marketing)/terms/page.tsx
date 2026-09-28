@@ -1208,7 +1208,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      intro="The contract between Blackwellen Limited and the business using ClientTurn. Please read clause 12 carefully — you are the sender of every message the Service delivers on your behalf, and the data controller for everyone you contact."
+      intro="The contract between Blackwellen Limited and the business using ClientTurn. Please read clause 12 carefully: you are the sender of every message the Service delivers for you, and the data controller for everyone you contact."
       currentPath="/terms"
       sections={SECTIONS}
     />

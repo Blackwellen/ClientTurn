@@ -124,11 +124,11 @@ function IndustryCard({ industry }: { industry: Industry }) {
           {industry.promise}
         </p>
 
-        <ol className="mt-4 flex items-stretch gap-1.5">
+        <ol className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:items-stretch sm:gap-1.5">
           {industry.stages.map((stage, index) => (
             <React.Fragment key={stage}>
               {index > 0 ? (
-                <li aria-hidden className="flex items-center">
+                <li aria-hidden className="hidden items-center sm:flex">
                   <ChevronRight className="size-3.5 text-[var(--pub-text-muted)]" />
                 </li>
               ) : null}
@@ -147,7 +147,7 @@ function IndustryCard({ industry }: { industry: Industry }) {
                     strokeWidth: 2.1,
                   })}
                 </span>
-                <span className="min-w-0">
+                <span className="min-w-0 break-words">
                   <span className="block text-[11.5px] font-semibold text-[var(--pub-text)]">
                     {stageLabels[index]}
                   </span>
@@ -233,12 +233,11 @@ export function IndustriesSection() {
               id="industries-heading"
               className="pub-h2 mt-5 !text-[clamp(1.9rem,3.2vw,2.9rem)]"
             >
-              Built around your conversion goal —{" "}
+              Built around your conversion goal,{" "}
               <span className="pub-accent">not your industry label.</span>
             </h2>
             <p className="pub-lead mt-6">
-              The same engine can qualify different enquiries and route each business toward its
-              own next action.
+              One engine qualifies each enquiry and routes it to your next action.
             </p>
           </div>
 

@@ -2,12 +2,15 @@ import * as React from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { analyticsAllowed } from "@/lib/billing/allowance-gates";
 import { createClient } from "@/lib/supabase/server";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { needsCheckout } from "@/lib/billing/lifecycle";
 import { getBillingNotice } from "@/lib/billing/limits-service";
 import { BillingBanner } from "@/components/billing/billing-banner";
+import { AppNotices } from "@/components/site/app-notices";
+import { MaintenanceBypassPill } from "@/components/site/maintenance-bypass-pill";
 import { primaryNavFor } from "@/lib/app/nav";
 import { getWorkspaceHealth, onboardingIncomplete } from "@/lib/app/health";
 import { AppShell } from "@/components/app/app-shell";
@@ -92,7 +95,7 @@ export default async function AppLayout({
           // Analytics is a depth tier rather than an on/off capability: every
           // paying plan gets at least the Overview, so the destination is
           // hidden only for a workspace with no analytics tier at all.
-          analytics: v4Entitlements.plan !== "trial",
+          analytics: analyticsAllowed(v4Entitlements.plan),
         }).map(item => item.href)}
         integrationStatus={health.integrationStatus}
         notifications={(notificationsResult.data ?? []) as NotificationRow[]}
@@ -102,12 +105,34 @@ export default async function AppLayout({
           avatarUrl: profile?.avatar_url,
         }}
       >
-        {billingNotice ? (
-          <BillingBanner
-            notice={billingNotice}
-            canManageBilling={hasRole(workspace.role, "owner")}
-          />
-        ) : null}
+        {/* Platform banners, maintenance and the billing notice, stacked
+            (docs/MAINTENANCE.md): critical platform notices first, at most
+            two visible, the rest collapsed. */}
+        <AppNotices
+          userId={workspace.userId}
+          reconnect={health.reconnect}
+          viewer={{
+            kind: "app",
+            businessId: workspace.businessId,
+            plan: entitlements.plan,
+            role: workspace.role,
+          }}
+          account={
+            billingNotice
+              ? {
+                  tone: billingNotice.tone,
+                  node: (
+                    <BillingBanner
+                      notice={billingNotice}
+                      canManageBilling={hasRole(workspace.role, "owner")}
+                      className=""
+                    />
+                  ),
+                }
+              : null
+          }
+        />
+        <MaintenanceBypassPill />
         {children}
       </AppShell>
     </ToastProvider>

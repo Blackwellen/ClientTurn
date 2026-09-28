@@ -109,7 +109,7 @@ export function CommandPalette({
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   useBodyScrollLock(open);
-  useEscape(open, onClose);
+  useEscape(open, onClose, panelRef);
   useFocusTrap(panelRef, open);
 
   // Reset to a clean slate every time the palette opens, and focus the input.
@@ -463,7 +463,7 @@ export function CommandPalette({
               <div>
                 <p className="text-[13px] font-medium text-content">Search failed</p>
                 <p className="mt-0.5 text-[12px] text-content-muted">
-                  Something went wrong on our side. Your query is kept — try again.
+                  Something went wrong on our side. Your query is kept. Try again.
                 </p>
               </div>
               <Button

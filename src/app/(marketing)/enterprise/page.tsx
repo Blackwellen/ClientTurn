@@ -120,11 +120,11 @@ const INTEGRATION_TONE: Record<MarketingAvailability, StateTone> = {
 const INTEGRATION_NOTE: Record<MarketingAvailability, string> = {
   native_live: "Connect your own account from Settings today.",
   webhook_bridge_live:
-    "Delivered through the signed inbound webhook bridge that ClientTurn hosts.",
+    "Delivered through our signed inbound webhook bridge.",
   platform_managed:
-    "Run by ClientTurn for every workspace. There is nothing for you to connect.",
+    "Run by ClientTurn. Nothing for you to connect.",
   coming_soon:
-    "Set up with our team during implementation rather than from a settings screen.",
+    "Set up with our team during implementation.",
 };
 
 /**
@@ -138,98 +138,98 @@ const SECURITY_GROUPS = [
   {
     icon: ShieldCheck,
     heading: "Secure by design",
-    body: "Row-level security on every tenant table, server-only secrets and signed, short-lived file access.",
+    body: "Row-level security, server-only secrets and short-lived signed file access.",
   },
   {
     icon: Users,
     heading: "Authentication and access",
-    body: "Ranked roles checked on the server, and step-up verification for platform administration.",
+    body: "Server-checked roles. Step-up verification for platform administration.",
   },
   {
     icon: Layers,
     heading: "Data isolation",
-    body: "Each workspace is a separate tenant. There is no cross-workspace read path in the application.",
+    body: "Each workspace is a separate tenant, with no cross-workspace read path.",
   },
   {
     icon: FileText,
     heading: "Audit and monitoring",
-    body: "Configuration and lifecycle changes are written to an append-only log against the acting user.",
+    body: "Configuration and lifecycle changes logged, append-only, against the acting user.",
   },
   {
     icon: Gauge,
     heading: "AI governance",
-    body: "Deterministic decisions remain the system of record. AI assists inside configured bounds, off by default.",
+    body: "Deterministic rules decide. AI assists within bounds and is off by default.",
   },
   {
     icon: Lock,
     heading: "Payments and billing",
-    body: "Card details are entered on Stripe's own pages. ClientTurn stores a customer reference, not a card.",
+    body: "Cards are entered on Stripe's pages. We store a reference, not a card.",
   },
 ] as const;
 
 const IMPLEMENTATION = [
   {
     title: "Discovery",
-    body: "We map your volumes, sources, systems, teams and the requirements procurement will raise.",
+    body: "Map your volumes, sources, systems, teams and procurement requirements.",
   },
   {
     title: "Solution design",
-    body: "Entitlements, workspace shape, integration approach, qualification rules and routing, agreed in writing.",
+    body: "Entitlements, workspaces, integrations, rules and routing, agreed in writing.",
   },
   {
     title: "Implementation",
-    body: "Workspaces provisioned, sources and systems connected, rules and sequences configured with you.",
+    body: "Provision workspaces, connect systems and configure rules with you.",
   },
   {
     title: "Testing and training",
-    body: "Validate the flow end to end on real data, then train the people who will run it.",
+    body: "Validate end to end on real data, then train your team.",
   },
   {
     title: "Go live",
-    body: "Switch on, monitor the first cohort closely, and review against what we agreed at design.",
+    body: "Switch on, monitor the first cohort and review against the design.",
   },
 ] as const;
 
 const FAQS: FaqItem[] = [
   {
     q: "Can ClientTurn support multiple business units or locations?",
-    a: "Yes, as separate workspaces. Each location or business unit runs as its own fully isolated workspace with its own leads, rules, sequences, members and reporting. Be aware of one current limitation: there is no in-app workspace switcher yet, so a person who needs access to more than one signs in to each separately, and there is no combined cross-workspace report. If a single pane across locations is a requirement, tell us at discovery so we can be honest about timing.",
+    a: "Yes, each as its own isolated workspace with its own leads, rules, members and reporting. There is no workspace switcher or combined cross-workspace report yet, so people sign in to each separately. If you need a single view across locations, tell us at discovery.",
   },
   {
     q: "Can you integrate with our CRM?",
-    a: "HubSpot and Zoho CRM can be connected in the app today. Salesforce support is built and rolling out; until we've verified it end-to-end with a live org, we connect it with our team rather than hand you an unproven button. Anything outside that list is a technical discovery conversation rather than a switch we can flip — we will tell you what is realistic before you commit to anything.",
+    a: "HubSpot and Zoho CRM connect in the app today. Salesforce is built and rolling out; until it is verified with a live org, our team connects it with you. Anything else is a discovery conversation, and we will say what is realistic before you commit.",
   },
   {
     q: "Do you offer a data processing agreement?",
-    a: "Yes, as part of an Enterprise agreement. Send us your paper and we will review it, or use ours. Our sub-processor list is published publicly and kept current.",
+    a: "Yes, as part of an Enterprise agreement. Use ours or send us yours. Our sub-processor list is published and kept current.",
   },
   {
     q: "Is SSO or SAML available?",
-    a: "Not today. Sign-in is email and password with email verification, and multi-factor authentication is not yet available for customer workspace users either — step-up verification currently covers platform administration only. If SSO is a hard requirement for your rollout, raise it before you invest time in an evaluation.",
+    a: "Not today. Sign-in is email and password with email verification, and workspace MFA is not yet available; step-up verification covers platform administration only. If SSO is a hard requirement, raise it before you evaluate.",
   },
   {
     q: "Are you SOC 2 or ISO 27001 certified?",
-    a: "No, and we will not imply otherwise. We can walk you through the controls that are actually in place — row-level security on every tenant table, workspace isolation, role-based access, audit logging, server-only secrets, signed short-lived file access, and UK and EU processing — and we will answer a security questionnaire honestly. If a certification is a procurement gate, that is a reason to talk to us early rather than late.",
+    a: "No, and we will not imply otherwise. We will walk you through the controls actually in place and answer your security questionnaire honestly. If a certification is a procurement gate, talk to us early.",
   },
   {
     q: "Can we negotiate custom limits?",
-    a: "Yes. Enterprise entitlements are set per contract rather than from the public rate card: lead volume, verified prospect allowance, sourcing runs, messaging volume, sending identities, users and workspaces are all configurable per tenant.",
+    a: "Yes. Enterprise entitlements are set per contract, not from the public rate card. Leads, prospects, sourcing, messaging, sending identities, users and workspaces are all configurable.",
   },
   {
     q: "What support is included?",
-    a: `Enterprise agreements include a dedicated support contact and onboarding assistance. ${PLANS.pro.name} and below use standard support channels. Formal response-time commitments are agreed per contract; we do not publish a blanket SLA we have not signed up to.`,
+    a: `Enterprise includes a dedicated support contact and onboarding assistance. ${PLANS.pro.name} and below use standard support. Response times are agreed per contract; we publish no blanket SLA.`,
   },
   {
     q: "How does implementation work?",
-    a: "Five stages: discovery, solution design, implementation, testing and training, then go live. The length depends almost entirely on how many systems have to be connected and how much of your qualification logic already exists in a written form.",
+    a: "Five stages: discovery, solution design, implementation, testing and training, then go live. Timing depends mostly on how many systems connect and how much of your qualification logic is already written down.",
   },
   {
     q: "Where is our data stored?",
-    a: "The application database runs in Supabase's eu-west-2 (London) region, and AI assistance uses EU Azure OpenAI endpoints. Uploaded files are held in Cloudflare R2 and reached only through short-lived signed URLs generated server-side. We will walk through the full data-flow and sub-processor map with you rather than summarise it on a marketing page.",
+    a: "The database runs in Supabase's eu-west-2 (London) region, and AI assistance uses EU Azure OpenAI endpoints. Uploaded files sit in Cloudflare R2, reached only through short-lived signed URLs. We will walk you through the full data-flow and sub-processor map.",
   },
   {
     q: "How does Enterprise pricing work?",
-    a: "It is priced against your requirements rather than published. Volume, users, workspaces, support and commercial terms all feed into it, and we would rather quote something accurate after discovery than a number now that changes later.",
+    a: "It is priced against your requirements, not published. Volume, users, workspaces, support and terms all feed in, and we quote accurately after discovery.",
   },
 ];
 
@@ -292,10 +292,8 @@ export default function EnterprisePage() {
                 <span className="pub-accent">high-volume lead operations.</span>
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
-                Run acquisition and conversion across teams, locations and
-                systems with custom entitlements, stronger controls and
-                implementation support — and a straight answer about what we do
-                and do not support yet.
+                Custom entitlements, stronger controls and implementation
+                support, with straight answers on what we do not support yet.
               </p>
 
               <ActionRow>
@@ -356,11 +354,8 @@ export default function EnterprisePage() {
                     Grow without operational limits.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Enterprise entitlements are set per tenant rather than from
-                    the public rate card. Lead volume, verified prospect
-                    allowance, sourcing runs, messaging volume, sending
-                    identities and users are all configurable — and raised by
-                    changing a row, not by shipping a release.
+                    Every allowance is set per contract, not from the public
+                    rate card, and raised without a release.
                   </p>
                   <ul className="pub-checks">
                     {[
@@ -376,8 +371,8 @@ export default function EnterprisePage() {
                     ))}
                   </ul>
                   <p className="pub-small mt-6">
-                    We do not describe any allowance as unlimited. Every limit
-                    is a number in your contract, and you can see it.
+                    No allowance is unlimited. Every limit is a visible number
+                    in your contract.
                   </p>
                 </div>
 
@@ -386,22 +381,22 @@ export default function EnterprisePage() {
                     {
                       icon: Layers,
                       title: "Isolated workspaces",
-                      body: "Each brand, region or business unit runs as its own tenant with its own data, rules and members.",
+                      body: "Each brand, region or unit is its own tenant.",
                     },
                     {
                       icon: Users,
                       title: "Larger teams",
-                      body: "Ranked roles, server-enforced permissions and an audit trail of who changed what.",
+                      body: "Server-enforced roles and an audit trail of who changed what.",
                     },
                     {
                       icon: Database,
                       title: "Large data operations",
-                      body: "Built around high-volume sourcing, verification and outreach rather than retrofitted to it.",
+                      body: "Built for high-volume sourcing, verification and outreach.",
                     },
                     {
                       icon: Gauge,
                       title: "Retry-safe processing",
-                      body: "Background work re-reads current state before any external action, so a retry cannot double-send.",
+                      body: "State is re-read before every external action, so retries never double-send.",
                     },
                   ].map((item) => (
                     <PublicCard key={item.title} interactive className="pub-cell">
@@ -432,18 +427,15 @@ export default function EnterprisePage() {
                     Run each location as its own isolated workspace.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Every location, brand or business unit gets a workspace with
-                    its own leads, qualification rules, sequences, members and
-                    reporting. Isolation is enforced in the database, not just
-                    in the interface: each tenant table carries a business id
-                    and is protected by row-level security.
+                    Isolation is enforced in the database by row-level
+                    security, not just in the interface.
                   </p>
                   <ul className="pub-checks">
                     {[
-                      "Per-workspace qualification rules, sequences and routing",
-                      "Ranked roles, checked on the server for every privileged action",
-                      "An audit trail of configuration and lifecycle changes",
-                      "Provisioned and configured with our team during implementation",
+                      "Per-workspace rules, sequences and routing",
+                      "Roles checked on the server for every privileged action",
+                      "Audit trail of configuration and lifecycle changes",
+                      "Provisioned with our team during implementation",
                     ].map((item) => (
                       <li key={item}>
                         <CheckCircle2 className="size-4" aria-hidden />
@@ -465,12 +457,9 @@ export default function EnterprisePage() {
                     <div>
                       <h3>One limitation, stated plainly</h3>
                       <p>
-                        There is no in-app workspace switcher yet, and no
-                        combined report across workspaces. Someone who works
-                        across two locations signs in to each separately today.
-                        If a single pane across locations is a requirement,
-                        raise it at discovery — we will tell you where it sits
-                        rather than let you find out after you have signed.
+                        There is no workspace switcher or combined report
+                        across workspaces yet, so people sign in to each
+                        separately. If that matters, raise it at discovery.
                       </p>
                     </div>
                   </div>
@@ -485,11 +474,9 @@ export default function EnterprisePage() {
                 Connect ClientTurn to your existing systems.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                The catalogue below is the product&rsquo;s own provider
-                registry — {liveCount + managedCount + connectors.length}{" "}
-                systems across lead sources, communication, booking, CRM and the
-                hosted inbound webhook bridge. Connect your own account from
-                Settings, or we will set it up with you during implementation.
+                {liveCount + managedCount + connectors.length} systems from the
+                product&rsquo;s own provider registry. Connect them from
+                Settings, or we set them up with you.
               </p>
 
               <div className="mt-10">
@@ -523,7 +510,7 @@ export default function EnterprisePage() {
                   </div>
                   <p className="pub-small mt-4">
                     These send leads into ClientTurn. They are not a two-way
-                    sync, and we do not describe them as one.
+                    sync.
                   </p>
                 </div>
               </div>
@@ -544,17 +531,16 @@ export default function EnterprisePage() {
                     <span>
                       <strong className="font-semibold text-[var(--pub-text)]">
                         {AVAILABILITY_LABEL[state]}
-                      </strong>{" "}
-                      — {INTEGRATION_NOTE[state]}
+                      </strong>
+                      : {INTEGRATION_NOTE[state]}
                     </span>
                   </li>
                 ))}
               </ul>
 
               <p className="pub-small mt-8">
-                Anything not listed is a technical discovery conversation, not a
-                switch we can flip. We will tell you what is realistic before
-                you commit to anything.
+                Anything not listed is a discovery conversation. We will say
+                what is realistic before you commit.
               </p>
           </Band>
 
@@ -565,10 +551,8 @@ export default function EnterprisePage() {
                 Controls for serious business operations.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                Everything below is either built and running, configurable, or
-                honestly marked as not available. We have not written
-                &ldquo;designed to support&rdquo; anywhere on this page to stand
-                in for an audit that has not happened.
+                Every control below is built, configurable or plainly marked
+                not available.
               </p>
 
               {/*
@@ -613,11 +597,8 @@ export default function EnterprisePage() {
                 <div>
                   <h3>What we do not have</h3>
                   <p>
-                    {gaps.map((gap) => gap.name).join(", ")}. These are listed
-                    here rather than omitted, because a buyer who cannot find
-                    SSO on a page assumes it exists rather than that we chose
-                    not to mention it. If one of them is a procurement gate,
-                    tell us at the first call.
+                    {gaps.map((gap) => gap.name).join(", ")}. If one of these
+                    is a procurement gate, tell us on the first call.
                   </p>
                 </div>
               </div>
@@ -632,9 +613,8 @@ export default function EnterprisePage() {
                     Flexible commercial options.
                   </h2>
                   <p className="pub-lead mt-5">
-                    Custom entitlements, procurement support and commercial
-                    terms for larger organisations — agreed against your numbers
-                    rather than assumed from a rate card.
+                    Entitlements and terms agreed against your numbers, not a
+                    rate card.
                   </p>
 
                   <RevealGrid className="pub-grid pub-grid-2 mt-8">
@@ -647,7 +627,7 @@ export default function EnterprisePage() {
                       {
                         icon: Handshake,
                         title: "Procurement support",
-                        body: "Purchase orders, invoicing and your security questionnaire, answered honestly.",
+                        body: "Purchase orders, invoicing and your security questionnaire.",
                       },
                       {
                         icon: FileText,
@@ -657,7 +637,7 @@ export default function EnterprisePage() {
                       {
                         icon: Headphones,
                         title: "Dedicated support",
-                        body: "A named contact and onboarding assistance from implementation onward.",
+                        body: "A named contact and onboarding assistance.",
                       },
                     ].map((item) => (
                       <PublicCard key={item.title} interactive className="pub-cell">
@@ -709,10 +689,8 @@ export default function EnterprisePage() {
                 A structured path from discovery to go-live.
               </h2>
               <p className="pub-lead mt-5 max-w-3xl">
-                How long it takes depends almost entirely on how many systems
-                have to be connected and how much of your qualification logic
-                already exists in writing. We will give you a timeline after
-                discovery, not before it.
+                Timing depends on how many systems connect. You get a timeline
+                after discovery.
               </p>
 
               <StepRail steps={IMPLEMENTATION} variant="timeline" />
@@ -739,7 +717,7 @@ export default function EnterprisePage() {
                   <span className="pub-accent">your organisation.</span>
                 </>
               }
-              body="Tell us your volumes, your systems and your constraints. We will tell you what fits, what needs building, and what we cannot do yet."
+              body="Tell us your volumes, systems and constraints. We will tell you what fits and what we cannot do yet."
               actions={
                 <>
                   <PrimaryCta

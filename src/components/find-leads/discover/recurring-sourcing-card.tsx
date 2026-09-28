@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { MoreHorizontal, Repeat } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Switch, Label, Select, Input } from "@/components/ui/form";
-import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -87,7 +87,7 @@ export function RecurringSourcingCard({
           onClick={() => setCreating(true)}
           title={
             sessions.length === 0
-              ? "Save a search plan first — a schedule re-runs a plan you have approved."
+              ? "Save a search plan first. A schedule re-runs a plan you have approved."
               : undefined
           }
         >
@@ -95,7 +95,7 @@ export function RecurringSourcingCard({
         </Button>
         {sessions.length === 0 && (
           <p className="mt-2 text-center text-[11.5px] text-content-subtle">
-            Run a search first — schedules re-use a plan you have approved.
+            Run a search first. Schedules re-use a plan you have approved.
           </p>
         )}
       </div>
@@ -136,7 +136,10 @@ function ScheduleRow({
     });
   };
 
+  const [confirmStop, setConfirmStop] = React.useState(false);
+
   const remove = () => {
+    setConfirmStop(false);
     startTransition(async () => {
       const result = await deleteRecurringSearchAction(schedule.id);
       if (!result.ok) {
@@ -189,10 +192,22 @@ function ScheduleRow({
           </IconButton>
         }
       >
-        <DropdownItem disabled={!canManage} destructive onSelect={remove}>
+        <DropdownItem disabled={!canManage} destructive onSelect={() => setConfirmStop(true)}>
           Stop this schedule
         </DropdownItem>
       </DropdownMenu>
+
+      <ConfirmDialog
+        open={confirmStop}
+        onClose={() => setConfirmStop(false)}
+        onConfirm={remove}
+        title="Stop this recurring search?"
+        scope={`"${schedule.name}" will stop running on its schedule.`}
+        consequence="Prospects it already found are kept. To search on a schedule again, create a new recurring search."
+        confirmLabel="Stop schedule"
+        variant="danger"
+        loading={pending}
+      />
     </li>
   );
 }
@@ -241,7 +256,7 @@ function CreateDialog({
       <div className="space-y-4">
         <p className="text-[12.5px] leading-relaxed text-content-muted">
           A schedule re-runs a search plan you have already reviewed. Editing that
-          plan later stops the schedule until you approve it again — targeting is
+          plan later stops the schedule until you approve it again. Targeting is
           never re-derived on your behalf.
         </p>
 

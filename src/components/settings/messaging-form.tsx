@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import { unlockPlanLabel } from "@/lib/billing/plans";
 import * as React from "react";
 import Link from "next/link";
@@ -68,7 +69,7 @@ function SlackChannelCard({
         <FormField
           label="Slack channel ID"
           htmlFor="slack-channel"
-          hint="In Slack, invite the bot to the channel first — type /invite @ClientTurn in that channel. Then open its About panel to find the channel ID (for example C0123456789) and paste it here. Without the invite, alerts fail silently."
+          hint="In Slack, invite the bot to the channel first. Type /invite @ClientTurn in that channel. Then open its About panel to find the channel ID (for example C0123456789) and paste it here. Without the invite, alerts fail silently."
         >
           <Input
             id="slack-channel"
@@ -78,11 +79,7 @@ function SlackChannelCard({
             onChange={(event) => setValue(event.target.value)}
           />
         </FormField>
-        {error && (
-          <p role="alert" className="text-danger-600 text-[13px]">
-            {error}
-          </p>
-        )}
+        <FormError message={error} />
       </CardContent>
       <CardFooter className="justify-end">
         <Button size="sm" loading={saving} disabled={readOnly} onClick={onSave}>
@@ -102,7 +99,7 @@ const SLACK_PREFERENCE_ITEMS = [
   {
     key: "handover" as const,
     label: "Handover",
-    description: "A conversation needs a person — human or AI-triggered.",
+    description: "A conversation needs a person. Human or AI-triggered.",
   },
   {
     key: "booking" as const,
@@ -194,8 +191,8 @@ function SlackPreferencesCard({
             <label htmlFor="slack-pref-digest" className="text-content text-[13px]">
               Daily digest
               <span className="text-content-muted block text-[12px]">
-                One summary message each morning — leads in, booked, handovers,
-                assistant activity — instead of (or alongside) the per-event alerts above.
+                One summary message each morning, leads in, booked, handovers,
+                assistant activity, instead of (or alongside) the per-event alerts above.
               </span>
             </label>
           </div>
@@ -286,7 +283,7 @@ export function MessagingForm({
               >
                 <option value="sms">SMS</option>
                 <option value="whatsapp" disabled={!whatsappEnabled}>
-                  WhatsApp{whatsappEnabled ? "" : ` — ${unlockPlanLabel("whatsapp")} and above`}
+                  WhatsApp{whatsappEnabled ? "" : `: ${unlockPlanLabel("whatsapp")} and above`}
                 </option>
               </Select>
             </FormField>
@@ -307,7 +304,7 @@ export function MessagingForm({
                 <option value="">No fallback</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp" disabled={!whatsappEnabled}>
-                  WhatsApp{whatsappEnabled ? "" : ` — ${unlockPlanLabel("whatsapp")} and above`}
+                  WhatsApp{whatsappEnabled ? "" : `: ${unlockPlanLabel("whatsapp")} and above`}
                 </option>
               </Select>
             </FormField>
@@ -342,7 +339,7 @@ export function MessagingForm({
           <FormField
             label="Message signature"
             htmlFor="signature"
-            hint="Up to 160 characters. Keep it short — it is counted in every SMS."
+            hint="Up to 160 characters. Keep it short. It is counted in every SMS."
           >
             <Input
               id="signature"
@@ -473,11 +470,7 @@ export function MessagingForm({
         </CardContent>
       </Card>
 
-      {error && (
-        <p role="alert" className="text-danger-600 text-[13px]">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <Card>
         <CardFooter className="justify-end rounded-xl border-t-0">

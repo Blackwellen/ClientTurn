@@ -125,37 +125,37 @@ type Safeguard = {
 const SAFEGUARDS: Safeguard[] = [
   {
     icon: FileText,
-    title: "Where you got their details, on the first message",
-    body: "UK GDPR Article 14 says you must tell someone where their data came from, at the latest when you first contact them. The first cold email carries one sentence, built from what ClientTurn recorded about the source, with a link to your privacy notice. It is never written by AI. If the source or your privacy notice URL is missing, the message is held.",
+    title: "The source line on the first message",
+    body: "UK GDPR Article 14: the first cold email says where their details came from and links your privacy notice. Never AI-written. Held if the source or notice URL is missing.",
     link: { href: "/help/compliance/article-14-source-disclosure", label: "How the source line works" },
   },
   {
     icon: MessageSquareOff,
-    title: "An opt-out on every message, honoured at once",
-    body: "Marketing email carries an unsubscribe link and the one-click unsubscribe header mail apps use. STOP on SMS or WhatsApp stops that channel; STOPALL, a written request to stop, or the email unsubscribe stops everything. Follow-up for that person stops as soon as the opt-out is recorded.",
+    title: "Opt-outs on every message, honoured at once",
+    body: "Marketing email carries an unsubscribe link and one-click header. STOP ends that channel; STOPALL, a written request or email unsubscribe ends everything.",
     link: { href: "/help/compliance/suppression-and-unsubscribe", label: "Opt-outs and suppression" },
   },
   {
     icon: Fingerprint,
-    title: "A suppression list that survives deletion",
-    body: "Suppression is by address, not by record, so adding the same person again does not get round it. When someone asks to be erased, their do-not-contact entry is kept as a one-way hash: ClientTurn can still match it, but cannot read the address back.",
+    title: "Suppression that survives deletion",
+    body: "Suppression is by address, so re-adding someone does not bypass it. After erasure, a one-way hash keeps them blocked without storing the address.",
     link: { href: "/help/compliance/data-rights", label: "Erasure and what is kept" },
   },
   {
     icon: Clock,
     title: "Quiet hours for texts and WhatsApp",
-    body: "Automated SMS and WhatsApp messages wait until your quiet hours end rather than landing late at night. The check runs again immediately before each send, not only when the message was scheduled.",
+    body: "Automated SMS and WhatsApp wait until quiet hours end, re-checked immediately before each send.",
   },
   {
     icon: UserCheck,
     title: "Consent records for SMS and WhatsApp",
-    body: "Texts and WhatsApp messages only go to people who gave you their mobile themselves, for example on a lead form. Consent is recorded with how and when it was given, consent without evidence counts as none, and a WhatsApp conversation needs an explicit WhatsApp opt-in, as Meta requires.",
+    body: "Texts and WhatsApp only go to mobiles people gave you themselves, with how and when recorded. No evidence means no consent. WhatsApp needs an explicit opt-in, as Meta requires.",
     link: { href: "/help/compliance/consent-and-whatsapp-opt-in", label: "Consent and WhatsApp opt-in" },
   },
   {
     icon: PhoneOff,
     title: "No phone numbers from enrichment",
-    body: "Cold outreach is business email only. ClientTurn never buys or looks up phone numbers, so you are not holding personal data you have no lawful use for.",
+    body: "Cold outreach is business email only. ClientTurn never buys or looks up phone numbers.",
   },
 ];
 
@@ -169,32 +169,32 @@ const VOICE_RULES: Safeguard[] = [
   {
     icon: PhoneCall,
     title: "Consent before any AI call",
-    body: "PECR regulation 19 requires prior consent for calls made by an automated calling system, and an AI voice agent is very likely to be one. It applies to companies as well as individuals. So the agent only calls a lead who asked to be called or agreed to it on your form, with the evidence recorded. A phone number on its own is not consent, and numbers are never taken from enrichment or imports.",
+    body: "PECR regulation 19 requires prior consent for automated calls, which very likely covers an AI agent, for companies too. The agent only calls leads who asked or agreed on your form, with evidence recorded. A number alone is not consent, and none come from enrichment or imports.",
   },
   {
     icon: Clock,
     title: "Calling hours in the lead's own time",
-    body: `By default, weekdays ${WEEKDAY_HOURS?.start} to ${WEEKDAY_HOURS?.end} and Saturdays ${SATURDAY_HOURS?.start} to ${SATURDAY_HOURS?.end}, with no Sunday or UK bank holiday calls. You can narrow the hours but never set them earlier than ${CALLING_HOURS_BOUNDS.earliest} or later than ${CALLING_HOURS_BOUNDS.latest}. The time zone comes from the lead, or their number where it maps to one zone; if it cannot be worked out, no call is made.`,
+    body: `Default: weekdays ${WEEKDAY_HOURS?.start} to ${WEEKDAY_HOURS?.end}, Saturdays ${SATURDAY_HOURS?.start} to ${SATURDAY_HOURS?.end}, no Sundays or UK bank holidays. You can narrow them, never beyond ${CALLING_HOURS_BOUNDS.earliest} to ${CALLING_HOURS_BOUNDS.latest}. If the lead's time zone is unknown, no call is made.`,
   },
   {
     icon: Mic,
     title: "Recording notice, straight after the opener",
-    body: "When you turn recording on, the call tells the person immediately after the opener, before anything else is said. When recording is off, nothing is recorded.",
+    body: "With recording on, the call says so right after the opener, before anything else. With it off, nothing is recorded.",
   },
   {
     icon: Hash,
     title: "Your own number, and who you are on request",
-    body: "Each business calls from its own dedicated UK number, never a shared, rotated or disguised one. Before voice can be switched on you give your legal entity name and a contact address or freephone number, and the agent reads those out whenever someone asks who is calling.",
+    body: "Each business calls from its own dedicated UK number, never shared, rotated or disguised. Your legal name and a contact address or freephone number are required, and read out on request.",
   },
   {
     icon: PhoneOff,
     title: "Opt-outs end the call and stick",
-    body: `If someone asks not to be called, the call ends politely and the lead is suppressed from further calls. Attempts per lead are capped, and every call has a ${CALL_BUDGET_MINUTES} minute time budget.`,
+    body: `If someone asks not to be called, the call ends politely and the lead is suppressed. Attempts are capped, and each call has a ${CALL_BUDGET_MINUTES} minute budget.`,
   },
   {
     icon: Scale,
     title: "Rules the AI cannot override",
-    body: "Consent, calling hours, suppression and attempt limits are checked by fixed rules immediately before every dial, not by the model. Live calls made by a person on a number given without call consent are screened against TPS and CTPS first.",
+    body: "Consent, calling hours, suppression and attempt limits are fixed rules checked before every dial, not by the model. Human calls without call consent are screened against TPS and CTPS first.",
   },
 ];
 
@@ -220,10 +220,8 @@ export default function CompliancePage() {
                 <span className="pub-accent">before every send.</span>
               </h1>
               <p className="pub-lead mt-6 max-w-xl">
-                ClientTurn applies PECR and UK GDPR as fixed rules, checked at the
-                moment each message is sent. AI never makes these decisions and
-                cannot override them. Here is what that covers, in plain English,
-                and what stays with you.
+                PECR and UK GDPR applied as fixed rules at the moment each message
+                is sent. AI never makes these decisions and cannot override them.
               </p>
 
               <ActionRow>
@@ -271,8 +269,8 @@ export default function CompliancePage() {
                   ))}
                 </ul>
                 <p className="pub-small mt-5">
-                  Each check can allow a message, block it, or hold it for a person.
-                  Nothing blocked or held is sent silently, and the reason is recorded.
+                  Each check can allow, block or hold a message for a person. The
+                  reason is always recorded.
                 </p>
               </PublicCard>
             </Reveal>
@@ -291,24 +289,25 @@ export default function CompliancePage() {
                   A limited company and a sole trader are not the same inbox.
                 </h2>
                 <p className="pub-lead mt-5">
-                  PECR lets you send business email to a <strong>corporate
-                  subscriber</strong> (a limited company, an LLP, a Scottish
-                  partnership) without prior consent, as long as they can opt
-                  out. A <strong>sole trader</strong> or an ordinary partnership
-                  counts as an individual, and needs consent first.
+                  PECR lets you email a <strong>corporate subscriber</strong> (a
+                  limited company, LLP or Scottish partnership) without prior
+                  consent, if they can opt out. A <strong>sole trader</strong> or
+                  ordinary partnership counts as an individual and needs consent
+                  first.
                 </p>
-                <p className="pub-lead mt-4">
-                  ClientTurn works out which one a prospect is from Companies
-                  House, never from a column in an import. A company it cannot
-                  match is treated as unknown, never assumed to be incorporated,
-                  and nothing is sent until someone resolves it.
-                </p>
-                <p className="pub-small mt-5">
-                  You choose how cautious to be in <strong>Settings → Data
-                  Controls</strong>: only confirmed companies, ask me about anything
-                  unclear (the default), or contact on the basis you have stated.
-                  A rule that refuses a message cannot be loosened by any setting.
-                </p>
+                <ul className="pub-ticks">
+                  {[
+                    "Status comes from Companies House, never an import column.",
+                    "An unmatched company is unknown, never assumed incorporated. Nothing is sent until resolved.",
+                    "Set your caution level in Settings → Data Controls; asking you about unclear cases is the default.",
+                    "No setting can loosen a rule that refuses a message.",
+                  ].map((item) => (
+                    <li key={item}>
+                      <Check aria-hidden className="size-3.5" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
               </div>
 
               <PublicCard className="pub-cell">
@@ -336,9 +335,8 @@ export default function CompliancePage() {
                   </table>
                 </div>
                 <p className="pub-small mt-4">
-                  A sole trader who accepts your LinkedIn connection or follows you
-                  can receive one non-promotional opener. Marketing waits until they
-                  reply. <Link href="/help/compliance/corporate-and-individual-subscribers" className="underline underline-offset-4">Read the detail</Link>.
+                  A sole trader who connects or follows you on LinkedIn can get one
+                  non-promotional opener; marketing waits for a reply. <Link href="/help/compliance/corporate-and-individual-subscribers" className="underline underline-offset-4">Read the detail</Link>.
                 </p>
               </PublicCard>
             </div>
@@ -353,12 +351,10 @@ export default function CompliancePage() {
                   Legitimate interests, written down.
                 </h2>
                 <p className="pub-lead mt-5">
-                  Emailing a named person at a company uses their personal data,
-                  so UK GDPR applies even where PECR does not require consent.
-                  Most B2B outreach relies on <strong>legitimate interests</strong>,
-                  which means doing a legitimate interests assessment (an LIA):
-                  is your purpose legitimate, is the contact necessary for it, and
-                  does it respect the person&rsquo;s interests?
+                  Emailing a named person uses personal data, so UK GDPR applies
+                  even where PECR needs no consent. Most B2B outreach relies on{" "}
+                  <strong>legitimate interests</strong>, backed by a legitimate
+                  interests assessment (LIA).
                 </p>
               </div>
               <RevealGrid className="pub-grid">
@@ -368,9 +364,8 @@ export default function CompliancePage() {
                     <div>
                       <h3>Your basis is recorded</h3>
                       <p>
-                        In Settings → Data Controls you state the basis you rely on
-                        and summarise your assessment. Until you do, cold outreach
-                        is not ready and every cold contact waits for a person.
+                        State your basis and summarise your assessment in Data
+                        Controls. Until then, every cold contact waits for a person.
                       </p>
                     </div>
                   </div>
@@ -381,9 +376,8 @@ export default function CompliancePage() {
                     <div>
                       <h3>Evidence of every decision</h3>
                       <p>
-                        Each send records the decision that allowed it, the rule
-                        version in force and the facts it relied on, so you can
-                        explain a message later against the rules that applied then.
+                        Each send records the decision, the rule version in force
+                        and the facts it relied on.
                       </p>
                     </div>
                   </div>
@@ -402,12 +396,12 @@ export default function CompliancePage() {
                 </h2>
                 <p className="pub-lead mt-5">
                   The AI Voice Sales Agent only calls people who asked for a call or
-                  agreed to one on your form. It never makes cold calls, and the way
-                  every call opens is fixed: it cannot be edited, shortened or left out.
+                  agreed to one on your form. It never makes cold calls, and its
+                  opening cannot be edited, shortened or skipped.
                 </p>
                 <p className="pub-small mt-5">
-                  Only what comes after the fixed opening is yours to word. ClientTurn
-                  is not named on the call unless someone asks who built the assistant.
+                  Only what follows the opener is yours to word. ClientTurn is not
+                  named unless someone asks who built the assistant.
                 </p>
               </div>
 
@@ -421,9 +415,8 @@ export default function CompliancePage() {
                   &ldquo;{RECORDING_NOTICE}&rdquo;
                 </blockquote>
                 <p className="pub-small mt-4">
-                  {"{your business}"} is the trading name you set; {"{day}"} reads as
-                  &ldquo;earlier today&rdquo;, &ldquo;yesterday&rdquo; or a date, in the
-                  lead&rsquo;s own time zone.
+                  {"{your business}"} is your trading name; {"{day}"} reads as
+                  &ldquo;earlier today&rdquo;, &ldquo;yesterday&rdquo; or a date.
                 </p>
               </PublicCard>
             </div>
@@ -439,9 +432,9 @@ export default function CompliancePage() {
             </RevealGrid>
 
             <p className="pub-small mt-6">
-              This describes how the product behaves. It is not legal advice: you
-              remain responsible for the consent you collect and the calls made in your
-              name. Start with the ICO&rsquo;s{" "}
+              This describes product behaviour and is not legal advice. You remain
+              responsible for the consent you collect and calls made in your name.
+              See the ICO&rsquo;s{" "}
               <a
                 href="https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guide-to-pecr/electronic-and-telephone-marketing/telephone-marketing/"
                 target="_blank"
@@ -489,15 +482,12 @@ export default function CompliancePage() {
                 <p className="pub-lead mt-5">
                   Anyone can make a privacy request through our{" "}
                   <Link href="/privacy-request" className="underline underline-offset-4">public form</Link>.
-                  Once they verify their email address, ClientTurn finds every
-                  workspace that holds them and gives each one its own copy, with
-                  the date they first asked, so your deadlines are tracked from
-                  the right day.
+                  Once verified, every workspace holding them gets its own copy,
+                  dated from the first request, so deadlines run from the right day.
                 </p>
                 <p className="pub-small mt-4">
-                  On each lead you can export, suppress, restrict, anonymise or
-                  erase, and each action says what it removes and what it keeps
-                  before you confirm it.{" "}
+                  Export, suppress, restrict, anonymise or erase any lead, with what
+                  is removed and kept shown before you confirm.{" "}
                   <Link href="/help/compliance/data-rights" className="underline underline-offset-4">How data rights work</Link>.
                 </p>
               </div>
@@ -507,16 +497,14 @@ export default function CompliancePage() {
                   A London database, and a published supplier list.
                 </h2>
                 <p className="pub-lead mt-5">
-                  The application database, where your leads, messages and audit
-                  records live, is hosted in London (Supabase, eu-west-2). The
-                  optional AI assist runs on Microsoft Azure within the EU.
-                  Uploaded files sit in storage restricted to the EU.
+                  The application database, holding your leads, messages and audit
+                  records, is hosted in London (Supabase, eu-west-2). Optional AI
+                  assist runs on Microsoft Azure in the EU; uploaded files stay in
+                  EU-restricted storage.
                 </p>
                 <p className="pub-small mt-4">
-                  Some suppliers process data outside the UK, for example to host
-                  the application or deliver email and texts. Each one, where it
-                  processes data and the transfer safeguard relied on is listed on
-                  our{" "}
+                  Some suppliers process data outside the UK. Each one, where, and
+                  the transfer safeguard relied on are listed on our{" "}
                   <Link href="/sub-processors" className="underline underline-offset-4">sub-processor register</Link>.
                 </p>
               </div>
@@ -539,17 +527,16 @@ export default function CompliancePage() {
                 <p>
                   For the leads and prospects in your workspace, your business is
                   the <strong>controller</strong> and ClientTurn is your processor.
-                  The product enforces rules and keeps records, but it cannot
-                  decide for you whether your outreach is lawful. You are
-                  responsible for:
+                  The product enforces rules and keeps records; it cannot decide
+                  whether your outreach is lawful. You are responsible for:
                 </p>
                 <ul className="pub-ticks">
                   {[
-                    "Carrying out and keeping your own legitimate interests assessment. ClientTurn records what you state; it does not assess it.",
-                    "Publishing an accurate privacy notice, and keeping your legal name and privacy notice URL up to date in Data Controls.",
-                    "Choosing which data sources you permit, and recording consent and relationships truthfully, with evidence.",
-                    "What your messages say, including any claim, price or promise, and the messages you send yourself on LinkedIn or elsewhere.",
-                    "Responding to privacy requests on time, and your own registration with the ICO where it applies.",
+                    "Your legitimate interests assessment. ClientTurn records it; it does not assess it.",
+                    "An accurate privacy notice, with your legal name and notice URL kept current.",
+                    "Which data sources you permit, and truthful consent and relationship records.",
+                    "What your messages say, including claims, prices and messages you send yourself.",
+                    "Answering privacy requests on time, and ICO registration where it applies.",
                   ].map((item) => (
                     <li key={item}>
                       <Check aria-hidden className="size-3.5" />
@@ -558,9 +545,8 @@ export default function CompliancePage() {
                   ))}
                 </ul>
                 <p>
-                  ClientTurn holds no compliance certification that we could
-                  evidence here, so we do not claim one. The ICO is the
-                  authoritative source; start with its{" "}
+                  ClientTurn holds no compliance certification it could evidence,
+                  so it claims none. The ICO is the authoritative source; see its{" "}
                   <a
                     href="https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guidance-on-direct-marketing-using-electronic-mail/how-do-we-comply-with-the-pecr-electronic-mail-marketing-rules/"
                     target="_blank"
@@ -585,7 +571,7 @@ export default function CompliancePage() {
                   <span className="pub-accent">Every time.</span>
                 </>
               }
-              body="Set up Data Controls once, and every message after that is checked against it at the moment it is sent."
+              body="Set up Data Controls once; every message is checked against it at send time."
               actions={
                 <>
                   <PrimaryCta placement="compliance_final" size="lg">

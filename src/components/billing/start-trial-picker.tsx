@@ -37,12 +37,14 @@ export function StartTrialPicker({
 }) {
   const [interval, setBillingInterval] = React.useState<"month" | "year">("month");
   const [pending, setPending] = React.useState<string | null>(null);
+  // OD-2: Pro comes with voice (£100 a month: 200 minutes and a UK number); "Pro without voice" is £399.
+  const [proVoice, setProVoice] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   async function choose(plan: PickerPlan["id"]) {
     setPending(plan);
     setError(null);
-    const result = await startTrialCheckout({ plan, interval });
+    const result = await startTrialCheckout({ plan, interval, ...(plan === "pro" ? { includeVoice: interval === "month" && proVoice } : {}) });
     if (result.ok) {
       window.location.assign(result.url);
       return;
@@ -108,6 +110,22 @@ export function StartTrialPicker({
               <p className="text-[12px] text-[#96a1b3]">
                 {trialDays ? `£0 today, first payment after ${trialDays} days` : "Charged today"} · excl. VAT
               </p>
+              {plan.id === "pro" && interval === "month" ? (
+                <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-[9px] border border-[rgba(150,170,190,0.28)] p-2.5 text-[12.5px] text-[#cbd5e1]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 accent-[var(--auth-lime)]"
+                    checked={proVoice}
+                    onChange={(event) => setProVoice(event.target.checked)}
+                  />
+                  <span>
+                    <span className="font-medium text-[#f8fafc]">Include the AI voice agent, {GBP.format(100)} a month</span>
+                    <span className="block text-[#96a1b3]">200 minutes a month and a dedicated UK number. Untick for Pro without voice.</span>
+                  </span>
+                </label>
+              ) : plan.id === "pro" ? (
+                <p className="mt-3 text-[12px] text-[#96a1b3]">On yearly billing the voice agent is not bundled: add minute packs and a number from Settings, Voice.</p>
+              ) : null}
               <ul className="mt-4 flex-1 space-y-1.5">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-2 text-[13px] text-[#cbd5e1]">

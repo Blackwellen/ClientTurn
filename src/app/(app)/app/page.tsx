@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 import { requireWorkspace } from "@/lib/auth/session";
+import { DashboardBanner } from "@/components/site/dashboard-banner";
 import {
   getDashboardData,
   getHealthStripData,
@@ -42,6 +43,9 @@ import { SetupChecklistCard } from "@/components/dashboard/setup-checklist-card"
 import { getGettingStarted } from "@/lib/settings/queries";
 import { TrialUpgradePromptMount } from "@/components/billing/trial-upgrade-prompt-mount";
 import { UpsellMomentMount } from "@/components/billing/upsell-moment-mount";
+import { TrendingUp } from "lucide-react";
+import { getVoiceRoi } from "@/lib/analytics/insights-query";
+import { InsightSection, InsightSkeleton, RoiPanel } from "@/components/analytics/insights-panels";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -207,6 +211,9 @@ export default async function DashboardPage({
         }
       />
 
+      {/* A platform announcement aimed at the dashboard card, if any (docs/MAINTENANCE.md). */}
+      <DashboardBanner />
+
       <SetupChecklistCard items={gettingStarted} />
 
       <HealthStrip items={health} />
@@ -273,6 +280,14 @@ export default async function DashboardPage({
       </div>
 
       <RevenueControlSection data={revenueControl} />
+
+      {/* Return on AI calling (§70): real minutes and recorded revenue only, else an honest empty state. */}
+      <React.Suspense fallback={<InsightSkeleton title="Return on AI calling" icon={TrendingUp} />}>
+        <InsightSection
+          load={() => getVoiceRoi(workspace.businessId, range)}
+          render={(result) => <RoiPanel result={result} compact />}
+        />
+      </React.Suspense>
 
       <div className="grid gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
         <RecentLeadsCard leads={data.recentLeads} />

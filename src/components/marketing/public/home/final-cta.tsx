@@ -156,7 +156,6 @@ function OutcomeMap() {
 export function FinalCtaSection() {
   const assurances = [
     `${TRIAL_DAYS}-day free trial`,
-    "Nothing charged during the trial",
     "Guided setup",
     "Cancel anytime",
   ];
@@ -185,8 +184,7 @@ export function FinalCtaSection() {
                 <span className="pub-accent">a clear next step.</span>
               </h2>
               <p className="pub-lead mt-6 max-w-lg">
-                Whether you&rsquo;re converting existing leads or finding new customers, ClientTurn
-                helps you turn opportunities into real business.
+                Convert the leads you have and find the customers you want.
               </p>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">

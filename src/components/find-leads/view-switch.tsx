@@ -53,7 +53,9 @@ export function FindLeadsViewSwitch({
       data-tour="find-leads-views"
       onKeyDown={onKeyDown}
       className={cn(
-        "inline-flex items-stretch overflow-hidden rounded-lg border border-line bg-surface-sunken",
+        // Scrolls sideways instead of clipping: overflow-hidden made three of
+        // the five views unreachable on a 320px phone (UI sweep 16).
+        "inline-flex max-w-full items-stretch overflow-x-auto rounded-lg border border-line bg-surface-sunken [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,
       )}
     >
@@ -68,9 +70,12 @@ export function FindLeadsViewSwitch({
             aria-selected={active}
             aria-controls={`tabpanel-${item.value}`}
             tabIndex={active ? 0 : -1}
-            onClick={() => onChange(item.value)}
+            onClick={(event) => {
+              event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+              onChange(item.value);
+            }}
             className={cn(
-              "relative min-w-[110px] px-5 py-2.5 text-[13.5px] font-medium transition-colors",
+              "relative shrink-0 whitespace-nowrap px-4 py-2.5 text-[13.5px] font-medium transition-colors sm:min-w-[110px] sm:px-5",
               "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-content-accent",
               active
                 ? "bg-surface text-content"

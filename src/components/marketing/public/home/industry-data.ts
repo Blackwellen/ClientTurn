@@ -145,10 +145,9 @@ export const INDUSTRIES: Industry[] = [
 
 /** The reassurance strip under the carousel. */
 export const INDUSTRY_STRIP = [
-  "Service businesses",
-  "Home improvements",
-  "Trade services",
-  "Property services",
+  "Agencies",
+  "Web and design studios",
+  "SaaS",
+  "Ecommerce",
   "Professional services",
-  "Agencies & partners",
 ];

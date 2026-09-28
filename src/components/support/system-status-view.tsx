@@ -104,7 +104,7 @@ export function SystemStatusView() {
                 <p className="text-[14.5px] font-semibold text-content">
                   {summary.overall === "OPERATIONAL"
                     ? "All systems operational"
-                    : `${STATUS_META[summary.overall].label} — some services affected`}
+                    : `${STATUS_META[summary.overall].label}: some services affected`}
                 </p>
                 <p className="mt-0.5 text-[12.5px] text-content-muted">
                   {summary.stale

@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -443,7 +444,7 @@ function PaymentDialog({
         <FormField label="Reference" htmlFor="pay-ref" hint="Recorded once: the same reference is never counted twice.">
           <Input id="pay-ref" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={200} />
         </FormField>
-        {error && <p role="alert" className="text-[12.5px] text-danger-600">{error}</p>}
+        <FormError message={error} />
       </div>
     </Modal>
   );

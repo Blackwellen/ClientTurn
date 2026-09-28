@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
@@ -151,7 +152,7 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
         <p className="mt-1 text-sm text-content-muted">
           Each connection is an endpoint ClientTurn hosts for you: your other
           system posts contacts to it and they arrive in Find Leads for review.
-          This is a one-way import, not a two-way sync — ClientTurn does not
+          This is a one-way import, not a two-way sync. ClientTurn does not
           sign in to these tools and cannot read or change anything in them.
         </p>
       </div>
@@ -371,7 +372,7 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
                   value={label}
                   maxLength={60}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder={`e.g. ${chosen.name} — UK pipeline`}
+                  placeholder={`e.g. ${chosen.name}: UK pipeline`}
                   className="mt-2 w-full rounded-lg border border-line-strong bg-surface p-3 text-sm"
                 />
               </div>
@@ -460,11 +461,7 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="text-sm text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <p className="text-sm text-content-muted">Need a different integration?</p>

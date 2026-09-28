@@ -92,8 +92,8 @@ export function DiscoverChat({
       aria-label="Search with ClientTurn AI"
       className="flex min-h-[560px] flex-col rounded-xl border border-line bg-surface shadow-xs"
     >
-      <header className="flex items-center justify-between gap-3 px-5 py-4">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
           <span
             aria-hidden
             className="flex size-9 items-center justify-center rounded-lg bg-accent-50 text-content-accent"
@@ -133,7 +133,7 @@ export function DiscoverChat({
         {!profileComplete && (
           <p className="mt-3 max-w-[520px] text-[12.5px] leading-relaxed text-content-secondary">
             Setting up your business profile first makes the search plans much more
-            accurate — the card on the right does it from your website.
+            accurate. The card on the right does it from your website.
           </p>
         )}
 

@@ -92,7 +92,7 @@ const CARDS = [
     tone: "amber" as const,
     icon: Filter,
     title: "Weak qualification",
-    body: "Without clear criteria, unqualified leads waste time and resources.",
+    body: "Without clear criteria, poor-fit leads waste your time.",
     well: (
       <>
         <p>Typical questions often missing:</p>
@@ -112,7 +112,7 @@ const CARDS = [
     tone: "red" as const,
     icon: Link2,
     title: "Disconnected handover",
-    body: "Qualified leads get lost between tools, people or manual processes.",
+    body: "Qualified leads get lost between tools and people.",
     well: <Steps steps={HANDOVER_STEPS} dayColumn={false} />,
     alert: ["Handover breaks down", "Leads fall through the cracks."],
   },
@@ -129,8 +129,8 @@ export function LeakSection() {
             <span className="lcp-accent">The process broke.</span>
           </h2>
           <p>
-            Good opportunities get lost when follow-up is slow, qualification is
-            inconsistent or handover is manual.
+            Slow follow-up, loose qualification and manual handover lose good
+            opportunities.
           </p>
         </Reveal>
 

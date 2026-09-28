@@ -50,7 +50,7 @@ export function SupportPopout() {
   const panelRef = React.useRef<HTMLDivElement>(null);
 
   useFocusTrap(panelRef, open);
-  useEscape(open, () => setOpen(false));
+  useEscape(open, () => setOpen(false), panelRef);
 
   // Other surfaces open support directly — "contact support" on the status
   // page, a failed action's toast — by dispatching this event.
@@ -89,6 +89,9 @@ export function SupportPopout() {
         onClick={() => setOpen((current) => !current)}
         className={cn(
           "group fixed bottom-5 right-5 z-40 flex size-15 items-center justify-center rounded-full",
+          // Landscape phones are ~375px tall: a 60px button there covers
+          // toolbar controls mid-scroll, so it shrinks to a 44px target.
+          "[@media(max-height:500px)]:bottom-3 [@media(max-height:500px)]:right-3 [@media(max-height:500px)]:size-11",
           "border-2 border-[var(--ct-lime)] bg-white",
           "shadow-[0_6px_18px_-4px_rgba(11,16,32,0.30),0_0_0_7px_rgba(183,243,74,0.13)]",
           "transition-[transform,box-shadow] duration-200 ease-out",

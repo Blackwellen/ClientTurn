@@ -62,10 +62,15 @@ const MONTHS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+/**
+ * Sample one-off commissions at the 6% starting rate on a first monthly
+ * payment (Growth £199, Pro £399, ex VAT). Commission is one-off
+ * (owner decision 2026-09-28), so a paid referral shows one amount.
+ */
 const REFERRALS = [
-  { name: "Brightlabs", plan: "Growth", state: "Paid", commission: "£39.80" },
+  { name: "Brightlabs", plan: "Growth", state: "Paid", commission: "£11.94" },
   { name: "Kestrel Accounting", plan: "Starter", state: "Trial", commission: "—" },
-  { name: "Fernhill IT Services", plan: "Pro", state: "Paid", commission: "£79.80" },
+  { name: "Fernhill IT Services", plan: "Pro", state: "Paid", commission: "£23.94" },
   { name: "Loomwell Goods", plan: "Growth", state: "Signed up", commission: "—" },
 ];
 
@@ -167,7 +172,7 @@ function TopBar() {
         className="shrink-0 rounded-full border px-2.5 py-1 text-[9.5px] font-semibold"
         style={{ borderColor: LINE, color: LIME_DARK, background: "#f3ffe5" }}
       >
-        20% commission
+        6% one-off commission
       </span>
       <Bell className="size-4 shrink-0" style={{ color: INK_MUTED }} strokeWidth={2.1} />
       <span

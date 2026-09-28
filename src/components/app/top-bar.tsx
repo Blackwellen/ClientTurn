@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Compass, Menu, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { IconButton } from "@/components/ui/button";
+import { IconButton, TOUCH_TARGET } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { INTEGRATION_HEALTH } from "@/components/ui/badge";
 import { titleForPath } from "@/lib/app/nav";
@@ -72,13 +72,13 @@ export function TopBar({
 
   return (
     <header
-      className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-md sm:px-6"
+      className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-surface/95 px-4 backdrop-blur-md sm:px-6"
       style={{ height: "var(--lr-topbar-height)" }}
     >
       <IconButton
         size="sm"
         label="Open navigation"
-        className="lg:hidden"
+        className="shrink-0 lg:hidden"
         data-tour="open-nav"
         onClick={onOpenNav}
       >
@@ -86,8 +86,10 @@ export function TopBar({
       </IconButton>
 
       {/* Page title only appears on mobile, where the sidebar is hidden;
-          desktop relies on each page's own in-body heading. */}
-      <h1 className="min-w-0 shrink-0 truncate text-[15px] font-semibold text-content lg:hidden">
+          desktop relies on each page's own in-body heading. It takes the
+          space that is left and truncates: a non-shrinking title pushed the
+          account menu off a 320px screen (UI sweep 16). */}
+      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
         {titleForPath(pathname)}
       </h1>
 
@@ -110,7 +112,7 @@ export function TopBar({
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2.5">
         <IconButton
           size="sm"
           label="Search"
@@ -147,7 +149,9 @@ export function TopBar({
               onClick={() => requestSectionTour(pageTour.section)}
               aria-label={`Tour this page: ${pageTour.label}`}
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3",
+                // Phones reach the same tour from Help; the header has no
+                // room for it below 640px.
+                "hidden h-9 items-center gap-1.5 rounded-full border border-line px-3 sm:inline-flex",
                 "text-[12px] font-semibold text-content transition-colors duration-[var(--lr-duration-fast)]",
                 "hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
               )}
@@ -167,8 +171,10 @@ export function TopBar({
           data-tour="copilot-button"
           aria-expanded={copilotOpen}
           aria-controls="clientturn-copilot"
+          aria-label="Copilot"
           className={cn(
-            "inline-flex h-9 items-center gap-1.5 rounded-full border px-3",
+            "inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 sm:px-3",
+            TOUCH_TARGET,
             "text-[12px] font-semibold transition-colors duration-[var(--lr-duration-fast)]",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
             copilotOpen

@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyErrorMessage } from "@/lib/errors/friendly";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Copy, CreditCard, Link2, Lock, Receipt, Webhook } from "lucide-react";
@@ -129,7 +130,7 @@ function LastDelivery({ endpoint }: { endpoint: Endpoint }) {
       {endpoint.lastReceivedAt
         ? `Last delivery ${new Date(endpoint.lastReceivedAt).toLocaleString("en-GB")}.`
         : "No deliveries yet."}
-      {endpoint.lastError ? ` Last problem: ${endpoint.lastError}.` : ""}
+      {endpoint.lastError ? ` Last problem: ${friendlyErrorMessage(endpoint.lastError, "a payment event could not be processed").replace(/\.$/, "")}.` : ""}
     </p>
   );
 }

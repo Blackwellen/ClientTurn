@@ -1,3 +1,4 @@
+import { BackLink } from "@/components/app/back-link";
 import * as React from "react";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/session";
@@ -35,6 +36,7 @@ export default async function NewAgentPage({
 
   return (
     <div className="space-y-6">
+      <BackLink href="/app/agents">Back to Agents</BackLink>
       <PageHeader
         title="Create an agent"
         description="Choose a role, pick where it may look, set the boundaries, then review."

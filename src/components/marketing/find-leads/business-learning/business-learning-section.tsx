@@ -37,8 +37,8 @@ export function BusinessLearningSection() {
         </div>
         <div className="fl-chapter-aside">
           <p>
-            Before sourcing, ClientTurn builds a reviewable acquisition profile
-            from your website and the information you give it.
+            A reviewable acquisition profile, built from your website and what
+            you tell it.
           </p>
         </div>
       </div>
@@ -90,9 +90,8 @@ export function BusinessLearningSection() {
           </ul>
 
           <p className="fl-note-line">
-            Review and edit what ClientTurn learns before it is used for
-            sourcing. Nothing is stored as hidden model memory — every fact is
-            listed with the source it came from.
+            Edit anything before sourcing. No hidden model memory: every fact
+            shows its source.
           </p>
         </AppSurface>
         </StaggerItem>

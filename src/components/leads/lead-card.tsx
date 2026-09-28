@@ -170,14 +170,14 @@ export function LeadCard({
           <p className="mt-2 flex items-start gap-1.5 rounded-md bg-danger-50 px-2 py-1.5 text-[11px] font-medium text-danger-700">
             <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">
-              Needs attention — {attentionReasonLabel(row.attention_reason)}
+              Needs attention: {attentionReasonLabel(row.attention_reason)}
             </span>
           </p>
         )}
 
         {row.opted_out && (
           <p className="mt-2 text-[11px] font-medium text-danger-600">
-            Opted out — no further messages can be sent
+            Opted out. No further messages can be sent
           </p>
         )}
       </div>

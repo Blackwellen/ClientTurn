@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { PublicHeader } from "@/components/marketing/public/public-header";
 import { PublicFooter } from "@/components/marketing/public/public-footer";
 import { CookieConsent } from "@/components/marketing/cookie-consent";
+import { ReferralCapture } from "@/components/marketing/referral-capture";
+import { MarketingNotices } from "@/components/site/marketing-notices";
 import "./clientturn.css";
 import "./evaluation.css";
 
@@ -21,12 +23,16 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
+      {/* Platform banners and the SITE_OFFLINE maintenance notice (docs/MAINTENANCE.md). */}
+      <MarketingNotices />
       <PublicHeader />
       <main id="main" className="flex-1">
         {children}
       </main>
       <PublicFooter />
       <CookieConsent />
+      {/* A partner referral: cookie only after consent, else URL-carried. */}
+      <ReferralCapture />
     </div>
   );
 }

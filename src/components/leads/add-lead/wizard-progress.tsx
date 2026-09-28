@@ -79,10 +79,10 @@ export function WizardProgress({
                 </span>
                 <span className="sr-only">
                   {complete
-                    ? " — complete"
+                    ? ": complete"
                     : active
-                      ? " — current step"
-                      : " — not started"}
+                      ? ": current step"
+                      : ": not started"}
                 </span>
               </button>
 

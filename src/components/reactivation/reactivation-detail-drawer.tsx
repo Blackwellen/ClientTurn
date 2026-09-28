@@ -541,7 +541,7 @@ export function ReactivationDetailDrawer({
         {/* ------------------------------------------------- messages --- */}
         <TabPanel value="messages" activeValue={tab} className="space-y-3">
           <p className="text-[12.5px] text-content-muted">
-            Reactivation sends a short, fixed sequence — an opening message and
+            Reactivation sends a short, fixed sequence. An opening message and
             at most one follow-up. Every send re-checks opt-outs, suppressions
             and the send window.
           </p>
@@ -549,7 +549,7 @@ export function ReactivationDetailDrawer({
           {campaign.messages.map((message) => (
             <Panel
               key={message.position}
-              title={"Message " + message.position + " — " + message.label}
+              title={"Message " + message.position + ": " + message.label}
             >
               <dl className="divide-y divide-line-subtle">
                 <Field label="Channel">
@@ -646,7 +646,7 @@ export function ReactivationDetailDrawer({
               </dl>
               <p className="mt-2 text-[11px] text-content-subtle">
                 Revenue is the average job value of the services booked by
-                leads this campaign re-contacted — not invoiced revenue.
+                leads this campaign re-contacted. Not invoiced revenue.
               </p>
             </Panel>
           </div>

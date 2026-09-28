@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyErrorMessage } from "@/lib/errors/friendly";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -415,7 +416,7 @@ function CrmDetails({ details }: { details: NonNullable<ProviderExtras["crm"]> }
               {failure.status === "partial"
                 ? "was partly pushed: the record exists in your CRM, but not everything was written."
                 : "was not pushed."}{" "}
-              <span className="text-danger-700/80">{failure.error}</span>
+              <span className="text-danger-700/80">{friendlyErrorMessage(failure.error, "Your CRM did not accept the record.")}</span>
               <span className="ml-1 text-[11.5px] text-danger-700/70">{formatRelative(failure.at)}</span>
             </li>
           ))}

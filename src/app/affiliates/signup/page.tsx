@@ -9,7 +9,7 @@ import { PartnerSignUpForm } from "./signup-form";
 export const metadata: Metadata = {
   title: "Join the partner programme",
   description:
-    "Create a ClientTurn partner account and earn recurring commission on the businesses you introduce.",
+    "Create a ClientTurn partner account and earn a one-off commission on the first payment of every business you introduce.",
 };
 
 export const dynamic = "force-dynamic";

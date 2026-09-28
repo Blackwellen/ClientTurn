@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -207,11 +208,7 @@ export function BookingForm({
             </FormField>
           </div>
 
-          {error && (
-            <p role="alert" className="text-danger-600 text-[13px]">
-              {error}
-            </p>
-          )}
+          <FormError message={error} />
         </CardContent>
         <CardFooter className="justify-end">
           <Button type="submit" size="sm" loading={saving} disabled={readOnly}>

@@ -10,7 +10,7 @@ export default function Loading() {
       <div className="space-y-2">
         <div className="h-4 w-32 rounded bg-surface-sunken" />
         <div className="h-8 w-56 rounded-md bg-surface-sunken" />
-        <div className="h-4 w-96 max-w-full rounded bg-surface-sunken" />
+        <div className="h-4 w-full max-w-96 rounded bg-surface-sunken" />
       </div>
 
       <div className="h-12 w-full rounded-lg bg-surface-sunken" />

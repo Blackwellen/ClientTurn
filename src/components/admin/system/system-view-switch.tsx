@@ -15,6 +15,7 @@ export const SYSTEM_VIEWS = [
   "ai-spend",
   "domain-events",
   "audit",
+  "voice",
 ] as const;
 export type SystemView = (typeof SYSTEM_VIEWS)[number];
 
@@ -29,6 +30,7 @@ export const SYSTEM_VIEW_LABEL: Record<SystemView, string> = {
   "ai-spend": "AI spend",
   "domain-events": "Domain events",
   audit: "Audit log",
+  voice: "Voice ops",
 };
 
 export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
@@ -44,6 +46,7 @@ export const SYSTEM_VIEW_DESCRIPTION: Record<SystemView, string> = {
   "ai-spend": "AI spend per workspace and task, budget refusals, and provider quota usage.",
   "domain-events": "The domain event outbox: what happened, and whether it has been dispatched.",
   audit: "The platform audit log: every recorded write, filterable by action, actor and period.",
+  voice: "AI calling across the platform: live calls, minutes, spend, margin, numbers, failures and emergency controls.",
 };
 
 /**

@@ -185,8 +185,8 @@ export function QuoteEditor({
             const item = line.ref.startsWith("item:") ? itemById.get(line.ref.slice(5)) : undefined;
             const isAddOnCandidate = item && parentOptions.some((p) => p.lineId !== line.lineId && itemById.get(p.ref.slice(5))?.addOnItemIds.includes(item.id));
             return (
-              <div key={line.lineId} className="grid grid-cols-[minmax(0,1fr)_72px_76px_auto] items-end gap-2 rounded-lg border border-line-subtle p-2 sm:grid-cols-[minmax(0,1fr)_80px_90px_auto]">
-                <FormField label={index === 0 ? "Item" : ""} htmlFor={`qe-ref-${index}`}>
+              <div key={line.lineId} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 rounded-lg border border-line-subtle p-2 sm:grid-cols-[minmax(0,1fr)_80px_90px_auto]">
+                <FormField label={index === 0 ? "Item" : ""} htmlFor={`qe-ref-${index}`} className="col-span-3 sm:col-span-1">
                   <Select native id={`qe-ref-${index}`} aria-label="Item" value={line.ref} onChange={(e) => setLines(lines.map((l) => (l.lineId === line.lineId ? { ...l, ref: e.target.value, parentLineId: "" } : l)))}>
                     {items.map((i) => (
                       <option key={i.id} value={`item:${i.id}`}>{i.name} ({formatMinor(i.unitPriceMinor, currency)} / {i.unit})</option>
@@ -196,17 +196,17 @@ export function QuoteEditor({
                     ))}
                   </Select>
                 </FormField>
-                <FormField label={index === 0 ? "Qty" : ""} htmlFor={`qe-qty-${index}`}>
+                <FormField label="Qty" htmlFor={`qe-qty-${index}`}>
                   <Input id={`qe-qty-${index}`} aria-label="Quantity" inputMode="decimal" value={line.quantity} onChange={(e) => setLines(lines.map((l) => (l.lineId === line.lineId ? { ...l, quantity: e.target.value } : l)))} />
                 </FormField>
-                <FormField label={index === 0 ? "Disc. %" : ""} htmlFor={`qe-disc-${index}`}>
+                <FormField label="Disc. %" htmlFor={`qe-disc-${index}`}>
                   <Input id={`qe-disc-${index}`} aria-label="Line discount percent" inputMode="decimal" placeholder="0" value={line.discount} onChange={(e) => setLines(lines.map((l) => (l.lineId === line.lineId ? { ...l, discount: e.target.value } : l)))} />
                 </FormField>
                 <Button variant="ghost" size="sm" aria-label="Remove line" disabled={lines.length === 1} onClick={() => setLines(lines.filter((l) => l.lineId !== line.lineId).map((l) => (l.parentLineId === line.lineId ? { ...l, parentLineId: "" } : l)))}>
                   <Trash2 className="size-4" aria-hidden />
                 </Button>
                 {(isAddOnCandidate || item?.addOnOnly) && (
-                  <div className="col-span-4">
+                  <div className="col-span-3 sm:col-span-4">
                     <Select native aria-label="Add-on to" value={line.parentLineId} onChange={(e) => setLines(lines.map((l) => (l.lineId === line.lineId ? { ...l, parentLineId: e.target.value } : l)))}>
                       <option value="">Not an add-on</option>
                       {parentOptions.filter((p) => p.lineId !== line.lineId).map((p) => (

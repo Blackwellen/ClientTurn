@@ -37,7 +37,7 @@ export function CopilotDrawer({
   const panelRef = React.useRef<HTMLDivElement>(null);
 
   useFocusTrap(panelRef, open);
-  useEscape(open, onClose);
+  useEscape(open, onClose, panelRef);
 
   if (!open) return null;
 

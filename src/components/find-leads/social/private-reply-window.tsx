@@ -54,7 +54,7 @@ export function PrivateReplyWindow({
         </Badge>{" "}
         Their comment is more than {PRIVATE_REPLY_WINDOW_DAYS} days old. Meta
         will not deliver a reply to it, and there is no other way to reach
-        somebody who has only commented — they would have to message you, or
+        somebody who has only commented. They would have to message you, or
         comment again.
       </p>
     );
@@ -69,7 +69,7 @@ export function PrivateReplyWindow({
       <Badge tone={urgent ? "warning" : "accent"} dense>
         {remainingLabel(status.hoursLeft)}
       </Badge>{" "}
-      They commented, so you may send one direct message — within{" "}
+      They commented, so you may send one direct message: within{" "}
       {PRIVATE_REPLY_WINDOW_DAYS} days of the comment, counted from when they
       posted it rather than from when it was found.
     </p>

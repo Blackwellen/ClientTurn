@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, MoreHorizontal } from "lucide-react";
+import { CheckCircle2, MoreHorizontal } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
@@ -85,13 +85,7 @@ export function SearchSessionView({
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/app/find-leads"
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-accent underline-offset-4 hover:underline"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Find Leads
-      </Link>
+      <BackLink href="/app/find-leads">Back to Find Leads</BackLink>
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

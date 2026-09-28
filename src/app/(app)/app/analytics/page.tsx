@@ -1,6 +1,10 @@
 import * as React from "react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { analyticsAllowed } from "@/lib/billing/allowance-gates";
+import { PlanLimitState } from "@/components/ui/feedback";
 import {
   ANALYTICS_VIEWS,
   type AnalyticsView as ViewKey,
@@ -32,6 +36,18 @@ import { getSourceFunnels } from "@/lib/analytics/source-funnels-query";
 import { SourceFunnelsPanel } from "@/components/analytics/source-funnels-panel";
 import { getReengagementPerformance } from "@/lib/analytics/reengagement-query";
 import { ReengagementPanelSkeleton, ReengagementSection } from "@/components/analytics/reengagement-panel";
+import { FileText, GitBranch, PhoneCall, TrendingUp } from "lucide-react";
+import { JOURNEY_MODELS, type JourneyModel } from "@/lib/analytics/attribution";
+import { getAttribution } from "@/lib/analytics/revenue-journey-query";
+import { getQuoteAnalytics, getVoiceAnalytics, getVoiceRoi } from "@/lib/analytics/insights-query";
+import {
+  AttributionPanel,
+  InsightSection,
+  InsightSkeleton,
+  QuoteAnalyticsPanel,
+  RoiPanel,
+  VoiceAnalyticsPanel,
+} from "@/components/analytics/insights-panels";
 
 export const metadata: Metadata = { title: "Analytics" };
 export const dynamic = "force-dynamic";
@@ -62,6 +78,26 @@ export default async function AnalyticsPage({
     searchParams,
     requireWorkspace(),
   ]);
+
+  // Server-side gate (gap audit 15 #10): the nav hides Analytics from a trial,
+  // and the page itself refuses it too, so a typed URL gets nothing more than
+  // the nav offered. One rule for both (billing/allowance-gates.ts).
+  const entitlements = await getEntitlements(workspace.businessId);
+  if (!analyticsAllowed(entitlements.plan)) {
+    return (
+      <div className="space-y-5">
+        <PlanLimitState
+          title="Analytics starts with your paid plan"
+          description="During the trial, the Dashboard shows your leads, follow-up and bookings. Source, outreach and conversion analytics switch on when the trial converts, or straight away if you upgrade now."
+          action={
+            <Link href="/app/settings?section=billing" className="text-content-accent text-[13px] font-medium">
+              See plans and upgrade
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   const rawView = first(params.view);
   const view: ViewKey = ANALYTICS_VIEWS.includes(rawView as ViewKey)
@@ -143,6 +179,14 @@ export default async function AnalyticsPage({
 
   const replyRate = data.outreach?.metrics.find((m) => m.key === "reply_rate");
 
+  // Revenue journey, quotes, voice and ROI (§40-42, §70): on the two views
+  // about outcomes, each streaming behind its own skeleton.
+  const showRevenueInsights = view === "overview" || view === "conversion";
+  const rawJourneyModel = first(params.jmodel);
+  const journeyModel: JourneyModel = JOURNEY_MODELS.includes(rawJourneyModel as JourneyModel)
+    ? (rawJourneyModel as JourneyModel)
+    : "position";
+
   return (
     <div className="space-y-5">
       <AnalyticsView
@@ -174,6 +218,33 @@ export default async function AnalyticsPage({
       <React.Suspense fallback={<ReengagementPanelSkeleton />}>
         <ReengagementSection load={() => getReengagementPerformance(businessId, bounds)} />
       </React.Suspense>
+      {showRevenueInsights && (
+        <>
+          <React.Suspense fallback={<InsightSkeleton title="Return on AI calling" icon={TrendingUp} />}>
+            <InsightSection load={() => getVoiceRoi(businessId, bounds)} render={(result) => <RoiPanel result={result} />} />
+          </React.Suspense>
+          <React.Suspense fallback={<InsightSkeleton title="Revenue journey attribution" icon={GitBranch} />}>
+            <InsightSection
+              load={() => getAttribution(businessId, bounds, journeyModel)}
+              render={(result) => (
+                <AttributionPanel result={result} model={journeyModel} baseParams={{ view, range }} />
+              )}
+            />
+          </React.Suspense>
+          <React.Suspense fallback={<InsightSkeleton title="Quotes" icon={FileText} />}>
+            <InsightSection
+              load={() => getQuoteAnalytics(businessId, bounds, workspace.role)}
+              render={(result) => <QuoteAnalyticsPanel result={result} />}
+            />
+          </React.Suspense>
+          <React.Suspense fallback={<InsightSkeleton title="AI calls" icon={PhoneCall} />}>
+            <InsightSection
+              load={() => getVoiceAnalytics(businessId, bounds, workspace.role)}
+              render={(result) => <VoiceAnalyticsPanel result={result} />}
+            />
+          </React.Suspense>
+        </>
+      )}
     </div>
   );
 }

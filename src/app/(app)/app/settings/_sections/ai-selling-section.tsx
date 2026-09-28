@@ -24,6 +24,13 @@ import { ComplianceCard } from "@/components/settings/ai-selling/compliance-card
 import { SectionLoadError } from "@/components/settings/ai-selling/section-load-error";
 import { QualificationPolicyCard } from "@/components/settings/ai-selling/qualification-policy-card";
 import { ObjectionsCard } from "@/components/settings/ai-selling/objections-card";
+import { AiPermissionsCard } from "@/components/settings/ai-selling/ai-permissions-card";
+import { loadCommercialAuthoritySettings } from "@/lib/commercial/queries";
+import { aiAuthorityOf } from "@/lib/commercial/authority";
+import { can } from "@/lib/billing/capabilities";
+import { PipelineStagesCard } from "@/components/settings/ai-selling/pipeline-stages-card";
+import { loadSemanticMap } from "@/lib/opportunities/pipeline-apply";
+import { loadWorkspaceMotion } from "@/lib/opportunities/service";
 
 /**
  * Settings -> AI & selling (brief §74).
@@ -83,6 +90,16 @@ export async function AiSellingSection() {
   ]);
   const policy = await settle(() => loadQualificationPolicyView(workspace.businessId, workspace.role));
   const objections = await settle(() => loadWorkspaceObjections(workspace.businessId));
+  // What the AI may do (brief §74): commercial authority v2 and the plan's AI quoting.
+  const aiAuthority = await settle(async () => ({
+    authority: aiAuthorityOf(await loadCommercialAuthoritySettings(workspace.businessId)),
+    quoteAi: await can(workspace.businessId, "quote_ai_enabled"),
+  }));
+  // Pipeline stages (gap map §46): the semantic map and the motion it lands on.
+  const pipeline = await settle(async () => ({
+    map: (await loadSemanticMap(workspace.businessId)).map,
+    motion: await loadWorkspaceMotion(workspace.businessId),
+  }));
   const weights = sales.ok
     ? await settle(() =>
         loadScoringWeightsView(workspace.businessId, sales.value.archetypeKey, sales.value.salesMotions[0] ?? null),
@@ -107,6 +124,19 @@ export async function AiSellingSection() {
         <SectionLoadError title="AI strategy" />
       )}
 
+      {aiAuthority.ok ? (
+        <AiPermissionsCard
+          // Remount after a save so the switches show what was stored.
+          key={JSON.stringify(aiAuthority.value.authority)}
+          authority={aiAuthority.value.authority}
+          canManage={canManage}
+          quoteAiAllowed={aiAuthority.value.quoteAi.allowed}
+          quoteAiMessage={aiAuthority.value.quoteAi.message ?? null}
+        />
+      ) : (
+        <SectionLoadError title="What the AI may do" />
+      )}
+
       {budgets.ok ? (
         <BudgetCard view={budgets.value} spend={spend} canManage={canManage} />
       ) : (
@@ -117,6 +147,18 @@ export async function AiSellingSection() {
         <SalesBehaviourCard settings={sales.value} canManage={canManage} />
       ) : (
         <SectionLoadError title="Sales behaviour" />
+      )}
+
+      {pipeline.ok ? (
+        <PipelineStagesCard
+          // Remount after a save so the pickers show what was stored.
+          key={JSON.stringify(pipeline.value.map)}
+          mapping={pipeline.value.map}
+          motion={pipeline.value.motion}
+          canManage={canManage}
+        />
+      ) : (
+        <SectionLoadError title="Pipeline stages" />
       )}
 
       {policy.ok ? (

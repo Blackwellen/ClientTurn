@@ -352,7 +352,150 @@ export const INVOICE_STATUS = {
   UNCOLLECTIBLE: { label: "Written off", tone: "danger" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 
+/** voice_calls.state (lib/voice/state-machine.ts). Green = a conversation happened; amber = no answer yet; red = failed. */
+export const VOICE_CALL_STATE = {
+  REQUESTED: { label: "Requested", tone: "neutral" },
+  ELIGIBILITY_CHECKED: { label: "Checked", tone: "neutral" },
+  QUEUED: { label: "Queued", tone: "info" },
+  DIALLING: { label: "Dialling", tone: "info" },
+  RINGING: { label: "Ringing", tone: "info" },
+  ANSWERED: { label: "Answered", tone: "accent" },
+  IN_CONVERSATION: { label: "In conversation", tone: "accent" },
+  WRAPPING_UP: { label: "Wrapping up", tone: "accent" },
+  TRANSFERRED: { label: "Transferred", tone: "purple" },
+  VOICEMAIL: { label: "Voicemail", tone: "warning" },
+  NO_ANSWER: { label: "No answer", tone: "warning" },
+  BUSY: { label: "Busy", tone: "warning" },
+  FAILED: { label: "Failed", tone: "danger" },
+  ENDED: { label: "Ended", tone: "neutral" },
+  POST_PROCESSING: { label: "Writing up", tone: "info" },
+  COMPLETE: { label: "Complete", tone: "success" },
+  CANCELLED: { label: "Cancelled", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** voice_call_outcomes.disposition (lib/voice/post-call.ts): what the call achieved. */
+export const VOICE_CALL_DISPOSITION = {
+  CONVERSATION: { label: "Conversation", tone: "info" },
+  MEETING_BOOKED: { label: "Meeting booked", tone: "success" },
+  CHECKOUT_LINK_SENT: { label: "Checkout link sent", tone: "success" },
+  QUOTE_REQUESTED: { label: "Quote requested", tone: "success" },
+  CALLBACK_REQUESTED: { label: "Callback requested", tone: "warning" },
+  NOT_INTERESTED: { label: "Not interested", tone: "neutral" },
+  WRONG_PERSON: { label: "Wrong person", tone: "neutral" },
+  OPTED_OUT: { label: "Opted out", tone: "danger" },
+  TRANSFERRED_TO_HUMAN: { label: "Passed to a person", tone: "purple" },
+  NO_CONVERSATION: { label: "No conversation", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** The dedicated number's customer-facing stage (settings-model.ts numberStage). */
+export const NUMBER_PROVISIONING = {
+  NOT_STARTED: { label: "Not requested", tone: "neutral" },
+  DETAILS_NEEDED: { label: "Business details needed", tone: "warning" },
+  IN_REVIEW: { label: "In Twilio review", tone: "info" },
+  SETTING_UP: { label: "Setting up", tone: "info" },
+  ACTIVE: { label: "Active", tone: "success" },
+  ACTION_NEEDED: { label: "Action needed", tone: "danger" },
+  RELEASING: { label: "Release scheduled", tone: "warning" },
+  RELEASED: { label: "Released", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** A workspace's voice calling status (Settings, Voice, Overview). */
+export const VOICE_STATUS = {
+  ON: { label: "On", tone: "success" },
+  NOT_READY: { label: "On, not calling yet", tone: "warning" },
+  OFF: { label: "Off", tone: "neutral" },
+  PAUSED: { label: "Paused by ClientTurn", tone: "danger" },
+  INTEGRATION_REQUIRED: { label: "Integration required", tone: "warning" },
+  LOCKED: { label: "Not on your plan", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** Voice gross margin health (admin voice ops, voice-ops-model.ts gmHealth). Red = below the 75% floor. */
+export const GM_HEALTH = {
+  HEALTHY: { label: "Healthy", tone: "success" },
+  WATCH: { label: "Near floor", tone: "warning" },
+  BELOW_FLOOR: { label: "Below 75%", tone: "danger" },
+  NO_REVENUE: { label: "No revenue", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** Suspicious voice usage flags (voice-ops-model.ts suspiciousUsage): each needs a look. */
+export const VOICE_USAGE_FLAG = {
+  SPIKE: { label: "Minutes spike", tone: "warning" },
+  MANY_SHORT_CALLS: { label: "Many short calls", tone: "warning" },
+  HIGH_FAILURE_RATE: { label: "High failure rate", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** business_numbers.provisioning_state, as the platform operator sees it. */
+export const NUMBER_STATE_ADMIN = {
+  NOT_REQUESTED: { label: "Not requested", tone: "neutral" },
+  DETAILS_REQUIRED: { label: "Details required", tone: "warning" },
+  SUBACCOUNT_CREATED: { label: "Subaccount created", tone: "info" },
+  BUNDLE_SUBMITTED: { label: "Bundle submitted", tone: "info" },
+  BUNDLE_IN_REVIEW: { label: "Bundle in review", tone: "info" },
+  BUNDLE_APPROVED: { label: "Bundle approved", tone: "info" },
+  BUNDLE_REJECTED: { label: "Bundle rejected", tone: "danger" },
+  NUMBER_SEARCHING: { label: "Searching", tone: "info" },
+  NUMBER_PURCHASED: { label: "Purchased", tone: "info" },
+  CONFIGURED: { label: "Configured", tone: "info" },
+  ACTIVE: { label: "Active", tone: "success" },
+  RELEASE_SCHEDULED: { label: "Release scheduled", tone: "warning" },
+  RELEASED: { label: "Released", tone: "neutral" },
+  QUARANTINED: { label: "Quarantined", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/**
+ * Platform maintenance (0161, lib/maintenance). Amber while it is only
+ * scheduled or read-only; red once people lose a page.
+ */
+export const MAINTENANCE_STATE = {
+  OFF: { label: "Off", tone: "success" },
+  SCHEDULED: { label: "Scheduled", tone: "info" },
+  ACTIVE: { label: "Active", tone: "warning" },
+  ENDED: { label: "Ended", tone: "neutral" },
+  CANCELLED: { label: "Cancelled", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+export const MAINTENANCE_LEVEL = {
+  OFF: { label: "Off", tone: "neutral" },
+  READ_ONLY: { label: "Read only", tone: "warning" },
+  APP_OFFLINE: { label: "App offline", tone: "danger" },
+  SITE_OFFLINE: { label: "Site offline", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/**
+ * A platform banner's tone. The banner surfaces (components/site) read their
+ * colours from this same entry, so a "critical" banner and its badge are the
+ * one red everywhere.
+ */
+export const BANNER_TONE = {
+  info: { label: "Info", tone: "info" },
+  success: { label: "Success", tone: "success" },
+  warning: { label: "Warning", tone: "warning" },
+  critical: { label: "Critical", tone: "danger" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+export const BANNER_STATE = {
+  SCHEDULED: { label: "Scheduled", tone: "info" },
+  LIVE: { label: "Live", tone: "success" },
+  ENDED: { label: "Ended", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+export type BadgeTone = Tone;
+
 type StatusMap = Record<string, { label: string; tone: Tone }>;
+
+/** automation_rule_runs.status (0163). Green ran; amber skipped with a reason; red failed; blue waiting. */
+export const AUTOMATION_RUN_STATUS = {
+  SUCCEEDED: { label: "Ran", tone: "success" },
+  SKIPPED: { label: "Skipped", tone: "warning" },
+  FAILED: { label: "Failed", tone: "danger" },
+  SCHEDULED: { label: "Waiting", tone: "info" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+/** An automation rule: on or off. */
+export const AUTOMATION_RULE_STATE = {
+  ON: { label: "On", tone: "success" },
+  OFF: { label: "Off", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
 
 const MAPS = {
   intent_state: INTENT_STATE,
@@ -381,6 +524,19 @@ const MAPS = {
   payment: PAYMENT_STATUS,
   quote: QUOTE_STATUS,
   invoice: INVOICE_STATUS,
+  voice_call: VOICE_CALL_STATE,
+  voice_disposition: VOICE_CALL_DISPOSITION,
+  number_provisioning: NUMBER_PROVISIONING,
+  voice_status: VOICE_STATUS,
+  gm_health: GM_HEALTH,
+  voice_usage_flag: VOICE_USAGE_FLAG,
+  number_state_admin: NUMBER_STATE_ADMIN,
+  maintenance_state: MAINTENANCE_STATE,
+  maintenance_level: MAINTENANCE_LEVEL,
+  banner_tone: BANNER_TONE,
+  banner_state: BANNER_STATE,
+  automation_run: AUTOMATION_RUN_STATUS,
+  automation_rule: AUTOMATION_RULE_STATE,
 } satisfies Record<string, StatusMap>;
 
 export type StatusKind = keyof typeof MAPS;

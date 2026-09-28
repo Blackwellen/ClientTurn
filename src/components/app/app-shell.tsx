@@ -82,7 +82,7 @@ export function AppShell({
   const mobileNavRef = React.useRef<HTMLDivElement | null>(null);
 
   useBodyScrollLock(mobileOpen);
-  useEscape(mobileOpen, () => setMobileOpen(false));
+  useEscape(mobileOpen, () => setMobileOpen(false), mobileNavRef);
   useFocusTrap(mobileNavRef, mobileOpen);
 
   const toggleCollapse = React.useCallback(() => {

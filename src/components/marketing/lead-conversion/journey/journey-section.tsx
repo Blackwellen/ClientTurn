@@ -34,7 +34,7 @@ const COLUMNS = [
     icon: CalendarCheck,
     eyebrow: "Booking",
     title: "Route the right lead to the right next step.",
-    lead: "Automatically book appointments or hand over qualified leads to your team, based on your rules.",
+    lead: "Book appointments or hand qualified leads to your team, by your rules.",
     panel: <BookingPanel />,
     benefits: [
       { icon: <CalendarDays {...ICON} />, label: <>Calendly or your own booking system</> },
@@ -46,7 +46,7 @@ const COLUMNS = [
     icon: RefreshCw,
     eyebrow: "Reactivation",
     title: "Give older eligible enquiries another chance to convert.",
-    lead: "Find and re-engage past enquiries with built-in suppression, so you only contact the right people.",
+    lead: "Re-engage past enquiries, with suppression built in.",
     panel: <ReactivationPanel />,
     benefits: [
       { icon: <ShieldCheck {...ICON} />, label: <>Built-in suppression and unsubscribe handling</> },
@@ -57,8 +57,8 @@ const COLUMNS = [
   {
     icon: BarChart3,
     eyebrow: "Analytics",
-    title: "See where opportunities move — and where they stall.",
-    lead: "Track the entire conversion journey, from new lead to won business, with clear performance insights.",
+    title: "See where opportunities move, and where they stall.",
+    lead: "Track every stage from new lead to won business.",
     panel: <AnalyticsPanel />,
     benefits: [
       { icon: <Filter {...ICON} />, label: <>Full funnel visibility</> },
@@ -86,8 +86,7 @@ export function JourneySection() {
             </h2>
           </RevealItem>
           <RevealItem as="p">
-            Book appointments, re-engage past enquiries and track performance
-            across the full conversion journey.
+            Book, reactivate and measure across the whole journey.
           </RevealItem>
           <RevealItem>
           <LcpCta

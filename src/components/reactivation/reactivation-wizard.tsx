@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Rocket } from "lucide-react";
@@ -382,7 +383,7 @@ export function ReactivationWizard({
       router.push(`/app/reactivation?campaign=${result.data.id}`);
       router.refresh();
     } catch {
-      setLaunchError("Something went wrong. Nothing was sent — try again.");
+      setLaunchError("Something went wrong. Nothing was sent. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -459,14 +460,7 @@ export function ReactivationWizard({
         Step {step + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[step].label}
       </div>
 
-      {launchError && (
-        <div
-          role="alert"
-          className="border-danger-100 bg-danger-50 text-danger-700 rounded-lg border px-4 py-3 text-[13px]"
-        >
-          {launchError}
-        </div>
-      )}
+      <FormError message={launchError} />
 
       {step === 0 && (
         <AudienceStep

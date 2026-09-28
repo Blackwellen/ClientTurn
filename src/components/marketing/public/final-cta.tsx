@@ -28,7 +28,7 @@ export function FinalCtaBand({
   points: readonly { icon: React.ReactNode; title: string; body: string }[];
 }) {
   return (
-    <PublicCard as="section" lit className="pub-panel" aria-labelledby="final-cta-heading">
+    <PublicCard as="section" lit className="pub-final-band" aria-labelledby="final-cta-heading">
       <div className="pub-final">
         <div>
           <SectionHeading

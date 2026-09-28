@@ -128,7 +128,7 @@ export function CampaignControls({
         }}
         title="Stop this campaign?"
         scope="No further messages will be sent from this campaign."
-        consequence="Replies already received are kept, and so is its history. A stopped campaign cannot be restarted — create a new one to send again."
+        consequence="Replies already received are kept, and so is its history. A stopped campaign cannot be restarted. Create a new one to send again."
         confirmLabel="Stop campaign"
         variant="danger"
         loading={pending}

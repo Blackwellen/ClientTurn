@@ -101,6 +101,14 @@ const OPTIONAL: CookieRow[] = [
       "Records which call-to-action buttons are pressed, together with the campaign values held in lr.attribution, so we can tell which pages and adverts work. Sent only after you accept.",
     duration: "Aggregated; underlying events kept 12 months",
   },
+  {
+    name: "ct_ref",
+    kind: "First-party cookie (httpOnly)",
+    provider: "ClientTurn",
+    purpose:
+      "Partner referral (affiliate tracking). Records which partner's link brought you here, as a signed value naming the partner and link and the time of the click, so that partner can be credited if you sign up. The last partner link you clicked wins. Set only after you accept. If you do not accept, the same value is carried in the page address (?ct_ref=) until you sign up or leave, and nothing is stored on your device.",
+    duration: "Up to the partner's referral window, at most 90 days",
+  },
 ];
 
 const SECTIONS: LegalSection[] = [
@@ -386,7 +394,7 @@ export default function CookiesPage() {
   return (
     <LegalPage
       title="Cookie Policy"
-      intro="Exactly what we store in your browser, why, how long it lasts, and how to say no to everything that is not strictly necessary. Nothing optional is stored until you accept."
+      intro="What we store in your browser, why, for how long, and how to refuse anything not strictly necessary. Nothing optional is stored until you accept."
       currentPath="/cookies"
       sections={SECTIONS}
     />

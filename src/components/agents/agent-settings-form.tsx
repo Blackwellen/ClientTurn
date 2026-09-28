@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -217,11 +218,7 @@ export function AgentSettingsForm({
         </>
       )}
 
-      {error && (
-        <p role="alert" className="text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
       {notice && (
         <p role="status" className="text-[12.5px] text-content-muted">
           {notice}

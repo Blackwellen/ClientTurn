@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
 export default function AdminError({
   error,
   reset,
@@ -10,19 +10,15 @@ export default function AdminError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
-
   return (
-    <ErrorState
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="admin"
       title="This admin view could not be loaded"
-      description={
-        error.digest
-          ? `Reference ${error.digest}.`
-          : "Try again. If it persists, check the worker and provider logs."
-      }
-      onRetry={reset}
+      description="The problem has been logged. Try again, and check System if it keeps happening."
+      backHref="/admin"
+      backLabel="Back to Overview"
     />
   );
 }

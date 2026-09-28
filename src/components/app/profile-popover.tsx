@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Building2, ChevronDown, Lock, LogOut, Settings } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
+import { TOUCH_TARGET } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import {
   DropdownItem,
   DropdownMenu,
@@ -58,10 +60,10 @@ export function ProfilePopover({
         <button
           type="button"
           aria-label="Account menu"
-          className="flex items-center gap-1 rounded-full pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
+          className={cn("flex items-center gap-1 rounded-full pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent", TOUCH_TARGET)}
         >
           <Avatar name={name} src={avatarUrl} size="md" />
-          <ChevronDown className="size-4 text-content-muted" aria-hidden />
+          <ChevronDown className="hidden size-4 text-content-muted sm:block" aria-hidden />
         </button>
       }
     >

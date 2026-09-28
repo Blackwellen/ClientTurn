@@ -216,7 +216,7 @@ export function LeadManualActions({
         (lead.human_takeover
           ? "You have already taken this conversation over."
           : closed
-            ? "This lead is closed — reopen it to take the conversation over."
+            ? "This lead is closed. Reopen it to take the conversation over."
             : null),
       onSelect: () =>
         run(

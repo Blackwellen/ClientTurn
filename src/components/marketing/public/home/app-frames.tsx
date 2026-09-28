@@ -393,7 +393,7 @@ export function DashboardFrame() {
             <StatusCell
               ok
               title="Booking destination"
-              detail="Human handover — qualified leads flagged"
+              detail="Human handover: qualified leads flagged"
               action="Configure"
             />
             <StatusCell ok last title="Follow-up" detail="Published and running" action="View" />

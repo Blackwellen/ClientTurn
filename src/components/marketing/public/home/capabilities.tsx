@@ -249,9 +249,9 @@ function FindLeadsFragment() {
 
 function FollowUpFragment() {
   const steps = [
-    { icon: Mail, label: "Day 1 — Email", copy: "Thanks for your enquiry…" },
-    { icon: MessageSquareText, label: "Day 3 — SMS", copy: "Just checking if you had any questions?" },
-    { icon: MessageCircle, label: "Day 7 — WhatsApp", copy: "Here's some more information…" },
+    { icon: Mail, label: "Day 1: Email", copy: "Thanks for your enquiry…" },
+    { icon: MessageSquareText, label: "Day 3: SMS", copy: "Just checking if you had any questions?" },
+    { icon: MessageCircle, label: "Day 7: WhatsApp", copy: "Here's some more information…" },
   ];
   return (
     <Panel>
@@ -483,7 +483,7 @@ const CAPABILITIES: Capability[] = [
     id: "find-leads",
     icon: Search,
     title: "Find Leads",
-    copy: "Create a verified prospect pipeline from a natural-language target.",
+    copy: "Build a verified prospect list from a plain-English target.",
     href: ANCHORS.proof,
     fragment: <FindLeadsFragment />,
   },
@@ -549,7 +549,7 @@ export function CapabilitiesSection() {
               One system around the <span className="pub-accent">conversion.</span>
             </>
           }
-          description="Everything you need to capture, engage, qualify and convert — in a single, connected platform."
+          description="Capture, engage, qualify and convert in one place."
         />
         </Reveal>
 

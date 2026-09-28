@@ -74,7 +74,7 @@ const FEATURES: Record<AuthVariant, AuthFeature[]> = {
   "partner-signup": [
     { icon: Megaphone, title: "Share what you already recommend", description: "Tracked links you can put anywhere you reach people." },
     { icon: Users, title: "Introduce the businesses you know", description: "Agencies, studios and B2B firms who need to answer leads faster." },
-    { icon: BadgePoundSterling, title: "Earn on what they pay", description: "Recurring commission, confirmed after the refund hold." },
+    { icon: BadgePoundSterling, title: "Earn when they first pay", description: "A one-off commission on the first payment, confirmed after the refund hold." },
     { icon: Wallet, title: "Get paid on a schedule", description: "Monthly payouts once approved commission clears the minimum." },
   ],
   admin: [
@@ -102,7 +102,7 @@ const COPY: Record<
   },
   login: {
     headline: ["Welcome back", "to ClientTurn."],
-    support: "Respond faster, follow up smarter, and book more meetings — all in one place.",
+    support: "Respond faster, follow up smarter, and book more meetings. All in one place.",
     annotation: ["More leads", "More bookings", "More growth"],
   },
   forgot: {
@@ -118,7 +118,7 @@ const COPY: Record<
   "partner-signup": {
     headline: ["Get paid for the", "introductions you make."],
     support:
-      "Join the ClientTurn partner programme, share tracked links, and earn recurring commission on the businesses you introduce.",
+      "Join the ClientTurn partner programme, share tracked links, and earn a one-off commission on the first payment of each business you introduce.",
     annotation: ["Share a link", "Earn on every", "customer"],
   },
   admin: {

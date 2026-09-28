@@ -359,10 +359,10 @@ export function HowItWorksSection() {
           eyebrowPill
           title={
             <>
-              From opportunity to next action — <span className="pub-accent">automatically.</span>
+              From opportunity to next action, <span className="pub-accent">automatically.</span>
             </>
           }
-          description="ClientTurn connects your leads, conversations and customers in one workflow — so you can grow without the manual work."
+          description="Leads, conversations and customers in one workflow, without the manual work."
         />
 
         <ScrollDraw className="relative mt-20">

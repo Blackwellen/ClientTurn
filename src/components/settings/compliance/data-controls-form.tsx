@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { AlertTriangle, Check, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -378,8 +379,8 @@ export function DataControlsForm({
 
         <p className="text-[12px] text-content-muted">
           This is a record of what you have decided, not legal advice, and
-          ClientTurn does not check it. The per-contact rules — suppression,
-          opt-outs, quiet hours, channel restrictions — are applied regardless of
+          ClientTurn does not check it. The per-contact rules, suppression,
+          opt-outs, quiet hours, channel restrictions, are applied regardless of
           what is chosen here.
         </p>
       </Panel>
@@ -455,7 +456,7 @@ export function DataControlsForm({
                     </span>
                     {unavailable && (
                       <span className="mt-1 block text-[12px] text-warning-700">
-                        Choose a lawful basis above before selecting this — it means
+                        Choose a lawful basis above before selecting this. It means
                         &ldquo;contact on the basis I stated&rdquo;, and none is stated yet.
                       </span>
                     )}
@@ -480,8 +481,8 @@ export function DataControlsForm({
             </span>
             <span className="block text-[12px] text-content-muted">
               Only contact people at companies confirmed on Companies House. This is what
-              separates an incorporated company — where the corporate exemption from consent
-              applies — from a sole trader, where it does not. Off by default because
+              separates an incorporated company, where the corporate exemption from consent
+              applies, from a sole trader, where it does not. Off by default because
               Companies House covers the UK only, so a workspace prospecting abroad would find
               every record unconfirmed.
             </span>
@@ -598,7 +599,7 @@ export function DataControlsForm({
               Saved
             </span>
           )}
-          {error && <span className="text-[12.5px] text-danger-700">{error}</span>}
+          <FormError message={error} />
         </div>
       )}
     </div>

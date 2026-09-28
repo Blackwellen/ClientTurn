@@ -526,7 +526,7 @@ function PlanEditDialog({
           <div className="space-y-3">
             <p className="rounded-lg bg-surface-sunken px-3 py-2.5 text-[12px] leading-relaxed text-content-secondary">
               Opt-outs and suppressed contacts are always excluded. That is not a
-              setting — it is enforced on every run regardless of what is chosen here.
+              setting. It is enforced on every run regardless of what is chosen here.
             </p>
             <ListField
               label="Competitors to exclude"

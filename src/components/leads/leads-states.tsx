@@ -47,7 +47,7 @@ export function LeadsErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <ErrorState
       title="Couldn’t load leads"
-      description="Something went wrong fetching this list. Your leads are safe — try again."
+      description="Something went wrong fetching this list. Your leads are safe. Try again."
       onRetry={onRetry}
     />
   );

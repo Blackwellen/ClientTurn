@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { cn } from "@/lib/cn";
 import {
   CLASSIFICATION_LABELS,
   IMPORT_FIELDS,
+  COMPANY_FACT_FIELDS,
   classificationTone,
   classifyRow,
   flagSentence,
@@ -347,10 +349,10 @@ export function ImportWizard() {
       {step === 1 && (
         <Panel
           title="Match your columns"
-          description={`${filename} · ${rows.length.toLocaleString("en-GB")} rows. We have guessed these — check them.`}
+          description={`${filename} · ${rows.length.toLocaleString("en-GB")} rows. We have guessed these. Check them.`}
         >
           <div className="space-y-2">
-            {IMPORT_FIELDS.map((field) => (
+            {IMPORT_FIELDS.filter((field) => !COMPANY_FACT_FIELDS.includes(field.key)).map((field) => (
               <div key={field.key} className="flex flex-wrap items-center gap-3">
                 <span className="w-32 shrink-0 text-[12.5px] text-content-secondary">
                   {field.label}
@@ -376,6 +378,37 @@ export function ImportWizard() {
               </div>
             ))}
           </div>
+          <details className="mt-4 rounded-lg border border-line px-3 py-2.5" open={COMPANY_FACT_FIELDS.some((key) => mapping[key] !== undefined)}>
+            <summary className="cursor-pointer text-[13px] font-medium text-content">Company facts (optional)</summary>
+            <p className="mt-1 text-[12px] text-content-muted">
+              From your own CRM or list: a contract renewal date in the next 120 days, a headcount higher than the one we hold, and the tools a
+              company uses become buying signals on the company. Nothing is guessed beyond what the cell says.
+            </p>
+            <div className="mt-2 space-y-2">
+              {IMPORT_FIELDS.filter((field) => COMPANY_FACT_FIELDS.includes(field.key)).map((field) => (
+                <div key={field.key} className="flex flex-wrap items-center gap-3">
+                  <span className="w-32 shrink-0 text-[12.5px] text-content-secondary">{field.label}</span>
+                  <Select
+                    value={mapping[field.key] ?? ""}
+                    onChange={(event) =>
+                      setMapping((current) => ({
+                        ...current,
+                        [field.key]: event.target.value === "" ? undefined : Number(event.target.value),
+                      }))
+                    }
+                    className="w-auto min-w-48 flex-1"
+                  >
+                    <option value="">Not in this file</option>
+                    {headers.map((header, index) => (
+                      <option key={`${header}-${index}`} value={index}>
+                        {header || `Column ${index + 1}`}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
+            </div>
+          </details>
         </Panel>
       )}
 
@@ -410,7 +443,7 @@ export function ImportWizard() {
                     {option === "FOUND_BY_US"
                       ? "These become prospects. Nothing is contacted until you approve it."
                       : option === "REFERRAL" || option === "IMPORTED"
-                        ? "Each row is held for review — this could be warm or cold."
+                        ? "Each row is held for review. This could be warm or cold."
                         : "These become leads and can enter follow-up."}
                   </span>
                 </span>
@@ -562,7 +595,7 @@ export function ImportWizard() {
               <ShieldCheck className="size-4 shrink-0 text-warning-600" aria-hidden />
               <span>
                 {undecided} row{undecided === 1 ? " is" : "s are"} still undecided and
-                will not be imported. Leaving a row undecided is a valid choice — it is
+                will not be imported. Leaving a row undecided is a valid choice. It is
                 the safe one.
               </span>
             </p>
@@ -652,11 +685,7 @@ export function ImportWizard() {
         </Panel>
       )}
 
-      {error && (
-        <p role="alert" className="text-[12.5px] text-danger-600">
-          {error}
-        </p>
-      )}
+      <FormError message={error} />
 
       <div className="flex items-center justify-between">
         {step === 0 ? (
@@ -683,13 +712,13 @@ export function ImportWizard() {
             href="/app/leads"
             className="text-[12.5px] text-content-muted underline-offset-4 hover:underline"
           >
-            Back to Leads
+            Cancel
           </Link>
         ) : step < 3 ? (
           <Button
             onClick={() => {
               if (step === 1 && mapping.email === undefined && mapping.phone === undefined) {
-                setError("Map at least an email or a phone column — there is no way to reach anyone otherwise.");
+                setError("Map at least an email or a phone column. There is no way to reach anyone otherwise.");
                 return;
               }
               if (step === 2 && !relationship) {

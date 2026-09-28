@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Bot, UserCheck } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -97,12 +98,12 @@ export function AutopilotToggle({
         <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-[12px] leading-relaxed text-warning-700">
           Autopilot is on, but none of your connected accounts can send on their own.
           There is no API that sends a connection request or a message from a personal
-          LinkedIn account, so these still wait for you — automating one any other way
+          LinkedIn account, so these still wait for you. Automating one any other way
           is what gets an account restricted. Nothing is being sent without you.
         </p>
       )}
 
-      {error && <p className="mt-2 text-[12px] text-danger-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
     </div>
   );
 }

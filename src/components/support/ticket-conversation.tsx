@@ -1,5 +1,6 @@
 "use client";
 
+import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
 import { Paperclip, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -214,11 +215,7 @@ export function TicketConversation({
               onChange={(event) => setBody(event.target.value)}
             />
 
-            {error && (
-              <p role="alert" className="text-[12.5px] text-danger-600">
-                {error}
-              </p>
-            )}
+            <FormError message={error} />
 
             <Button
               fullWidth

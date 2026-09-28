@@ -14,6 +14,7 @@ import {
 } from "@/lib/prospects/types";
 import { eligibilityLabel } from "@/lib/policy/types";
 import { recordAudit } from "@/lib/audit";
+import { checkRateLimit, tooManyRequests } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,11 @@ export async function GET(request: Request) {
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // Per signed-in user (gap audit 15 §3): an export reads up to its row cap,
+  // so a script looping over it is bounded here.
+  const limit = await checkRateLimit("app:export", workspace.userId);
+  if (!limit.allowed) return tooManyRequests(limit);
 
   if (!hasRole(workspace.role, "admin")) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

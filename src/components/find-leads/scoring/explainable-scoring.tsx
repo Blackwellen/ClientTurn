@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/app/back-link";
 import {
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
   Building2,
   ChevronRight,
@@ -76,13 +75,7 @@ export function ExplainableScoring({ detail }: { detail: ProspectScoringDetail }
   return (
     <div className="space-y-5">
       <div>
-        <Link
-          href="/app/find-leads?view=prospects"
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-content-muted underline-offset-4 transition-colors hover:text-content hover:underline"
-        >
-          <ArrowLeft className="size-4" aria-hidden />
-          Back to Prospects
-        </Link>
+        <BackLink href="/app/find-leads?view=prospects">Back to Prospects</BackLink>
 
         <h1 className="mt-3 text-[28px] font-semibold leading-tight tracking-tight text-content">
           Explainable Prospect Scoring

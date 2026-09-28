@@ -29,6 +29,9 @@ import {
   rateDelta,
 } from "@/lib/affiliates/analytics";
 import { getBalances, nextPayoutDate } from "@/lib/affiliates/payouts";
+import { getTierSnapshot } from "@/lib/affiliates/tiers";
+import { negativeBalanceNotice } from "@/lib/affiliates/ledger-rules";
+import { TierProgressPanel } from "@/components/affiliates/tier/tier-progress-panel";
 import { formatMinor } from "@/lib/affiliates/types";
 import {
   formatPercent,
@@ -88,13 +91,14 @@ export default async function AffiliateDashboardPage({
   // Re-parsed and clamped server-side: both dates arrived in a query string.
   const custom = parseCustomRange(params.from, params.to);
 
-  const [overview, series, referrals, links, balances, resources] = await Promise.all([
+  const [overview, series, referrals, links, balances, resources, tierSnapshot] = await Promise.all([
     getOverview(affiliate.id, range, affiliate.joinedAt, custom),
     getDailySeries(affiliate.id, range, custom),
     listReferralPage(affiliate.id, { pageSize: 5 }),
     getLinkMetrics(affiliate.id, range, custom),
     getBalances(affiliate.id),
     getResourceHub(affiliate.id),
+    getTierSnapshot(affiliate.id),
   ]);
 
   const { current, previous } = overview;
@@ -186,6 +190,15 @@ export default async function AffiliateDashboardPage({
           delta={countDelta(current.paidMinor, previous?.paidMinor, baseline)}
         />
       </KpiGrid>
+
+      <div className="mt-3">
+        <TierProgressPanel
+          snapshot={tierSnapshot}
+          currency={currency}
+          planPercent={affiliate.policy.commissionPercent}
+          negativeNotice={negativeBalanceNotice(balances.availableMinor, (minor) => formatMinor(minor, currency))}
+        />
+      </div>
 
       <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Panel

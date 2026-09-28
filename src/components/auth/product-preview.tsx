@@ -82,7 +82,7 @@ export function DashboardPreview({
 }) {
   return (
     <div
-      className={`relative w-[520px] max-w-full overflow-hidden rounded-[20px] ${className ?? ""}`}
+      className={`relative w-full max-w-[520px] overflow-hidden rounded-[20px] ${className ?? ""}`}
       style={FRAME_STYLE}
     >
       <FrameGloss />
@@ -228,7 +228,7 @@ const STACK_CARDS = [
 /** Floating stat-card stack used on the forgot-password panel. */
 export function StackedCardsPreview({ className }: { className?: string }) {
   return (
-    <div className={`relative w-[340px] max-w-full ${className ?? ""}`}>
+    <div className={`relative w-full max-w-[340px] ${className ?? ""}`}>
       {STACK_CARDS.map((card, i) => (
         <div
           key={card.label}
@@ -268,7 +268,7 @@ export function StackedCardsPreview({ className }: { className?: string }) {
 /** Security-themed dashboard sliver used on the reset-password panel. */
 export function SecurityPreview({ className }: { className?: string }) {
   return (
-    <div className={`relative w-[380px] max-w-full ${className ?? ""}`}>
+    <div className={`relative w-full max-w-[380px] ${className ?? ""}`}>
       <div className="relative overflow-hidden rounded-[20px]" style={FRAME_STYLE}>
         <FrameGloss />
         <div className="relative flex">

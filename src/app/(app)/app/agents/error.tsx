@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
-import { ErrorState } from "@/components/ui/feedback";
+import { RouteError } from "@/components/ui/route-error";
 
+/** Route boundary: friendly copy, retry, a way back and a support reference (see RouteError). */
 export default function AgentsError({
   error,
   reset,
@@ -10,19 +10,16 @@ export default function AgentsError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  React.useEffect(() => {
-    console.error("Agents failed to load", error.digest ?? error.message);
-  }, [error]);
-
   return (
-    <div className="rounded-xl border border-line bg-surface">
-      <ErrorState
-        title="Agents could not be loaded"
-        // Agents run on the queue, not in this page: a render failure says
-        // nothing about whether the work is happening.
-        description="Any running agents are unaffected and continue in the background."
-        onRetry={reset}
-      />
-    </div>
+    <RouteError
+      error={error}
+      reset={reset}
+      boundary="agents"
+      title="Agents could not be loaded"
+      description="Any running agents are unaffected and continue in the background."
+      backHref="/app/agents"
+      backLabel="Back to Agents"
+      framed
+    />
   );
 }

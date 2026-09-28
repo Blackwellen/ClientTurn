@@ -12,7 +12,7 @@ export default function FollowUpLoading() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Skeleton className="h-6 w-32" />
-          <Skeleton className="mt-2 h-3.5 w-96 max-w-full" />
+          <Skeleton className="mt-2 h-3.5 w-full max-w-96" />
         </div>
         <Skeleton className="h-8 w-52 rounded-lg" />
       </div>
