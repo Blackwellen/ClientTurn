@@ -15,7 +15,7 @@ import {
   prospectFiltersToParams,
   type ProspectFilters,
 } from "@/lib/prospects/filters";
-import type { ProspectListRow, ProspectQuickCounts } from "@/lib/prospects/types";
+import { prospectDisplayName, type ProspectListRow, type ProspectQuickCounts } from "@/lib/prospects/types";
 import type { ProspectFilterOptions } from "@/lib/prospects/queries";
 import { useFindLeadsParams } from "./use-find-leads-params";
 import { useFindLeadsStream } from "./use-find-leads-stream";
@@ -266,6 +266,7 @@ export function ProspectsView({
                 rows={rows}
                 rowKey={(row) => row.id}
                 onRowClick={(row) => params.openProspect(row.id)}
+                rowLabel={prospectDisplayName}
                 selectedKeys={canManage ? selected : undefined}
                 onSelectionChange={canManage ? setSelected : undefined}
                 page={filters.page}

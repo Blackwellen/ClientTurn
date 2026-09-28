@@ -20,6 +20,7 @@ import type {
   CustomerRow,
   CustomerSort,
 } from "@/lib/admin/types";
+import type { SupportSignals } from "@/lib/admin/support-signals-types";
 
 export function CustomersView({
   result,
@@ -28,6 +29,7 @@ export function CustomersView({
   sort,
   direction,
   detail,
+  signals = null,
 }: {
   result: CustomerListResult;
   filter: CustomerFilter;
@@ -35,6 +37,7 @@ export function CustomersView({
   sort: CustomerSort;
   direction: "asc" | "desc";
   detail: CustomerDetail | null;
+  signals?: SupportSignals | null;
 }) {
   const { setParams } = useAdminParams();
   const { run, pending, stepUpDialog } = useAdminAction();
@@ -105,6 +108,7 @@ export function CustomersView({
       {detail && (
         <CustomerSupportDrawer
           detail={detail}
+          signals={signals}
           pending={pending}
           onClose={() => setParams({ customer: null })}
           onResendOnboarding={() =>

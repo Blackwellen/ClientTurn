@@ -74,6 +74,8 @@ export type EntitlementFacts = {
     assistant_persona_name: string | null;
   } | null;
   number: { provisioning_state: string; e164: string | null } | null;
+  /** The workspace's AI assistant is on (see VoiceEntitlementSnapshot.settings). Absent = not read. */
+  aiAssistantOn?: boolean;
 };
 
 export function buildEntitlementSnapshot(f: EntitlementFacts): VoiceEntitlementSnapshot {
@@ -92,7 +94,7 @@ export function buildEntitlementSnapshot(f: EntitlementFacts): VoiceEntitlementS
       packRemainingSec: Math.max(0, f.balance.packRemainingSec),
     },
     killSwitch: { platform: f.platformKill, workspace: Boolean(f.settings?.admin_kill_switch) },
-    settings: { voiceEnabled: Boolean(f.settings?.voice_enabled) },
+    settings: { voiceEnabled: Boolean(f.settings?.voice_enabled), ...(f.aiAssistantOn === undefined ? {} : { aiAssistantOn: f.aiAssistantOn }) },
     identity: {
       callingAsName: f.settings?.calling_as_name ?? null,
       legalEntityName: f.settings?.legal_entity_name ?? null,

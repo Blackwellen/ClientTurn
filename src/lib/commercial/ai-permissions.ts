@@ -71,7 +71,7 @@ export const AI_PERMISSION_LABEL: Readonly<Record<AiPermission, string>> = {
 export const AI_PERMISSION_DESCRIPTION: Readonly<Record<AiPermission, string>> = {
   qualify: "Ask your qualification questions and record the answers. Your rules decide the result.",
   book: "Offer real times from your calendar and book the meeting the lead picks.",
-  call: "Phone a lead the assistant decides to call (a lead who asked for a call, or agreed a call-back). Only leads who asked for or consented to calls; calling hours and your Voice settings still apply. A person pressing Call with AI is not affected.",
+  call: "Phone a lead the assistant decides to call (a lead who asked for a call, or agreed a call-back). Also needed by an agent with Phone leads with AI on. Only leads who asked for or consented to calls; calling hours and your Voice settings still apply. A person pressing Call with AI is not affected.",
   create_quote: "Draft a quote from your catalogue when a lead asks for a price. Prices always come from your catalogue.",
   send_quote: "Send a drafted quote to the lead without a person pressing send. Off: a person sends it.",
   discount: "Offer a discount within the limits below. Anything above them goes to a person.",

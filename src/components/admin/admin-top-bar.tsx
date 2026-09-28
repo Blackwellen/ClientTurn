@@ -40,9 +40,9 @@ export function AdminTopBar({
         <Menu className="size-4" />
       </IconButton>
 
-      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
+      <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
         {titleForAdminPath(pathname)}
-      </h1>
+      </p>
 
       <div className="hidden min-w-0 flex-1 lg:flex">
         <AdminSearch />

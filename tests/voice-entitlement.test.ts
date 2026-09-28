@@ -70,6 +70,8 @@ test("every denial reason, with its product state", () => {
     ["no package", readyPro({ packaging: { proVoiceItem: false, addonPacksHeld: false, dedicatedNumberItem: false } }), "NO_VOICE_PACKAGE", "plan-limit-reached"],
     ["no minutes", readyPro({ minutes: { includedRemainingSec: 0, packRemainingSec: 0 } }), "NO_MINUTES", "plan-limit-reached"],
     ["voice off in settings", readyPro({ settings: { voiceEnabled: false } }), "VOICE_DISABLED_IN_SETTINGS", "integration-required"],
+    // Second live call 2026-09-28: the assistant off, so every call tool was refused.
+    ["AI assistant off", readyPro({ settings: { voiceEnabled: true, aiAssistantOn: false } }), "AI_ASSISTANT_OFF", "integration-required"],
     ["identity missing", readyPro({ identity: { callingAsName: "Acme" } }), "IDENTITY_INCOMPLETE", "integration-required"],
     ["no number", readyPro({ number: null }), "NO_NUMBER", "integration-required"],
     ["number in review", readyPro({ number: { state: "BUNDLE_IN_REVIEW", e164: null } }), "NO_NUMBER", "integration-required"],

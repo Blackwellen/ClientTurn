@@ -12,7 +12,7 @@
 
 import type { NextBestAction } from "../../../src/lib/qualification-intelligence/types.ts";
 import { PROVIDER_MAX_DURATION_SEC } from "../../../src/lib/voice/time-governor.ts";
-import type { Scenario } from "./simulator.ts";
+import type { RecordedCall, Scenario } from "./simulator.ts";
 
 function ask(rendering: string, dimension = "TEAM_SIZE"): NextBestAction {
   return {
@@ -41,8 +41,46 @@ function ask(rendering: string, dimension = "TEAM_SIZE"): NextBestAction {
 const TEAM = ask("How many people are on the team that would use it?");
 const EMAIL = ask("What is the best email for the invite?", "EMAIL");
 const BUDGET = ask("Roughly what budget have you set aside?", "BUDGET");
+/** The live call's NBA: "share one useful point" (an INFORM), which with no offer card became a pitch. */
+const INFORM = { ...ask("unused"), next_action: "INFORM", question_intent: null } as NextBestAction;
+/**
+ * The rest of the default QUESTION PLAN after a team-size NBA question (live
+ * call fix 2026-09-28): what they need, when, a budget, who decides. A
+ * qualification call asks these before it books.
+ */
+const PLAN_ANSWERS = [
+  { text: "A new website, ours is looking dated." },
+  { text: "In the next couple of months." },
+  { text: "We haven't set a budget yet." },
+  { text: "Just me, I run the place." },
+];
 /** Said after a stop, a refusal or a vulnerable person: a pitch. */
 const PITCH = /website|team|book|price|enquir|slot|morning|afternoon/i;
+
+/**
+ * The owner's first real call, 2026-09-28 (route QUALIFICATION, service
+ * "Roof replacement", nothing on the offer card, booking not permitted, the
+ * lead's NBA an INFORM). The same three lead lines through the fixed brief
+ * must now pass; the recorded call (LIVE_2026_09_28_RECORDING) must fail.
+ */
+export const LIVE_2026_09_28: Scenario = {
+  key: "live-2026-09-28-no-qualification",
+  title: "The owner's first real call: 'yes, yes, tomorrow' now gets the question plan, no pitch, no times, no 'qualified'",
+  route: "QUALIFICATION",
+  nba: INFORM,
+  permissions: { book: false },
+  offerLines: [],
+  serviceName: "Roof replacement",
+  lines: [{ text: "Yes." }, { text: "Yes." }, { text: "Tomorrow." }],
+  expect: {
+    disposition: "CONVERSATION",
+    tools: ["record_fact", "end_call_summary"],
+    forbiddenTools: ["check_availability", "book_meeting"],
+    closing: true,
+    agentSays: [/roof replacement involve, roughly\?/],
+    agentNeverSays: [/tailored/i, /this afternoon|tomorrow morning/i, /check(ing)? availability/i, /\bqualified\b/i, /A colleague will send you the details/],
+  },
+};
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -338,7 +376,7 @@ export const SCENARIOS: Scenario[] = [
     title: "A data and privacy question: answered honestly, logged, and the call carries on",
     route: "QUALIFICATION",
     nba: TEAM,
-    lines: [{ text: "Yes." }, { text: "Hang on, what do you do with my data?" }, { text: "Okay, about ten of us." }, { text: "Yes." }, { text: "The first one." }],
+    lines: [{ text: "Yes." }, { text: "Hang on, what do you do with my data?" }, { text: "Okay, about ten of us." }, { text: "Yes." }, ...PLAN_ANSWERS, { text: "The first one." }],
     expect: { disposition: "MEETING_BOOKED", tools: ["log_objection", "record_fact", "check_availability", "book_meeting"], closing: true, agentSays: [/privacy notice/] },
   },
   {
@@ -521,7 +559,7 @@ export const SCENARIOS: Scenario[] = [
     title: "Negative: a complaint about their CURRENT agency is a pain point, not an escalation",
     route: "QUALIFICATION",
     nba: TEAM,
-    lines: [{ text: "Yes." }, { text: "Honestly I want to complain about our current agency, they never answer." }, { text: "The second one." }],
+    lines: [{ text: "Yes." }, { text: "About ten of us." }, { text: "Yes." }, { text: "Honestly I want to complain about our current agency, they never answer." }, ...PLAN_ANSWERS.slice(1), { text: "The second one." }],
     expect: { disposition: "MEETING_BOOKED", tools: ["record_fact", "check_availability", "book_meeting"], forbiddenTools: ["transfer_to_human", "opt_out"], closing: true },
   },
   {
@@ -830,4 +868,92 @@ export const SCENARIOS: Scenario[] = [
     lines: [{ text: "Yes." }, { text: "I'm not the decision maker, you'd want to speak to our MD." }, { text: "The MD, Tom, he signs everything off." }, { text: "The first one." }],
     expect: { disposition: "MEETING_BOOKED", tools: ["log_objection", "record_fact", "check_availability", "book_meeting"], closing: true },
   },
+  // ---- the owner's first REAL call (2026-09-28), docs/VOICE.md §16.16
+  LIVE_2026_09_28,
+  {
+    key: "live-2026-09-28-plan-then-callback-window",
+    title: "Live-call fix: the same lead answers the plan; booking off, so a colleague's call-back window, never a time of our own",
+    route: "QUALIFICATION",
+    nba: INFORM,
+    permissions: { book: false },
+    offerLines: [],
+    serviceName: "Roof replacement",
+    lines: [
+      { text: "Yes." },
+      { text: "Replacing the whole roof, it's started leaking." },
+      { text: "In the next month or so." },
+      { text: "About ten thousand pounds." },
+      { text: "Yes, that's right." },
+      { text: "Just me and my wife." },
+      { text: "Tomorrow morning is best." },
+    ],
+    expect: {
+      disposition: "CALLBACK_REQUESTED",
+      tools: ["record_fact", "schedule_callback", "end_call_summary"],
+      forbiddenTools: ["check_availability", "book_meeting"],
+      closing: true,
+      agentSays: [/roof replacement involve/i, /budget/i, /anyone else involved/i, /What day and time of day suits a colleague/],
+      agentNeverSays: [/tailored/i, /I can (offer|do)/i, /check(ing)? availability/i],
+    },
+  },
+  {
+    key: "second-live-call-knows-the-enquiry",
+    title: "Second live call: the service, the lead's notes and the postcode are on file, so the call opens on them and never asks what prompted the enquiry",
+    route: "QUALIFICATION",
+    nba: INFORM,
+    permissions: { book: false },
+    offerLines: [],
+    serviceName: "Flat roof",
+    enquiry: "Flat roof over the kitchen extension, about 18 square metres, old felt that has blistered. Wants GRP or rubber. Usually free weekday mornings.",
+    lines: [
+      { text: "Yes, go ahead." },
+      { text: "Yes, the flat roof over the kitchen extension, it's blistered." },
+      { text: "Before the winter ideally." },
+      { text: "We haven't set a budget yet." },
+      { text: "Just me." },
+      { text: "A weekday morning, next week." },
+    ],
+    expect: {
+      disposition: "CALLBACK_REQUESTED",
+      tools: ["record_fact", "schedule_callback"],
+      forbiddenTools: ["check_availability", "book_meeting"],
+      closing: true,
+      agentSays: [/flat roof enquiry/i],
+      agentNeverSays: [/what prompted/i, /tailored/i],
+    },
+  },
+  {
+    key: "assistant-off-still-notes-and-calls-back",
+    title: "Second live call: the text assistant is off, yet the call still records answers and a colleague's call-back",
+    route: "QUALIFICATION",
+    nba: TEAM,
+    permissions: { book: false },
+    toolPermissions: { aiEnabled: false },
+    lines: [{ text: "Yes, go on." }, { text: "About twelve of us." }, { text: "Yes." }, { text: "Can someone just email me the details?" }],
+    expect: { disposition: "CALLBACK_REQUESTED", tools: ["record_fact", "schedule_callback"], forbiddenTools: ["check_availability"], closing: true },
+  },
 ];
+
+/** What the model really said and did on that call (Retell transcript and tool log). */
+export const LIVE_2026_09_28_RECORDING: RecordedCall = {
+  lines: [
+    { speaker: "AGENT", text: "This is an AI assistant calling from Blackwellen about the enquiry you sent us earlier today. Is now an OK time for a couple of minutes?" },
+    { speaker: "LEAD", text: "Yes." },
+    { speaker: "AGENT", text: "Thanks, Jamahl. I'm calling about your enquiry on our services. One useful point: we offer tailored solutions to fit your specific needs. Does that sound like it would help to talk further?" },
+    { speaker: "LEAD", text: "Yes." },
+    { speaker: "AGENT", text: "Great, Jamahl. A colleague will send you the details to get started. When would be a good time for a quick follow-up call to check in? I can offer times this afternoon or tomorrow morning." },
+    { speaker: "LEAD", text: "Tomorrow." },
+    { speaker: "AGENT", text: "One moment while I check availability for tomorrow morning." },
+    { speaker: "AGENT", text: "A colleague will handle arranging the follow-up call tomorrow morning and will be in touch. Thanks for your time. You've been speaking with Blackwellen's AI assistant, powered by ClientTurn." },
+  ],
+  tools: [
+    { afterLine: 6, name: "check_availability", args: { date: null, day_part: "morning" }, ok: false, code: "NOT_PERMITTED", say: "That is something a colleague will handle. I will make sure they follow up." },
+    {
+      afterLine: 7,
+      name: "end_call_summary",
+      args: { summary: "Qualified lead interested in tailored solutions; colleague to send details and arrange follow-up call tomorrow morning.", disposition: "CALLBACK_REQUESTED" },
+      ok: true,
+      say: null,
+    },
+  ],
+};

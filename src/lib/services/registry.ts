@@ -330,6 +330,37 @@ export const SERVICE_OPERATIONS = [
     callers: ["UI", "COPILOT", "MCP", "API"],
   },
   {
+    name: "agent.decide_call",
+    domain: "agent",
+    // Approving places a real call (as the agent, through voice.request_call)
+    // and uses voice minutes; declining changes nothing outside the queue.
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "agents:write",
+    summary: "Approve or decline an AI call an agent asked to make",
+    effect:
+      "Approving has the AI phone this lead now (or when their calling hours open), from your dedicated number, using voice minutes. Every calling check still runs first. Declining leaves the lead to your normal follow-up.",
+    entityType: "agent",
+    // A person decides: the approval is what an agent on a review level waits for.
+    callers: ["UI"],
+  },
+  {
+    name: "agent.set_voice_calls",
+    domain: "agent",
+    // Switching it on lets the agent ask for real phone calls, unattended,
+    // that spend voice minutes: a person confirms it, and over MCP it parks.
+    risk: "FINANCIAL",
+    minimumRole: "admin",
+    scope: "agents:write",
+    summary: "Switch an agent's AI phone calls on or off and set its daily call limit",
+    effect:
+      "When on, the agent asks the AI to phone its leads on every run, up to the daily limit, using voice minutes. Each call still needs the lead's consent to be called, their calling hours, your Voice settings and the Phone leads permission in What the AI may do.",
+    entityType: "agent",
+    // Excludes AGENT: a process must not switch its own calling on or raise
+    // its own call limit.
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
     name: "agent.start",
     domain: "agent",
     // Spends money on a schedule, unattended. Over MCP this parks for a person.
@@ -422,6 +453,19 @@ export const SERVICE_OPERATIONS = [
     // sending them, or turn off handover-on-review — removing the supervision
     // it exists under.
     callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "ai_settings.allow_calls",
+    domain: "ai_settings",
+    // Widens what the AI may do (brief §74, "Phone leads"). Only ever an
+    // explicit act by an owner or admin in the app, never a side effect of
+    // switching an agent's calls on, and audited with the before and after.
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "agents:write",
+    summary: "Allow the AI to phone leads (What the AI may do, Phone leads)",
+    entityType: "business",
+    callers: ["UI"],
   },
 
   /* -------------------------------------------------------- connectors
@@ -1736,6 +1780,31 @@ export const SERVICE_OPERATIONS = [
     summary: "List invoices, optionally for one quote or opportunity",
     entityType: "invoice",
   },
+  /* 0175: the invoice-payment review queue (Settings -> Quotes & invoices).
+   * A person resolves a payment the settlement flagged or that matched
+   * nothing. UI only: no model or client decides where money belongs. */
+  {
+    name: "invoice.review_apply_payment",
+    domain: "invoice",
+    risk: "DESTRUCTIVE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Record a payment waiting for review on one of your open invoices",
+    effect:
+      "The payment is recorded on this invoice permanently, up to the amount due. Anything over stays in the review queue for you to refund or keep as credit. A mistake is corrected with a credit note, not deleted.",
+    entityType: "checkout_payment",
+    callers: ["UI"],
+  },
+  {
+    name: "invoice.review_dismiss_payment",
+    domain: "invoice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "leads:write",
+    summary: "Mark a payment waiting for review as dealt with, and say how",
+    entityType: "checkout_payment",
+    callers: ["UI"],
+  },
   /* --------------------------------------------------------------- voice
    *
    * The AI voice sales agent (phase P2, docs/VOICE.md). Every operation that
@@ -1808,7 +1877,12 @@ export const SERVICE_OPERATIONS = [
     effect:
       "The AI assistant will phone this lead from your dedicated number, within their calling hours, and uses voice minutes. It says it is an AI calling from your business at the start of the call.",
     entityType: "voice_call",
-    callers: ["UI", "MCP", "API", "AUTOMATION"],
+    // AGENT only for a background agent with "Phone leads with AI" on (0176):
+    // the handler refuses an AGENT caller that does not name a running agent
+    // with the option on, the workspace's "Phone leads" permission, an allowed
+    // route and daily cap left. The conversation agent names no agent, so it
+    // is refused. Confirmation is the admin's standing switch.
+    callers: ["UI", "MCP", "API", "AUTOMATION", "AGENT"],
   },
   {
     name: "voice.cancel_call",

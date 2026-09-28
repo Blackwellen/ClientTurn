@@ -95,7 +95,7 @@ export function RichTextEditor({
     <div>
       <div
         className={cn(
-          "border-line-strong overflow-hidden rounded-md border shadow-xs",
+          "border-line-strong overflow-hidden rounded-md border shadow-xs focus-within:border-[var(--lr-focus-border)] focus-within:ring-2 focus-within:ring-[var(--lr-ring)]",
           error && "border-danger-500",
         )}
       >

@@ -85,13 +85,15 @@ export function TopBar({
         <Menu className="size-4" />
       </IconButton>
 
-      {/* Page title only appears on mobile, where the sidebar is hidden;
+      {/* Page title only appears on mobile, where the sidebar is hidden.
+          A <p>, not an <h1>: each page renders its own h1 (PageHeader), and
+          a second one here gave phones two h1s (a11y audit 2026-09-28);
           desktop relies on each page's own in-body heading. It takes the
           space that is left and truncates: a non-shrinking title pushed the
           account menu off a 320px screen (UI sweep 16). */}
-      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
+      <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-content lg:hidden">
         {titleForPath(pathname)}
-      </h1>
+      </p>
 
       <div className="hidden min-w-0 flex-1 lg:flex lg:max-w-[690px]">
         <button
@@ -101,7 +103,7 @@ export function TopBar({
             "flex h-11 w-full items-center gap-2.5 rounded-[11px] border border-line-strong bg-surface px-3.5",
             "text-[14px] text-content-subtle shadow-xs transition-colors duration-[var(--lr-duration-fast)]",
             "hover:border-line-strong hover:bg-surface-hover hover:text-content-secondary",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lr-ring)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
           )}
         >
           <Search className="size-4 shrink-0" aria-hidden />
@@ -138,6 +140,9 @@ export function TopBar({
                 HEALTH_DOT[integrationStatus] ?? HEALTH_DOT.DISCONNECTED,
               )}
             />
+            {/* The visible chip says only "Healthy"; the tooltip that says
+                what is healthy is hover/focus-only, so name it here too. */}
+            <span className="sr-only">Integrations: </span>
             {health.label}
           </Link>
         </Tooltip>

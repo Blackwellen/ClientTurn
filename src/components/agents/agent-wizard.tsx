@@ -26,6 +26,8 @@ import { saveAgent } from "@/lib/agents/actions";
 import { Select } from "@/components/ui/form";
 import { WHOLE_CATALOGUE, type CatalogueOptions, type OfferTarget } from "@/lib/agents/offer-target";
 import { OfferTargetPicker } from "./offer-target-picker";
+import { agentCallingScope, agentVoiceOption, type AgentVoiceAvailability } from "@/lib/agents/voice-calls";
+import { AgentVoiceCallsField, DEFAULT_AGENT_VOICE_VALUE, type AgentVoiceValue } from "./agent-voice-calls-field";
 
 /**
  * The Agent setup wizard.
@@ -47,12 +49,15 @@ export function AgentWizard({
   sourceAvailability,
   initialType = "SOURCING",
   catalogue = null,
+  voiceAvailability = null,
 }: {
   plans: { id: string; name: string }[];
   sourceAvailability: SourceAvailability;
   initialType?: AgentType;
   /** What the agent may sell (0174). Null = the catalogue could not be read. */
   catalogue?: CatalogueOptions | null;
+  /** "Phone leads with AI" (0176). Null = could not be read: the option is not offered. */
+  voiceAvailability?: AgentVoiceAvailability | null;
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState(0);
@@ -72,6 +77,9 @@ export function AgentWizard({
   const [dailyCap, setDailyCap] = React.useState(25);
   const [monthlyCap, setMonthlyCap] = React.useState(250);
   const [target, setTarget] = React.useState<OfferTarget>(WHOLE_CATALOGUE);
+  const [voice, setVoice] = React.useState<AgentVoiceValue>(DEFAULT_AGENT_VOICE_VALUE);
+  const callsApply = agentCallingScope(type).applies;
+  const voiceOn = Boolean(voiceAvailability) && callsApply && voice.enabled && agentVoiceOption(type, voiceAvailability!).selectable;
 
   const definition = AGENT_TYPE_DEFINITIONS[type];
   const availableSources = sourcesForType(type);
@@ -97,6 +105,9 @@ export function AgentWizard({
       }
       if (target.scope === "SELECTED" && target.serviceIds.length + target.catalogueItemIds.length === 0) {
         return "Choose at least one product or service, or pick the whole catalogue.";
+      }
+      if (voiceOn && (!Number.isInteger(voice.dailyCallCap) || voice.dailyCallCap < 1 || voice.dailyCallCap > 100)) {
+        return "Set a daily call limit between 1 and 100.";
       }
     }
     return "";
@@ -126,6 +137,7 @@ export function AgentWizard({
           sources: usesSources ? sources : [],
           autonomy,
           target,
+          ...(voiceOn ? { voiceCalls: { enabled: true, dailyCallCap: voice.dailyCallCap } } : {}),
         });
         if (result.error) setError(result.error);
         // Created, but what it sells was not saved: open its settings to fix it.
@@ -351,6 +363,10 @@ export function AgentWizard({
               </span>
             </Field>
 
+            {voiceAvailability && callsApply && (
+              <AgentVoiceCallsField agentType={type} availability={voiceAvailability} value={voice} onChange={setVoice} />
+            )}
+
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Schedule">
                 <Select
@@ -429,6 +445,9 @@ export function AgentWizard({
             />
             {usesSources && <Summary label="Contact details" value="Verified work email only" />}
             <Summary label="Sells" value={describeWizardTarget(target, catalogue)} />
+            {callsApply && (
+              <Summary label="AI phone calls" value={voiceOn ? `On, up to ${voice.dailyCallCap} a day` : "Off"} />
+            )}
           </dl>
 
           <p className="mt-4 flex gap-3 rounded-lg border border-line bg-surface-sunken/50 p-3.5 text-[12.5px] text-content-secondary">

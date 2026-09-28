@@ -250,6 +250,7 @@ function HandoverCard({
       {showNote && canManage && (
         <div className="mt-2 space-y-2">
           <textarea
+            aria-label="Handover note (optional)"
             rows={2}
             maxLength={500}
             value={note}
@@ -365,6 +366,7 @@ function DraftCard({
 
       {editing ? (
         <textarea
+          aria-label="Suggested reply"
           rows={3}
           maxLength={1200}
           value={body}

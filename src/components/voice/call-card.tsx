@@ -113,6 +113,9 @@ export function CallCard({
               {card.number && <> · <span className="tabular-nums">{card.number}</span></>}
               {card.attemptNumber > 1 && <> · attempt {card.attemptNumber}</>}
             </p>
+            {card.calledBy && (
+              <p className="mt-0.5 text-[12px] text-content-muted">Called by {card.calledBy}</p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

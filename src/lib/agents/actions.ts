@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AGENT_TYPES, SOURCE_DEFINITIONS, type SourceKey } from "./types";
 import { offerTargetSchema } from "./offer-target";
+import { AGENT_VOICE_MAX_DAILY_CAP } from "./voice-calls";
 
 /**
  * Agent mutations.
@@ -35,6 +36,13 @@ const saveSchema = z.object({
   autonomy: z.enum(["REVIEW_ALL", "REVIEW_NEW", "AUTO"]).default("REVIEW_ALL"),
   /** What it sells (0174). Absent = the whole catalogue. */
   target: offerTargetSchema.optional(),
+  /** "Phone leads with AI" (0176). Absent or off = the agent never phones. */
+  voiceCalls: z
+    .object({
+      enabled: z.boolean(),
+      dailyCallCap: z.coerce.number().int().min(1).max(AGENT_VOICE_MAX_DAILY_CAP),
+    })
+    .optional(),
 });
 
 type Workspace = Awaited<ReturnType<typeof requireRole>>;
@@ -111,7 +119,66 @@ export async function saveAgent(
       };
     }
   }
+
+  // "Phone leads with AI" is its own operation (agent.set_voice_calls), which
+  // re-checks the entitlement. It never turns on the workspace's "Phone leads"
+  // permission; the wizard offers that as a separate, explicit step.
+  if (value.voiceCalls?.enabled) {
+    const voice = await runOperation(
+      "agent.set_voice_calls",
+      { agentId: data.agent.id, enabled: true, dailyCallCap: value.voiceCalls.dailyCallCap },
+      uiContext(workspace),
+    );
+    if (!voice.success) {
+      return {
+        id: data.agent.id,
+        warning: `The agent was created, but AI phone calls could not be switched on (${voice.message}). It won't phone anyone until you switch them on in its settings.`,
+      };
+    }
+  }
   return { id: data.agent.id };
+}
+
+const voiceCallsSchema = z.object({
+  id: z.uuid(),
+  enabled: z.boolean(),
+  dailyCallCap: z.coerce.number().int().min(1).max(AGENT_VOICE_MAX_DAILY_CAP),
+});
+
+/**
+ * The agent's "Phone leads with AI" switch and daily call limit, through
+ * `agent.set_voice_calls`. Switching on is confirmed in a dialog first.
+ */
+export async function saveAgentVoiceCalls(
+  input: unknown,
+): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> {
+  const parsed = voiceCallsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Set a daily call limit between 1 and 100." };
+  const workspace = await adminOrError();
+  if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
+  const result = await runOperation(
+    "agent.set_voice_calls",
+    { agentId: parsed.data.id, enabled: parsed.data.enabled, dailyCallCap: parsed.data.dailyCallCap },
+    uiContext(workspace),
+  );
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/agents", "layout");
+  return { ok: true, warnings: (result.warnings ?? []).map((w) => w.message) };
+}
+
+/**
+ * Turns on the workspace's "What the AI may do -> Phone leads" (the explicit
+ * admin act the agent option offers; `ai_settings.allow_calls`, UI only,
+ * audited). Never called implicitly by switching an agent's calls on.
+ */
+export async function allowAiCallsAction(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const workspace = await adminOrError();
+  if (!workspace) return { ok: false, error: "Only an owner or admin can change what the AI may do." };
+  const result = await runOperation("ai_settings.allow_calls", { acknowledge: true }, uiContext(workspace));
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/agents", "layout");
+  revalidatePath("/app/settings");
+  return { ok: true };
 }
 
 const targetActionSchema = z.object({ id: z.uuid() }).and(offerTargetSchema);
@@ -263,4 +330,29 @@ export async function deleteAgent(
   revalidatePath("/app/agents");
   const data = result.data as { kept: { leads: number; prospects: number; sourcingRuns: number } };
   return { ok: true, kept: data.kept };
+}
+
+const decideCallSchema = z.object({ itemId: z.uuid(), decision: z.enum(["APPROVE", "DECLINE"]) });
+
+/**
+ * Approve or decline a call a review-level agent asked for (agent.decide_call).
+ * Called from the Queue tab's confirmation only, so `confirmed` is the
+ * person's click. Approving asks for the call as the agent, never as the person.
+ */
+export async function decideAgentCallAction(input: unknown): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  const parsed = decideCallSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That call request could not be found." };
+  let workspace: Workspace;
+  try {
+    workspace = await requireRole("member");
+  } catch {
+    return { ok: false, error: "Viewers can't approve calls." };
+  }
+  const result = await runOperation("agent.decide_call", parsed.data, uiContext(workspace));
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/agents", "layout");
+  return {
+    ok: true,
+    message: parsed.data.decision === "APPROVE" ? "Approved. The call is queued and re-checked just before it dials." : "Declined. The lead is left to your follow-up.",
+  };
 }

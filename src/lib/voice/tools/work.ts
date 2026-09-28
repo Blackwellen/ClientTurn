@@ -38,7 +38,7 @@ import { queueNotification } from "@/lib/jobs/handlers/shared";
 import { requestCall } from "../runtime-core";
 import { serverVoiceDeps } from "../server-deps";
 import { classifyDestination } from "../destinations";
-import { spokenSlotChoice, spokenSlotLabel } from "../spoken-time";
+import { spokenSlotChoice, spokenSlotLabel, spokenWhen } from "../spoken-time";
 import type { VoiceToolArgs } from "./definitions";
 import { deriveToolPermissions, type PortOutcome, type ToolPermissions, type ToolCallRow } from "./core";
 
@@ -171,7 +171,7 @@ export async function voiceToolPermissions(call: VoiceCallLite): Promise<ToolPer
   const access = await quoteAccess(context);
   const direct = context.commerce?.authority ?? DISABLED_AUTHORITY;
   const phone = context.lead.phone ?? null;
-  return deriveToolPermissions({
+  const derived = deriveToolPermissions({
     aiEnabled: access.aiEnabled,
     quoteAiCapability: access.quoteAiCapability,
     authority: access.authority,
@@ -181,6 +181,8 @@ export async function voiceToolPermissions(call: VoiceCallLite): Promise<ToolPer
     smsLawful: Boolean(phone && phone.startsWith("+") && classifyDestination(phone) === "UK_MOBILE" && !context.lead.opted_out && context.leadContext.contactable),
     bookingLink: Boolean(context.business.bookingUrl),
   });
+  // The deterministic verdict: end_call_summary may say "qualified" only when this does.
+  return { ...derived, qualificationVerdict: context.lead.qualification_state ?? null, timezone: context.business.timezone };
 }
 
 /* ================================================================== tools */
@@ -215,19 +217,23 @@ export async function recordFact(businessId: string, a: VoiceToolArgs<"record_fa
   // (resolved conflict 1: the AI never confirms). Unconfirmed words stay as
   // signals only; the deterministic engine decides what they mean.
   const dimension = factDimensionSchema.safeParse(a.dimension.toUpperCase());
+  // A configured question with no dimension is keyed `Q.<question id>` in the
+  // call's question plan (question-plan.ts): its confirmed answer is an
+  // UNMAPPED fact against that question, for the engine to match.
+  const questionId = /^Q\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(a.dimension)?.[1] ?? null;
   let factWritten = false;
-  if (a.confirmed && dimension.success && dimension.data !== "UNMAPPED") {
+  if (a.confirmed && ((dimension.success && dimension.data !== "UNMAPPED") || questionId)) {
     try {
       await writeQualificationFact(businessId, {
         lead_id: call.lead_id,
         service_id: null,
-        dimension: dimension.data,
+        dimension: questionId ? "UNMAPPED" : dimension.success ? dimension.data : "UNMAPPED",
         value: a.value.slice(0, 500),
         value_normalised: null,
         state: "INFERRED",
         source: "AI_ASSIST",
         source_ref: `voice_call:${call.id}`,
-        question_id: null,
+        question_id: questionId,
         question_intent_key: null,
         confidence: 0.9,
         observed_at: now,
@@ -477,6 +483,10 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
   const call = await loadVoiceCall(businessId, a.callId);
   if (!call) return refused("NOT_FOUND", "");
   const at = a.at_iso ? new Date(a.at_iso) : null;
+  // The exact time, read back once (live call 2026-09-28: the lead's
+  // correction was lost and the wrong time confirmed as "then").
+  const tz = ((await db().from("businesses").select("timezone").eq("id", businessId).maybeSingle()).data as { timezone?: string | null } | null)?.timezone || "Europe/London";
+  const spoken = at && Number.isFinite(at.getTime()) ? spokenWhen(at, new Date(), tz) : null;
   if (a.by === "AI" && at && Number.isFinite(at.getTime())) {
     const route = (["QUALIFICATION", "BOOKING_CLOSE", "DIRECT_CLOSE", "NURTURE", "REACTIVATION"] as const).find((r) => r === call.route) ?? "QUALIFICATION";
     const queued = await requestCall(serverVoiceDeps(), {
@@ -488,7 +498,7 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
       notBefore: at,
     });
     if (queued.ok) {
-      return { ok: true, say: "I will call you back then.", data: { callback_call_id: queued.callId, scheduled_for: queued.scheduledFor }, operation: "voice.request_call" };
+      return { ok: true, say: spoken ? `I will call you back at ${spoken}.` : "I will call you back then.", data: { callback_call_id: queued.callId, scheduled_for: queued.scheduledFor }, operation: "voice.request_call" };
     }
     // Not callable then (hours, caps): a person arranges it instead.
   }
@@ -502,7 +512,7 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
     linkUrl: `/app/leads/${call.lead_id}`,
     dedupeKey: `voice-callback:${call.id}`,
   });
-  return { ok: true, say: "A colleague will call you back then.", data: { by: "PERSON", when }, operation: "lead.next_action" };
+  return { ok: true, say: spoken ? `A colleague will call you back at ${spoken}.` : a.note ? "A colleague will call you back then." : "A colleague will call you back.", data: { by: "PERSON", when }, operation: "lead.next_action" };
 }
 
 export async function optOut(businessId: string, a: VoiceToolArgs<"opt_out"> & { callId: string }): Promise<PortOutcome> {

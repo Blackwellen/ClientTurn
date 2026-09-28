@@ -66,6 +66,8 @@ export type CallCard = {
   costGbp: number | null;
   attemptNumber: number;
   inProgress: boolean;
+  /** The agent that asked for this call ("Called by <agent>"); null for a person, a retry or an inbound call. */
+  calledBy: string | null;
 };
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -115,6 +117,8 @@ export function toCallCard(input: {
   costGbp: number | null;
   qualificationChange?: { before: string | null; after: string | null } | null;
   viewerRole: string;
+  /** The requesting agent's name (0176). */
+  calledBy?: string | null;
 }): CallCard {
   const { row } = input;
   const facts = Object.entries(input.outcome?.facts ?? {})
@@ -152,5 +156,6 @@ export function toCallCard(input: {
     costGbp: canSeeCallCost(input.viewerRole) ? input.costGbp : null,
     attemptNumber: row.attempt_number,
     inProgress: LIVE_STATES.includes(row.state),
+    calledBy: input.calledBy ?? null,
   };
 }

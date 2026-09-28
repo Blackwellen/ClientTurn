@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { useEscape } from "./drawer";
 import { isInsideFloatingLayer } from "./floating";
 
 /**
@@ -35,6 +36,15 @@ export function Popover({
   const panelRef = React.useRef<HTMLDivElement>(null);
   const close = React.useCallback(() => setOpen(false), []);
 
+  // Escape returns focus to the control that opened the panel. Registered as
+  // an overlay layer, so inside a drawer Escape closes this panel only, not
+  // the drawer behind it too (a11y audit 2026-09-28).
+  const escape = React.useCallback(() => {
+    setOpen(false);
+    rootRef.current?.querySelector("button")?.focus();
+  }, []);
+  useEscape(open, escape, panelRef);
+
   React.useEffect(() => {
     if (!open) return;
 
@@ -44,23 +54,15 @@ export function Popover({
       if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      // Escape returns focus to the control that opened the panel.
-      rootRef.current?.querySelector("button")?.focus();
-    }
     function onFocusIn(event: FocusEvent) {
       if (isInsideFloatingLayer(event.target)) return;
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
 
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
     document.addEventListener("focusin", onFocusIn);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("focusin", onFocusIn);
     };
   }, [open]);

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { runTask } from "@/lib/ai/model-router";
 import type { SocialMessageResult } from "@/lib/ai/schemas";
@@ -73,18 +74,55 @@ export const TASK_COLUMNS =
 
 /* ================================================================ settings */
 
+export type WorkspaceHold = { reason: string; heldAt: string };
+
+/**
+ * A platform admin's hold on this workspace's LinkedIn Assist (0175), or
+ * null. Fails open to "not held" only when the table does not exist yet;
+ * any other read error throws, so a hold is never silently ignored.
+ */
+export async function loadWorkspaceHold(businessId: string): Promise<WorkspaceHold | null> {
+  const { data, error } = await db()
+    .from("linkedin_assist_workspace_holds")
+    .select("reason, held_at")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (error) {
+    if (isSchemaLag(error)) return null;
+    throw error;
+  }
+  const row = data as { reason: string; held_at: string } | null;
+  return row ? { reason: row.reason, heldAt: row.held_at } : null;
+}
+
+/**
+ * A person's settings, with the workspace hold folded in: while a platform
+ * admin holds the workspace, every list is paused (replies only), whatever
+ * the person chose. `personPaused` is their own switch, for the settings form.
+ */
 export async function loadSettings(businessId: string, userId: string): Promise<{
   settings: LinkedInAssistSettings;
   configured: boolean;
+  personPaused: boolean;
+  workspaceHold: WorkspaceHold | null;
 }> {
-  const { data, error } = await db()
-    .from("linkedin_assist_settings")
-    .select("*")
-    .eq("business_id", businessId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [{ data, error }, workspaceHold] = await Promise.all([
+    db()
+      .from("linkedin_assist_settings")
+      .select("*")
+      .eq("business_id", businessId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    loadWorkspaceHold(businessId),
+  ]);
   if (error) throw error;
-  return { settings: settingsFromRow(data), configured: Boolean(data) };
+  const own = settingsFromRow(data);
+  return {
+    settings: workspaceHold ? { ...own, paused: true } : own,
+    configured: Boolean(data),
+    personPaused: own.paused,
+    workspaceHold,
+  };
 }
 
 /* ================================================================ subjects */
@@ -363,8 +401,14 @@ export async function draftTask(
   }
   const contact = await loadContact(businessId, task.contact_id);
   if (!contact) return { drafted: false, source: null, fallbackReason: null };
-  const [subject, { business, aiEnabled }] = await Promise.all([subjectFor(contact), draftBusiness(businessId)]);
+  const [subject, { business, aiEnabled: aiAllowed }, hold] = await Promise.all([
+    subjectFor(contact),
+    draftBusiness(businessId),
+    loadWorkspaceHold(businessId),
+  ]);
   if (!subject) return { drafted: false, source: null, fallbackReason: null };
+  // A platform admin's hold (0175): no model call; the template stands.
+  const aiEnabled = aiAllowed && !hold;
 
   const composed = await composeDraft({
     kind: task.kind as Exclude<LinkedInTaskKind, "REPLY">,

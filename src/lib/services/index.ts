@@ -32,11 +32,13 @@ import "./operations/voice";
 import "./operations/catalogue";
 import "./operations/quotes";
 import "./operations/invoices";
+import "./operations/invoice-review";
 import "./operations/admin-voice";
 import "./operations/voice-agent";
 import "./operations/automation";
 import "./operations/linkedin-assist";
 import "./operations/commercial-rules";
+import "./operations/agent-voice";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

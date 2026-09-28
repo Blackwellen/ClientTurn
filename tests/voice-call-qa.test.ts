@@ -12,8 +12,8 @@
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { simulate, asrGarble, deadAirAfter, complianceFailures, score, agentTurnsMerged, spokenEmail, readBackEmail, type SimResult, type Scenario } from "./fixtures/voice-call-qa/simulator.ts";
-import { SCENARIOS } from "./fixtures/voice-call-qa/scenarios.ts";
+import { simulate, asrGarble, deadAirAfter, complianceFailures, score, agentTurnsMerged, spokenEmail, readBackEmail, scoreRecorded, planFromBrief, briefFor, liveCallFailures, type SimResult, type Scenario } from "./fixtures/voice-call-qa/simulator.ts";
+import { SCENARIOS, LIVE_2026_09_28, LIVE_2026_09_28_RECORDING } from "./fixtures/voice-call-qa/scenarios.ts";
 import { buildVoiceCallBrief, estimateTokens, CALL_BRIEF_MAX_TOKENS, type BriefRoute } from "../src/lib/voice/call-brief.ts";
 import { RETELL_GENERAL_PROMPT, retellCustomTools } from "../src/lib/voice/tools/definitions.ts";
 import { voiceToolGate, type ToolCallRow, type ToolPermissions } from "../src/lib/voice/tools/core.ts";
@@ -36,8 +36,16 @@ const results: SimResult[] = [];
  * from the rendered block, actions tightened).
  */
 const GENERAL_PROMPT_MAX_TOKENS = 1300;
-/** General prompt + the largest brief + the time plan, before tool definitions (raised by the same 200). */
-const PROMPT_TOTAL_MAX_TOKENS = 2550;
+/**
+ * General prompt + the largest brief + the time plan, before tool definitions.
+ * Raised 2,550 -> 3,000 by the live-call fixes (2026-09-28): the brief bound
+ * went 1,100 -> 1,500 to carry the QUESTION PLAN, the booking-off and
+ * no-claims lines and the lead's own enquiry (call-brief.ts
+ * CALL_BRIEF_MAX_TOKENS says why), and the time plan now carries the local
+ * date and time (a call-back was agreed for a time that had already gone).
+ * About 450 more input tokens a turn at the very worst, ~$0.003 a call.
+ */
+const PROMPT_TOTAL_MAX_TOKENS = 3000;
 
 describe("§62: the call QA scenarios", () => {
   test("at least 90 scenarios, uniquely keyed, covering every route", () => {
@@ -234,5 +242,46 @@ describe("a swear-off stops every channel, and nothing more is sent in the call"
     for (const name of ["end_call_summary", "log_objection", "opt_out", "get_call_status"] as const) {
       assert.equal(voiceToolGate({ name, args: {} as never, call, permissions, prior }).allowed, true, name);
     }
+  });
+});
+
+/* ============ the owner's first real call (2026-09-28): the harness must fail it ============ */
+
+describe("live call 2026-09-28: the recorded call fails the scorer, the fixed brief passes", () => {
+  test("the recorded call is caught on every defect", () => {
+    const r = scoreRecorded(LIVE_2026_09_28, LIVE_2026_09_28_RECORDING);
+    const notes = r.score.notes.join(" | ");
+    assert.ok(r.score.total < 100, `the recorded live call scored ${r.score.total}`);
+    assert.match(notes, /moved to a next step after 0 of 4 qualifying questions/);
+    assert.match(notes, /a claim not in the offer lines: "One useful point: we offer tailored solutions/);
+    assert.match(notes, /availability not from a tool: "I can offer times this afternoon or tomorrow morning\."/);
+    assert.match(notes, /"checking availability" with booking off/);
+    assert.match(notes, /the summary labels the lead qualified/);
+  });
+
+  test("the same three lead lines through the fixed brief: the plan, no pitch, no times, pending", async () => {
+    const r = await simulate(LIVE_2026_09_28);
+    assert.equal(r.score.total, 100, r.score.notes.join(" | "));
+    assert.deepEqual(liveCallFailures(LIVE_2026_09_28, r), []);
+    const said = r.transcript.filter((u) => u.speaker === "AGENT").map((u) => u.text).join(" ");
+    assert.match(said, /What does the roof replacement involve, roughly\?/);
+    assert.ok(!r.tools.some((t) => t.name === "check_availability"));
+  });
+
+  test("the brief for that lead: a plan of four, booking off up front, no approved claims", () => {
+    const { brief } = briefFor(LIVE_2026_09_28);
+    const plan = planFromBrief(brief.text);
+    assert.deepEqual(plan.questions.map((q) => q.key), ["PROJECT_SCOPE", "TIMING", "BUDGET", "AUTHORITY"]);
+    assert.equal(plan.required, 4);
+    assert.match(brief.text, /BOOKING IS OFF\. Never offer, suggest or check times or days/);
+    assert.match(brief.text, /NO APPROVED CLAIMS\. Do not describe the business or its offer beyond the service name \(Roof replacement\)/);
+    assert.doesNotMatch(brief.text, /Share one useful point/);
+    assert.doesNotMatch(brief.text, /one light trial close/);
+  });
+
+  test("a brief with no plan fails the suite (the scripted agent reads the plan from the words)", async () => {
+    const r = await simulate(LIVE_2026_09_28);
+    const stripped = { ...r, brief: { ...r.brief, text: r.brief.text.replace(/QUESTION PLAN\.[^\n]*\n/, "") } } as SimResult;
+    assert.match(liveCallFailures(LIVE_2026_09_28, stripped).join(" | "), /no QUESTION PLAN/);
   });
 });

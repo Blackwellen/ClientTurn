@@ -164,6 +164,10 @@ function OverviewPanel({ view, trialNote, onNavigate }: VoicePanelsProps & { onN
     { done: view.number.stage === "ACTIVE", label: "Dedicated number active", panel: "number" },
     { done: !noMinutes, label: "Minutes available", panel: "budget" },
     { done: view.settings.voiceEnabled, label: "Voice calling switched on", panel: "overview" },
+    // Every call tool runs through the AI assistant: with it off, a call can't
+    // record answers or arrange anything (live call 2026-09-28). Fixed in
+    // Settings, Workspace, so no "Open" here; the notice below says where.
+    { done: !view.entitlement.reasons.includes("AI_ASSISTANT_OFF"), label: "AI assistant switched on (Settings, Workspace)", panel: "overview" },
   ];
 
   function toggle(next: boolean) {

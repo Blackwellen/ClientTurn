@@ -16,7 +16,11 @@ import { tierRateLabel, type TierDefinition } from "@/lib/affiliates/tier-rules"
 /**
  * The public affiliate programme terms (affiliate audit 17 §7).
  *
- * DRAFT FOR OWNER REVIEW. Every number on this page is read live: the
+ * APPROVED BY THE OWNER 2026-09-28 (terms version 2026-09), with the
+ * relationship and status section strengthened the same day so a partner is
+ * an independent business, never our employee, worker or agent (UK
+ * employment-status indicators; Commercial Agents Regulations 1993 excluded).
+ * Every number on this page is read live: the
  * window, base rate, hold and threshold from the default commission plan
  * (`getPublicPolicy`), and the tier names, rates and thresholds from
  * `affiliate_tiers` (`loadTiers`). The prose describes the behaviour in code
@@ -25,8 +29,7 @@ import { tierRateLabel, type TierDefinition } from "@/lib/affiliates/tier-rules"
  * tiers of 6/8/10% by paid referred customers in the last 12 months, the
  * referral cookie only after consent, a negative balance written off (never
  * invoiced) when a partnership ends, no self-billing at launch, and no promo
- * codes. It is not legal advice and must be approved before the programme is
- * promoted; until then it is not indexed.
+ * codes. It is not legal advice.
  */
 
 export const dynamic = "force-dynamic";
@@ -38,8 +41,6 @@ export const metadata: Metadata = {
   title: "Affiliate Programme Terms",
   description,
   alternates: { canonical: "/affiliates/terms" },
-  // Not indexed until the owner has approved the wording (audit 17).
-  robots: { index: false, follow: true },
 };
 
 function tierSentence(tiers: readonly TierDefinition[], planPercent: number | null): string {
@@ -57,14 +58,68 @@ function sections(policy: ProgrammePolicy, tiers: readonly TierDefinition[]): Le
   return [
     {
       id: "who",
-      heading: "1. Who these terms are between",
+      heading: "1. Who these terms are between, and our relationship",
       body: (
-        <p>
-          These terms are between you (the partner) and {COMPANY.registeredName}, trading as{" "}
-          {COMPANY.product}. They apply once your application is approved. You are an independent
-          contractor, not an employee, agent or partner of {COMPANY.product}, and you may not make
-          commitments on our behalf.
-        </p>
+        <>
+          <p>
+            These terms are between you (the partner) and {COMPANY.registeredName}, trading as{" "}
+            {COMPANY.product}. They apply once your application is approved. You must be 18 or over,
+            or a business.
+          </p>
+          <p>
+            <strong>You take part as an independent business.</strong> Nothing in these terms makes you
+            our employee, worker, agent, partner or joint venturer, and you are not part of our
+            organisation. In particular:
+          </p>
+          <ul className="list-disc space-y-1.5 pl-5">
+            <li>
+              <strong>No obligation either way.</strong> You do not have to promote {COMPANY.product} at
+              all, or reach any target, and we do not have to give you any work, leads or minimum
+              income. You are paid only the one-off commission in section 3, and only when a referred
+              customer pays.
+            </li>
+            <li>
+              <strong>You decide how you work.</strong> You choose whether, when, where and how you
+              promote us, with your own equipment and at your own cost. We do not set hours, supervise
+              you or reimburse expenses. The rules in section 8 are legal and brand-safety conditions
+              that apply to every partner, not directions about how you do your work.
+            </li>
+            <li>
+              <strong>You may use others.</strong> You may use your own staff, contractors or
+              agencies to promote us. You remain responsible for them following these terms.
+            </li>
+            <li>
+              <strong>You are free to work for others.</strong> The programme is non-exclusive: you may
+              promote other products, including competitors.
+            </li>
+            <li>
+              <strong>You do not present yourself as {COMPANY.product}.</strong> You do not use a{" "}
+              {COMPANY.product} job title or email address, or say you speak for us.
+            </li>
+            <li>
+              <strong>No employment rights or benefits.</strong> As an independent business you are not
+              entitled to holiday pay, sick pay, pensions, the minimum wage or other employment rights
+              from us.
+            </li>
+            <li>
+              <strong>Tax is yours.</strong> We pay commission gross, without deducting income tax or
+              National Insurance. You are responsible for declaring it and paying any tax, National
+              Insurance and VAT due in your own name (see section 5).
+            </li>
+            <li>
+              <strong>Not a commercial agent.</strong> You introduce potential customers only. You have
+              no authority to negotiate, agree prices or conclude any contract, or to make any promise
+              or commitment on our behalf. Customers contract with us directly on our own terms. You are
+              not our commercial agent, and to the extent the law allows, the Commercial Agents (Council
+              Directive) Regulations 1993 do not apply.
+            </li>
+          </ul>
+          <p>
+            You must not offer or accept any bribe or inducement in connection with the programme
+            (Bribery Act 2010). Each of us is a separate controller of the personal data it handles for
+            itself under UK GDPR; you receive no customer personal data from us (section 9).
+          </p>
+        </>
       ),
     },
     {
@@ -288,7 +343,7 @@ export default async function AffiliateTermsPage() {
     <LegalPage
       title="Affiliate Programme Terms"
       intro={`The rules of the ${COMPANY.product} affiliate programme: how referrals are tracked, what you earn and when, how refunds and chargebacks are handled, and how you may promote us.`}
-      operatorNote="Draft pending owner review (terms version 2026-09). Figures are read live from the programme's commission plan."
+      operatorNote="Terms version 2026-09, effective 28 September 2026. Figures are read live from the programme's commission plan."
       sections={sections(policy, tiers)}
       currentPath="/affiliates/terms"
     />

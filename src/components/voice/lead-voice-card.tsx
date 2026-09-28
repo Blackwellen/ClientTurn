@@ -8,10 +8,9 @@ import { formatDateTime } from "@/lib/dates";
 import { hasRole, type BusinessRole } from "@/lib/auth/session";
 import { leadPageHref } from "@/lib/leads/detail-page";
 import { loadLeadCalls, loadVoiceSettingsView } from "@/lib/voice/ui-queries";
-import type { VoiceSettingsView } from "@/lib/services/operations/voice";
-import type { CallCard as CallCardView } from "@/lib/voice/call-view";
 import { CallCard } from "./call-card";
 import { CallWithAiButton } from "./call-with-ai-button";
+import { callDisabledReason } from "@/lib/voice/call-button-state";
 
 /**
  * The lead page's voice panel (P2): "Call with AI", the latest call's summary,
@@ -41,26 +40,8 @@ function Shell({ children, action }: { children: React.ReactNode; action?: React
   );
 }
 
-/** Why "Call with AI" is unavailable, most fundamental first. Null = it may be offered. */
-export function callDisabledReason(input: {
-  role: BusinessRole;
-  lead: Pick<LeadFacts, "phone" | "optedOut" | "anonymised" | "archived">;
-  view: VoiceSettingsView;
-  latest: CallCardView | null;
-}): string | null {
-  const { view, lead } = input;
-  if (view.entitlement.locked) return "Voice is a paid feature and isn't on this plan.";
-  if (view.settings.adminKillSwitch) return "AI calling is paused for this workspace by ClientTurn.";
-  if (!view.integration.ready) return "Calling isn't connected on this environment yet.";
-  if (!hasRole(input.role, "member")) return "Viewers can't place calls.";
-  if (lead.anonymised) return "This lead's personal data has been erased.";
-  if (lead.archived) return "This lead is archived.";
-  if (lead.optedOut) return "This lead has opted out of contact.";
-  if (!lead.phone) return "This lead has no phone number to call.";
-  if (!view.entitlement.allowed) return view.entitlement.message ?? "Voice isn't ready on this workspace yet. Check Settings, Voice.";
-  if (input.latest?.inProgress) return "A call to this lead is already in progress.";
-  return null;
-}
+/** Shared with the Leads drawer (lib/voice/call-button-state), so both say the same thing. */
+export { callDisabledReason };
 
 export async function LeadVoiceCard({
   businessId,

@@ -163,7 +163,11 @@ defineOperation("linkedin_assist.add_contact", {
     const userId = requireUser(context);
     const profileUrl = normaliseLinkedInProfileUrl(args.profileUrl)!;
 
-    const { settings } = await loadSettings(context.businessId, userId);
+    const { settings, workspaceHold } = await loadSettings(context.businessId, userId);
+    // A platform admin's hold (0175): nothing new is added while it stands.
+    if (workspaceHold) {
+      throw new ServiceError("POLICY_BLOCKED", "LinkedIn Assist is paused for this workspace by ClientTurn support, so nobody new can be added. Contact support.");
+    }
     if (args.firstTouch === "INMAIL" && settings.monthlyInMailCredits === 0) {
       throw new ServiceError(
         "INVALID_INPUT",
@@ -689,7 +693,8 @@ defineOperation("linkedin_assist.update_settings", {
   schema: linkedInAssistSettingsSchema as unknown as z.ZodType<z.infer<typeof linkedInAssistSettingsSchema>>,
   async run({ args, context }) {
     const userId = requireUser(context);
-    const { settings: before } = await loadSettings(context.businessId, userId);
+    const { settings: effective, personPaused } = await loadSettings(context.businessId, userId);
+    const before = { ...effective, paused: personPaused };
     const { error } = await db()
       .from("linkedin_assist_settings")
       .upsert(

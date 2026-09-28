@@ -37,6 +37,8 @@ import {
 import { loadAgentOfferTarget, loadCatalogueOptions } from "@/lib/commercial/rules-queries";
 import { WHOLE_CATALOGUE } from "@/lib/agents/offer-target";
 import type { AgentOfferView } from "@/components/agents/agent-tabs";
+import { loadAgentVoiceAvailability } from "@/lib/agents/voice-calls-guard";
+import { agentCallingScope } from "@/lib/agents/voice-calls";
 
 export const metadata: Metadata = { title: "Agent" };
 export const dynamic = "force-dynamic";
@@ -119,6 +121,13 @@ export default async function AgentPage({
         )
       : null;
 
+  // "Phone leads with AI" (0176): read only for the Settings tab of an agent
+  // that phones, failing on its own (the panel says so).
+  const voiceAvailability =
+    tab === "settings" && agentCallingScope(agent.agentType).applies
+      ? await loadAgentVoiceAvailability(workspace.businessId, canManage).catch(() => null)
+      : null;
+
   const runs = (runsResult.data ?? []).map((run) => ({
     id: run.id,
     title: run.title,
@@ -185,7 +194,7 @@ export default async function AgentPage({
         <OverviewTab agent={agent} activity={activity} runCount={runs.length} />
       )}
       {tab === "leads" && <LeadsTab leads={leads} />}
-      {tab === "queue" && <QueueTab queue={queue} runs={runs} />}
+      {tab === "queue" && <QueueTab queue={queue} runs={runs} canDecideCalls={hasRole(workspace.role, "member")} />}
       {tab === "sources" && <SourcesTab sources={sources} />}
       {tab === "campaign" && <CampaignTab agent={agent} />}
       {tab === "activity" && <ActivityTab activity={activity} />}
@@ -196,6 +205,7 @@ export default async function AgentPage({
           controls={<AgentControls id={id} status={agent.status} cadence={agent.cadence} />}
           plans={plans}
           offer={offer}
+          voiceAvailability={voiceAvailability}
         />
       )}
     </div>

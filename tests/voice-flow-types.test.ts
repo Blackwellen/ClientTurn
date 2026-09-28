@@ -74,7 +74,7 @@ describe("part B: every route", () => {
       }
       assert.match(b.text, /YOUR ONE MOVE NOW: \S/);
       assert.match(b.text, /SEND ME SOMETHING\./);
-      assert.match(b.text, /One or two short sentences a turn, under 35 words\. One question at most/);
+      assert.match(b.text, /One or two short sentences a turn, under 25 words\. One question at most/);
       assert.match(b.text, /Spell an email address back letter by letter/);
       assert.match(b.text, /No invented deadline, scarcity, discount or statistic/);
       assert.match(b.text, /Never claim to be human/);
@@ -87,7 +87,8 @@ describe("part B: every route", () => {
     assert.match(buildVoiceCallBrief(input({ route: "NURTURE" })).move, /Check in/);
     assert.match(buildVoiceCallBrief(input({ route: "REACTIVATION" })).move, /still something they are looking at/);
     assert.match(buildVoiceCallBrief(input({ route: "RETURN_CALL", direction: "INBOUND" })).move, /They rang back/);
-    assert.match(buildVoiceCallBrief(input({ route: "QUALIFICATION" })).move, /Ask what prompted their enquiry/);
+    // Live call 2026-09-28: a qualification call works through its question plan.
+    assert.match(buildVoiceCallBrief(input({ route: "QUALIFICATION" })).move, /QUESTION PLAN/);
   });
 });
 

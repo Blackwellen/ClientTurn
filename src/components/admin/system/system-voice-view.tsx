@@ -102,6 +102,15 @@ export function SystemVoiceView({ ops }: { ops: VoiceOps }) {
         />
       </div>
 
+      {ops.maintenanceHold && (
+        <p role="status" className="rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-[12.5px] text-warning-700">
+          Outbound AI calls are held for maintenance ({ops.maintenanceHold.level})
+          {ops.maintenanceHold.endsAt ? ` until ${formatDateTime(ops.maintenanceHold.endsAt)}` : " until the window is ended"}. Queued dials are
+          re-scheduled, not dropped; inbound return calls are still answered. Tick &quot;Keep automated follow-up running&quot; on the window in
+          Admin, Site to let calls through.
+        </p>
+      )}
+
       {!ops.controlsInstalled && (
         <p className="rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-[12.5px] text-warning-700">
           Pause outbound, number suspension and spending limits need migration 0158, which is not applied on this database yet. The workspace kill switch works now.

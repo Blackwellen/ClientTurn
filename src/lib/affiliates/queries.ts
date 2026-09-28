@@ -343,7 +343,7 @@ export async function listCommissions(
   const { data } = await supabase
     .from("affiliate_commissions")
     .select(
-      `id, status, base_amount_minor, commission_amount_minor, currency, period_month,
+      `id, entry_type, status, base_amount_minor, commission_amount_minor, currency, period_month,
        payable_at, paid_at, reversal_reason, created_at,
        affiliate_referrals ( display_label, created_at )`,
     )
@@ -359,6 +359,7 @@ export async function listCommissions(
 
     return {
       id: row.id,
+      entryType: (row as { entry_type?: string | null }).entry_type ?? null,
       status: row.status as CommissionStatus,
       baseAmountMinor: row.base_amount_minor,
       commissionAmountMinor: row.commission_amount_minor,

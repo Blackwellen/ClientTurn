@@ -107,10 +107,16 @@ describe("part F: one actor per lead", () => {
 describe("part F: AI permissions and the opt-out", () => {
   test("with AI off, nothing commercial runs, and an opt-out still does", () => {
     const off = { ...ALL_ON, aiEnabled: false };
-    for (const name of ["check_availability", "send_checkout_link", "send_booking_link", "calculate_quote", "schedule_callback", "record_fact"] as const) {
-      const args = name === "send_checkout_link" ? { item: "x", channel: "sms" } : name === "send_booking_link" ? { channel: "sms" } : name === "calculate_quote" ? { items: [{ name: "x", quantity: 1 }] } : name === "record_fact" ? { dimension: "TEAM_SIZE", value: "5", confirmed: false } : name === "schedule_callback" ? { by: "PERSON" } : {};
+    for (const name of ["check_availability", "send_checkout_link", "send_booking_link", "calculate_quote", "schedule_callback"] as const) {
+      const args = name === "send_checkout_link" ? { item: "x", channel: "sms" } : name === "send_booking_link" ? { channel: "sms" } : name === "calculate_quote" ? { items: [{ name: "x", quantity: 1 }] } : name === "schedule_callback" ? { by: "AI" } : {};
       assert.equal(voiceToolGate({ name, args: args as never, call: row, permissions: off, prior: [] }).allowed, false, name);
     }
+    // Second live call 2026-09-28 (docs/VOICE.md §16.16): noting what the lead
+    // said and a person's call-back are core call functions, not selling, so
+    // they follow the call, not the text assistant's switch. The dial itself
+    // is refused while the assistant is off (entitlement AI_ASSISTANT_OFF).
+    assert.equal(voiceToolGate({ name: "record_fact", args: { dimension: "TEAM_SIZE", value: "5", confirmed: false } as never, call: row, permissions: off, prior: [] }).allowed, true);
+    assert.equal(voiceToolGate({ name: "schedule_callback", args: { by: "PERSON" } as never, call: row, permissions: off, prior: [] }).allowed, true);
     assert.equal(voiceToolGate({ name: "opt_out", args: { scope: "ALL" }, call: row, permissions: { ...off, transferHuman: false }, prior: [] }).allowed, true);
   });
 

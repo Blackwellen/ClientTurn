@@ -103,22 +103,22 @@ export function BusinessLearningSection() {
           subtitle="Editable, and attributed to a source"
           actions={<Badge tone="green">Reviewed</Badge>}
         >
-          <dl className="fl-deflist">
+          <div role="list" className="fl-deflist">
             {LEARNED_PROFILE.map((row, index) => {
               const RowIcon = PROFILE_ICONS[index] ?? Briefcase;
               return (
-                <div className="fl-def" key={row.label}>
+                <div role="listitem" className="fl-def" key={row.label}>
                   <span aria-hidden className="fl-def-icon">
                     <RowIcon size={13} />
                   </span>
                   <div>
-                    <dt>{row.label}</dt>
-                    <dd>{row.value.join(", ")}</dd>
+                    <span className="fl-def-term">{row.label}</span>
+                    <span className="fl-def-desc">{row.value.join(", ")}</span>
                   </div>
                 </div>
               );
             })}
-          </dl>
+          </div>
         </AppSurface>
         </StaggerItem>
       </StaggerReveal>

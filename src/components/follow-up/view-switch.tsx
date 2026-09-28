@@ -30,6 +30,7 @@ export function SegmentedViewSwitch({ value }: { value: FollowUpViewValue }) {
   return (
     <SegmentedControl
       accent
+      label="View"
       // Three segments: scroll rather than overflow the page on a phone.
       className="max-w-full overflow-x-auto"
       value={value}

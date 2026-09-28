@@ -46,6 +46,7 @@ import {
 import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/public/faq";
 import { CodeBlock } from "@/components/marketing/public/developers/code-block";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 const title = "For developers";
 const description =
@@ -509,7 +510,7 @@ export default function DevelopersPage() {
               description="Each endpoint calls the same operation the app uses, so scoping, status rules and audit always apply."
             />
 
-            <div className="pub-ref-scroll mt-9">
+            <ScrollRegion className="pub-ref-scroll mt-9">
               <table className="pub-ref">
                 <caption className="sr-only">
                   ClientTurn API endpoints, with the scope and minimum workspace
@@ -539,7 +540,7 @@ export default function DevelopersPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
 
             <PublicCard className="mt-8 p-6">
               <div className="flex items-start gap-3">
@@ -592,7 +593,7 @@ export default function DevelopersPage() {
                 </ul>
               </div>
 
-              <div className="pub-ref-scroll">
+              <ScrollRegion className="pub-ref-scroll">
                 <table className="pub-ref">
                   <caption className="sr-only">
                     The permissions a ClientTurn API key or assistant connection
@@ -615,7 +616,7 @@ export default function DevelopersPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollRegion>
             </div>
           </Band>
 
@@ -655,7 +656,7 @@ export default function DevelopersPage() {
                   Only events that something actually sends are listed.
                 </p>
 
-                <div className="pub-ref-scroll mt-5">
+                <ScrollRegion className="pub-ref-scroll mt-5">
                   <table className="pub-ref">
                     <caption className="sr-only">
                       The events ClientTurn will send to your endpoint
@@ -677,7 +678,7 @@ export default function DevelopersPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollRegion>
 
                 <h3 className="pub-h3 mt-8">Delivery</h3>
                 <ul className="pub-register mt-3">
@@ -885,7 +886,7 @@ export default function DevelopersPage() {
                 </p>
               </div>
 
-              <div className="pub-ref-scroll">
+              <ScrollRegion className="pub-ref-scroll">
                 <table className="pub-ref">
                   <caption className="sr-only">
                     ClientTurn API error codes and their meanings
@@ -909,7 +910,7 @@ export default function DevelopersPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollRegion>
             </div>
           </Band>
 

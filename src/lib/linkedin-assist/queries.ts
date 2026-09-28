@@ -30,6 +30,8 @@ export type LinkedInAssistBoard = {
   settings: LinkedInAssistSettings;
   configured: boolean;
   aiEnabled: boolean;
+  /** A platform admin's hold on the workspace (0175): the list is paused, replies only. */
+  workspaceHold: { reason: string; heldAt: string } | null;
   tasks: LinkedInTaskView[];
   pace: Omit<PaceResult<LinkedInTaskView>, "visible">;
   upcoming: number;
@@ -52,7 +54,7 @@ export async function getLinkedInAssistBoard(input: {
   const today = localDate(now, input.timezone || "Europe/London");
   const since = new Date(now.getTime() - 35 * 86_400_000).toISOString();
 
-  const [{ settings, configured }, { aiEnabled }, openResult, sentResult, upcomingResult, activeResult] =
+  const [{ settings, configured, personPaused, workspaceHold }, { aiEnabled }, openResult, sentResult, upcomingResult, activeResult] =
     await Promise.all([
       loadSettings(input.businessId, input.userId),
       draftBusiness(input.businessId),
@@ -182,9 +184,12 @@ export async function getLinkedInAssistBoard(input: {
 
   return {
     today,
-    settings,
+    // The person's own switch for the pacing form; the hold is shown apart,
+    // so saving the form never turns a platform hold into a personal pause.
+    settings: { ...settings, paused: personPaused },
     configured,
-    aiEnabled,
+    aiEnabled: aiEnabled && !workspaceHold,
+    workspaceHold,
     tasks: [...visible, ...stopped],
     pace,
     upcoming: upcomingResult.count ?? 0,

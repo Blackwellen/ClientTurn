@@ -23,7 +23,7 @@ const STYLES: Record<Variant, { wrap: string; icon: string }> = {
   info: { wrap: "border-info-100", icon: "text-info-600" },
 };
 
-const ICONS: Record<Variant, React.ComponentType<{ className?: string }>> = {
+const ICONS: Record<Variant, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
   success: CheckCircle2,
   error: AlertCircle,
   warning: AlertTriangle,
@@ -56,8 +56,23 @@ export function useToast() {
   return ctx;
 }
 
+/**
+ * Screen-reader announcements for toasts.
+ *
+ * Each card used to carry `role="status"` / `role="alert"` itself, but a live
+ * region that is inserted into the DOM together with its text is announced
+ * inconsistently (NVDA and VoiceOver routinely drop it) -- live regions must
+ * exist before their content changes (SC 4.1.3, a11y audit 2026-09-28). So
+ * two regions are mounted once, empty, and the newest toast's text is written
+ * into the right one. `n` alternates a trailing no-break space so the same
+ * message twice in a row is still a change, and so still announced.
+ */
+type Announcement = { text: string; n: number };
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
+  const [polite, setPolite] = React.useState<Announcement>({ text: "", n: 0 });
+  const [assertive, setAssertive] = React.useState<Announcement>({ text: "", n: 0 });
 
   const dismiss = React.useCallback((id: string) => {
     setToasts((t) => t.filter((x) => x.id !== id));
@@ -80,6 +95,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       duration: options.duration ?? 5000,
     };
     setToasts((t) => [...t, next].slice(-MAX_VISIBLE));
+    const text = next.description ? `${next.title}. ${next.description}` : next.title;
+    const setRegion = variant === "error" ? setAssertive : setPolite;
+    setRegion((current) => ({ text, n: current.n + 1 }));
   }, []);
 
   const value = React.useMemo(() => ({ toast, dismiss }), [toast, dismiss]);
@@ -87,6 +105,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {polite.text}
+        {polite.n % 2 ? "\u00a0" : ""}
+      </div>
+      <div className="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        {assertive.text}
+        {assertive.n % 2 ? "\u00a0" : ""}
+      </div>
       <div
         role="region"
         aria-label="Notifications"
@@ -124,7 +150,6 @@ function ToastCard({
 
   return (
     <div
-      role={toast.variant === "error" ? "alert" : "status"}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -136,6 +161,7 @@ function ToastCard({
       )}
     >
       <Icon
+        aria-hidden
         className={cn("size-4 shrink-0 mt-0.5", STYLES[toast.variant].icon)}
       />
       <div className="min-w-0 flex-1">

@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { runOperation } from "@/lib/services";
 import type { VoiceSettingsView } from "@/lib/services/operations/voice";
 import type { CallCard } from "./call-view";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { DRAWER_CALL_UNAVAILABLE, drawerCallState, type DrawerCallState } from "./call-button-state";
 
 /**
  * Reads for the voice UI (Settings -> Voice, the lead page). Both go through
@@ -30,3 +32,38 @@ export const loadLeadCalls = cache(async (businessId: string, userId: string, ro
   const result = await runOperation<{ calls: CallCard[] }>("voice.calls_list", { leadId, limit: 25 }, ctx({ businessId, userId, role }));
   return result.success ? { ok: true, data: result.data.calls } : { ok: false, code: result.code, message: result.message };
 });
+
+/**
+ * "Call with AI" in the Leads drawer: the same reads and the same rule
+ * (`callDisabledReason`) as the lead page's AI calls panel. Any failed read
+ * gives a disabled button with a reason, never an enabled one.
+ */
+export async function loadDrawerCallState(
+  businessId: string,
+  userId: string,
+  role: Viewer["role"],
+  lead: { id: string; phone: string | null; opted_out: boolean },
+): Promise<DrawerCallState> {
+  try {
+    const [view, calls, flags] = await Promise.all([
+      loadVoiceSettingsView(businessId, userId, role),
+      loadLeadCalls(businessId, userId, role, lead.id),
+      createAdminClient()
+        .from("leads")
+        .select("anonymised_at, archived_at")
+        .eq("business_id", businessId)
+        .eq("id", lead.id)
+        .maybeSingle(),
+    ]);
+    if (!view.ok || !calls.ok || flags.error) return DRAWER_CALL_UNAVAILABLE;
+    const row = flags.data as { anonymised_at: string | null; archived_at: string | null } | null;
+    return drawerCallState({
+      role,
+      lead: { phone: lead.phone, optedOut: lead.opted_out, anonymised: Boolean(row?.anonymised_at), archived: Boolean(row?.archived_at) },
+      view: view.data,
+      latest: calls.data[0] ?? null,
+    });
+  } catch {
+    return DRAWER_CALL_UNAVAILABLE;
+  }
+}

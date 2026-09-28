@@ -489,10 +489,10 @@ describe("surfaces, terms and privacy", () => {
     assert.doesNotMatch(exportRoute, /stripe_connect_account_id|tax_identifier|payment_profile_json/);
   });
 
-  test("the public terms state the behaviour and the PECR promotion rules, pending owner review", () => {
+  test("the public terms state the behaviour and the PECR promotion rules, owner-approved", () => {
     const terms = read("src/app/(marketing)/affiliates/terms/page.tsx");
-    assert.match(terms, /DRAFT FOR OWNER REVIEW/);
-    assert.match(terms, /index: false/);
+    assert.match(terms, /APPROVED BY THE OWNER 2026-09-28/);
+    assert.doesNotMatch(terms, /index: false/);
     for (const phrase of [
       /excluding VAT/,
       /reversed in proportion to the amount/,

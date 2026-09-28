@@ -59,7 +59,9 @@ export function Pagination({
         className,
       )}
     >
-      <p className="text-[13px] text-content-muted lr-tabular">
+      {/* Polite live region: paging or resizing re-renders the list with no
+          other cue for a screen-reader user that anything changed. */}
+      <p className="text-[13px] text-content-muted lr-tabular" aria-live="polite">
         Showing {from}&ndash;{to} of {total}
         {noun ? ` ${noun}` : ""}
       </p>

@@ -1,7 +1,15 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
-/** The primary action always sits top-right. */
+/**
+ * The primary action always sits top-right.
+ *
+ * The title is the page's `<h1>`. It used to be an `<h2>`, and the only h1 in
+ * the app shell was the top bar's mobile title, which is `display: none` from
+ * `lg` up -- so on a desktop Dashboard, Inbox, Follow-Up, Agents or Settings
+ * there was no h1 at all, and on a phone the pages that did render their own
+ * had two (SC 1.3.1 / 2.4.6, a11y audit 2026-09-28).
+ */
 export function PageHeader({
   title,
   description,
@@ -21,7 +29,7 @@ export function PageHeader({
   return (
     <div className={cn("flex flex-wrap items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        <h2
+        <h1
           className={cn(
             "font-semibold leading-tight text-content",
             size === "lg"
@@ -30,7 +38,7 @@ export function PageHeader({
           )}
         >
           {title}
-        </h2>
+        </h1>
         {description && (
           <p
             className={cn(

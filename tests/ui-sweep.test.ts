@@ -245,8 +245,11 @@ describe("back navigation", () => {
 describe("responsive shell", () => {
   test("the mobile topbar title shrinks instead of pushing the account menu off-screen", () => {
     const source = read("src/components/app/top-bar.tsx");
-    assert.match(source, /<h1 className="min-w-0 flex-1 truncate/);
-    assert.doesNotMatch(source, /<h1 className="[^"]*shrink-0/);
+    // A <p>, not an <h1>, since the a11y audit (2026-09-28): the page's own
+    // PageHeader is the h1, and a second one here doubled it on phones.
+    assert.match(source, /<p className="min-w-0 flex-1 truncate[^"]*lg:hidden">/);
+    assert.doesNotMatch(source, /<h1 className="[^"]*lg:hidden/);
+    assert.doesNotMatch(source, /<(?:h1|p) className="[^"]*shrink-0[^"]*lg:hidden/);
   });
 
   test("buttons get a 44px touch target on coarse pointers", () => {

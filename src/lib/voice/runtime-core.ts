@@ -126,7 +126,10 @@ export type NewCallRow = Omit<
   | "started_at"
   | "answered_at"
   | "ended_at"
->;
+> & {
+  /** The agent that asked for this call (0176); omitted for every other caller. */
+  requested_by_agent_id?: string | null;
+};
 
 export type VoiceSettingsRow = {
   voice_enabled: boolean;
@@ -575,6 +578,12 @@ export type RequestCallInput = {
   /** A retry of an earlier call: its attempt number and when to dial. */
   attemptNumber?: number;
   notBefore?: Date | null;
+  /**
+   * The agent that asked (caller AGENT, "Phone leads with AI", 0176). Set only
+   * by the voice.request_call handler after its agent checks; never a person,
+   * so it never skips the human-takeover hold.
+   */
+  requestedByAgentId?: string | null;
 };
 
 export type RequestCallResult =
@@ -602,7 +611,7 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
 
   // A person pressing "Call with AI" (the app, signed in); not MCP, API,
   // an agent or a retry.
-  const personRequested = input.entryPoint === "OUTBOUND_DIAL" && Boolean(input.requestedBy) && !input.attemptNumber;
+  const personRequested = input.entryPoint === "OUTBOUND_DIAL" && Boolean(input.requestedBy) && !input.attemptNumber && !input.requestedByAgentId;
   const decision = decide(deps, facts, ctx, null, input.route, input.entryPoint, personRequested);
   if (decision.kind === "CANCEL" || decision.kind === "SKIP") {
     if (decision.kind === "CANCEL") {
@@ -652,6 +661,8 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
     opener_version: OPENER_VERSION,
     recording_enabled: Boolean(settings?.recording_enabled),
     queued_at: now.toISOString(),
+    // Only when an agent asked, so a workspace without 0176 is unaffected.
+    ...(input.requestedByAgentId ? { requested_by_agent_id: input.requestedByAgentId } : {}),
   });
 
   if (inserted) {
@@ -664,7 +675,14 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
       entityType: "voice_call",
       entityId: row.id,
       actorUserId: input.requestedBy,
-      metadata: { lead_id: input.leadId, route: input.route, attempt: attemptNumber, entry_point: input.entryPoint, not_before: notBefore.toISOString() },
+      metadata: {
+        lead_id: input.leadId,
+        route: input.route,
+        attempt: attemptNumber,
+        entry_point: input.entryPoint,
+        not_before: notBefore.toISOString(),
+        ...(input.requestedByAgentId ? { agent_id: input.requestedByAgentId } : {}),
+      },
     });
   }
   return {

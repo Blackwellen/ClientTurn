@@ -138,6 +138,7 @@ export function AvatarGroup({
       ))}
       {overflow > 0 && (
         <span
+          role="img"
           aria-label={`${overflow} more`}
           className={cn(
             "inline-flex shrink-0 items-center justify-center rounded-full font-semibold",

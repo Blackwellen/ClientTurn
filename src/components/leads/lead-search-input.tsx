@@ -83,7 +83,7 @@ export function LeadSearchInput({
           "h-10 w-full rounded-lg border border-line-strong bg-surface pl-9 pr-8 text-[13px]",
           "text-content shadow-xs placeholder:text-content-subtle",
           "transition-colors duration-[var(--lr-duration-fast)]",
-          "focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
+          "focus:border-[var(--lr-focus-border)] focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
           "[&::-webkit-search-cancel-button]:appearance-none",
         )}
       />

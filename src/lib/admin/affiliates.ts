@@ -273,7 +273,7 @@ async function loadCommissions(
   const { data } = await db
     .from("affiliate_commissions")
     .select(
-      `id, affiliate_id, status, base_amount_minor, commission_amount_minor,
+      `id, affiliate_id, entry_type, reversal_reason, status, base_amount_minor, commission_amount_minor,
        currency, period_month, payable_at, created_at, businesses ( name )`,
     )
     // Pending first: those are the ones an operator can still act on.
@@ -285,6 +285,8 @@ async function loadCommissions(
     id: row.id,
     affiliateName: nameById.get(row.affiliate_id) ?? "Unknown partner",
     businessName: (row.businesses as unknown as { name: string } | null)?.name ?? null,
+    entryType: (row as { entry_type?: string | null }).entry_type ?? null,
+    reversalReason: (row as { reversal_reason?: string | null }).reversal_reason ?? null,
     status: row.status,
     baseAmountMinor: row.base_amount_minor,
     commissionAmountMinor: row.commission_amount_minor,

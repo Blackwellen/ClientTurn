@@ -14,6 +14,8 @@ import { VOICE_ROUTES } from "@/lib/voice/time-governor";
 import { releaseMinutes, MinuteStoreUnavailable } from "@/lib/voice/minutes-core";
 import { supabaseMinuteStore, readMinuteBalance } from "@/lib/voice/minutes";
 import { requestCall, scheduleNumberRelease, startProvisioning, type CallRow } from "@/lib/voice/runtime-core";
+import { agentCallRefusal } from "@/lib/agents/voice-calls";
+import { loadAgentCallFacts } from "@/lib/agents/voice-calls-guard";
 import { loadEntitlementFacts, provisioningFingerprint, readVoiceSettings, readWorkspaceNumber, serverVoiceDeps } from "@/lib/voice/server-deps";
 import { voiceIntegrationStatus } from "@/lib/voice/providers/registry";
 import { provisioningReadiness } from "@/lib/voice/numbers/provisioning-details";
@@ -488,6 +490,12 @@ const requestCallSchema = z.object({
    * CALL_REQUESTED). A person's statement about consent: UI only.
    */
   recordCallRequest: z.object({ note: z.string().trim().min(3).max(500) }).optional(),
+  /**
+   * The agent asking ("Phone leads with AI", 0176). Required for, and only
+   * accepted from, caller AGENT: a person or client cannot attribute a call
+   * to an agent, and an agent cannot call without naming itself.
+   */
+  agentId: z.uuid().optional(),
 });
 type RequestCallArgs = z.infer<typeof requestCallSchema>;
 
@@ -498,18 +506,41 @@ defineOperation("voice.request_call", {
       if (context.caller !== "UI") throw new ServiceError("FORBIDDEN_SCOPE", "Only a person in the app can record that a lead asked to be called.");
       await recordCallRequest(context.businessId, args.leadId, args.recordCallRequest.note, context.userId);
     }
+    // An agent asking (caller AGENT). Its own checks come first: the agent is
+    // running with "Phone leads with AI" on, the workspace's "Phone leads"
+    // permission is on (never widened here), the route is one the agent makes
+    // and its daily cap is not spent. The lead's eligibility is then decided
+    // by requestCall -> decideDial exactly as for the button.
+    let requestedByAgentId: string | null = null;
+    if (context.caller === "AGENT") {
+      if (!args.agentId) throw new ServiceError("FORBIDDEN_SCOPE", "Only an agent with Phone leads with AI on can ask for a call.");
+      const facts = await loadAgentCallFacts(context.businessId, args.agentId, args.route, new Date());
+      const refusal = agentCallRefusal(facts);
+      if (refusal) throw new ServiceError(refusal.code, refusal.message, [{ code: "permission-denied", message: refusal.reason }]);
+      requestedByAgentId = args.agentId;
+    } else if (args.agentId) {
+      throw new ServiceError("FORBIDDEN_SCOPE", "Only an agent can ask for a call as an agent.");
+    }
     const result = await requestCall(serverVoiceDeps(), {
       businessId: context.businessId,
       leadId: args.leadId,
       route: args.route,
       entryPoint: context.caller === "MCP" ? "MCP" : context.caller === "API" ? "API" : "OUTBOUND_DIAL",
-      requestedBy: context.userId,
+      // An agent is never a person: it keeps the human-takeover hold.
+      requestedBy: context.caller === "AGENT" ? null : context.userId,
+      ...(requestedByAgentId ? { requestedByAgentId } : {}),
     });
     if (!result.ok) throw new ServiceError(result.code === "NOT_FOUND" ? "NOT_FOUND" : result.code, result.message, [{ code: result.productState, message: result.reason }]);
     return {
       data: result,
       entityId: result.callId,
-      after: { lead_id: args.leadId, route: args.route, scheduled_for: result.scheduledFor, deferred_reason: result.deferredReason },
+      after: {
+        lead_id: args.leadId,
+        route: args.route,
+        scheduled_for: result.scheduledFor,
+        deferred_reason: result.deferredReason,
+        ...(requestedByAgentId ? { agent_id: requestedByAgentId } : {}),
+      },
       warnings: result.deferredReason
         ? [{ code: "deferred", message: result.deferredReason === "OUTSIDE_CALLING_HOURS" ? "It's outside the lead's calling hours, so the call is booked for when they open." : "The call is queued and will start shortly." }]
         : [],
@@ -613,6 +644,7 @@ async function cardsFor(businessId: string, role: string, rows: (CallCardRow & {
   const tr = byCall((transcripts.data ?? []) as { voice_call_id: string; segments: TranscriptSegment[] | null }[]);
   const rc = byCall((recordings.data ?? []) as { voice_call_id: string; status: string; object_key: string | null }[]);
   const qual = new Map(((leads.data ?? []) as { id: string; qualification_state: string | null }[]).map((l) => [l.id, l.qualification_state]));
+  const calledBy = await agentNamesFor(businessId, ids);
 
   const cards: CallCard[] = [];
   for (const row of rows) {
@@ -639,10 +671,31 @@ async function cardsFor(businessId: string, role: string, rows: (CallCardRow & {
         costGbp,
         qualificationChange: before ? { before, after: qual.get(row.lead_id) ?? null } : null,
         viewerRole: role,
+        calledBy: calledBy.get(row.id) ?? null,
       }),
     );
   }
   return cards;
+}
+
+/**
+ * "Called by <agent>": the agent behind each call that one asked for (0176).
+ * A separate, tolerant read so call cards still load before 0176 is applied.
+ */
+async function agentNamesFor(businessId: string, callIds: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const calls = await db().from("voice_calls").select("id, requested_by_agent_id").eq("business_id", businessId).in("id", callIds);
+  if (calls.error) return names;
+  const rows = ((calls.data ?? []) as { id: string; requested_by_agent_id: string | null }[]).filter((r) => r.requested_by_agent_id);
+  if (!rows.length) return names;
+  const agents = await db()
+    .from("agents")
+    .select("id, name")
+    .eq("business_id", businessId)
+    .in("id", [...new Set(rows.map((r) => r.requested_by_agent_id as string))]);
+  const byId = new Map(((agents.data ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]));
+  for (const r of rows) names.set(r.id, byId.get(r.requested_by_agent_id as string) ?? "an agent");
+  return names;
 }
 
 const callsListSchema = z.object({ leadId: z.uuid().optional(), limit: z.number().int().min(1).max(100).default(25) }).default({ limit: 25 });

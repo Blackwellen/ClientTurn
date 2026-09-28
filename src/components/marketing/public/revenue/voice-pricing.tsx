@@ -17,6 +17,7 @@ import {
 import { PublicCard, SectionEyebrow, GlyphTile } from "../ui";
 import { PrimaryCta, SecondaryCta } from "../actions";
 import "./revenue.css";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 /**
  * Voice and quote-to-cash pricing, for /pricing (#voice-pricing).
@@ -82,7 +83,7 @@ export function VoicePricingBand() {
             Starter and Growth: voice add-on
           </h3>
           <p className="pub-small mt-2">Prepaid minute packs plus a dedicated number.</p>
-          <div className="pub-screen-scroll">
+          <ScrollRegion className="pub-screen-scroll">
             <table className="rv-vp-table">
               <caption className="sr-only">Voice minute packs</caption>
               <thead>
@@ -112,7 +113,7 @@ export function VoicePricingBand() {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
           <p className="pub-small mt-3">Bought in Billing once your plan is active.</p>
           <div className="mt-auto flex flex-wrap gap-3 pt-6">
             <SecondaryCta placement="pricing_voice_addon" href="/signup?plan=growth" withArrow>

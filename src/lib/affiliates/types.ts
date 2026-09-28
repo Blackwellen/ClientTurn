@@ -409,6 +409,8 @@ export type ReferralRow = {
 
 export type CommissionRow = {
   id: string;
+  /** The ledger row's kind (ledger-rules.ts ledgerEntryLabel). */
+  entryType: string | null;
   status: CommissionStatus;
   baseAmountMinor: number;
   commissionAmountMinor: number;

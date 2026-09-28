@@ -57,7 +57,7 @@ export function TokenSelect({
       <div
         className={cn(
           "flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2 py-1.5 shadow-xs",
-          "focus-within:border-accent-500 focus-within:ring-2 focus-within:ring-[var(--lr-ring)]",
+          "focus-within:border-[var(--lr-focus-border)] focus-within:ring-2 focus-within:ring-[var(--lr-ring)]",
         )}
       >
         {values.length === 0 && (
@@ -108,7 +108,7 @@ export function TokenSelect({
             }}
             className={cn(
               "h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-surface px-2.5 text-[12.5px]",
-              "focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
+              "focus:border-[var(--lr-focus-border)] focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
               "disabled:cursor-not-allowed disabled:bg-surface-sunken",
             )}
           />

@@ -149,7 +149,9 @@ export function AppShell({
             aria-modal="true"
             aria-label="Navigation"
             className={cn(
-              "absolute inset-y-0 left-0 border-r border-[var(--ct-shell-sidebar-border)]",
+              // ct-on-dark: the close button sits on the rail's near-black but
+              // outside .ct-rail, so it needs the lime focus ring remapped too.
+              "ct-on-dark absolute inset-y-0 left-0 border-r border-[var(--ct-shell-sidebar-border)]",
               "animate-[lr-fade-in_var(--lr-duration-base)_var(--lr-ease)]",
             )}
             style={{ width: "min(86vw, 320px)" }}

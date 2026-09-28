@@ -100,9 +100,9 @@ export function AffiliateTopBar({
         <Menu className="size-4" />
       </IconButton>
 
-      <h1 className="min-w-0 shrink-0 truncate text-[15px] font-semibold text-content lg:hidden">
+      <p className="min-w-0 shrink-0 truncate text-[15px] font-semibold text-content lg:hidden">
         {titleForAffiliatePath(pathname)}
-      </h1>
+      </p>
 
       <div className="hidden min-w-0 flex-1 lg:flex lg:max-w-[690px]">
         <button
@@ -112,7 +112,7 @@ export function AffiliateTopBar({
             "flex h-11 w-full items-center gap-2.5 rounded-[11px] border border-line-strong bg-surface px-3.5",
             "text-[14px] text-content-subtle shadow-xs transition-colors duration-[var(--lr-duration-fast)]",
             "hover:bg-surface-hover hover:text-content-secondary",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lr-ring)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
           )}
         >
           <Search className="size-4 shrink-0" aria-hidden />

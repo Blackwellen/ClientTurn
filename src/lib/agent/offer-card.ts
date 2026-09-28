@@ -162,7 +162,7 @@ export function splitList(value: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-function jsonStrings(value: unknown): string[] {
+export function jsonStrings(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.flatMap((entry) => {
       if (typeof entry === "string") return [entry];

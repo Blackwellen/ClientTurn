@@ -151,13 +151,22 @@ export const REMINDER_AFTER_SILENCE_MS = 8_000;
  * little less often (every pause filled sounds scripted), no artificial
  * background (a fake office would be theatre on a call that says it is an
  * AI; real lines add their own noise), normal speed.
+ *
+ * Second live call (2026-09-28): the assistant was cut off and restarted its
+ * own sentence ("Does a call ... Does a call at six"), and landed on the
+ * lead's words ("Thanks, ... Michael. A colleague ..."). Interruption
+ * sensitivity 0.75 -> 0.6 (a breath, a backchannel or line noise no longer
+ * stops it mid-sentence; a real "no, wait" still does), responsiveness
+ * 0.85 -> 0.8 (it waits a beat longer for the lead to finish), backchannel
+ * 0.5 -> 0.3 (fewer "mm"s over the lead). Stored profiles keep their values;
+ * these are the defaults for a profile never edited.
  */
 export const DEFAULT_VOICE_FEEL = {
   speed: 1,
-  responsiveness: 0.85,
-  interruptionSensitivity: 0.75,
+  responsiveness: 0.8,
+  interruptionSensitivity: 0.6,
   backchannel: true,
-  backchannelFrequency: 0.5,
+  backchannelFrequency: 0.3,
   ambient: "none" as AmbientSound,
 };
 

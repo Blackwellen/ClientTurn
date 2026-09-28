@@ -26,6 +26,8 @@ import {
   hasRelativePhrase,
 } from "@/lib/dates";
 import type { CustomerDetail, UsageCell } from "@/lib/admin/types";
+import type { SupportSignals } from "@/lib/admin/support-signals-types";
+import { CustomerSupportSignals } from "./customer-support-signals";
 
 /* --------------------------------------------------------------- sections */
 
@@ -117,6 +119,7 @@ const CONNECTION_LABEL: Record<string, string> = {
  */
 export function CustomerSupportDrawer({
   detail,
+  signals,
   pending,
   onClose,
   onResendOnboarding,
@@ -125,6 +128,8 @@ export function CustomerSupportDrawer({
   onUnsuspend,
 }: {
   detail: CustomerDetail;
+  /** Read-only support signals (0171-0175); null when they could not be loaded. */
+  signals?: SupportSignals | null;
   pending: string | null;
   onClose: () => void;
   onResendOnboarding: () => void;
@@ -286,6 +291,8 @@ export function CustomerSupportDrawer({
           </ul>
         )}
       </Section>
+
+      {signals && <CustomerSupportSignals businessId={detail.id} signals={signals} />}
 
       <Section title="Plan &amp; usage">
         <div className="mb-3 flex items-start justify-between gap-4">

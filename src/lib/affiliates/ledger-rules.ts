@@ -245,3 +245,57 @@ export function negativeBalanceNotice(availableMinor: number, format: (minor: nu
 export function writeOffAmountMinor(availableMinor: number): number {
   return availableMinor < 0 ? Math.round(-availableMinor) : 0;
 }
+
+/* ------------------------------------------------------- ledger display -- */
+
+/**
+ * What one ledger row is, in words, for the partner portal and the admin
+ * commissions table. Before this, a write-off showed as an approved
+ * "commission" and a reversal or a dispute restore looked like any other row.
+ * An ADJUSTMENT carrying `reversal_reason = WRITE_OFF` is a write-off written
+ * before 0169 added the entry type.
+ */
+export function ledgerEntryLabel(entryType: string | null | undefined, reversalReason?: string | null): string {
+  switch (entryType) {
+    case "NEW_CUSTOMER":
+      return "Commission";
+    case "RENEWAL":
+      return "Renewal (no longer earned)";
+    case "REVERSAL":
+      return "Reversal";
+    case "REACCRUAL":
+      return "Restored after dispute";
+    case "WRITE_OFF":
+      return "Written off";
+    case "ADJUSTMENT":
+      return reversalReason === "WRITE_OFF" ? "Written off" : "Adjustment";
+    default:
+      return "Commission";
+  }
+}
+
+/**
+ * Whether a partnership may be ended now (admin -> End partnership). The
+ * owner decision covers a NEGATIVE balance (written off). A POSITIVE one must
+ * not be stranded: an ended partner is never included in a payout run, so
+ * money they earned would sit unpaid with nothing to release it. Pay it out,
+ * or reverse it with a reason, first. Money still in its hold is named so the
+ * operator knows it will become payable later.
+ */
+export function partnershipCloseBlocker(input: {
+  availableMinor: number;
+  pendingMinor: number;
+  openPayouts: number;
+  format: (minor: number) => string;
+}): string | null {
+  if (input.openPayouts > 0) {
+    return `This partner has ${input.openPayouts} payout${input.openPayouts === 1 ? "" : "s"} not yet paid or cancelled. Send or cancel ${input.openPayouts === 1 ? "it" : "them"} before ending the partnership.`;
+  }
+  if (input.availableMinor > 0) {
+    return `This partner has ${input.format(input.availableMinor)} of approved commission not yet paid. Pay it out, or reverse it with a reason, before ending the partnership.`;
+  }
+  if (input.pendingMinor > 0) {
+    return `This partner has ${input.format(input.pendingMinor)} of commission still in its hold. Wait for it to be approved and paid, or reverse it with a reason, before ending the partnership.`;
+  }
+  return null;
+}

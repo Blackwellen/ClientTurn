@@ -1,17 +1,21 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { ScrollRegion } from "./scroll-region";
 
 export function Table({
   className,
   ...props
 }: React.TableHTMLAttributes<HTMLTableElement>) {
+  // Keyboard-scrollable when it overflows (SC 2.1.1). A tab stop only, not a
+  // named landmark: a page with several tables would otherwise have several
+  // identically named regions.
   return (
-    <div className="w-full overflow-x-auto">
+    <ScrollRegion className="w-full overflow-x-auto">
       <table
         className={cn("w-full border-collapse text-sm", className)}
         {...props}
       />
-    </div>
+    </ScrollRegion>
   );
 }
 

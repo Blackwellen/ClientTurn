@@ -77,6 +77,9 @@ export type AdminCommissionRow = {
   id: string;
   affiliateName: string;
   businessName: string | null;
+  /** NEW_CUSTOMER, REVERSAL, REACCRUAL, ADJUSTMENT, WRITE_OFF (ledger-rules.ts ledgerEntryLabel). */
+  entryType: string | null;
+  reversalReason: string | null;
   status: string;
   baseAmountMinor: number;
   commissionAmountMinor: number;

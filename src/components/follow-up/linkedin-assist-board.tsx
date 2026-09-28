@@ -103,6 +103,11 @@ export function LinkedInAssistBoardView({ board }: { board: LinkedInAssistBoard 
               Pacing
             </Button>
           </div>
+          {board.workspaceHold && (
+            <p role="status" className="mt-2 text-[12.5px] text-warning-700">
+              LinkedIn Assist is paused for this workspace by ClientTurn support. Replies still show; nothing new can be added. Contact support to ask why.
+            </p>
+          )}
           {board.pace.notesExhausted && (
             <p className="mt-2 text-[12.5px] text-content-muted">
               Your free LinkedIn account has used this month&apos;s personalised notes, so connection requests go without one.

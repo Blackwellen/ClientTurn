@@ -27,8 +27,9 @@
 
   --lcp-text: #f2f6fa;
   --lcp-text-2: #98a4b6;
-  --lcp-text-3: #6e7b8e;
-  --lcp-text-4: #56637a;
+  --lcp-text-3: #768395; /* was #6e7b8e, 4.2:1 on panel-top */
+  /* Was #56637a (3.2:1 on the dark panels); lifted to clear 4.5:1. */
+  --lcp-text-4: #74829d;
 
   --lcp-blue: #2f7df7;
 
@@ -40,7 +41,7 @@
   --lcp-app-line-soft: #eef1f6;
   --lcp-app-text: #0b1020;
   --lcp-app-text-2: #4a5568;
-  --lcp-app-text-3: #6b7686;
+  --lcp-app-text-3: #667180; /* was #6b7686, 4.4:1 on cloud */
 
   position: relative;
   isolation: isolate;
@@ -101,7 +102,8 @@
   border-radius: 999px; font-size: 9.5px; font-weight: 650; white-space: nowrap;
   border: 1px solid transparent;
 }
-.lcp-pill[data-tone="new"] { background: #2f7df7; color: #fff; }
+/* White on #2f7df7 was 3.9:1; #196ff6 is the same blue at 4.5:1. */
+.lcp-pill[data-tone="new"] { background: #196ff6; color: #fff; }
 .lcp-pill[data-tone="followup"] { background: #f2c53f; color: #43310a; }
 .lcp-pill[data-tone="qualified"] { background: #4ec97e; color: #05301a; }
 .lcp-pill[data-tone="booked"] { background: #b7f34a; color: #23330a; }
@@ -397,7 +399,7 @@
 .lcp-panel-head-actions { display: flex; align-items: center; gap: 8px; }
 .lcp-panel-body { padding: 14px 16px 16px; }
 
-.lcp-btn-blue { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px; background: var(--lcp-blue); white-space: nowrap; font-size: 11px; font-weight: 600; color: #fff; }
+.lcp-btn-blue { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px; background: #196ff6; white-space: nowrap; font-size: 11px; font-weight: 600; color: #fff; }
 .lcp-btn-quiet { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--lcp-line-strong); background: #0f1726; white-space: nowrap; font-size: 11px; font-weight: 500; color: #b6c2d2; }
 .lcp-icon-quiet { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--lcp-text-3); }
 .lcp-toggle-chip { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 5px 0 10px; border-radius: 999px; border: 1px solid #2a5c39; background: #10291c; font-size: 11px; font-weight: 600; color: #6fe39a; }
@@ -511,7 +513,7 @@
 @media (max-width: 620px) { .lcp-qual-split { grid-template-columns: 1fr; } }
 .lcp-qs { display: grid; gap: 8px; }
 .lcp-q { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--lcp-line); border-radius: 11px; background: #0d1523; }
-.lcp-q-no { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; background: var(--lcp-blue); font-size: 10.5px; font-weight: 700; color: #fff; }
+.lcp-q-no { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; background: #196ff6; font-size: 10.5px; font-weight: 700; color: #fff; }
 .lcp-q-text { flex: 1; min-width: 0; }
 .lcp-q-text b { display: block; font-size: 11px; font-weight: 550; color: #e2e9f2; letter-spacing: -.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lcp-q-text small { display: block; margin-top: 3px; font-size: 10px; color: var(--lcp-text-4); }

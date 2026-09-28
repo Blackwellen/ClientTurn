@@ -139,7 +139,7 @@ export function AdminSearch() {
         className={cn(
           "h-11 w-full rounded-[11px] border border-line-strong bg-surface pr-16 pl-10",
           "text-[14px] text-content shadow-xs placeholder:text-content-subtle",
-          "focus:border-accent-500 focus:ring-2 focus:ring-[var(--lr-ring)] focus:outline-none",
+          "focus:border-[var(--lr-focus-border)] focus:ring-2 focus:ring-[var(--lr-ring)] focus:outline-none",
           "[&::-webkit-search-cancel-button]:appearance-none",
         )}
       />

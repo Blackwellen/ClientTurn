@@ -15,6 +15,7 @@ function useArrowNav(
   items: TabItem[],
   value: string,
   onChange: (value: string) => void,
+  idFor: (value: string) => string,
 ) {
   return React.useCallback(
     (e: React.KeyboardEvent) => {
@@ -30,28 +31,51 @@ function useArrowNav(
       e.preventDefault();
       const target = enabled[(next + enabled.length) % enabled.length];
       onChange(target.value);
-      document.getElementById(`tab-${target.value}`)?.focus();
+      document.getElementById(idFor(target.value))?.focus();
     },
-    [items, value, onChange],
+    [items, value, onChange, idFor],
   );
+}
+
+/**
+ * Element ids for a tab set. They were global (`tab-overview`), so two tab
+ * sets on one page with a shared value produced duplicate ids and arrow keys
+ * could focus the other set's tab (a11y audit 2026-09-28). `idBase` scopes
+ * them; pass the same `idBase` to the matching `TabPanel`s.
+ */
+export function tabIds(idBase: string, value: string) {
+  return { tab: `${idBase}-tab-${value}`, panel: `${idBase}-panel-${value}` };
 }
 
 export function Tabs({
   items,
   value,
   onChange,
+  idBase,
+  label,
   className,
 }: {
   items: TabItem[];
   value: string;
   onChange: (value: string) => void;
+  /**
+   * Shared with the `TabPanel`s this set controls. Without it the tabs get a
+   * generated base and no `aria-controls` (there is no panel to point at).
+   */
+  idBase?: string;
+  /** Accessible name for the tab list. */
+  label?: string;
   className?: string;
 }) {
-  const onKeyDown = useArrowNav(items, value, onChange);
+  const generated = React.useId();
+  const base = idBase ?? generated;
+  const idFor = React.useCallback((v: string) => tabIds(base, v).tab, [base]);
+  const onKeyDown = useArrowNav(items, value, onChange, idFor);
 
   return (
     <div
       role="tablist"
+      aria-label={label}
       onKeyDown={onKeyDown}
       className={cn(
         "flex items-center gap-1 border-b border-line overflow-x-auto",
@@ -63,11 +87,11 @@ export function Tabs({
         return (
           <button
             key={item.value}
-            id={`tab-${item.value}`}
+            id={idFor(item.value)}
             role="tab"
             type="button"
             aria-selected={active}
-            aria-controls={`tabpanel-${item.value}`}
+            aria-controls={idBase ? tabIds(idBase, item.value).panel : undefined}
             tabIndex={active ? 0 : -1}
             disabled={item.disabled}
             onClick={() => onChange(item.value)}
@@ -98,20 +122,24 @@ export function Tabs({
 export function TabPanel({
   value,
   activeValue,
+  idBase,
   className,
   children,
 }: {
   value: string;
   activeValue: string;
+  /** The `idBase` given to the controlling `Tabs`. */
+  idBase: string;
   className?: string;
   children: React.ReactNode;
 }) {
   if (value !== activeValue) return null;
+  const ids = tabIds(idBase, value);
   return (
     <div
       role="tabpanel"
-      id={`tabpanel-${value}`}
-      aria-labelledby={`tab-${value}`}
+      id={ids.panel}
+      aria-labelledby={ids.tab}
       tabIndex={0}
       className={cn("focus-visible:outline-none", className)}
     >
@@ -174,12 +202,22 @@ export function TabLinkBar({
   );
 }
 
+/**
+ * A compact one-of-N switch.
+ *
+ * Announced as a radio group, not a tab list: none of its callers (view
+ * toggles, the Follow-Up view switch, admin filters) render tab panels, so
+ * `role="tab"` promised panels that did not exist and every `aria-controls`
+ * pointed at a missing id. Arrow keys still move and select, which is the
+ * radio-group keyboard pattern (a11y audit 2026-09-28).
+ */
 export function SegmentedControl({
   items,
   value,
   onChange,
   size = "md",
   accent = false,
+  label,
   className,
 }: {
   items: TabItem[];
@@ -188,13 +226,18 @@ export function SegmentedControl({
   size?: "sm" | "md";
   /** Ring the active segment in the accent colour, for page-level switches. */
   accent?: boolean;
+  /** Accessible name for the group. */
+  label?: string;
   className?: string;
 }) {
-  const onKeyDown = useArrowNav(items, value, onChange);
+  const base = React.useId();
+  const idFor = React.useCallback((v: string) => `${base}-seg-${v}`, [base]);
+  const onKeyDown = useArrowNav(items, value, onChange, idFor);
 
   return (
     <div
-      role="tablist"
+      role="radiogroup"
+      aria-label={label}
       onKeyDown={onKeyDown}
       className={cn(
         "inline-flex items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5",
@@ -206,11 +249,10 @@ export function SegmentedControl({
         return (
           <button
             key={item.value}
-            id={`tab-${item.value}`}
-            role="tab"
+            id={idFor(item.value)}
+            role="radio"
             type="button"
-            aria-selected={active}
-            aria-controls={`tabpanel-${item.value}`}
+            aria-checked={active}
             tabIndex={active ? 0 : -1}
             disabled={item.disabled}
             onClick={() => onChange(item.value)}

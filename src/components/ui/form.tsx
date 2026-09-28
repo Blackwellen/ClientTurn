@@ -153,11 +153,14 @@ export function Switch({
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
         "disabled:cursor-not-allowed disabled:opacity-60",
         size === "lg" ? "h-[22px] w-10" : "h-5 w-9",
+        // Track colours carry the state, so each clears 3:1 against the
+        // surface (SC 1.4.11): success-500 and line-strong measured 2.6:1
+        // and 1.4:1, which left an "off" switch all but invisible.
         checked
           ? tone === "success"
-            ? "bg-success-500"
+            ? "bg-success-600"
             : "bg-accent-600"
-          : "bg-line-strong",
+          : "bg-[var(--lr-switch-off)]",
         className,
       )}
     >

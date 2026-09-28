@@ -447,7 +447,8 @@ function invoiceSettlementDeps(): InvoiceSettlementDeps {
         title: REVIEW_TITLE[input.reason],
         body: input.summary,
         severity: "warning",
-        linkUrl: "/app/settings?section=connections#payments",
+        // The review queue (0175): apply to an invoice, or say what was done.
+        linkUrl: "/app/settings?section=quotes#payment-review",
         entityType: input.invoiceId ? "invoice" : "checkout_payment",
         entityId: input.invoiceId ?? input.paymentId,
         dedupeKey: `invoice-payment:${input.paymentId}:${input.reason}`,
@@ -556,15 +557,27 @@ function paymentView(row: Record<string, unknown>, leadName: string | null): Pay
   };
 }
 
-/** Payments waiting for a person: REVIEW (email-only candidate) and UNMATCHED. Never throws. */
+/**
+ * Payments waiting for a person to say who paid: REVIEW (email-only
+ * candidate) and UNMATCHED. An invoice payment under review (0173
+ * match_kind INVOICE) is not a direct sale and is resolved in Settings ->
+ * Quotes & invoices instead, so it is left out here; so is a payment a person
+ * already dismissed there (0175). Never throws.
+ */
 export async function loadPaymentsNeedingReview(businessId: string): Promise<LoadResult<PaymentView[]>> {
-  const { data, error } = await db()
-    .from("checkout_payments")
-    .select(`${PAYMENT_FIELDS}, leads(first_name, last_name, email)`)
-    .eq("business_id", businessId)
-    .in("status", ["REVIEW", "UNMATCHED"])
-    .order("paid_at", { ascending: false })
-    .limit(50);
+  const query = (withResolution: boolean) => {
+    let q = db()
+      .from("checkout_payments")
+      .select(`${PAYMENT_FIELDS}, leads(first_name, last_name, email)`)
+      .eq("business_id", businessId)
+      .in("status", ["REVIEW", "UNMATCHED"])
+      .or("match_kind.is.null,match_kind.neq.INVOICE");
+    if (withResolution) q = q.is("review_resolved_at", null);
+    return q.order("paid_at", { ascending: false }).limit(50);
+  };
+  let { data, error } = await query(true);
+  // Before 0175 there is no resolution column: every REVIEW / UNMATCHED row is open.
+  if (error && isSchemaLag(error)) ({ data, error } = await query(false));
   if (error) return isSchemaLag(error) ? { state: "not_installed" } : { state: "error" };
   return {
     state: "ok",

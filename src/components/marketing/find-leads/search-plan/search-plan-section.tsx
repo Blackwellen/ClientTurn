@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { trackEngagement } from "@/lib/marketing/track";
+import { useScrollableRegion } from "@/components/ui/use-scrollable-region";
 import {
   fadeUp,
   motion,
@@ -58,6 +59,7 @@ const TRUST_CHECKS = [
 export function SearchPlanSection() {
   const [open, setOpen] = React.useState(false);
   const reduced = useReducedMotion();
+  const { attach: attachList, props: listProps } = useScrollableRegion("Search session", { landmark: true });
 
   return (
     <FlSection id="search-plan" glow="right">
@@ -90,6 +92,9 @@ export function SearchPlanSection() {
           actions={<Badge tone="lime">Draft plan</Badge>}
         >
           <motion.ul
+            ref={attachList}
+            {...listProps}
+            aria-label="Search session"
             className="fl-msglist"
             style={{ marginTop: 0 }}
             initial={reduced ? "shown" : "hidden"}

@@ -87,6 +87,7 @@ export const ENTITLEMENT_MESSAGES: Readonly<Record<string, string>> = {
   NO_MINUTES: "You're out of voice minutes. Buy a minute pack to keep calling.",
   INSUFFICIENT_MINUTES: "Not enough voice minutes left for a full call. Buy a minute pack to keep calling.",
   VOICE_DISABLED_IN_SETTINGS: "Voice is switched off in Settings, Voice.",
+  AI_ASSISTANT_OFF: "Switch on the AI assistant in Settings, Workspace before AI calls: without it the call can't record answers or arrange anything.",
   IDENTITY_INCOMPLETE: "Complete your calling identity in Settings, Voice before calling.",
   NO_NUMBER: "Your dedicated calling number isn't active yet.",
 };

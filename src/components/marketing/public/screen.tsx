@@ -4,6 +4,7 @@ import * as React from "react";
 import { GrowBar } from "./reveal";
 import { cn } from "@/lib/cn";
 import { IllustrativeTag } from "./shell";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 /**
  * Light product surfaces, rendered inside the dark marketing pages.
@@ -154,7 +155,7 @@ export function ScreenTable({
   rows: readonly (readonly React.ReactNode[])[];
 }) {
   return (
-    <div className="pub-screen-scroll">
+    <ScrollRegion className="pub-screen-scroll">
       <table className="pub-screen-table">
         <thead>
           <tr>
@@ -175,7 +176,7 @@ export function ScreenTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollRegion>
   );
 }
 

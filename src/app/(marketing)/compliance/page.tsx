@@ -40,6 +40,7 @@ import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { OPENER_TEMPLATE, RECORDING_NOTICE } from "@/lib/voice/opener";
 import { CALLING_HOURS_BOUNDS, DEFAULT_CALLING_HOURS } from "@/lib/voice/calling-hours";
 import { CALL_BUDGET_MINUTES } from "@/lib/marketing/voice-offer";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 /**
  * /compliance — how ClientTurn helps a UK business stay inside PECR and UK GDPR.
@@ -314,7 +315,7 @@ export default function CompliancePage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h3>Cold outreach, by recipient type</h3>
                 </div>
-                <div className="pub-screen-scroll">
+                <ScrollRegion className="pub-screen-scroll">
                   <table className="w-full text-[0.82rem]">
                     <thead>
                       <tr className="text-left text-[var(--pub-text-muted)]">
@@ -333,7 +334,7 @@ export default function CompliancePage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollRegion>
                 <p className="pub-small mt-4">
                   A sole trader who connects or follows you on LinkedIn can get one
                   non-promotional opener; marketing waits for a reply. <Link href="/help/compliance/corporate-and-individual-subscribers" className="underline underline-offset-4">Read the detail</Link>.

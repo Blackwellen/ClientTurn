@@ -59,6 +59,7 @@ import {
   TrendLine,
   Columns,
 } from "@/components/marketing/public/charts";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 const title = "Results";
 const description =
@@ -332,7 +333,7 @@ export default function ResultsPage() {
                 everywhere it appears.
               </p>
 
-              <ol className="pub-journey">
+              <ScrollRegion as="ol" className="pub-journey">
                 {JOURNEY.map((stage, index) => (
                   <li key={stage.metric.key}>
                     <PublicCard
@@ -351,7 +352,7 @@ export default function ResultsPage() {
                     </PublicCard>
                   </li>
                 ))}
-              </ol>
+              </ScrollRegion>
           </Band>
 
           {/* ------------------------------------------------ attribution --- */}
@@ -557,7 +558,7 @@ export default function ResultsPage() {
                       <h3>Campaign performance</h3>
                       <IllustrativeTag />
                     </div>
-                    <div className="pub-screen-scroll">
+                    <ScrollRegion className="pub-screen-scroll">
                       <table className="w-full border-collapse text-[12px]">
                         <thead>
                           <tr className="text-[var(--pub-text-muted)]">
@@ -600,7 +601,7 @@ export default function ResultsPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ScrollRegion>
                   </PublicCard>
                 </div>
               </div>

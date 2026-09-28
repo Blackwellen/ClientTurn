@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { trackEngagement } from "@/lib/marketing/track";
+import { useScrollableRegion } from "@/components/ui/use-scrollable-region";
 import {
   AnimatePresence,
   Collapse,
@@ -61,7 +62,7 @@ import { PreviousChatsDrawer } from "./previous-chats-drawer";
  * arm. It runs once and stops; there is no loop.
  *
  * Nothing here talks to a server. The composer is a static demonstration
- * marked `aria-readonly`, and the send control advances the demo rather than
+ * (a plain paragraph), and the send control advances the demo rather than
  * submitting a form that would go nowhere.
  */
 
@@ -73,6 +74,8 @@ const STAGES = 5;
 export function FindLeadsHeroChat() {
   const { ref, step, reduced } = useSequence<HTMLDivElement>(STAGES, 1100);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  // The list is already named; it only needs a tab stop while it overflows.
+  const { attach: attachList, props: listProps } = useScrollableRegion("Example conversation", { landmark: true });
   const [selectedChip, setSelectedChip] = React.useState<string | null>(null);
   const [forced, setForced] = React.useState(0);
 
@@ -191,6 +194,8 @@ export function FindLeadsHeroChat() {
 
           <LayoutGroup>
             <motion.ul
+              ref={attachList}
+              {...listProps}
               layout={!reduced}
               className="fl-msglist"
               aria-label="Example conversation"
@@ -248,7 +253,7 @@ export function FindLeadsHeroChat() {
                               className="grid grid-cols-[104px_minmax(0,1fr)] gap-3"
                               variants={planField}
                             >
-                              <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#56637a]">
+                              <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#74829d]">
                                 {row.label}
                               </dt>
                               <dd className="m-0 text-[12px] leading-relaxed text-[#dfe6ef]">
@@ -320,7 +325,6 @@ export function FindLeadsHeroChat() {
               <div className="fl-composer-box">
                 <p
                   data-placeholder={sent}
-                  aria-readonly="true"
                   id="fl-composer-text"
                 >
                   {sent ? "Describe the businesses you want to find…" : request}
@@ -373,7 +377,8 @@ export function FindLeadsHeroChat() {
             </span>
           </div>
 
-          <motion.dl
+          <motion.div
+            role="list"
             className="fl-deflist"
             initial={reduced ? "shown" : "hidden"}
             animate="shown"
@@ -382,18 +387,18 @@ export function FindLeadsHeroChat() {
             {ACQUISITION_PROFILE.map((row, index) => {
               const RowIcon = PROFILE_ICONS[index] ?? Briefcase;
               return (
-                <motion.div className="fl-def" key={row.label} variants={fadeUp}>
+                <motion.div role="listitem" className="fl-def" key={row.label} variants={fadeUp}>
                   <span aria-hidden className="fl-def-icon">
                     <RowIcon size={13} />
                   </span>
                   <div>
-                    <dt>{row.label}</dt>
-                    <dd>{row.value.join(", ")}</dd>
+                    <span className="fl-def-term">{row.label}</span>
+                    <span className="fl-def-desc">{row.value.join(", ")}</span>
                   </div>
                 </motion.div>
               );
             })}
-          </motion.dl>
+          </motion.div>
 
           <p className="fl-callout">
             Website analysed. Review and edit what ClientTurn learned before

@@ -22,6 +22,7 @@ import {
   suppressLeadAction,
 } from "@/lib/data-rights/actions";
 import type { BusinessRole } from "@/lib/auth/session";
+import type { DrawerCallState } from "@/lib/voice/call-button-state";
 import { LeadDrawer } from "./lead-drawer";
 import { useLeadParams } from "./use-lead-params";
 
@@ -37,6 +38,7 @@ export function LeadDrawerHost({
   role,
   initialTab,
   focus,
+  call,
 }: {
   detail: LeadDetail;
   capabilities: LeadCapabilities;
@@ -45,6 +47,8 @@ export function LeadDrawerHost({
   role?: BusinessRole;
   initialTab?: string;
   focus?: string;
+  /** "Call with AI" state, computed on the server (loadDrawerCallState). */
+  call?: DrawerCallState | null;
 }) {
   const { closeLead } = useLeadParams();
 
@@ -56,6 +60,7 @@ export function LeadDrawerHost({
       role={role}
       initialTab={initialTab}
       focus={focus}
+      call={call}
       onClose={closeLead}
       actions={{
         assignLead,

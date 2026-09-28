@@ -31,6 +31,8 @@ import { detectDiscountAsk, detectQuoteRequest } from "../../../src/lib/agent/qu
 import { detectSpokenIntents } from "../../../src/lib/voice/speech-intents.ts";
 import { spokenSlotChoice, spokenSlotLabel } from "../../../src/lib/voice/spoken-time.ts";
 import type { NextBestAction } from "../../../src/lib/qualification-intelligence/types.ts";
+import { availabilityOffers, checkingAvailabilityLines, unapprovedClaimSentences } from "../../../src/lib/voice/call-lint.ts";
+import { stripQualifiedLabel } from "../../../src/lib/voice/summary-guard.ts";
 
 /* ================================================================ scenario */
 
@@ -60,6 +62,12 @@ export type Scenario = {
   failTools?: VoiceToolName[];
   /** The call is recorded (default true): decides the opener's notice and the locked RECORDING answer. */
   recording?: boolean;
+  /** The offer card's approved lines (default: the Acme Studio three). [] = nothing approved. */
+  offerLines?: string[];
+  /** The service the lead enquired about (default none). */
+  serviceName?: string;
+  /** What the lead wrote on the form (default none). */
+  enquiry?: string;
   expect: {
     disposition: string;
     tools: VoiceToolName[];
@@ -85,6 +93,8 @@ export type ToolTrace = { name: VoiceToolName; args: unknown; status: number; ok
 export type SimResult = {
   key: string;
   brief: CallBrief;
+  /** When the scripted lead ran out of lines and the agent wrapped up on its own (ms); null = it did not. */
+  fallbackAtMs?: number | null;
   transcript: Utterance[];
   tools: ToolTrace[];
   elapsedSec: number;
@@ -283,6 +293,7 @@ type Heard =
   | { kind: "NO" }
   | { kind: "TIME"; at: Date }
   | { kind: "EMAIL"; address: string }
+  | { kind: "WINDOW"; text: string }
   | { kind: "FACT"; text: string };
 
 // The simulator hears ONLY through voice/speech-intents.ts for everything the
@@ -361,6 +372,8 @@ function hear(raw: string, state: AgentState): Heard {
     const at = timeIn(text, state.now());
     if (at) return { kind: "TIME", at };
   }
+  // Booking off: the lead names when a colleague may call (a day, a part of the day).
+  if (state.awaiting === "CALLBACK_WINDOW" && !has("WANTS_PERSON") && !has("NOT_INTERESTED") && !has("SEND_DETAILS")) return { kind: "WINDOW", text };
   if (has("WANTS_PERSON")) return { kind: "HUMAN" };
   if (has("ASKS_IF_AI")) return { kind: "AI_Q" };
   if (has("HOW_GOT_NUMBER") || has("WHO_IS_THIS")) return { kind: "IDENTITY", how: has("HOW_GOT_NUMBER") };
@@ -395,6 +408,8 @@ function hear(raw: string, state: AgentState): Heard {
   if (HUH.test(text)) return { kind: "MISUNDERSTOOD", who: "LEAD" };
   // "Okay, about ten of us": an answer with a number is the answer, not a yes.
   if (!state.awaiting && state.plan === "ASK" && numberIn(text) != null) return { kind: "FACT", text };
+  // "Yes, the flat roof over the kitchen": a yes with an answer in it is the answer.
+  if (!state.awaiting && state.plan === "ASK" && state.planQs.length && countWords(text) > 4) return { kind: "FACT", text };
   if (YES.test(text)) return { kind: "YES" };
   if (NO.test(text) && countWords(text) <= 3) return { kind: "NO" };
   return { kind: "FACT", text };
@@ -408,7 +423,7 @@ type AgentState = {
   phase: "PERMISSION" | "MAIN" | "DONE";
   plan: Plan;
   question: string | null;
-  awaiting: "SLOT" | "CONFIRM_NUMBER" | "CONFIRM_EMAIL" | "CONFIRM_SLOT" | "SEND_QUOTE" | "SEND_LINK" | "CALLBACK_TIME" | "GATEKEEPER_TIME" | "TEXT_OFFER" | "STOP_OFFER" | "SCREENED" | null;
+  awaiting: "SLOT" | "CONFIRM_NUMBER" | "CONFIRM_EMAIL" | "CONFIRM_SLOT" | "SEND_QUOTE" | "SEND_LINK" | "CALLBACK_TIME" | "CALLBACK_WINDOW" | "GATEKEEPER_TIME" | "TEXT_OFFER" | "STOP_OFFER" | "SCREENED" | null;
   pendingFact: { dimension: string; value: string } | null;
   now: () => Date;
   pendingSlot: number | null;
@@ -429,6 +444,13 @@ type AgentState = {
   lastQuestion: string | null;
   pendingEmail: string | null;
   lineChecks: number;
+  /** The brief's QUESTION PLAN, the index of the question now open, what is answered, how many re-asks. */
+  planQs: PlanQ[];
+  planIdx: number;
+  answered: Set<string>;
+  /** Plan questions already put to the lead (never asked a second time in the same words). */
+  askedPlan: Set<string>;
+  reasks: number;
 };
 
 /** Different words for the same ask, so a rephrase is never a repeated question (anti-loop). */
@@ -439,8 +461,61 @@ const REPHRASINGS = [
 ];
 const MISSED = ["Sorry, I missed that, could you say it once more?", "Sorry, the line dropped for a second, what was that?", "I did not quite catch that, sorry, could you repeat it?"];
 
+/* ------------------------------------------------ the question plan (live call 2026-09-28) */
+
+export type PlanQ = { text: string; key: string };
+
+/**
+ * The QUESTION PLAN as the brief TEXT gives it to the model: the scripted
+ * agent reads it from the words, not from the builder's data, so a brief
+ * that stops carrying a plan makes the agent (and the suite) fail.
+ */
+export function planFromBrief(text: string): { questions: PlanQ[]; required: number } {
+  const section = /QUESTION PLAN\.[^\n]*/.exec(text)?.[0] ?? "";
+  const questions: PlanQ[] = [];
+  for (const m of section.matchAll(/(\d+)\. (.+?) \[([A-Za-z0-9_.:-]+)\]/g)) questions.push({ text: m[2].trim(), key: m[3] });
+  const required = Number(/Ask 1 to (\d+) before/.exec(section)?.[1] ?? questions.length);
+  return { questions, required };
+}
+
+/** The APPROVED OFFER LINES as the brief text gives them (the only claims allowed). */
+export function offerLinesFromBrief(text: string): string[] {
+  const m = /APPROVED OFFER LINES \([^)]*\): ([^\n]*)/.exec(text);
+  return m ? m[1].split(" | ").map((l) => l.trim()).filter(Boolean) : [];
+}
+
+/** The same ask in simpler, different words (a bare "yes" is not an answer; never the same question twice). */
+const REASK: Readonly<Record<string, string[]>> = {
+  PROBLEM: ["Put simply, what would you like a hand with?", "In a few words, what's the job?"],
+  PROJECT_SCOPE: ["Put simply, what would you like us to do?", "Is it a big job or a small one?"],
+  TIMING: ["Is it for the next few weeks, or later on?", "Roughly when would suit you?"],
+  BUDGET: ["Have you got a figure you'd like to stay under?", "Is there a rough amount in mind?"],
+  AUTHORITY: ["Would you be making the call on this yourself?", "Is it your decision in the end?"],
+  LOCATION: ["Which area would it be in?", "Whereabouts is it?"],
+  TEAM_SIZE: REPHRASINGS,
+  EMAIL: ["Which email is best to send it to?", "What's your email?"],
+};
+function reask(key: string, n: number): string {
+  const list = REASK[key] ?? ["Put another way, could you tell me a little more?", "Could you say a bit more about that?"];
+  return list[n % list.length];
+}
+
+/** Which plan question an answer fits best: the current one, unless it plainly answers another still open. */
+function answerKey(text: string, current: string | null, open: readonly string[]): string {
+  const fits: [string, RegExp][] = [
+    ["TIMING", /\b(tomorrow|today|next (week|month|year)|this (week|month|year)|weeks?|months?|quarter|asap|soon|spring|summer|autumn|winter|january|february|march|april|may|june|july|august|september|october|november|december)\b/i],
+    ["BUDGET", /£|\bpounds?\b|\bbudget\b|\bgrand\b|\d\s?k\b/i],
+    ["AUTHORITY", /\b(md|director|boss|owner|manager|partner|wife|husband|just me|my decision|board)\b/i],
+    ["TEAM_SIZE", /\b(team|people|staff|employees|of us)\b/i],
+  ];
+  for (const [key, re] of fits) if (key !== current && open.includes(key) && re.test(text)) return key;
+  return current ?? "PROBLEM";
+}
+
 function planOf(brief: CallBrief): { plan: Plan; question: string | null } {
   const move = brief.move;
+  const planned = planFromBrief(brief.text);
+  if (planned.questions.length) return { plan: "ASK", question: planned.questions[0].text };
   if (/check_availability|book_meeting/.test(move)) return { plan: "BOOK", question: null };
   if (/send_checkout_link/.test(move)) return { plan: "CHECKOUT", question: null };
   const q = /in your own natural words: (.+?\?)/.exec(move);
@@ -452,7 +527,8 @@ function planOf(brief: CallBrief): { plan: Plan; question: string | null } {
 /** The approved offer line with no figure in it: the only "reason" the scripted agent may give. */
 const REASON_LINE = "Every site comes with a year of support";
 
-export async function simulate(s: Scenario): Promise<SimResult> {
+/** The brief a scenario's call is given (the same builder production uses). */
+export function briefFor(s: Scenario): { brief: CallBrief; permissions: BriefPermissions } {
   const closing = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false });
   const permissions: BriefPermissions = { book: true, quote: false, sendQuote: false, checkout: false, bookingLink: false, ...(s.permissions ?? {}) };
   const brief = buildVoiceCallBrief({
@@ -467,7 +543,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     goal: ROUTE_GOAL[s.route],
     nba: s.nba ?? null,
     known: ["Company: Northwind Ltd"],
-    offerLines: ["Websites from £4,000", "Care plans at £49 per month", REASON_LINE],
+    offerLines: s.offerLines ?? ["Websites from £4,000", "Care plans at £49 per month", REASON_LINE],
     workspaceObjections: null,
     booking: "SLOTS",
     permissions,
@@ -476,7 +552,20 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     conversationSummary: null,
     closingLine: closing.text,
     recordingEnabled: s.recording ?? true,
+    serviceName: s.serviceName ?? null,
+    enquirySummary: s.enquiry ?? null,
+    now: START,
+    timezone: "Europe/London",
   });
+  return { brief, permissions };
+}
+
+export async function simulate(s: Scenario): Promise<SimResult> {
+  const closing = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false });
+  const { brief, permissions } = briefFor(s);
+  const approved = offerLinesFromBrief(brief.text);
+  /** The one approved "reason" line, if the brief carries it (never a claim of our own). */
+  const reasonLine = approved.includes(REASON_LINE) ? REASON_LINE : null;
   const goal = briefGoal({ route: s.route, motion: s.route === "DIRECT_CLOSE" ? "SAAS_SELF_SERVE" : "BOOK_MEETING_B2B", goal: ROUTE_GOAL[s.route], nba: s.nba ?? null, permissions } as CallBriefInput);
 
   const answeredAt = new Date(START.getTime() - (s.startElapsedSec ?? 0) * 1000);
@@ -499,7 +588,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     permissions, loops: initialLoopState(), amberHandled: false, factsRecorded: 0, extensionsUsed: 0, rephrases: 0, languageTries: 0,
     detailsSent: null, callbackScheduled: false, objections: {}, now: () => clock.now,
     lastQuestion: null, pendingEmail: null, lineChecks: 0,
+    planQs: planFromBrief(brief.text).questions, planIdx: 0, answered: new Set<string>(), askedPlan: new Set<string>(), reasks: 0,
   };
+  let fallbackAtMs: number | null = null;
   const p = planOf(brief);
   state.plan = p.plan;
   state.question = p.question;
@@ -540,6 +631,46 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     await finish("CALLBACK_REQUESTED", true, `A colleague will follow up: ${reason}`, "A colleague follows up");
   };
 
+  /* ---- the question plan (live call 2026-09-28) */
+  const currentPlanQ = (): PlanQ | null => state.planQs[state.planIdx] ?? null;
+  const planOpenKeys = (): string[] => state.planQs.filter((q) => !state.answered.has(q.key)).map((q) => q.key);
+  let introDone = false;
+  /** Ask the next plan question still open (with a lead-in); false once the plan is done. */
+  const askNextPlan = (prefix?: string): boolean => {
+    const next = state.planQs.find((q) => !state.answered.has(q.key) && !state.askedPlan.has(q.key));
+    if (!next) return false;
+    state.askedPlan.add(next.key);
+    state.planIdx = state.planQs.indexOf(next);
+    state.question = next.text;
+    state.reasks = 0;
+    // Brief THEIR ENQUIRY: where their own words answer the need, confirm it instead of asking.
+    const told = s.enquiry ? s.enquiry.split(/[,.]/)[0].trim() : "";
+    if (told && ["PROBLEM", "PROJECT_SCOPE"].includes(next.key)) {
+      say(`${prefix ? `${prefix} ` : ""}You mentioned the ${told.charAt(0).toLowerCase()}${told.slice(1)}, is that the job?`, `PLAN_${next.key}`);
+      return true;
+    }
+    say(`${prefix ? `${prefix} ` : ""}${next.text}`, `PLAN_${next.key}`);
+    return true;
+  };
+  /** A bare yes, or they did not follow: the same ask more simply; twice, and it is let go (they would rather not say). */
+  const reaskPlan = (): void => {
+    const q = currentPlanQ();
+    if (!q) return;
+    if (state.reasks >= 2) {
+      state.answered.add(q.key);
+      if (!askNextPlan("No problem.")) say("No problem at all.");
+      return;
+    }
+    say(reask(q.key, state.reasks), `REASK_${q.key}_${state.reasks}`);
+    state.reasks += 1;
+  };
+  /** Booking is off: after the plan, the next step is a call-back window a colleague keeps (brief CLOSE). */
+  const qualificationBookingOff = () => s.route === "QUALIFICATION" && !state.permissions.book && state.planQs.length > 0;
+  const askCallbackWindow = (lead: string) => {
+    say(`${lead} What day and time of day suits a colleague to call you?`, "CB_WINDOW");
+    state.awaiting = "CALLBACK_WINDOW";
+  };
+
   /** The two offered times in words: only the tool's labels, never a time of our own. */
   const slotWords = () => {
     const [a, b] = state.slots;
@@ -569,6 +700,10 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     } else if (state.plan === "CHECKOUT") {
       say("Would you like me to text you the link to get started?", "LINK");
       state.awaiting = "SEND_LINK";
+    } else if (state.planQs.length) {
+      const why = !introDone && s.serviceName ? `Great, it's about your ${s.serviceName.toLowerCase()} enquiry.` : undefined;
+      introDone = true;
+      if (!askNextPlan(why)) say(state.question ?? "What prompted your enquiry?", "Q1");
     } else {
       say(state.question ?? "What prompted your enquiry?", "Q1");
     }
@@ -579,6 +714,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     if (state.awaiting === "SLOT") {
       say(prefix);
       say("Would the morning or the afternoon suit you better?", "SLOT_AMPM");
+    } else if (state.plan === "ASK" && state.planQs.length && currentPlanQ()) {
+      say(prefix);
+      reaskPlan();
     } else if (state.plan === "ASK" && state.question) {
       say(prefix);
       say(REPHRASINGS[state.rephrases % REPHRASINGS.length], `REPHRASE_${state.rephrases}`);
@@ -592,16 +730,16 @@ export async function simulate(s: Scenario): Promise<SimResult> {
   /** The goal's step after a repeated objection: one approved reason, then the step (brief OBJECTIONS). */
   const goalStep = async () => {
     if ((goal === "DIRECT_SALE" || goal === "TRIAL") && state.permissions.checkout) {
-      say(`${REASON_LINE}.`);
+      say(reasonLine ? `${reasonLine}.` : "Fair enough.");
       say("Shall I text you the link so you can look it over properly?", "LINK_2");
       state.plan = "CHECKOUT";
       state.awaiting = "SEND_LINK";
     } else if (state.permissions.book) {
       state.plan = "BOOK";
-      say(`${REASON_LINE}, so a short call might help you weigh it up.`);
+      say(reasonLine ? `${reasonLine}, so a short call might help you weigh it up.` : "A short call might help you weigh it up.");
       await offerSlots();
     } else {
-      say(`${REASON_LINE}. A colleague can take you through it properly.`);
+      say(reasonLine ? `${reasonLine}. A colleague can take you through it properly.` : "A colleague can take you through it properly.");
       await callbackFallback("follow up the objection");
     }
   };
@@ -848,6 +986,8 @@ export async function simulate(s: Scenario): Promise<SimResult> {
       case "MISUNDERSTOOD":
         if (h.who === "LEAD" && state.awaiting === "SLOT" && state.slots.length) {
           say(`Of course, ${slotWords()}, which suits you?`, `SLOTS_AGAIN_${state.rephrases}`);
+        } else if (h.who === "LEAD" && state.plan === "ASK" && currentPlanQ()) {
+          reaskPlan();
         } else if (h.who === "LEAD") {
           // They did not follow the agent: the same ask in different words.
           say(REPHRASINGS[state.rephrases % REPHRASINGS.length], `REPHRASE_${state.rephrases}`);
@@ -1014,6 +1154,13 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         await finish(r.ok ? "MEETING_BOOKED" : "CALLBACK_REQUESTED", true, r.ok ? `Booked for ${slot.label}.` : "Booking to be confirmed.", r.ok ? `Meeting ${slot.label}` : undefined);
         break;
       }
+      case "WINDOW": {
+        const r = await tool("schedule_callback", { by: "PERSON", note: `Preferred time for a colleague's call: ${clean(heardText).slice(0, 120)}` });
+        state.callbackScheduled = true;
+        say(r.say ?? "A colleague will call you back then.");
+        await finish("CALLBACK_REQUESTED", true, `Questions asked on the call; a colleague calls back (${clean(heardText).slice(0, 60)}).`, "A colleague calls back at the time they chose");
+        break;
+      }
       case "TIME": {
         const at = h.at;
         const byAi = (s.consentBasis ?? "CALL_REQUESTED") === "CALL_REQUESTED" && state.awaiting !== "GATEKEEPER_TIME";
@@ -1046,7 +1193,11 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           state.factsRecorded += 1;
           state.pendingEmail = null;
           state.awaiting = null;
-          if (state.permissions.book) {
+          state.answered.add("EMAIL");
+          if (state.planQs.length && askNextPlan("Thanks, I've got that.")) break;
+          if (qualificationBookingOff()) {
+            askCallbackWindow("Thanks, I've got that.");
+          } else if (state.permissions.book) {
             say("Thanks, I've got that, and the best next step is a short call with the team.");
             state.plan = "BOOK";
             await startPlan();
@@ -1057,16 +1208,20 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         } else if (state.awaiting === "CONFIRM_NUMBER" && state.pendingFact) {
           await tool("record_fact", { ...state.pendingFact, confirmed: true });
           state.factsRecorded += 1;
+          state.answered.add(state.pendingFact.dimension);
           state.pendingFact = null;
           state.awaiting = null;
           if (await timeCheck()) break;
-          if (state.permissions.book) {
+          if (state.planQs.length && askNextPlan("Thanks.")) break;
+          if (qualificationBookingOff()) {
+            askCallbackWindow("Thanks, that is really helpful.");
+          } else if (state.permissions.book) {
             say("Thanks. The best next step is a short call with the team.");
             state.plan = "BOOK";
             await startPlan();
           } else {
             say("Thanks, that is really helpful. A colleague will follow up with the next step.");
-            await finish("CONVERSATION", true, "Qualified on the call.", "A colleague follows up");
+            await finish("CONVERSATION", true, "Answers recorded on the call.", "A colleague follows up");
           }
         } else if (state.awaiting === "TEXT_OFFER") {
           if (state.permissions.bookingLink) {
@@ -1082,6 +1237,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           const r = await tool("opt_out", { scope: "CALLS" });
           say(r.say ?? "Understood.");
           await finish("OPTED_OUT", false, "Upset; asked not to be called again.");
+        } else if (state.plan === "ASK" && state.planQs.length && currentPlanQ()) {
+          // Live call 2026-09-28: a bare "yes" is not an answer. The same ask, more simply.
+          reaskPlan();
         } else if (state.plan === "ASK" && state.question) {
           // A bare "yes" to a question that wants a number: ask for the number, in new words.
           say(REPHRASINGS[state.rephrases % REPHRASINGS.length], `REPHRASE_${state.rephrases}`);
@@ -1117,7 +1275,9 @@ export async function simulate(s: Scenario): Promise<SimResult> {
           break;
         }
         const n = numberIn(clean(heardText));
-        const dimension = /team|people|staff|employees|of us/i.test(heardText) ? "TEAM_SIZE" : /month|week|quarter|year|march|spring|soon/i.test(heardText) ? "TIMING" : /budget|£|pounds/i.test(heardText) ? "BUDGET" : /\b(md|director|boss|owner|manager)\b/i.test(heardText) ? "AUTHORITY" : "PROBLEM";
+        const dimension = state.planQs.length
+          ? answerKey(heardText, currentPlanQ()?.key ?? null, planOpenKeys())
+          : /team|people|staff|employees|of us/i.test(heardText) ? "TEAM_SIZE" : /month|week|quarter|year|march|spring|soon/i.test(heardText) ? "TIMING" : /budget|£|pounds/i.test(heardText) ? "BUDGET" : /\b(md|director|boss|owner|manager)\b/i.test(heardText) ? "AUTHORITY" : "PROBLEM";
         if (n != null) {
           // §20: read every number back before it is recorded.
           state.pendingFact = { dimension, value: String(n) };
@@ -1126,7 +1286,11 @@ export async function simulate(s: Scenario): Promise<SimResult> {
         } else {
           await tool("record_fact", { dimension, value: clean(heardText).slice(0, 200), confirmed: false });
           state.factsRecorded += 1;
-          if (state.plan === "CHECKOUT" && state.permissions.checkout) {
+          state.answered.add(dimension);
+          if (state.plan !== "CHECKOUT" && state.planQs.length && askNextPlan("Thanks.")) break;
+          if (state.plan !== "CHECKOUT" && qualificationBookingOff()) {
+            askCallbackWindow("Thanks, that's really helpful.");
+          } else if (state.plan === "CHECKOUT" && state.permissions.checkout) {
             say("Thanks, that helps. Shall I text you the link so you can look it over properly?", "LINK_AFTER_FACT");
             state.awaiting = "SEND_LINK";
           } else if (state.plan === "CHECK_IN" || !state.permissions.book) {
@@ -1149,6 +1313,17 @@ export async function simulate(s: Scenario): Promise<SimResult> {
     if (state.phase !== "DONE" && (await timeCheck())) break;
   }
   if (state.phase !== "DONE") {
+    fallbackAtMs = ms();
+    // The script ran out while the agent waited on an answer: the lead has
+    // to go (a real call does not end on an unanswered question and a
+    // goodbye in the same breath).
+    const last = transcript[transcript.length - 1];
+    if (last?.speaker === "AGENT" && last.text.trim().endsWith("?")) {
+      advance(1.5);
+      const start = ms();
+      advance(1.2);
+      transcript.push({ speaker: "LEAD", text: "Sorry, I have to dash.", startMs: start, endMs: ms() });
+    }
     say("Thanks, I will let you go.");
     await finish(state.callbackScheduled ? "CALLBACK_REQUESTED" : "CONVERSATION", true, "Conversation ended.");
   }
@@ -1156,6 +1331,7 @@ export async function simulate(s: Scenario): Promise<SimResult> {
   const result: SimResult = {
     key: s.key,
     brief,
+    fallbackAtMs,
     transcript,
     tools,
     elapsedSec: Math.round(ms() / 1000),
@@ -1298,7 +1474,153 @@ export function complianceFailures(s: Scenario, r: SimResult): string[] {
     const at = (t.args as { at_iso?: string | null }).at_iso;
     if (at && new Date(at).getTime() <= START.getTime() + t.atMs - (s.startElapsedSec ?? 0) * 1000) out.push(`call-back in the past: ${at}`);
   }
+  out.push(...liveCallFailures(s, r));
   return out;
+}
+
+/* ============================== the live-call checks (owner's first real call, 2026-09-28) */
+
+/** Tools that take a next step: a close, a send, a call-back. */
+const CLOSE_TOOLS: ReadonlySet<string> = new Set(["check_availability", "book_meeting", "send_checkout_link", "send_booking_link", "calculate_quote", "send_quote", "schedule_callback"]);
+/** Words that move to a next step without a tool (the live call's "A colleague will send you the details"). */
+const CLOSE_PHRASE = /\b(a colleague will|the best next step|good time for a (?:quick )?(?:follow-up|call)|I can offer)\b/i;
+/** Lead intents that do not start a close (the agent answers them and carries on). */
+const BENIGN_INTENTS: ReadonlySet<string> = new Set(["ASKS_IF_AI", "WHO_IS_THIS", "HOW_GOT_NUMBER", "PRIVACY", "LINE_CHECK"]);
+/** NBA actions after which a qualification call has no plan by design (the engine decided). */
+const NO_PLAN_ACTIONS: ReadonlySet<string> = new Set(["ESCALATE", "DISQUALIFY", "NO_ACTION", "WAIT", "CTA_BOOK", "CTA_CHECKOUT", "CTA_SIGNUP"]);
+/** With no plan in the brief, a qualification call still needs this many questions before a close. */
+export const MIN_QUALIFYING_QUESTIONS = 3;
+
+/** When the call first moved to a next step (ms), or null. */
+function firstCloseAt(r: SimResult, closingText: string): number | null {
+  const times: number[] = [];
+  const tool = r.tools.find((t) => CLOSE_TOOLS.has(t.name));
+  if (tool) times.push(tool.atMs - 1);
+  const says = r.tools.map((t) => t.say ?? "").filter(Boolean);
+  for (const [i, u] of r.transcript.entries()) {
+    if (i === 0 || u.speaker !== "AGENT") continue;
+    if (u.text.includes(closingText) || CLOSE_PHRASE.test(withoutLocked(u.text, says))) {
+      times.push(u.startMs);
+      break;
+    }
+  }
+  return times.length ? Math.min(...times) : null;
+}
+
+/** The lead started the next step themselves before `at` (a stop, a person, "send me something", "book it", a price...). */
+function leadInitiated(r: SimResult, at: number): boolean {
+  return r.transcript.some((u) => {
+    if (u.speaker !== "LEAD" || u.startMs >= at) return false;
+    const t = u.text;
+    if (detectSpokenIntents(t).some((i) => !BENIGN_INTENTS.has(i.key))) return true;
+    return BUY.test(t) || BOOK.test(t) || detectQuoteRequest(t) || detectDiscountAsk(t) || detectBuyingSignal(t);
+  });
+}
+
+/**
+ * The failures of the owner's first real call, checked on EVERY scenario:
+ *   1. a qualification call closes only after the brief's required plan
+ *      questions were asked (unless the lead took it elsewhere, the call went
+ *      round in circles, or the time plan said to wrap up), and its brief
+ *      carries a plan at all;
+ *   2. no availability offered before a check_availability returned times;
+ *   3. no "checking availability" line when the brief says booking is off;
+ *   4. no claim about the business that the approved offer lines do not make;
+ *   5. the summary never labels the lead "qualified" (the engine's verdict).
+ */
+export function liveCallFailures(s: Scenario, r: SimResult): string[] {
+  const out: string[] = [];
+  const closingText = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false }).text;
+  const says = r.tools.map((t) => t.say ?? "").filter(Boolean);
+  const locked = [...says, closingText, "This is Acme Studio Ltd. You can reach us at 1 High Street, London, EC1A 1AA.", recordingAnswer(s.recording ?? true)];
+  const agent = r.transcript.filter((u, i) => u.speaker === "AGENT" && i > 0);
+
+  if (r.brief.route === "QUALIFICATION") {
+    const expected = !s.nba?.handover_reason && !NO_PLAN_ACTIONS.has(s.nba?.next_action ?? "");
+    const plan = planFromBrief(r.brief.text);
+    if (expected && !plan.questions.length) out.push("a qualification call whose brief has no QUESTION PLAN");
+    const required = plan.questions.length ? plan.required : expected ? MIN_QUALIFYING_QUESTIONS : 0;
+    const closeAt = firstCloseAt(r, closingText);
+    const scriptEnded = r.fallbackAtMs != null && closeAt != null && closeAt >= r.fallbackAtMs;
+    if (required > 0 && closeAt != null && !scriptEnded && !leadInitiated(r, closeAt) && !r.loops.loopsDetected.length) {
+      const level = governTime({ route: "QUALIFICATION", elapsedSec: closeAt / 1000 }).level;
+      if (level === "GREEN") {
+        const before = agent.filter((u) => u.startMs < closeAt).map((u) => u.text).join(" ");
+        // Asked, or already answered by something the lead said (the plan skips what is known).
+        const recorded = new Set(r.tools.filter((t) => t.name === "record_fact" && t.atMs <= closeAt).map((t) => String((t.args as { dimension?: string }).dimension)));
+        const asked = plan.questions.length
+          ? plan.questions.filter((q) => before.includes(q.text) || recorded.has(q.key)).length
+          : (before.match(/\?/g) ?? []).length;
+        if (asked < required) out.push(`moved to a next step after ${asked} of ${required} qualifying questions`);
+      }
+    }
+  }
+
+  const check = r.tools.find((t) => t.name === "check_availability" && t.ok);
+  for (const u of agent) {
+    if (check && u.startMs >= check.atMs - TOOL_SEC * 1000) break;
+    for (const x of availabilityOffers(withoutLocked(u.text, locked))) out.push(`availability not from a tool: "${x}"`);
+  }
+  if (/BOOKING IS OFF/.test(r.brief.text)) {
+    for (const u of agent) for (const x of checkingAvailabilityLines(withoutLocked(u.text, locked))) out.push(`"checking availability" with booking off: "${x}"`);
+  }
+  const approved = offerLinesFromBrief(r.brief.text);
+  for (const u of agent) for (const x of unapprovedClaimSentences(withoutLocked(u.text, locked), approved)) out.push(`a claim not in the offer lines: "${x}"`);
+  for (const t of r.tools.filter((x) => x.name === "end_call_summary")) {
+    const summary = String((t.args as { summary?: string }).summary ?? "");
+    if (stripQualifiedLabel(summary, null).changed) out.push(`the summary labels the lead qualified: "${summary}"`);
+  }
+  return out;
+}
+
+/* ================================================ replaying a recorded call */
+
+export type RecordedCall = {
+  lines: { speaker: "AGENT" | "LEAD"; text: string }[];
+  /** Tools the model called, after the line at `afterLine` (0-based index into `lines`). */
+  tools: { afterLine: number; name: VoiceToolName; args: Record<string, unknown>; ok: boolean; say: string | null; code?: string }[];
+};
+
+/**
+ * Scores a call that really happened (the transcript and tool calls as the
+ * provider recorded them) with the SAME scorer, against the brief the call
+ * WOULD get now. The owner's first real call must fail it; the scripted
+ * agent on the same lead lines must pass.
+ */
+export function scoreRecorded(s: Scenario, rec: RecordedCall): SimResult {
+  const { brief } = briefFor(s);
+  const transcript: Utterance[] = [];
+  const tools: ToolTrace[] = [];
+  let t = 0;
+  let loops = initialLoopState();
+  const avail = { textFollowUpLawful: true, humanAvailable: false };
+  rec.lines.forEach((l, i) => {
+    const dur = Math.round((countWords(l.text) / (l.speaker === "AGENT" ? AGENT_WPM : 160)) * 60_000);
+    transcript.push({ speaker: l.speaker, text: l.text, startMs: t, endMs: t + dur });
+    loops = observeTurn(loops, l.speaker === "AGENT" ? { speaker: "AGENT", text: l.text, questionKey: null } : { speaker: "LEAD", text: l.text }, avail).state;
+    t += dur + 700;
+    for (const x of rec.tools.filter((y) => y.afterLine === i)) {
+      t += TOOL_SEC * 1000;
+      tools.push({ name: x.name, args: x.args, status: 200, ok: x.ok, say: x.say, code: x.code, timeLevel: "GREEN", atMs: t });
+    }
+  });
+  const closingText = renderClosingLine({ callingAsName: "Acme Studio", whiteLabel: false }).text;
+  const summary = tools.find((x) => x.name === "end_call_summary");
+  const result: SimResult = {
+    key: s.key,
+    brief,
+    fallbackAtMs: null,
+    transcript,
+    tools,
+    elapsedSec: Math.round(t / 1000),
+    disposition: (summary?.args as { disposition?: string } | undefined)?.disposition ?? null,
+    closingSpoken: rec.lines.some((l) => l.speaker === "AGENT" && l.text.includes(closingText)),
+    firstUtteranceOk: true,
+    loops,
+    score: { naturalness: 0, loops: 0, route: 0, commercial: 0, duration: 0, tools: 0, disposition: 0, total: 0, notes: [] },
+  };
+  result.score = score(s, result, timeRouteFor(s.route));
+  return result;
 }
 
 export function score(s: Scenario, r: SimResult, route: VoiceRouteKey): Score {

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { z } from "zod";
 import { listCustomers, getCustomerDetail } from "@/lib/admin/customers";
+import { getCustomerSupportSignals } from "@/lib/admin/support-signals";
 import { CUSTOMER_FILTERS, CUSTOMER_SORTS } from "@/lib/admin/types";
 import { CustomersView } from "@/components/admin/customers/customers-view";
 import { PageHeader } from "@/components/app/page-header";
@@ -48,6 +49,15 @@ export default async function AdminCustomersPage({
     params.customer ? getCustomerDetail(params.customer) : Promise.resolve(null),
   ]);
 
+  // Read-only support signals for the open customer (audited as a support
+  // view), only once the workspace is known to exist.
+  const signals = detail
+    ? await getCustomerSupportSignals(detail.id).catch((error: unknown) => {
+        console.error("[admin] support signals unavailable", error);
+        return null;
+      })
+    : null;
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -61,6 +71,7 @@ export default async function AdminCustomersPage({
         sort={params.sort}
         direction={params.dir}
         detail={detail}
+        signals={signals}
       />
     </div>
   );

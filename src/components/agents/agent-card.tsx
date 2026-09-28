@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CircleAlert,
   Mail,
+  Phone,
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +105,15 @@ export function AgentCard({ agent }: { agent: AgentListRow }) {
             </Badge>
           )}
         </div>
+      )}
+
+      {agent.voiceCalls && (
+        <p className="mb-3 flex items-center gap-1.5 text-[11.5px] text-content-muted">
+          <Phone className="size-3.5 shrink-0" aria-hidden />
+          {agent.voiceCalls.enabled
+            ? `AI calls on · ${agent.voiceCalls.calls7d.toLocaleString("en-GB")} in 7 days`
+            : "AI calls off"}
+        </p>
       )}
 
       <div className="mt-auto flex items-center justify-between gap-2 text-[11.5px] text-content-subtle">

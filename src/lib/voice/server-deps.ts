@@ -239,7 +239,7 @@ async function voiceGrants(businessId: string): Promise<{ proVoiceItem: boolean;
 }
 
 export async function loadEntitlementFacts(businessId: string): Promise<EntitlementFacts> {
-  const [entitlements, capability, grants, balance, settings, number, business] = await Promise.all([
+  const [entitlements, capability, grants, balance, settings, number, business, aiSwitch, aiMode] = await Promise.all([
     getEntitlements(businessId),
     can(businessId, "voice_sales_enabled"),
     voiceGrants(businessId),
@@ -247,7 +247,18 @@ export async function loadEntitlementFacts(businessId: string): Promise<Entitlem
     readVoiceSettings(businessId),
     readWorkspaceNumber(businessId),
     db().from("businesses").select("status").eq("id", businessId).maybeSingle(),
+    db().from("business_settings").select("ai_assist_enabled").eq("business_id", businessId).maybeSingle(),
+    db().from("business_ai_settings").select("agent_mode").eq("business_id", businessId).maybeSingle(),
   ]);
+  // The same rule as the text agent (jobs/handlers/shared.ts resolveAgentMode):
+  // the switch, the plan's AI allowance, and a mode other than OFF. A failed
+  // read is "not known" (undefined), never a block on its own.
+  const aiAssistantOn =
+    aiSwitch.error || aiMode.error
+      ? undefined
+      : Boolean((aiSwitch.data as { ai_assist_enabled?: boolean | null } | null)?.ai_assist_enabled) &&
+        entitlements.aiAssistAllowed &&
+        ["SUGGEST_ONLY", "AUTO_REPLY"].includes(String((aiMode.data as { agent_mode?: string | null } | null)?.agent_mode ?? "OFF"));
   return {
     plan: entitlements.plan,
     // Add-on items follow the subscription's dunning grace (billing batch 2).
@@ -269,6 +280,7 @@ export async function loadEntitlementFacts(businessId: string): Promise<Entitlem
         }
       : null,
     number: number ? { provisioning_state: number.state, e164: number.e164 } : null,
+    aiAssistantOn,
   };
 }
 

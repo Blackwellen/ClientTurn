@@ -358,6 +358,8 @@ export function ImportWizard() {
                   {field.label}
                 </span>
                 <Select
+                  // The visible field name is a sibling <span>, not a <label>.
+                  aria-label={`Column for ${field.label}`}
                   value={mapping[field.key] ?? ""}
                   onChange={(event) =>
                     setMapping((current) => ({
@@ -389,6 +391,7 @@ export function ImportWizard() {
                 <div key={field.key} className="flex flex-wrap items-center gap-3">
                   <span className="w-32 shrink-0 text-[12.5px] text-content-secondary">{field.label}</span>
                   <Select
+                    aria-label={`Column for ${field.label}`}
                     value={mapping[field.key] ?? ""}
                     onChange={(event) =>
                       setMapping((current) => ({

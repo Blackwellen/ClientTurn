@@ -361,6 +361,18 @@ export type AgentListRow = {
   enabledSources: SourceKey[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * "Phone leads with AI" (0176). Null when the agent's type never phones or
+   * the database is behind (the option is then simply not shown).
+   */
+  voiceCalls?: AgentVoiceSummary | null;
+};
+
+export type AgentVoiceSummary = {
+  enabled: boolean;
+  dailyCap: number;
+  /** Calls this agent asked for in the last 7 days. */
+  calls7d: number;
 };
 
 export type AgentQueueRow = {

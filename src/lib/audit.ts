@@ -133,6 +133,9 @@ export type AuditAction =
   // P5 admin voice ops (brief §58): emergency controls and the voice GM check.
   | "admin.voice_control"
   | "admin.voice_margin_checked"
+  // LinkedIn Assist workspace holds (0175): a platform admin pauses or resumes one workspace.
+  | "admin.linkedin_assist_paused"
+  | "admin.linkedin_assist_resumed"
   // Maintenance mode and platform banners (0161, docs/MAINTENANCE.md).
   | "admin.maintenance_scheduled"
   | "admin.maintenance_updated"

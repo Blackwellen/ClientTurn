@@ -160,6 +160,8 @@ const OPERATION_CAPABILITIES: Record<string, OperationCapability> = {
   "quote.send": { capability: "send_outbound", mode: "additional" },
   "invoice.issue": { capability: "send_outbound", mode: "additional" },
   "voice.request_call": { capability: "send_outbound", mode: "additional" },
+  // Approving an agent's AI call places it: the same capability as pressing Call with AI.
+  "agent.decide_call": { capability: "send_outbound", mode: "additional" },
 
   "connector.replay_event": { capability: "manage_integrations", mode: "replaces_role" },
   "connector.dismiss_event": { capability: "manage_integrations", mode: "replaces_role" },

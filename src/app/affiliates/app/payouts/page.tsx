@@ -9,6 +9,8 @@ import {
   nextPayoutDate,
 } from "@/lib/affiliates/payouts";
 import { getDailySeries } from "@/lib/affiliates/analytics";
+import { listCommissions } from "@/lib/affiliates/queries";
+import { CommissionHistory } from "@/components/affiliates/payouts/commission-history";
 import { formatMinor } from "@/lib/affiliates/types";
 import {
   KpiCard,
@@ -38,10 +40,11 @@ export default async function AffiliatePayoutsPage() {
   if (!affiliate) return null;
   if (affiliate.status !== "ACTIVE") redirect("/affiliates/app");
 
-  const [balances, payouts, series] = await Promise.all([
+  const [balances, payouts, series, commissions] = await Promise.all([
     getBalances(affiliate.id),
     listPortalPayouts(affiliate.id),
     getDailySeries(affiliate.id, "30d"),
+    listCommissions(affiliate.id),
   ]);
 
   const currency = affiliate.policy.currency;
@@ -143,6 +146,8 @@ export default async function AffiliatePayoutsPage() {
           )}
 
           <PayoutHistory payouts={payouts} />
+
+          <CommissionHistory rows={commissions} currency={currency} />
         </div>
 
         <div className="min-w-0 space-y-3">

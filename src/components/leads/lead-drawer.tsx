@@ -3,7 +3,7 @@
 import { allowedNextStatuses } from "@/lib/leads/status-transitions";
 import * as React from "react";
 import Link from "next/link";
-import { ChevronDown, Maximize2, MessageSquare, MoreHorizontal, Phone, X } from "lucide-react";
+import { Bot, ChevronDown, Maximize2, MessageSquare, MoreHorizontal, Phone, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { Select } from "@/components/ui/form";
@@ -30,6 +30,8 @@ import { LeadActivitySection } from "./lead-activity-section";
 import { LeadDataRightsDialogs } from "./lead-data-rights";
 import { CloseOutcomeDialog } from "./close-outcome-dialog";
 import { leadPageHref, statusNeedsReason } from "@/lib/leads/detail-page";
+import { CallWithAiDialog } from "@/components/voice/call-with-ai-button";
+import { DRAWER_CALL_UNAVAILABLE, type DrawerCallState } from "@/lib/voice/call-button-state";
 
 const TABS = [
   { value: "summary", label: "Summary" },
@@ -74,18 +76,24 @@ function PrimaryAction({
   disabled,
   title,
   onClick,
+  className,
+  describedBy,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   disabled?: boolean;
   title?: string;
   onClick: () => void;
+  className?: string;
+  /** The id of visible text explaining a disabled state (a title alone is not announced reliably). */
+  describedBy?: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       title={title}
+      aria-describedby={describedBy}
       onClick={onClick}
       className={cn(
         "inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3",
@@ -94,6 +102,8 @@ function PrimaryAction({
         "hover:bg-surface-hover hover:text-content",
         "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
         "disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-surface",
+        // Last, so a caller's layout classes (hidden, rounded-l-none) win.
+        className,
       )}
     >
       <Icon className="size-4 shrink-0 text-content-subtle" />
@@ -117,6 +127,7 @@ export function LeadDrawer({
   onClose,
   initialTab = "summary",
   focus,
+  call,
 }: {
   detail: LeadDetail;
   actions: LeadDrawerActions;
@@ -127,6 +138,12 @@ export function LeadDrawer({
   onClose: () => void;
   initialTab?: string;
   focus?: string;
+  /**
+   * "Call with AI" (computed server-side from the voice settings, the lead and
+   * the viewer's role; lib/voice/call-button-state). Absent = could not be
+   * checked, so the button is disabled.
+   */
+  call?: DrawerCallState | null;
 }) {
   const { lead } = detail;
   const { toast } = useToast();
@@ -180,6 +197,16 @@ export function LeadDrawer({
 
   const noPhone = !lead.phone;
   const messagingBlocked = !canWrite || lead.opted_out || noPhone;
+
+  // "Call with AI": the same dialog and server action as the lead page. A
+  // viewer, or a drawer whose voice state could not be read, never gets an
+  // enabled button; the server re-checks everything on press regardless.
+  const aiCall = call ?? DRAWER_CALL_UNAVAILABLE;
+  const aiCallReason = !canWrite ? "Viewers can't place calls." : aiCall.disabledReason;
+  const [aiCallOpen, setAiCallOpen] = React.useState(false);
+  const [aiCallRefusal, setAiCallRefusal] = React.useState<string | null>(null);
+  const aiCallHintId = React.useId();
+  const aiCallHint = aiCallRefusal ?? aiCallReason;
 
   return (
     <>
@@ -284,15 +311,32 @@ export function LeadDrawer({
 
           {/* ------------------------------------------- primary actions */}
           <div className="mt-3.5 flex flex-wrap items-center gap-2">
-            <PrimaryAction
-              icon={Phone}
-              label="Call"
-              disabled={noPhone}
-              title={noPhone ? "This lead has no phone number." : undefined}
-              onClick={() => {
-                if (lead.phone) window.location.href = `tel:${lead.phone}`;
-              }}
-            />
+            {/* A small split: phone them yourself, or have the AI call. On
+                narrow screens "Call with AI" moves into More. */}
+            <div role="group" aria-label="Call" className="inline-flex">
+              <PrimaryAction
+                icon={Phone}
+                label="Call yourself"
+                disabled={noPhone}
+                title={noPhone ? "This lead has no phone number." : undefined}
+                className="sm:rounded-r-none"
+                onClick={() => {
+                  if (lead.phone) window.location.href = `tel:${lead.phone}`;
+                }}
+              />
+              <PrimaryAction
+                icon={Bot}
+                label="Call with AI"
+                disabled={Boolean(aiCallReason)}
+                title={aiCallReason ?? undefined}
+                describedBy={aiCallHint ? aiCallHintId : undefined}
+                className="-ml-px hidden rounded-l-none sm:inline-flex"
+                onClick={() => {
+                  setAiCallRefusal(null);
+                  setAiCallOpen(true);
+                }}
+              />
+            </div>
             <PrimaryAction
               icon={MessageSquare}
               label="Send SMS"
@@ -337,6 +381,18 @@ export function LeadDrawer({
                 </button>
               }
             >
+              <DropdownItem
+                className="sm:hidden"
+                icon={Bot}
+                disabled={Boolean(aiCallReason)}
+                description={aiCallReason ?? undefined}
+                onSelect={() => {
+                  setAiCallRefusal(null);
+                  setAiCallOpen(true);
+                }}
+              >
+                Call with AI
+              </DropdownItem>
               <DropdownItem onSelect={() => setTab("conversation")}>
                 View conversation
               </DropdownItem>
@@ -379,6 +435,30 @@ export function LeadDrawer({
               )}
             </DropdownMenu>
           </div>
+
+          {aiCallHint && (
+            <p
+              id={aiCallHintId}
+              role={aiCallRefusal ? "alert" : undefined}
+              className="mt-1.5 text-[12px] text-content-muted"
+            >
+              <span className="font-medium text-content-secondary">Call with AI:</span> {aiCallHint}{" "}
+              {!aiCallRefusal && aiCall.fix && (
+                <Link href={aiCall.fix.href} className="font-medium text-content-accent underline-offset-4 hover:underline">
+                  {aiCall.fix.label}
+                </Link>
+              )}
+            </p>
+          )}
+
+          <CallWithAiDialog
+            open={aiCallOpen}
+            onClose={() => setAiCallOpen(false)}
+            leadId={lead.id}
+            leadName={name}
+            numberE164={aiCall.numberE164}
+            onRefused={setAiCallRefusal}
+          />
 
           {/* ------------------------------------------------------- tabs */}
           <div role="tablist" aria-label="Lead detail" className="mt-3 flex items-center gap-6">

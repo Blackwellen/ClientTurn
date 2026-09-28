@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { parsePlan } from "@/lib/find-leads/plan";
 import { createRun } from "@/lib/find-leads/server/runs";
 import { runBookingTick, runReengagementTick, type TickResult } from "./ticks";
+import { agentCallingScope } from "./voice-calls";
+import { runAgentVoiceTick } from "./voice-calls-tick";
 import {
   AgentBlocked,
   enrolmentScope,
@@ -15,6 +17,7 @@ import {
 
 type DueAgent = {
   id: string;
+  name: string;
   business_id: string;
   created_by: string | null;
   agent_type: string;
@@ -40,7 +43,7 @@ type Db = ReturnType<typeof createAdminClient>;
 export async function scheduleAgents() {
   const db = createAdminClient();
   const now = new Date().toISOString();
-  const { data: due, error } = await db.from("agents").select("id, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
+  const { data: due, error } = await db.from("agents").select("id, name, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
     .eq("status", "ACTIVE")
     .in("agent_type", ["SOURCING", "BOOKING", "REENGAGEMENT", "COMBINED"])
     .lte("next_run_at", now)
@@ -75,13 +78,46 @@ export async function scheduleAgents() {
     let attention: { status: "NEEDS_ATTENTION" | "ERROR"; reason: string } | null = null;
     let lastRunStatus = "COMPLETED";
 
+    // "Phone leads with AI" (0176) runs FIRST, so this run's text follow-up
+    // can leave alone every lead the call covers (owner decision 2026-09-28:
+    // no double contact; the call is the touch). A cancelled or refused call
+    // leaves the lead to follow-up on the next run. Its own guards, and a
+    // failure here is on the timeline without taking the agent down.
+    let calledLeadIds = new Set<string>();
+    if (agentCallingScope(agent.agent_type).applies) {
+      try {
+        const voice = await runAgentVoiceTick({ ...agent, status: current.status });
+        calledLeadIds = new Set(voice.touchedLeadIds);
+        if (voice.ran) {
+          await db.from("agent_activity_events").insert({
+            business_id: agent.business_id,
+            agent_id: agent.id,
+            event_type: "TICK_COMPLETED",
+            severity: voice.blocked > 0 ? "WARNING" : "SUCCESS",
+            title: "Checked for leads to phone",
+            detail: voice.detail,
+            metadata: { work: "VOICE", examined: voice.examined, actioned: voice.requested, awaiting_approval: voice.awaitingApproval, blocked: voice.blocked } as never,
+          });
+        }
+      } catch (e) {
+        await db.from("agent_activity_events").insert({
+          business_id: agent.business_id,
+          agent_id: agent.id,
+          event_type: "RUN_BLOCKED",
+          severity: "WARNING",
+          title: "AI calls need attention",
+          detail: e instanceof Error ? e.message : "AI calls could not be requested this run.",
+        });
+      }
+    }
+
     for (const work of workForType(agent.agent_type as never)) {
       try {
         if (work === "SOURCING") {
           await runSourcing(db, agent);
           lastRunStatus = "QUEUED";
         } else {
-          const result = work === "BOOKING" ? await runBookingTick(agent) : await runReengagementTick(agent);
+          const result = work === "BOOKING" ? await runBookingTick(agent, calledLeadIds) : await runReengagementTick(agent);
           await recordTick(db, agent, work, result);
         }
       } catch (e) {

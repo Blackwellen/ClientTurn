@@ -36,7 +36,7 @@ export function ProspectCard({
 
   return (
     <article
-      className="group flex flex-col rounded-xl border border-line bg-surface p-4 text-left shadow-xs transition-shadow duration-150 hover:shadow-sm focus-within:ring-2 focus-within:ring-accent-500/40"
+      className="group flex flex-col rounded-xl border border-line bg-surface p-4 text-left shadow-xs transition-shadow duration-150 hover:shadow-sm focus-within:ring-2 focus-within:ring-[var(--lr-focus-border)]"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

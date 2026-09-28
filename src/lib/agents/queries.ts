@@ -3,6 +3,8 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { LeadListRow } from "@/lib/leads/types";
+import { agentCallingScope } from "./voice-calls";
+import { agentCallCounts, readAgentVoiceColumns } from "./voice-calls-guard";
 import {
   SOURCE_DEFINITIONS,
   type AgentActivityRow,
@@ -11,6 +13,7 @@ import {
   type AgentSourceRow,
   type AgentStatus,
   type AgentType,
+  type AgentVoiceSummary,
   type Autonomy,
   type Cadence,
   type QueueItemType,
@@ -20,6 +23,32 @@ import {
 } from "./types";
 
 export * from "./types";
+
+/**
+ * "Phone leads with AI" per agent (0176): the switch, the daily limit and the
+ * calls asked for in the last 7 days. Service role (the columns post-date the
+ * generated types), scoped to the workspace; empty before 0176, and a failed
+ * read leaves the summary out rather than failing the page.
+ */
+async function voiceSummaries(businessId: string, agents: { id: string; agent_type: string }[]): Promise<Map<string, AgentVoiceSummary>> {
+  const out = new Map<string, AgentVoiceSummary>();
+  const calling = agents.filter((a) => agentCallingScope(a.agent_type).applies);
+  if (!calling.length) return out;
+  try {
+    const [columns, counts] = await Promise.all([
+      readAgentVoiceColumns(businessId, calling.map((a) => a.id)),
+      agentCallCounts(businessId, new Date(Date.now() - 7 * 864e5)),
+    ]);
+    if (!columns.schemaReady) return out;
+    for (const a of calling) {
+      const c = columns.byAgent.get(a.id);
+      out.set(a.id, { enabled: c?.enabled ?? false, dailyCap: c?.dailyCap ?? 20, calls7d: counts.get(a.id) ?? 0 });
+    }
+  } catch {
+    return out;
+  }
+  return out;
+}
 
 /**
  * Agent reads.
@@ -162,9 +191,12 @@ export async function listAgents(businessId: string): Promise<AgentListRow[]> {
     sourcesByAgent.set(row.agent_id, list);
   }
 
-  return ((agents ?? []) as unknown as RawAgent[]).map((raw) =>
-    toListRow(raw, summaryByAgent.get(raw.id) ?? EMPTY_SUMMARY, sourcesByAgent.get(raw.id) ?? []),
-  );
+  const rawAgents = (agents ?? []) as unknown as RawAgent[];
+  const voice = await voiceSummaries(businessId, rawAgents);
+  return rawAgents.map((raw) => ({
+    ...toListRow(raw, summaryByAgent.get(raw.id) ?? EMPTY_SUMMARY, sourcesByAgent.get(raw.id) ?? []),
+    voiceCalls: voice.get(raw.id) ?? null,
+  }));
 }
 
 export type AgentDetail = {
@@ -237,10 +269,12 @@ export async function getAgent(
   }));
 
   const enabled = sources.filter((s) => s.enabled).map((s) => s.sourceKey);
+  const voice = await voiceSummaries(businessId, [agent]);
 
   return {
     agent: {
       ...toListRow(agent, summary, enabled),
+      voiceCalls: voice.get(agent.id) ?? null,
       verifyEmail: agent.verify_email,
       autoPromoteToLeads: agent.auto_promote_to_leads,
       icpProfileId: agent.icp_profile_id,

@@ -9,6 +9,7 @@ import { AgentBlocked, chooseReengagementChannel } from "./policy";
 import { channelUsable } from "@/lib/integrations/platform-channels";
 import { platformConfigured } from "@/lib/integrations/queries";
 import { closingVerdict } from "./closing-rules";
+import { leadsForFollowUp } from "./voice-calls";
 import { closingGoalsInTarget, resolveTarget } from "./offer-target";
 import { loadAgentOfferTargetOrWhole, loadRulesCatalogue } from "@/lib/commercial/rules-queries";
 import type { GoalKey } from "@/lib/qualification-intelligence/types";
@@ -44,7 +45,7 @@ export type TickResult = {
   detail: string;
 };
 
-type AgentRow = {
+export type AgentRow = {
   id: string;
   business_id: string;
   autonomy: string;
@@ -55,23 +56,37 @@ type AgentRow = {
 
 /* ---------------------------------------------------------------- booking */
 
+type StalledLead = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  opted_out: boolean;
+  last_contact_at: string | null;
+  automation_active: boolean;
+  status: string;
+  archived_at: string | null;
+  booked_at: string | null;
+  human_takeover: boolean;
+  /** The goal the lead has not reached (closingVerdict). */
+  goal: GoalKey;
+};
+
 /**
- * Qualified leads that have gone quiet short of their goal (the closing agent;
- * the stored type is still BOOKING).
- *
- * "Stalled" is deliberately conservative: qualified, not won or lost, not
- * opted out, no human handling it, nothing sent for at least a day, and the
- * goal not reached (`closingVerdict`: a meeting booked for meeting goals, a
- * sale for direct-sale and sign-up goals). Leads the checkout or quote
- * follow-up is already working are left to that loop.
+ * The closing agent's stalled leads, shared by the follow-up hand-back
+ * (runBookingTick) and "Phone leads with AI" (agents/voice-calls-tick.ts), so
+ * both chase exactly the same leads toward the same goal.
  */
-export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
+export async function findStalledLeads(
+  agent: AgentRow,
+): Promise<{ candidates: { id: string }[]; leads: StalledLead[]; detail: string | null }> {
   const admin = createAdminClient();
   const dayAgo = new Date(Date.now() - 864e5).toISOString();
 
   let query = admin
     .from("leads")
-    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active, status, archived_at, booked_at")
+    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active, status, archived_at, booked_at, human_takeover")
     .eq("business_id", agent.business_id)
     .eq("is_test", false)
     .eq("qualification_state", "QUALIFIED")
@@ -93,7 +108,7 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
   const resolved = resolveTarget(target, items);
   if (resolved.serviceIds) {
     if (resolved.serviceIds.size === 0) {
-      return { examined: 0, actioned: 0, blocked: 0, detail: "None of the products or services this agent sells is still in the catalogue." };
+      return { candidates: [], leads: [], detail: "None of the products or services this agent sells is still in the catalogue." };
     }
     query = query.in("service_id", [...resolved.serviceIds]);
   }
@@ -102,14 +117,37 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
   if (error) throw new Error("Qualified leads could not be read.");
 
   const verdicts = await closingContext(admin, agent.business_id, (candidates ?? []).map((l) => l.id));
-  const leads = (candidates ?? []).filter((lead) =>
-    closingVerdict({
+  const leads: StalledLead[] = [];
+  for (const lead of candidates ?? []) {
+    const verdict = closingVerdict({
       booked: Boolean(lead.booked_at),
       openGoals: closingGoalsInTarget(verdicts.goals.get(lead.id) ?? [], resolved),
       checkoutInFlight: verdicts.checkout.has(lead.id),
       quoteInFlight: verdicts.quote.has(lead.id),
-    }).stalled,
-  );
+    });
+    if (verdict.stalled) leads.push({ ...(lead as Omit<StalledLead, "goal">), goal: verdict.goal });
+  }
+  return { candidates: candidates ?? [], leads, detail: null };
+}
+
+/**
+ * Qualified leads that have gone quiet short of their goal (the closing agent;
+ * the stored type is still BOOKING).
+ *
+ * "Stalled" is deliberately conservative: qualified, not won or lost, not
+ * opted out, no human handling it, nothing sent for at least a day, and the
+ * goal not reached (`closingVerdict`: a meeting booked for meeting goals, a
+ * sale for direct-sale and sign-up goals). Leads the checkout or quote
+ * follow-up is already working are left to that loop.
+ */
+export async function runBookingTick(agent: AgentRow, calledLeadIds: ReadonlySet<string> = new Set()): Promise<TickResult> {
+  const stalled = await findStalledLeads(agent);
+  if (stalled.detail) return { examined: 0, actioned: 0, blocked: 0, detail: stalled.detail };
+  const { candidates } = stalled;
+  // No double contact: a lead this run's AI call covers gets no text nudge
+  // from the same run (voice-calls.ts `leadsForFollowUp`).
+  const { leads, covered } = leadsForFollowUp(stalled.leads, calledLeadIds);
+  const admin = createAdminClient();
 
   let actioned = 0;
   let blocked = 0;
@@ -195,9 +233,10 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
     actioned,
     blocked,
     detail:
-      agent.autonomy === "AUTO"
+      (agent.autonomy === "AUTO"
         ? `Handed ${actioned} qualified lead(s) that have not reached their goal back to follow-up.`
-        : `Listed ${actioned} qualified lead(s) that have not reached their goal for you to chase.`,
+        : `Listed ${actioned} qualified lead(s) that have not reached their goal for you to chase.`) +
+      (covered > 0 ? ` ${covered} left alone because an AI call covers them this run.` : ""),
   };
 }
 

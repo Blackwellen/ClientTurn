@@ -36,6 +36,7 @@ export const VOICE_DENIAL_REASONS = [
   "NO_MINUTES",
   "INSUFFICIENT_MINUTES",
   "VOICE_DISABLED_IN_SETTINGS",
+  "AI_ASSISTANT_OFF",
   "IDENTITY_INCOMPLETE",
   "NO_NUMBER",
 ] as const;
@@ -55,6 +56,7 @@ export const DENIAL_PRODUCT_STATE: Readonly<Record<VoiceDenialReason, ProductSta
   KILL_SWITCH_PLATFORM: "error",
   KILL_SWITCH_WORKSPACE: "error",
   VOICE_DISABLED_IN_SETTINGS: "integration-required",
+  AI_ASSISTANT_OFF: "integration-required",
   IDENTITY_INCOMPLETE: "integration-required",
   NO_NUMBER: "integration-required",
 };
@@ -78,7 +80,17 @@ export type VoiceEntitlementSnapshot = {
   };
   minutes: { includedRemainingSec: number; packRemainingSec: number };
   killSwitch: { platform: boolean; workspace: boolean };
-  settings: { voiceEnabled: boolean };
+  settings: {
+    voiceEnabled: boolean;
+    /**
+     * The workspace's AI assistant is on (business_settings.ai_assist_enabled,
+     * the plan's AI allowance and an agent mode other than OFF). Every call
+     * tool is gated on it (voice/tools/core.ts), so a call placed while it is
+     * off can do nothing (second live call, 2026-09-28: every tool refused).
+     * Absent = not known here (not blocked); false blocks the dial.
+     */
+    aiAssistantOn?: boolean;
+  };
   identity: {
     callingAsName?: string | null;
     legalEntityName?: string | null;
@@ -145,6 +157,7 @@ export function assertVoiceAllowed(
 
   // Readiness (integration-required).
   if (!ctx.settings.voiceEnabled) reasons.push("VOICE_DISABLED_IN_SETTINGS");
+  if (ctx.settings.aiAssistantOn === false) reasons.push("AI_ASSISTANT_OFF");
   const id = identityReadiness(ctx.identity);
   if (!id.ready) {
     reasons.push("IDENTITY_INCOMPLETE");

@@ -17,6 +17,7 @@ import { useAdminAction } from "@/components/admin/use-admin-action";
 import { cn } from "@/lib/cn";
 import { formatMoney, formatNumber, titleise } from "@/lib/admin/format";
 import { formatRelative } from "@/lib/dates";
+import { ledgerEntryLabel } from "@/lib/affiliates/ledger-rules";
 import {
   AFFILIATE_TABS,
   TAB_LABELS,
@@ -253,7 +254,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
           <Panel
             icon={Coins}
             title="Commissions"
-            description="Pending first — those are the ones you can still act on."
+            description="Pending first — those are the ones you can still act on. Type shows reversals, dispute restores, adjustments and write-offs apart from commission."
           >
             {data.commissions.length === 0 ? (
               <PanelEmpty>No commission has accrued yet.</PanelEmpty>
@@ -262,6 +263,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                 headers={[
                   "Partner",
                   "Business",
+                  "Type",
                   "Period",
                   "Customer paid",
                   "Commission",
@@ -273,6 +275,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                   <tr key={row.id}>
                     <Td>{row.affiliateName}</Td>
                     <Td>{row.businessName ?? "—"}</Td>
+                    <Td>{ledgerEntryLabel(row.entryType, row.reversalReason)}</Td>
                     <Td>
                       {row.periodMonth
                         ? new Date(row.periodMonth).toLocaleDateString("en-GB", {

@@ -57,9 +57,13 @@
   --lr-text: var(--pub-text);
   --lr-text-secondary: var(--pub-text-secondary);
   --lr-text-muted: var(--pub-text-muted);
-  --lr-text-subtle: #61748c;
+  /* Was #61748c: 3.8-4.3:1 on the card and canvas greys, under the 4.5:1
+     text minimum (SC 1.4.3). Same hue, lifted until it clears 4.5:1 on the
+     lightest public card (#0e1626). */
+  --lr-text-subtle: #6d819a;
   --lr-text-inverse: var(--pub-lime-ink);
   --lr-text-accent: var(--ct-lime);
+  --lr-focus-border: var(--ct-lime);
   --lr-border: var(--pub-border);
   --lr-border-subtle: #141c2a;
   --lr-border-strong: var(--pub-border-strong);
@@ -91,6 +95,13 @@
   background: var(--pub-bg);
   color: var(--pub-text);
   overflow-x: clip;
+}
+
+/* The body behind the public canvas. It was the app's cloud grey, which showed
+   as a light flash on overscroll and is what contrast checkers sampled behind
+   cells scrolled sideways out of the viewport (a11y audit 2026-09-28). */
+body:has(.ct-public-root) {
+  background: #020409;
 }
 
 /* Everything below is authored in the `components` layer.

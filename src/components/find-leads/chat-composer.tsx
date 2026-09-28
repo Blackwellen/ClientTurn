@@ -58,7 +58,7 @@ export function ChatComposer({
       <div
         className={cn(
           "relative rounded-xl border bg-surface transition-colors",
-          disabled ? "border-line bg-surface-sunken/50" : "border-line focus-within:border-accent-300",
+          disabled ? "border-line bg-surface-sunken/50" : "border-line focus-within:border-[var(--lr-focus-border)]",
         )}
       >
         <label htmlFor="chat-composer" className="sr-only">

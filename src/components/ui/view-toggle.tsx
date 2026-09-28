@@ -24,12 +24,9 @@ export function ViewToggle({
   className?: string;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Switch view"
-      className={cn("inline-flex", className)}
-    >
+    <div className={cn("inline-flex", className)}>
       <SegmentedControl
+        label="Switch view"
         size={size}
         value={value}
         onChange={(next) => onChange(next as ViewMode)}

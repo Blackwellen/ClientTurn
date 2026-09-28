@@ -16,6 +16,7 @@ import { LeadsContent } from "@/components/leads/leads-content";
 import { LeadDrawerHost } from "@/components/leads/lead-drawer-host";
 import { AddLeadButton } from "@/components/leads/add-lead/add-lead-button";
 import { getAddLeadContext } from "@/lib/leads/add-lead/queries";
+import { loadDrawerCallState } from "@/lib/voice/ui-queries";
 
 export const metadata: Metadata = { title: "Leads" };
 export const dynamic = "force-dynamic";
@@ -57,6 +58,11 @@ export default async function LeadsPage({
     ]);
 
   const canWrite = hasRole(workspace.role, "member");
+  // "Call with AI" in the drawer: the same rule as the lead page's AI calls
+  // panel, read only when a lead is open.
+  const call = detail
+    ? await loadDrawerCallState(workspace.businessId, workspace.userId, workspace.role, detail.lead)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -101,6 +107,7 @@ export default async function LeadsPage({
           role={workspace.role}
           initialTab={first(params.leadTab)}
           focus={first(params.leadFocus)}
+          call={call}
         />
       )}
     </div>

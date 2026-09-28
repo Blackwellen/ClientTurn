@@ -58,7 +58,9 @@ import { Logo } from "@/components/ui/logo";
    so its palette is written out here rather than inherited. */
 const INK = "#212936";
 const INK_SOFT = "#4d5b6e";
-const INK_MUTED = "#6b7a8f";
+// The app's own --lr-text-muted. #6b7a8f was 4.1-4.4:1 on the frame's
+// white and cloud (SC 1.4.3, a11y audit 2026-09-28).
+const INK_MUTED = "#5b6779";
 const LINE = "#e5eaf1";
 const CANVAS = "#f7f9fc";
 const LIME = "#b7f34a";

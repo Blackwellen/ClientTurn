@@ -177,7 +177,8 @@ export function PublicHeader() {
           }}
           aria-expanded={expanded}
           aria-controls={`mega-${item.id}`}
-          aria-haspopup="true"
+          // A disclosure, not a menu: the panel is a set of links, so no
+          // aria-haspopup (which announces a role="menu" that is not there).
           className="pub-nav-trigger"
           onClick={() => setOpenMenu(expanded ? null : item.id)}
         >
@@ -291,6 +292,9 @@ function MobileDrawer({
   React.useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
+    // Returned to on close, so Escape or the overlay does not drop focus on
+    // <body> (the menu button that opened the drawer).
+    const opener = document.activeElement as HTMLElement | null;
     panel.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -311,7 +315,10 @@ function MobileDrawer({
     };
 
     panel.addEventListener("keydown", onKeyDown);
-    return () => panel.removeEventListener("keydown", onKeyDown);
+    return () => {
+      panel.removeEventListener("keydown", onKeyDown);
+      if (opener?.isConnected) opener.focus();
+    };
   }, []);
 
   /* Portalled to the body rather than rendered inside the header.
@@ -400,6 +407,17 @@ function MobileDrawer({
             Log in
           </Link>
         </div>
+
+        {/* The visible close button lives in the header, outside this
+            aria-modal dialog, so a touch screen-reader user (no Escape key)
+            could not reach it. Visually hidden until focused. */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="sr-only focus:not-sr-only focus:mt-4 focus:block focus:w-full focus:rounded-lg focus:py-2 focus:text-center focus:text-[15px] focus:text-[var(--pub-text)]"
+        >
+          Close menu
+        </button>
       </div>
     </div>,
     document.body,

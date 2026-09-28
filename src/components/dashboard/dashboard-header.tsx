@@ -21,9 +21,9 @@ export function DashboardHeader({
         <p className="text-content-subtle text-[11px] font-semibold tracking-[0.09em] uppercase">
           {greeting}
         </p>
-        <h2 className="text-content mt-1 truncate text-[26px] leading-tight font-bold tracking-[-0.028em] xl:text-[31px]">
+        <h1 className="text-content mt-1 truncate text-[26px] leading-tight font-bold tracking-[-0.028em] xl:text-[31px]">
           {businessName}
-        </h2>
+        </h1>
         <p className="text-content-muted mt-1 text-[13.5px]">{description}</p>
       </div>
       {action && <div className="shrink-0">{action}</div>}

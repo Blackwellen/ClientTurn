@@ -16,7 +16,7 @@ import "./evaluation.css";
  */
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="ct-marketing flex min-h-dvh w-full flex-col">
+    <div className="ct-marketing ct-public-root flex min-h-dvh w-full flex-col">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[70] focus:rounded-lg focus:bg-[var(--pub-lime)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[var(--pub-lime-ink)]"
@@ -26,7 +26,9 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
       {/* Platform banners and the SITE_OFFLINE maintenance notice (docs/MAINTENANCE.md). */}
       <MarketingNotices />
       <PublicHeader />
-      <main id="main" className="flex-1">
+      {/* tabIndex -1: following the skip link must move focus, not only the
+          scroll position, or the next Tab lands back in the header. */}
+      <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
         {children}
       </main>
       <PublicFooter />

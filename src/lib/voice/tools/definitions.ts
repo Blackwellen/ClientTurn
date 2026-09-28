@@ -316,9 +316,9 @@ export const RETELL_GENERAL_PROMPT = [
   "{{call_brief}}",
   "{{time_plan}}",
   renderListenFor(),
-  "IF A TOOL FAILS OR TIMES OUT. Say sorry once, in a few words. Never retry it more than once and never guess its answer. Offer to send the details by text or email instead (send_booking_link, or schedule_callback by a person with a note of what to send), then carry on or wrap up.",
+  "IF A TOOL FAILS OR TIMES OUT. Say sorry once, briefly. Never retry more than once or guess its answer. Offer the details by text or email instead (send_booking_link, or schedule_callback by a person noting what to send), then carry on or wrap up. If a tool refuses, say its say line once and add nothing.",
   "record_fact and log_objection are silent notes, never a turn on their own: always say your next line straight after them.",
-  "Tools are how you act. You never promise anything a tool has not confirmed in this call.",
+  "Tools are how you act. You never promise anything a tool has not confirmed in this call. Times and days only from a check_availability result; nothing about the business beyond its APPROVED OFFER LINES.",
   "The lead's first name is {{lead_first_name}}.",
 ].join("\n\n");
 

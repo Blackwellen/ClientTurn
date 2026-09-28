@@ -22,6 +22,9 @@ import {
 import type { AgentDetail } from "@/lib/agents/queries";
 import { AgentSettingsForm } from "./agent-settings-form";
 import { AgentOfferTargetForm } from "./agent-offer-target-form";
+import { AgentVoiceCallsForm } from "./agent-voice-calls-field";
+import { AgentCallDecision } from "./agent-call-decision";
+import { AGENT_VOICE_DEFAULT_DAILY_CAP, agentCallingScope, isCallApprovalItem, type AgentVoiceAvailability } from "@/lib/agents/voice-calls";
 import { describeTarget, type CatalogueOptions, type OfferTarget } from "@/lib/agents/offer-target";
 
 /** The Settings tab's "What it sells" data (0174). */
@@ -101,6 +104,16 @@ export function OverviewTab({
                 }
               />
               <Row label="Sourcing runs" value={runCount.toLocaleString("en-GB")} />
+              {agent.voiceCalls && (
+                <Row
+                  label="AI phone calls"
+                  value={
+                    agent.voiceCalls.enabled
+                      ? `On · up to ${agent.voiceCalls.dailyCap}/day · ${agent.voiceCalls.calls7d.toLocaleString("en-GB")} in 7 days`
+                      : "Off"
+                  }
+                />
+              )}
             </dl>
 
             {/* Stated on the surface where people configure enrichment, not
@@ -177,9 +190,12 @@ export function LeadsTab({ leads }: { leads: LeadListRow[] }) {
 export function QueueTab({
   queue,
   runs,
+  canDecideCalls = false,
 }: {
   queue: AgentQueueRow[];
   runs: { id: string; title: string | null; status: string; targetVerified: number }[];
+  /** A member or above: may approve or decline an agent's AI call. */
+  canDecideCalls?: boolean;
 }) {
   // Blocked work first: an agent waiting for a person is the single most
   // actionable thing on this page.
@@ -192,7 +208,7 @@ export function QueueTab({
         <Panel title={`Waiting for you (${blocked.length})`}>
           <ul className="divide-y divide-line-subtle">
             {blocked.map((item) => (
-              <QueueRow key={item.id} item={item} />
+              <QueueRow key={item.id} item={item} canDecideCalls={canDecideCalls} />
             ))}
           </ul>
         </Panel>
@@ -239,8 +255,9 @@ export function QueueTab({
   );
 }
 
-function QueueRow({ item }: { item: AgentQueueRow }) {
+function QueueRow({ item, canDecideCalls = false }: { item: AgentQueueRow; canDecideCalls?: boolean }) {
   const reason = item.blockedReason ?? item.errorMessage;
+  const callApproval = isCallApprovalItem(item);
 
   return (
     <li className="flex items-start justify-between gap-3 py-2.5">
@@ -253,6 +270,10 @@ function QueueRow({ item }: { item: AgentQueueRow }) {
             <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning-600" aria-hidden />
             {reason}
           </p>
+        )}
+        {callApproval && canDecideCalls && <AgentCallDecision itemId={item.id} label={item.subjectLabel ?? "Call with AI"} />}
+        {callApproval && !canDecideCalls && (
+          <p className="mt-0.5 text-[12px] text-content-muted">A member, admin or owner can approve this call.</p>
         )}
       </div>
       <Badge tone={queueStatusTone(item.status)} dense dot>
@@ -421,12 +442,15 @@ export function SettingsTab({
   controls,
   plans,
   offer = null,
+  voiceAvailability = null,
 }: {
   agent: AgentDetail["agent"];
   canManage: boolean;
   controls: React.ReactNode;
   plans: { id: string; name: string }[];
   offer?: AgentOfferView | null;
+  /** "Phone leads with AI" (0176). Null = not read (the panel says so). */
+  voiceAvailability?: AgentVoiceAvailability | null;
 }) {
   const problems = readinessProblems({
     agentType: agent.agentType,
@@ -509,6 +533,28 @@ export function SettingsTab({
                 hint="Only a workspace owner or admin can change this."
               />
             </dl>
+          )}
+        </Panel>
+      )}
+
+      {agent.voiceCalls !== undefined && agentCallingScope(agent.agentType).applies && (
+        <Panel title="AI phone calls">
+          {!voiceAvailability ? (
+            <p role="alert" className="flex items-start gap-2 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2.5 text-[12.5px] text-warning-700">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              Whether this workspace can place AI calls could not be checked. Refresh to try again.
+            </p>
+          ) : (
+            <AgentVoiceCallsForm
+              key={`${agent.voiceCalls?.enabled}-${agent.voiceCalls?.dailyCap}`}
+              agentId={agent.id}
+              agentType={agent.agentType}
+              availability={{ ...voiceAvailability, canManage }}
+              initial={{
+                enabled: agent.voiceCalls?.enabled ?? false,
+                dailyCallCap: agent.voiceCalls?.dailyCap ?? AGENT_VOICE_DEFAULT_DAILY_CAP,
+              }}
+            />
           )}
         </Panel>
       )}

@@ -207,6 +207,8 @@ export function ReactivationDetailDrawer({
               </IconButton>
             </DrawerHeader>
             <Tabs
+              idBase="campaign-detail"
+              label="Campaign sections"
               items={TABS}
               value={tab}
               onChange={onTabChange}
@@ -216,7 +218,7 @@ export function ReactivationDetailDrawer({
         }
       >
         {/* ------------------------------------------------- overview --- */}
-        <TabPanel value="overview" activeValue={tab} className="space-y-4">
+        <TabPanel idBase="campaign-detail" value="overview" activeValue={tab} className="space-y-4">
           <div
             className={cn(
               "flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3",
@@ -437,7 +439,7 @@ export function ReactivationDetailDrawer({
         </TabPanel>
 
         {/* ------------------------------------------------- audience --- */}
-        <TabPanel value="audience" activeValue={tab} className="space-y-4">
+        <TabPanel idBase="campaign-detail" value="audience" activeValue={tab} className="space-y-4">
           <dl className="divide-y divide-line-subtle">
             <Field label="Audience">{campaign.audienceLabel}</Field>
             <Field label="Estimated size">
@@ -539,7 +541,7 @@ export function ReactivationDetailDrawer({
         </TabPanel>
 
         {/* ------------------------------------------------- messages --- */}
-        <TabPanel value="messages" activeValue={tab} className="space-y-3">
+        <TabPanel idBase="campaign-detail" value="messages" activeValue={tab} className="space-y-3">
           <p className="text-[12.5px] text-content-muted">
             Reactivation sends a short, fixed sequence. An opening message and
             at most one follow-up. Every send re-checks opt-outs, suppressions
@@ -578,7 +580,7 @@ export function ReactivationDetailDrawer({
         </TabPanel>
 
         {/* -------------------------------------------------- results --- */}
-        <TabPanel value="results" activeValue={tab} className="space-y-4">
+        <TabPanel idBase="campaign-detail" value="results" activeValue={tab} className="space-y-4">
           <Panel title="Funnel">
             <ul className="space-y-2">
               {[
@@ -660,7 +662,7 @@ export function ReactivationDetailDrawer({
         </TabPanel>
 
         {/* ------------------------------------------------- activity --- */}
-        <TabPanel value="activity" activeValue={tab}>
+        <TabPanel idBase="campaign-detail" value="activity" activeValue={tab}>
           {campaign.activity.length === 0 ? (
             <p className="text-[12.5px] text-content-muted">
               Nothing has been recorded for this campaign yet.

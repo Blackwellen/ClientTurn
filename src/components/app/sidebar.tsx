@@ -278,7 +278,7 @@ export function SidebarContent({
         {onToggleCollapse && (
           <div className={cn("mt-1", collapsed && "flex justify-center")}>
             {collapsed ? (
-              <Tooltip content="Expand sidebar" placement="right">
+              <Tooltip content="Expand sidebar" placement="right" describe={false}>
                 <button
                   type="button"
                   onClick={onToggleCollapse}

@@ -10,6 +10,8 @@ import { ReadOnlyNotice } from "@/components/settings/notices";
 import { SectionLoadError } from "@/components/settings/ai-selling/section-load-error";
 import { QuoteSettingsForm } from "@/components/settings/quotes/quote-settings-form";
 import { CatalogueCard } from "@/components/settings/quotes/catalogue-card";
+import { PaymentReviewCard } from "@/components/settings/quotes/payment-review-card";
+import { loadPaymentReviewQueue } from "@/lib/invoicing/payment-review-store";
 
 /**
  * Settings -> Quotes & invoices (gap map §44). One Settings section, not a
@@ -29,10 +31,13 @@ export async function QuotesSection() {
 
   let view: Awaited<ReturnType<typeof loadQuoteSettingsView>>;
   let checkoutByItem: Record<string, string | null>;
+  let review: Awaited<ReturnType<typeof loadPaymentReviewQueue>>;
   try {
-    [view, checkoutByItem] = await Promise.all([
+    [view, checkoutByItem, review] = await Promise.all([
       loadQuoteSettingsView(workspace.businessId, canManage),
       catalogueCheckoutLinks(workspace.businessId),
+      // Never throws: its own states (not installed, error) render in its card.
+      loadPaymentReviewQueue(workspace.businessId),
     ]);
   } catch (error) {
     console.error("[settings: quotes] read failed", error);
@@ -118,6 +123,13 @@ export async function QuotesSection() {
           </p>
         </CardContent>
       </Card>
+
+      <PaymentReviewCard
+        state={review.state}
+        items={review.state === "ok" ? review.data.items : []}
+        openInvoices={review.state === "ok" ? review.data.openInvoices : []}
+        canManage={canManage}
+      />
     </div>
   );
 }

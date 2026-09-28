@@ -7,7 +7,8 @@ import { recordAudit } from "@/lib/audit";
 import { guarded, type AdminActionResult } from "./guarded";
 import { dispatchPayout, retryFailedPayout } from "@/lib/affiliates/dispatch";
 import { closePartnership, reaccrueReferral, recordAdjustment } from "@/lib/affiliates/commissions";
-import { approveDraftPayout, cancelPayout } from "@/lib/affiliates/payouts";
+import { approveDraftPayout, cancelPayout, getBalances } from "@/lib/affiliates/payouts";
+import { partnershipCloseBlocker } from "@/lib/affiliates/ledger-rules";
 import { loadTiers, untypedDb } from "@/lib/affiliates/programme-settings";
 import { measureAffiliate, recordTierChange } from "@/lib/affiliates/tiers";
 import { isTierKey, MAX_TIER_PERCENT, MIN_TIER_PERCENT, validateTierEdit } from "@/lib/affiliates/tier-rules";
@@ -188,7 +189,8 @@ export async function suspendAffiliate(input: {
  * Ends a partnership. Links stop tracking (the click route requires ACTIVE),
  * nothing more accrues, and a negative available balance is WRITTEN OFF, not
  * invoiced (owner decision 2026-09-28): one WRITE_OFF ledger entry nets it to
- * zero. Positive approved money is not touched here; pay it out first.
+ * zero. A positive balance, money still in its hold, or an unsettled payout
+ * blocks the close (partnershipCloseBlocker): pay it out or reverse it first.
  */
 export async function endPartnership(input: {
   affiliateId: string;
@@ -199,6 +201,24 @@ export async function endPartnership(input: {
     if (!parsed.success) {
       return { ok: false, error: "Give a reason. The partner will see it." };
     }
+    // Never strand money a partner earned: an ended partner is left out of
+    // every payout run (ledger-rules.ts partnershipCloseBlocker).
+    const [balances, openPayouts] = await Promise.all([
+      getBalances(parsed.data.affiliateId),
+      createAdminClient()
+        .from("affiliate_payouts")
+        .select("id", { count: "exact", head: true })
+        .eq("affiliate_id", parsed.data.affiliateId)
+        .in("status", ["DRAFT", "APPROVED", "PROCESSING", "FAILED"]),
+    ]);
+    if (openPayouts.error) return { ok: false, error: "Payouts could not be checked. Try again." };
+    const blocker = partnershipCloseBlocker({
+      availableMinor: balances.availableMinor,
+      pendingMinor: balances.pendingMinor,
+      openPayouts: openPayouts.count ?? 0,
+      format: (minor) => `£${(minor / 100).toFixed(2)}`,
+    });
+    if (blocker) return { ok: false, error: blocker };
     const result = await closePartnership({
       affiliateId: parsed.data.affiliateId,
       actorUserId: operator.id,

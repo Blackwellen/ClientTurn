@@ -63,7 +63,7 @@ export function SearchInput({
           "border border-line-strong rounded-md shadow-xs",
           "pl-9 pr-8 text-sm",
           "transition-colors duration-[var(--lr-duration-fast)]",
-          "focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-[var(--lr-ring)]",
+          "focus:outline-none focus:border-[var(--lr-focus-border)] focus:ring-2 focus:ring-[var(--lr-ring)]",
           "[&::-webkit-search-cancel-button]:appearance-none",
         )}
         {...props}
@@ -74,7 +74,8 @@ export function SearchInput({
           aria-label="Clear search"
           onClick={clear}
           className={cn(
-            "absolute right-2 top-1/2 -translate-y-1/2 rounded-xs p-0.5",
+            // size-6: a 24px target (SC 2.5.8); the glyph stays 14px.
+            "absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-xs",
             "text-content-subtle hover:text-content",
             "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent",
           )}

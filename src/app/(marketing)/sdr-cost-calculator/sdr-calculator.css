@@ -665,6 +665,9 @@
   .sdrc-stat[data-side="save"] {
     border-color: var(--pub-lime-border);
     background: var(--pub-lime-soft);
+    /* The lime tint lifts the ground enough that --pub-text-muted fell to
+       4.3:1 on it (SC 1.4.3); this is the same grey, a step lighter. */
+    --pub-text-muted: #798aa2;
   }
 
   .sdrc-stat[data-side="save"] b {

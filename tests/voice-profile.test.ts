@@ -25,8 +25,9 @@ describe("the voice profile", () => {
     assert.equal(DEFAULT_VOICE_PROFILE.voiceId, null);
     const fields = voiceAgentFields(DEFAULT_VOICE_PROFILE);
     assert.equal(fields.voice_id, undefined, "no hard-coded voice: the agent's own is used");
-    assert.equal(fields.responsiveness, 0.85);
-    assert.equal(fields.interruption_sensitivity, 0.75);
+    // Second live call 2026-09-28: less easily cut off, a beat slower to reply.
+    assert.equal(fields.responsiveness, 0.8);
+    assert.equal(fields.interruption_sensitivity, 0.6);
     assert.equal(fields.enable_backchannel, true);
     assert.equal(fields.ambient_sound, undefined);
     assert.equal(fields.voice_speed, undefined);
@@ -59,7 +60,7 @@ describe("the voice profile", () => {
   test("the fields ride on the per-call agent override", () => {
     const o = agentOverrideOf({ voice: voiceAgentFields(parseVoiceProfile({ voiceId: "cartesia-Willa", speed: 1.05, ambient: "call-center" })) });
     assert.deepEqual(o, {
-      agent: { responsiveness: 0.85, interruption_sensitivity: 0.75, enable_backchannel: true, backchannel_frequency: 0.5, ambient_sound: "call-center", voice_id: "cartesia-Willa", voice_speed: 1.05 },
+      agent: { responsiveness: 0.8, interruption_sensitivity: 0.6, enable_backchannel: true, backchannel_frequency: 0.3, ambient_sound: "call-center", voice_id: "cartesia-Willa", voice_speed: 1.05 },
     });
   });
 

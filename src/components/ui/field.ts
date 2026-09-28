@@ -44,7 +44,7 @@ export const FIELD_BASE = cn(
   "w-full bg-surface text-content placeholder:text-content-subtle",
   "border border-line-strong rounded-md shadow-xs",
   "transition-colors duration-[var(--lr-duration-fast)]",
-  "focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-[var(--lr-ring)]",
+  "focus:outline-none focus:border-[var(--lr-focus-border)] focus:ring-2 focus:ring-[var(--lr-ring)]",
   "disabled:bg-surface-sunken disabled:text-content-muted disabled:cursor-not-allowed",
   "aria-[invalid=true]:border-danger-500 aria-[invalid=true]:ring-danger-100",
 );

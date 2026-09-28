@@ -17,6 +17,8 @@ import { extractTextSignals, type TextSignalHit } from "../qualification-intelli
 import { matchObjection } from "../sales-library/objections.ts";
 import type { CallOutcome, TranscriptTurn } from "./providers/types.ts";
 import { detectSpokenIntents, isMachineOnly } from "./speech-intents.ts";
+import { lintCall } from "./call-lint.ts";
+import { stripQualifiedLabel } from "./summary-guard.ts";
 
 export const DISPOSITIONS = [
   "CONVERSATION",
@@ -57,6 +59,13 @@ export type CallAnalysis = {
   signals: TextSignalHit[];
   /** The lead's words only (never the agent's), for the QI extractors. */
   leadText: string;
+  /**
+   * What the assistant said that it should not have (call-lint.ts): a claim
+   * no approved offer line supports, availability with no calendar tool, a
+   * "checking availability" line with booking off. Stored on the outcome's
+   * facts as `quality_flags` for the operator; never shown to the lead.
+   */
+  qualityFlags: string[];
 };
 
 // Adversarial QA pass (2026-09-28): the private opt-out regex that lived here
@@ -105,6 +114,12 @@ export function analyseCall(input: {
   transcript: readonly TranscriptTurn[];
   providerSummary: string | null;
   endedAt: Date;
+  /** leads.qualification_state: the summary may call the lead qualified only when this says so. Absent = not qualified. */
+  qualificationVerdict?: string | null;
+  /** Approved offer-card lines (the only claims allowed). Absent = none: every claim is flagged. */
+  approvedLines?: readonly string[];
+  /** Booking was on for the call. Absent = unknown (a "checking availability" line is not flagged). */
+  bookingAllowed?: boolean;
 }): CallAnalysis {
   // A voicemail greeting or phone menu that reached the model is not the
   // lead talking (speech-intents.ts): no conversation, and its words never
@@ -160,9 +175,22 @@ export function analyseCall(input: {
   }
 
   const nextAction = nextActionFor(disposition, facts, callbackRequestedFor);
-  const summary = (input.providerSummary?.trim() || fallbackSummary(disposition, input.durationSec, turns.length)).slice(0, MAX_SUMMARY);
+  // Live call 2026-09-28: "Qualified lead ..." with nothing asked. The label
+  // is the deterministic engine's, never the model's (summary-guard.ts).
+  const rawSummary = input.providerSummary?.trim() || fallbackSummary(disposition, input.durationSec, turns.length);
+  const summary = stripQualifiedLabel(rawSummary, input.qualificationVerdict ?? null).summary.slice(0, MAX_SUMMARY);
 
-  return { disposition, summary, facts, nextAction, callbackRequestedFor, objections, voiceOptOut, optOutScope, signals, leadText };
+  const qualityFlags = machine
+    ? []
+    : lintCall({
+        agentTurns: input.transcript.filter((t) => t.role === "agent").map((t) => t.content),
+        approvedLines: input.approvedLines ?? [],
+        availabilityChecked: false,
+        bookingAllowed: input.bookingAllowed ?? true,
+      }).slice(0, 10);
+  if (qualityFlags.length) facts.quality_flags = qualityFlags.join(" | ").slice(0, 1000);
+
+  return { disposition, summary, facts, nextAction, callbackRequestedFor, objections, voiceOptOut, optOutScope, signals, leadText, qualityFlags };
 }
 
 function nextActionFor(disposition: Disposition, facts: Record<string, string>, callbackAt: string | null): string | null {

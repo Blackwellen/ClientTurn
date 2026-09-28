@@ -175,6 +175,32 @@ function useTypeahead() {
   };
 }
 
+/**
+ * The accessible name for a floating listbox. A `listbox` must be named
+ * (axe: aria-input-field-name), and the list is portalled away from the
+ * control's <label>, so the name is read off the control when it opens:
+ * its aria-label, its aria-labelledby targets, or its associated <label>.
+ */
+function nameOfControl(
+  control: HTMLButtonElement | HTMLInputElement | null,
+  ariaLabel?: string,
+  ariaLabelledby?: string,
+): string | undefined {
+  if (ariaLabel) return ariaLabel;
+  if (!control) return undefined;
+  const text = (el: Element | null | undefined) =>
+    el?.textContent?.replace(/\s*\*\s*$/, "").trim() ?? "";
+  if (ariaLabelledby) {
+    const joined = ariaLabelledby
+      .split(/\s+/)
+      .map((ref) => text(document.getElementById(ref)))
+      .filter(Boolean)
+      .join(" ");
+    if (joined) return joined;
+  }
+  return text(control.labels?.[0]) || undefined;
+}
+
 /* ------------------------------------------------------------------ list */
 
 function OptionList({
@@ -187,6 +213,7 @@ function OptionList({
   onActivate,
   emptyText,
   labelledBy,
+  label,
 }: {
   id: string;
   options: ListOption[];
@@ -197,6 +224,7 @@ function OptionList({
   onActivate: (index: number) => void;
   emptyText: string;
   labelledBy?: string;
+  label?: string;
 }) {
   if (options.length === 0) {
     return (
@@ -261,6 +289,7 @@ function OptionList({
       id={id}
       role="listbox"
       aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : label}
       // Keep focus on the trigger / search box when an option is pressed.
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -388,6 +417,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
   const [query, setQuery] = React.useState("");
+  const [listLabel, setListLabel] = React.useState<string | undefined>(undefined);
   const typeahead = useTypeahead();
   const coarse = useCoarsePointer();
 
@@ -461,6 +491,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
     if (disabled) return;
     setQuery("");
     setActive(initialActiveIndex(parsed.options, current, to));
+    setListLabel(nameOfControl(triggerRef.current, ariaLabel, ariaLabelledby));
     setOpen(true);
   }
 
@@ -524,6 +555,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
         const match = typeaheadMatch(parsed.options, buffer, base);
         if (!open) {
           setQuery("");
+          setListLabel(nameOfControl(triggerRef.current, ariaLabel, ariaLabelledby));
           setOpen(true);
           setActive(match >= 0 ? match : base);
         } else if (match >= 0) {
@@ -615,7 +647,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
           // paint over it.
           "inline-flex h-9 items-center gap-1.5 pl-3 pr-2.5 text-left text-sm",
           "cursor-pointer hover:border-[color-mix(in_oklab,var(--lr-border-strong)_60%,var(--lr-text-subtle))]",
-          open && "border-accent-500 ring-2 ring-[var(--lr-ring)]",
+          open && "border-[var(--lr-focus-border)] ring-2 ring-[var(--lr-ring)]",
           className,
         )}
         style={style}
@@ -710,7 +742,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
                     onKeyDown={(event) => onKeyDown(event, true)}
                     className={cn(
                       "h-8 w-full rounded-md border border-line bg-surface pl-8 pr-2 text-[13px] text-content",
-                      "placeholder:text-content-subtle focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
+                      "placeholder:text-content-subtle focus:border-[var(--lr-focus-border)] focus:outline-none focus:ring-2 focus:ring-[var(--lr-ring)]",
                     )}
                   />
                 </div>
@@ -725,6 +757,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
               onChoose={(index) => choose(index)}
               onActivate={setActive}
               emptyText={query ? `No matches for “${query}”` : "No options"}
+              label={listLabel}
             />
           </div>,
           document.body,
@@ -792,6 +825,12 @@ export function Combobox({
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
   const [dirty, setDirty] = React.useState(false);
+  const [listLabel, setListLabel] = React.useState<string | undefined>(undefined);
+  // The list only exists while open, so its name is read as it opens.
+  function openList() {
+    setListLabel(nameOfControl(inputRef.current, aria["aria-label"]));
+    setOpen(true);
+  }
 
   // An external value change resets the visible text (adjusting state during
   // render, React's pattern for deriving from a changed prop).
@@ -858,7 +897,7 @@ export function Combobox({
       case "open":
         if (event.key === " ") return; // typing a space
         event.preventDefault();
-        setOpen(true);
+        openList();
         setActive(initialActiveIndex(visible, value, action.to));
         return;
       case "move":
@@ -916,12 +955,12 @@ export function Combobox({
         onChange={(event) => {
           setText(event.target.value);
           setDirty(true);
-          setOpen(true);
+          openList();
           setActive(0);
         }}
         onClick={() => {
           if (!open) {
-            setOpen(true);
+            openList();
             setActive(initialActiveIndex(options, value, "selected"));
           }
         }}
@@ -944,7 +983,7 @@ export function Combobox({
             if (allowCustomValue) onValueChange("");
             inputRef.current?.focus();
           }}
-          className="absolute right-8 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-content-subtle hover:text-content"
+          className="absolute right-7 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-content-subtle hover:text-content"
         >
           <X className="size-3.5" aria-hidden />
         </button>
@@ -981,6 +1020,7 @@ export function Combobox({
               onChoose={choose}
               onActivate={setActive}
               emptyText={allowCustomValue && text ? `Press Enter to use “${text}”` : emptyText}
+              label={listLabel}
             />
           </div>,
           document.body,

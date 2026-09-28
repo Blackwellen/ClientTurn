@@ -12,7 +12,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       className={`ct-force-dark ct-auth ${caveat.variable} relative min-h-dvh overflow-hidden bg-[var(--auth-bg)] text-[var(--auth-text)]`}
     >
       <AuthEnvironment />
-      <div className="relative z-10 flex min-h-dvh flex-col">{children}</div>
+      {/* <main>: the auth doors had no landmarks at all, so every line of
+          the page sat outside one (axe landmark-one-main / region). */}
+      <main className="relative z-10 flex min-h-dvh flex-col">{children}</main>
     </div>
   );
 }

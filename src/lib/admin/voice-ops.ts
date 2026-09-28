@@ -4,6 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { USD_TO_GBP } from "@/lib/voice/cost";
 import { logEvent } from "@/lib/observability/log";
+import { getMaintenanceStatus } from "@/lib/maintenance/state";
+import { outboundPauseUntil } from "@/lib/maintenance/schedule";
+import { LEVEL_LABEL } from "@/lib/maintenance/types";
 import {
   countryOfDestination,
   gmReport,
@@ -92,6 +95,12 @@ export type VoiceOps =
       entitlementOverrides: { businessId: string; businessName: string; key: string; value: string; reason: string; expiresAt: string | null }[];
       gm: GmReport;
       controlsInstalled: boolean;
+      /**
+       * Platform maintenance holding outbound AI calls right now (docs/VOICE.md
+       * 16.10): dials are re-scheduled to the end of the window, never dropped.
+       * Null when nothing is held (including READ_ONLY, which never holds calls).
+       */
+      maintenanceHold: { level: string; endsAt: string | null } | null;
       openVoiceAlerts: { id: string; businessName: string | null; severity: string; title: string; createdAt: string }[];
     };
 
@@ -123,6 +132,13 @@ async function optional<T>(run: () => PromiseLike<{ data: unknown; error: { code
   const { data, error } = await run();
   if (error) return isSchemaLag(error) ? null : Promise.reject(new Error(error.message));
   return (data ?? []) as T[];
+}
+
+/** The same rule voice.dial applies (voice/server-p3.ts), read for display. Fails open like it. */
+async function voiceMaintenanceHold(now: Date): Promise<{ level: string; endsAt: string | null } | null> {
+  const status = await getMaintenanceStatus(now);
+  if (!status.active || !outboundPauseUntil(status, now)) return null;
+  return { level: LEVEL_LABEL[status.active.level] ?? status.active.level, endsAt: status.active.endsAt ?? null };
 }
 
 export async function getVoiceOps(now = new Date()): Promise<VoiceOps> {
@@ -378,6 +394,7 @@ export async function getVoiceOps(now = new Date()): Promise<VoiceOps> {
       })),
       gm,
       controlsInstalled: controls !== null,
+      maintenanceHold: await voiceMaintenanceHold(now),
       openVoiceAlerts: (alerts ?? [])
         .filter((a) => (a.metrics_json as { scope?: string } | null)?.scope === "voice")
         .map((a) => ({ id: a.id, businessName: a.business_id ? (names.get(a.business_id) ?? null) : null, severity: a.severity, title: a.title, createdAt: a.created_at })),

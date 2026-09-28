@@ -12,7 +12,10 @@ import { QUALIFICATION_CATALOGUE } from "@/lib/sales-library/qualification-dimen
 import { getMaintenanceStatus } from "@/lib/maintenance/state";
 import { outboundPauseUntil } from "@/lib/maintenance/schedule";
 import { parseMemory } from "@/lib/opportunities/memory";
-import { buildVoiceCallBrief, type BriefRoute, type CallBriefInput } from "./call-brief";
+import { buildVoiceCallBrief, dedupeApproved, voiceOfferLines, type BriefRoute, type CallBriefInput } from "./call-brief";
+import { buildQuestionPlan } from "./question-plan";
+import { jsonStrings, splitList } from "@/lib/agent/offer-card";
+import { loadQuestions } from "@/lib/jobs/handlers/qualify";
 import { classifyDestination } from "./destinations";
 import { identityAnswer } from "./identity";
 import { mergeCallIntoMemory } from "./continuity";
@@ -49,7 +52,7 @@ const ROUTES: readonly BriefRoute[] = ["QUALIFICATION", "BOOKING_CLOSE", "DIRECT
  * what is known, the booking route, the commercial authority; plus the lead's
  * current next-best-action. Built into speech by `buildVoiceCallBrief`.
  */
-export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: string; dynamicVariables: Record<string, string> } | null> {
+export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: string; dynamicVariables: Record<string, string>; dropped?: string[] } | null> {
   const { call } = req;
   const conversation = await db()
     .from("conversations")
@@ -99,6 +102,14 @@ export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: 
   const known = context.qualification.known.map((k) =>
     k.dimension ? `${QUALIFICATION_CATALOGUE[k.dimension].label}: ${k.value}` : `${k.questionText}: ${k.value}`,
   );
+  // What the lead already told us on the form (second live call 2026-09-28:
+  // the call asked "what prompted your enquiry?" with the service, the notes
+  // and the postcode all on the lead). Never asked again.
+  if (context.leadContext.postcode && !known.some((k) => k.startsWith(`${QUALIFICATION_CATALOGUE.LOCATION.label}:`))) {
+    known.push(`${QUALIFICATION_CATALOGUE.LOCATION.label}: ${context.leadContext.postcode}`);
+  }
+  const notesRow = await db().from("leads").select("notes").eq("business_id", call.business_id).eq("id", call.lead_id).maybeSingle();
+  const enquirySummary = notesRow.error ? null : ((notesRow.data as { notes?: string | null } | null)?.notes ?? null);
   const phone = context.lead.phone ?? "";
   const summary =
     context.conversation.summary ??
@@ -109,8 +120,56 @@ export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: 
           .join(" ")
       : null);
 
+  const route: BriefRoute = (ROUTES as readonly string[]).includes(call.route) ? (call.route as BriefRoute) : "QUALIFICATION";
+
+  // The question plan (live-call fix 2026-09-28). The first real call asked
+  // nothing: the brief never carried the workspace's configured questions,
+  // because this loader never read them (only the NBA's single move). Now the
+  // configured questions for the lead's service (or for every service), minus
+  // what is known, else the catalogue default for the named service.
+  const questionPlan =
+    route === "QUALIFICATION"
+      ? buildQuestionPlan({
+          configured: await loadQuestions(call.business_id).catch(() => []),
+          leadServiceId: context.leadContext.serviceId,
+          serviceName: context.leadContext.serviceName,
+          knownQuestionIds: context.qualification.known.map((k) => k.questionId),
+          knownDimensions: [
+            ...context.qualification.known.map((k) => k.dimension).filter((d): d is NonNullable<typeof d> => Boolean(d)),
+            ...(context.leadContext.postcode ? ["LOCATION"] : []),
+          ],
+          usesServiceAreas: context.workspace.allowedPostcodePrefixes.length > 0,
+          nbaQuestion: null,
+        })
+      : null;
+
+  const offer = voiceOfferLines(context.offer.text);
+  // The owner's proof points are approved claims by definition, and a call
+  // must not lose them to the TEXT offer card's 600-token budget (live dry
+  // run 2026-09-28: the card dropped proof:0 and the brief said NO APPROVED
+  // CLAIMS). Both sources: the profile's outreach proof points and the
+  // default playbook's proof_points. First in the list, so they survive the cap.
+  const [profileRow, playbookRow] = await Promise.all([
+    db().from("business_profiles").select("outreach_proof_points").eq("business_id", call.business_id).maybeSingle(),
+    db()
+      .from("business_playbooks")
+      .select("proof_points")
+      .eq("business_id", call.business_id)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const proofPoints = [
+    ...splitList((profileRow.data as { outreach_proof_points?: string | null } | null)?.outreach_proof_points ?? null),
+    ...jsonStrings((playbookRow.data as { proof_points?: unknown } | null)?.proof_points ?? []),
+  ].map((p) => p.trim()).filter((p) => p.length > 3);
+  // The lead's own service line before the other services (the six-line cap).
+  const serviceName = context.leadContext.serviceName;
+  const ownService = serviceName ? offer.approved.filter((l) => l.startsWith(`${serviceName}:`)) : [];
+  const approvedLines = dedupeApproved([...proofPoints, ...ownService, ...offer.approved.filter((l) => !ownService.includes(l))]);
   const input: CallBriefInput = {
-    route: (ROUTES as readonly string[]).includes(call.route) ? (call.route as BriefRoute) : "QUALIFICATION",
+    route,
     direction: call.direction,
     callingAsName: req.identity.callingAsName,
     personaName: req.identity.personaName ?? null,
@@ -121,10 +180,10 @@ export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: 
     goal: assessment?.goal ?? null,
     nba: assessment?.nba ?? null,
     known,
-    offerLines: context.offer.text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 3 && !/^[A-Z][A-Z &/()-]+:?$/.test(line) && !/^(STYLE EXAMPLES|EXAMPLE)/i.test(line)),
+    // Only the card's approved sections (claims, prices, positioning, what
+    // they sell); its NEVER CLAIM / NEVER SAY items are forbidden wording.
+    offerLines: approvedLines,
+    neverSay: [...new Set([...offer.never, ...context.offer.voice.prohibitedClaims, ...context.offer.voice.forbiddenPhrases])],
     workspaceObjections: context.sales.objections ?? null,
     booking,
     permissions: { book: perms.book, quote: perms.quote, sendQuote: perms.sendQuote, checkout: perms.checkout, bookingLink: perms.bookingLink ?? false },
@@ -133,10 +192,17 @@ export async function loadVoiceCallBrief(req: BriefRequest): Promise<{ version: 
     conversationSummary: summary,
     closingLine: closing.text,
     recordingEnabled: call.recording_enabled,
+    serviceName: context.leadContext.serviceName,
+    questionPlan,
+    usesServiceAreas: context.workspace.allowedPostcodePrefixes.length > 0,
+    enquirySummary,
+    now: new Date(),
+    timezone: call.recipient_timezone ?? context.business.timezone,
   };
   const brief = buildVoiceCallBrief(input);
   return {
     version: brief.version,
+    dropped: brief.dropped,
     dynamicVariables: {
       ...brief.dynamicVariables,
       // Retell's built-in transfer_call reads this; empty = no transfer (setup script).

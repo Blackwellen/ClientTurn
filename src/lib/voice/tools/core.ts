@@ -33,6 +33,8 @@ import { checkAgentTurn, agentTargets, measurePace } from "../pacing.ts";
 import { houseStyleViolations } from "../opener.ts";
 import { aiMay, type AiAuthority } from "../../commercial/ai-permissions.ts";
 import { quoteToolGate } from "../../agent/quote-flow.ts";
+import { guardCallSummary, type RecordedFact } from "../summary-guard.ts";
+import { pastTimeReprompt } from "../spoken-time.ts";
 
 /* ------------------------------------------------------------------ types */
 
@@ -70,6 +72,14 @@ export type ToolPermissions = {
    * send_booking_link). Optional: absent reads as none.
    */
   bookingLink?: boolean;
+  /**
+   * The lead's deterministic qualification verdict (leads.qualification_state).
+   * end_call_summary may call the lead "qualified" only when this says so
+   * (summary-guard.ts). Optional: absent reads as not qualified.
+   */
+  qualificationVerdict?: string | null;
+  /** The business's IANA time zone, for reading a call-back time back (absent = Europe/London). */
+  timezone?: string;
 };
 
 /**
@@ -238,8 +248,11 @@ export function speakable(say: string | null): string | null {
   return problems.length ? null : t;
 }
 
+// One natural sentence each (live call 2026-09-28: a two-sentence refusal,
+// then the model's own "a colleague will..." on top, was heard as "A
+// colleague will... A colleague will..."). The model says it and nothing more.
 const REFUSAL_SAY: Readonly<Record<string, string>> = {
-  NOT_PERMITTED: "That is something a colleague will handle. I will make sure they follow up.",
+  NOT_PERMITTED: "A colleague will take care of that for you.",
   NOT_OFFERED: "Let me check the times again first.",
   UNKNOWN_QUOTE: "Let me work out the figures first.",
   TRANSFER_OFF: "I cannot put you through right now, but a colleague will call you back.",
@@ -255,6 +268,15 @@ const REFUSAL_SAY: Readonly<Record<string, string>> = {
   OPTED_OUT: "",
 };
 
+/**
+ * A calendar tool refused because booking is off: one sentence, and what to
+ * do next instead (the brief says so too, so a model that follows it never
+ * gets here). The next step is a call-back window, never a time of our own.
+ */
+const BOOKING_OFF_SAY = "A colleague will arrange a time with you.";
+const BOOKING_OFF_NEXT =
+  "Say only the say line, once, then ask which day and time of day suits a colleague to call and call schedule_callback by PERSON with it. Never offer times.";
+
 /** The only tools a call may still run once the lead has opted out in it. */
 const AFTER_OPT_OUT: ReadonlySet<VoiceToolName> = new Set(["opt_out", "end_call_summary", "log_objection", "get_call_status"]);
 
@@ -262,7 +284,27 @@ function refusal(tool: string, code: string, call: ToolCallRow | null, now: Date
   const t = call
     ? timeFields(call, now)
     : { time_level: "GREEN" as TimeLevel, time_instruction: TIME_INSTRUCTIONS.GREEN, seconds_left: 0 };
-  return { ok: false, tool, say: say ?? REFUSAL_SAY[code] ?? REFUSAL_SAY.UNAVAILABLE, data: {}, code, ...t };
+  const bookingOff = code === "NOT_PERMITTED" && (tool === "check_availability" || tool === "book_meeting");
+  return {
+    ok: false,
+    tool,
+    say: say ?? (bookingOff ? BOOKING_OFF_SAY : (REFUSAL_SAY[code] ?? REFUSAL_SAY.UNAVAILABLE)),
+    data: bookingOff ? { next: BOOKING_OFF_NEXT } : {},
+    code,
+    ...t,
+  };
+}
+
+/** What record_fact recorded earlier in this call ("dimension: value" rows, or the arguments echoed back). */
+function recordedFacts(prior: readonly PriorToolResult[]): RecordedFact[] {
+  return prior
+    .filter((r) => r.tool === "record_fact" && r.status === "OK")
+    .map((r) => {
+      const recorded = typeof r.result.recorded === "string" ? r.result.recorded : "";
+      const at = recorded.indexOf(":");
+      return at > 0 ? { dimension: recorded.slice(0, at).trim().toUpperCase().replace(/\s+/g, "_"), value: recorded.slice(at + 1).trim() } : null;
+    })
+    .filter((f): f is RecordedFact => Boolean(f && f.value));
 }
 
 /* --------------------------------------------------------------- the gate */
@@ -276,6 +318,8 @@ export function voiceToolGate<N extends VoiceToolName>(input: {
   call: ToolCallRow;
   permissions: ToolPermissions;
   prior: readonly PriorToolResult[];
+  /** The time now (the runner's clock). Absent = not checked (a past call-back time is then not caught here). */
+  now?: Date;
 }): GateVerdict {
   const { name, call, permissions: p } = input;
   // An opt-out is always honoured, whatever else is switched off.
@@ -286,7 +330,19 @@ export function voiceToolGate<N extends VoiceToolName>(input: {
   if (!AFTER_OPT_OUT.has(name) && input.prior.some((r) => r.tool === "opt_out" && r.status === "OK")) {
     return { allowed: false, code: "OPTED_OUT" };
   }
-  if (!p.aiEnabled && name !== "end_call_summary" && name !== "log_objection" && name !== "get_call_status") {
+  // Core call functions follow the call, not the text assistant's switch
+  // (second live call 2026-09-28: with the assistant off, even record_fact
+  // and a person's call-back were refused). Noting what the lead said and a
+  // colleague's call-back decide nothing commercial; an AI call-back still
+  // needs aiMay(call) below. Dialling is gated on the switch as well
+  // (entitlement.ts AI_ASSISTANT_OFF), so this is the belt, not the braces.
+  const coreCallTool =
+    name === "end_call_summary" ||
+    name === "log_objection" ||
+    name === "get_call_status" ||
+    name === "record_fact" ||
+    (name === "schedule_callback" && (input.args as VoiceToolArgs<"schedule_callback">).by !== "AI");
+  if (!p.aiEnabled && !coreCallTool) {
     return { allowed: false, code: "NOT_PERMITTED" };
   }
   switch (name) {
@@ -333,6 +389,12 @@ export function voiceToolGate<N extends VoiceToolName>(input: {
     case "schedule_callback": {
       const a = input.args as VoiceToolArgs<"schedule_callback">;
       // Only a lead who asked for or consented to AI calls is called back by the AI.
+      // Second live call 2026-09-28: "five o'clock" said at 17:3x was agreed
+      // as a call-back "at 5 o'clock today". A time that has gone is never
+      // accepted: one natural reprompt with two real choices, the lead picks.
+      if (a.at_iso && input.now && Date.parse(a.at_iso) <= input.now.getTime()) {
+        return { allowed: false, code: "PAST_TIME", say: pastTimeReprompt(new Date(a.at_iso), input.now, p.timezone ?? "Europe/London") };
+      }
       if (a.by === "AI" && (!AI_CALL_BASES.has(call.consent_basis ?? "") || !p.aiCall)) {
         return { allowed: false, code: "NO_CONSENT_FOR_AI_CALLBACK" };
       }
@@ -385,12 +447,22 @@ export async function runVoiceTool(ports: VoiceToolPorts, req: VoiceToolRequest)
   };
 
   const [permissions, prior] = await Promise.all([ports.permissions(call), ports.priorResults(call.id)]);
-  const gate = voiceToolGate({ name, args, call, permissions, prior });
+  const gate = voiceToolGate({ name, args, call, permissions, prior, now });
   if (!gate.allowed) return finish("REFUSED", refusal(name, gate.code, call, now, gate.say), null, gate.code);
+
+  // The assistant's own summary may not label the lead "qualified" unless the
+  // deterministic verdict says so, and it states what this call recorded
+  // (live-call fix 2026-09-28, summary-guard.ts).
+  let workArgs = args;
+  if (name === "end_call_summary") {
+    const a = args as VoiceToolArgs<"end_call_summary">;
+    const guarded = guardCallSummary({ summary: a.summary, verdict: permissions.qualificationVerdict ?? null, facts: recordedFacts(prior) });
+    workArgs = { ...a, summary: guarded.summary } as typeof args;
+  }
 
   let outcome: PortOutcome;
   try {
-    outcome = await ports.execute(name, call, args, `voice:${call.id}:${req.toolCallId}`);
+    outcome = await ports.execute(name, call, workArgs, `voice:${call.id}:${req.toolCallId}`);
   } catch {
     return finish("FAILED", refusal(name, "UNAVAILABLE", call, now), null, "UNAVAILABLE");
   }

@@ -41,14 +41,37 @@ import { BUILT_BY_ANSWER } from "./identity.ts";
 import { ESCALATION_LINES } from "./anti-loop.ts";
 import { ROUTE_TARGETS, thresholdsFor, PROVIDER_MAX_DURATION_SEC, type VoiceRouteKey } from "./time-governor.ts";
 import { houseStyleViolations, recordingAnswer } from "./opener.ts";
+import { boundPlan, buildQuestionPlan, knownDimensionsFromLabels, type PlanQuestion } from "./question-plan.ts";
+import { spokenNow } from "./spoken-time.ts";
 
-export const CALL_BRIEF_VERSION = "brief.2026-09-28.v3";
-/** ~4 characters per token (strategy.ts estimateTokens). */
-export const CALL_BRIEF_MAX_TOKENS = 1100;
+export const CALL_BRIEF_VERSION = "brief.2026-09-28.v4";
+/**
+ * ~4 characters per token (strategy.ts estimateTokens).
+ *
+ * Raised 1,100 -> 1,300 by the live-call fix (2026-09-28), with the reason
+ * written down: the owner's first real call asked no qualifying question
+ * because the brief carried no question plan, and the brief already stood at
+ * about 1,010 tokens with nothing optional in it. The QUESTION PLAN (up to
+ * five questions plus the rule not to close before them, about 150 tokens)
+ * and the NO APPROVED CLAIMS / booking-off lines must never be dropped, so
+ * they need headroom rather than a place in the drop order.
+ *
+ * Raised again 1,300 -> 1,500 by the second live call (2026-09-28): the call
+ * asked "what prompted your enquiry?" with the service, the lead's own notes
+ * and the postcode on file. THEIR ENQUIRY (up to 280 characters of the lead's
+ * words) and the known postcode now ride in the brief. About 200 more input
+ * tokens a turn (roughly $0.0012 a 15-turn call on GPT-4.1 mini). The drop
+ * order below still protects the rules when workspace text is long.
+ */
+export const CALL_BRIEF_MAX_TOKENS = 1500;
 export const MAX_OFFER_LINES = 6;
 export const MAX_KNOWN_ITEMS = 12;
 export const MAX_WORKSPACE_ANSWERS = 3;
 export const MAX_SUMMARY_CHARS = 600;
+/** A configured question longer than this is cut at a sentence (the plan is never dropped, so it is bounded). */
+export const MAX_PLAN_QUESTION_CHARS = 140;
+/** The lead's own enquiry words carried into the brief. */
+export const MAX_ENQUIRY_CHARS = 280;
 
 export type BriefRoute = VoiceRouteKey | "RETURN_CALL";
 export type TransferModeLike = "ON_REQUEST" | "ON_REQUEST_OR_ESCALATION" | "NEVER";
@@ -119,8 +142,13 @@ export type CallBriefInput = {
   nba: NextBestAction | null;
   /** Labels of what is already known about the lead: never asked again. */
   known: readonly string[];
-  /** Approved offer-card lines (claims, published prices). Verbatim or not at all. */
+  /** Approved offer-card lines (claims, published prices). Verbatim or not at all. Build with `voiceOfferLines`. */
   offerLines: readonly string[];
+  /**
+   * What the workspace said never to claim or say (the offer card's NEVER
+   * CLAIM / NEVER SAY items). Listed as forbidden, never as offer lines.
+   */
+  neverSay?: readonly string[];
   workspaceObjections: WorkspaceObjectionSet | null;
   /** How a meeting close is taken (strategy.ts NbaBookingRoute). */
   booking: CloseRoute;
@@ -141,6 +169,26 @@ export type CallBriefInput = {
    * RECORDING answer; absent reads as "answer from your opening line".
    */
   recordingEnabled?: boolean;
+  /** The service the lead enquired about (leads.service_id's name), so the call says what it is about. */
+  serviceName?: string | null;
+  /**
+   * The question plan (question-plan.ts buildQuestionPlan): the workspace's
+   * configured questions for the lead's service, else the catalogue default.
+   * Absent on a QUALIFICATION call: the default is built here from the
+   * service name and what is known, so a qualification call always has one.
+   */
+  questionPlan?: readonly PlanQuestion[] | null;
+  /** The business works to configured service areas (asks the postcode in the default plan). */
+  usesServiceAreas?: boolean;
+  /**
+   * What the lead wrote when they enquired (leads.notes, form answers),
+   * so the call opens on THEIR enquiry, never "what prompted your enquiry?"
+   * (second live call 2026-09-28). Capped; never read out word for word.
+   */
+  enquirySummary?: string | null;
+  /** The time the call starts, and the lead's time zone: a call-back time must be later than this. */
+  now?: Date;
+  timezone?: string | null;
 };
 
 export type CallBrief = {
@@ -165,7 +213,11 @@ export type CallBrief = {
     questionIntentKey: string | null;
     objectionKeys: ObjectionKey[];
     workspaceObjectionKeys: string[];
+    /** The question plan's record_fact keys, in order (empty off a qualification call). */
+    questionPlanKeys: string[];
   };
+  /** The question plan the brief carries (empty off a qualification call). */
+  questionPlan: PlanQuestion[];
 };
 
 export function estimateTokens(text: string): number {
@@ -207,16 +259,113 @@ function goalOf(input: CallBriefInput): GoalKey {
 }
 
 function meetingClose(input: CallBriefInput): string {
-  if (!input.permissions.book) {
-    return "You may not book: offer for a colleague to arrange the time, and call schedule_callback with what suits them.";
+  if (!input.permissions.book) return CALLBACK_WINDOW_CLOSE;
+  // Live dry run 2026-09-28: only a queryable calendar (SLOTS) gives times.
+  // book_meeting books only a time check_availability returned in this call,
+  // so "ask their preferred time, then book_meeting" was a dead end, and a
+  // booking link (LINK) has no times to read out either.
+  if (input.booking === "SLOTS") {
+    return `Close on a meeting: call check_availability and offer two of its times as a choice ("I can do X or Y, which is better?"); when they choose, read it back and call book_meeting with that exact time.`;
   }
-  const how =
-    input.booking === "SLOTS" || input.booking === "LINK"
-      ? `call check_availability and offer two of its times as a choice ("I can do X or Y, which is better?"); when they choose, read it back and call book_meeting with that exact time`
-      : input.booking === "ASK_PREFERRED_TIME"
-        ? "ask which day and time suits them, then call book_meeting with it; a colleague confirms it"
-        : "say a colleague will be in touch to arrange a time, and call schedule_callback";
-  return `Close on a meeting: ${how}.`;
+  if (input.booking === "LINK" && input.permissions.bookingLink) {
+    return "Close on a meeting: offer to text or email them the booking link so they can pick a time (send_booking_link), and say only its line.";
+  }
+  if (input.booking === "ASK_PREFERRED_TIME") {
+    return "Close on a meeting: ask which day and time suits them for a short call, then call schedule_callback by PERSON with it in the note (and at_iso if exact), and say a colleague will confirm it.";
+  }
+  return `Close on a meeting: ${CALLBACK_WINDOW_CLOSE.charAt(0).toLowerCase()}${CALLBACK_WINDOW_CLOSE.slice(1)}`;
+}
+
+/**
+ * Booking is off (not permitted or not configured): the next step is a
+ * call-back window a colleague keeps. Live call 2026-09-28: the model offered
+ * "this afternoon or tomorrow morning" of its own, then called a tool it was
+ * not allowed. The brief now says up front that no time is ever offered.
+ */
+export const CALLBACK_WINDOW_CLOSE =
+  "Ask which day and time of day suits a colleague to call them, then call schedule_callback by PERSON with that window in the note (and at_iso if they named an exact time), and say only its say line.";
+
+/** Booking is allowed, but no calendar can be read on this call: the same rule, said truthfully. */
+export const NO_CALENDAR_LINE =
+  "NO CALENDAR ON THIS CALL. Never offer, suggest or check times or days, never say you are checking availability, never call check_availability or book_meeting.";
+
+export const BOOKING_OFF_LINE =
+  "BOOKING IS OFF. Never offer, suggest or check times or days, never say you are checking availability, never call check_availability or book_meeting.";
+
+/** Real times can be read (a calendar or a booking link), so check_availability may be named. */
+function canCheckTimes(input: CallBriefInput): boolean {
+  return input.permissions.book && input.booking === "SLOTS";
+}
+
+function hasOffer(input: CallBriefInput): boolean {
+  return input.offerLines.some((l) => l.trim().length > 3);
+}
+
+function serviceOf(input: CallBriefInput): string | null {
+  const s = input.serviceName ? speechSafe(input.serviceName) : "";
+  return s ? s : null;
+}
+
+/**
+ * No approved claims (live call 2026-09-28: "we offer tailored solutions to
+ * fit your specific needs", with nothing on the offer card): the call may
+ * describe nothing about the business beyond the service's name.
+ */
+export function noClaimsLine(input: CallBriefInput): string {
+  const service = serviceOf(input);
+  return `NO APPROVED CLAIMS. Do not describe the business or its offer beyond ${service ? `the service name (${service})` : "its name"}: no benefits, quality, results or how it works. Ask about their needs instead.`;
+}
+
+/** The plan for this call: a qualification call always has one (unless the NBA says stop, escalate or wait). */
+export function questionPlanFor(input: CallBriefInput): PlanQuestion[] {
+  if (input.route !== "QUALIFICATION") return [];
+  const a = input.nba?.next_action;
+  // The engine's own decisions stand (resolved conflict 1): stop, escalate,
+  // wait, or a close it has already decided on (CTA_*: the threshold is met).
+  if (input.nba?.handover_reason || a === "ESCALATE" || a === "DISQUALIFY" || a === "NO_ACTION" || a === "WAIT") return [];
+  if (a === "CTA_BOOK" || a === "CTA_CHECKOUT" || a === "CTA_SIGNUP") return [];
+  const nbaQuestion =
+    (a === "ASK" || a === "ANSWER_AND_ASK") && input.nba?.question_intent?.rendering
+      ? { dimension: input.nba.question_intent.dimension ?? null, text: input.nba.question_intent.rendering }
+      : null;
+  if (input.questionPlan) {
+    const given = input.questionPlan.map((q) => ({ ...q }));
+    if (nbaQuestion && !given.some((q) => q.key === nbaQuestion.dimension)) {
+      given.unshift({ key: nbaQuestion.dimension ?? "PROBLEM", text: nbaQuestion.text, required: true, source: "NBA" });
+    }
+    return boundPlan(given);
+  }
+  return buildQuestionPlan({
+    configured: [],
+    leadServiceId: null,
+    serviceName: input.serviceName ?? null,
+    knownQuestionIds: [],
+    knownDimensions: knownDimensionsFromLabels(input.known),
+    usesServiceAreas: Boolean(input.usesServiceAreas),
+    nbaQuestion,
+  });
+}
+
+/** How many plan questions must be asked before any close (the required ones). */
+export function requiredPlanCount(plan: readonly PlanQuestion[]): number {
+  return plan.filter((q) => q.required).length;
+}
+
+function enquirySection(input: CallBriefInput, limit = MAX_ENQUIRY_CHARS): string | null {
+  const e = input.enquirySummary ? cap(speechSafe(input.enquirySummary), limit) : "";
+  if (!e) return null;
+  return `THEIR ENQUIRY (their words, do not read out): ${e} Open on it in your own words. Never ask what prompted the enquiry. Where it answers a plan question, confirm it briefly instead of asking.`;
+}
+
+function planSection(plan: readonly PlanQuestion[]): string {
+  const required = requiredPlanCount(plan);
+  const items = plan.map((q, i) => `${i + 1}. ${cap(speechSafe(q.text), MAX_PLAN_QUESTION_CHARS)} [${q.key}]`).join(" ");
+  return (
+    "QUESTION PLAN. Ask in order, one a turn, in your own words; skip any already answered; after each answer call record_fact with its [key]. " +
+    `${items} ` +
+    `Ask 1 to ${required} before any close, next step or closing line, unless they opt out, say it is a bad time, want a person or it is the wrong person. ` +
+    "Would rather not say: move on. A bare yes is not an answer: ask more simply."
+  );
 }
 
 function checkoutClose(input: CallBriefInput): string {
@@ -230,6 +379,14 @@ function checkoutClose(input: CallBriefInput): string {
 export function voiceMove(input: CallBriefInput): string {
   const nba = input.nba;
   const goal = goalOf(input);
+  const plan = questionPlanFor(input);
+  if (plan.length) {
+    const first = `ask question 1 of the QUESTION PLAN ("${speechSafe(plan[0].text)}"), then work through the plan. When they answer, call record_fact.`;
+    return nba?.next_action === "ANSWER_AND_ASK" && hasOffer(input)
+      ? `Answer what they asked from the approved offer lines first. Then ${first}`
+      : first.charAt(0).toUpperCase() + first.slice(1);
+  }
+  const offer = hasOffer(input);
   if (nba?.handover_reason || nba?.next_action === "ESCALATE") {
     return "A person should take this lead. Tell them a colleague will follow up, then offer transfer_to_human if it is allowed, else schedule_callback.";
   }
@@ -243,17 +400,21 @@ export function voiceMove(input: CallBriefInput): string {
   switch (nba?.next_action) {
     case "ASK":
     case "ANSWER_AND_ASK":
-      return `${nba.next_action === "ANSWER_AND_ASK" ? "Answer what they asked from the approved offer lines first. Then " : ""}ask one question, in your own natural words: ${speechSafe(q?.rendering ?? "what they need help with")} When they answer, call record_fact.`;
+      return `${nba.next_action === "ANSWER_AND_ASK" && offer ? "Answer what they asked from the approved offer lines first. Then " : ""}ask one question, in your own natural words: ${speechSafe(q?.rendering ?? "what they need help with")} When they answer, call record_fact.`;
     case "CTA_BOOK":
       return `${q ? `Ask this one question first: ${speechSafe(q.rendering)} Then ` : ""}${meetingClose(input)}`;
     case "CTA_CHECKOUT":
     case "CTA_SIGNUP":
       return checkoutClose(input);
     case "ANSWER":
-      return "Answer what they asked from the approved offer lines only. Ask no qualifying question.";
+      return offer
+        ? "Answer what they asked from the approved offer lines only. Ask no qualifying question."
+        : "There are no approved offer lines: say a colleague will answer that, then ask what they need help with.";
     case "INFORM":
     case "NURTURE":
-      return "Share one useful point from the approved offer lines and ask if it would help to talk further. No pressure.";
+      return offer
+        ? "Share one useful point from the approved offer lines and ask if it would help to talk further. No pressure."
+        : "Ask what they need help with (one question), no pitch. When they answer, call record_fact.";
     default:
       break;
   }
@@ -264,7 +425,7 @@ export function voiceMove(input: CallBriefInput): string {
     case "DIRECT_CLOSE":
       return checkoutClose(input);
     case "NURTURE":
-      return "Check in: ask how things are going with what they enquired about. Share one useful point, no pitch. Always leave a next step: a short call if they are keen, else agree when to check in (schedule_callback).";
+      return "Check in: ask how things are going with what they enquired about. No pitch. Always leave a next step: a short call if they are keen, else agree when to check in (schedule_callback).";
     case "REACTIVATION":
       return "They enquired a while ago. Ask whether it is still something they are looking at. If yes, ask what has changed, then close on the goal's step. If not now, agree when to check in (schedule_callback) and accept a no.";
     case "RETURN_CALL":
@@ -272,12 +433,18 @@ export function voiceMove(input: CallBriefInput): string {
     default:
       return goal === "B_BOOK_MEETING" || goal === "E_HUMAN_CLOSER"
         ? `Ask what prompted their enquiry, then ${meetingClose(input).replace(/^Close on a meeting: /, "").replace(/\.$/, "")}.`
-        : "Ask what prompted their enquiry (one question). When they answer, call record_fact, then move toward the goal's step.";
+        : input.enquirySummary?.trim()
+          ? "Confirm in one sentence what they enquired about (THEIR ENQUIRY), then ask what matters most to them. When they answer, call record_fact, then move toward the goal's step."
+          : "Ask what prompted their enquiry (one question). When they answer, call record_fact, then move toward the goal's step.";
   }
 }
 
 function closeFor(input: CallBriefInput, move?: string): string {
   const goal = goalOf(input);
+  if (questionPlanFor(input).length) {
+    const after = (goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL") && input.permissions.checkout ? checkoutClose(input) : meetingClose(input);
+    return `Only after the QUESTION PLAN: ${after}`;
+  }
   // The move already takes the close with its tools: say so, not twice.
   if (move && /check_availability|send_checkout_link/.test(move)) return "Take it as YOUR ONE MOVE says.";
   const target = MOTIONS[input.motion ?? "BOOK_MEETING_B2B"].closeTarget;
@@ -318,7 +485,7 @@ export function voiceGoalStep(input: CallBriefInput): string {
     case "QUOTE":
       return p.quote ? "to price it now (calculate_quote)" : "for a colleague to price it (schedule_callback)";
     default:
-      return p.book ? "a short call at two times from check_availability" : "for a colleague to arrange a short call (schedule_callback)";
+      return canCheckTimes(input) ? "a short call at two times from check_availability" : p.book ? "a short call at a day and time that suits them" : "for a colleague to arrange a short call (schedule_callback)";
   }
 }
 
@@ -326,7 +493,9 @@ export function voiceGoalStep(input: CallBriefInput): string {
 export function sendDetailsLine(input: CallBriefInput): string {
   const p = input.permissions;
   const goal = briefGoal(input);
-  const follow = p.book ? "then offer a short follow-up call at two times from check_availability" : "then agree when a colleague follows up (schedule_callback)";
+  const follow = canCheckTimes(input)
+    ? "then offer a short follow-up call at two times from check_availability"
+    : "then agree when a colleague follows up (schedule_callback)";
   let send: string;
   if ((goal === "DIRECT_SALE" || goal === "TRIAL") && p.checkout) send = "send the link now with send_checkout_link";
   else if (goal === "QUOTE" && p.quote && p.sendQuote) send = "price it with calculate_quote and send it with send_quote";
@@ -335,7 +504,7 @@ export function sendDetailsLine(input: CallBriefInput): string {
   return `SEND ME SOMETHING. If they say "just email me" or "send me something", say yes, ${send}, ${follow}.`;
 }
 
-function objectionSection(input: CallBriefInput): { text: string; keys: ObjectionKey[] } {
+function objectionSection(input: CallBriefInput): { text: string; compact: string; keys: ObjectionKey[] } {
   const keys = ROUTE_OBJECTIONS[input.route];
   const lines = keys.map((key) => {
     const entry = OBJECTIONS[key];
@@ -343,13 +512,15 @@ function objectionSection(input: CallBriefInput): { text: string; keys: Objectio
     if (key === "SEND_INFORMATION") return `${entry.label}: as SEND ME SOMETHING says.`;
     return `${entry.label}: "${speechSafe(entry.clarifyingQuestion)}"`;
   });
+  const rules =
+    "OBJECTIONS. Every time, call log_objection with its key and acknowledge it once in a few words, without agreeing or arguing. " +
+    "The first time, ask its one question below and stop; never ask it twice. Timing, not now or happy with a supplier: accept it and agree when to follow up (schedule_callback). " +
+    `Anything else: ${hasOffer(input) ? "one approved reason from the offer lines, then " : ""}offer ${voiceGoalStep(input)}. A legal or contract question is a colleague's. `;
   return {
     keys: [...keys],
-    text:
-      "OBJECTIONS. Every time, call log_objection with its key and acknowledge it in a few words (once: some questions below start with it), without agreeing or arguing. " +
-      "The first time, ask its one question below and stop. If they raise it again, never ask it twice. Timing, not now or happy with a supplier: accept it and agree when to follow up (schedule_callback). " +
-      `Anything else: one approved reason from the offer lines, then offer ${voiceGoalStep(input)}. A legal or contract question is a colleague's. ` +
-      lines.join(" "),
+    text: rules + lines.join(" "),
+    // Space is short: the rules stay, the library's example questions go (one clarifying question in their own words).
+    compact: rules.replace("ask its one question below and stop", "ask one clarifying question and stop").trim(),
   };
 }
 
@@ -380,6 +551,47 @@ function knownSection(known: readonly string[], limit: number): string | null {
   return `ALREADY KNOWN, NEVER ASK AGAIN: ${items.join("; ")}.`;
 }
 
+/**
+ * The offer card's sections a call may state, most useful first (live dry run
+ * 2026-09-28: the loader flattened the whole card, so the NEVER CLAIM items
+ * "cheapest" and "best in London" were listed as APPROVED OFFER LINES, the
+ * header and "use only what is written here" rode along, and the owner's
+ * proof points were cut by the six-line cap). Only these sections, by name.
+ */
+export const VOICE_OFFER_SECTIONS: readonly string[] = [
+  "APPROVED CLAIMS",
+  "PUBLISHED PRICES (quote verbatim, nothing else)",
+  "VALUE PROPOSITION",
+  "KEY MESSAGES",
+  "WHAT THEY SELL",
+  "DIFFERENTIATORS",
+];
+/** Sections whose items are forbidden wording. */
+const NEVER_SECTIONS: readonly string[] = ["NEVER CLAIM", "NEVER SAY"];
+
+/** Offer-card text (agent/offer-card.ts buildOfferCard) -> the lines a call may state, and what it must never say. */
+export function voiceOfferLines(cardText: string): { approved: string[]; never: string[] } {
+  const bySection = new Map<string, string[]>();
+  let section: string | null = null;
+  for (const raw of cardText.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^- /.test(line)) {
+      if (section) bySection.set(section, [...(bySection.get(section) ?? []), line.slice(2).trim()]);
+      continue;
+    }
+    section = line; // a heading (or a header line, which has no items)
+  }
+  const approved = VOICE_OFFER_SECTIONS.flatMap((s) => bySection.get(s) ?? []).filter((l) => l.length > 3 && !/^None\b/.test(l));
+  const never = NEVER_SECTIONS.flatMap((s) => bySection.get(s) ?? []).filter(Boolean);
+  return { approved: [...new Set(approved)], never: [...new Set(never)] };
+}
+
+function neverSection(input: CallBriefInput): string | null {
+  const items = (input.neverSay ?? []).map((l) => cap(speechSafe(l), 80)).filter(Boolean).slice(0, 8);
+  return items.length ? `NEVER SAY OR CLAIM: ${items.join("; ")}.` : null;
+}
+
 function offerSection(lines: readonly string[], limit: number): string | null {
   const items = lines.map((l) => cap(speechSafe(l), 200)).filter(Boolean).slice(0, limit);
   if (!items.length) return null;
@@ -402,13 +614,12 @@ export function timePlanFor(route: BriefRoute): string {
 }
 
 const SPEECH_RULES =
-  "HOW YOU SPEAK. One or two short sentences a turn, under 35 words. One question at most, then stop and listen. " +
+  "HOW YOU SPEAK. One or two short sentences a turn, under 25 words. One question at most, then stop and listen; if they talk over you, stop and let them finish. " +
   "No lists, no dashes, no emoji, no web addresses read aloud. Plain British English. Use their first name at most twice.";
 
 const HEARING_RULES =
   "HEARING. Read every number back to confirm it, a digit at a time for phone numbers. Spell an email address back letter by letter. " +
-  "If you did not catch something, say sorry and ask once more in simpler words. If it still is not clear, offer to text them instead. " +
-  "Never guess a name, number, date or amount.";
+  "Missed something: say sorry and ask once more, more simply. Still unclear: ask a yes or no question from what you know (their enquiry, the service), not a hand-over. Never guess a name, number, date or amount.";
 
 const LOOP_RULES =
   `LOOPS. Never ask the same thing twice. If you are going round in circles, move one step: "${ESCALATION_LINES.REPHRASE}", then offer a text, then a person, then end politely.`;
@@ -446,13 +657,14 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
   const name = input.callingAsName.replace(/\s+/g, " ").trim();
   const objections = objectionSection(input);
   const answers = workspaceAnswers(input);
+  const plan = questionPlanFor(input);
 
   const head: Section[] = [
     {
       key: "role",
       text:
         `YOU ARE ${persona}, an AI assistant ${input.direction === "INBOUND" ? "answering a call" : "calling"} for ${name}. ` +
-        `This is a ${ROUTE_LABEL[input.route].toLowerCase()}. Goal: ${GOAL_LABEL[goal]}. ` +
+        `This is a ${ROUTE_LABEL[input.route].toLowerCase()}. Goal: ${GOAL_LABEL[goal]}. ${serviceOf(input) ? `They enquired about: ${serviceOf(input)}. ` : ""}` +
         `If asked who you are or how to contact the business, say: ${speechSafe(input.identityAnswer)} If asked who built you, say: ${BUILT_BY_ANSWER} Never claim to be human.`,
     },
     {
@@ -463,8 +675,20 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
           : "FIRST. You asked if now is a good time. If they say no or sound rushed, ask when suits, call schedule_callback, thank them and end: no pitch. If yes, go straight in: one sentence on why you are calling, tied to what they enquired about, then your one move.",
     },
     { key: "move", text: `YOUR ONE MOVE NOW: ${move}` },
+    ...(enquirySection(input) ? [{ key: "enquiry", text: "" }] : []),
+    ...(plan.length ? [{ key: "plan", text: planSection(plan) }] : []),
+    ...(!input.permissions.book
+      ? [{ key: "booking_off", text: BOOKING_OFF_LINE }]
+      : input.booking !== "SLOTS"
+        ? [{ key: "booking_off", text: NO_CALENDAR_LINE }]
+        : []),
+    ...(hasOffer(input) ? [] : [{ key: "no_claims", text: noClaimsLine(input) }]),
+    ...(neverSection(input) ? [{ key: "never", text: neverSection(input) as string }] : []),
     ...(input.openerSuffix?.trim() ? [{ key: "suffix", text: `After the permission question, the business asked you to say: ${cap(speechSafe(input.openerSuffix), 240)}` }] : []),
-    { key: "close", text: `CLOSE. ${closeFor(input, move)} When they sound keen, one light trial close first ("Does that sound like it would help?"); on a yes, close at once.` },
+    {
+      key: "close",
+      text: `CLOSE. ${closeFor(input, move)}${plan.length ? "" : ' When they sound keen, one light trial close first ("Does that sound like it would help?"); on a yes, close at once.'}`,
+    },
     { key: "send", text: sendDetailsLine(input) },
     { key: "money", text: `${MONEY_RULES} ${permissionLine(input.permissions)}` },
     { key: "speech", text: SPEECH_RULES },
@@ -494,14 +718,33 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
   let offerLimit = MAX_OFFER_LINES;
   let includeAnswers = Boolean(answers);
   let includeSummary = Boolean(summary);
+  let includeSuffix = true;
+  let enquiryLimit = MAX_ENQUIRY_CHARS;
+  let compactObjections = false;
+  let optionalPlan = true;
   const dropped: string[] = [];
 
   const assemble = (): string => {
-    const parts: string[] = head.map((s) => s.text);
+    const parts: string[] = head
+      .filter((s) => includeSuffix || s.key !== "suffix")
+      .map((s) =>
+        s.key === "enquiry"
+          ? (enquirySection(input, enquiryLimit) ?? "")
+          : s.key === "objections"
+            ? compactObjections
+              ? objections.compact
+              : objections.text
+            : s.key === "plan"
+              ? planSection(optionalPlan ? plan : plan.filter((q) => q.required))
+              : s.text,
+      )
+      .filter(Boolean);
     const known = knownSection(input.known, knownLimit);
     if (known) parts.splice(3, 0, known);
     const offer = offerSection(input.offerLines, offerLimit);
     if (offer) parts.push(offer);
+    // Every offer line dropped for space: then nothing may be claimed at all.
+    else if (hasOffer(input)) parts.push(noClaimsLine(input));
     if (includeAnswers && answers) parts.push(answers.text);
     if (includeSummary && summary) parts.push(summary.text);
     return parts.join("\n");
@@ -509,12 +752,18 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
 
   let text = assemble();
   // Drop optional detail, least important first, until the bound holds.
+  // The move, the plan's required questions, the booking-off and no-claims
+  // lines, the money rule and the stop rule are never in this list.
   const steps: (() => boolean)[] = [
     () => (includeSummary ? ((includeSummary = false), dropped.push("history"), true) : false),
     () => (includeAnswers ? ((includeAnswers = false), dropped.push("workspace_answers"), true) : false),
+    () => (!compactObjections ? ((compactObjections = true), dropped.push("objection_examples"), true) : false),
     () => (offerLimit > 2 ? ((offerLimit = 2), dropped.push("offer_lines"), true) : false),
     () => (knownLimit > 5 ? ((knownLimit = 5), dropped.push("known_items"), true) : false),
+    () => (enquiryLimit > 120 && input.enquirySummary?.trim() ? ((enquiryLimit = 120), dropped.push("enquiry_detail"), true) : false),
+    () => (optionalPlan && plan.some((q) => !q.required) ? ((optionalPlan = false), dropped.push("optional_questions"), true) : false),
     () => (offerLimit > 0 ? ((offerLimit = 0), dropped.push("offer_all"), true) : false),
+    () => (includeSuffix && input.openerSuffix?.trim() ? ((includeSuffix = false), dropped.push("opener_suffix"), true) : false),
   ];
   for (const step of steps) {
     if (estimateTokens(text) <= CALL_BRIEF_MAX_TOKENS) break;
@@ -527,7 +776,12 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
     dropped.push("hard_cut");
   }
 
-  const timePlan = timePlanFor(input.route);
+  // Second live call 2026-09-28: a call-back "at 5 o'clock today" was agreed
+  // at 17:3x. The model is told the local date and time, and the rule.
+  const clock = input.now
+    ? ` NOW: at the start of the call it is ${spokenNow(input.now, input.timezone || "Europe/London")} their time. A call-back time must be later than now; if they correct a time, the latest one wins; read the exact time back once.`
+    : "";
+  const timePlan = `${timePlanFor(input.route)}${clock}`;
   const knownList = input.known.map((k) => speechSafe(k)).filter(Boolean).slice(0, MAX_KNOWN_ITEMS).join("; ");
   return {
     version: CALL_BRIEF_VERSION,
@@ -555,7 +809,9 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
       questionIntentKey: input.nba?.question_intent?.key ?? null,
       objectionKeys: objections.keys,
       workspaceObjectionKeys: includeAnswers && answers ? answers.keys : [],
+      questionPlanKeys: plan.map((q) => q.key),
     },
+    questionPlan: plan,
   };
 }
 
@@ -564,4 +820,19 @@ export function briefStyleProblems(brief: CallBrief): string[] {
   const text = `${brief.text}\n${brief.timePlan}`;
   // The "{{session_duration}}" placeholder and quoted escalation lines are fine; only dashes and emoji matter.
   return houseStyleViolations(text.replace(/\{\{[a-z_]+\}\}/g, ""));
+}
+
+/**
+ * Approved lines without repeats: a line that only restates two or more of
+ * the others (the profile's proof points as one paragraph, the playbook's as
+ * a list) is dropped, so the six-line cap keeps distinct facts.
+ */
+export function dedupeApproved(lines: readonly string[]): string[] {
+  const norm = (l: string) => l.toLowerCase().replace(/^demo:\s*/, "").replace(/[^a-z0-9£% ]+/g, " ").replace(/\s+/g, " ").trim();
+  const n = lines.map(norm);
+  return lines.filter((_, i) => {
+    if (n.slice(0, i).includes(n[i])) return false;
+    const covered = n.filter((m, j) => j !== i && m.length > 0 && m.length < n[i].length && n[i].includes(m));
+    return covered.length < 2;
+  });
 }

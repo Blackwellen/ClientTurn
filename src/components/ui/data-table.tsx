@@ -36,6 +36,12 @@ export type DataTableProps<T> = {
   loading?: boolean;
   empty?: React.ReactNode;
   onRowClick?: (row: T) => void;
+  /**
+   * A human name for a row ("Acme Ltd"), used for the row's accessible name
+   * when it opens on click and for its selection checkbox. Falls back to the
+   * row key, which is usually a UUID nobody should have to hear.
+   */
+  rowLabel?: (row: T) => string;
   selectedKeys?: string[];
   onSelectionChange?: (keys: string[]) => void;
   sort?: SortState | null;
@@ -70,6 +76,7 @@ export function DataTable<T>({
   loading,
   empty,
   onRowClick,
+  rowLabel,
   selectedKeys,
   onSelectionChange,
   sort,
@@ -207,12 +214,34 @@ export function DataTable<T>({
             ) : (
               rows.map((row) => {
                 const key = rowKey(row);
+                const name = rowLabel?.(row);
                 return (
                   <TableRow
                     key={key}
                     selected={selected.has(key)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={onRowClick ? "cursor-pointer" : undefined}
+                    // A clickable row was mouse-only: no tab stop and no key
+                    // handler (SC 2.1.1). Same pattern as the leads table:
+                    // the row takes focus and opens on Enter or Space, and a
+                    // control inside it keeps its own keys.
+                    tabIndex={onRowClick ? 0 : undefined}
+                    aria-label={onRowClick && name ? `Open ${name}` : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (event) => {
+                            if (event.target !== event.currentTarget) return;
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onRowClick(row);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={
+                      onRowClick
+                        ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-accent"
+                        : undefined
+                    }
                   >
                     {selectable && (
                       <TableCell
@@ -220,7 +249,7 @@ export function DataTable<T>({
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Checkbox
-                          aria-label={`Select row ${key}`}
+                          aria-label={`Select ${name ?? `row ${key}`}`}
                           checked={selected.has(key)}
                           onChange={() => toggleRow(key)}
                         />

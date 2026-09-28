@@ -52,7 +52,10 @@ export function useScrollableRegion(
       // 1px of slack: sub-pixel layout at fractional zoom levels routinely
       // leaves scrollHeight a hair above clientHeight on content that visibly
       // fits, and a tab stop that appears only at 110% zoom is worse than none.
-      setScrollable(node.scrollHeight - node.clientHeight > 1);
+      // Either axis: wide tables scroll sideways at 320px and at high zoom.
+      setScrollable(
+        node.scrollHeight - node.clientHeight > 1 || node.scrollWidth - node.clientWidth > 1,
+      );
     };
 
     measure();

@@ -194,7 +194,7 @@ export function ScoringPanel() {
                   <div>
                     <strong>
                       {factor.label}{" "}
-                      <span className="font-normal text-[#6c778a]">
+                      <span className="font-normal text-[#768395]">
                         · {factor.weightPercent}% weight
                       </span>
                     </strong>

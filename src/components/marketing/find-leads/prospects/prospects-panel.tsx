@@ -25,6 +25,7 @@ import {
   Sliders,
   type BadgeTone,
 } from "../pieces";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 
 /**
  * The Prospect Inbox.
@@ -143,7 +144,7 @@ export function ProspectsPanel() {
       </motion.ul>
 
       {/* --------------------------------------------------- table (≥768px) */}
-      <div className="fl-table-scroll">
+      <ScrollRegion className="fl-table-scroll">
         <table className="fl-table">
           <caption className="sr-only">
             Example sourced prospects with company, location and size,
@@ -219,7 +220,7 @@ export function ProspectsPanel() {
             </AnimatePresence>
           </motion.tbody>
         </table>
-      </div>
+      </ScrollRegion>
 
       {/* -------------------------------- every field, per prospect (<768px) */}
       <ul className="fl-pcards" aria-label="Example sourced prospects">
@@ -233,10 +234,10 @@ export function ProspectsPanel() {
                 <strong className="block text-[13px] font-medium text-[#f2f6fa]">
                   {row.contact}
                 </strong>
-                <small className="mt-0.5 block text-[11px] text-[#56637a]">
+                <small className="mt-0.5 block text-[11px] text-[#74829d]">
                   {row.role} · {row.company}
                 </small>
-                <small className="mt-0.5 block text-[11px] text-[#56637a]">
+                <small className="mt-0.5 block text-[11px] text-[#74829d]">
                   {row.location}
                   {row.campaign ? ` · ${row.campaign}` : ""}
                 </small>

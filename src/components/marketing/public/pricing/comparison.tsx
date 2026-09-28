@@ -10,6 +10,7 @@ import {
 import { WHATSAPP_TOKENS_PER_MESSAGE } from "@/lib/billing/whatsapp-tokens";
 import { SOURCING_ALLOWANCES } from "@/lib/billing/sourcing-allowances";
 import { trackEngagement } from "@/lib/marketing/track";
+import { useScrollableRegion } from "@/components/ui/use-scrollable-region";
 import {
   PREMIUM_VOICE_SURCHARGE_GBP_PER_MIN,
   QUOTES_ON_PLAN,
@@ -229,6 +230,8 @@ function priceLabel(plan: PlanDefinition): string {
 export function PlanComparison() {
   const plans = planOrder();
   const reported = React.useRef(false);
+  // Keyboard-scrollable while the table overflows (SC 2.1.1).
+  const { attach: attachScroll, props: scrollProps } = useScrollableRegion("Plan comparison table");
 
   function report() {
     if (reported.current) return;
@@ -240,6 +243,8 @@ export function PlanComparison() {
     <>
       {/* Desktop: one table, scrollable inside its own container. */}
       <div
+        ref={attachScroll}
+        {...scrollProps}
         className="pub-compare-desktop pub-screen-scroll mt-8"
         onPointerDown={report}
       >
