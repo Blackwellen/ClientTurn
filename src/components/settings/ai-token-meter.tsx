@@ -23,6 +23,7 @@ import {
   REFUND_STATE_LABEL,
   type RefundState,
 } from "@/lib/billing/refundability";
+import { formatInZone } from "@/lib/dates";
 
 export type TokenMeterStatus = TokenSummary & {
   periodStart: string;
@@ -81,7 +82,7 @@ export function AiTokenMeter({
     }
   }
 
-  const renewal = new Date(status.periodEnd).toLocaleDateString("en-GB", {
+  const renewal = formatInZone(status.periodEnd, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -225,7 +226,7 @@ export function AiTokenMeter({
                   </span>
                   <span className="text-muted">
                     £{(purchase.amountMinor / 100).toFixed(2)} ·{" "}
-                    {new Date(purchase.createdAt).toLocaleDateString("en-GB")}
+                    {formatInZone(purchase.createdAt, "date")}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Badge

@@ -4,6 +4,7 @@ import { CircleAlert, ExternalLink, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/feedback";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/dates";
 import { leadDisplayName, type LeadListRow } from "@/lib/leads/types";
 import {
   SOURCE_DEFINITIONS,
@@ -42,6 +43,26 @@ export type AgentOfferView =
 
 /* ---------------------------------------------------------------- overview */
 
+/** Only sourcing work finds prospects; the other roles act on existing leads. */
+function isSourcing(type: AgentDetail["agent"]["agentType"]): boolean {
+  return type === "SOURCING" || type === "COMBINED";
+}
+
+/**
+ * What the daily and monthly caps count. A closing or re-engagement agent's
+ * cap limits the leads it acts on (lib/agents/ticks.ts), so calling them
+ * "prospects" on those agents was wrong (QA 2026-09-28).
+ */
+function capUnit(type: AgentDetail["agent"]["agentType"]): string {
+  return isSourcing(type) ? "prospects" : "leads";
+}
+
+/** "Info", "Warning": the raw severity code was shown in lower case. */
+function severityLabel(severity: string): string {
+  const lower = severity.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export function OverviewTab({
   agent,
   activity,
@@ -53,9 +74,13 @@ export function OverviewTab({
 }) {
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Found this week" value={agent.prospects7d} />
-        <StatCard label="Moved to Leads this week" value={agent.leads7d} />
+      <div className={cn("grid gap-4 sm:grid-cols-2", isSourcing(agent.agentType) && "lg:grid-cols-4")}>
+        {isSourcing(agent.agentType) && (
+          <>
+            <StatCard label="Found this week" value={agent.prospects7d} />
+            <StatCard label="Moved to Leads this week" value={agent.leads7d} />
+          </>
+        )}
         <StatCard label="In queue" value={agent.queued} />
         <StatCard
           label="Waiting for you"
@@ -87,23 +112,25 @@ export function OverviewTab({
               <Row label="Schedule" value={cadenceLabel(agent.cadence)} />
               <Row
                 label="Daily limit"
-                value={`${agent.dailyProspectCap.toLocaleString("en-GB")} prospects`}
+                value={`${agent.dailyProspectCap.toLocaleString("en-GB")} ${capUnit(agent.agentType)}`}
               />
               <Row
                 label="Monthly limit"
-                value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} prospects`}
+                value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} ${capUnit(agent.agentType)}`}
               />
               <Row
                 label="Next run"
                 value={
                   agent.nextRunAt
-                    ? new Date(agent.nextRunAt).toLocaleString("en-GB")
+                    ? formatDateTime(agent.nextRunAt, { year: true })
                     : agent.cadence === "MANUAL"
                       ? "Only when you run it"
                       : "Not scheduled"
                 }
               />
-              <Row label="Sourcing runs" value={runCount.toLocaleString("en-GB")} />
+              {isSourcing(agent.agentType) && (
+                <Row label="Sourcing runs" value={runCount.toLocaleString("en-GB")} />
+              )}
               {agent.voiceCalls && (
                 <Row
                   label="AI phone calls"
@@ -414,7 +441,7 @@ function ActivityList({ events }: { events: AgentActivityRow[] }) {
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="flex items-center gap-2">
               <Badge tone={severityTone(event.severity)} dense dot>
-                {event.severity.toLowerCase()}
+                {severityLabel(event.severity)}
               </Badge>
               <span className="text-[13px] font-medium text-content">{event.title}</span>
             </span>
@@ -422,7 +449,7 @@ function ActivityList({ events }: { events: AgentActivityRow[] }) {
               dateTime={event.createdAt}
               className="text-[11.5px] tabular-nums text-content-subtle"
             >
-              {new Date(event.createdAt).toLocaleString("en-GB")}
+              {formatDateTime(event.createdAt, { year: true })}
             </time>
           </div>
           {event.detail && (
@@ -481,11 +508,11 @@ export function SettingsTab({
             <Field label="Approval" value={autonomyLabel(agent.autonomy)} />
             <Field
               label="Daily limit"
-              value={`${agent.dailyProspectCap.toLocaleString("en-GB")} prospects`}
+              value={`${agent.dailyProspectCap.toLocaleString("en-GB")} ${capUnit(agent.agentType)}`}
             />
             <Field
               label="Monthly limit"
-              value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} prospects`}
+              value={`${agent.monthlyProspectCap.toLocaleString("en-GB")} ${capUnit(agent.agentType)}`}
             />
             {sources && (
               <Field

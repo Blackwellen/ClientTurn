@@ -279,6 +279,9 @@ async function VoiceOpsView() {
 }
 
 async function ReadinessView() {
+  // Readiness reads with the service-role client and does not guard itself,
+  // so the operator role is asserted here rather than inherited from the layout.
+  await requirePlatformAdmin();
   const report = await getReadinessReport();
   return <SystemReadinessView report={report} />;
 }

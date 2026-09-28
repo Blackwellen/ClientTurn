@@ -15,33 +15,9 @@ const PLACEMENTS: Record<Placement, string> = {
 /** Grace period for the pointer to cross the gap onto the bubble (SC 1.4.13). */
 const HIDE_DELAY_MS = 120;
 
-const INTERACTIVE_TAGS = new Set(["a", "button", "input", "select", "textarea", "summary"]);
-
-function textOf(node: React.ReactNode): string {
-  if (node == null || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(textOf).join("");
-  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return textOf(node.props.children);
-  return "";
-}
-
-type TriggerProps = {
-  href?: unknown;
-  onClick?: unknown;
-  tabIndex?: unknown;
-  "aria-describedby"?: string;
-};
-
-/**
- * Whether the trigger can take focus, and so can carry `aria-describedby`.
- * Components (Link, Button) are judged by the props that make them
- * interactive, since their rendered tag is not visible from here.
- */
-function isInteractive(child: React.ReactElement<TriggerProps>): boolean {
-  if (typeof child.type === "string" && INTERACTIVE_TAGS.has(child.type)) return true;
-  const props = child.props;
-  return props.href != null || props.onClick != null || props.tabIndex != null;
-}
+/** What can take focus, and so can carry `aria-describedby` itself. */
+const FOCUSABLE =
+  'a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
 
 /**
  * A hover/focus hint.
@@ -56,6 +32,15 @@ function isInteractive(child: React.ReactElement<TriggerProps>): boolean {
  *    in the reading order.
  *  - The bubble can be hovered: it no longer ignores the pointer and hiding is
  *    delayed long enough to cross the gap (SC 1.4.13 "hoverable").
+ *  - The wiring is done on the rendered DOM after mount, not by inspecting
+ *    `children`: a trigger passed down from a Server Component arrives on the
+ *    client as a lazy reference, not an element, so any render-time decision
+ *    about it differed between the server HTML and the client and broke
+ *    hydration on every page with a KPI hint (QA 2026-09-28). The markup is
+ *    therefore identical on both sides: the text starts as a visually hidden
+ *    sibling (correct for a badge or a truncated label), and a focusable
+ *    trigger is then described directly and the sibling hidden, so it is not
+ *    read twice.
  *  - `describe={false}` skips the screen-reader copy where the tooltip only
  *    repeats the trigger's own name (the collapsed sidebar's labels). A string
  *    tooltip identical to the trigger's text is skipped automatically.
@@ -114,38 +99,50 @@ export function Tooltip({
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [open]);
 
-  const single = React.Children.count(children) === 1 && React.isValidElement<TriggerProps>(children)
-    ? (children as React.ReactElement<TriggerProps>)
-    : null;
-  const redundant =
-    typeof content === "string" && content.trim() === textOf(children).trim();
-  const announce = describe && !redundant && content != null && content !== "";
-  const describeTrigger = announce && single !== null && isInteractive(single);
+  const announce = describe && content != null && content !== "";
+  const wrapRef = React.useRef<HTMLSpanElement>(null);
 
-  const trigger = describeTrigger && single
-    ? React.cloneElement(single, {
-        "aria-describedby": [single.props["aria-describedby"], descId].filter(Boolean).join(" "),
-      })
-    : children;
+  React.useEffect(() => {
+    if (!announce) return;
+    const wrap = wrapRef.current;
+    const desc = wrap ? document.getElementById(descId) : null;
+    const trigger = wrap?.firstElementChild;
+    if (!wrap || !desc || !trigger || trigger === desc) return;
+    // A tooltip that only repeats the trigger's own text adds nothing.
+    const triggerText = (trigger.getAttribute("aria-label") ?? trigger.textContent ?? "").trim();
+    if (typeof content === "string" && content.trim() === triggerText) {
+      desc.hidden = true;
+      return () => {
+        desc.hidden = false;
+      };
+    }
+    if (!trigger.matches(FOCUSABLE)) return;
+    const before = trigger.getAttribute("aria-describedby");
+    trigger.setAttribute("aria-describedby", [before, descId].filter(Boolean).join(" "));
+    desc.hidden = true;
+    return () => {
+      if (before) trigger.setAttribute("aria-describedby", before);
+      else trigger.removeAttribute("aria-describedby");
+      desc.hidden = false;
+    };
+  }, [announce, content, descId]);
 
   return (
     <span
+      ref={wrapRef}
       className={cn("relative inline-flex", className)}
       onMouseEnter={() => show()}
       onMouseLeave={() => hide()}
       onFocus={() => show(true)}
       onBlur={() => hide(true)}
     >
-      {trigger}
-      {announce &&
-        (describeTrigger ? (
-          // Always mounted, so the description exists before the bubble does.
-          <span id={descId} hidden>
-            {content}
-          </span>
-        ) : (
-          <span className="sr-only">{content}</span>
-        ))}
+      {children}
+      {announce && (
+        // Always mounted, so the description exists before the bubble does.
+        <span id={descId} className="sr-only">
+          {content}
+        </span>
+      )}
       {open && (
         <span
           role="tooltip"

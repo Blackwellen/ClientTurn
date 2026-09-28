@@ -61,7 +61,7 @@ export function QuoteEditor({
           discount: line.discount?.type === "PERCENT" ? bpsToInput(line.discount.bps) : "",
           parentLineId: line.kind === "ITEM" ? (line.parentLineId ?? "") : "",
         }))
-      : [{ lineId: nextLineId(), ref: items[0] ? `item:${items[0].id}` : "", quantity: "1", discount: "", parentLineId: "" }],
+      : [{ lineId: nextLineId(), ref: firstItemRef(items, defaultDepositBps), quantity: "1", discount: "", parentLineId: "" }],
   );
   const [quoteDiscount, setQuoteDiscount] = React.useState(content?.quoteDiscount?.type === "PERCENT" ? bpsToInput(content.quoteDiscount.bps) : "");
   const [deposit, setDeposit] = React.useState(
@@ -165,7 +165,13 @@ export function QuoteEditor({
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Title" htmlFor="qe-title" required>
+          <FormField
+            label="Title"
+            htmlFor="qe-title"
+            required
+            // Full width unless the "For" picker sits beside it.
+            className={!existing && opportunities.length > 1 ? undefined : "sm:col-span-2"}
+          >
             <Input id="qe-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
           </FormField>
           {!existing && opportunities.length > 1 && (
@@ -256,7 +262,7 @@ export function QuoteEditor({
               {t.vatRegistered && <Row label="VAT" value={formatMinor(t.totals.vatMinor, currency)} />}
               <Row label={t.recurring.length ? "Total (incl. first period)" : "Total"} value={formatMinor(t.totals.grossMinor, currency)} strong />
               {t.depositMinor > 0 && <Row label="Deposit on acceptance" value={formatMinor(t.depositMinor, currency)} />}
-              <Row label="Due on acceptance" value={formatMinor(t.firstPaymentMinor, currency)} />
+              <Row label={t.depositMinor > 0 && t.firstPaymentMinor > t.depositMinor ? "Due on acceptance (incl. deposit)" : "Due on acceptance"} value={formatMinor(t.firstPaymentMinor, currency)} />
               {t.margin && typeof t.margin.marginBps === "number" && <Row label="Margin (internal)" value={`${(t.margin.marginBps / 100).toFixed(1)}%${t.margin.complete ? "" : " (some costs unknown)"}`} />}
               {calc?.approval.required && (
                 <p className="pt-1 text-[12.5px] text-warning-700" role="status">Needs approval before sending: {calc.approval.detail}</p>
@@ -279,6 +285,21 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 /** The editor's fields as the calculator's input, or a sentence saying what is wrong. */
+/**
+ * The line a new quote starts with. With a default deposit set, a recurring
+ * first item made the editor open on "A deposit needs one-off lines to apply
+ * to." before anything was typed (QA 2026-09-28), so a sellable one-off item
+ * is preferred; add-on-only items never lead.
+ */
+function firstItemRef(items: CatalogueItem[], defaultDepositBps: number | null): string {
+  const sellable = items.filter((item) => !item.addOnOnly);
+  const pick =
+    (defaultDepositBps ? sellable.find((item) => item.chargeType === "ONE_OFF") : undefined) ??
+    sellable[0] ??
+    items[0];
+  return pick ? `item:${pick.id}` : "";
+}
+
 function build(lines: LineDraft[], quoteDiscount: string, deposit: string, balance: Balance): { lines: QuoteLineInput[]; quoteDiscount?: { type: "PERCENT"; bps: number; scope: "ALL" }; payment?: PaymentTerms } | string {
   const out: QuoteLineInput[] = [];
   for (const line of lines) {

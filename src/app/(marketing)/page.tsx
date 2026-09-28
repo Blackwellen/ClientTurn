@@ -22,6 +22,7 @@ import {
   VOICE_ADDON,
   VOICE_MINUTE_PACKS,
 } from "@/lib/marketing/voice-offer";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 /**
  * The ClientTurn homepage.
@@ -112,6 +113,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/" },
   openGraph: {
+    images: OG_IMAGES,
     title,
     description,
     url: "/",
@@ -120,6 +122,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title,
     description,

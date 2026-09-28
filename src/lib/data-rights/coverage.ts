@@ -221,7 +221,7 @@ export const PERSONAL_DATA_RULES: readonly PersonalDataRule[] = [
     link: "lead_id",
     anonymise: "REDACT",
     delete: "REMOVE",
-    label: "phone calls with the person (the number called is removed; route, outcome and duration stay)",
+    label: "phone calls with the person (their number, called or calling, is removed; route, outcome and duration stay)",
   },
   {
     table: "voice_call_eligibility",

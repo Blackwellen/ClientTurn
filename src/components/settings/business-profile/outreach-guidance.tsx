@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { saveOutreachGuidance } from "@/lib/business-profile/actions";
 import type { BusinessProfileData } from "@/lib/business-profile/types";
+import { formatInZone } from "@/lib/dates";
 
 type Guidance = NonNullable<BusinessProfileData["outreachGuidance"]>;
 
@@ -98,11 +99,11 @@ export function OutreachGuidanceEditor({
         {guidance?.updatedAt && (
           <p className="shrink-0 text-[11.5px] text-content-subtle">
             Updated{" "}
-            {new Intl.DateTimeFormat("en-GB", {
+            {formatInZone(guidance.updatedAt, {
               day: "numeric",
               month: "short",
               year: "numeric",
-            }).format(new Date(guidance.updatedAt))}
+            })}
           </p>
         )}
       </CardHeader>

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { verifyMetaSignature } from "@/lib/messaging/meta";
 import { deliveriesFor, type MetaEntry } from "@/lib/messaging/meta-protocol";
 import { ingestWebhookComment } from "@/lib/social/comment-ingest";
@@ -116,16 +117,39 @@ export async function POST(request: Request) {
     for (const delivery of deliveriesFor(object, entry)) {
       const { eventId } = delivery;
 
-      const { error } = await admin.from("webhook_events").insert({
-        provider: "meta",
-        external_event_id: eventId,
-        event_type: delivery.kind === "leadgen" ? "leadgen" : "message.inbound",
-        status: "received",
-        // The whole entry, not the whole body: an entry is self-contained, and
-        // storing the envelope again for each of its events would multiply a
-        // batched delivery into several copies of itself.
-        payload: { object, entry } as never,
-      });
+      const insertInbox = async () =>
+        (
+          await admin.from("webhook_events").insert({
+            provider: "meta",
+            external_event_id: eventId,
+            event_type: delivery.kind === "leadgen" ? "leadgen" : "message.inbound",
+            status: "received",
+            // The whole entry, not the whole body: an entry is self-contained, and
+            // storing the envelope again for each of its events would multiply a
+            // batched delivery into several copies of itself.
+            payload: { object, entry } as never,
+          })
+        ).error;
+
+      if (delivery.kind === "message") {
+        // A redelivery is acknowledged, not repeated; one recorded but never
+        // queued (the enqueue failed on the first delivery) is queued now
+        // (inbox-core.ts). A failed write is never acknowledged.
+        const outcome = await recordThenQueue({
+          insert: insertInbox,
+          status: () => webhookInboxStatus("meta", eventId),
+          queue: () =>
+            enqueue(
+              "message.process_inbound",
+              { provider: "meta", externalEventId: eventId },
+              { priority: 10, idempotencyKey: `meta:${eventId}` },
+            ),
+        });
+        if (outcome === "FAILED") return new Response("error", { status: 500 });
+        continue;
+      }
+
+      const error = await insertInbox();
 
       // A redelivery of an event already recorded is acknowledged, not
       // repeated. This is the only thing standing between Meta's retry policy
@@ -136,15 +160,6 @@ export async function POST(request: Request) {
       // Meta the event was accepted and stop the retry that is the only way it
       // would ever arrive again.
       if (error) return new Response("error", { status: 500 });
-
-      if (delivery.kind === "message") {
-        await enqueue(
-          "message.process_inbound",
-          { provider: "meta", externalEventId: eventId },
-          { priority: 10, idempotencyKey: `meta:${eventId}` },
-        );
-        continue;
-      }
 
       if (delivery.kind === "comment") {
         // Somebody commented on the business's own content. This is the entry

@@ -206,7 +206,7 @@ export function ProductProofSection() {
         <SectionHeading
           id="proof-heading"
           align="centre"
-          eyebrow="Real product proof"
+          eyebrow="Inside the product"
           eyebrowPill
           title={
             <>

@@ -35,7 +35,8 @@ import { writeQualificationFact, writeIntentSignals, enqueueReassessment } from 
 import { buildSignalWrite, extractTextSignals } from "@/lib/qualification-intelligence/signals";
 import { recordVoiceSuppression } from "@/lib/policy/suppression";
 import { queueNotification } from "@/lib/jobs/handlers/shared";
-import { requestCall } from "../runtime-core";
+import { cancelQueuedCall, requestCall } from "../runtime-core";
+import { localWhen } from "../post-call";
 import { serverVoiceDeps } from "../server-deps";
 import { classifyDestination } from "../destinations";
 import { spokenSlotChoice, spokenSlotLabel, spokenWhen } from "../spoken-time";
@@ -479,6 +480,33 @@ export async function transferToHuman(businessId: string, a: VoiceToolArgs<"tran
   return { ok: true, say: "I will put you through to a colleague now.", data: { transfer: true, next: "Call transfer_call now." }, operation: "handover.request" };
 }
 
+/**
+ * AI call-backs booked earlier on THIS call (voice_tool_calls OK rows), still
+ * waiting to be dialled, are cancelled: the lead corrected the time or opted
+ * out, and must not be rung at the old time as well (backend QA 2026-09-28).
+ */
+async function supersedeCallbacks(businessId: string, callId: string, reason: string): Promise<void> {
+  const { data } = await db()
+    .from("voice_tool_calls")
+    .select("result")
+    .eq("business_id", businessId)
+    .eq("voice_call_id", callId)
+    .eq("tool", "schedule_callback")
+    .eq("status", "OK");
+  const ids = ((data ?? []) as { result: { data?: { callback_call_id?: unknown } } | null }[])
+    .map((r) => r.result?.data?.callback_call_id)
+    .filter((v): v is string => typeof v === "string");
+  if (!ids.length) return;
+  const deps = serverVoiceDeps();
+  for (const id of new Set(ids)) {
+    try {
+      await cancelQueuedCall(deps, id, reason);
+    } catch (error) {
+      console.error("[voice] superseding a call-back failed", { callId: id, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+}
+
 export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"schedule_callback"> & { callId: string }): Promise<PortOutcome> {
   const call = await loadVoiceCall(businessId, a.callId);
   if (!call) return refused("NOT_FOUND", "");
@@ -487,6 +515,10 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
   // correction was lost and the wrong time confirmed as "then").
   const tz = ((await db().from("businesses").select("timezone").eq("id", businessId).maybeSingle()).data as { timezone?: string | null } | null)?.timezone || "Europe/London";
   const spoken = at && Number.isFinite(at.getTime()) ? spokenWhen(at, new Date(), tz) : null;
+  // A corrected time replaces the call-back booked a moment ago.
+  await supersedeCallbacks(businessId, call.id, "CALLBACK_SUPERSEDED");
+  const atIso = at && Number.isFinite(at.getTime()) ? at.toISOString() : null;
+  const note = a.note?.trim() || null;
   if (a.by === "AI" && at && Number.isFinite(at.getTime())) {
     const route = (["QUALIFICATION", "BOOKING_CLOSE", "DIRECT_CLOSE", "NURTURE", "REACTIVATION"] as const).find((r) => r === call.route) ?? "QUALIFICATION";
     const queued = await requestCall(serverVoiceDeps(), {
@@ -498,11 +530,17 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
       notBefore: at,
     });
     if (queued.ok) {
-      return { ok: true, say: spoken ? `I will call you back at ${spoken}.` : "I will call you back then.", data: { callback_call_id: queued.callId, scheduled_for: queued.scheduledFor }, operation: "voice.request_call" };
+      return {
+        ok: true,
+        say: spoken ? `I will call you back at ${spoken}.` : "I will call you back then.",
+        data: { callback_call_id: queued.callId, scheduled_for: queued.scheduledFor, at_iso: atIso, note },
+        operation: "voice.request_call",
+      };
     }
     // Not callable then (hours, caps): a person arranges it instead.
   }
-  const when = at && Number.isFinite(at.getTime()) ? at.toISOString().slice(0, 16).replace("T", " ") : "a time that suits them";
+  // In the workspace's own zone: the UTC slice read an hour early all summer.
+  const when = atIso ? localWhen(atIso, tz) : "a time that suits them";
   await db().from("leads").update({ next_action: `Call back ${when}${a.note ? `: ${a.note}` : ""}`.slice(0, 500) }).eq("business_id", businessId).eq("id", call.lead_id);
   await queueNotification({
     businessId,
@@ -512,7 +550,12 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
     linkUrl: `/app/leads/${call.lead_id}`,
     dedupeKey: `voice-callback:${call.id}`,
   });
-  return { ok: true, say: spoken ? `A colleague will call you back at ${spoken}.` : a.note ? "A colleague will call you back then." : "A colleague will call you back.", data: { by: "PERSON", when }, operation: "lead.next_action" };
+  return {
+    ok: true,
+    say: spoken ? `A colleague will call you back at ${spoken}.` : a.note ? "A colleague will call you back then." : "A colleague will call you back.",
+    data: { by: "PERSON", when, at_iso: atIso, note },
+    operation: "lead.next_action",
+  };
 }
 
 export async function optOut(businessId: string, a: VoiceToolArgs<"opt_out"> & { callId: string }): Promise<PortOutcome> {
@@ -520,6 +563,8 @@ export async function optOut(businessId: string, a: VoiceToolArgs<"opt_out"> & {
   if (!call) return refused("NOT_FOUND", "");
   // The lead's number: the one we called, or the one they rang from.
   await recordVoiceSuppression({ businessId, phone: call.direction === "INBOUND" ? call.from_e164 : call.to_e164, callId: call.id });
+  // Nothing booked earlier on this call is rung once they objected.
+  await supersedeCallbacks(businessId, call.id, "OPTED_OUT_ON_CALL");
   if (a.scope === "ALL") {
     // The one global opt-out path (agent/tools.ts applySuppression): the ALL
     // suppression row, leads.opted_out, automation off, lead.opted_out event.

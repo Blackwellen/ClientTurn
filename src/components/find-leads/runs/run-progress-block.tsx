@@ -3,6 +3,7 @@ import { AlertCircle, Check, Loader2, MinusCircle, Settings2 } from "lucide-reac
 import { cn } from "@/lib/cn";
 import { STAGE_BY_KEY } from "@/lib/find-leads/stages";
 import { STAGE_STATUS_LABELS, type RunStageView } from "@/lib/find-leads/types";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The twelve-stage progress block, rendered *inside* the run conversation.
@@ -148,7 +149,7 @@ function StageRow({ stage }: { stage: RunStageView }) {
           </span>
         ) : done && stage.completed_at ? (
           <span className="text-content-subtle">
-            {new Date(stage.completed_at).toLocaleTimeString("en-GB", {
+            {formatInZone(stage.completed_at, {
               hour: "2-digit",
               minute: "2-digit",
             })}

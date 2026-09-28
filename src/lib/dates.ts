@@ -98,40 +98,126 @@ export function greetingFor(timezone: string, now = new Date()) {
   return "Good evening";
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+/**
+ * The zone every date in the product is shown in unless the workspace says
+ * otherwise. The product is UK: formatting in the runtime's own zone (UTC on
+ * Vercel, the viewer's zone in a browser) put times an hour out during BST and
+ * made server and client render different text, which is a hydration error.
+ */
+export const DEFAULT_TIMEZONE = "Europe/London";
 
-/** "5 Mar, 14:05" — dense rows where the year is implied. */
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+export type DateInput = string | number | Date | null | undefined;
 
-/** "5 Mar 2025, 14:05" — audit and detail surfaces where the year matters. */
-const DATE_TIME_WITH_YEAR_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+/**
+ * Named shapes for the common cases. Each is exactly what the old
+ * `toLocale*String("en-GB")` call with no options produced, so converting a
+ * call site does not change what the user reads.
+ */
+export const DATE_PRESETS = {
+  /** "05/03/2025", as `toLocaleDateString("en-GB")` printed it. */
+  date: { day: "2-digit", month: "2-digit", year: "numeric" },
+  /** "14:05:09", as `toLocaleTimeString("en-GB")` printed it. */
+  time: { hour: "2-digit", minute: "2-digit", second: "2-digit" },
+  /** "05/03/2025, 14:05:09", as `toLocaleString("en-GB")` printed it. */
+  datetime: {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
 
-function toValidDate(value: string | Date | null | undefined): Date | null {
-  if (!value) return null;
-  const date = typeof value === "string" ? new Date(value) : value;
+export type DatePreset = keyof typeof DATE_PRESETS;
+
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+/** A valid IANA zone, or the default. An unknown string never throws. */
+export function resolveTimezone(timeZone: string | null | undefined): string {
+  if (!timeZone) return DEFAULT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone });
+    return timeZone;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function formatterFor(
+  options: Intl.DateTimeFormatOptions,
+  timeZone: string | null | undefined,
+): Intl.DateTimeFormat {
+  const zone = resolveTimezone(timeZone);
+  const key = `${zone}|${JSON.stringify(options)}`;
+  let formatter = formatterCache.get(key);
+  if (!formatter) {
+    // `timeZone` is always explicit, applied last, and cannot be overridden
+    // by `options`: that is the whole point of this function.
+    formatter = new Intl.DateTimeFormat("en-GB", { ...options, timeZone: zone });
+    formatterCache.set(key, formatter);
+  }
+  return formatter;
+}
+
+function toValidDate(value: DateInput): Date | null {
+  if (value === null || value === undefined || value === "") return null;
+  const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** "5 Mar 2025". Empty or unparseable input renders "—". */
-export function formatDate(value: string | Date | null | undefined) {
+/**
+ * THE date formatter. Every date or time shown in the app goes through this
+ * (directly or through the helpers below): always en-GB and always with an
+ * explicit `timeZone`, the workspace's when the caller knows it and
+ * Europe/London otherwise. It therefore renders the same text on the server
+ * and in the browser, whatever zone either of them runs in.
+ *
+ * Do not call `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString`, or
+ * build an `Intl.DateTimeFormat` without a `timeZone`, for display.
+ *
+ * Empty or unparseable input renders "—".
+ */
+export function formatInZone(
+  value: DateInput,
+  options: Intl.DateTimeFormatOptions | DatePreset = "date",
+  timeZone?: string | null,
+): string {
   const date = toValidDate(value);
-  return date ? DATE_FORMAT.format(date) : "—";
+  if (!date) return "—";
+  const resolved = typeof options === "string" ? DATE_PRESETS[options] : options;
+  return formatterFor(resolved, timeZone).format(date);
+}
+
+/** `formatToParts` in the zone, for callers that assemble their own layout. */
+export function formatPartsInZone(
+  value: Date,
+  options: Intl.DateTimeFormatOptions,
+  timeZone?: string | null,
+): Intl.DateTimeFormatPart[] {
+  return formatterFor(options, timeZone).formatToParts(value);
+}
+
+/** "2025-03-05": the calendar day an instant falls on, in the zone. */
+export function dayKeyInZone(value: Date, timeZone?: string | null): string {
+  const parts = formatPartsInZone(
+    value,
+    { year: "numeric", month: "2-digit", day: "2-digit" },
+    timeZone,
+  );
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+type ZoneOption = { timeZone?: string | null };
+
+/** "5 Mar 2025". Empty or unparseable input renders "—". */
+export function formatDate(value: DateInput, options: ZoneOption = {}) {
+  return formatInZone(
+    value,
+    { day: "numeric", month: "short", year: "numeric" },
+    options.timeZone,
+  );
 }
 
 /**
@@ -139,12 +225,23 @@ export function formatDate(value: string | Date | null | undefined) {
  * `{ year: true }` gives "5 Mar 2025, 14:05", the admin console's form.
  */
 export function formatDateTime(
-  value: string | Date | null | undefined,
-  options: { year?: boolean } = {},
+  value: DateInput,
+  options: { year?: boolean } & ZoneOption = {},
 ) {
-  const date = toValidDate(value);
-  if (!date) return "—";
-  return (options.year ? DATE_TIME_WITH_YEAR_FORMAT : DATE_TIME_FORMAT).format(date);
+  return formatInZone(
+    value,
+    options.year
+      ? {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }
+      : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
+    options.timeZone,
+  );
 }
 
 /**
@@ -152,14 +249,8 @@ export function formatDateTime(
  * 24-hour en-GB, matching `formatDateTime` — the product is UK, so a 12-hour
  * "AM/PM" clock would read as an import from somewhere else.
  */
-export function formatTime(value: string | Date | null | undefined) {
-  if (!value) return "—";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+export function formatTime(value: DateInput, options: ZoneOption = {}) {
+  return formatInZone(value, { hour: "2-digit", minute: "2-digit" }, options.timeZone);
 }
 
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -179,7 +270,7 @@ const RELATIVE_AGO_WINDOW_MS = 30 * 864e5;
  * absolute date with a relative one use this so they never render
  * "5 Mar 2024 (5 Mar 2024)".
  */
-export function hasRelativePhrase(value: string | Date | null | undefined): boolean {
+export function hasRelativePhrase(value: DateInput): boolean {
   const date = toValidDate(value);
   if (!date) return false;
   return Date.now() - date.getTime() < RELATIVE_AGO_WINDOW_MS;
@@ -195,7 +286,7 @@ export function hasRelativePhrase(value: string | Date | null | undefined): bool
  *   timestamp reads "just now" and empty input reads "Never".
  */
 export function formatRelative(
-  value: string | Date | null | undefined,
+  value: DateInput,
   options: { style?: "auto" | "ago" } = {},
 ) {
   if (options.style === "ago") return formatRelativeAgo(value);
@@ -211,7 +302,7 @@ export function formatRelative(
   return formatter.format(Math.round(diff / 6e4), "minute");
 }
 
-function formatRelativeAgo(value: string | Date | null | undefined) {
+function formatRelativeAgo(value: DateInput) {
   if (!value) return "Never";
   const date = toValidDate(value);
   if (!date) return "—";
@@ -235,13 +326,12 @@ function formatRelativeAgo(value: string | Date | null | undefined) {
  * "Yesterday", "4d ago". Falls back to a date once a week has passed, so a row
  * never reads "37d ago".
  */
-export function formatRelativeShort(value: string | Date | null | undefined) {
-  if (!value) return "—";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
+export function formatRelativeShort(value: DateInput, options: ZoneOption = {}) {
+  const date = toValidDate(value);
+  if (!date) return "—";
 
   const diff = Date.now() - date.getTime();
-  if (diff < 0) return formatDateTime(date);
+  if (diff < 0) return formatDateTime(date, options);
   if (diff < 6e4) return "just now";
 
   const minutes = Math.floor(diff / 6e4);
@@ -255,12 +345,14 @@ export function formatRelativeShort(value: string | Date | null | undefined) {
   if (days < 7) return `${days}d ago`;
 
   // "29 Aug" in dense rows; the year only appears when it is not this one.
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" }),
-  }).format(date);
+  const sameYear =
+    dayKeyInZone(date, options.timeZone).slice(0, 4) ===
+    dayKeyInZone(new Date(), options.timeZone).slice(0, 4);
+  return formatInZone(
+    date,
+    { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) },
+    options.timeZone,
+  );
 }
 
 /** "6 Aug 2026 – 4 Sep 2026". `to` is exclusive, so the last day is to − 1ms. */
@@ -269,15 +361,16 @@ export function formatRangeLabel(range: ResolvedRange) {
 }
 
 /** Day heading used to group notification and timeline rows. */
-export function dayGroupLabel(value: string) {
-  const date = new Date(value);
-  const today = new Date();
-  const startOf = (d: Date) =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const diffDays = Math.round((startOf(today) - startOf(date)) / 864e5);
+export function dayGroupLabel(value: string, options: ZoneOption = {}) {
+  const date = toValidDate(value);
+  if (!date) return "—";
+  // Calendar days in the zone, not the runtime's: at 00:30 BST a row from
+  // 23:45 the previous evening is "Yesterday" on the server and the client.
+  const dayMs = (d: Date) => Date.parse(`${dayKeyInZone(d, options.timeZone)}T00:00:00Z`);
+  const diffDays = Math.round((dayMs(new Date()) - dayMs(date)) / 864e5);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return formatDate(date);
+  return formatDate(date, options);
 }
 
 export function formatDuration(seconds: number | null) {
@@ -333,7 +426,10 @@ export function formatTimezoneLabel(zone: string): string {
         .find((part) => part.type === "timeZoneName")?.value ?? "";
 
     const region = zone === "UTC" ? "UTC" : (zone.split("/").pop() ?? zone).replace(/_/g, " ");
-    return offset ? `(${offset}) ${region}` : region;
+    // Chromium writes a zero offset as bare "GMT", Node as "GMT+00:00";
+    // normalised so server and client render the same text.
+    const shown = offset === "GMT" ? "GMT+00:00" : offset;
+    return shown ? `(${shown}) ${region}` : region;
   } catch {
     // Unknown identifier: show it as given rather than inventing a label.
     return zone;

@@ -5,6 +5,7 @@ import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { listCopilotActions } from "@/lib/copilot/actions";
 import type { CopilotActionRow } from "@/lib/copilot/types";
+import { formatInZone } from "@/lib/dates";
 
 const OUTCOME_TONE: Record<
   CopilotActionRow["outcome"],
@@ -99,12 +100,12 @@ export function CopilotHistory() {
                   </p>
                   <p className="mt-0.5 text-[11px] text-content-subtle">
                     {row.actorName ?? "Someone"} ·{" "}
-                    {new Intl.DateTimeFormat("en-GB", {
+                    {formatInZone(row.createdAt, {
                       day: "numeric",
                       month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
-                    }).format(new Date(row.createdAt))}
+                    })}
                     {row.confirmed && " · confirmed"}
                   </p>
                   {row.errorLabel && (

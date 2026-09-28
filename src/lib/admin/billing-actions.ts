@@ -9,6 +9,7 @@ import { selectPlanItem } from "@/lib/billing/subscription-items";
 import { voicePriceIds } from "@/lib/billing/voice-subscription-sync";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { guarded, type AdminActionResult } from "./guarded";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Admin → Billing writes (V4 §45).
@@ -211,7 +212,7 @@ export async function cancelAtPeriodEnd(input: {
     return {
       ok: true,
       message: effectiveOn
-        ? `Set to cancel on ${new Date(effectiveOn).toLocaleDateString("en-GB")}. Access continues until then.`
+        ? `Set to cancel on ${formatInZone(effectiveOn, "date")}. Access continues until then.`
         : "Set to cancel at the end of the current period.",
     };
   });
@@ -564,7 +565,7 @@ export async function grantEntitlement(input: {
     revalidatePath("/admin/billing");
     return {
       ok: true,
-      message: `Granted until ${expires.toLocaleDateString("en-GB")}. It expires automatically.`,
+      message: `Granted until ${formatInZone(expires, "date")}. It expires automatically.`,
     };
   });
 }
@@ -694,7 +695,7 @@ export async function extendTrial(input: {
     revalidatePath("/admin/billing");
     return {
       ok: true,
-      message: `Trial extended to ${newEnd.toLocaleDateString("en-GB")}.`,
+      message: `Trial extended to ${formatInZone(newEnd, "date")}.`,
     };
   });
 }

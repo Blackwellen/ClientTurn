@@ -31,6 +31,7 @@ import type {
 } from "@/lib/outreach/campaigns/detail";
 import { Panel } from "./overview";
 import { PerformanceChart } from "./performance-chart";
+import { formatInZone } from "@/lib/dates";
 
 /* ---------------------------------------------------------------- audience */
 
@@ -473,7 +474,7 @@ export function CampaignActivityTab({
                   {entry.actorName ??
                     (entry.actorType === "OPTIMIZATION" ? "Auto optimise" : "System")}
                   {" · "}
-                  {new Date(entry.createdAt).toLocaleString("en-GB", {
+                  {formatInZone(entry.createdAt, {
                     day: "numeric",
                     month: "short",
                     hour: "2-digit",

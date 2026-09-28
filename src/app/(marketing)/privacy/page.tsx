@@ -14,6 +14,7 @@ import {
   CUSTOMER_ENABLED_SUBPROCESSORS,
   SUBPROCESSOR_NOTICE_DAYS,
 } from "@/lib/marketing/subprocessors";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
   "How Blackwellen Limited handles personal data in ClientTurn, under the UK GDPR, the Data Protection Act 2018 and PECR — for account holders, and for the leads our customers process. Includes our Article 28 processing terms and our sub-processor register.";
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/privacy" },
   openGraph: {
+    images: OG_IMAGES,
     title: "Privacy Policy",
     description,
     url: "/privacy",
@@ -31,6 +33,7 @@ export const metadata: Metadata = {
     type: "article",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary",
     title: "Privacy Policy",
     description,

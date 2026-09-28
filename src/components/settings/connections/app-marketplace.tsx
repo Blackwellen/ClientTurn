@@ -23,6 +23,7 @@ import {
   type AppInstall,
 } from "@/lib/integrations/app-actions";
 import { ConnectorOperations } from "./connector-operations";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Settings → Connections.
@@ -271,7 +272,7 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
                   <dt className="inline font-medium">Last accepted: </dt>
                   <dd className="inline">
                     {current.lastReceivedAt
-                      ? new Date(current.lastReceivedAt).toLocaleString("en-GB")
+                      ? formatInZone(current.lastReceivedAt, "datetime")
                       : "No request yet"}
                   </dd>
                 </div>
@@ -279,7 +280,7 @@ export function AppMarketplace({ canManage }: { canManage: boolean }) {
                   <div>
                     <dt className="inline font-medium">Last rejected: </dt>
                     <dd className="inline text-danger-600">
-                      {new Date(current.lastFailureAt).toLocaleString("en-GB")}
+                      {formatInZone(current.lastFailureAt, "datetime")}
                       {current.lastFailureReason
                         ? ` (${current.lastFailureReason.replace(/_/g, " ")})`
                         : ""}

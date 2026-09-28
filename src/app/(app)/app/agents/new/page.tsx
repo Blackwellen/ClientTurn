@@ -1,7 +1,8 @@
 import { BackLink } from "@/components/app/back-link";
 import * as React from "react";
 import type { Metadata } from "next";
-import { requireRole } from "@/lib/auth/session";
+import { hasRole, requireWorkspace } from "@/lib/auth/session";
+import { PermissionDeniedState } from "@/components/ui/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { getAgentWizardOptions } from "@/lib/agents/queries";
 import { AGENT_TYPES, type AgentType } from "@/lib/agents/types";
@@ -18,7 +19,23 @@ export default async function NewAgentPage({
 }: {
   searchParams: Promise<{ type?: string }>;
 }) {
-  const workspace = await requireRole("admin");
+  const workspace = await requireWorkspace();
+  // A member who opens this address (a shared link, the browser history) gets
+  // the permission state, not the error boundary's "Agents could not be
+  // loaded" that a thrown FORBIDDEN produced (QA 2026-09-28). The create
+  // action enforces the same role on the server.
+  if (!hasRole(workspace.role, "admin")) {
+    return (
+      <div className="space-y-6">
+        <BackLink href="/app/agents">Back to Agents</BackLink>
+        <PageHeader title="Create an agent" size="lg" />
+        <PermissionDeniedState
+          title="Only an owner or admin can create agents"
+          description="Agents work in the background on the workspace's behalf, so creating one needs admin access. Ask an owner or admin, or see what the existing agents are doing."
+        />
+      </div>
+    );
+  }
   const [params, options, catalogue, voiceAvailability] = await Promise.all([
     searchParams,
     getAgentWizardOptions(workspace.businessId),

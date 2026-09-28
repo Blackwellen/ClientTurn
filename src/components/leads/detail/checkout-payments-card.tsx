@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/feedback";
 import { loadLeadCheckoutActivity } from "@/lib/payments/store";
 import { formatMoney, sourceLabel } from "@/lib/payments/facts";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The lead's checkout links and payments (the direct-sale loop): each link
@@ -33,9 +34,9 @@ export async function CheckoutPaymentsCard({ businessId, leadId }: { businessId:
               <StatusBadge kind="checkout_attempt" value={attempt.status} dense />
             </div>
             <p className="mt-1 text-[12px] leading-snug text-content-muted">
-              Sent {new Date(attempt.sentAt).toLocaleString("en-GB")} by {attempt.channel}
+              Sent {formatInZone(attempt.sentAt, "datetime")} by {attempt.channel}
               {attempt.nudgesSent > 0 ? ` · ${attempt.nudgesSent} reminder${attempt.nudgesSent === 1 ? "" : "s"}` : ""}
-              {attempt.clickedAt ? ` · opened ${new Date(attempt.clickedAt).toLocaleString("en-GB")}` : ""}
+              {attempt.clickedAt ? ` · opened ${formatInZone(attempt.clickedAt, "datetime")}` : ""}
               {attempt.paidAt && attempt.amountMinor !== null && attempt.currency
                 ? ` · paid ${formatMoney(attempt.amountMinor, attempt.currency)}${attempt.recurring && attempt.interval ? ` per ${attempt.interval}` : ""}`
                 : ""}
@@ -52,7 +53,7 @@ export async function CheckoutPaymentsCard({ businessId, leadId }: { businessId:
               <StatusBadge kind="payment" value={payment.status} dense />
             </div>
             <p className="mt-1 text-[12px] leading-snug text-content-muted">
-              {payment.provider === "stripe" ? "Stripe" : sourceLabel(payment.source)} · {new Date(payment.paidAt).toLocaleString("en-GB")}
+              {payment.provider === "stripe" ? "Stripe" : sourceLabel(payment.source)} · {formatInZone(payment.paidAt, "datetime")}
               {payment.status === "REVIEW" ? " · matched by email: confirm it in Settings, Connections" : ""}
             </p>
           </li>

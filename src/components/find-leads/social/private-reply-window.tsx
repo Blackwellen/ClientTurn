@@ -5,6 +5,7 @@ import {
   privateReplyState,
   remainingLabel,
 } from "@/lib/prospects/private-reply-window";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The private-reply countdown, rendered.
@@ -40,7 +41,7 @@ export function PrivateReplyWindow({
           Reply sent
         </Badge>{" "}
         You get one reply per comment, and it went out on{" "}
-        {new Date(status.sentAt).toLocaleDateString("en-GB")}. Anything further
+        {formatInZone(status.sentAt, "date")}. Anything further
         has to wait for them to answer.
       </p>
     );

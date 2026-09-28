@@ -15,6 +15,7 @@ import {
   duplicateSearchSessionAction,
   renameSearchSessionAction,
 } from "@/lib/find-leads/actions";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The search sessions rail.
@@ -276,10 +277,10 @@ function relativeLabel(iso: string): string {
   const sameDay = date.toDateString() === now.toDateString();
 
   if (sameDay) {
-    return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return formatInZone(date, { hour: "2-digit", minute: "2-digit" });
   }
 
   const days = Math.floor((now.getTime() - date.getTime()) / 864e5);
-  if (days < 7) return date.toLocaleDateString("en-GB", { weekday: "short" });
+  if (days < 7) return formatInZone(date, { weekday: "short" });
   return `${days}d`;
 }

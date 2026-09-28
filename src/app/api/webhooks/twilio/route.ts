@@ -2,7 +2,8 @@ import { z } from "zod";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertWrite, logWriteError } from "@/lib/supabase/write-result";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { formToRecord, verifyTwilioSignature } from "@/lib/twilio/signature";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 import { suppress } from "@/lib/policy/suppression";
@@ -92,13 +93,35 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  const { error: inboxError } = await supabase.from("webhook_events").insert({
-    provider: "twilio",
-    external_event_id: eventId,
-    event_type: isStatusCallback ? "message.status" : "message.inbound",
-    status: "received",
-    payload: { kind: isStatusCallback ? "status" : "inbound", form } as never,
-  });
+  const insertInbox = async () =>
+    (
+      await supabase.from("webhook_events").insert({
+        provider: "twilio",
+        external_event_id: eventId,
+        event_type: isStatusCallback ? "message.status" : "message.inbound",
+        status: "received",
+        payload: { kind: isStatusCallback ? "status" : "inbound", form } as never,
+      })
+    ).error;
+
+  if (!isStatusCallback) {
+    // An inbound message (a reply, a STOP). A redelivery of one recorded but
+    // never queued is queued now (inbox-core.ts), so a STOP is never lost to
+    // a failed enqueue answered as a "duplicate" on Twilio's retry.
+    const outcome = await recordThenQueue({
+      insert: insertInbox,
+      status: () => webhookInboxStatus("twilio", eventId),
+      queue: () =>
+        enqueue(
+          "message.process_inbound",
+          { provider: "twilio", externalEventId: eventId },
+          { priority: 10, idempotencyKey: `message.process_inbound:twilio:${eventId}` },
+        ),
+    });
+    return new Response(EMPTY_TWIML, { status: outcome === "FAILED" ? 500 : 200, headers: twimlHeaders });
+  }
+
+  const inboxError = await insertInbox();
 
   // A Twilio retry of an event already recorded is acknowledged, not repeated.
   if (inboxError?.code === "23505") {
@@ -108,7 +131,7 @@ export async function POST(request: Request) {
     return new Response(EMPTY_TWIML, { status: 500, headers: twimlHeaders });
   }
 
-  if (isStatusCallback) {
+  {
     // A delivery receipt is local writes only, not provider I/O. A failure is
     // recorded on the inbox row rather than thrown: a 5xx would make Twilio
     // retry into the unique index above and the event would be acknowledged
@@ -140,14 +163,6 @@ export async function POST(request: Request) {
 
     return new Response(EMPTY_TWIML, { status: 200, headers: twimlHeaders });
   }
-
-  await enqueue(
-    "message.process_inbound",
-    { provider: "twilio", externalEventId: eventId },
-    { priority: 10, idempotencyKey: `message.process_inbound:twilio:${eventId}` },
-  );
-
-  return new Response(EMPTY_TWIML, { status: 200, headers: twimlHeaders });
 }
 
 async function applyDeliveryStatus(

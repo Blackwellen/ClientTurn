@@ -60,8 +60,12 @@ export function LeadConversationSection({
   const endRef = React.useRef<HTMLDivElement>(null);
 
   // Land on the newest message, the way any conversation view should open.
+  // Only the thread's own scroll box moves: `scrollIntoView` also scrolled
+  // the window, so the full lead page opened ~400px down, past its header
+  // (QA 2026-09-28).
   React.useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
+    const box = endRef.current?.parentElement;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [messages.length]);
 
   const blocked = !canWrite
@@ -97,7 +101,7 @@ export function LeadConversationSection({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-        <ConversationThread messages={messages} />
+        <ConversationThread messages={messages} automationPaused={Boolean(lead.human_takeover)} />
         <div ref={endRef} />
       </div>
 

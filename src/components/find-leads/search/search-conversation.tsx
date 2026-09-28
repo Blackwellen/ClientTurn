@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import type { SearchMessageView } from "@/lib/find-leads/types";
 import { ChatComposer } from "../chat-composer";
 import { sendSearchMessageAction } from "@/lib/find-leads/actions";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The search conversation.
@@ -160,7 +161,7 @@ export function SearchConversation({
 }
 
 function Message({ message }: { message: SearchMessageView }) {
-  const time = new Date(message.createdAt).toLocaleTimeString("en-GB", {
+  const time = formatInZone(message.createdAt, {
     hour: "2-digit",
     minute: "2-digit",
   });

@@ -19,6 +19,7 @@ import {
   type PrivacyRequestKind,
   type WorkspacePrivacyRequest,
 } from "@/lib/data-rights/types";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Settings -> Data controls -> Privacy requests.
@@ -54,7 +55,7 @@ function clock(label: string, iso: string | null): { text: string; tone: "danger
   if (days === null) return null;
   if (days < 0) return { text: `${label} overdue by ${-days} day${days === -1 ? "" : "s"}`, tone: "danger" };
   if (days <= 7) return { text: `${label} in ${days} day${days === 1 ? "" : "s"}`, tone: "warning" };
-  return { text: `${label} by ${new Date(iso!).toLocaleDateString("en-GB")}`, tone: "neutral" };
+  return { text: `${label} by ${formatInZone(iso!, "date")}`, tone: "neutral" };
 }
 
 export function PrivacyRequestsPanel({
@@ -133,7 +134,7 @@ export function PrivacyRequestsPanel({
                   </p>
                   <p className="truncate text-[12px] text-content-muted">
                     {request.subjectName ?? request.subjectEmail ?? "Unnamed"} · received{" "}
-                    {new Date(request.receivedAt).toLocaleDateString("en-GB")}
+                    {formatInZone(request.receivedAt, "date")}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     <Badge tone={status.tone} dense dot>

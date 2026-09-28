@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { MotionConfig, useReducedMotion } from "motion/react";
+import { MotionConfig } from "motion/react";
+import { useReducedMotion } from "./motion";
 
 /**
  * Motion policy for the whole page.

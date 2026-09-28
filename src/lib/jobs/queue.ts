@@ -102,6 +102,9 @@ export type JobType =
   | "voice.number_release"
   // The text back to a caller the dedicated number could not answer (§25).
   | "voice.text_back"
+  // Every 15 minutes (cron/worker): close calls stuck live (a crashed dial,
+  // a lost CALL_ENDED) so they stop holding minutes and blocking the lead.
+  | "voice.reconcile"
   // Daily (api/cron/daily): the voice gross-margin alert and the opt-in
   // experiment auto-promotion pass (handlers/daily-voice-and-experiments.ts).
   | "voice.margin_check"
@@ -247,4 +250,20 @@ export async function failJob(
     "queue: schedule job retry",
     { jobId: job.id, jobType: job.type, businessId: job.business_id, jobError: message.slice(0, 500) },
   );
+}
+
+/**
+ * The stored status of one inbox row (`webhook_events`), for
+ * `recordThenQueue` (inbox-core.ts): a redelivery of a row still `received`
+ * was never queued. Throws when it cannot be read, so the route answers 5xx.
+ */
+export async function webhookInboxStatus(provider: string, externalEventId: string): Promise<string | null> {
+  const { data, error } = await createAdminClient()
+    .from("webhook_events")
+    .select("status")
+    .eq("provider", provider)
+    .eq("external_event_id", externalEventId)
+    .maybeSingle();
+  if (error) throw new Error(`webhook inbox read: ${error.message}`);
+  return (data as { status: string } | null)?.status ?? null;
 }

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifySlackSignature } from "@/lib/integrations/providers/slack";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -82,15 +83,14 @@ export async function POST(request: Request) {
   });
 
   // A double-fire of the same click (Slack retries a slow 200) is recorded
-  // once; the second insert's unique-violation is the acknowledgement.
-  if (error?.code === "23505") return new Response("", { status: 200 });
-  if (error) return new Response("error", { status: 500 });
-
-  await enqueue(
-    "slack.interaction",
-    { externalEventId },
-    { idempotencyKey: `slack.interaction:${externalEventId}` },
-  );
+  // once; a redelivery of one recorded but never queued is queued now
+  // (inbox-core.ts).
+  const outcome = await recordThenQueue({
+    insert: async () => error,
+    status: () => webhookInboxStatus("slack", externalEventId),
+    queue: () => enqueue("slack.interaction", { externalEventId }, { idempotencyKey: `slack.interaction:${externalEventId}` }),
+  });
+  if (outcome === "FAILED") return new Response("error", { status: 500 });
 
   return new Response("", { status: 200 });
 }

@@ -12,6 +12,7 @@ import {
 } from "@/components/status/status-parts";
 import { cn } from "@/lib/cn";
 import { StatusMaintenanceCard } from "@/components/site/status-maintenance-card";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const statusDescription =
   "Real-time status and performance information for ClientTurn services and integrations.";
@@ -22,6 +23,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
   alternates: { canonical: "/status" },
   openGraph: {
+    images: OG_IMAGES,
     title: "System Status",
     description: statusDescription,
     url: "/status",
@@ -30,6 +32,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary",
     title: "System Status",
     description: statusDescription,

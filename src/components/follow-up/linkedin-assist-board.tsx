@@ -312,7 +312,26 @@ function TaskCard({ task, notesExhausted }: { task: LinkedInTaskView; notesExhau
             size="sm"
             variant="ghost"
             disabled={pending}
-            onClick={() => run(() => redraftLinkedInTask({ taskId: task.id }), "Rewritten")}
+            // "Rewritten" only when the AI actually wrote it: a failed or
+            // switched-off model keeps the standard message, and saying
+            // "Rewritten" over an unchanged draft misled (QA 2026-09-28).
+            onClick={() =>
+              run(
+                () => redraftLinkedInTask({ taskId: task.id }),
+                undefined,
+                (data) => {
+                  const source = (data as { source?: string | null } | null)?.source;
+                  const reason = (data as { fallbackReason?: string | null } | null)?.fallbackReason;
+                  if (source === "AI") toast({ variant: "success", title: "Rewritten" });
+                  else
+                    toast({
+                      variant: "info",
+                      title: "Kept the standard message",
+                      description: reason ?? "No AI draft was produced this time (AI drafting may be off, or it was unavailable), so the standard message stands.",
+                    });
+                },
+              )
+            }
           >
             <RefreshCw className="size-3.5" aria-hidden />
             Rewrite

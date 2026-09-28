@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { markAffiliateNotificationsRead } from "@/lib/affiliates/link-actions";
 import type { AffiliateNotification } from "@/lib/affiliates/notifications";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The notification tray (V4 §36).
@@ -71,7 +72,7 @@ export function AffiliateNotificationTray({
                   </p>
                 )}
                 <p className="mt-1 text-[11px] text-content-subtle">
-                  {new Date(row.createdAt).toLocaleString("en-GB", {
+                  {formatInZone(row.createdAt, {
                     day: "numeric",
                     month: "short",
                     hour: "2-digit",

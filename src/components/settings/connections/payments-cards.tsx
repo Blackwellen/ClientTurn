@@ -20,6 +20,7 @@ import {
   setPaymentEndpointActive,
 } from "@/lib/payments/actions";
 import { formatMoney, sourceLabel } from "@/lib/payments/facts";
+import { formatInZone } from "@/lib/dates";
 
 type Endpoint = {
   id: string;
@@ -128,7 +129,7 @@ function LastDelivery({ endpoint }: { endpoint: Endpoint }) {
   return (
     <p className="text-[11.5px] text-content-muted">
       {endpoint.lastReceivedAt
-        ? `Last delivery ${new Date(endpoint.lastReceivedAt).toLocaleString("en-GB")}.`
+        ? `Last delivery ${formatInZone(endpoint.lastReceivedAt, "datetime")}.`
         : "No deliveries yet."}
       {endpoint.lastError ? ` Last problem: ${friendlyErrorMessage(endpoint.lastError, "a payment event could not be processed").replace(/\.$/, "")}.` : ""}
     </p>
@@ -442,7 +443,7 @@ function ReviewRow({ payment, canManage }: { payment: ReviewPayment; canManage: 
             {cadence} via {payment.provider === "stripe" ? "Stripe" : sourceLabel(payment.source)}
           </p>
           <p className="truncate text-[12px] text-content-muted">
-            {new Date(payment.paidAt).toLocaleString("en-GB")} · order {payment.orderId}
+            {formatInZone(payment.paidAt, "datetime")} · order {payment.orderId}
             {payment.email ? ` · ${payment.email}` : ""}
           </p>
         </div>

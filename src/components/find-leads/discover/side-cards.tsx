@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/cn";
 import type { RecentRun } from "@/lib/find-leads/server/runs";
 import { RUN_STATUS_LABELS, runStatusTone } from "@/lib/find-leads/types";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The Discover right rail's smaller cards.
@@ -136,7 +137,7 @@ export function UsageThisMonthCard({
         </div>
         <p className="mt-2.5 text-[11.5px] text-content-subtle">
           {resetsAt
-            ? `Resets on ${new Date(resetsAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+            ? `Resets on ${formatInZone(resetsAt, { day: "numeric", month: "short", year: "numeric" })}`
             : "Resets at the end of your billing period"}
           {" · "}
           <Link

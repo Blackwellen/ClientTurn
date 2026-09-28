@@ -2,12 +2,14 @@ import * as React from "react";
 import type { Metadata } from "next";
 import { PublicContainer, SectionEyebrow } from "@/components/marketing/public/ui";
 import { PrivacyRequestForm } from "@/components/marketing/public/privacy-request/privacy-request-form";
+import { OG_IMAGES } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = {
   title: "Privacy request",
   description:
     "Ask to see, correct, restrict or erase personal data held about you, object to marketing, challenge an automated decision or make a data protection complaint.",
   alternates: { canonical: "/privacy-request" },
+  openGraph: { title: "Privacy request", url: "/privacy-request", images: OG_IMAGES },
 };
 
 /**

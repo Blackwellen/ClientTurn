@@ -12,6 +12,7 @@ import {
 import { COMPANY } from "@/lib/marketing/company";
 import { loadTiers } from "@/lib/affiliates/programme-settings";
 import { tierRateLabel, type TierDefinition } from "@/lib/affiliates/tier-rules";
+import { OG_IMAGES } from "@/lib/marketing/seo";
 
 /**
  * The public affiliate programme terms (affiliate audit 17 §7).
@@ -41,6 +42,7 @@ export const metadata: Metadata = {
   title: "Affiliate Programme Terms",
   description,
   alternates: { canonical: "/affiliates/terms" },
+  openGraph: { title: "Affiliate Programme Terms", description, url: "/affiliates/terms", images: OG_IMAGES },
 };
 
 function tierSentence(tiers: readonly TierDefinition[], planPercent: number | null): string {

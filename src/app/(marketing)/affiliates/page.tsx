@@ -7,6 +7,7 @@ import { loadTiers } from "@/lib/affiliates/programme-settings";
 import { tierRateRangeLabel, tierSummary } from "@/lib/affiliates/tier-rules";
 import { AffiliateLanding } from "@/components/affiliates/public/affiliate-landing";
 import "./affiliates.css";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const affiliatesTitle = "Affiliate Programme";
 const affiliatesDescription =
@@ -40,6 +41,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/affiliates" },
   openGraph: {
+    images: OG_IMAGES,
     title: `${affiliatesTitle}`,
     description: affiliatesDescription,
     url: "/affiliates",
@@ -48,6 +50,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${affiliatesTitle}`,
     description: affiliatesDescription,

@@ -33,6 +33,7 @@ import {
 } from "@/lib/affiliates/programme";
 import type { PortalPayout } from "@/lib/affiliates/portal";
 import type { PayoutBreakdown } from "@/lib/affiliates/payouts";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The payout history table and its detail drawer (V4 §35).
@@ -131,9 +132,7 @@ export function PayoutHistory({ payouts }: { payouts: PortalPayout[] }) {
                     {payout.method ?? "—"}
                   </Td>
                   <Td className="whitespace-nowrap text-content-secondary">
-                    {new Date(
-                      payout.paidAt ?? payout.scheduledAt ?? payout.createdAt,
-                    ).toLocaleDateString("en-GB", {
+                    {formatInZone(payout.paidAt ?? payout.scheduledAt ?? payout.createdAt, {
                       day: "numeric",
                       month: "short",
                       year: "numeric",
@@ -204,7 +203,7 @@ export function PayoutHistory({ payouts }: { payouts: PortalPayout[] }) {
               {selected.paidAt && (
                 <p className="mt-1 text-[12.5px] text-content-muted">
                   Paid on{" "}
-                  {new Date(selected.paidAt).toLocaleDateString("en-GB", {
+                  {formatInZone(selected.paidAt, {
                     day: "numeric",
                     month: "short",
                     year: "numeric",
@@ -425,7 +424,7 @@ export function TaxInfoCard({
           {submittedAt && (
             <span className="text-[12px] text-content-muted">
               Submitted{" "}
-              {new Date(submittedAt).toLocaleDateString("en-GB", {
+              {formatInZone(submittedAt, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
@@ -482,7 +481,7 @@ export function NextPayoutCard({
         <div className="flex flex-wrap gap-8">
           <div>
             <p className="text-[26px] font-bold leading-none tracking-[-0.02em] text-content">
-              {new Date(payoutDate).toLocaleDateString("en-GB", {
+              {formatInZone(payoutDate, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
@@ -529,9 +528,7 @@ export function NextPayoutCard({
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           {shortfall > 0
             ? `${formatMinor(shortfall, currency)} more needed before a payout is raised.`
-            : `You've reached the minimum threshold. Your payout will be processed on ${new Date(
-                payoutDate,
-              ).toLocaleDateString("en-GB", {
+            : `You've reached the minimum threshold. Your payout will be processed on ${formatInZone(payoutDate, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
@@ -621,7 +618,7 @@ function TimelineStep({
           </p>
           {at && (
             <span className="text-[11.5px] tabular-nums text-content-muted">
-              {new Date(at).toLocaleString("en-GB", {
+              {formatInZone(at, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",

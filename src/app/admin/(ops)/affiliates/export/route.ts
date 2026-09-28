@@ -1,4 +1,5 @@
 import { getPlatformOperator } from "@/lib/admin/guard";
+import { hasStepUp } from "@/lib/admin/step-up";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { csvCell } from "@/lib/csv";
@@ -19,6 +20,16 @@ type Kind = (typeof KINDS)[number];
 export async function GET(request: Request) {
   const operator = await getPlatformOperator();
   if (!operator) return new Response("Not found.", { status: 404 });
+  // The partner export carries names and email addresses, so it needs the
+  // same recent password confirmation as every admin write (QA 2026-09-28:
+  // it was the one admin data export reachable on a session alone). The
+  // Export buttons offer the step-up dialog on this answer and retry.
+  if (!(await hasStepUp(operator.id))) {
+    return Response.json(
+      { ok: false, code: "step_up_required", error: "Confirm your password to export." },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
 
   const kind = new URL(request.url).searchParams.get("kind") as Kind | null;
   if (!kind || !KINDS.includes(kind)) return new Response("Unknown export.", { status: 400 });

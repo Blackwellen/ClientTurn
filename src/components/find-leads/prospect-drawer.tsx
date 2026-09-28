@@ -63,6 +63,7 @@ import type { ProspectDetail } from "@/lib/prospects/queries";
 import { SocialOutreachPanel } from "./social/social-outreach-panel";
 import { PrivateReplyWindow } from "./social/private-reply-window";
 import { useFindLeadsParams } from "./use-find-leads-params";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The Prospect Drawer (V4 §13).
@@ -1504,7 +1505,7 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
 
         <p className="w-full text-[11.5px] text-content-subtle">
           {prospect.source_provider ? `Provider: ${prospect.source_provider} · ` : ""}
-          Created {new Date(prospect.created_at).toLocaleDateString("en-GB")}
+          Created {formatInZone(prospect.created_at, "date")}
         </p>
       </div>
 

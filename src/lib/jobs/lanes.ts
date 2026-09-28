@@ -113,6 +113,7 @@ export const JOB_CLASSES: Partial<Record<JobType, JobClass>> = {
   "voice.text_back": c("INTERACTIVE", "standard", "voice"),
   "voice.post_call": c("INTERACTIVE", "slow", "voice"),
   "voice.retry": c("INTERACTIVE", "standard", "voice"),
+  "voice.reconcile": c("INTERACTIVE", "slow", "voice"),
   "lead.score": c("INTERACTIVE", "standard", "lead_ingestion"),
 
   // --- standard

@@ -8,7 +8,7 @@ import {
 } from "../src/lib/invoicing/pay-link.ts";
 import { decideInvoiceSettlement, invoicePaymentExternalId, invoicePaymentProvider } from "../src/lib/invoicing/settlement.ts";
 import { projectOntoQuote, recordPayment, InvoiceServiceError, type InvoiceDeps, type InvoiceRecord, type InvoiceStore } from "../src/lib/invoicing/service-core.ts";
-import { confirmPayment, flagReversal, type ConfirmDeps, type InvoiceSettlementDeps, type PaymentRow } from "../src/lib/payments/confirm.ts";
+import { confirmPayment, flagReversal, reversalShouldRetry, REVERSAL_WAIT_ATTEMPTS, type ConfirmDeps, type InvoiceSettlementDeps, type PaymentRow } from "../src/lib/payments/confirm.ts";
 import { stripePaymentFact, stripeReversalFact, type PaymentFact } from "../src/lib/payments/facts.ts";
 import { untagCheckoutUrl } from "../src/lib/payments/tracking.ts";
 import { DEFAULT_QUOTE_SETTINGS, quoteSettingsInputSchema, settingsFromRow } from "../src/lib/quotes/settings.ts";
@@ -494,5 +494,27 @@ describe("refunds and disputes are flagged, never reversed", () => {
     const unknown = stripeReversalFact({ id: "evt_u", type: "charge.refunded", data: { object: { payment_intent: "pi_nope", amount_refunded: 1, currency: "gbp" } } });
     assert.equal((await flagReversal(w.deps, { businessId: BIZ, reversal: unknown! })).outcome, "UNKNOWN_PAYMENT");
     assert.equal(stripeReversalFact({ id: "evt_z", type: "invoice.paid", data: { object: {} } }), null);
+  });
+});
+
+describe("a refund that arrives before its payment (backend QA 2026-09-28)", () => {
+  test("the reversal job retries briefly, then flags once the payment is recorded", async () => {
+    const w = world();
+    const refund = stripeReversalFact({ id: "evt_r2", type: "charge.refunded", data: { object: { payment_intent: "pi_early", amount_refunded: 50_000, currency: "gbp" } } })!;
+    // Claimed in the same batch as the payment's own job, and first.
+    const early = await flagReversal(w.deps, { businessId: BIZ, reversal: refund });
+    assert.equal(early.outcome, "UNKNOWN_PAYMENT");
+    // Was: the job completed here and the refund was never flagged.
+    assert.equal(reversalShouldRetry("reversal", early.outcome, 1), true);
+    await confirmPayment(w.deps, { businessId: BIZ, fact: sessionFact({ id: "evt_p2", session: "cs_dep", amount: 50_000, token: DEPOSIT_TOKEN, intent: "pi_early" }) });
+    assert.equal((await flagReversal(w.deps, { businessId: BIZ, reversal: refund })).outcome, "FLAGGED");
+    assert.equal(w.payments[0].review_reason, "REFUNDED");
+  });
+
+  test("a refund of a charge ClientTurn never saw ends quietly (never a dead job)", () => {
+    assert.equal(reversalShouldRetry("reversal", "UNKNOWN_PAYMENT", REVERSAL_WAIT_ATTEMPTS), false);
+    assert.ok(REVERSAL_WAIT_ATTEMPTS < 5, "below payment.confirm's max attempts");
+    assert.equal(reversalShouldRetry("delivery", "UNKNOWN_PAYMENT", 1), false);
+    assert.equal(reversalShouldRetry("reversal", "FLAGGED", 1), false);
   });
 });

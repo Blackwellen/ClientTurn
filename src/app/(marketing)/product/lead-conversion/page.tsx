@@ -6,6 +6,7 @@ import { JourneySection } from "@/components/marketing/lead-conversion/journey/j
 import { LeadConversionIntegrations } from "@/components/marketing/lead-conversion/lead-conversion-integrations";
 import { LeadConversionFinalCta } from "@/components/marketing/lead-conversion/lead-conversion-final-cta";
 import "./lead-conversion.css";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "Lead conversion software for inbound enquiries";
 const description =
@@ -67,6 +68,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/product/lead-conversion" },
   openGraph: {
+    images: OG_IMAGES,
     title: `${title}`,
     description,
     url: "/product/lead-conversion",
@@ -75,6 +77,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${title}`,
     description,

@@ -78,7 +78,8 @@ export function LeadViewToggle({ value }: { value: LeadView }) {
             )}
           >
             <Icon className="size-4" aria-hidden />
-            <span className="hidden sm:inline">{option.label}</span>
+            {/* Visually hidden on phones, never removed: it is the button's only name. */}
+            <span className="sr-only sm:not-sr-only">{option.label}</span>
           </button>
         );
       })}

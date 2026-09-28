@@ -108,10 +108,10 @@ export function PartnerSignUpForm() {
         <span>
           I agree to the{" "}
           <Link
-            href="/terms"
+            href="/affiliates/terms"
             className="font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"
           >
-            Terms of Service
+            Affiliate Programme Terms
           </Link>{" "}
           and{" "}
           <Link

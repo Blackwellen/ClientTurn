@@ -43,6 +43,7 @@ import {
   SummaryTable,
   formatCount,
 } from "./pieces";
+import { formatInZone } from "@/lib/dates";
 
 export type QuietHours = {
   enabled: boolean;
@@ -1000,13 +1001,13 @@ export function MessageTimingStep({
                 state.sendMode === "now"
                   ? "Send immediately"
                   : scheduled
-                    ? scheduled.toLocaleString("en-GB", {
+                    ? formatInZone(scheduled, {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
-                      })
+                      }, quietHours.timezone)
                     : "Not set"
               }
             />

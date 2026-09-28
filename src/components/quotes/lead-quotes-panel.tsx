@@ -28,6 +28,7 @@ import type { getQuote } from "@/lib/quotes/service-core";
 import type { CapabilityView, LeadInvoiceView, LeadOpportunityOption } from "@/lib/quotes/queries";
 import { payLinkProblem, type InvoicePayMode } from "@/lib/invoicing/pay-link";
 import { QuoteEditor } from "./quote-editor";
+import { formatInZone } from "@/lib/dates";
 
 export type QuoteDetail = Awaited<ReturnType<typeof getQuote>>;
 
@@ -249,7 +250,7 @@ export function LeadQuotesPanel({ data }: { data: QuoteCardData }) {
                           {invoices.map((inv) => (
                             <li key={inv.id} className="flex flex-wrap items-center gap-2 text-[12.5px]">
                               <span className="min-w-0 flex-1 truncate text-content-secondary">
-                                {inv.number ?? `${inv.kind.toLowerCase()} (draft)`} · {formatMinor(inv.totalMinor, inv.currency)}
+                                {inv.number ?? invoiceKindLabel(inv.kind)} · {formatMinor(inv.totalMinor, inv.currency)}
                                 {inv.dueDate ? ` · due ${formatDocumentDate(inv.dueDate)}` : ""}
                               </span>
                               <StatusBadge kind="invoice" value={inv.status} dense />
@@ -291,7 +292,7 @@ export function LeadQuotesPanel({ data }: { data: QuoteCardData }) {
                         {detail.events.slice(-8).map((event, i) => (
                           <li key={`${event.type}-${i}`} className="text-[12px] text-content-secondary">
                             <span className="text-content">{EVENT_LABEL[event.type] ?? event.type}</span>{" "}
-                            <span className="text-content-subtle">{new Date(event.occurredAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
+                            <span className="text-content-subtle">{formatInZone(event.occurredAt, { dateStyle: "medium", timeStyle: "short" })}</span>
                           </li>
                         ))}
                       </ol>
@@ -536,4 +537,21 @@ function PayLinkDialog({
       </div>
     </Modal>
   );
+}
+
+/**
+ * An unnumbered (draft) invoice is named by what it is for. The status badge
+ * beside it already says Draft, so this no longer reads "deposit (draft) ...
+ * Draft" (QA 2026-09-28).
+ */
+const INVOICE_KIND_LABEL: Record<string, string> = {
+  DEPOSIT: "Deposit invoice",
+  BALANCE: "Balance invoice",
+  INSTALMENT: "Instalment invoice",
+  FULL: "Invoice",
+  RECURRING: "Recurring invoice",
+};
+
+function invoiceKindLabel(kind: string): string {
+  return INVOICE_KIND_LABEL[kind] ?? "Invoice";
 }

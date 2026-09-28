@@ -9,6 +9,7 @@ import {
   formatMinor,
   type JourneyEntry,
 } from "@/lib/analytics/attribution";
+import { formatInZone } from "@/lib/dates";
 
 const REVENUE_LABEL = {
   CHECKOUT_PAYMENT: "Payment received",
@@ -77,7 +78,7 @@ export async function RevenueJourneyCard({
                     </span>
                   )}
                 </p>
-                <p className="text-[11px] text-content-subtle">{new Date(entry.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</p>
+                <p className="text-[11px] text-content-subtle">{formatInZone(entry.at, { dateStyle: "medium", timeStyle: "short" })}</p>
               </li>
             </React.Fragment>
           ))}

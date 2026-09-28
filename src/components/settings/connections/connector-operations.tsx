@@ -13,6 +13,7 @@ import {
   testConnectorAction,
 } from "@/lib/integrations/app-actions";
 import type { ConnectorActivity } from "@/lib/integrations/connector-ops";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Operating a connector after it is installed (Programme §5).
@@ -126,7 +127,7 @@ export function ConnectorOperations({
                     activity.importedCount === 1 ? "" : "s"
                   } accepted${
                     activity.lastImportAt
-                      ? `, most recently ${new Date(activity.lastImportAt).toLocaleString("en-GB")}`
+                      ? `, most recently ${formatInZone(activity.lastImportAt, "datetime")}`
                       : ""
                   }.`}
             </p>
@@ -165,7 +166,7 @@ export function ConnectorOperations({
                       {FAILURE_REASONS[failure.reason] ?? failure.reason}
                     </p>
                     <p className="mt-0.5 text-[11px] text-content-subtle">
-                      {new Date(failure.createdAt).toLocaleString("en-GB")}
+                      {formatInZone(failure.createdAt, "datetime")}
                       {failure.externalEventId ? ` · ${failure.externalEventId}` : ""}
                     </p>
                     {!failure.replayable && (

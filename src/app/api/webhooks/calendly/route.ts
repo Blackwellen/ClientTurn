@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -193,38 +194,43 @@ export async function POST(request: Request) {
 
   if (!externalEventId) return new Response(null, { status: 400 });
 
-  const { error: inboxError } = await admin.from("webhook_events").insert({
-    provider: "calendly",
-    external_event_id: `${externalEventId}:${event}`,
-    business_id: integration.business_id,
-    event_type: event,
-    status: "received",
-    payload: json as never,
+  const queueSync = () =>
+    enqueue(
+      "booking.sync",
+      {
+        businessId: integration.business_id,
+        provider: "calendly",
+        externalEventId,
+        email: typeof invitee.email === "string" ? invitee.email : undefined,
+        startsAt: extracted.startsAt,
+        endsAt: extracted.endsAt,
+        location: extracted.location,
+        status: event === "invitee.created" ? "scheduled" : "cancelled",
+        // Phase 3.1: a reschedule is one transition, not a cancel + a new booking.
+        ...rescheduleFields(event, payload),
+      },
+      {
+        businessId: integration.business_id,
+        idempotencyKey: `booking.sync:calendly:${externalEventId}:${event}`,
+      },
+    );
+
+  // A re-delivered event already recorded is acknowledged, not repeated; one
+  // recorded but never queued is queued now (inbox-core.ts).
+  const outcome = await recordThenQueue({
+    insert: async () =>
+      (
+        await admin.from("webhook_events").insert({
+          provider: "calendly",
+          external_event_id: `${externalEventId}:${event}`,
+          business_id: integration.business_id,
+          event_type: event,
+          status: "received",
+          payload: json as never,
+        })
+      ).error,
+    status: () => webhookInboxStatus("calendly", `${externalEventId}:${event}`),
+    queue: queueSync,
   });
-
-  // A re-delivered event already recorded is acknowledged, not repeated.
-  if (inboxError?.code === "23505") return new Response(null, { status: 200 });
-  if (inboxError) return new Response(null, { status: 500 });
-
-  await enqueue(
-    "booking.sync",
-    {
-      businessId: integration.business_id,
-      provider: "calendly",
-      externalEventId,
-      email: typeof invitee.email === "string" ? invitee.email : undefined,
-      startsAt: extracted.startsAt,
-      endsAt: extracted.endsAt,
-      location: extracted.location,
-      status: event === "invitee.created" ? "scheduled" : "cancelled",
-      // Phase 3.1: a reschedule is one transition, not a cancel + a new booking.
-      ...rescheduleFields(event, payload),
-    },
-    {
-      businessId: integration.business_id,
-      idempotencyKey: `booking.sync:calendly:${externalEventId}:${event}`,
-    },
-  );
-
-  return new Response(null, { status: 200 });
+  return new Response(null, { status: outcome === "FAILED" ? 500 : 200 });
 }

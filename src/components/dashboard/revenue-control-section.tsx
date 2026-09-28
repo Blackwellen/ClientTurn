@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/app/page-header";
 import { cn } from "@/lib/cn";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The Dashboard's "Revenue control" section: what, today, stands between the
@@ -172,7 +173,7 @@ export function RevenueControlSection({ data }: { data: RevenueControlData }) {
             value={count(unanswered.data.count)}
             detail={
               unanswered.data.oldestAt
-                ? `Oldest waiting since ${new Date(unanswered.data.oldestAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                ? `Oldest waiting since ${formatInZone(unanswered.data.oldestAt, { day: "numeric", month: "short" })}`
                 : "No lead is waiting on a reply"
             }
             href="/app/inbox"

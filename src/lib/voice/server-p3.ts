@@ -235,6 +235,7 @@ export const p3Repo: Pick<
   | "recordCallPlan"
   | "loadCallPlan"
   | "loadAgentSummary"
+  | "loadToolOutcomes"
   | "recordCallMemory"
   | "findLiveCallsByNumbers"
   | "recordCarrierCallSid"
@@ -340,6 +341,19 @@ export const p3Repo: Pick<
     if (error) return null;
     const d = (data as { result?: { data?: { summary?: string; disposition?: string; next_step?: string | null } } } | null)?.result?.data;
     return d?.summary ? { summary: d.summary, disposition: d.disposition ?? "CONVERSATION", nextStep: d.next_step ?? null } : null;
+  },
+
+  async loadToolOutcomes(callId) {
+    const { data, error } = await db()
+      .from("voice_tool_calls")
+      .select("tool, result")
+      .eq("voice_call_id", callId)
+      .eq("status", "OK")
+      .in("tool", ["schedule_callback", "opt_out"])
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (error) return [];
+    return ((data ?? []) as { tool: string; result: { data?: Record<string, unknown> } | null }[]).map((r) => ({ tool: r.tool, data: r.result?.data ?? {} }));
   },
 
   async recordCallMemory({ businessId, leadId, note }) {

@@ -1,5 +1,6 @@
 import * as React from "react";
 import type { DailyPoint } from "@/lib/outreach/campaigns/detail";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The daily performance chart.
@@ -148,7 +149,7 @@ function niceCeiling(max: number): number {
 }
 
 function shortDate(day: string): string {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", {
+  return formatInZone(`${day}T00:00:00Z`, {
     day: "numeric",
     month: "short",
   });

@@ -9,6 +9,7 @@ import {
 import { HelpIcon } from "@/components/help/help-icons";
 import { HELP_CATEGORY_SLUGS, helpCategory, isHelpCategory } from "@/lib/help/categories";
 import { articlesInCategory, toSummary } from "@/lib/help/service";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 export const revalidate = 300;
 
@@ -31,6 +32,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     description: category.description,
     alternates: { canonical: path },
     openGraph: {
+      images: OG_IMAGES,
       title: `${title}`,
       description: category.description,
       url: path,
@@ -38,7 +40,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       locale: "en_GB",
       type: "website",
     },
-    twitter: { card: "summary", title: `${title}`, description: category.description },
+    twitter: { card: "summary", title: `${title}`, description: category.description, images: TWITTER_IMAGES },
   };
 }
 

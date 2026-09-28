@@ -16,6 +16,7 @@ import {
   SUBPROCESSOR_NOTICE_DAYS,
   type SubProcessor,
 } from "@/lib/marketing/subprocessors";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
   "The full register of every sub-processor ClientTurn uses, what each one does, the personal data it can see, where it processes it, and the transfer mechanism relied on.";
@@ -25,6 +26,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/sub-processors" },
   openGraph: {
+    images: OG_IMAGES,
     title: "Sub-processors",
     description,
     url: "/sub-processors",
@@ -33,6 +35,7 @@ export const metadata: Metadata = {
     type: "article",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary",
     title: "Sub-processors",
     description,

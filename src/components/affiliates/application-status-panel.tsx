@@ -10,6 +10,7 @@ import {
   describePayout,
 } from "@/lib/affiliates/programme";
 import type { AffiliateAccount } from "@/lib/affiliates/portal";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * What a partner sees before they are earning (V4 §29).
@@ -59,7 +60,7 @@ export function ApplicationStatusPanel({
           <Term label="Reference" value={affiliate.reference} />
           <Term
             label="Applied"
-            value={new Date(affiliate.joinedAt).toLocaleDateString("en-GB", {
+            value={formatInZone(affiliate.joinedAt, {
               day: "numeric",
               month: "long",
               year: "numeric",

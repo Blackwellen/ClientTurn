@@ -1935,6 +1935,8 @@ export type Database = {
           total_prospects: number
           updated_at: string
           verify_email: boolean
+          voice_calls_enabled: boolean
+          voice_daily_call_cap: number
         }
         Insert: {
           activated_at?: string | null
@@ -1977,6 +1979,8 @@ export type Database = {
           total_prospects?: number
           updated_at?: string
           verify_email?: boolean
+          voice_calls_enabled?: boolean
+          voice_daily_call_cap?: number
         }
         Update: {
           activated_at?: string | null
@@ -2019,6 +2023,8 @@ export type Database = {
           total_prospects?: number
           updated_at?: string
           verify_email?: boolean
+          voice_calls_enabled?: boolean
+          voice_daily_call_cap?: number
         }
         Relationships: [
           {
@@ -5576,7 +5582,11 @@ export type Database = {
           recurring: boolean
           recurring_interval: string | null
           reference: string | null
+          review_note: string | null
           review_reason: string | null
+          review_resolution: string | null
+          review_resolved_at: string | null
+          review_resolved_by: string | null
           source: string | null
           status: string
           subscription_id: string | null
@@ -5605,7 +5615,11 @@ export type Database = {
           recurring?: boolean
           recurring_interval?: string | null
           reference?: string | null
+          review_note?: string | null
           review_reason?: string | null
+          review_resolution?: string | null
+          review_resolved_at?: string | null
+          review_resolved_by?: string | null
           source?: string | null
           status?: string
           subscription_id?: string | null
@@ -5634,7 +5648,11 @@ export type Database = {
           recurring?: boolean
           recurring_interval?: string | null
           reference?: string | null
+          review_note?: string | null
           review_reason?: string | null
+          review_resolution?: string | null
+          review_resolved_at?: string | null
+          review_resolved_by?: string | null
           source?: string | null
           status?: string
           subscription_id?: string | null
@@ -10754,6 +10772,35 @@ export type Database = {
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      linkedin_assist_workspace_holds: {
+        Row: {
+          business_id: string
+          held_at: string
+          held_by: string | null
+          reason: string
+        }
+        Insert: {
+          business_id: string
+          held_at?: string
+          held_by?: string | null
+          reason: string
+        }
+        Update: {
+          business_id?: string
+          held_at?: string
+          held_by?: string | null
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linkedin_assist_workspace_holds_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
         ]
@@ -18755,6 +18802,7 @@ export type Database = {
           queued_at: string | null
           recipient_timezone: string | null
           recording_enabled: boolean
+          requested_by_agent_id: string | null
           reserved_sec: number | null
           route: string
           started_at: string | null
@@ -18799,6 +18847,7 @@ export type Database = {
           queued_at?: string | null
           recipient_timezone?: string | null
           recording_enabled?: boolean
+          requested_by_agent_id?: string | null
           reserved_sec?: number | null
           route: string
           started_at?: string | null
@@ -18843,6 +18892,7 @@ export type Database = {
           queued_at?: string | null
           recipient_timezone?: string | null
           recording_enabled?: boolean
+          requested_by_agent_id?: string | null
           reserved_sec?: number | null
           route?: string
           started_at?: string | null
@@ -18879,6 +18929,13 @@ export type Database = {
             columns: ["opportunity_id"]
             isOneToOne: false
             referencedRelation: "opportunities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_calls_requested_by_agent_id_fkey"
+            columns: ["requested_by_agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
             referencedColumns: ["id"]
           },
         ]
@@ -21313,6 +21370,7 @@ export type Database = {
           p_business_id: string
           p_call_id: string
           p_lead_lock_id: number
+          p_person_requested?: boolean
           p_platform_limit: number
           p_workspace_limit: number
           p_workspace_lock_id: number

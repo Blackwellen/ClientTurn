@@ -55,6 +55,7 @@ import {
   handleVoiceNumberProvision,
   handleVoiceNumberRelease,
   handleVoicePostCall,
+  handleVoiceReconcile,
   handleVoiceRecordingFetch,
   handleVoiceRetry,
   handleVoiceTextBack,
@@ -147,6 +148,7 @@ export function registerJobHandlers() {
   registerHandler("voice.number_provision", handleVoiceNumberProvision);
   registerHandler("voice.number_release", handleVoiceNumberRelease);
   registerHandler("voice.text_back", handleVoiceTextBack);
+  registerHandler("voice.reconcile", handleVoiceReconcile);
   registerHandler("voice.margin_check", handleVoiceMarginCheck);
   registerHandler("experiment.auto_promote", handleExperimentAutoPromote);
   registerHandler("automation.dispatch", handleAutomationDispatch);

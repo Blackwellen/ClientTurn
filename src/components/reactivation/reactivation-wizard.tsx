@@ -515,7 +515,7 @@ export function ReactivationWizard({
       {/* ----------------------------------------------------- footer --- */}
       <div className="bg-surface/95 border-line-subtle fixed inset-x-0 bottom-0 z-20 border-t backdrop-blur lg:left-[var(--lr-sidebar-width,0px)]">
         {/* sm:pr-24 keeps Continue clear of the floating support button (8.7). */}
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-3 sm:pl-6 sm:pr-24">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 py-3 pl-4 pr-20 sm:pl-6 sm:pr-24">
           <Button variant="secondary" onClick={cancel} disabled={submitting}>
             Cancel
           </Button>

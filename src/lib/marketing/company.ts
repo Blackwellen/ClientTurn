@@ -53,10 +53,15 @@ export const COMPANY = {
   icoRegistration: "",
 } as const;
 
-/** Date the legal pack was last substantively revised. */
-export const LEGAL_LAST_UPDATED = "5 September 2026";
+/**
+ * Date the legal pack was last substantively revised. 28 September 2026: the
+ * privacy notice, cookie policy (optional `ct_ref`) and sub-processor list
+ * (Google Places) all changed that day, while the headers still said
+ * 5 September. The Terms of Service carry their own date (`TERMS_VERSION`).
+ */
+export const LEGAL_LAST_UPDATED = "28 September 2026";
 /** Date the current version of the legal pack takes effect. */
-export const LEGAL_EFFECTIVE_FROM = "5 September 2026";
+export const LEGAL_EFFECTIVE_FROM = "28 September 2026";
 
 /** The customer Data Processing Agreement (/dpa) is versioned on its own. */
 export const DPA_VERSION = "1.0 — 28 September 2026";

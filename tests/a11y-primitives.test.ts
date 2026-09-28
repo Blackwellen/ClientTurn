@@ -31,9 +31,12 @@ describe("status messages", () => {
 describe("tooltips", () => {
   test("describe the focusable trigger itself, and are hoverable and dismissible", () => {
     const tooltip = read("src/components/ui/tooltip.tsx");
-    assert.match(tooltip, /"aria-describedby": \[single\.props\["aria-describedby"\], descId\]/);
-    assert.match(tooltip, /<span id=\{descId\} hidden>/);
-    assert.match(tooltip, /<span className="sr-only">\{content\}<\/span>/);
+    // Wired on the DOM after mount so server and client markup match
+    // (a Server Component trigger reaches the client as a lazy reference).
+    assert.match(tooltip, /trigger\.setAttribute\("aria-describedby", \[before, descId\]/);
+    assert.match(tooltip, /<span id=\{descId\} className="sr-only">/);
+    assert.match(tooltip, /desc\.hidden = true/);
+    assert.doesNotMatch(tooltip, /React\.cloneElement/);
     assert.doesNotMatch(tooltip, /pointer-events-none/);
     assert.match(tooltip, /addEventListener\("keydown", onKeyDown, true\)/);
   });

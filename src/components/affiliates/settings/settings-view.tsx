@@ -57,6 +57,7 @@ import {
 import type { AffiliateAccount } from "@/lib/affiliates/portal";
 import type { ReadinessCheck } from "@/lib/affiliates/payouts";
 import { Select } from "@/components/ui/form";
+import { formatInZone } from "@/lib/dates";
 
 const SECTION_ICON: Record<AffiliateSettingsSection, React.ComponentType<{ className?: string }>> = {
   account: User,
@@ -322,7 +323,7 @@ function AccountSection({
               </div>
               <ReadField
                 label="Joined"
-                value={new Date(affiliate.joinedAt).toLocaleDateString("en-GB", {
+                value={formatInZone(affiliate.joinedAt, {
                   day: "numeric",
                   month: "short",
                   year: "numeric",
@@ -509,7 +510,7 @@ function PaymentsSection({
               title="Account connected"
               body={
                 affiliate.connectSyncedAt
-                  ? `Last checked ${new Date(affiliate.connectSyncedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                  ? `Last checked ${formatInZone(affiliate.connectSyncedAt, { day: "numeric", month: "short", year: "numeric" })}`
                   : "Not connected yet"
               }
             />
@@ -633,7 +634,7 @@ function IdentitySection({ affiliate }: { affiliate: AffiliateAccount }) {
               </div>
               <span className="shrink-0 text-[11.5px] tabular-nums text-content-muted">
                 {affiliate.identityCheckedAt
-                  ? new Date(affiliate.identityCheckedAt).toLocaleDateString("en-GB", {
+                  ? formatInZone(affiliate.identityCheckedAt, {
                       day: "numeric",
                       month: "short",
                       year: "numeric",

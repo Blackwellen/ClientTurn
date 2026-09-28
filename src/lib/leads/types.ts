@@ -48,9 +48,9 @@ export type LeadListRow = {
   services: { id: string; name: string; average_value: number | null } | null;
   lead_sources: LeadSourceRef | null;
   /**
-   * Computed server-side (see `lib/leads/avatar.ts`), never a database
-   * column. Null when the lead has no email or the list query doesn't
-   * populate it.
+   * Never derived from the lead's email (no Gravatar or similar lookup: that
+   * would send personal data to a third party). Absent today, so lead rows
+   * render initials; reserved for an image held in our own storage.
    */
   avatarUrl?: string | null;
 };

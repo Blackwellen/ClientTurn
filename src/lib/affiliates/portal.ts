@@ -28,6 +28,7 @@ import {
   type TrialState,
 } from "./programme";
 import { ilikeContains } from "@/lib/supabase/ilike";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Portal reads for the partner surfaces (V4 §30-36).
@@ -487,7 +488,7 @@ function periodLabel(
   fallback: string,
 ): string {
   const source = start ?? end ?? fallback;
-  return new Date(source).toLocaleDateString("en-GB", {
+  return formatInZone(source, {
     month: "short",
     year: "numeric",
   });

@@ -4,6 +4,7 @@ import { CalendarClock, CalendarDays, ChevronRight } from "lucide-react";
 import type { BookingListRow } from "@/lib/bookings/types";
 import { formatTimeInZone } from "@/lib/bookings/types";
 import { BOOKING_PROVIDER_LABEL } from "@/lib/bookings/types";
+import { formatInZone } from "@/lib/dates";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/app/page-header";
@@ -13,11 +14,8 @@ import { BookingOutcomeControl } from "./booking-outcome-control";
 /** "THU" over "4 SEP", in the workspace's own timezone. */
 export function dateBlock(value: string | null, timezone: string) {
   if (!value) return { weekday: "—", day: "" };
-  const date = new Date(value);
   const part = (options: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone: timezone, ...options })
-      .format(date)
-      .toUpperCase();
+    formatInZone(value, options, timezone).toUpperCase();
   return {
     weekday: part({ weekday: "short" }),
     day: part({ day: "numeric", month: "short" }),

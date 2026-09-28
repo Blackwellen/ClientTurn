@@ -16,7 +16,7 @@ import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { cn } from "@/lib/cn";
 import { formatMoney, formatNumber, titleise } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+import { formatRelative, formatInZone } from "@/lib/dates";
 import { ledgerEntryLabel } from "@/lib/affiliates/ledger-rules";
 import {
   AFFILIATE_TABS,
@@ -278,7 +278,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                     <Td>{ledgerEntryLabel(row.entryType, row.reversalReason)}</Td>
                     <Td>
                       {row.periodMonth
-                        ? new Date(row.periodMonth).toLocaleDateString("en-GB", {
+                        ? formatInZone(row.periodMonth, {
                             month: "short",
                             year: "numeric",
                           })

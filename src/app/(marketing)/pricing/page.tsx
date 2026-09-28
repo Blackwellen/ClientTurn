@@ -63,6 +63,7 @@ import {
   gbp,
   packSummary,
 } from "@/lib/marketing/voice-offer";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "Pricing: AI Sales Agent, Voice and Quotes";
 const description = `ClientTurn plans from £${PLANS.starter.monthlyPrice} a month. Pro with the AI Voice Sales Agent is ${gbp(PRO_WITH_VOICE_MONTHLY_GBP)} with ${VOICE_ADDON.includedMinutes} minutes, or prepaid minute packs from ${gbp(VOICE_PACKS_FROM_GBP)}. Quotes and payments on every paid plan. ${TRIAL_DAYS}-day trial.`;
@@ -134,6 +135,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title: `${title}`,
     description,
     url: path,
@@ -142,6 +144,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${title}`,
     description,
@@ -367,7 +370,7 @@ export default function PricingPage() {
                   <GlyphTile icon={Database} size={38} glyph={18} />
                   <h3 className="mt-4">Sourcing and prospects</h3>
                   <p>
-                    Verified prospects from licensed providers. Counted when
+                    Prospects from Companies House, business listings and company websites. Counted when
                     verified, never at the estimate stage.
                   </p>
                   <p className="mt-3 text-[var(--pub-lime)]">

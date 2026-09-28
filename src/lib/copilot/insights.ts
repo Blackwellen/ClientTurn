@@ -57,7 +57,7 @@ export async function buildInsights(businessId: string): Promise<CopilotInsight[
       .select("id", { count: "exact", head: true })
       .eq("business_id", businessId)
       .gt("expires_at", new Date().toISOString())
-      .gte("observed_at", new Date(Date.now() - 7 * 864e5).toISOString()),
+      .gte("matched_at", new Date(Date.now() - 7 * 864e5).toISOString()),
     // The same recipient-level figures the Analytics page uses. Passing null
     // here silently disabled the reply-rate insight, so Copilot could never
     // surface the one movement the page would have led with.

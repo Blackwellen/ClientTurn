@@ -18,6 +18,7 @@ import {
   type ApiKeyView,
 } from "@/lib/api-keys/types";
 import { Select } from "@/components/ui/form";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * API keys (Settings → Developer).
@@ -172,7 +173,7 @@ function KeyRow({ apiKey, canManage }: { apiKey: ApiKeyView; canManage: boolean 
             <span>Acts as {apiKey.ownerIsCaller ? "you" : apiKey.ownerName}</span>
             <span>
               {apiKey.lastUsedAt
-                ? `Last used ${new Date(apiKey.lastUsedAt).toLocaleDateString("en-GB")}`
+                ? `Last used ${formatInZone(apiKey.lastUsedAt, "date")}`
                 : "Never used"}
             </span>
             {apiKey.recentRequests > 0 && (
@@ -181,7 +182,7 @@ function KeyRow({ apiKey, canManage }: { apiKey: ApiKeyView; canManage: boolean 
             {apiKey.expiresAt && (
               <span>
                 {status === "expired" ? "Expired" : "Expires"}{" "}
-                {new Date(apiKey.expiresAt).toLocaleDateString("en-GB")}
+                {formatInZone(apiKey.expiresAt, "date")}
               </span>
             )}
             {apiKey.allowedIps.length > 0 && (

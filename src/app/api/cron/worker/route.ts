@@ -16,6 +16,7 @@ import { scheduleAgents } from "@/lib/agents/scheduler";
 import { scheduleCrmPullSweep } from "@/lib/jobs/handlers/crm-pull";
 import { scheduleIntentSweep } from "@/lib/jobs/handlers/intent-sweep";
 import { scheduleReengageSweep } from "@/lib/jobs/handlers/reengage";
+import { scheduleVoiceReconcile } from "@/lib/jobs/handlers/voice";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -94,6 +95,9 @@ async function runSchedulers(): Promise<void> {
     // resume, stated deadline, no-show or win-back that is due and has no
     // trigger job yet (the domain-event consumer plans most of them at once).
     contained("reengage.sweep", async () => { await scheduleReengageSweep(); }),
+    // Voice: one sweep per fifteen-minute bucket closes calls stuck live (a
+    // crashed dial, a lost CALL_ENDED), which otherwise block the lead for good.
+    contained("voice.reconcile", async () => { await scheduleVoiceReconcile(); }),
   ]);
 }
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { ilikeContains, orIlike } from "@/lib/supabase/ilike";
+import { fullNameIlike, ilikeContains, orIlike } from "@/lib/supabase/ilike";
 import { leadDisplayName } from "@/lib/leads/types";
 import { BOOKING_STATUS_LABEL } from "@/lib/bookings/types";
 import {
@@ -118,10 +118,12 @@ export async function globalSearch(
   results.pages = filterNavIndex(term, options.capabilities);
 
   const contains = ilikeContains(term);
-  const leadOr = orIlike(
+  const leadColumns = orIlike(
     ["first_name", "last_name", "phone", "phone_normalized", "email", "postcode"],
     term,
   );
+  const leadFullName = fullNameIlike(term);
+  const leadOr = leadColumns && leadFullName ? `${leadColumns},${leadFullName}` : leadColumns;
   const bookingOr = orIlike(["first_name", "last_name", "phone"], term);
   const prospectOr = orIlike(["first_name", "last_name", "email", "role_title"], term);
   const conversationOr = orIlike(["counterparty_name", "counterparty_handle"], term);

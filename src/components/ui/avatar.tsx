@@ -68,9 +68,9 @@ export function Avatar({
   if (src && !failed) {
     return (
       // Initials render immediately and the image fades in only once it has
-      // actually loaded. Most lead avatars are Gravatar lookups that 404 (no
-      // account for that address), so painting the <img> first would flash a
-      // broken-image glyph on every row before the fallback took over.
+      // actually loaded. A proxied platform avatar can 404 once its signed
+      // URL lapses, so painting the <img> first would flash a broken-image
+      // glyph before the fallback took over.
       <span
         role="img"
         aria-label={name}
@@ -82,8 +82,9 @@ export function Avatar({
         )}
       >
         {!loaded && initials(name)}
-        {/* Signed R2 URLs and Gravatar hashes are not optimisable by
-            next/image, and a 404 here is expected rather than exceptional. */}
+        {/* Signed R2 URLs and the avatar proxy are not optimisable by
+            next/image, and a 404 here is expected rather than exceptional.
+            Never pass an avatar URL derived from an email address. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}

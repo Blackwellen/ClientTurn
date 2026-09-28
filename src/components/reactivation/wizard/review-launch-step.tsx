@@ -49,6 +49,7 @@ import {
   SummaryTable,
   formatCount,
 } from "./pieces";
+import { formatInZone } from "@/lib/dates";
 
 function formatQuietWindow(quiet: QuietHours) {
   if (!quiet.enabled) return "Off";
@@ -201,13 +202,13 @@ export function ReviewLaunchStep({
                     state.sendMode === "now"
                       ? "As soon as the send window opens"
                       : scheduled
-                        ? scheduled.toLocaleString("en-GB", {
+                        ? formatInZone(scheduled, {
                             day: "numeric",
                             month: "short",
                             year: "numeric",
                             hour: "2-digit",
                             minute: "2-digit",
-                          })
+                          }, quietHours.timezone)
                         : "Not set"
                   }
                 />

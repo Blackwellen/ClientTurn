@@ -41,14 +41,21 @@ function groupByDay(messages: ConversationMessage[]) {
 
 export function ConversationThread({
   messages,
+  automationPaused = false,
 }: {
   messages: ConversationMessage[];
+  /**
+   * A person has taken over (or the lead was added with follow-up off), so
+   * no automated first message is coming; the empty state must not promise one.
+   */
+  automationPaused?: boolean;
 }) {
   if (messages.length === 0) {
     return (
       <p className="text-content-muted px-1 py-8 text-center text-[13px]">
-        No messages yet. The first follow-up is sent as soon as the automation
-        runs.
+        {automationPaused
+          ? "No messages yet. Automated follow-up is paused, so nothing is sent automatically until it is resumed."
+          : "No messages yet. The first follow-up is sent as soon as the automation runs."}
       </p>
     );
   }

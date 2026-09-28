@@ -217,7 +217,9 @@ export function timezoneLabel(zone: string, now = new Date()) {
       zone === "UTC"
         ? "Coordinated Universal Time"
         : zone.split("/").slice(1).join(" / ").replace(/_/g, " ") || zone;
-    return `(${offset.replace("GMT", "GMT")}) ${city}`;
+    // Chromium writes a zero offset as bare "GMT", Node as "GMT+00:00"; the
+    // label is rendered on both, so they must agree or hydration fails.
+    return `(${offset === "GMT" ? "GMT+00:00" : offset}) ${city}`;
   } catch {
     return zone;
   }

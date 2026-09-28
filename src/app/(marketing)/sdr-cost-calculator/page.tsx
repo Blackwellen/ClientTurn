@@ -19,6 +19,7 @@ import {
   TAX_YEAR,
 } from "@/lib/marketing/sdr-calculator";
 import "./sdr-calculator.css";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "SDR Cost Calculator UK: AI SDR vs Hiring an SDR";
 const description = `Compare the fully loaded cost of a UK SDR (salary, employer NI, pension, recruitment, tools, ramp-up) with an AI SDR on ClientTurn from ${gbp(PLANS.starter.monthlyPrice as number)} a month. ${TAX_YEAR} tax figures, your own conversion rates.`;
@@ -38,6 +39,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title,
     description,
     url: path,
@@ -46,6 +48,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title,
     description,

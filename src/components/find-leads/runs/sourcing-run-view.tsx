@@ -21,6 +21,7 @@ import {
   RunIssuesCard,
 } from "./run-panels";
 import { RunControls } from "./run-controls";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The sourcing run page (V4 §11).
@@ -65,7 +66,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
   }, [live, run.id]);
 
   const startedLabel = run.startedAt
-    ? new Date(run.startedAt).toLocaleTimeString("en-GB", {
+    ? formatInZone(run.startedAt, {
         hour: "2-digit",
         minute: "2-digit",
       })
@@ -161,7 +162,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
             counters={run.counters}
             updatedAtLabel={
               live
-                ? new Date().toLocaleTimeString("en-GB", {
+                ? formatInZone(new Date(), {
                     hour: "2-digit",
                     minute: "2-digit",
                   })
@@ -182,7 +183,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
 }
 
 function RunMessage({ message }: { message: RunView["messages"][number] }) {
-  const time = new Date(message.createdAt).toLocaleTimeString("en-GB", {
+  const time = formatInZone(message.createdAt, {
     hour: "2-digit",
     minute: "2-digit",
   });

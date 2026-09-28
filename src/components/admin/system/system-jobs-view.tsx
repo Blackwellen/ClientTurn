@@ -35,7 +35,7 @@ import { useAdminAction } from "@/components/admin/use-admin-action";
 import { JobDetailDrawer } from "./job-detail-drawer";
 import { cancelJob, moveJobToDeadLetter, retryJob } from "@/lib/admin/job-actions";
 import { formatChange, formatNumber } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+import { formatRelative, formatInZone } from "@/lib/dates";
 import {
   ADMIN_RANGES,
   ADMIN_RANGE_LABEL,
@@ -614,7 +614,7 @@ function axisLabels(buckets: string[]): string[] {
   return Array.from({ length: wanted }, (_, index) => {
     const bucket = buckets[Math.round(index * stride)];
     const date = new Date(bucket);
-    return date.toLocaleTimeString("en-GB", {
+    return formatInZone(date, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,

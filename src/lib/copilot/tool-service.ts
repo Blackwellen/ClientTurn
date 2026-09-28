@@ -383,10 +383,10 @@ async function intentSignals(context: ToolContext) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("prospect_intent_matches")
-    .select("prospect_id, intent_category_id, observed_at, expires_at")
+    .select("prospect_id, intent_category_id, observed_at:matched_at, expires_at")
     .eq("business_id", context.businessId)
     .gt("expires_at", new Date().toISOString())
-    .order("observed_at", { ascending: false })
+    .order("matched_at", { ascending: false })
     .limit(50);
 
   return {

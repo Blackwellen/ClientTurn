@@ -235,3 +235,19 @@ export function memberActions(input: {
       target.role !== "viewer",
   };
 }
+
+/**
+ * `seatsInUse` over raw `business_members` rows (`status, invited_at`), for
+ * the Billing usage card and the Usage & limits row. They counted every
+ * "invited" row, so an expired invitation showed as a seat there while the
+ * Team page and the invite check (both `seatsInUse`) did not (QA 2026-09-28).
+ */
+export function countSeats(
+  rows: ReadonlyArray<{ status: string; invited_at: string | null }> | null | undefined,
+  now: Date = new Date(),
+): number {
+  return seatsInUse(
+    (rows ?? []).map((row) => ({ userId: null, role: "member", status: row.status, invitedAt: row.invited_at })),
+    now,
+  );
+}

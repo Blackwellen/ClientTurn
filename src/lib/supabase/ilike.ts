@@ -71,3 +71,20 @@ export function orIlike(columns: readonly string[], value: string): string | nul
   if (!term || columns.length === 0) return null;
   return columns.map((column) => `${column}.ilike.${term}`).join(",");
 }
+
+/**
+ * `and(first_name.ilike."%A%",last_name.ilike."%B%")` for a term with a space
+ * in it, to append to an `orIlike` list; null for a single word.
+ *
+ * Searching each column on its own meant "Chloe Winters" matched nothing: no
+ * single column holds both names (QA 2026-09-28). The first word is matched
+ * against the first name and the rest against the last name.
+ */
+export function fullNameIlike(value: string): string | null {
+  const [first, ...rest] = value.trim().split(/\s+/);
+  if (!first || rest.length === 0) return null;
+  const a = ilikeOrTerm(first);
+  const b = ilikeOrTerm(rest.join(" "));
+  if (!a || !b) return null;
+  return `and(first_name.ilike.${a},last_name.ilike.${b})`;
+}

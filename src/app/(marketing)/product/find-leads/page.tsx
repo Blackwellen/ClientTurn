@@ -8,6 +8,7 @@ import { AcquisitionAnalyticsSection } from "@/components/marketing/find-leads/a
 import { FindLeadsFinalCta } from "@/components/marketing/find-leads/final-cta/find-leads-final-cta";
 import { MotionRoot } from "@/components/marketing/find-leads/motion-root";
 import "./find-leads.css";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "AI Lead Generation & Prospecting Software";
 const description =
@@ -38,6 +39,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title: `${title}`,
     description,
     url: path,
@@ -46,6 +48,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${title}`,
     description,
@@ -81,7 +84,7 @@ const structuredData = {
       featureList: [
         "Natural-language search planning",
         "Structured search plan review before provider spend",
-        "Prospect sourcing through licensed providers",
+        "Prospect sourcing from Companies House, business listings and company websites",
         "Email verification and deduplication",
         "Explainable deterministic prospect scoring",
         "Buying-intent monitoring from permitted sources",
@@ -113,7 +116,7 @@ const structuredData = {
           name: "Where does the data come from?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Licensed data providers, verification providers, public sources whose terms permit the use, your connected systems and datasets you supply. There is no general web crawl and no browser automation.",
+            text: "Companies House, business listings (for discovery), the companies' own websites, public sources whose terms permit the use, your connected systems and datasets you supply. No data brokers or paid enrichment vendors, no general web crawl and no browser automation.",
           },
         },
         {

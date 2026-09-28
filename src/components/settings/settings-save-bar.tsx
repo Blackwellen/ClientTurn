@@ -42,7 +42,7 @@ export function SettingsSaveBar({
       className={cn(
         "sticky bottom-0 z-20 -mx-4 mt-4 border-t border-line bg-surface/95 px-4 py-3 shadow-lg backdrop-blur-md",
         // The right padding keeps Save clear of the floating support button (8.7).
-        "sm:-mx-6 sm:pl-6 sm:pr-24 xl:-mx-8 xl:pl-8 xl:pr-24",
+        "pr-20 sm:-mx-6 sm:pl-6 sm:pr-24 xl:-mx-8 xl:pl-8 xl:pr-24",
         "animate-[lr-slide-up_var(--lr-duration-base)_var(--lr-ease)] motion-reduce:animate-none",
       )}
     >

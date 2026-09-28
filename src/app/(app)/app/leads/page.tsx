@@ -78,7 +78,11 @@ export default async function LeadsPage({
         </div>
         {/* The wizard is state on this page, not a route: closing it leaves the
             list, filters and pagination exactly as they were. */}
-        <AddLeadButton context={addLeadContext} canCreate={canWrite} />
+        <AddLeadButton
+          context={addLeadContext}
+          canCreate={canWrite}
+          canImport={hasRole(workspace.role, "admin")}
+        />
       </header>
 
       <LeadQuickFilters

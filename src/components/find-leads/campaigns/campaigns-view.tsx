@@ -44,6 +44,7 @@ import {
 } from "@/lib/outreach/types";
 import { CampaignBuilder } from "./campaign-builder";
 import { CampaignControls } from "./campaign-controls";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The acquisition Campaigns view (V4 §16).
@@ -979,7 +980,7 @@ function formatDue(value: string): string {
   const due = new Date(value);
   if (Number.isNaN(due.getTime())) return "—";
 
-  const time = due.toLocaleTimeString("en-GB", {
+  const time = formatInZone(due, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -991,7 +992,7 @@ function formatDue(value: string): string {
 
   if (days <= 0) return `Today, ${time}`;
   if (days === 1) return `Tomorrow, ${time}`;
-  return `${due.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}, ${time}`;
+  return `${formatInZone(due, { day: "numeric", month: "short", year: "numeric" })}, ${time}`;
 }
 
 function BudgetAllocationCard({ campaigns }: { campaigns: CampaignRow[] }) {

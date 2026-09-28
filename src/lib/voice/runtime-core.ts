@@ -37,7 +37,7 @@ import { attributionSpoken, buildLockedPreamble, CLOSING_VERSION, OPENER_VERSION
 import { identityAnswer, identityReadiness } from "./identity.ts";
 import { reserveMinutes, settleMinutes, releaseMinutes, MinuteStoreUnavailable, type MinuteStore } from "./minutes-core.ts";
 import { reduceVoiceEvent, callRefOf, type FollowUp } from "./ingest.ts";
-import { analyseCall, type CallAnalysis } from "./post-call.ts";
+import { analyseCall, applyToolOutcomes, type CallAnalysis, type CallToolOutcome } from "./post-call.ts";
 import { callCostLines, type CostLine } from "./cost.ts";
 import { planRetry, renderVoicemailScript, voicemailAllowed, VOICEMAIL_SCRIPT_VERSION, type DialOutcome } from "./retry-policy.ts";
 import { PROVIDER_MAX_DURATION_SEC } from "./time-governor.ts";
@@ -182,6 +182,11 @@ export type DialContext = {
   attempts: { total: number; last24h: number; lastAttemptAt: Date | null; routeTotal: number };
   /** Another call to this lead in an active state (excluding the one being dialled). */
   activeCallForLead: boolean;
+  /**
+   * Calls to this lead not dialled yet (REQUESTED / ELIGIBILITY_CHECKED /
+   * QUEUED), excluding the one being dialled. Absent in older stores.
+   */
+  pendingCalls?: { id: string; route: string; queuedAt: string | null }[];
   concurrency: { workspaceActive: number; platformActive: number };
   allocation: { allocations: RouteAllocations; periodTotalSec: number; usedByRouteSec: number; disabledRoutes: string[] } | null;
   /**
@@ -352,6 +357,10 @@ export type VoiceRepo = {
   /** What the dial planned: the brief version and the voicemail script version. */
   recordCallPlan?(callId: string, plan: { briefVersion: string | null; voicemailScriptVersion: string | null; premiumVoice?: boolean }): Promise<void>;
   loadCallPlan?(callId: string): Promise<{ briefVersion: string | null; voicemailScriptVersion: string | null; premiumVoice?: boolean } | null>;
+  /** Calls in a live state whose dial began before `startedBefore`, oldest first (reconcileStaleCalls). */
+  findStaleLiveCalls?(input: { startedBefore: Date; limit: number }): Promise<CallRow[]>;
+  /** Successful tool results on the call (voice_tool_calls status OK), oldest first. */
+  loadToolOutcomes?(callId: string): Promise<CallToolOutcome[]>;
   /** The assistant's own end_call_summary tool result, if it called it. */
   loadAgentSummary?(callId: string): Promise<{ summary: string; disposition: string; nextStep: string | null } | null>;
   /** Continuity: the call's note merged into the lead's shared opportunity memory. */
@@ -441,6 +450,8 @@ export const DIAL_STALE_AFTER_MS = 10 * MINUTE;
 /** States a call may be post-processed from (state-machine.ts: each may go to POST_PROCESSING). */
 const ENDED_STATES: readonly CallState[] = ["ENDED", "NO_ANSWER", "BUSY", "FAILED", "VOICEMAIL"];
 const LIVE_STATES: readonly CallState[] = ["DIALLING", "RINGING", "ANSWERED", "IN_CONVERSATION", "WRAPPING_UP", "TRANSFERRED"];
+/** Not yet dialled: the only states a call may be cancelled from. */
+const PENDING_STATES: readonly CallState[] = ["REQUESTED", "ELIGIBILITY_CHECKED", "QUEUED"];
 
 function callingHoursOf(settings: VoiceSettingsRow | null): CallingHoursConfig | undefined {
   if (!settings?.calling_hours) return undefined;
@@ -629,31 +640,61 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
   }
 
   const now = deps.now();
-  const attemptNumber = input.attemptNumber ?? Math.min(5, ctx.attempts.routeTotal + 1);
-  const callKey = voiceCallKey(input.businessId, input.leadId, input.route, attemptNumber);
+  // One pending call per lead (backend QA 2026-09-28). A second press of
+  // "Call with AI", a retried agent run, or a retry planned while another
+  // call is queued used to queue a second call: the first dialled, the second
+  // waited out the gap between attempts and rang the lead again.
+  //   - A call-back the lead asked for replaces whatever was pending (their
+  //     time is the one that counts).
+  //   - Anything else returns the pending call on the same route (any route,
+  //     for a retry) instead of adding one.
+  const pending = ctx.pendingCalls ?? [];
+  if (input.entryPoint === "CALLBACK") {
+    for (const p of pending) {
+      const row = await deps.repo.loadCall(p.id);
+      if (row && PENDING_STATES.includes(row.state)) await cancelPending(deps, row, "SUPERSEDED_BY_CALLBACK", "error", ctx);
+    }
+  } else {
+    const same = input.attemptNumber ? pending[0] : pending.find((p) => p.route === input.route);
+    if (same) return { ok: true, callId: same.id, scheduledFor: same.queuedAt ?? now.toISOString(), deferredReason: null, existing: true };
+  }
+  // The key's sequence is every request on this route (cancelled ones too),
+  // uncapped; the stored attempt number stays inside the 1..5 CHECK. Before
+  // this (backend QA 2026-09-28) the key used min(5, n): the sixth request
+  // re-used ":5" and got back the cancelled fifth call as "queued".
+  const sequence = input.attemptNumber ?? ctx.attempts.routeTotal + 1;
+  const attemptNumber = Math.max(1, Math.min(5, sequence));
+  let callKey = voiceCallKey(input.businessId, input.leadId, input.route, sequence);
   const settings = ctx.settings;
   const consent = callConsentFrom(ctx.permission);
-  let notBefore =
-    decision.kind === "DEFER" ? decision.runAt : input.notBefore && input.notBefore.getTime() > now.getTime() ? input.notBefore : now;
+  // The later of: when the lead asked (a call-back at "tomorrow at ten"), and
+  // the earliest lawful time. A call-back booked DURING a live call is always
+  // deferred (CALL_ALREADY_ACTIVE / ATTEMPT_TOO_SOON), and that deferral used
+  // to replace the lead's time outright (backend QA 2026-09-28).
+  const asked = input.notBefore && input.notBefore.getTime() > now.getTime() ? input.notBefore : null;
+  const deferredUntil = decision.kind === "DEFER" ? decision.runAt : null;
+  let notBefore = deferredUntil && (!asked || deferredUntil.getTime() > asked.getTime()) ? deferredUntil : (asked ?? now);
+  const deferred = Boolean(deferredUntil && notBefore === deferredUntil);
   // Platform maintenance holds outbound calls like texts: the call is booked
   // for after the window (and re-checked at dial time), never dropped.
   const held = await maintenanceHold(deps);
   const heldForMaintenance = Boolean(held && held.getTime() > notBefore.getTime());
   if (held && heldForMaintenance) notBefore = held;
 
-  const { row, inserted } = await deps.repo.insertCall({
+  const lead = ctx.lead;
+  const newRow = (key: string): NewCallRow => ({
     business_id: input.businessId,
     lead_id: input.leadId,
     direction: "OUTBOUND",
     route: input.route,
     state: "QUEUED",
-    call_key: callKey,
+    call_key: key,
     attempt_number: attemptNumber,
     consent_basis: consent.basis,
-    to_e164: decision.kind === "DIAL" ? decision.e164 : ctx.lead.phone,
+    to_e164: decision.kind === "DIAL" ? decision.e164 : lead.phone,
     from_e164: decision.kind === "DIAL" ? decision.callerId : ctx.number?.e164 ?? null,
     destination_class: decision.kind === "DIAL" ? decision.destinationClass : null,
-    recipient_timezone: decision.kind === "DIAL" ? decision.timezone : ctx.lead.timezone,
+    recipient_timezone: decision.kind === "DIAL" ? decision.timezone : lead.timezone,
     calling_as_name: settings?.calling_as_name ?? null,
     legal_entity_name: settings?.legal_entity_name ?? null,
     identification_contact: settings?.identification_contact ?? null,
@@ -664,6 +705,15 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
     // Only when an agent asked, so a workspace without 0176 is unaffected.
     ...(input.requestedByAgentId ? { requested_by_agent_id: input.requestedByAgentId } : {}),
   });
+  let { row, inserted } = await deps.repo.insertCall(newRow(callKey));
+  // Idempotent only while the matching call is still waiting to be dialled
+  // or live. A finished or cancelled call on the same key (an explicit retry
+  // attempt that a manual request already used) is never handed back as the
+  // new call: it gets a fresh key instead.
+  if (!inserted && !PENDING_STATES.includes(row.state) && !LIVE_STATES.includes(row.state)) {
+    callKey = `${callKey}:r${now.getTime()}`;
+    ({ row, inserted } = await deps.repo.insertCall(newRow(callKey)));
+  }
 
   if (inserted) {
     await deps.repo.recordEligibility(eligibilityRecord(input.businessId, input.leadId, row.id, ctx, decision));
@@ -689,7 +739,7 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
     ok: true,
     callId: row.id,
     scheduledFor: (row.queued_at && !inserted ? row.queued_at : notBefore.toISOString()),
-    deferredReason: heldForMaintenance ? "MAINTENANCE_WINDOW" : decision.kind === "DEFER" ? decision.reason : null,
+    deferredReason: heldForMaintenance ? "MAINTENANCE_WINDOW" : decision.kind === "DEFER" && deferred ? decision.reason : null,
     existing: !inserted,
   };
 }
@@ -903,8 +953,24 @@ export async function dialCall(deps: VoiceDeps, callId: string, opts: { personRe
   }
 }
 
+/**
+ * Cancels a call that has not been dialled yet (a superseded call-back, a
+ * person's cancel). True when this run cancelled it; a live or finished call
+ * is never touched. The hold, if any, is returned.
+ */
+export async function cancelQueuedCall(deps: VoiceDeps, callId: string, reason: string): Promise<boolean> {
+  const call = await deps.repo.loadCall(callId);
+  if (!call || !PENDING_STATES.includes(call.state)) return false;
+  return (await cancelPending(deps, call, reason, "error", null)) !== null;
+}
+
 async function cancelCall(deps: VoiceDeps, call: CallRow, reason: string, productState: string, ctx: DialContext | null): Promise<DialResult> {
-  const updated = await deps.repo.transitionCall(call.id, ["REQUESTED", "ELIGIBILITY_CHECKED", "QUEUED"], {
+  await cancelPending(deps, call, reason, productState, ctx);
+  return { status: "CANCELLED", reason, productState };
+}
+
+async function cancelPending(deps: VoiceDeps, call: CallRow, reason: string, productState: string, ctx: DialContext | null): Promise<CallRow | null> {
+  const updated = await deps.repo.transitionCall(call.id, PENDING_STATES, {
     state: "CANCELLED",
     outcome: "CANCELLED",
     disconnection_reason: reason.slice(0, 120),
@@ -926,7 +992,7 @@ async function cancelCall(deps: VoiceDeps, call: CallRow, reason: string, produc
       metadata: { lead_id: call.lead_id, reason, product_state: productState, had_context: Boolean(ctx) },
     });
   }
-  return { status: "CANCELLED", reason, productState };
+  return updated;
 }
 
 async function deferCall(deps: VoiceDeps, call: CallRow, reason: string, runAt: Date, personRequested = false): Promise<DialResult> {
@@ -991,6 +1057,95 @@ async function failCall(deps: VoiceDeps, call: CallRow, reason: string): Promise
   if (updated) {
     await deps.enqueue("voice.post_call", { callId: call.id }, { businessId: call.business_id, idempotencyKey: `voice.post_call:${call.id}` });
   }
+}
+
+/* ===================================================== reconcileStaleCalls */
+
+/** A live call older than the provider's hard cut plus this has lost its end event. */
+export const LIVE_STALE_AFTER_MS = PROVIDER_MAX_DURATION_SEC * 1000 + 30 * MINUTE;
+
+export type ReconcileResult = { checked: number; closed: number; ended: number; waiting: number };
+
+/**
+ * The sweep for calls stuck "live" (backend QA 2026-09-28). Nothing closed
+ * them before: the stale-DIALLING check in dialCall only ran if the SAME dial
+ * job ran again after 10 minutes, and a lost CALL_ENDED webhook was never
+ * noticed. A stuck call holds its minutes, a concurrency slot, and (through
+ * the one-active-call-per-lead index) blocks every later call to that lead.
+ *
+ *   DIALLING, no provider id, older than DIAL_STALE_AFTER_MS -> FAILED
+ *     (DIAL_OUTCOME_UNKNOWN); post-call releases the hold. Never re-dialled.
+ *   live, with a provider id, older than LIVE_STALE_AFTER_MS -> ask the
+ *     provider once. Ended: applied as the provider's own CALL_ENDED (same
+ *     dedupe key, so a late real webhook is a duplicate). Otherwise, or the
+ *     provider can't say: FAILED (STALE_NO_END_EVENT), post-call settles.
+ */
+export async function reconcileStaleCalls(deps: VoiceDeps, limit = 50): Promise<ReconcileResult> {
+  const result: ReconcileResult = { checked: 0, closed: 0, ended: 0, waiting: 0 };
+  if (!deps.repo.findStaleLiveCalls) return result;
+  const now = deps.now().getTime();
+  const calls = await deps.repo.findStaleLiveCalls({ startedBefore: new Date(now - DIAL_STALE_AFTER_MS), limit });
+  const voice = deps.providers().voice;
+  for (const call of calls) {
+    if (!LIVE_STATES.includes(call.state)) continue;
+    result.checked++;
+    const since = Date.parse(call.answered_at ?? call.started_at ?? call.created_at);
+    if (!call.provider_call_id) {
+      // Aged from the dial itself (started_at), never from when it was queued.
+      if (call.state === "DIALLING" && now - Date.parse(call.started_at ?? call.created_at) > DIAL_STALE_AFTER_MS) {
+        await failCall(deps, call, "DIAL_OUTCOME_UNKNOWN");
+        result.closed++;
+      } else result.waiting++;
+      continue;
+    }
+    if (now - since < LIVE_STALE_AFTER_MS) {
+      result.waiting++;
+      continue;
+    }
+    let details: ProviderCallDetails | null = null;
+    if (voice && call.provider !== "twilio") {
+      try {
+        details = await voice.getCall(call.provider_call_id);
+      } catch {
+        details = null;
+      }
+    }
+    if (details && (details.status === "ENDED" || details.status === "NOT_CONNECTED" || details.status === "ERROR")) {
+      const outcome: CallOutcome = details.outcome ?? (details.status === "ENDED" ? "COMPLETED" : "FAILED");
+      await ingestVoiceEvent(deps, {
+        type: "CALL_ENDED",
+        provider: "retell",
+        providerCallId: call.provider_call_id,
+        dedupeKey: `${call.provider_call_id}:call_ended`,
+        occurredAt: details.endedAt,
+        metadata: { voice_call_id: call.id },
+        outcome,
+        durationSec: details.durationSec,
+        disconnectionReason: details.disconnectionReason ?? "reconciled",
+      } as VoiceEvent);
+      result.ended++;
+      continue;
+    }
+    if (details && details.status === "ONGOING") {
+      // The provider says it is still going past its own hard cut: leave it
+      // for the next sweep rather than guess.
+      result.waiting++;
+      continue;
+    }
+    // Answered: ENDED (never FAILED, whose retry would ring someone who
+    // already talked). Never answered: FAILED, retried by the ordinary policy.
+    const closed = await deps.repo.transitionCall(call.id, LIVE_STATES, {
+      state: call.answered_at ? "ENDED" : "FAILED",
+      outcome: call.answered_at ? "COMPLETED" : "FAILED",
+      disconnection_reason: "STALE_NO_END_EVENT",
+      ended_at: deps.now().toISOString(),
+    });
+    if (closed) {
+      await deps.enqueue("voice.post_call", { callId: call.id }, { businessId: call.business_id, idempotencyKey: `voice.post_call:${call.id}` });
+      result.closed++;
+    }
+  }
+  return result;
 }
 
 /* ======================================================= ingestVoiceEvent */
@@ -1184,6 +1339,20 @@ export async function postProcessCall(
     providerSummary: agentSummary?.summary ?? input.providerSummary ?? null,
     endedAt,
   });
+  // What the tools did (a booked call-back, an opt-out) outranks the regexes.
+  let optedOutByTool = false;
+  if (deps.repo.loadToolOutcomes) {
+    let tools: CallToolOutcome[] = [];
+    try {
+      tools = await deps.repo.loadToolOutcomes(call.id);
+    } catch {
+      tools = [];
+    }
+    if (tools.length) {
+      const tz = call.recipient_timezone ?? "Europe/London";
+      optedOutByTool = applyToolOutcomes(analysis, tools, { timezone: tz }).optedOutByTool;
+    }
+  }
   if (agentSummary?.nextStep && analysis.nextAction && analysis.disposition !== "OPTED_OUT" && analysis.disposition !== "NO_CONVERSATION") {
     analysis.nextAction = `${analysis.nextAction} Agreed on the call: ${agentSummary.nextStep}`.slice(0, 500);
   }
@@ -1314,7 +1483,7 @@ export async function postProcessCall(
     });
     const outcome = dialOutcomeOf(call);
     // Only an outbound call is retried; a missed inbound call is the caller's own.
-    if (outcome && !analysis.voiceOptOut && call.direction === "OUTBOUND") {
+    if (outcome && !analysis.voiceOptOut && !optedOutByTool && call.direction === "OUTBOUND") {
       await deps.enqueue("voice.retry", { callId: call.id }, { businessId: call.business_id, idempotencyKey: `voice.retry:${call.id}` });
     }
   }

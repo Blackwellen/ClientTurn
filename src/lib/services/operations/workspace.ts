@@ -143,7 +143,7 @@ defineOperation("connector.get", {
 
     const { data: events } = await db
       .from("webhook_events")
-      .select("id, event_type, status, error_message, received_at")
+      .select("id, event_type, status, error_message:last_error, received_at")
       .eq("business_id", context.businessId)
       .eq("provider", connector.provider_type)
       .order("received_at", { ascending: false })

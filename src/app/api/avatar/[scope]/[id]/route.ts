@@ -54,9 +54,7 @@ function isAllowedHost(host: string): boolean {
   return (
     host.endsWith(".fbcdn.net") ||
     host.endsWith(".cdninstagram.com") ||
-    host.endsWith(".tiktokcdn.com") ||
-    host === "www.gravatar.com" ||
-    host === "gravatar.com"
+    host.endsWith(".tiktokcdn.com")
   );
 }
 

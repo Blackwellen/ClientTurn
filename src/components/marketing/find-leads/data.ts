@@ -114,7 +114,7 @@ export const HERO_STEPS = [
   },
   {
     title: "Source",
-    body: "Prospects are found and verified through permitted providers.",
+    body: "Prospects are found from public company sources and checked before use.",
   },
   {
     title: "Review & action",
@@ -465,7 +465,7 @@ const FACTOR_DETAIL: Record<
     share: 0.97,
     sentence: "Matches your target industry, size and services.",
     evidence: "Online retailer, 11–50 employees, own Shopify store",
-    source: "Licensed company data provider",
+    source: "Companies House and company website",
     freshness: "6 days",
     confidence: "High",
   },
@@ -473,7 +473,7 @@ const FACTOR_DETAIL: Record<
     share: 0.9,
     sentence: "Head of Ecommerce — a decision-making role.",
     evidence: "Role title classified as a decision maker",
-    source: "Licensed contact data provider",
+    source: "Company website team page",
     freshness: "6 days",
     confidence: "High",
   },
@@ -714,9 +714,9 @@ export const ANALYTICS_METRICS = [
 ] as const;
 
 export const PROVIDER_ROWS = [
-  { label: "Company discovery", detail: "Licensed company data", share: 46 },
-  { label: "Contact discovery", detail: "Licensed contact data", share: 27 },
-  { label: "Email verification", detail: "Verification providers", share: 18 },
+  { label: "Company discovery", detail: "Business listings and Companies House", share: 46 },
+  { label: "Contact discovery", detail: "Company websites", share: 27 },
+  { label: "Email origin", detail: "Recorded for every address", share: 18 },
   { label: "Intent signals", detail: "Permitted public sources", share: 9 },
 ] as const;
 

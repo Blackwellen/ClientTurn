@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, CircleHelp, OctagonX, ShieldCheck } from "lucide-react";
 import { Panel } from "@/components/admin/ui";
 import type { ReadinessArea, ReadinessReport, ReadinessState } from "@/lib/admin/readiness";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Platform readiness (Programme §20).
@@ -91,7 +92,7 @@ export function SystemReadinessView({ report }: { report: ReadinessReport }) {
       </div>
 
       <p className="text-[11.5px] text-content-subtle">
-        Generated {new Date(report.generatedAt).toLocaleString("en-GB")}.
+        Generated {formatInZone(report.generatedAt, "datetime")}.
       </p>
     </div>
   );

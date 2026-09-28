@@ -59,14 +59,16 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
-  alternates: { canonical: "/" },
+  // No canonical or og:url here: every route inherits the root's, so a page
+  // without its own (sign-in, sign-up, data-deletion, the affiliate portal)
+  // was declaring the home page as its canonical URL. Public pages set their
+  // own; the home page sets "/" itself.
   openGraph: {
     type: "website",
     locale: "en_GB",
     siteName: "ClientTurn",
     title,
     description,
-    url: "/",
   },
   twitter: {
     card: "summary_large_image",

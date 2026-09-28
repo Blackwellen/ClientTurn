@@ -193,6 +193,63 @@ export function analyseCall(input: {
   return { disposition, summary, facts, nextAction, callbackRequestedFor, objections, voiceOptOut, optOutScope, signals, leadText, qualityFlags };
 }
 
+/** A successful in-call tool result (voice_tool_calls, status OK), oldest first. */
+export type CallToolOutcome = { tool: string; data: Record<string, unknown> };
+
+/** "Tue 29 Sep, 18:00" in the workspace's own zone (never UTC for a UK reader). */
+export function localWhen(iso: string, timezone: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  }
+}
+
+/**
+ * What the assistant DID on the call outranks what the transcript regexes
+ * guessed (backend QA 2026-09-28). Live call 45ac0dea: the lead booked a
+ * call-back, the outcome said CONVERSATION with no call-back time, and the
+ * post-call next action ("Continue the conversation by text or email")
+ * overwrote the call-back note the tool had written on the lead. The same
+ * happened after a successful opt_out whose words the regexes missed.
+ *
+ *   opt_out            -> OPTED_OUT, no next action (nothing to "continue").
+ *   schedule_callback  -> CALLBACK_REQUESTED at the latest booked time, unless
+ *                         the lead opted out or it was the wrong person.
+ */
+export function applyToolOutcomes(
+  analysis: CallAnalysis,
+  tools: readonly CallToolOutcome[],
+  input: { timezone: string },
+): { optedOutByTool: boolean } {
+  const latest = (name: string) => [...tools].reverse().find((t) => t.tool === name) ?? null;
+  const optOut = latest("opt_out");
+  if (optOut) {
+    analysis.disposition = "OPTED_OUT";
+    analysis.nextAction = null;
+    analysis.callbackRequestedFor = null;
+    if (!analysis.optOutScope) analysis.optOutScope = optOut.data.scope === "ALL" ? "ALL" : "CALLS";
+    return { optedOutByTool: true };
+  }
+  const callback = latest("schedule_callback");
+  if (callback && analysis.disposition !== "OPTED_OUT" && analysis.disposition !== "WRONG_PERSON") {
+    const raw = [callback.data.at_iso, callback.data.scheduled_for].find((v): v is string => typeof v === "string" && Number.isFinite(Date.parse(v))) ?? null;
+    const at = raw ? new Date(raw).toISOString() : null;
+    const byAi = typeof callback.data.callback_call_id === "string";
+    const note = typeof callback.data.note === "string" && callback.data.note.trim() ? `: ${callback.data.note.trim()}` : "";
+    analysis.disposition = "CALLBACK_REQUESTED";
+    analysis.callbackRequestedFor = at;
+    analysis.nextAction = (
+      byAi
+        ? `AI call-back booked for ${at ? localWhen(at, input.timezone) : "the time agreed"}${note}.`
+        : `Call back ${at ? localWhen(at, input.timezone) : "at a time that suits them"}${note}.`
+    ).slice(0, 500);
+  }
+  return { optedOutByTool: false };
+}
+
 function nextActionFor(disposition: Disposition, facts: Record<string, string>, callbackAt: string | null): string | null {
   switch (disposition) {
     case "NO_CONVERSATION":

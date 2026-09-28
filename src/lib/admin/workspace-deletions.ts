@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { adminRead } from "./shared";
 import { isSchemaMissing } from "@/lib/billing/stripe-events";
 import {
   daysSince,
@@ -16,13 +16,16 @@ export type { AdminDeletionRow } from "./workspace-deletions-types";
  * Admin -> Billing -> Scheduled deletions: every cancelled workspace on the
  * day-90 schedule, what the daily job would do today (the same `decide` the
  * job runs, so the view is the dry run), and its hold. Read-only.
+ *
+ * Reads through `adminRead()`, which re-asserts platform-admin status before
+ * handing out the service-role client (the layout guard is not the control).
  */
 export async function listScheduledDeletions(now: Date = new Date()): Promise<{
   available: boolean;
   enabled: boolean;
   rows: AdminDeletionRow[];
 }> {
-  const db = createAdminClient() as unknown as SupabaseClient;
+  const db = (await adminRead()) as unknown as SupabaseClient;
   const enabled = process.env.WORKSPACE_DELETION_ENABLED === "true";
   const { data, error } = await db
     .from("workspace_deletion_schedule")

@@ -10,6 +10,7 @@ import {
 import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
 import { CookiePreferencesButton } from "@/components/marketing/cookie-preferences-button";
 import { COMPANY } from "@/lib/marketing/company";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
   "Every cookie and browser storage item ClientTurn sets, what it is for, how long it lasts, and how to accept, reject or withdraw consent under PECR regulation 6.";
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/cookies" },
   openGraph: {
+    images: OG_IMAGES,
     title: "Cookie Policy",
     description,
     url: "/cookies",
@@ -27,6 +29,7 @@ export const metadata: Metadata = {
     type: "article",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary",
     title: "Cookie Policy",
     description,

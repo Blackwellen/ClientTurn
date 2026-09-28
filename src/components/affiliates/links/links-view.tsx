@@ -27,6 +27,7 @@ import { ALLOWED_DESTINATIONS } from "@/lib/affiliates/types";
 import { formatPercent } from "@/lib/affiliates/programme";
 import type { LinkMetrics } from "@/lib/affiliates/analytics";
 import { Select } from "@/components/ui/form";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The links workspace (V4 §31).
@@ -285,7 +286,7 @@ export function LinksView({
                   <Td numeric>{link.paidCustomers.toLocaleString("en-GB")}</Td>
                   <Td numeric>{formatPercent(link.conversionRate)}</Td>
                   <Td className="whitespace-nowrap text-content-secondary">
-                    {new Date(link.updatedAt).toLocaleDateString("en-GB", {
+                    {formatInZone(link.updatedAt, {
                       day: "numeric",
                       month: "short",
                       year: "numeric",

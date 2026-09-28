@@ -12,6 +12,7 @@ import {
   planCallRetry,
   postProcessCall,
   provisionStep,
+  reconcileStaleCalls,
   scheduleNumberRelease,
 } from "@/lib/voice/runtime-core";
 import { serverVoiceDeps } from "@/lib/voice/server-deps";
@@ -69,6 +70,19 @@ export async function handleVoiceRecordingFetch(job: ClaimedJob): Promise<void> 
 export async function handleVoiceRetry(job: ClaimedJob): Promise<void> {
   const { callId } = parse(callPayload, job);
   await planCallRetry(serverVoiceDeps(), callId);
+}
+
+/** voice.reconcile: close calls stuck live (runtime-core.ts reconcileStaleCalls). No payload. */
+export async function handleVoiceReconcile(): Promise<void> {
+  const result = await reconcileStaleCalls(serverVoiceDeps());
+  if (result.closed + result.ended > 0) console.info(`[voice.reconcile] checked=${result.checked} closed=${result.closed} ended=${result.ended}`);
+}
+
+/** Queues the sweep at most once per fifteen-minute bucket (cron/worker schedulers). */
+export async function scheduleVoiceReconcile(): Promise<void> {
+  const { enqueue } = await import("@/lib/jobs/queue");
+  const bucket = Math.floor(Date.now() / (15 * 60_000));
+  await enqueue("voice.reconcile", {}, { idempotencyKey: `voice.reconcile:${bucket}`, maxAttempts: 2 });
 }
 
 export async function handleVoiceNumberProvision(job: ClaimedJob): Promise<void> {

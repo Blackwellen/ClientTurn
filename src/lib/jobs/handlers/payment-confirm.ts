@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { ClaimedJob } from "@/lib/jobs/queue";
 import { PermanentJobError } from "@/lib/jobs/registry";
-import { applyLinked, confirmPayment, flagReversal } from "@/lib/payments/confirm";
+import { applyLinked, confirmPayment, flagReversal, reversalShouldRetry } from "@/lib/payments/confirm";
 import { confirmDeps } from "@/lib/payments/store";
 import { BILLING_INTERVALS, STRIPE_REVERSAL_EVENTS } from "@/lib/payments/facts";
 import { parsePayload } from "./parse";
@@ -63,4 +63,12 @@ export async function handlePaymentConfirm(job: ClaimedJob): Promise<void> {
         ? await flagReversal(confirmDeps, { businessId: payload.businessId, reversal: payload.reversal })
         : await applyLinked(confirmDeps, payload.businessId, payload.paymentId);
   console.info("[payment.confirm]", { businessId: payload.businessId, ...result });
+  // Stripe does not order events: a refund or dispute can be claimed before
+  // the payment it names has been recorded (both jobs in one batch). Retried
+  // a couple of times with the queue's backoff rather than completed and
+  // lost. Bounded, never dead-lettered: most refunds in a customer's own
+  // Stripe are for charges ClientTurn never saw, and those end quietly.
+  if (reversalShouldRetry(payload.mode, result.outcome, job.attempts)) {
+    throw new Error("payment.confirm: the refunded or disputed payment is not recorded yet; retrying");
+  }
 }

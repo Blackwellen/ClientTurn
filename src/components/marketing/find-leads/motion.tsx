@@ -6,10 +6,43 @@ import {
   LayoutGroup,
   motion,
   useInView,
-  useReducedMotion,
   type Transition,
   type Variants,
 } from "motion/react";
+
+/*
+ * Hydration-safe reduced motion.
+ *
+ * motion's `useReducedMotion()` reads the media query on the client's FIRST
+ * render, while the server can only ever answer "no". Anything that branches
+ * on it during render (`CountUp`'s starting number, `useReveal`'s `shown`, an
+ * `initial` variant) therefore rendered different text on a reduced-motion
+ * client than the server sent: a hydration error (React #418) on
+ * /product/find-leads for exactly the visitors who asked for less movement
+ * (QA 2026-09-28). `useSyncExternalStore` answers with the server snapshot
+ * while hydrating and re-renders with the real value straight after, so the
+ * final state still arrives on the first paint after hydration.
+ */
+const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+
+function subscribeReduced(onChange: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia(REDUCED_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function reducedSnapshot(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(REDUCED_QUERY).matches;
+}
+
+function reducedServerSnapshot(): boolean {
+  return false;
+}
+
+export function useReducedMotion(): boolean {
+  return React.useSyncExternalStore(subscribeReduced, reducedSnapshot, reducedServerSnapshot);
+}
 
 /**
  * The motion vocabulary for /product/find-leads.
@@ -427,4 +460,4 @@ export function CountUp({
   );
 }
 
-export { AnimatePresence, LayoutGroup, motion, useReducedMotion };
+export { AnimatePresence, LayoutGroup, motion };

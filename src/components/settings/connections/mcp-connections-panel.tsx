@@ -14,6 +14,7 @@ import {
   rejectMcpRequestAction,
 } from "@/lib/mcp/actions";
 import type { McpConnection, McpPendingApproval } from "@/lib/mcp/queries";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Assistant connections (Programme §1).
@@ -204,7 +205,7 @@ function ConnectionRow({
             </span>
             <span>
               {connection.lastUsedAt
-                ? `Last used ${new Date(connection.lastUsedAt).toLocaleDateString("en-GB")}`
+                ? `Last used ${formatInZone(connection.lastUsedAt, "date")}`
                 : "Never used"}
             </span>
             {connection.recentCalls > 0 && (
@@ -333,7 +334,7 @@ function ApprovalRow({
           <p className="text-[12.5px] text-content">{approval.summary}</p>
           <p className="mt-0.5 text-[11.5px] text-content-subtle">
             {approval.connectionName ?? "An assistant"} · expires{" "}
-            {new Date(approval.expiresAt).toLocaleString("en-GB")}
+            {formatInZone(approval.expiresAt, "datetime")}
           </p>
         </div>
         {canManage && (

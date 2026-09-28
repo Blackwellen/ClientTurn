@@ -2,6 +2,20 @@ import type { Metadata } from "next";
 import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
 import { COMPANY } from "@/lib/marketing/company";
 import { TRIAL_DAYS } from "@/lib/billing/plans";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
+import { TERMS_VERSION } from "@/lib/marketing/terms-version";
+
+/**
+ * The header shows the version customers accept at signup and Checkout
+ * (`TERMS_VERSION`, recorded on every acceptance), so the date on the page
+ * and the date on an acceptance record always match.
+ */
+const TERMS_VERSION_LABEL = new Date(`${TERMS_VERSION}T00:00:00Z`).toLocaleDateString("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 const description =
   "The contract between Blackwellen Limited and the business using ClientTurn: subscriptions, the 14-day free trial (card required, nothing charged until it ends), fees and VAT, refunds and cancellation, messaging compliance, liability and termination. Governed by the law of England and Wales.";
@@ -11,6 +25,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/terms" },
   openGraph: {
+    images: OG_IMAGES,
     title: "Terms of Service",
     description,
     url: "/terms",
@@ -19,6 +34,7 @@ export const metadata: Metadata = {
     type: "article",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary",
     title: "Terms of Service",
     description,
@@ -1211,6 +1227,8 @@ export default function TermsPage() {
       intro="The contract between Blackwellen Limited and the business using ClientTurn. Please read clause 12 carefully: you are the sender of every message the Service delivers for you, and the data controller for everyone you contact."
       currentPath="/terms"
       sections={SECTIONS}
+      version={TERMS_VERSION_LABEL}
+      effectiveFrom={TERMS_VERSION_LABEL}
     />
   );
 }

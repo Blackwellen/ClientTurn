@@ -12,6 +12,7 @@ import {
   statusTone,
   type TicketSummary,
 } from "@/lib/support/types";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * My Tickets (V4 §23.5).
@@ -162,8 +163,8 @@ export function relative(value: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Intl.DateTimeFormat("en-GB", {
+  return formatInZone(value, {
     day: "numeric",
     month: "short",
-  }).format(new Date(value));
+  });
 }

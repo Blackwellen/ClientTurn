@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 /**
  * Google sign-in entry point.
  *
@@ -12,6 +10,10 @@ import Link from "next/link";
  * Signup is open, so Google both signs in and registers: a new customer gets a
  * workspace and goes to the trial checkout, an existing one signs in (see the
  * callback route). The Terms are accepted at Checkout either way.
+ *
+ * A plain <a>, not next/link: <Link> prefetches visible links, and prefetching
+ * a route handler that redirects to Google started an OAuth round trip (and a
+ * CORS error in the console) on every sign-in and sign-up page load.
  */
 export function GoogleSignInButton({
   redirectTo,
@@ -37,13 +39,13 @@ export function GoogleSignInButton({
         <span className="h-px flex-1 bg-white/10" />
       </div>
 
-      <Link
+      <a
         href={href}
         className="flex h-[52px] w-full items-center justify-center gap-3 rounded-[11px] border border-white/15 bg-white/[0.03] text-[15px] font-semibold text-[var(--auth-text)] transition-colors hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--auth-lime)]"
       >
         <GoogleMark />
         {variant === "signup" ? "Sign up with Google" : "Continue with Google"}
-      </Link>
+      </a>
     </div>
   );
 }

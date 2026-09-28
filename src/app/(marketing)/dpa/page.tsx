@@ -14,6 +14,7 @@ import {
   SUBPROCESSORS,
   SUBPROCESSOR_NOTICE_DAYS,
 } from "@/lib/marketing/subprocessors";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
   "ClientTurn's customer Data Processing Agreement under Article 28 UK GDPR: our obligations as processor, security measures, sub-processors, international transfers, breach notification, deletion and audit.";
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/dpa" },
   openGraph: {
+    images: OG_IMAGES,
     title: "Data Processing Agreement",
     description,
     url: "/dpa",
@@ -30,7 +32,7 @@ export const metadata: Metadata = {
     locale: "en_GB",
     type: "article",
   },
-  twitter: { card: "summary", title: "Data Processing Agreement", description },
+  twitter: { card: "summary", title: "Data Processing Agreement", description, images: TWITTER_IMAGES },
 };
 
 /**

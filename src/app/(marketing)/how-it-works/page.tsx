@@ -56,6 +56,7 @@ import {
   TrendLine,
 } from "@/components/marketing/public/charts";
 import { ScrollRegion } from "@/components/ui/scroll-region";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "How It Works";
 const description =
@@ -80,6 +81,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title: `${title}`,
     description,
     url: path,
@@ -88,6 +90,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${title}`,
     description,
@@ -161,7 +164,7 @@ const INBOUND_STEPS = [
 const OUTBOUND_STEPS = [
   { title: "Profile", body: "Tell us about your business." },
   { title: "Search", body: "Turn a plain-English brief into a plan." },
-  { title: "Source", body: "Find prospects from licensed providers." },
+  { title: "Source", body: "Find prospects from Companies House, business listings and company websites." },
   { title: "Verify", body: "Check contact details and eligibility." },
   { title: "Outreach", body: "Run controlled campaigns." },
   { title: "Lead", body: "Promote engaged prospects to leads." },

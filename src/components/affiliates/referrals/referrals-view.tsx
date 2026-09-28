@@ -38,6 +38,7 @@ import {
 } from "@/lib/affiliates/programme";
 import type { PortalReferral, ReferralPage } from "@/lib/affiliates/portal";
 import { Select } from "@/components/ui/form";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The referrals table (V4 §32).
@@ -203,13 +204,13 @@ function ReferralRow({
         {/* No email, by design. The affiliate has no relationship with this
             customer and no right to their contact details. */}
         <p className="text-[11.5px] text-content-subtle">
-          Introduced {new Date(row.createdAt).toLocaleDateString("en-GB")}
+          Introduced {formatInZone(row.createdAt, "date")}
         </p>
       </Td>
       <Td className="text-content-secondary">{row.sourceLabel ?? "Direct"}</Td>
       <Td className="whitespace-nowrap text-content-secondary">
         {row.signupAt
-          ? new Date(row.signupAt).toLocaleDateString("en-GB", {
+          ? formatInZone(row.signupAt, {
               day: "numeric",
               month: "short",
               year: "numeric",

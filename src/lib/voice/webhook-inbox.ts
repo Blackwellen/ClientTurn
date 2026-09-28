@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { serverEnv } from "@/lib/env";
 import { openSecret } from "@/lib/security/secret-box";
 import { verifyTwilioSignature } from "@/lib/twilio/signature";
@@ -24,27 +25,32 @@ export async function storeVoiceEvents(provider: VoiceInboxProvider, events: rea
   const admin = createAdminClient() as unknown as SupabaseClient;
   const result: StoreResult = { stored: 0, duplicates: 0, failed: 0 };
   for (const event of events) {
-    const { error } = await admin.from("webhook_events").insert({
-      provider,
-      external_event_id: event.dedupeKey.slice(0, 300),
-      event_type: event.type,
-      status: "received",
-      payload: { events: [event] },
+    const externalEventId = event.dedupeKey.slice(0, 300);
+    // A redelivery of an event recorded but never queued is queued now
+    // (inbox-core.ts): a lost CALL_ENDED left the lead "on a call" and the
+    // minutes held.
+    const outcome = await recordThenQueue({
+      insert: async () =>
+        (
+          await admin.from("webhook_events").insert({
+            provider,
+            external_event_id: externalEventId,
+            event_type: event.type,
+            status: "received",
+            payload: { events: [event] },
+          })
+        ).error,
+      status: () => webhookInboxStatus(provider, externalEventId),
+      queue: () =>
+        enqueue(
+          "voice.webhook_ingest",
+          { provider: provider === "retell" ? "retell" : "twilio", externalEventId },
+          { priority: 10, idempotencyKey: `voice.webhook_ingest:${provider}:${event.dedupeKey}`.slice(0, 400) },
+        ),
     });
-    if (error?.code === "23505") {
-      result.duplicates++;
-      continue;
-    }
-    if (error) {
-      result.failed++;
-      continue;
-    }
-    result.stored++;
-    await enqueue(
-      "voice.webhook_ingest",
-      { provider: provider === "retell" ? "retell" : "twilio", externalEventId: event.dedupeKey.slice(0, 300) },
-      { priority: 10, idempotencyKey: `voice.webhook_ingest:${provider}:${event.dedupeKey}`.slice(0, 400) },
-    );
+    if (outcome === "FAILED") result.failed++;
+    else if (outcome === "DUPLICATE") result.duplicates++;
+    else result.stored++;
   }
   return result;
 }

@@ -33,6 +33,7 @@ import type {
   WebhookDeliveryView,
   WebhookEndpointView,
 } from "@/lib/webhooks/queries";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Webhooks (Settings → Developer).
@@ -201,7 +202,7 @@ function EndpointRow({
             {endpoint.lastSuccessAt && (
               <span>
                 Last delivered{" "}
-                {new Date(endpoint.lastSuccessAt).toLocaleString("en-GB")}
+                {formatInZone(endpoint.lastSuccessAt, "datetime")}
               </span>
             )}
           </p>
@@ -416,7 +417,7 @@ function DeliveryLog({ deliveries }: { deliveries: WebhookDeliveryView[] }) {
                   <span className="text-content-subtle"> → {delivery.endpointUrl}</span>
                 </p>
                 <p className="mt-0.5 text-[11px] text-content-subtle">
-                  {new Date(delivery.createdAt).toLocaleString("en-GB")}
+                  {formatInZone(delivery.createdAt, "datetime")}
                   {delivery.responseStatus !== null &&
                     ` · answered ${delivery.responseStatus}`}
                   {delivery.attempts > 1 && ` · attempt ${delivery.attempts}`}
@@ -424,7 +425,7 @@ function DeliveryLog({ deliveries }: { deliveries: WebhookDeliveryView[] }) {
                     <>
                       {" "}
                       · next try{" "}
-                      {new Date(delivery.nextAttemptAt).toLocaleTimeString("en-GB")}
+                      {formatInZone(delivery.nextAttemptAt, "time")}
                     </>
                   )}
                 </p>

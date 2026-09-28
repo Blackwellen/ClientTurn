@@ -127,7 +127,9 @@ export class VoiceWorld {
   eligibility: EligibilityRecord[] = [];
   audits: AuditEntry[] = [];
   jobs: Job[] = [];
-  outcomes = new Map<string, { disposition: string; summary: string | null }>();
+  outcomes = new Map<string, { disposition: string; summary: string | null; nextAction?: string | null; callbackRequestedFor?: string | null }>();
+  /** Successful in-call tool results per call (voice_tool_calls status OK), oldest first. */
+  toolOutcomes = new Map<string, { tool: string; data: Record<string, unknown> }[]>();
   objections: { callId: string; key: string }[] = [];
   costs: { idempotencyKey: string; totalUsd: number; estimated: boolean }[] = [];
   optOuts: string[] = [];
@@ -184,6 +186,9 @@ export class VoiceWorld {
         routeTotal: calls.filter((c) => c.route === route).length,
       },
       activeCallForLead: calls.some((c) => ACTIVE.includes(c.state)),
+      pendingCalls: calls
+        .filter((c) => c.state === "REQUESTED" || c.state === "ELIGIBILITY_CHECKED" || c.state === "QUEUED")
+        .map((c) => ({ id: c.id, route: c.route, queuedAt: c.queued_at ?? null })),
       concurrency: {
         workspaceActive: [...this.calls.values()].filter((c) => ACTIVE.includes(c.state)).length,
         platformActive: this.platformActive,
@@ -274,7 +279,22 @@ export class VoiceWorld {
       },
       async saveTranscript() {},
       async saveOutcome(input) {
-        w.outcomes.set(input.callId, { disposition: input.analysis.disposition, summary: input.analysis.summary });
+        w.outcomes.set(input.callId, {
+          disposition: input.analysis.disposition,
+          summary: input.analysis.summary,
+          nextAction: input.analysis.nextAction,
+          callbackRequestedFor: input.analysis.callbackRequestedFor,
+        });
+      },
+      async findStaleLiveCalls({ startedBefore, limit }) {
+        const live = ["DIALLING", "RINGING", "ANSWERED", "IN_CONVERSATION", "WRAPPING_UP", "TRANSFERRED"];
+        return [...w.calls.values()]
+          .filter((c) => live.includes(c.state) && Date.parse(c.created_at) < startedBefore.getTime())
+          .slice(0, limit)
+          .map((c) => ({ ...c }));
+      },
+      async loadToolOutcomes(callId) {
+        return (w.toolOutcomes.get(callId) ?? []).map((t) => ({ ...t }));
       },
       async saveObjections(input) {
         for (const o of input.objections) if (!w.objections.some((x) => x.callId === input.callId && x.key === o.key)) w.objections.push({ callId: input.callId, key: o.key });

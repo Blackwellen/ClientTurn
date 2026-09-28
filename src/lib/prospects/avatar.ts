@@ -31,8 +31,9 @@
  *
  *   * `COMPANY_SITE` -- an image the business publishes about itself on its own
  *     website. Published by the subject, for exactly this purpose.
- *   * `GRAVATAR` -- an avatar the person themselves attached to their email
- *     address and chose to make globally resolvable.
+ *   * `GRAVATAR` -- present in the column's check constraint for history and
+ *     never written: looking one up sends a hash of the person's email to a
+ *     third party the privacy policy does not name. `avatarPolicyFor` refuses it.
  *   * `UPLOAD` -- one the customer added by hand, on a basis they hold.
  *   * `FACEBOOK` / `INSTAGRAM` / `TIKTOK` -- only for someone who engaged with
  *     the workspace's *own* account, where the platform hands us the URL as
@@ -84,9 +85,9 @@ export const AVATAR_POLICY: Record<AvatarSource, AvatarPolicy> = {
     note: "Only for someone who engaged with your own account. The URL expires.",
   },
   GRAVATAR: {
-    storable: true,
+    storable: false,
     expires: false,
-    note: "An avatar the person attached to their own email address and chose to make publicly resolvable.",
+    note: "Never looked up: resolving an avatar from an email address would send that person's data to a third party.",
   },
   COMPANY_SITE: {
     storable: true,

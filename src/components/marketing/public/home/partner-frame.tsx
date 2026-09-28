@@ -65,6 +65,13 @@ const MONTHS = [
 ];
 
 /**
+ * The sample is kept internally consistent with the programme rules, because
+ * an impossible sample reads as an earnings claim: 4 paid customers keeps the
+ * partner on the 6% Partner tier (Pro Partner starts at 5); the two paid
+ * referrals below are still inside the 30-day hold (Pending £35.88); Approved
+ * is one earlier Growth annual referral (6% of £2,030) and clears the £50
+ * payout minimum; Paid out is one Starter monthly referral.
+ *
  * Sample one-off commissions at the 6% starting rate on a first monthly
  * payment (Growth £199, Pro £399, ex VAT). Commission is one-off
  * (owner decision 2026-09-28), so a paid referral shows one amount.
@@ -271,7 +278,7 @@ export function PartnerFrame() {
             <Kpi label="Clicks" value="1,284" delta="+18%" icon={MousePointerClick} />
             <Kpi label="Signups" value="46" delta="+24%" icon={Users} />
             <Kpi label="Trials" value="31" delta="+12%" icon={TestTube} />
-            <Kpi label="Paid customers" value="14" delta="+21%" icon={CreditCard} />
+            <Kpi label="Paid customers" value="4" delta="+2" icon={CreditCard} />
           </div>
 
           <div className="mt-3 grid grid-cols-[1.5fr_1fr] gap-2.5">
@@ -324,9 +331,9 @@ export function PartnerFrame() {
               </span>
               <div className="mt-3 space-y-2">
                 {[
-                  ["Pending", "£312.40"],
-                  ["Approved", "£1,845.60"],
-                  ["Paid out", "£682.00"],
+                  ["Pending", "£35.88"],
+                  ["Approved", "£121.80"],
+                  ["Paid out", "£5.94"],
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -356,7 +363,7 @@ export function PartnerFrame() {
                   className="mt-0.5 block text-[15px] font-semibold tabular-nums"
                   style={{ color: LIME_DARK }}
                 >
-                  £1,845.60
+                  £121.80
                 </span>
               </div>
             </div>

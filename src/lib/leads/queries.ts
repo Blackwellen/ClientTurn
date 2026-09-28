@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ACTIVE_STATUSES, type LeadFilters } from "./filters";
 import { sourceLabel } from "./types";
-import { gravatarUrl } from "./avatar";
 import type {
   BookingRow,
   LeadCapabilities,
@@ -19,7 +18,7 @@ import type {
   TimelineEvent,
   WorkspaceMember,
 } from "./types";
-import { orIlike } from "@/lib/supabase/ilike";
+import { fullNameIlike, orIlike } from "@/lib/supabase/ilike";
 import { INCOMPLETE_BELOW, STRONG_INTENT_STATES } from "@/lib/qualification-intelligence/explain";
 import { channelUsable, MESSAGING_CHANNEL_PROVIDERS } from "@/lib/integrations/platform-channels";
 import { platformConfigured } from "@/lib/integrations/queries";
@@ -207,7 +206,8 @@ function applyAdvancedFilters(
       ["first_name", "last_name", "phone", "phone_normalized", "email", "postcode"],
       filters.q,
     );
-    if (or) next = next.or(or);
+    const fullName = fullNameIlike(filters.q);
+    if (or) next = next.or(fullName ? `${or},${fullName}` : or);
   }
 
   return next;
@@ -232,9 +232,9 @@ export async function listLeads(businessId: string, filters: LeadFilters) {
   const rows = (data ?? []) as unknown as LeadListRow[];
 
   return {
-    // Card view renders an avatar per lead; computing the Gravatar hash here
-    // keeps the email address and hashing logic server-side.
-    rows: rows.map((row) => ({ ...row, avatarUrl: gravatarUrl(row.email) })),
+    // No avatar lookup by email: a lead's address (or a hash of it) is never
+    // sent to a third-party avatar service. Rows render initials.
+    rows,
     total: count ?? 0,
   };
 }

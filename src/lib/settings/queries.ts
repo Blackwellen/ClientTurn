@@ -21,6 +21,7 @@ import {
 } from "./types";
 import { channelUsable, MESSAGING_CHANNEL_PROVIDERS } from "@/lib/integrations/platform-channels";
 import { platformConfigured } from "@/lib/integrations/queries";
+import { countSeats } from "@/lib/team/rules";
 
 export async function getBusinessProfile(
   businessId: string,
@@ -257,9 +258,9 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     getEntitlements(businessId),
     admin
       .from("business_members")
-      .select("id", { count: "exact", head: true })
+      .select("status, invited_at")
       .eq("business_id", businessId)
-      .in("status", ["active", "invited"]),
+      .in("status", ["active", "suspended", "invited"]),
   ]);
 
   const since = entitlements.periodStart ?? new Date(Date.now() - 30 * 864e5).toISOString();
@@ -317,7 +318,7 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     hasStripeCustomer: Boolean(subscription?.stripe_customer_id),
     leadLimit: entitlements.leadLimit,
     userLimit: entitlements.userLimit,
-    seatsUsed: seatResult.count ?? 0,
+    seatsUsed: countSeats(seatResult.data),
     leadsUsed: usage.leads,
     messagesSent: usage.messages,
     // Null when the read failed: the card says so rather than showing 0.

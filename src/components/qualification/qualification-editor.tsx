@@ -37,6 +37,7 @@ import type {
   ServiceRef,
 } from "@/lib/qualification/types";
 import { cn } from "@/lib/cn";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The Qualification editor.
@@ -193,13 +194,13 @@ export function QualificationEditor({
   );
 
   const savedLabel = meta.savedAt
-    ? new Intl.DateTimeFormat("en-GB", {
+    ? formatInZone(meta.savedAt, {
         day: "numeric",
         month: "short",
         year: "numeric",
         hour: "numeric",
         minute: "2-digit",
-      }).format(new Date(meta.savedAt))
+      })
     : "Never published";
 
   return (
@@ -310,7 +311,7 @@ export function QualificationEditor({
             "border-line bg-surface/95 sticky bottom-0 z-20 -mx-4 mt-4 border-t px-4 py-3 backdrop-blur",
             // Right padding clears the floating support button, which otherwise
             // sits on top of Publish changes (8.7).
-            "sm:-mx-6 sm:pl-6 sm:pr-24",
+            "pr-20 sm:-mx-6 sm:pl-6 sm:pr-24",
           )}
         >
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">

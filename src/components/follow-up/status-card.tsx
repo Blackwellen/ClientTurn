@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { setAutomationEnabled } from "@/lib/automations/actions";
 import { FOLLOW_UP_STATE_META, type FollowUpStatus } from "@/lib/follow-up/types";
 import { cn } from "@/lib/cn";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The wide banner above the sequence editor: is follow-up actually running,
@@ -107,13 +108,13 @@ export function FollowUpStatusCard({
             <p className="text-content-subtle text-[11.5px] leading-tight">Last updated</p>
             <p className="text-content lr-tabular mt-0.5 text-[12.5px] leading-tight font-medium">
               {updated
-                ? new Intl.DateTimeFormat("en-GB", {
+                ? formatInZone(updated, {
                     day: "numeric",
                     month: "short",
                     year: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
-                  }).format(updated)
+                  })
                 : "Not published yet"}
             </p>
             {status.updatedByInitials && (

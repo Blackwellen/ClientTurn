@@ -7,6 +7,7 @@ import { HelpViewBeacon } from "@/components/help/help-view-beacon";
 import { helpCategory, isHelpCategory } from "@/lib/help/categories";
 import { loadHelpIndex } from "@/lib/help/disk";
 import { getHelpArticleForRender, relatedArticles } from "@/lib/help/service";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 /**
  * A public help article.
@@ -54,9 +55,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       locale: "en_GB",
       type: "article",
       ...(article.updated ? { modifiedTime: article.updated } : {}),
-      ...(firstShot ? { images: [{ url: firstShot.src, alt: firstShot.alt }] } : {}),
+      images: firstShot ? [{ url: firstShot.src, alt: firstShot.alt }] : OG_IMAGES,
     },
     twitter: {
+      images: firstShot ? [firstShot.src] : TWITTER_IMAGES,
       card: "summary_large_image",
       title: `${article.title}`,
       description: article.summary,

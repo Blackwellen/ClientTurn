@@ -18,6 +18,7 @@ import {
   deleteRecurringSearchAction,
   setRecurringSearchStatusAction,
 } from "@/lib/find-leads/actions";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Recurring sourcing.
@@ -168,7 +169,7 @@ function ScheduleRow({
           {schedule.nextRunAt && enabled && (
             <>
               {" · next "}
-              {new Date(schedule.nextRunAt).toLocaleDateString("en-GB", {
+              {formatInZone(schedule.nextRunAt, {
                 day: "numeric",
                 month: "short",
               })}

@@ -48,7 +48,10 @@ export async function TeamSection() {
     (value) => ({ ...value, error: false }),
     () => ({ available: false, byMembership: new Map(), error: true }),
   );
-  const permissionRows = members.map((member) => ({
+  // An expired invitation holds no seat and cannot be accepted, so it has no
+  // permissions to adjust; listing it there read as a member (QA 2026-09-28).
+  const expired = new Set(expiredInviteIds);
+  const permissionRows = members.filter((member) => !expired.has(member.membershipId)).map((member) => ({
     membershipId: member.membershipId,
     userId: member.userId,
     name: memberDisplayName(member),

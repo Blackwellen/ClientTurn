@@ -46,7 +46,7 @@ const INBOUND: Node[] = [
 
 const OUTBOUND: Node[] = [
   { icon: <Sparkles size={12} />, label: "AI search" },
-  { icon: <Search size={12} />, label: "Licensed data providers" },
+  { icon: <Search size={12} />, label: "Public company sources" },
   { icon: <Target size={12} />, label: "Intent signals" },
   { icon: <ShieldCheck size={12} />, label: "Verified contacts" },
   { icon: <Mail size={12} />, label: "Outbound campaigns" },
@@ -95,7 +95,7 @@ export function Architecture() {
     <figure
       className="pub-arch"
       role="img"
-      aria-label="Two lanes feed one system. Inbound sources — website forms, Meta Lead Ads, phone calls, emails and manual entry — and outbound sourcing — AI search, licensed data providers, intent signals, verified contacts and outbound campaigns — both enter ClientTurn. ClientTurn produces warm opportunities: qualified leads, active conversations, reactivation and ongoing nurture; and converted business: bookings, sales pipeline, team handover and attributed revenue."
+      aria-label="Two lanes feed one system. Inbound sources — website forms, Meta Lead Ads, phone calls, emails and manual entry — and outbound sourcing — AI search, public company sources, intent signals, verified contacts and outbound campaigns — both enter ClientTurn. ClientTurn produces warm opportunities: qualified leads, active conversations, reactivation and ongoing nurture; and converted business: bookings, sales pipeline, team handover and attributed revenue."
     >
       {/* Connector layer. Decorative — the copy carries the same relationships. */}
       <svg className="pub-arch-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>

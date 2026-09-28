@@ -47,6 +47,7 @@ import { FinalCtaBand } from "@/components/marketing/public/final-cta";
 import { PublicFaq, FaqJsonLd, type FaqItem } from "@/components/marketing/public/faq";
 import { CodeBlock } from "@/components/marketing/public/developers/code-block";
 import { ScrollRegion } from "@/components/ui/scroll-region";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "For developers";
 const description =
@@ -69,6 +70,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title: `${title}`,
     description,
     url: path,
@@ -77,6 +79,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title: `${title}`,
     description,

@@ -1,3 +1,5 @@
+import { formatInZone } from "../dates.ts";
+
 const NUMBER = new Intl.NumberFormat("en-GB");
 
 const MONEY = new Intl.NumberFormat("en-GB", {
@@ -12,18 +14,18 @@ const MONEY_PRECISE = new Intl.NumberFormat("en-GB", {
   maximumFractionDigits: 2,
 });
 
-const DAY_STAMP = new Intl.DateTimeFormat("en-GB", {
+const DAY_STAMP: Intl.DateTimeFormatOptions = {
   weekday: "long",
   day: "numeric",
   month: "short",
   year: "numeric",
-});
+};
 
-const CLOCK = new Intl.DateTimeFormat("en-GB", {
+const CLOCK: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-});
+};
 
 export function formatNumber(value: number | null | undefined): string {
   return NUMBER.format(value ?? 0);
@@ -39,7 +41,7 @@ export function formatMoneyPrecise(value: number | null | undefined): string {
 
 /** "Monday, 14 Apr 2025 · 16:24" — the Overview header stamp. */
 export function formatHeaderStamp(value: Date): string {
-  return `${DAY_STAMP.format(value)} · ${CLOCK.format(value)}`;
+  return `${formatInZone(value, DAY_STAMP)} · ${formatInZone(value, CLOCK)}`;
 }
 
 /*

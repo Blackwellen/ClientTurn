@@ -14,7 +14,8 @@ import {
 import { PageHeader } from "@/components/app/page-header";
 import { AgentPanel } from "./agent-panel";
 import type { ConversationAgentState } from "@/lib/agent/views";
-import { Badge } from "@/components/ui/badge";
+import { Badge, MESSAGE_STATUS } from "@/components/ui/badge";
+import { formatDate, formatDateTime } from "@/lib/dates";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/cn";
 import {
@@ -324,7 +325,7 @@ function ConversationList({
                       <p className="mt-0.5 truncate text-[11.5px] text-content-muted">
                         {channelLabel(conversation.channel)}
                         {conversation.lastMessageAt
-                          ? ` · ${new Date(conversation.lastMessageAt).toLocaleDateString("en-GB")}`
+                          ? ` · ${formatDate(conversation.lastMessageAt)}`
                           : " · No messages"}
                       </p>
                     </div>
@@ -458,7 +459,8 @@ function ThreadPane({
               >
                 <p className="whitespace-pre-wrap break-words text-[13px]">{message.body}</p>
                 <p className="mt-1.5 text-[11px] text-content-subtle">
-                  {new Date(message.createdAt).toLocaleString("en-GB")} · {message.status}
+                  {formatDateTime(message.createdAt, { year: true })} ·{" "}
+                  {MESSAGE_STATUS[message.status as keyof typeof MESSAGE_STATUS]?.label ?? message.status}
                 </p>
               </div>
             );

@@ -39,6 +39,7 @@ import {
 } from "@/lib/business-profile/actions";
 import { IcpEditor } from "./icp-editor";
 import { GoalEditor } from "./goal-editor";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Settings → Business Profile (V4 §26).
@@ -117,7 +118,7 @@ export function BusinessProfileSection({
             {data.profile.pagesAnalysed > 0 &&
               ` · ${data.profile.pagesAnalysed} page${data.profile.pagesAnalysed === 1 ? "" : "s"} read`}
             {data.profile.lastAnalysedAt &&
-              ` · ${new Date(data.profile.lastAnalysedAt).toLocaleDateString("en-GB")}`}
+              ` · ${formatInZone(data.profile.lastAnalysedAt, "date")}`}
           </p>
         )}
 

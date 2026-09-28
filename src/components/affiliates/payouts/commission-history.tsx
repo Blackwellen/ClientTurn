@@ -10,6 +10,7 @@ import {
   formatMinor,
   type CommissionRow,
 } from "@/lib/affiliates/types";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The partner's own commission ledger, row by row (payouts page). Before
@@ -45,7 +46,7 @@ export function CommissionHistory({ rows, currency }: { rows: CommissionRow[]; c
         >
           {rows.slice(0, 100).map((row) => (
             <tr key={row.id}>
-              <Td>{new Date(row.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</Td>
+              <Td>{formatInZone(row.createdAt, { day: "numeric", month: "short", year: "numeric" })}</Td>
               <Td>{ledgerEntryLabel(row.entryType, row.reversalReason)}</Td>
               <Td>{row.referralLabel}</Td>
               <Td numeric>{formatMinor(row.commissionAmountMinor, row.currency || currency)}</Td>

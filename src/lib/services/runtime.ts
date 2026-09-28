@@ -241,7 +241,7 @@ export async function runOperation<T = unknown>(
       name,
       context,
       "INVALID_INPUT",
-      firstIssue(parsed.error) ?? "Some of those details were not valid.",
+      firstIssue(parsed.error, context.caller !== "UI") ?? "Some of those details were not valid.",
     );
   }
 
@@ -381,9 +381,15 @@ async function auditDenial(
   });
 }
 
-function firstIssue(error: z.ZodError): string | null {
+/**
+ * The first validation problem. API, MCP and agent callers get the field path
+ * (`companyNumber: ...`) so a program can act on it; a person in the app sees
+ * the sentence alone, beside the form they filled in (QA 2026-09-28: Settings
+ * showed "companyNumber: A Companies House number is 8 characters").
+ */
+function firstIssue(error: z.ZodError, withPath = true): string | null {
   const issue = error.issues[0];
   if (!issue) return null;
   const field = issue.path.join(".");
-  return field ? `${field}: ${issue.message}` : issue.message;
+  return field && withPath ? `${field}: ${issue.message}` : issue.message;
 }

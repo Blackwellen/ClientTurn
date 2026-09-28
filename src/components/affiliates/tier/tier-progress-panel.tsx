@@ -4,6 +4,7 @@ import { Layers } from "lucide-react";
 import { Panel } from "@/components/affiliates/portal-ui";
 import { formatMinor } from "@/lib/affiliates/types";
 import type { TierSnapshot } from "@/lib/affiliates/tiers";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The partner's tier and the plan mix of their active referred customers
@@ -105,7 +106,7 @@ export function TierProgressPanel({
           {snapshot.history.length > 0 && (
             <p className="mt-2 text-[11.5px] text-content-muted">
               Last change: {snapshot.history[0].fromTier ?? "—"} → {snapshot.history[0].toTier} on{" "}
-              {new Date(snapshot.history[0].createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              {formatInZone(snapshot.history[0].createdAt, { day: "numeric", month: "short", year: "numeric" })}
             </p>
           )}
         </div>

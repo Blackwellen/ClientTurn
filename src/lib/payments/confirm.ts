@@ -606,3 +606,16 @@ export async function flagReversal(
   });
   return { outcome: "FLAGGED", paymentId: payment.id };
 }
+
+/** Claims (attempts is incremented at claim) a reversal may wait for its payment. */
+export const REVERSAL_WAIT_ATTEMPTS = 3;
+
+/**
+ * A refund or dispute whose payment is not recorded yet is retried, briefly
+ * (backend QA 2026-09-28): Stripe does not order events, so the reversal job
+ * can run before the payment's own. Bounded below the job's max attempts, so
+ * a refund of a charge ClientTurn never saw ends quietly, never as a dead job.
+ */
+export function reversalShouldRetry(mode: string, outcome: string, attempts: number): boolean {
+  return mode === "reversal" && outcome === "UNKNOWN_PAYMENT" && attempts < REVERSAL_WAIT_ATTEMPTS;
+}

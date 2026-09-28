@@ -55,6 +55,7 @@ import {
 import { enforcedDailyCap, type AllocationChannel } from "./usage-allocation";
 import { daysBetween, GRACE_FULL_ACCESS_DAYS, MAX_DUNNING_ATTEMPTS } from "./lifecycle";
 import { getOpenDunning } from "./dunning";
+import { countSeats } from "@/lib/team/rules";
 
 /**
  * Server side of metered limits (8.13): what the send gate enforces, what the
@@ -825,9 +826,9 @@ export async function getLimitsOverview(businessId: string): Promise<LimitsOverv
       sentToday(businessId, "email", now),
       createAdminClient()
         .from("business_members")
-        .select("id", { count: "exact", head: true })
+        .select("status, invited_at")
         .eq("business_id", businessId)
-        .in("status", ["active", "invited"]),
+        .in("status", ["active", "suspended", "invited"]),
       allowanceAlerts(businessId, entitlements, now).catch(() => ({}) as Partial<Record<MessageCreditChannel, AllowanceAlert | null>>),
     ]);
 
@@ -916,7 +917,7 @@ export async function getLimitsOverview(businessId: string): Promise<LimitsOverv
       metric: "users",
       label: "Team members",
       unit: "seats",
-      used: seats.count ?? 0,
+      used: countSeats(seats.data),
       limit: entitlements.userLimit,
       plan: upsellPlan,
       upsellMetric: "users",

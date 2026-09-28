@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Switch } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import { Panel, PanelEmpty } from "@/components/admin/ui";
+import { StepUpDialog } from "@/components/admin/step-up-dialog";
+import { useToast } from "@/components/ui/toast";
 import { formatMoney, titleise } from "@/lib/admin/format";
 import { formatRelative } from "@/lib/dates";
 import type {
@@ -48,19 +50,71 @@ export function ExportLinks() {
     { kind: "affiliates", label: "Partners" },
     { kind: "commissions", label: "Commission ledger" },
     { kind: "payouts", label: "Payouts" },
-  ];
+  ] as const;
+  const { toast } = useToast();
+  const [pending, setPending] = React.useState<string | null>(null);
+  const [stepUpFor, setStepUpFor] = React.useState<string | null>(null);
+
+  // Fetched rather than linked: the export needs a recent step-up, and a
+  // plain link would land on a bare 403 instead of offering the password
+  // confirmation and retrying.
+  async function download(kind: string) {
+    setPending(kind);
+    try {
+      const response = await fetch(`/admin/affiliates/export?kind=${kind}`, { credentials: "same-origin" });
+      if (response.status === 403) {
+        const body = (await response.json().catch(() => null)) as { code?: string } | null;
+        if (body?.code === "step_up_required") {
+          setStepUpFor(kind);
+          return;
+        }
+      }
+      if (!response.ok) {
+        toast({ variant: "error", title: "The export could not be created. Please try again." });
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `clientturn-affiliate-${kind}.csv`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ variant: "error", title: "The export could not be created. Please try again." });
+    } finally {
+      setPending(null);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-1.5" aria-label="Export">
       {kinds.map((item) => (
-        <a
+        <button
           key={item.kind}
-          href={`/admin/affiliates/export?kind=${item.kind}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-[12.5px] font-medium text-content-secondary hover:bg-surface-hover hover:text-content"
+          type="button"
+          disabled={pending !== null}
+          aria-busy={pending === item.kind || undefined}
+          onClick={() => void download(item.kind)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-[12.5px] font-medium text-content-secondary hover:bg-surface-hover hover:text-content disabled:opacity-60"
         >
           <Download className="size-3.5" aria-hidden />
           {item.label} CSV
-        </a>
+        </button>
       ))}
+      <StepUpDialog
+        open={stepUpFor !== null}
+        onClose={() => setStepUpFor(null)}
+        onConfirmed={async () => {
+          const kind = stepUpFor;
+          setStepUpFor(null);
+          if (kind) await download(kind);
+        }}
+      />
     </div>
   );
 }

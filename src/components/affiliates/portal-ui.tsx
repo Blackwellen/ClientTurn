@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/cn";
 import { useToast } from "@/components/ui/toast";
 import type { MetricDelta } from "@/lib/affiliates/analytics";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Shared presentation for the partner portal (V4 §30-36).
@@ -1040,7 +1041,7 @@ function axisLabels(points: { day: string }[]) {
   for (let index = 0; index < points.length; index += stride) {
     out.push({
       key: points[index].day,
-      label: new Date(points[index].day).toLocaleDateString("en-GB", {
+      label: formatInZone(points[index].day, {
         day: "numeric",
         month: "short",
       }),
@@ -1059,7 +1060,5 @@ function describeSeries(
   const peakDay = points[values.indexOf(peak)];
   const total = values.reduce((sum, value) => sum + value, 0);
 
-  return `${format(total)} in total, peaking at ${format(peak)} on ${new Date(
-    peakDay.day,
-  ).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.`;
+  return `${format(total)} in total, peaking at ${format(peak)} on ${formatInZone(peakDay.day, { day: "numeric", month: "long" })}.`;
 }

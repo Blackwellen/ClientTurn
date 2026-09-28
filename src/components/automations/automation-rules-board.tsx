@@ -39,6 +39,7 @@ import {
   setAutomationRuleEnabled,
 } from "@/lib/automation/rule-actions";
 import type { RuleView } from "@/lib/services/operations/automation";
+import { formatInZone } from "@/lib/dates";
 
 export type BuilderContext = {
   catalogueItems: { id: string; name: string }[];
@@ -341,7 +342,7 @@ function RuleRow({
                 </span>
                 {run.reason && <span className="text-content-muted min-w-0 flex-1 break-words">{run.reason}</span>}
                 <time className="text-content-subtle ml-auto shrink-0" dateTime={run.createdAt}>
-                  {new Date(run.createdAt).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
+                  {formatInZone(run.createdAt, { dateStyle: "short", timeStyle: "short" })}
                 </time>
               </li>
             ))}

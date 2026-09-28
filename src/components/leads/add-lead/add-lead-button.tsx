@@ -20,9 +20,12 @@ import { AddLeadWizard } from "./add-lead-wizard";
 export function AddLeadButton({
   context,
   canCreate,
+  canImport = false,
 }: {
   context: AddLeadContext;
   canCreate: boolean;
+  /** Import is admin-only (the page and its actions check); members add one lead at a time. */
+  canImport?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -45,7 +48,7 @@ export function AddLeadButton({
       {/* Import sits beside Add lead rather than inside a split menu: they are
           two different jobs (one record vs a file), and hiding the file path
           behind a caret is how people never find it. */}
-      {canCreate && (
+      {canImport && (
         <Link
           href="/app/leads/import"
           className="border-line-strong bg-surface text-content hover:bg-surface-hover focus-visible:outline-content-accent inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2"

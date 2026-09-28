@@ -25,6 +25,7 @@ import { toggleResourceSave } from "@/lib/affiliates/link-actions";
 import { RESOURCE_CATEGORY_LABEL, type ResourceCategory } from "@/lib/affiliates/types";
 import type { PortalResource } from "@/lib/affiliates/portal";
 import { Select } from "@/components/ui/form";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * The resources hub (V4 §33).
@@ -467,7 +468,7 @@ function ResourceDrawer({
           />
           <DetailRow
             label="Last updated"
-            value={new Date(resource.updatedAt).toLocaleDateString("en-GB", {
+            value={formatInZone(resource.updatedAt, {
               day: "numeric",
               month: "short",
               year: "numeric",

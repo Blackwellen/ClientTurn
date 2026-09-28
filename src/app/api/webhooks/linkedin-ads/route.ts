@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enqueue } from "@/lib/jobs/queue";
+import { enqueue, webhookInboxStatus } from "@/lib/jobs/queue";
+import { recordThenQueue } from "@/lib/jobs/inbox-core";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -114,29 +115,34 @@ export async function POST(request: Request) {
     integrationId = integration?.id ?? null;
   }
 
-  const { error: inboxError } = await admin.from("webhook_events").insert({
-    provider: "linkedin_ads",
-    external_event_id: eventId,
-    business_id: businessId,
-    event_type: `lead.${notification.leadAction.toLowerCase()}`,
-    status: businessId ? "received" : "ignored",
-    payload: notification as never,
+  // A re-delivered notification already recorded is acknowledged, not
+  // repeated; one recorded but never queued is queued now (inbox-core.ts).
+  const outcome = await recordThenQueue({
+    insert: async () =>
+      (
+        await admin.from("webhook_events").insert({
+          provider: "linkedin_ads",
+          external_event_id: eventId,
+          business_id: businessId,
+          event_type: `lead.${notification.leadAction.toLowerCase()}`,
+          status: businessId ? "received" : "ignored",
+          payload: notification as never,
+        })
+      ).error,
+    status: () => webhookInboxStatus("linkedin_ads", eventId),
+    queue: async () => {
+      if (notification.leadAction === "CREATED" && integrationId && businessId) {
+        // No provider I/O here — this nudges the registered poller (which does
+        // the actual `leadFormResponses` fetch) to run immediately instead of
+        // waiting for its 5-minute cadence.
+        await enqueue(
+          "lead_source.poll",
+          { integrationId, provider: "linkedin_ads" },
+          { businessId, priority: 5, idempotencyKey: `poll-nudge:${integrationId}:${eventId}` },
+        );
+      }
+    },
   });
 
-  // A re-delivered notification already recorded is acknowledged, not repeated.
-  if (inboxError?.code === "23505") return new Response(null, { status: 200 });
-  if (inboxError) return new Response(null, { status: 500 });
-
-  if (notification.leadAction === "CREATED" && integrationId && businessId) {
-    // No provider I/O here — this nudges the registered poller (which does
-    // the actual `leadFormResponses` fetch) to run immediately instead of
-    // waiting for its 5-minute cadence.
-    await enqueue(
-      "lead_source.poll",
-      { integrationId, provider: "linkedin_ads" },
-      { businessId, priority: 5, idempotencyKey: `poll-nudge:${integrationId}:${eventId}` },
-    );
-  }
-
-  return new Response(null, { status: 200 });
+  return new Response(null, { status: outcome === "FAILED" ? 500 : 200 });
 }

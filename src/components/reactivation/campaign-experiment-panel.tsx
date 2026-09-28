@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox, FormField, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
-import { formatGbp } from "@/lib/dates";
+import { formatGbp, formatInZone } from "@/lib/dates";
 import type { CampaignExperimentView } from "@/lib/learning/experiments";
 import {
   createCampaignExperiment,
@@ -242,7 +242,7 @@ function PromotionSection({
         )}
       </div>
       <ul className="list-disc space-y-0.5 pl-4 text-[11.5px] leading-[1.45] text-content-muted">
-        {(promoted ? [`Promoted ${promotion.promotedAt ? new Date(promotion.promotedAt).toLocaleString("en-GB") : ""}. Roll back to send everyone the control copy again.`] : advice.reasons).map((r) => (
+        {(promoted ? [`Promoted ${promotion.promotedAt ? formatInZone(promotion.promotedAt, "datetime") : ""}. Roll back to send everyone the control copy again.`] : advice.reasons).map((r) => (
           <li key={r}>{r}</li>
         ))}
         {!promoted && advice.pValue !== null && <li>Confidence {Math.round((1 - advice.pValue) * 1000) / 10}% (p = {advice.pValue.toFixed(3)}).</li>}
@@ -291,7 +291,7 @@ function PromotionSection({
             {promotion.history.map((h) => (
               <li key={`${h.version}-${h.at}`} className="text-content-muted">
                 v{h.version} · {h.action === "PROMOTE" ? `Promoted ${h.arm}` : `Rolled back ${h.fromArm ?? ""} to ${h.arm}`} · {h.decidedBy === "AUTO" ? "automatic" : "by a person"} ·{" "}
-                {new Date(h.at).toLocaleString("en-GB")}
+                {formatInZone(h.at, "datetime")}
                 {h.pValue !== null && ` · p = ${h.pValue.toFixed(3)}`}
                 {Object.keys(h.sampleByArm).length > 0 && ` · n ${Object.entries(h.sampleByArm).map(([arm, n]) => `${arm}=${n}`).join(", ")}`}
                 <span className="block text-content-subtle">{h.reason}</span>

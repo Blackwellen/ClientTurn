@@ -18,6 +18,7 @@ import {
 } from "@/lib/invoicing/payment-review";
 import type { OpenInvoiceOption, PaymentReviewItem } from "@/lib/invoicing/payment-review-store";
 import { applyReviewPaymentAction, dismissReviewPaymentAction } from "@/lib/invoicing/payment-review-actions";
+import { formatInZone } from "@/lib/dates";
 
 /**
  * Settings -> Quotes & invoices -> Payments to review (0175). Payments the
@@ -126,7 +127,7 @@ function ReviewItemRow({ item, openInvoices, canManage }: { item: PaymentReviewI
             {item.invoiceNumber ? ` for invoice ${item.invoiceNumber}` : ""}
           </p>
           <p className="truncate text-[12px] text-content-muted">
-            {new Date(item.paidAt).toLocaleString("en-GB")} · order {item.orderId}
+            {formatInZone(item.paidAt, "datetime")} · order {item.orderId}
             {item.leadName ? ` · ${item.leadName}` : item.email ? ` · ${item.email}` : ""}
           </p>
         </div>

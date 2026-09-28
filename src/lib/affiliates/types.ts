@@ -1,3 +1,4 @@
+import { formatInZone } from "../dates.ts";
 /**
  * The affiliate programme (V4 §29-35, §41).
  *
@@ -348,7 +349,7 @@ export function referralLabel(
   referralId?: string,
 ): string {
   if (displayLabel && displayLabel.trim()) return displayLabel.trim();
-  const date = new Date(createdAt).toLocaleDateString("en-GB", {
+  const date = formatInZone(createdAt, {
     day: "numeric",
     month: "short",
     year: "numeric",

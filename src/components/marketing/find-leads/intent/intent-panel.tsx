@@ -77,7 +77,7 @@ export function IntentPanel() {
             }}
           >
             <Shield size={13} />
-            Licensed providers, permitted public sources and your own data.
+            Companies House, company websites, permitted public sources and your own data.
           </span>
           <span className="fl-mini-btn">
             View categories

@@ -305,7 +305,7 @@ async function loadDialContext(businessId: string, leadId: string, route: string
     readVoiceSettings(businessId),
     readWorkspaceNumber(businessId),
     client.from("businesses").select("timezone").eq("id", businessId).maybeSingle(),
-    client.from("voice_calls").select("id, route, state, started_at, created_at").eq("business_id", businessId).eq("lead_id", leadId),
+    client.from("voice_calls").select("id, route, state, started_at, created_at, queued_at").eq("business_id", businessId).eq("lead_id", leadId),
     client.from("voice_calls").select("id", { count: "exact", head: true }).eq("business_id", businessId).in("state", [...ACTIVE]),
     client.from("voice_calls").select("id", { count: "exact", head: true }).in("state", [...ACTIVE]),
     client.from("voice_route_allocations").select("route, percent, enabled").eq("business_id", businessId),
@@ -316,7 +316,7 @@ async function loadDialContext(businessId: string, leadId: string, route: string
 
   const { suppressed, voiceOptedOut } = await checkVoiceSuppression(businessId, lead?.phone);
 
-  const calls = ((callsRes.data ?? []) as { id: string; route: string; state: CallState; started_at: string | null; created_at: string }[]).filter((c) => c.id !== excludeCallId);
+  const calls = ((callsRes.data ?? []) as { id: string; route: string; state: CallState; started_at: string | null; created_at: string; queued_at: string | null }[]).filter((c) => c.id !== excludeCallId);
   const attempted = calls.filter((c) => ATTEMPTED.includes(c.state));
   const dayAgo = Date.now() - 86_400_000;
   const last = attempted
@@ -364,6 +364,10 @@ async function loadDialContext(businessId: string, leadId: string, route: string
       routeTotal: calls.filter((c) => c.route === route).length,
     },
     activeCallForLead: calls.some((c) => ACTIVE.includes(c.state)),
+    pendingCalls: calls
+      .filter((c) => c.state === "REQUESTED" || c.state === "ELIGIBILITY_CHECKED" || c.state === "QUEUED")
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((c) => ({ id: c.id, route: c.route, queuedAt: c.queued_at })),
     adminControls,
     concurrency: { workspaceActive: activeWs.count ?? 0, platformActive: activePlatform.count ?? 0 },
     allocation,
@@ -386,6 +390,19 @@ const repo: VoiceRepo = {
       .maybeSingle();
     if (error) throw new Error(`voice call lookup: ${error.message}`);
     return (data as CallRow | null) ?? null;
+  },
+
+  async findStaleLiveCalls({ startedBefore, limit }) {
+    // created_at <= started_at, so this is a superset; reconcileStaleCalls ages each call itself.
+    const { data, error } = await db()
+      .from("voice_calls")
+      .select(CALL_COLUMNS)
+      .in("state", [...ACTIVE])
+      .lt("created_at", startedBefore.toISOString())
+      .order("created_at", { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(`voice stale calls: ${error.message}`);
+    return (data ?? []) as CallRow[];
   },
 
   async findCallByKey(businessId, callKey) {

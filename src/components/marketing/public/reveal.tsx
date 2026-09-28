@@ -416,7 +416,6 @@ export function GrowColumn({
  * the "nothing keeps moving" rule rather than a breach of it.
  */
 export function ScrollProgress() {
-  const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, {
     stiffness: 180,
@@ -424,8 +423,11 @@ export function ScrollProgress() {
     restDelta: 0.001,
   });
 
-  if (reduced) return null;
-
+  // Rendered on both sides and hidden by CSS under reduced motion
+  // (evaluation.css). Returning null when `useReducedMotion()` is true made
+  // the client tree differ from the server's, a hydration error (React #418)
+  // on every page with this bar, for exactly the visitors who asked for less
+  // movement (QA 2026-09-28; the same trap the header comment describes).
   return <motion.div aria-hidden className="pub-scroll-progress" style={{ scaleX }} />;
 }
 

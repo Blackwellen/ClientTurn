@@ -46,7 +46,7 @@ const BENEFITS = [
   {
     icon: TrendingUp,
     title: "Make a real difference",
-    body: "Help businesses respond faster, book more jobs and grow.",
+    body: "Help businesses respond faster, win more clients and grow.",
   },
   {
     icon: Heart,

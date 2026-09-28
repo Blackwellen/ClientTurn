@@ -39,6 +39,7 @@ import {
   oneOffKindOf,
 } from "@/lib/billing/stripe-events";
 import { queueNotification } from "@/lib/jobs/handlers/shared";
+import { stripeReclaimFilter } from "@/lib/billing/stripe-inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -138,12 +139,15 @@ export async function POST(request: Request) {
     // two concurrent retries cannot both re-apply. Every transition below is
     // idempotent (fixed-value updates, conditional status moves, keyed
     // ledgers), which is what makes re-applying safe.
+    // A `processing` row past its lease was killed mid-way (the function's
+    // time limit) and is reclaimed too (billing/stripe-inbox.ts); the new
+    // `received_at` restarts the lease for this attempt.
     const { data: reclaimed, error: reclaimError } = await supabase
       .from("webhook_events")
-      .update({ status: "processing", last_error: null })
+      .update({ status: "processing", last_error: null, received_at: new Date().toISOString() })
       .eq("provider", "stripe")
       .eq("external_event_id", event.id)
-      .eq("status", "failed")
+      .or(stripeReclaimFilter(new Date()))
       .select("id");
     if (reclaimError) {
       console.error("[stripe webhook] could not reclaim failed event", {

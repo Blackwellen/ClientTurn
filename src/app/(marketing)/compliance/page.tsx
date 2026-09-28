@@ -41,6 +41,7 @@ import { OPENER_TEMPLATE, RECORDING_NOTICE } from "@/lib/voice/opener";
 import { CALLING_HOURS_BOUNDS, DEFAULT_CALLING_HOURS } from "@/lib/voice/calling-hours";
 import { CALL_BUDGET_MINUTES } from "@/lib/marketing/voice-offer";
 import { ScrollRegion } from "@/components/ui/scroll-region";
+import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 /**
  * /compliance — how ClientTurn helps a UK business stay inside PECR and UK GDPR.
@@ -77,6 +78,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: path },
   openGraph: {
+    images: OG_IMAGES,
     title,
     description,
     url: path,
@@ -85,6 +87,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
+    images: TWITTER_IMAGES,
     card: "summary_large_image",
     title,
     description,

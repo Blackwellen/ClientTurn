@@ -10,10 +10,11 @@ import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { setCrmPullAction } from "@/lib/settings/channel-actions";
 import type { CrmPullView } from "@/lib/services/operations/channels";
+import { formatInZone } from "@/lib/dates";
 
 function when(iso: string | null): string {
   if (!iso) return "Not run yet";
-  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+  return formatInZone(iso, { dateStyle: "medium", timeStyle: "short" });
 }
 
 /**
