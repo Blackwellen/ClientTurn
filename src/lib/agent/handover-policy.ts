@@ -514,5 +514,7 @@ export function assistLine(reason: AssistReason, firstName: string | null): stri
       return "I could not find anything free in the next couple of weeks, so I have asked a colleague to arrange a time with you.";
     case "MEETING_BRIEF":
       return `${thanks}I have passed everything you told me to the colleague you are meeting, so you will not need to repeat it.`;
+    case "QUOTE_REVIEW":
+      return `${thanks}Your quote is with a colleague for a final check, and it will come over to you once it is ready.`;
   }
 }

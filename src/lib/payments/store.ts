@@ -236,6 +236,13 @@ export const confirmDeps: ConfirmDeps = {
       reason: input.reason,
       payment: input.payment,
     });
+    // Automation trigger (gap map §45): a confirmed direct sale.
+    const { emitAutomationEvent } = await import("@/lib/automation/events");
+    await emitAutomationEvent({
+      businessId: input.businessId,
+      eventType: "payment.direct_sale",
+      payload: { opportunityId: input.opportunityId, payment: input.payment ?? null },
+    });
   },
 
   async stopAutomation(businessId, leadId) {

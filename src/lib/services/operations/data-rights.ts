@@ -39,7 +39,8 @@ function actorFrom(context: ServiceContext, extra: { reason?: string | null; pri
   return {
     businessId: context.businessId,
     requestedBy: context.userId,
-    caller: context.caller,
+    // AUTOMATION never reaches a data-rights operation (not in its callers); narrowed for the type.
+    caller: context.caller === "AUTOMATION" ? "SYSTEM" : context.caller,
     reason: extra.reason ?? null,
     privacyRequestId: extra.privacyRequestId ?? null,
   };

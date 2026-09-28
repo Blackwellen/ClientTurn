@@ -80,7 +80,16 @@ export type AuditAction =
   | "billing.voice_pack_purchase_started"
   | "billing.voice_pack_purchased"
   | "billing.voice_number_added"
+  | "billing.voice_removed"
   | "billing.upgrade_suggestions_changed"
+  // Billing batch 2 (gap audit 15): SCA, delayed payments, disputes, and the
+  // number release after a subscription ends.
+  | "billing.payment_action_required"
+  | "billing.async_payment_failed"
+  | "billing.dispute_opened"
+  | "billing.dispute_closed"
+  | "billing.number_release_scheduled"
+  | "billing.number_release_cancelled"
   | "admin.impersonation"
   | "admin.workspace_suspended"
   | "admin.workspace_unsuspended"
@@ -121,9 +130,28 @@ export type AuditAction =
   | "admin.platform_settings_updated"
   | "admin.feature_flag_updated"
   | "admin.ai_kill_switch_toggled"
+  // P5 admin voice ops (brief §58): emergency controls and the voice GM check.
+  | "admin.voice_control"
+  | "admin.voice_margin_checked"
+  // Maintenance mode and platform banners (0161, docs/MAINTENANCE.md).
+  | "admin.maintenance_scheduled"
+  | "admin.maintenance_updated"
+  | "admin.maintenance_ended"
+  | "admin.maintenance_cancelled"
+  | "admin.maintenance_notice_queued"
+  | "admin.banner_created"
+  | "admin.banner_updated"
+  | "admin.banner_ended"
+  | "admin.banner_deleted"
   | "workspace.activated"
   | "workspace.settings_updated"
   | "workspace.delete_requested"
+  // Day-90 deletion after cancellation (billing/workspace-deletion.ts).
+  | "workspace.deletion_notice_sent"
+  | "workspace.deletion_started"
+  | "workspace.deleted_after_retention"
+  | "workspace.deletion_hold_set"
+  | "workspace.deletion_hold_released"
   | "service.created"
   | "service.updated"
   | "service.deleted"
@@ -241,6 +269,21 @@ export type AuditAction =
   | "affiliate.tax_info_changed"
   | "affiliate.identity_state_changed"
   | "affiliate.notification_prefs_changed"
+  // Affiliate audit 17: fraud review, tiers, payout approval, re-accrual.
+  | "affiliate.referral_held"
+  | "affiliate.referral_rejected"
+  | "affiliate.flag_reviewed"
+  | "affiliate.tier_changed"
+  | "affiliate.tiers_updated"
+  | "affiliate.settings_changed"
+  | "affiliate.payout_approved"
+  | "affiliate.payout_cancelled"
+  | "affiliate.commission_reaccrued"
+  // Owner decisions 2026-09-28: a partnership closed with a negative balance
+  // writes the deficit off (never invoiced).
+  | "affiliate.closed"
+  | "affiliate.commission_written_off"
+  | "affiliate.exported"
   // V4 expansion (§19-§28). Every meaningful write on the nine new surfaces.
   | "analytics.exported"
   | "follow_up.sender_changed"
@@ -298,6 +341,10 @@ export type AuditAction =
   | "quote.pdf_rendered"
   | "quote.expired"
   | "quote.nudged"
+  // Quote-to-cash in the agent (brief §72, §74): a paid quote stopped every
+  // sales chase; the owner changed what the AI may do.
+  | "quote.chasing_stopped"
+  | "commercial_authority.ai_updated"
   | "invoice.issued_automatically"
   | "invoice.reminded"
   | "invoice.marked_overdue"
@@ -312,7 +359,13 @@ export type AuditAction =
   | "number.activated"
   | "number.needs_attention"
   | "number.bundle_rejected"
-  | "number.release_scheduled";
+  | "number.release_scheduled"
+  | "admin.voice_kill_switch"
+  | "billing.voice_pack_refunded"
+  | "voice.inbound_answered"
+  // The daily voice.retention job: recordings and transcripts removed for a
+  // workspace's retention setting (jobs/handlers/voice-retention.ts).
+  | "voice.retention_enforced";
 
 /**
  * The full audit vocabulary.

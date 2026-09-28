@@ -22,7 +22,7 @@ import { chooseMethod, type ConversationStage, type MethodDecision, type Questio
 import { MOTIONS } from "../sales-library/motions.ts";
 import { archetypeFor } from "../sales-library/archetypes.ts";
 import { matchObjection, OBJECTIONS } from "../sales-library/objections.ts";
-import { pickResponsePattern, renderResponsePattern } from "../sales-library/objection-responses.ts";
+import { objectionGoalFor, pickResponsePattern, renderResponsePattern } from "../sales-library/objection-responses.ts";
 import {
   matchWorkspaceObjection,
   renderWorkspaceObjection,
@@ -300,11 +300,15 @@ export function buildStrategyBlock(input: StrategyInput): Strategy {
         );
         lines.push(`Response strategy: ${entry.responseStrategy.join(" ")}`);
       } else {
-        const pattern = pickResponsePattern(match.key, { seenBefore: input.objectionSeenBefore === true });
+        const repeat = input.objectionSeenBefore === true;
+        const pattern = pickResponsePattern(match.key, { seenBefore: repeat, text: input.latestMessage });
         objectionPattern = pattern.name;
+        // The next step is the motion's own (objection matrix pass): a
+        // direct-sale or trial lead is never steered back to a meeting.
+        const shape = renderResponsePattern(pattern, { goal: objectionGoalFor(motionDef.closeTarget), repeat });
         lines.push(`It may mean: ${entry.underlyingConcerns.join(" ")}`);
-        lines.push(renderResponsePattern(pattern));
-        objectionLines.push(`Objection: ${entry.label}. ${renderResponsePattern(pattern)}`);
+        lines.push(shape);
+        objectionLines.push(`Objection: ${entry.label}. ${shape}`);
         if (pattern.clarify) lines.push(`Clarifying question (the one question this turn): ${entry.clarifyingQuestion}`);
         lines.push(`Response strategy: ${entry.responseStrategy.join(" ")}`);
         if (entry.handover.when.length) {
@@ -594,6 +598,7 @@ const ASSIST_MOVE: Record<AssistReason, string | null> = {
   SEND_ORDER_DETAILS: "They are ready: a colleague will send the details to get started. Say so warmly; no link, no price.",
   ARRANGE_TIME: "A colleague will arrange a time: say so in one short clause.",
   MEETING_BRIEF: null,
+  QUOTE_REVIEW: "A colleague is checking their quote before it goes out: say so in one short clause, no figure, then carry on.",
 };
 
 /** ~4 characters per token (offer-card.ts, billing/tokens.ts). */

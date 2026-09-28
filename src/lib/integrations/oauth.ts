@@ -3,6 +3,10 @@ import { randomBytes, createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
 import type { ProviderType } from "./catalog";
+import { enqueue } from "@/lib/jobs/queue";
+import { OAuthRefreshError, RECONNECT_REQUIRED } from "./oauth-health";
+
+export { OAuthRefreshError } from "./oauth-health";
 
 /**
  * Shared OAuth2 authorization-code plumbing. Every workspace-connected
@@ -188,9 +192,69 @@ export async function exchangeCodeForToken(
   };
 }
 
+/**
+ * A refresh the provider refused for good (`invalid_grant`, revoked client):
+ * flips the connection to ACTION_REQUIRED, which is what shows the Reconnect
+ * card and the app banner, and tells the workspace once per connection per
+ * failure. Idempotent: an already-flagged connection is left as it is.
+ */
+export async function markReconnectRequired(
+  integrationId: string,
+  reason: string,
+  copy: { code: string; message: string } = RECONNECT_REQUIRED,
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("integrations")
+    .select("id, business_id, provider_type, status, last_error_code")
+    .eq("id", integrationId)
+    .maybeSingle();
+  if (!row || row.status === "DISCONNECTED") return;
+  if (row.status === "ACTION_REQUIRED" && row.last_error_code === copy.code) return;
+
+  const now = new Date().toISOString();
+  await admin
+    .from("integrations")
+    .update({
+      status: "ACTION_REQUIRED",
+      last_error_at: now,
+      last_error_code: copy.code,
+      last_error_message: copy.message,
+    })
+    .eq("id", integrationId);
+
+  try {
+    await enqueue(
+      "notification.send",
+      {
+        businessId: row.business_id,
+        type: "integration_failure",
+        severity: "error",
+        title: `Reconnect ${row.provider_type.replace(/_/g, " ")}`,
+        body: copy.message,
+        entityType: "integration",
+        entityId: integrationId,
+        linkUrl: "/app/settings?section=connections",
+      },
+      {
+        businessId: row.business_id,
+        idempotencyKey: `notification.send:integration_reconnect:${integrationId}:${copy.code}:${reason}:${now.slice(0, 10)}`,
+      },
+    );
+  } catch (error) {
+    // The status flip above is what matters; the banner shows it regardless.
+    console.error("[oauth] could not queue the reconnect notification", {
+      integrationId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function refreshAccessToken(
   config: OAuthConfig,
   refreshToken: string,
+  /** Pass the connection's id so a dead grant flips it to Reconnect. */
+  options: { integrationId?: string } = {},
 ): Promise<TokenResponse> {
   const body = new URLSearchParams({
     grant_type: "refresh_token",
@@ -210,12 +274,23 @@ export async function refreshAccessToken(
 
   const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
-  if (!response.ok) {
-    throw new Error(
+  // Zoho answers a dead refresh token with HTTP 200 and `{"error": ...}`, so
+  // an error field or a missing access token is a failure whatever the status.
+  const oauthError = typeof json.error === "string" ? json.error : null;
+  if (!response.ok || oauthError || typeof json.access_token !== "string" || !json.access_token) {
+    const failure = new OAuthRefreshError(
       typeof json.error_description === "string"
         ? json.error_description
-        : "Token refresh failed.",
+        : oauthError
+          ? `Token refresh failed (${oauthError}).`
+          : "Token refresh failed.",
+      response.ok ? 400 : response.status,
+      oauthError,
     );
+    if (options.integrationId && failure.needsReconnect) {
+      await markReconnectRequired(options.integrationId, failure.oauthError ?? String(failure.status));
+    }
+    throw failure;
   }
 
   return {
@@ -324,7 +399,8 @@ export async function getLiveAccessToken(
     return secret.access_token;
   }
 
-  const refreshed = await refreshAccessToken(config, secret.refresh_token);
+  // A dead grant flips the connection to Reconnect inside refreshAccessToken.
+  const refreshed = await refreshAccessToken(config, secret.refresh_token, { integrationId });
 
   await admin
     .from("integration_secrets")

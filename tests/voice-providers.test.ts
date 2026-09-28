@@ -220,8 +220,13 @@ test("server-only boundary: adapters import server-only, pure modules do not", (
     else assert.ok(!serverOnly, f);
   }
   for (const f of readdirSync("src/lib/voice").filter((x) => x.endsWith(".ts"))) {
-    if (["minutes.ts", "server-deps.ts", "webhook-inbox.ts"].includes(f)) {
+    if (["minutes.ts", "server-deps.ts", "webhook-inbox.ts", "sender-context.ts", "ui-queries.ts", "server-p3.ts", "text-to-call.ts"].includes(f)) {
       assert.match(readFileSync(`src/lib/voice/${f}`, "utf8"), /^import "server-only";/m, f);
+      continue;
+    }
+    // Server actions: a "use server" module, never imported for values by a client.
+    if (f === "actions.ts") {
+      assert.match(readFileSync(`src/lib/voice/${f}`, "utf8"), /^"use server";/m, f);
       continue;
     }
     assert.doesNotMatch(readFileSync(`src/lib/voice/${f}`, "utf8"), /^import "server-only"|from "[^"]*supabase/m, f);

@@ -1,0 +1,264 @@
+{
+  "uri": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search?publishedFrom=2026-09-20T00:00:00Z&publishedTo=2026-09-27T00:00:00Z&stages=tender&limit=3",
+  "version": "1.1",
+  "publishedDate": "2026-09-26T01:03:28+01:00",
+  "publisher": {
+    "name": "Cabinet Office",
+    "scheme": "GB-GOR",
+    "uid": "D2",
+    "uri": "https://www.gov.uk/government/organisations/cabinet-office"
+  },
+  "license": "http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "publicationPolicy": "https://www.gov.uk/government/publications/open-contracting",
+  "releases": [
+    {
+      "ocid": "ocds-b5fd17-cb5940c3-ff2a-402e-9271-11b280b4daf4",
+      "id": "e2d9dc88-6503-4899-a4b0-76f0a5c96ffe-915593",
+      "language": "en",
+      "date": "2026-09-26T01:03:28+01:00",
+      "tag": [
+        "tender"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "20260926010323-103298",
+        "title": "H&C1025 Sexual Health Services",
+        "description": "Sexual health needs in the East Riding are shaped by a combination of demographic, geographic, and health inequality factors. Sexual ill health is closely linked with deprivation, rurality, and limited access to services, contributing to avoidable harm and poorer outcomes for specific population groups. In the East Riding sexually transmitted infections, unplanned pregnancies, and associated complications continue to present a significant impact on individuals and the wider health systemThe Service will support delivery against the three nationally mandated Public Health Outcomes Framework (PH",
+        "datePublished": "2026-09-26T01:03:28+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "85000000",
+          "description": "Health and social work services"
+        },
+        "additionalClassifications": [
+          {
+            "scheme": "CPV",
+            "id": "85140000",
+            "description": "Miscellaneous health services"
+          },
+          {
+            "scheme": "CPV",
+            "id": "85141000",
+            "description": "Services provided by medical personnel"
+          }
+        ],
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "region": "Yorkshire and the Humber",
+                "countryName": "United Kingdom"
+              }
+            ]
+          }
+        ],
+        "minValue": {
+          "amount": 8000000,
+          "currency": "GBP"
+        },
+        "value": {
+          "amount": 8400000,
+          "currency": "GBP"
+        },
+        "procurementMethod": "open",
+        "procurementMethodDetails": "Open procedure",
+        "tenderPeriod": {
+          "endDate": "2026-10-26T12:00:00Z"
+        },
+        "contractPeriod": {
+          "startDate": "2027-04-01T00:00:00+01:00",
+          "endDate": "2034-03-31T23:59:59+01:00"
+        },
+        "suitability": {
+          "sme": false,
+          "vcse": false
+        },
+        "mainProcurementCategory": "services"
+      },
+      "parties": [
+        {
+          "id": "GB-CFS-188336",
+          "name": "East Riding of Yorkshire Council",
+          "identifier": {
+            "legalName": "East Riding of Yorkshire Council"
+          },
+          "address": {
+            "streetAddress": "County Hall, Cross Street,",
+            "locality": "Beverley",
+            "postalCode": "HU17 9BA",
+            "countryName": "ENG"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@eastriding.gov.uk"
+          },
+          "details": {
+            "url": "https://www.eastriding.gov.uk"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-CFS-188336",
+        "name": "East Riding of Yorkshire Council"
+      }
+    },
+    {
+      "ocid": "ocds-b5fd17-7733be28-4785-4fda-8af5-0f55e749bc3d",
+      "id": "0c760499-206b-4fd5-8e53-217eecfc55af-915580",
+      "language": "en",
+      "date": "2026-09-25T16:30:52+01:00",
+      "tag": [
+        "tender"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "26766482-064A-41D4-90F5-2284BE74BA5B",
+        "title": "Taxi and MPV (1-8 seats) Passenger Assistant - Taxi and MPV (1-8 seats) Passenger Assistant",
+        "description": "Vehicle type: 06 Seats required\r\nPassenger Assistant Required:  Yes \r\n \r\nProposed Taxi Route:\r\nFrom:  BN23 5TL, BN23 6TG\r\nTo:   Summerdown Secondary School \r\n\r\nFrequency: Monday to Friday \r\nDaily School Time: 08:50 - 14:50 \r\n This opportunity has been distributed on SProc.net",
+        "datePublished": "2026-09-25T16:30:52+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "60000000",
+          "description": "Transport services (excl. Waste transport)"
+        },
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "countryName": "United Kingdom"
+              }
+            ]
+          }
+        ],
+        "procurementMethod": "selective",
+        "procurementMethodDetails": "Restricted procedure (above threshold)",
+        "tenderPeriod": {
+          "endDate": "2026-09-30T10:00:00+01:00"
+        },
+        "contractPeriod": {
+          "startDate": "2026-10-07T01:00:00+01:00",
+          "endDate": "2029-07-31T23:59:59+01:00"
+        },
+        "suitability": {
+          "sme": true,
+          "vcse": false
+        },
+        "mainProcurementCategory": "services"
+      },
+      "parties": [
+        {
+          "id": "GB-CFS-334419",
+          "name": "East Sussex County Council",
+          "identifier": {
+            "legalName": "East Sussex County Council"
+          },
+          "address": {
+            "streetAddress": "County Hall, St Anne's Crescent",
+            "locality": "Lewes",
+            "postalCode": "BN7 1UE",
+            "countryName": "United Kingdom"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@eastsussex.gov.uk"
+          },
+          "details": {
+            "url": "http://www.eastsussex.gov.uk"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-CFS-334419",
+        "name": "East Sussex County Council"
+      }
+    },
+    {
+      "ocid": "ocds-b5fd17-62b85ea6-b5e0-43e9-ac1a-eef1ea5dd363",
+      "id": "44569a52-01d1-45ea-911b-0bb10826366b-915578",
+      "language": "en",
+      "date": "2026-09-25T16:26:48+01:00",
+      "tag": [
+        "tender"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "667CD463-2214-453F-8111-276675721B68",
+        "title": "Taxi and MPV (1-8 seats) Passenger Assistant - Taxi and MPV (1-8 seats) Passenger Assistant",
+        "description": "Vehicle type: Saloon\r\nPassenger Assistant Required: PA required\r\n\r\nProposed Taxi Route: \r\nFrom: TN22 3SP\r\nTo: Wallands Community Primary School, BN7 1PU\r\n\r\nFrequency: Monday to Friday\r\nDaily School Time: Mon-Fri 08:50-15:20\r\n\r\nComments for Operator: PA required, child locks on.\r\n\r\n This opportunity has been distributed on SProc.net",
+        "datePublished": "2026-09-25T16:26:48+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "60000000",
+          "description": "Transport services (excl. Waste transport)"
+        },
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "countryName": "United Kingdom"
+              }
+            ]
+          }
+        ],
+        "procurementMethod": "selective",
+        "procurementMethodDetails": "Restricted procedure (above threshold)",
+        "tenderPeriod": {
+          "endDate": "2026-09-29T11:00:00+01:00"
+        },
+        "contractPeriod": {
+          "startDate": "2026-10-02T01:00:00+01:00",
+          "endDate": "2029-07-31T23:59:59+01:00"
+        },
+        "suitability": {
+          "sme": true,
+          "vcse": false
+        },
+        "mainProcurementCategory": "services"
+      },
+      "parties": [
+        {
+          "id": "GB-CFS-334419",
+          "name": "East Sussex County Council",
+          "identifier": {
+            "legalName": "East Sussex County Council"
+          },
+          "address": {
+            "streetAddress": "County Hall, St Anne's Crescent",
+            "locality": "Lewes",
+            "postalCode": "BN7 1UE",
+            "countryName": "United Kingdom"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@eastsussex.gov.uk"
+          },
+          "details": {
+            "url": "http://www.eastsussex.gov.uk"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-CFS-334419",
+        "name": "East Sussex County Council"
+      }
+    }
+  ],
+  "links": {
+    "next": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search?publishedFrom=2026-09-20T00:00:00Z&publishedTo=2026-09-27T00:00:00Z&stages=tender&limit=3&cursor=cHVibGlzaGVkRnJvbT0yMDI2LTA5LTIwVDAwOjAwOjAwWnxwdWJsaXNoZWRUbz0yMDI2LTA5LTI3VDAwOjAwOjAwWnxzdGFnZXM9dGVuZGVyfGxpbWl0PTN8bmV4dEN1cnNvcj03ODQ2ODM="
+  }
+}

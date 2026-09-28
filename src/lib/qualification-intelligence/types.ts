@@ -148,6 +148,8 @@ export const BEHAVIOURAL_SIGNAL_TYPES = [
   "REPEAT_SUBMISSION",
   "FAST_REPLY",
   "BOOKING_LINK_OPENED",
+  /** The lead opened their quote 3+ times (quotes/follow-up.ts): HIGH buying intent. Migration 0158. */
+  "QUOTE_VIEWED_REPEATEDLY",
 ] as const;
 
 /**
@@ -230,6 +232,7 @@ export const SIGNAL_TYPE_CATEGORY: Record<SignalType, SignalCategory> = {
   REPEAT_SUBMISSION: "BEHAVIOURAL",
   FAST_REPLY: "BEHAVIOURAL",
   BOOKING_LINK_OPENED: "BEHAVIOURAL",
+  QUOTE_VIEWED_REPEATEDLY: "BEHAVIOURAL",
   FUNDING: "CONTEXT",
   HIRING: "CONTEXT",
   JOB_CHANGE: "CONTEXT",

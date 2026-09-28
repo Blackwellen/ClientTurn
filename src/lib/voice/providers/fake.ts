@@ -223,6 +223,13 @@ export class FakeNumberProvider implements NumberProvider {
     b.failureReason = failureReason;
   }
 
+  /** A deterministic fake token per subaccount (voice P3: stored sealed, never real). */
+  async subaccountAuthToken(accountSid: string) {
+    this.log.push({ method: "subaccountAuthToken", arg: accountSid });
+    this.faults.check("subaccountAuthToken");
+    return `fake-token-${accountSid.slice(-6)}`;
+  }
+
   async createSubaccount({ friendlyName }: { friendlyName: string }) {
     this.log.push({ method: "createSubaccount", arg: friendlyName });
     this.faults.check("createSubaccount");

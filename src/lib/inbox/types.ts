@@ -188,6 +188,9 @@ export function parseView(value: string | undefined): InboxView {
 }
 
 export function channelLabel(channel: string): string {
+  // AI voice calls (P2) appear in timelines as "Call"; voice is not an inbox
+  // rail tab, so it has no CHANNEL_DEFINITIONS entry.
+  if (channel === "voice") return "Call";
   return CHANNEL_DEFINITIONS[channel as InboxChannel]?.label ?? channel;
 }
 

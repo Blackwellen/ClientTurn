@@ -44,6 +44,13 @@ export const SETTINGS_SECTIONS = [
     label: "Quotes & invoices",
     description: "Catalogue, VAT, terms and payment",
   },
+  {
+    // AI voice calling (P2): identity, number, agent, hours, minutes. A
+    // Settings section, not a new destination (V3).
+    id: "voice",
+    label: "Voice",
+    description: "AI calls, number and minutes",
+  },
   { id: "team", label: "Team", description: "Manage your team" },
   {
     id: "developer",
@@ -387,6 +394,25 @@ export type BillingView = {
   smsSegmentAllowance: number;
   /** A downgrade scheduled for the period end, if any. */
   pendingPlanChange: { plan: string; effectiveAt: string } | null;
+  /** What the workspace holds beyond its plan's count limits (after a downgrade). */
+  overLimit: {
+    key: string;
+    label: string;
+    used: number;
+    limit: number;
+    reduceBy: number;
+    action: string;
+    blocked: string;
+    href: string;
+  }[];
+  /** Post-cancellation timeline and the retention policy (billing/cancellation.ts). */
+  retention: {
+    phase: "active" | "ending" | "read_only" | "deletion_due";
+    endsAt: string | null;
+    readOnlyUntil: string | null;
+    numberReleaseAt: string | null;
+    policy: string;
+  };
   /** Display price for the current plan, in GBP. Null for trial/enterprise. */
   monthlyPrice: number | null;
   /** Display annual price, in GBP. Null for trial/enterprise. */

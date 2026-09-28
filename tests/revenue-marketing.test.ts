@@ -259,6 +259,15 @@ describe("every mock UI is labelled as an illustrative example", () => {
     assert.match(read(`${REVENUE_DIR}/data.ts`), /ILLUSTRATIVE_LABEL = "Illustrative example"/);
   });
 
+  test("the live call opens with the disclosure caption and shows the call events", () => {
+    const data = read(`${REVENUE_DIR}/data.ts`);
+    // The first caption is the locked opener; the notice is a chip, not a caption.
+    assert.match(data, /CALL_CAPTIONS[^=]*= \[\s*\{ speaker: "agent", text: EXAMPLE_OPENER/);
+    for (const label of ["Objection: price", "Meeting booked Tue 10:00"]) assert.ok(data.includes(label), label);
+    assert.match(data, /Quote \$\{EXAMPLE\.quoteNumber\} sent/);
+    assert.match(read(`${REVENUE_DIR}/live-call.tsx`), /Recording notice given/);
+  });
+
   test("the live call, timeline, quote sequence, ROI card and journey carry it", () => {
     const liveCall = read(`${REVENUE_DIR}/live-call.tsx`);
     assert.match(liveCall, /<IllustrativeTag>\{ILLUSTRATIVE_LABEL\}<\/IllustrativeTag>/);
@@ -289,14 +298,17 @@ describe("reduced-motion paths exist for every animation", () => {
     const css = read(`${REVENUE_DIR}/revenue.css`);
     const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     assert.ok(block.length > 0, "no reduced-motion block");
-    for (const selector of [".rv-wave span", ".rv-live-dot", ".rv-stagger", ".rv-journey-card", ".rv-ring-fill"]) {
+    for (const selector of [".rv-party-wave i", ".rv-live-dot", ".rv-stagger", ".rv-journey-card", ".rv-ring-fill"]) {
       assert.ok(block.includes(selector), `reduced motion does not cover ${selector}`);
     }
   });
 
   test("the client islands check the preference", () => {
     assert.match(read(`${REVENUE_DIR}/journey.tsx`), /useReducedMotion\(\)/);
-    assert.match(read(`${REVENUE_DIR}/live-call.tsx`), /prefers-reduced-motion: reduce/);
+    const liveCall = read(`${REVENUE_DIR}/live-call.tsx`);
+    assert.match(liveCall, /useReducedMotion\(\)/);
+    // Captions cycle only while on screen, and never under reduced motion.
+    assert.match(liveCall, /if \(reduced \|\| !onScreen\) return;/);
   });
 
   test("nothing is hidden before JavaScript has armed the block", () => {

@@ -141,6 +141,28 @@ async function readSource(payload: Payload, businessId: string): Promise<SourceF
       const row = data as { status: string; updated_at: string } | null;
       return { at: row?.updated_at ?? null, current: row?.status === "no_show" };
     }
+    case "QUOTE_EXPIRED": {
+      // Current while the quote is still EXPIRED and is still the
+      // opportunity's latest quote (a re-issued one supersedes it).
+      const { data, error } = await db()
+        .from("quotes")
+        .select("id, status, updated_at, opportunity_id")
+        .eq("business_id", businessId)
+        .eq("id", payload.sourceId)
+        .maybeSingle();
+      if (error) throw new Error(`reengage: quote read failed: ${error.message}`);
+      const row = data as { id: string; status: string; updated_at: string; opportunity_id: string } | null;
+      if (!row) return { at: null, current: false };
+      const { data: newer, error: newerError } = await db()
+        .from("quotes")
+        .select("id")
+        .eq("business_id", businessId)
+        .eq("opportunity_id", row.opportunity_id)
+        .gt("created_at", row.updated_at)
+        .limit(1);
+      if (newerError) throw new Error(`reengage: quote read failed: ${newerError.message}`);
+      return { at: row.updated_at, current: row.status === "EXPIRED" && (newer ?? []).length === 0, resumeAt: row.updated_at };
+    }
     case "WIN_BACK": {
       const { data, error } = await db()
         .from("opportunities")
@@ -473,7 +495,7 @@ export async function handleReengageTrigger(job: ClaimedJob): Promise<void> {
 
   // ---- 5a. check-ins: the conversation agent composes -----------------
   if (
-    (payload.trigger === "NOT_NOW_RESUME" || payload.trigger === "DEADLINE_PASSED") &&
+    (payload.trigger === "NOT_NOW_RESUME" || payload.trigger === "DEADLINE_PASSED" || payload.trigger === "QUOTE_EXPIRED") &&
     agentCanCompose(business, channel)
   ) {
     const conversationId = await conversationFor(businessId, lead.id, channel);
@@ -495,7 +517,9 @@ export async function handleReengageTrigger(job: ClaimedJob): Promise<void> {
         reengagement: payload.trigger,
         sourceId: payload.sourceId,
         reengagementDate:
-          payload.trigger === "NOT_NOW_RESUME" ? (source.resumeAt ?? null) : (source.statedDate?.toISOString() ?? null),
+          payload.trigger === "NOT_NOW_RESUME" || payload.trigger === "QUOTE_EXPIRED"
+            ? (source.resumeAt ?? null)
+            : (source.statedDate?.toISOString() ?? null),
       },
       idempotencyKey: key,
     });

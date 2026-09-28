@@ -102,6 +102,15 @@ export async function runReadOrWriteTool(
         throw new Error("A lead needs an email address or a phone number.");
       }
 
+      if (result.outcome === "REJECTED" && (result.reasons.includes("plan_limit") || result.reasons.includes("subscription_inactive"))) {
+        // The plan's lead cap (billing/lead-cap.ts): nothing was stored.
+        throw new Error(
+          result.reasons.includes("plan_limit")
+            ? "This workspace has reached its plan's new-lead limit for this billing period, so the lead was not added."
+            : "This workspace's subscription is not active, so the lead was not added.",
+        );
+      }
+
       if (result.outcome === "REJECTED") {
         await recordAudit({
           businessId: auth.businessId,

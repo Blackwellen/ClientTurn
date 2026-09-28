@@ -516,6 +516,15 @@ export async function createManualLead(
   }
 
   if (ingested.outcome === "REJECTED") {
+    // The plan's lead cap (billing/lead-cap.ts), refused before anything was stored.
+    if (ingested.reasons.includes("plan_limit") || ingested.reasons.includes("subscription_inactive")) {
+      return {
+        status: "ERROR",
+        error: ingested.reasons.includes("plan_limit")
+          ? "You have reached your plan's new-lead limit for this billing period. Upgrade, or wait for the next period, to add more."
+          : "Your subscription is not active, so new leads cannot be added. Update billing to carry on.",
+      };
+    }
     return {
       status: "ERROR",
       error:

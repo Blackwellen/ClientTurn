@@ -25,7 +25,8 @@ import "server-only";
  *   - the voicemail_option shape for detection-only (we send hangup, so a
  *     voicemail is left by our own retry policy, not by Retell).
  *
- * Env: RETELL_API_KEY (the key with the webhook badge also verifies webhooks).
+ * Env: RETELL_SECRET_KEY (RETELL_API_KEY accepted as an alias); the same
+ * secret key verifies webhooks. RETELL_PUBLIC_KEY (browser web calls) is never used here.
  */
 
 import { buildCreatePhoneCallBody, mapRetellStatus, parseRetellWebhook, RETELL_API_BASE, toCallDetails, verifyRetellSignature } from "./retell-protocol.ts";
@@ -58,7 +59,7 @@ export type RetellOptions = {
 };
 
 export function retellConfigured(env: Record<string, string | undefined> = process.env): boolean {
-  return !!env.RETELL_API_KEY;
+  return !!(env.RETELL_SECRET_KEY || env.RETELL_API_KEY);
 }
 
 export function createRetellVoiceProvider(opts: RetellOptions = {}): VoiceProvider {
@@ -67,8 +68,8 @@ export function createRetellVoiceProvider(opts: RetellOptions = {}): VoiceProvid
   const doFetch: FetchLike = opts.fetch ?? (globalThis.fetch as unknown as FetchLike);
 
   function key(): string {
-    const k = opts.apiKey ?? env.RETELL_API_KEY;
-    if (!k) throw new ProviderNotConfigured("retell", ["RETELL_API_KEY"]);
+    const k = opts.apiKey ?? env.RETELL_SECRET_KEY ?? env.RETELL_API_KEY;
+    if (!k) throw new ProviderNotConfigured("retell", ["RETELL_SECRET_KEY"]);
     return k;
   }
 

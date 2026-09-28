@@ -7,7 +7,7 @@ import type { NumberProvider, TelephonyProvider, VoiceProvider } from "./types";
 /**
  * The live voice providers, or null for any that is not configured.
  *
- * With `RETELL_API_KEY` absent there is no VoiceProvider, and every voice
+ * With `RETELL_SECRET_KEY` absent there is no VoiceProvider, and every voice
  * path reports `integration-required` instead of dialling (runtime-core.ts).
  * With the Twilio account SID (AC...) and auth token absent there is no
  * number provisioning. Nothing here throws on a missing key: the adapters
@@ -47,7 +47,7 @@ export function voiceIntegrationStatus(): VoiceIntegrationStatus {
   const twilio = twilioVoiceConfigured();
   const agent = Boolean(serverEnv.retell.agentId);
   const webhookBase = Boolean(voiceWebhookBase());
-  if (!retell) missing.push("RETELL_API_KEY");
+  if (!retell) missing.push("RETELL_SECRET_KEY");
   if (!agent) missing.push("RETELL_AGENT_ID");
   if (!twilio) missing.push("TWILIO_ACCOUNT_SID (AC...) and TWILIO_AUTH_TOKEN");
   if (!webhookBase) missing.push("VOICE_WEBHOOK_BASE_URL (a public https origin)");

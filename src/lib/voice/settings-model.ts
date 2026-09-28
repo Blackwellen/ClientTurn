@@ -17,6 +17,7 @@
  * opener.ts `validateEditableSuffix`.
  */
 
+import { voiceProfileSchema } from "./voice-profile.ts";
 import { z } from "zod";
 import { callingHoursConfigSchema } from "./calling-hours.ts";
 import { identityReadiness, type IdentityProblem } from "./identity.ts";
@@ -117,6 +118,8 @@ export const voiceSettingsUpdateSchema = z
       })
       .optional(),
     callingHours: callingHoursConfigSchema.optional(),
+    /** How the assistant sounds (voice-profile.ts); a premium voice needs premiumAccepted. */
+    voiceProfile: voiceProfileSchema.optional(),
     routes: z
       .array(
         z.object({
@@ -156,7 +159,7 @@ export function sectionsTouched(update: VoiceSettingsUpdate): VoiceSettingsSecti
   if (update.voiceEnabled !== undefined || update.concurrency !== undefined) out.add("overview");
   if (update.identity) out.add("identity");
   if (update.regulatory) out.add("number");
-  if (update.agent) out.add("agent");
+  if (update.agent || update.voiceProfile) out.add("agent");
   if (update.callingHours) out.add("hours");
   if (update.routes) out.add("routes");
   if (update.transfer) out.add("transfer");

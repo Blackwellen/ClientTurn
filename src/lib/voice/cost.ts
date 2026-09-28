@@ -27,7 +27,7 @@ export const USD_TO_GBP = 0.7549;
 
 export type CostLine = {
   provider: "retell" | "twilio";
-  metric: "VOICE_AI_MINUTE" | "TELEPHONY_MINUTE" | "RECORDING_STORAGE";
+  metric: "VOICE_AI_MINUTE" | "TELEPHONY_MINUTE" | "RECORDING_STORAGE" | "PREMIUM_VOICE_MINUTE";
   quantity: number;
   unitCostUsd: number;
   totalUsd: number;
@@ -48,6 +48,8 @@ export function estimateCallCost(input: {
   toE164: string | null;
   recording: boolean;
   destinationClass?: DestinationClass | null;
+  /** Premium voice (voice-profile.ts): the TTS $/min above the stack A rate. */
+  premiumTtsExtraUsdPerMin?: number;
 }): CostLine[] {
   const minutes = minutesOf(input.durationSec);
   if (minutes <= 0) return [];
@@ -84,6 +86,18 @@ export function estimateCallCost(input: {
       idempotencyKey: `voice:cost:${input.callId}:recording:estimate`,
     });
   }
+  const premium = input.premiumTtsExtraUsdPerMin ?? 0;
+  if (premium > 0) {
+    lines.push({
+      provider: "retell",
+      metric: "PREMIUM_VOICE_MINUTE",
+      quantity: round6(minutes),
+      unitCostUsd: round6(premium),
+      totalUsd: round6(minutes * premium),
+      estimated: true,
+      idempotencyKey: `voice:cost:${input.callId}:premium:estimate`,
+    });
+  }
   return lines;
 }
 
@@ -113,12 +127,14 @@ export function callCostLines(input: {
   recording: boolean;
   providerCostCents: number | null;
   destinationClass?: DestinationClass | null;
+  premiumTtsExtraUsdPerMin?: number;
 }): CostLine[] {
   const durationSec = input.durationSec ?? 0;
   if (input.providerCostCents != null && Number.isFinite(input.providerCostCents) && input.providerCostCents >= 0) {
     return [providerCallCost({ callId: input.callId, durationSec, costCents: input.providerCostCents })];
   }
-  return estimateCallCost({ callId: input.callId, durationSec, toE164: input.toE164, recording: input.recording, destinationClass: input.destinationClass });
+  // The provider's own figure already includes a premium voice; the estimate adds it.
+  return estimateCallCost({ callId: input.callId, durationSec, toE164: input.toE164, recording: input.recording, destinationClass: input.destinationClass, premiumTtsExtraUsdPerMin: input.premiumTtsExtraUsdPerMin });
 }
 
 export function totalGbp(lines: readonly CostLine[]): number {

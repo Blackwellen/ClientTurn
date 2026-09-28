@@ -54,6 +54,7 @@
  */
 
 import type Stripe from "stripe";
+import { selectPlanItem } from "./subscription-items.ts";
 
 export type SelfServePlanId = "starter" | "growth" | "pro";
 export type Interval = "month" | "year";
@@ -117,9 +118,32 @@ export function endTrialIdempotencyKey(businessId: string, nonce: string): strin
   return `end-trial:${businessId}:${nonce}`;
 }
 
-/** The interval the conversion is priced on: the subscription's own. */
-export function intervalOf(subscription: Pick<Stripe.Subscription, "items">): Interval {
-  return subscription.items.data[0]?.price?.recurring?.interval === "year" ? "year" : "month";
+/**
+ * The subscription's PLAN item, by price, never by position: a voice item
+ * (the Pro £100 item or the £11.99 number) can come first (subscription-items.ts).
+ * A price is a plan price when `priceIdFor` gives it for some plan and interval.
+ */
+export function trialPlanItem<T extends Stripe.SubscriptionItem>(
+  items: readonly T[],
+  priceIdFor?: (plan: SelfServePlanId, interval: Interval) => string | null,
+): T | null {
+  const planFor = (priceId: string | null | undefined): string => {
+    if (!priceId || !priceIdFor) return "trial";
+    for (const plan of ["starter", "growth", "pro"] as const) {
+      for (const interval of ["month", "year"] as const) if (priceIdFor(plan, interval) === priceId) return plan;
+    }
+    return "trial";
+  };
+  return selectPlanItem(items, planFor);
+}
+
+/** The interval the conversion is priced on: the plan item's own. */
+export function intervalOf(
+  subscription: Pick<Stripe.Subscription, "items">,
+  priceIdFor?: (plan: SelfServePlanId, interval: Interval) => string | null,
+): Interval {
+  const item = trialPlanItem(subscription.items.data, priceIdFor);
+  return item?.price?.recurring?.interval === "year" ? "year" : "month";
 }
 
 /**
@@ -232,9 +256,9 @@ export async function endTrialNow(input: EndTrialInput): Promise<EndTrialOutcome
     };
   }
 
-  const item = subscription.items.data[0];
+  const item = trialPlanItem(subscription.items.data, input.priceIdFor);
   if (!item) return { ok: false, kind: "failed", message: "The subscription has no plan to start." };
-  const interval = intervalOf(subscription);
+  const interval = intervalOf(subscription, input.priceIdFor);
   const targetPriceId = input.priceIdFor(input.targetPlan, interval);
   if (!targetPriceId) {
     return {
@@ -342,9 +366,9 @@ export async function previewEndTrialCharge(input: {
   try {
     const subscription = await input.stripe.subscriptions.retrieve(input.subscriptionId);
     if (subscription.status !== "trialing") return null;
-    const item = subscription.items.data[0];
+    const item = trialPlanItem(subscription.items.data, input.priceIdFor);
     if (!item) return null;
-    const targetPriceId = input.priceIdFor(input.targetPlan, intervalOf(subscription));
+    const targetPriceId = input.priceIdFor(input.targetPlan, intervalOf(subscription, input.priceIdFor));
     if (!targetPriceId) return null;
     const preview = await input.stripe.invoices.createPreview({
       subscription: subscription.id,

@@ -28,6 +28,7 @@ import { sendConnectTransfer } from "./stripe-connect";
  * presses the button.
  */
 
+/** The deployment half of the switch. The admin setting is the other half. */
 export function autoDispatchEnabled(): boolean {
   return process.env.AFFILIATE_AUTO_PAYOUT === "true";
 }
@@ -183,23 +184,41 @@ export async function dispatchApprovedPayouts(limit = 100): Promise<{
 /**
  * Puts a failed payout back in the queue.
  *
- * The commissions were already released to APPROVED when it failed, so this
- * only moves the payout row itself back — it does not re-claim anything, and a
- * re-raised payout picks the balance up on the next run. Kept explicit so a
- * retry is always somebody's decision.
+ * Its commissions were released when it failed, so reopening the row alone
+ * would send its old amount while the same commissions sat in the balance
+ * again, to be paid a second time by the next run (the bug this replaces).
+ * Instead the currently available commissions are re-claimed into it, its
+ * amount is set to what was claimed, and it goes back to DRAFT for approval.
+ * If nothing is claimable it is cancelled.
  */
 export async function retryFailedPayout(payoutId: string): Promise<boolean> {
-  const { data } = await createAdminClient()
+  const db = createAdminClient();
+  const { data: payout } = await db
     .from("affiliate_payouts")
-    .update({
-      status: "APPROVED",
-      failure_code: null,
-      failure_reason: null,
-    })
+    .update({ status: "DRAFT", failure_code: null, failure_reason: null, approved_at: null, approved_by: null })
     .eq("id", payoutId)
     .eq("status", "FAILED")
-    .select("id")
+    .select("id, affiliate_id")
     .maybeSingle();
+  if (!payout) return false;
 
-  return Boolean(data);
+  const { data: claimed } = await db.rpc("claim_commissions_for_payout", {
+    p_affiliate_id: payout.affiliate_id,
+    p_payout_id: payout.id,
+  });
+  const row = Array.isArray(claimed) ? claimed[0] : claimed;
+  const amount = Number(row?.claimed_minor ?? 0);
+  const count = Number(row?.claimed_count ?? 0);
+
+  if (count === 0 || amount <= 0) {
+    await db.from("affiliate_commissions").update({ status: "APPROVED", payout_id: null }).eq("payout_id", payout.id);
+    await db.from("affiliate_payouts").update({ status: "CANCELLED" }).eq("id", payout.id);
+    return false;
+  }
+
+  await db
+    .from("affiliate_payouts")
+    .update({ amount_minor: amount, gross_amount_minor: amount, commission_count: count })
+    .eq("id", payout.id);
+  return true;
 }

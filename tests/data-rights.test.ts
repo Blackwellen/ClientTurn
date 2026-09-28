@@ -100,12 +100,27 @@ const DATA_RIGHTS_SQL = stripComments(
   ),
 );
 
+/**
+ * The LATEST definition of a function across every migration, and the file
+ * that holds it. A later migration that replaces a data-rights function (0163
+ * replaced data_rights_delete to add the quote and invoice records to its
+ * retained list) is what runs, so it is what the rules are checked against.
+ */
+function latestDefinition(name: string): { file: string; sql: string; body: string } {
+  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort().reverse();
+  for (const file of files) {
+    const sql = stripComments(readFileSync(path.join(MIGRATIONS, file), "utf8"));
+    const start = sql.lastIndexOf(`create or replace function public.${name}(`);
+    if (start < 0) continue;
+    const open = sql.indexOf("$$", start);
+    const close = sql.indexOf("$$", open + 2);
+    return { file, sql, body: sql.slice(open + 2, close) };
+  }
+  assert.fail(`${name} is not defined in any migration`);
+}
+
 function functionBody(name: string): string {
-  const start = DATA_RIGHTS_SQL.indexOf(`create or replace function public.${name}(`);
-  assert.ok(start >= 0, `${name} is not defined in the data-rights migration`);
-  const open = DATA_RIGHTS_SQL.indexOf("$$", start);
-  const close = DATA_RIGHTS_SQL.indexOf("$$", open + 2);
-  return DATA_RIGHTS_SQL.slice(open + 2, close);
+  return latestDefinition(name).body;
 }
 
 function retainedList(body: string): string[] {
@@ -205,6 +220,24 @@ describe("the SQL executor does what the rules say", () => {
     assert.deepEqual(retainedList(DELETE).sort(), retainedOnDelete().sort());
   });
 
+  test("the delete checked is the latest definition, which keeps signed quotes and issued invoices", () => {
+    const latest = latestDefinition("data_rights_delete");
+    assert.notEqual(latest.file, "0124_data_rights.sql", "a later migration replaces data_rights_delete");
+    for (const table of ["quotes", "quote_revisions", "quote_signatures", "quote_acceptance_events", "quote_access_tokens", "invoices"]) {
+      assert.ok(retainedList(DELETE).includes(table), `${table} is kept after deletion`);
+    }
+    // The replacement is the 0124 function with only the list changed.
+    assert.match(DELETE, /v_result := public\.data_rights_scrub\(p_business_id, p_subject_type, p_subject_id\);/);
+    assert.match(DELETE, /delete from public\.leads l where l\.id = v_lead_id and l\.business_id = p_business_id;/);
+    assert.match(DELETE, /insert into public\.data_rights_actions/);
+  });
+
+  test("the quote and invoice anonymise triggers clear what the rules say they redact", () => {
+    for (const table of ["quotes", "quote_revisions", "quote_signatures", "quote_acceptance_events", "quote_access_tokens", "invoices"]) {
+      assert.match(SCRUB, new RegExp(`update public\\.${table}\\b`), table);
+    }
+  });
+
   test("every table a delete removes is removed by cascade, by the scrub, or explicitly", () => {
     const removedExplicitly = new Set(
       [...DELETE.matchAll(/delete from public\.(\w+)/g)].map((m) => m[1]),
@@ -221,8 +254,11 @@ describe("the SQL executor does what the rules say", () => {
 
   test("the executors are service-role only and record their own action", () => {
     for (const fn of ["data_rights_anonymise", "data_rights_delete", "data_rights_suppress"]) {
-      assert.match(DATA_RIGHTS_SQL, new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\)\\s*from public, anon, authenticated`));
-      assert.match(DATA_RIGHTS_SQL, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\)\\s*to service_role`));
+      // Checked in the migration holding the latest definition: a
+      // replacement must re-state its own grants.
+      const { sql } = latestDefinition(fn);
+      assert.match(sql, new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\)\\s*from public, anon, authenticated`));
+      assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\)\\s*to service_role`));
       assert.match(functionBody(fn), /insert into public\.data_rights_actions/);
     }
     // The scrub itself has no grant at all: only the executors may call it.

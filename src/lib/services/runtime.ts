@@ -3,6 +3,7 @@ import { z } from "zod";
 import { recordAudit, recordUsage } from "@/lib/audit";
 import type { UsageFeature, UsageMetric } from "@/lib/billing/usage-metrics";
 import { serviceOperation, type RegisteredOperation } from "./registry";
+import { maintenanceWriteBlock } from "@/lib/maintenance/state";
 import {
   callerAllowed,
   isWrite,
@@ -172,6 +173,20 @@ export async function runOperation<T = unknown>(
     );
   }
 
+  /* --------------------------------------------------- 1b. maintenance */
+
+  // Read-only maintenance (docs/MAINTENANCE.md): a person's change, from any
+  // surface they drive (UI, Copilot, MCP, API), is refused while any
+  // maintenance level is active. The worker's own work is not a person's
+  // change -- SYSTEM jobs and the conversation AGENT still process the leads,
+  // replies and webhooks that arrive during the window -- so it proceeds.
+  // Checked before the handler, so a refused write never touches the domain.
+  // UNAVAILABLE is retryable, which is the truth: try again after the window.
+  if (isWrite(declaration.risk) && context.caller !== "SYSTEM" && context.caller !== "AGENT") {
+    const paused = await maintenanceWriteBlock();
+    if (paused) return fail(name, context, "UNAVAILABLE", paused);
+  }
+
   const handler = HANDLERS.get(name);
   if (!handler) {
     return fail(name, context, "UNAVAILABLE", "That action is not available yet.");
@@ -249,7 +264,7 @@ export async function runOperation<T = unknown>(
     ? await recordAudit({
         businessId: context.businessId,
         actorUserId: context.userId,
-        actorType: context.caller === "SYSTEM" ? "system" : "user",
+        actorType: context.caller === "SYSTEM" || context.caller === "AGENT" || context.caller === "AUTOMATION" ? "system" : "user",
         action: declaration.name,
         entityType: declaration.entityType ?? undefined,
         entityId: outcome.entityId ?? null,
@@ -258,6 +273,7 @@ export async function runOperation<T = unknown>(
           risk: declaration.risk,
           correlation_id: context.correlationId,
           confirmed: Boolean(context.confirmed),
+          confirmation_source: context.confirmed ? (context.confirmationSource ?? "person") : null,
           before: outcome.before ?? null,
           after: outcome.after ?? null,
         },
@@ -324,7 +340,7 @@ async function auditDenial(
   await recordAudit({
     businessId: context.businessId,
     actorUserId: context.userId,
-    actorType: context.caller === "SYSTEM" ? "system" : "user",
+    actorType: context.caller === "SYSTEM" || context.caller === "AGENT" || context.caller === "AUTOMATION" ? "system" : "user",
     action: `${declaration.name}.denied`,
     entityType: declaration.entityType ?? undefined,
     metadata: {

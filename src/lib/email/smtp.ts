@@ -11,6 +11,7 @@ import {
 import { htmlToPlainText, sanitizeEmailHtml } from "./rich-text";
 import { loadEmailCredentials } from "./store";
 import { oneClickUnsubscribeUrl } from "./unsubscribe-links";
+import type { FailureScope } from "./bounce";
 import { resolveFromAddress, type SenderIdentityInput } from "./from-address";
 
 /**
@@ -110,7 +111,14 @@ export type EmailSendRequest = {
 
 export type EmailSendResult =
   | { ok: true; providerMessageId: string; provider: string }
-  | { ok: false; errorCode: string; errorMessage: string; permanent: boolean };
+  | {
+      ok: false;
+      errorCode: string;
+      errorMessage: string;
+      permanent: boolean;
+      /** Who the failure is about. See `./bounce.ts`. */
+      scope?: FailureScope;
+    };
 
 /**
  * Every message goes out as both halves of a `multipart/alternative`: the
@@ -181,6 +189,7 @@ export async function sendEmail(
       errorCode: "invalid_recipient",
       errorMessage: "That is not a usable email address.",
       permanent: true,
+      scope: "recipient",
     };
   }
 
@@ -205,7 +214,9 @@ export async function sendEmail(
             // The visible footer link above stays on the page.
             "List-Unsubscribe": `<${oneClickUnsubscribeUrl(request.unsubscribeUrl)}>`,
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-            "Auto-Submitted": "auto-generated",
+            // No `Auto-Submitted` (RFC 3834): that marks machine notices such
+            // as vacation replies. On 1:1-style campaign mail it hurts
+            // placement and makes some clients suppress replies (audit 15).
           }
         : undefined,
     });
@@ -222,6 +233,7 @@ export async function sendEmail(
       errorCode: described.code,
       errorMessage: described.message,
       permanent: described.permanent,
+      scope: described.scope,
     };
   }
 }

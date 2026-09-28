@@ -180,6 +180,26 @@ export const PERSONAL_DATA_RULES: readonly PersonalDataRule[] = [
     delete: "REMOVE",
     label: "checkout links sent to the person and whether they were paid",
   },
+  /*
+   * One actor at a time on a lead (0160, commercial/locks.ts). Ids, action
+   * kinds, hashed keys and times only; removed on anonymise by the
+   * leads_commercial_locks_clear_on_anonymise trigger and on delete by the
+   * cascade from leads.
+   */
+  {
+    table: "lead_commercial_leases",
+    link: "lead_id",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "who was working on the person's deal a moment ago (the assistant, a colleague or a call)",
+  },
+  {
+    table: "commercial_action_claims",
+    link: "lead_id",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "a record that each quote, send or discount for the person was made once",
+  },
   {
     table: "checkout_payments",
     link: "lead_id",
@@ -223,6 +243,26 @@ export const PERSONAL_DATA_RULES: readonly PersonalDataRule[] = [
     anonymise: "REDACT",
     delete: "REMOVE",
     label: "objections the person raised (their words are removed; the objection type stays)",
+  },
+  {
+    // Voice P3 (0162): what the AI voice agent did on each call. The result
+    // (a fact, a summary, an excerpt) is cleared on anonymise by
+    // leads_voice_tool_calls_clear_on_anonymise; removed on delete by cascade.
+    table: "voice_tool_calls",
+    link: "lead_id",
+    anonymise: "REDACT",
+    delete: "REMOVE",
+    label: "what the AI assistant did on calls with the person (what they said is removed; the action and its outcome stay)",
+  },
+  {
+    // Automation rules (0163): which rule ran for the person, and what each
+    // action did. Ids, codes and a short reason; removed on anonymise by
+    // leads_automation_rule_runs_clear_on_anonymise, on delete by cascade.
+    table: "automation_rule_runs",
+    link: "lead_id",
+    anonymise: "REMOVE",
+    delete: "REMOVE",
+    label: "which of your automation rules ran for the person, and what they did",
   },
 
   /*
@@ -660,6 +700,64 @@ export const INDIRECT_RULES: readonly PersonalDataRule[] = [
     delete: "RETAIN",
     label: "metered usage",
     retainedBecause: "Append-only billing ledger with ids and quantities.",
+  },
+  /*
+   * Quotes and invoices (0153, 0154) belong to the opportunity, which is the
+   * retained, pseudonymous sales record after an erasure. A signed quote and
+   * an issued invoice are kept with it: the signature is evidence of a
+   * contract, and an issued invoice is an accounting record that must be kept
+   * (HMRC, six years; UK GDPR Art 17(3)(b)). The person's values are cleared
+   * by quote_clear_on_anonymise and invoice_clear_on_anonymise, which fire in
+   * the scrub's transaction. Lines, approvals, payments, credit notes and
+   * events hold ids, amounts and statuses only, and need no rule.
+   */
+  {
+    table: "quotes",
+    link: "opportunity_id (opportunities.lead_id)",
+    anonymise: "REDACT",
+    delete: "RETAIN",
+    label: "quote titles (reset to the quote number)",
+    retainedBecause: "A quote stays with the pseudonymous deal it priced; its title, which may name the person, is reset to the quote number.",
+  },
+  {
+    table: "quote_revisions",
+    link: "quote_id (quotes.opportunity_id)",
+    anonymise: "REDACT",
+    delete: "RETAIN",
+    label: "the buyer's name, email and address on each quote version, internal notes and AI rationale",
+    retainedBecause: "A sent version is the frozen document a signature refers to; it stays with the buyer's personal details removed.",
+  },
+  {
+    table: "quote_signatures",
+    link: "quote_id (quotes.opportunity_id)",
+    anonymise: "REDACT",
+    delete: "RETAIN",
+    label: "the signer's name, email, title, signature mark, IP address and browser",
+    retainedBecause: "Evidence that a contract was signed: the document hash and time stay; who signed and from where are removed.",
+  },
+  {
+    table: "quote_acceptance_events",
+    link: "quote_id (quotes.opportunity_id)",
+    anonymise: "REDACT",
+    delete: "RETAIN",
+    label: "the email, IP address, browser and decline reason recorded when the person accepted or declined",
+    retainedBecause: "The accept or decline of a document stays as a dated fact; the personal values recorded with it are removed.",
+  },
+  {
+    table: "quote_access_tokens",
+    link: "quote_id (quotes.opportunity_id)",
+    anonymise: "STOP",
+    delete: "RETAIN",
+    label: "the private links to the person's quotes (revoked)",
+    retainedBecause: "Only a hash of each link is stored; revoked links stay so a replayed link is refused rather than unknown.",
+  },
+  {
+    table: "invoices",
+    link: "opportunity_id (opportunities.lead_id)",
+    anonymise: "REDACT",
+    delete: "RETAIN",
+    label: "the buyer's contact email and phone on invoices",
+    retainedBecause: "An issued invoice is an accounting record that must be kept (HMRC, six years). The contact email and phone are removed; the name and address a VAT invoice must show stay.",
   },
   {
     table: "voice_call_transcripts",

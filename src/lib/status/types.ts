@@ -64,8 +64,25 @@ export type JobSummary = {
   averageProcessingSeconds: number | null;
 };
 
+/**
+ * Planned maintenance, as the public may see it (0161, docs/MAINTENANCE.md):
+ * the window in force, or the next one within 30 days. Public fields only.
+ */
+export type StatusMaintenance = {
+  phase: "ACTIVE" | "SCHEDULED";
+  /** READ_ONLY | APP_OFFLINE | SITE_OFFLINE */
+  level: string;
+  levelLabel: string;
+  startsAt: string;
+  endsAt: string | null;
+  expectedBackAt: string | null;
+  message: string | null;
+};
+
 export type StatusSnapshot = {
   overall: ServiceStatus;
+  /** Planned maintenance in force or upcoming; absent when none. */
+  maintenance?: StatusMaintenance | null;
   generatedAt: string;
   /** True when the newest probe is older than the staleness threshold. */
   stale: boolean;

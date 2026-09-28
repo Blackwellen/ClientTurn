@@ -8,6 +8,7 @@ import { formatMinor } from "@/lib/quotes/money";
 import { emitQuoteEvent } from "@/lib/quotes/events";
 import { queueLeadEmail } from "@/lib/quotes/effects";
 import { loadOpportunityInfo, loadQuoteSettings } from "@/lib/quotes/store";
+import { stopSalesChasing } from "@/lib/quotes/chasing";
 import type { DueRule, QuoteCalculation, VatBucket } from "@/lib/quotes/types";
 import type {
   InvoiceDeps,
@@ -318,7 +319,11 @@ export function createInvoiceStore(): InvoiceStore {
         p_detail: {},
       });
       if (error) return { ok: false };
-      return data as { ok: boolean; duplicate?: boolean };
+      const result = data as { ok: boolean; duplicate?: boolean };
+      // Paid (a deposit or in full): every sales chase for the lead stops now
+      // (brief §72). Idempotent, never throws.
+      if (result.ok) await stopSalesChasing(businessId, quoteId, action === "RECORD_PAID" ? "PAID" : "DEPOSIT_PAID");
+      return result;
     },
 
     async loadQuoteStatus(businessId, quoteId) {

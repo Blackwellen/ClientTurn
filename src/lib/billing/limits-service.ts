@@ -30,7 +30,10 @@ import {
   type WhatsappBillingCategory,
 } from "./whatsapp-tokens";
 import { loadTemplate } from "@/lib/messaging/template-registry";
-import { allowancesFor, creditBundlesFor, type MessageCreditChannel } from "./plans";
+import { PLANS, allowancesFor, creditBundlesFor, type MessageCreditChannel } from "./plans";
+import { overLimitNotice } from "./allowance-gates";
+import { overLimitNow } from "./over-limit-service";
+import { READ_ONLY_RETENTION_DAYS } from "./cancellation";
 import {
   allowanceAlertFor,
   mostUrgentAlert,
@@ -714,6 +717,12 @@ async function maybeNotifyAllowance(businessId: string, channel: MessageCreditCh
       linkUrl: alert.action.href,
       dedupeKey: `allowance:${businessId}:${channel}:${periodStart}:${next.notify}`,
     });
+    // Automation trigger (gap map §45): the allowance ran out. Claimed above,
+    // so it fires once per period per channel, like the notification.
+    if (next.notify === 100) {
+      const { emitAutomationEvent } = await import("@/lib/automation/events");
+      await emitAutomationEvent({ businessId, eventType: "usage.exhausted", payload: { metric: channel, periodStart } });
+    }
   } catch (error) {
     console.error("[billing meter] allowance alert check failed", {
       businessId,
@@ -841,8 +850,10 @@ export async function getLimitsOverview(businessId: string): Promise<LimitsOverv
       upsellMetric: "leads",
       daily: null,
       credits: null,
-      // Honest about current behaviour: no lead is ever dropped for a limit.
-      atLimit: "Leads keep being captured and followed up; a lead is never dropped for a limit. Regularly going over means the next plan fits better.",
+      // Honest about current behaviour (billing/lead-cap.ts): nothing that
+      // arrives is ever dropped, but past the limit it is held, not contacted.
+      atLimit:
+        "Enquiries that arrive keep being captured and are never dropped, but past the limit they are held without follow-up, and adding a lead by hand, import, API or assistant is refused until the next period. Regularly going over means the next plan fits better.",
     }),
     row({
       key: "sms",
@@ -998,8 +1009,21 @@ export async function getBillingNotice(
     return {
       tone: "danger",
       title: "This workspace is read-only",
-      body: "The subscription has ended. Your data is intact and can be exported; resubscribe to carry on.",
+      body: `The subscription has ended. Your data is intact and can be exported for ${READ_ONLY_RETENTION_DAYS} days, then deleted as our privacy policy sets out; resubscribe to carry on.`,
       action: { label: "Resubscribe", href: "/start-trial" },
+    };
+  }
+
+  // Over the plan's count limits (a downgrade, a lowered grant):
+  // allowance-gates.ts. Nothing was removed; creating more is refused.
+  const overLimit = await overLimitNow(businessId).catch(() => []);
+  const overNotice = overLimitNotice(overLimit, PLANS[entitlements.plan as keyof typeof PLANS]?.name ?? entitlements.plan);
+  if (overNotice) {
+    return {
+      tone: "warning",
+      title: overNotice.title,
+      body: overNotice.body,
+      action: { label: "Review limits", href: "/app/settings?section=billing" },
     };
   }
 

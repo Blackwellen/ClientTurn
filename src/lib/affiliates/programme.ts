@@ -233,6 +233,8 @@ export const PAID_STATE_TONE: Record<PaidState, Tone> = {
 
 export const COMMISSION_ENTRY_TYPES = [
   "NEW_CUSTOMER",
+  // Legacy: renewal accruals from before the one-off rule (0169 cancels the
+  // unpaid ones). New renewals earn nothing and write no row.
   "RENEWAL",
   "ADJUSTMENT",
   "REVERSAL",
@@ -240,8 +242,8 @@ export const COMMISSION_ENTRY_TYPES = [
 export type CommissionEntryType = (typeof COMMISSION_ENTRY_TYPES)[number];
 
 export const COMMISSION_ENTRY_LABEL: Record<CommissionEntryType, string> = {
-  NEW_CUSTOMER: "New customer commission",
-  RENEWAL: "Renewal commission",
+  NEW_CUSTOMER: "One-off commission",
+  RENEWAL: "Renewal commission (legacy)",
   ADJUSTMENT: "Adjustment",
   REVERSAL: "Reversal",
 };
@@ -271,21 +273,20 @@ export const REVERSAL_REASON_LABEL: Record<ReversalReason, string> = {
 export const AFFILIATE_TIERS = ["STANDARD", "PARTNER", "PREMIUM"] as const;
 export type AffiliateTier = (typeof AFFILIATE_TIERS)[number];
 
+/** Display names (owner decision 2026-09-28); the keys are the stored values. */
 export const TIER_LABEL: Record<AffiliateTier, string> = {
-  STANDARD: "Standard",
-  PARTNER: "Partner",
-  PREMIUM: "Premium",
+  STANDARD: "Partner",
+  PARTNER: "Pro Partner",
+  PREMIUM: "Elite Partner",
 };
 
 /**
- * What a tier actually changes today: nothing.
- *
- * The column exists so the programme can grow into tiers without a migration,
- * but no code reads it to decide a rate, and the UI says so rather than
- * implying benefits that do not exist.
+ * What a tier changes (`tier-rules.ts`): commission is one-off, so a tier
+ * changes only the one-off RATE (6%, 8%, 10%). It is earned by paid referred
+ * customers in the last 12 months, and never pays below the published plan.
  */
 export const TIER_EXPLANATION =
-  "Everyone earns the same published commission rate. Tiers record how long you have been with the programme and do not change your rate.";
+  "Your tier sets the rate of your one-off commission and moves up with paid referred customers in the last 12 months. A tier never lowers the published rate. Your dashboard shows each tier's rate and your progress.";
 
 /* --------------------------------------------------------- date ranges --- */
 
@@ -442,7 +443,6 @@ export type ProgrammePolicy = {
   commissionType: "RECURRING_PERCENT" | "FIRST_PAYMENT_PERCENT" | "FLAT_AMOUNT";
   commissionPercent: number | null;
   commissionFlatMinor: number | null;
-  recurringMonths: number | null;
   holdDays: number;
   minimumPayoutMinor: number;
   payoutFrequency: "MONTHLY";
@@ -461,10 +461,9 @@ export type ProgrammePolicy = {
 export const FALLBACK_POLICY: ProgrammePolicy = {
   attributionWindowDays: 90,
   attributionModel: "LAST_TOUCH",
-  commissionType: "RECURRING_PERCENT",
-  commissionPercent: 20,
+  commissionType: "FIRST_PAYMENT_PERCENT",
+  commissionPercent: 6,
   commissionFlatMinor: null,
-  recurringMonths: 12,
   holdDays: 30,
   minimumPayoutMinor: 10000,
   payoutFrequency: "MONTHLY",
@@ -473,7 +472,7 @@ export const FALLBACK_POLICY: ProgrammePolicy = {
   termsVersion: "2026-09",
 };
 
-/** "20%" or "£50" — the headline rate, however the plan expresses it. */
+/** "6%" or "£50": the headline base rate, however the plan expresses it. */
 export function describeRate(policy: ProgrammePolicy): string {
   if (policy.commissionType === "FLAT_AMOUNT") {
     return formatMoney(policy.commissionFlatMinor ?? 0, policy.currency);
@@ -481,19 +480,17 @@ export function describeRate(policy: ProgrammePolicy): string {
   return `${trimNumber(policy.commissionPercent ?? 0)}%`;
 }
 
-/** The full sentence: rate plus how long it lasts. */
+/**
+ * The full sentence. Commission is one-off (owner decision 2026-09-28): one
+ * payment per referred customer, on their first payment, including the full
+ * amount of an annual plan. A legacy RECURRING_PERCENT row reads the same.
+ */
 export function describeCommission(policy: ProgrammePolicy): string {
   const rate = describeRate(policy);
-  switch (policy.commissionType) {
-    case "FLAT_AMOUNT":
-      return `${rate} for every customer who starts paying.`;
-    case "FIRST_PAYMENT_PERCENT":
-      return `${rate} of each referred customer's first payment.`;
-    case "RECURRING_PERCENT":
-      return policy.recurringMonths
-        ? `${rate} of every payment for the first ${policy.recurringMonths} months of each referred customer.`
-        : `${rate} of every payment, for as long as the customer stays.`;
+  if (policy.commissionType === "FLAT_AMOUNT") {
+    return `A one-off ${rate} when a referred customer makes their first payment.`;
   }
+  return `A one-off ${rate} commission on each referred customer's first payment, including the full amount of an annual plan. Renewals and later payments do not earn commission.`;
 }
 
 export function describeAttribution(policy: ProgrammePolicy): string {

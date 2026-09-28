@@ -323,6 +323,36 @@ export async function grantIncludedPeriod(
   return "CONFLICT";
 }
 
+/**
+ * The Pro voice item has ended (removed now, or at the period end it was
+ * scheduled for): its included minutes end with it (OD-2, no roll-over). The
+ * included bucket is set to zero with one PERIOD_EXPIRE row, keyed by the
+ * period the minutes were granted for, so a redelivered event expires once.
+ * Pack minutes are the customer's prepaid balance and are never touched.
+ */
+export async function expireIncludedMinutes(store: MinuteStore, input: { businessId: string; reason: string }): Promise<ApplyResult | "NOTHING_TO_EXPIRE"> {
+  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+    const snap = await store.load(input.businessId, null);
+    const included = snap.balance.includedRemainingSec;
+    if (included <= 0 && snap.balance.periodIncludedSec <= 0) return "NOTHING_TO_EXPIRE";
+    const result = await store.apply({
+      businessId: input.businessId,
+      expected: { includedSec: included, packSec: snap.balance.packRemainingSec },
+      delta: { includedSec: -Math.max(0, included), packSec: 0 },
+      ledger: {
+        kind: "PERIOD_EXPIRE",
+        voiceCallId: null,
+        route: null,
+        idempotencyKey: `voice:included-expire:${snap.balance.periodStart ?? "none"}`,
+        reason: input.reason.slice(0, 500),
+      },
+      period: { periodIncludedSec: 0, periodStart: snap.balance.periodStart ?? new Date(0).toISOString(), periodEnd: snap.balance.periodEnd },
+    });
+    if (result !== "CONFLICT") return result;
+  }
+  return "CONFLICT";
+}
+
 /* ------------------------------------------------------------ in-memory store */
 
 /**

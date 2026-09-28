@@ -1,4 +1,6 @@
 import "server-only";
+import { overLimitNow } from "@/lib/billing/over-limit-service";
+import { RETENTION_POLICY_TEXT, retentionSchedule } from "@/lib/billing/cancellation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getEntitlements, getPeriodUsage } from "@/lib/billing/entitlements";
@@ -248,7 +250,7 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     admin
       .from("subscriptions")
       .select(
-        "plan, status, billing_interval, current_period_start, current_period_end, trial_ends_at, cancel_at_period_end, stripe_customer_id",
+        "plan, status, billing_interval, current_period_start, current_period_end, trial_ends_at, cancel_at_period_end, cancelled_at, stripe_customer_id",
       )
       .eq("business_id", businessId)
       .maybeSingle(),
@@ -261,7 +263,7 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
   ]);
 
   const since = entitlements.periodStart ?? new Date(Date.now() - 30 * 864e5).toISOString();
-  const [usage, segmentsResult, pendingPlanChange] = await Promise.all([
+  const [usage, segmentsResult, pendingPlanChange, overLimit] = await Promise.all([
     getPeriodUsage(businessId, entitlements.periodStart),
     // The SMS allowance is counted in segments (`sms_outbound_segment`), the
     // same meter limits-service enforces against -- not in messages sent.
@@ -271,6 +273,9 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
       p_since: since,
     }),
     getPendingPlanChange(businessId),
+    // What to reduce after a downgrade (allowance-gates.ts). A failed read
+    // shows nothing rather than failing the page.
+    overLimitNow(businessId).catch(() => []),
   ]);
   if (segmentsResult.error) {
     console.error("[billing view] sms segment usage read failed", {
@@ -319,6 +324,17 @@ export async function getBillingView(businessId: string): Promise<BillingView> {
     smsSegmentsUsed: segmentsResult.error ? null : Number(segmentsResult.data ?? 0),
     smsSegmentAllowance: allowancesFor(entitlements.plan).smsSegmentAllowance,
     pendingPlanChange,
+    overLimit,
+    retention: {
+      ...retentionSchedule({
+        status: entitlements.status,
+        cancelledAt: (subscription as { cancelled_at?: string | null } | null)?.cancelled_at ?? null,
+        cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
+        periodEnd: subscription?.current_period_end ?? null,
+        now: new Date(),
+      }),
+      policy: RETENTION_POLICY_TEXT,
+    },
     monthlyPrice: definition?.monthlyPrice ?? null,
     yearlyPrice: definition?.yearlyPrice ?? null,
     planFeatures: definition?.features ?? [

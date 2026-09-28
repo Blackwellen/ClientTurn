@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logWriteError } from "@/lib/supabase/write-result";
+import { defaultPriorityFor } from "./lanes";
 
 export type JobType =
   | "app.ingest"
@@ -43,6 +44,8 @@ export type JobType =
   | "social.advance"
   | "social.execute"
   | "affiliate.ledger"
+  // A refund or dispute applied to the affiliate commission ledger (audit 17).
+  | "affiliate.billing_event"
   // The domain event outbox (design 03 §4): one dispatch per event.
   | "event.dispatch"
   // A verified inbound lead webhook, ingested off the request path.
@@ -96,7 +99,23 @@ export type JobType =
   | "voice.recording_fetch"
   | "voice.retry"
   | "voice.number_provision"
-  | "voice.number_release";
+  | "voice.number_release"
+  // The text back to a caller the dedicated number could not answer (§25).
+  | "voice.text_back"
+  // Daily (api/cron/daily): the voice gross-margin alert and the opt-in
+  // experiment auto-promotion pass (handlers/daily-voice-and-experiments.ts).
+  | "voice.margin_check"
+  | "experiment.auto_promote"
+  // Automation rules and pipeline semantics (gap map §45-46): one dispatch per
+  // automation event that a rule, the pipeline mapping or a derived trigger
+  // cares about (lib/automation/rule-runner.ts).
+  | "automation.dispatch"
+  // Daily: voice recordings and transcripts past the workspace's retention,
+  // and R2 objects of deleted rows and workspaces from the tombstones (0150).
+  | "voice.retention"
+  // Daily: day-60/83 notices and the day-90 deletion of cancelled workspaces
+  // (billing/workspace-deletion.ts, 0170).
+  | "billing.workspace_deletion";
 
 export type EnqueueOptions = {
   businessId?: string | null;
@@ -121,7 +140,8 @@ export async function enqueue(
       payload: payload as never,
       business_id: options.businessId ?? null,
       run_at: (options.runAt ?? new Date()).toISOString(),
-      priority: options.priority ?? 100,
+      // The job's lane (lanes.ts): critical 10, interactive 30, standard 100, bulk 200.
+      priority: options.priority ?? defaultPriorityFor(type),
       max_attempts: options.maxAttempts ?? 5,
       idempotency_key: options.idempotencyKey ?? null,
     })

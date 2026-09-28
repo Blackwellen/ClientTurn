@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { classifySmtpFailure, enhancedStatus, type FailureScope } from "./bounce.ts";
 
 export const INBOUND_PROTOCOLS = ["imap", "pop3", "none"] as const;
 export type InboundProtocol = (typeof INBOUND_PROTOCOLS)[number];
@@ -257,6 +258,21 @@ export function describeMailError(error: unknown): {
   code: string;
   message: string;
   permanent: boolean;
+  /**
+   * Who the failure is about: one recipient (suppress the address, the
+   * mailbox stays healthy), the mailbox (health goes amber/red) or nobody
+   * (transient). See `./bounce.ts`.
+   */
+  scope: FailureScope;
+} {
+  const scope = classifySmtpFailure(error);
+  return { ...describeMailErrorBase(error, scope), scope };
+}
+
+function describeMailErrorBase(error: unknown, scope: FailureScope): {
+  code: string;
+  message: string;
+  permanent: boolean;
 } {
   const raw = error instanceof Error ? error.message : String(error);
   const code =
@@ -324,12 +340,21 @@ export function describeMailError(error: unknown): {
     };
   }
 
-  if (
-    text.includes("mailbox unavailable") ||
-    text.includes("user unknown") ||
-    text.includes("no such user") ||
-    code === "550"
-  ) {
+  // 5.7.x is a sending-policy refusal (relay denied, sender not permitted,
+  // refused as spam). It says nothing about the address, so the address is
+  // never suppressed for it, and one refusal is a warning, not a dead mailbox.
+  if (enhancedStatus(raw)?.startsWith("5.7.")) {
+    return {
+      code: "policy_rejected",
+      message:
+        "The mail server refused to send this message under its sending policy. Check the From address is allowed on this mailbox, and that SPF, DKIM and DMARC are set up.",
+      permanent: false,
+    };
+  }
+
+  // Only a refusal that names the recipient: a bare 550 is also used for
+  // policy blocks, and treating it as a bad address suppressed real people.
+  if (scope === "recipient") {
     return {
       code: "recipient_rejected",
       message: "The recipient address was rejected by the mail server.",

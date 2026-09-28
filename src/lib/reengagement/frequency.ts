@@ -140,9 +140,16 @@ export function classifyTouch(input: TouchInput): TouchClass {
       const trigger = triggerOfSendKey(input.sendKey);
       if (trigger) return { automated: true, loop: TRIGGER_LOOP[trigger] };
       if (isCheckoutNudgeSendKey(input.sendKey)) return { automated: true, loop: "checkout_nudge" };
+      // A quote reminder (quote.nudge sends the quote link again as automation).
+      if (isQuoteReminderSendKey(input.sendKey)) return { automated: true, loop: "quote_follow_up" };
       return { automated: true, loop: "sequence" };
     }
   }
+}
+
+/** The quote email's send key (quotes/service-core.ts sendQuote: `quote-link:<token hash>`). */
+export function isQuoteReminderSendKey(sendKey: string | null | undefined): boolean {
+  return Boolean(sendKey && sendKey.startsWith("quote-link:"));
 }
 
 /* --------------------------------------------------------- evaluation --- */

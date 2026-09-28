@@ -117,6 +117,11 @@ export async function createPayout(input: {
   method: string;
   idempotencyKey: string;
   currency?: string;
+  /**
+   * DRAFT ("pending approval", the default) waits for an admin; APPROVED only
+   * when the admin setting `auto_approve_payouts` is on (payout-rules.ts).
+   */
+  initialStatus?: "DRAFT" | "APPROVED";
 }): Promise<CreatePayoutResult> {
   const db = createAdminClient();
 
@@ -157,21 +162,28 @@ export async function createPayout(input: {
   const amountMinor = Number(claimRow?.claimed_minor ?? 0);
   const count = Number(claimRow?.claimed_count ?? 0);
 
-  if (claimError || count === 0 || amountMinor <= 0) {
-    // Nothing was claimable after all — another run beat us to it. Remove the
-    // empty draft rather than leaving a £0 payout in the history.
+  if (claimError || count === 0 || amountMinor < input.minimumPayoutMinor || amountMinor <= 0) {
+    // Nothing (or not enough, after clawbacks) was claimable — another run
+    // beat us to it, or negative rows netted it below the threshold. Release
+    // whatever was claimed first, so no entry is left PAYABLE with no payout,
+    // then remove the empty draft.
+    await db
+      .from("affiliate_commissions")
+      .update({ status: "APPROVED", payout_id: null })
+      .eq("payout_id", payout.id);
     await db.from("affiliate_payouts").delete().eq("id", payout.id);
     return { status: "skipped", reason: "nothing_claimable" };
   }
 
+  const initialStatus = input.initialStatus ?? "DRAFT";
   await db
     .from("affiliate_payouts")
     .update({
-      status: "APPROVED",
+      status: initialStatus,
       amount_minor: amountMinor,
       gross_amount_minor: amountMinor,
       commission_count: count,
-      approved_at: new Date().toISOString(),
+      approved_at: initialStatus === "APPROVED" ? new Date().toISOString() : null,
     })
     .eq("id", payout.id);
 
@@ -186,8 +198,11 @@ export async function createPayout(input: {
 
   await notifyAffiliate(input.affiliateId, "payout_updates", {
     kind: "payout.scheduled",
-    title: "Payout scheduled",
-    body: `A payout of ${formatMinor(amountMinor)} has been scheduled.`,
+    title: initialStatus === "APPROVED" ? "Payout scheduled" : "Payout awaiting approval",
+    body:
+      initialStatus === "APPROVED"
+        ? `A payout of ${formatMinor(amountMinor)} has been scheduled.`
+        : `A payout of ${formatMinor(amountMinor)} has been raised and is waiting for approval.`,
     href: "/affiliates/app/payouts",
   });
 
@@ -298,6 +313,50 @@ export async function markPayoutFailed(input: {
   return true;
 }
 
+/**
+ * An admin approves a DRAFT payout (pending approval -> approved). Guarded on
+ * the current status, so approving twice is a no-op.
+ */
+export async function approveDraftPayout(input: { payoutId: string; actorUserId: string }): Promise<boolean> {
+  const { data } = await createAdminClient()
+    .from("affiliate_payouts")
+    .update({ status: "APPROVED", approved_by: input.actorUserId, approved_at: new Date().toISOString() })
+    .eq("id", input.payoutId)
+    .eq("status", "DRAFT")
+    .select("id, affiliate_id, amount_minor")
+    .maybeSingle();
+  if (!data) return false;
+  await notifyAffiliate(data.affiliate_id, "payout_updates", {
+    kind: "payout.approved",
+    title: "Payout approved",
+    body: `Your payout of ${formatMinor(data.amount_minor)} has been approved.`,
+    href: "/affiliates/app/payouts",
+  });
+  return true;
+}
+
+/**
+ * Cancels a payout that has not been sent and releases its commissions back
+ * to the balance, so a cancelled payout never strands money.
+ */
+export async function cancelPayout(payoutId: string): Promise<boolean> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("affiliate_payouts")
+    .update({ status: "CANCELLED" })
+    .eq("id", payoutId)
+    .in("status", ["DRAFT", "APPROVED", "FAILED"])
+    .select("id")
+    .maybeSingle();
+  if (!data) return false;
+  await db
+    .from("affiliate_commissions")
+    .update({ status: "APPROVED", payout_id: null })
+    .eq("payout_id", payoutId)
+    .eq("status", "PAYABLE");
+  return true;
+}
+
 /* ---------------------------------------------------------- payout detail -- */
 
 export type PayoutBreakdown = {
@@ -357,7 +416,7 @@ export async function getPayoutBreakdown(
     if (row.referral_id) referrals.add(row.referral_id);
 
     if (row.entry_type === "NEW_CUSTOMER") newCustomer += amount;
-    else if (row.entry_type === "RENEWAL") renewal += amount;
+    else if (row.entry_type === "RENEWAL" || row.entry_type === "REACCRUAL") renewal += amount;
     else if (row.entry_type === "REVERSAL") reversal += amount;
     else adjustment += amount;
   }

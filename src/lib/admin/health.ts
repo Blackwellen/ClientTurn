@@ -1,5 +1,5 @@
 import "server-only";
-import type { JobType } from "@/lib/jobs/queue";
+import { HEALTH_QUEUE_LABELS, jobClassOf, type HealthQueue } from "@/lib/jobs/lanes";
 import { providerLabel } from "./format";
 import { getProviderHealth } from "./providers";
 import { adminRead, namesFor, truncate, unique } from "./shared";
@@ -12,58 +12,19 @@ import type {
 
 /**
  * Health is the operational view: is each provider answering, is each queue
- * draining, and which customer workspaces are feeling it. Queue names below
- * are groupings of the real `JobType` union — nothing is invented, and adding
- * a job type without adding it here is a type error.
+ * draining, and which customer workspaces are feeling it.
+ *
+ * The queues are derived from `JOB_CLASSES` in lib/jobs/lanes.ts, which maps
+ * every `JobType` to a queue (tests/queue-lanes.test.ts fails if a type is
+ * missing there). The hand-written list this replaced covered 21 types and
+ * left out every voice, quote, invoice, payment, outreach, social, event and
+ * re-engagement job, so a stalled voice or invoice queue never showed here.
+ * A type not in the map still appears, under Events and integrations.
  */
 
-const QUEUES: { key: string; label: string; types: JobType[] }[] = [
-  {
-    key: "lead_ingestion",
-    label: "Lead ingestion",
-    types: ["lead.process", "lead_source.poll"],
-  },
-  {
-    key: "message_dispatch",
-    label: "Message dispatch",
-    types: [
-      "message.send",
-      "message.process_inbound",
-      "automation.advance",
-      "campaign.expand",
-      "campaign.send",
-    ],
-  },
-  { key: "booking_sync", label: "Booking sync", types: ["booking.sync"] },
-  {
-    key: "billing_webhooks",
-    label: "Billing webhooks",
-    types: ["webhook.replay"],
-  },
-  {
-    key: "notifications",
-    label: "Notifications",
-    types: [
-      "notification.send",
-      "notification.slack",
-      "notification.slack_digest",
-      "slack.interaction",
-    ],
-  },
-  {
-    key: "nightly_summaries",
-    label: "Nightly summaries",
-    types: [
-      "usage.aggregate",
-      "retention.cleanup",
-      "cost.rollup_daily",
-      "cost.rollup_monthly",
-      "economics.margin_check",
-      "integration.health_check",
-      "crm.push",
-    ],
-  },
-];
+const QUEUES: { key: HealthQueue; label: string }[] = (
+  Object.keys(HEALTH_QUEUE_LABELS) as HealthQueue[]
+).map((key) => ({ key, label: HEALTH_QUEUE_LABELS[key] }));
 
 /** A queue with work waiting and nothing moving for this long is stalled. */
 const STALL_MS = 30 * 60 * 1000;
@@ -117,10 +78,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
 
   /* ---------------------------------------------------------------- queues */
 
-  const typeToQueue = new Map<string, string>();
-  for (const queue of QUEUES) {
-    for (const type of queue.types) typeToQueue.set(type, queue.key);
-  }
+  const typeToQueue = { get: (type: string): string => jobClassOf(type).queue };
 
   const tally = new Map<
     string,

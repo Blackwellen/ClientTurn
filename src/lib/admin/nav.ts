@@ -6,6 +6,7 @@ import {
   Handshake,
   LayoutDashboard,
   LifeBuoy,
+  Megaphone,
   ServerCog,
   Settings,
 } from "lucide-react";
@@ -17,7 +18,7 @@ export type NavItem = {
 };
 
 /**
- * The eight primary Platform Admin destinations, in the order the approved
+ * The nine primary Platform Admin destinations, in the order the approved
  * shell shows them. Nothing else is a top-level admin domain: Jobs and
  * Compliance are views inside System, and the billing/economics split is
  * deliberate — Billing is the subscription and invoice ledger, Economics is
@@ -32,6 +33,8 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/support", label: "Support", icon: LifeBuoy },
   { href: "/admin/affiliates", label: "Affiliates", icon: Handshake },
   { href: "/admin/system", label: "System", icon: ServerCog },
+  // Maintenance mode, site offline and platform banners (docs/MAINTENANCE.md).
+  { href: "/admin/site", label: "Site", icon: Megaphone },
   { href: "/admin/billing", label: "Billing", icon: CreditCard },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -46,6 +49,7 @@ const TITLES: [string, string][] = [
   ["/admin/support", "Support"],
   ["/admin/affiliates", "Affiliates"],
   ["/admin/system", "System"],
+  ["/admin/site", "Site & announcements"],
   ["/admin/billing", "Billing"],
   ["/admin/economics", "Economics"],
   ["/admin/settings", "Platform Settings"],
@@ -68,6 +72,7 @@ const SEARCH_PLACEHOLDERS: [string, string][] = [
   ["/admin/support", "Search customers, tickets, jobs, settings…"],
   ["/admin/affiliates", "Search affiliates, referrals, payouts, resources…"],
   ["/admin/system", "Search system, providers, jobs, errors…"],
+  ["/admin/site", "Search customers, settings, banners…"],
   ["/admin/billing", "Search customers, invoices, subscriptions…"],
   ["/admin/economics", "Search customers, providers, plans, metrics…"],
   ["/admin/settings", "Search settings, providers, models, policies…"],

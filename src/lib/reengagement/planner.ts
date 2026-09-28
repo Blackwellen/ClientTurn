@@ -7,6 +7,7 @@ import {
   planDeadlineCheckIn,
   planNoShow,
   planNotNowResume,
+  planQuoteExpired,
   planWinBack,
   statedDateOf,
   triggerJobKey,
@@ -94,6 +95,7 @@ export async function scheduleTrigger(input: {
 function enabledFor(trigger: ReengagementTrigger, settings: ReengagementSettings): boolean {
   if (trigger === "NOT_NOW_RESUME" || trigger === "DEADLINE_PASSED") return settings.notNowEnabled;
   if (trigger === "NO_SHOW_REBOOK" || trigger === "NO_SHOW_NUDGE") return settings.noShowEnabled;
+  // An expired quote is a win-back of a deal that went quiet.
   return settings.winBackEnabled;
 }
 
@@ -213,6 +215,26 @@ export async function planWinBackTrigger(input: {
     now,
   });
   return { planned };
+}
+
+/**
+ * An expired quote (brief §72): one check-in a week later, through the same
+ * trigger job, stop conditions and frequency guard as every other trigger.
+ * Called by the quote.expire job the moment a quote expires; the sweep is the
+ * backstop.
+ */
+export async function planQuoteExpiredTrigger(input: {
+  businessId: string;
+  leadId: string;
+  quoteId: string;
+  expiredAt: string;
+  now?: Date;
+}): Promise<boolean> {
+  const settings = await loadReengagementSettings(input.businessId);
+  if (!settings.winBackEnabled) return false;
+  const plan = planQuoteExpired({ id: input.quoteId, expiredAt: input.expiredAt });
+  if (!plan) return false;
+  return scheduleTrigger({ businessId: input.businessId, leadId: input.leadId, plan, now: input.now });
 }
 
 /* ------------------------------------------------------ outbox consumer --- */
@@ -353,6 +375,25 @@ export async function sweepReengagementTriggers(now = new Date()): Promise<{ pla
       now,
     });
     if (result.planned) planned += 1;
+  }
+
+  // 4. Quotes that expired in the last two weeks (the quote.expire job plans
+  //    them as they expire; this catches any it missed).
+  const { data: expired, error: expiredError } = await db()
+    .from("quotes")
+    .select("id, business_id, updated_at, opportunities!inner(lead_id)")
+    .eq("status", "EXPIRED")
+    .gte("updated_at", new Date(now.getTime() - 14 * DAY_MS).toISOString())
+    .limit(SWEEP_LIMIT);
+  // Before migration 0153 there is no quotes table: nothing to plan.
+  if (!expiredError) {
+    for (const row of (expired ?? []) as unknown as { id: string; business_id: string; updated_at: string; opportunities: { lead_id: string | null } | null }[]) {
+      const leadId = row.opportunities?.lead_id ?? null;
+      if (!leadId) continue;
+      examined += 1;
+      if (!(await settingsFor(row.business_id)).winBackEnabled) continue;
+      if (await planQuoteExpiredTrigger({ businessId: row.business_id, leadId, quoteId: row.id, expiredAt: row.updated_at, now })) planned += 1;
+    }
   }
 
   return { planned, examined };

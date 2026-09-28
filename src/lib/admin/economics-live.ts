@@ -80,6 +80,20 @@ async function workspaceFacts(): Promise<WorkspaceFacts> {
   ]);
   if (businesses.error) throw new EconomicsUnavailableError(businesses.error.message);
   if (subscriptions.error) throw new EconomicsUnavailableError(subscriptions.error.message);
+  // Real billed MRR (0165), read on its own so economics still loads on list
+  // prices before the migration is applied.
+  const mrrRead = await (admin as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("subscriptions")
+    .select("business_id, mrr_minor")
+    .limit(20_000);
+  const mrrBy = new Map<string, number | null>(
+    mrrRead.error
+      ? []
+      : ((mrrRead.data ?? []) as { business_id: string; mrr_minor: number | string | null }[]).map((row) => [
+          row.business_id,
+          row.mrr_minor === null ? null : Number(row.mrr_minor),
+        ]),
+  );
   return {
     names: new Map((businesses.data ?? []).map((row) => [row.id, row.name])),
     subscriptions: new Map(
@@ -92,6 +106,7 @@ async function workspaceFacts(): Promise<WorkspaceFacts> {
           createdAt: row.created_at,
           cancelledAt: row.cancelled_at,
           trialEndsAt: row.trial_ends_at,
+          mrrMinor: mrrBy.get(row.business_id) ?? null,
         },
       ]),
     ),

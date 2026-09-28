@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { commercialAuthoritySchema } from "./authority";
+import { normaliseAiAuthorityInput } from "./ai-permissions";
 
 export type CommercialActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -86,4 +87,55 @@ export async function saveCommercialAuthority(input: unknown): Promise<Commercia
 
   revalidatePath("/app/settings");
   return warning ? { ok: true, warning } : { ok: true };
+}
+
+/**
+ * Saves what the AI may do (brief §74, commercial authority v2): the
+ * per-capability switches and the assistant's discount policy. Owner/admin
+ * only, checked server-side; validated by the same schema the gates read
+ * with (ai-permissions.ts), dependencies applied (sending needs drafting).
+ */
+export async function saveAiAuthority(input: unknown): Promise<CommercialActionResult> {
+  const normalised = normaliseAiAuthorityInput(input);
+  if (!normalised.ok) return { ok: false, error: normalised.path ? `${normalised.path}: ${normalised.message}` : normalised.message };
+
+  const workspace = await requireRole("admin");
+  const db = createAdminClient() as unknown as SupabaseClient;
+  const { data: before } = await db
+    .from("commercial_authority")
+    .select("*")
+    .eq("business_id", workspace.businessId)
+    .maybeSingle();
+
+  const { error } = await db.from("commercial_authority").upsert(
+    {
+      business_id: workspace.businessId,
+      ai_permissions: normalised.value.capabilities,
+      ai_discount_policy: normalised.value.discount,
+      updated_by: workspace.userId,
+    },
+    { onConflict: "business_id" },
+  );
+  if (error) {
+    if (isSchemaLag(error)) {
+      return { ok: false, error: "These settings need database update 0160 before they can be saved. Nothing was changed." };
+    }
+    return { ok: false, error: "Those settings could not be saved." };
+  }
+
+  const prior = (before ?? null) as { ai_permissions?: unknown; ai_discount_policy?: unknown } | null;
+  await recordAudit({
+    businessId: workspace.businessId,
+    actorUserId: workspace.userId,
+    action: "commercial_authority.ai_updated",
+    entityType: "business",
+    entityId: workspace.businessId,
+    metadata: {
+      before: prior ? { capabilities: prior.ai_permissions ?? null, discount: prior.ai_discount_policy ?? null } : null,
+      after: { capabilities: normalised.value.capabilities, discount: normalised.value.discount },
+    },
+  });
+
+  revalidatePath("/app/settings");
+  return { ok: true };
 }

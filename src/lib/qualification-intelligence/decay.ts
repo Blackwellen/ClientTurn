@@ -69,6 +69,9 @@ export const DECAY_RULES: Record<SignalType, DecayRule> = {
   REPEAT_SUBMISSION: { halfLifeHours: 3 * DAY_H, hardStopHours: 14 * DAY_H },
   FAST_REPLY: { halfLifeHours: 3 * DAY_H, hardStopHours: 14 * DAY_H },
   BOOKING_LINK_OPENED: { halfLifeHours: 3 * DAY_H, hardStopHours: 14 * DAY_H },
+  // Opening a quote again and again is weighing it up: it lasts like a
+  // purchase request, not like a page view.
+  QUOTE_VIEWED_REPEATEDLY: { halfLifeHours: 5 * DAY_H, hardStopHours: 30 * DAY_H },
   // CONTEXT: freshness_days / 2, stop at the event's expires_at. These are the
   // fallbacks when the category's freshness is unknown (30 d freshness).
   FUNDING: { halfLifeHours: 15 * DAY_H, hardStopHours: 30 * DAY_H },

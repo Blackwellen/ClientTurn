@@ -195,7 +195,7 @@ async function loadPolicy(planId: string | null): Promise<ProgrammePolicy> {
   const query = db
     .from("affiliate_commission_plans")
     .select(
-      `commission_type, percent, flat_amount_minor, currency, recurring_months,
+      `commission_type, percent, flat_amount_minor, currency,
        attribution_window_days, hold_days, minimum_payout_minor`,
     );
 
@@ -211,7 +211,6 @@ async function loadPolicy(planId: string | null): Promise<ProgrammePolicy> {
     commissionType: data.commission_type as ProgrammePolicy["commissionType"],
     commissionPercent: data.percent,
     commissionFlatMinor: data.flat_amount_minor,
-    recurringMonths: data.recurring_months,
     holdDays: data.hold_days,
     minimumPayoutMinor: data.minimum_payout_minor,
     payoutFrequency: "MONTHLY",
@@ -315,7 +314,7 @@ export async function listReferralPage(
 
     return {
       id: row.id,
-      label: referralLabel(row.display_label, row.created_at),
+      label: referralLabel(row.display_label, row.created_at, row.id),
       maskedContact: null,
       sourceLabel: link?.label ?? null,
       status: row.status as ReferralStatus,
@@ -393,7 +392,7 @@ export async function listReferralEvents(
   const events: ReferralEvent[] = [];
 
   for (const row of data ?? []) {
-    const label = referralLabel(row.display_label, row.created_at);
+    const label = referralLabel(row.display_label, row.created_at, row.id);
     const push = (kind: ReferralEvent["kind"], at: string | null, verb: string) => {
       if (at) events.push({ id: `${row.id}:${kind}`, label: `${label} ${verb}`, kind, at });
     };

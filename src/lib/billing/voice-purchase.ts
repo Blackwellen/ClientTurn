@@ -26,6 +26,7 @@ import {
   voicePurchaseAllowed,
 } from "./plans.ts";
 import { voiceItemsOf, type SubscriptionItemLike } from "./subscription-items.ts";
+import { taxCheckoutParams } from "./tax.ts";
 
 /** The parts of the Stripe SDK the voice purchases call. */
 export type VoiceStripeClient = {
@@ -68,6 +69,8 @@ export type VoicePurchaseContext = {
   site: string;
   termsPath: string;
   termsVersion: string;
+  /** STRIPE_AUTOMATIC_TAX (tax.ts): VAT, VAT number and address at Checkout. */
+  automaticTax?: boolean;
 };
 
 /** Failure states map onto the route states every surface implements (CLAUDE.md). */
@@ -157,6 +160,7 @@ export async function createVoicePackCheckout(
       client_reference_id: ctx.businessId,
       // A receipt for the history table: Stripe emails one and keeps it.
       invoice_creation: ctx.stripeCustomerId ? { enabled: true } : undefined,
+      ...taxCheckoutParams({ enabled: ctx.automaticTax === true, mode: "payment", hasCustomer: Boolean(ctx.stripeCustomerId) }),
       ...packTerms(ctx),
       // The webhook reads these back; `minutes` is what it credits, and the
       // session id is the idempotency reference (creditVoicePack).

@@ -348,3 +348,25 @@ export function dunningNoticeFor(firstFailedAt: Date, now: Date): DunningNotice 
   if (day >= GRACE_FULL_ACCESS_DAYS) return "restricted";
   return null;
 }
+
+/* ------------------------------------------------------------ add-on items */
+
+/**
+ * The subscription status the add-on gates (voice) should see. Add-on items
+ * (the Pro voice item, the dedicated-number item) sit ON the subscription and
+ * are dunned with it, so they follow the same grace policy as the plan:
+ *
+ *   * PAST_DUE inside the grace days (access "full")  -> treated as ACTIVE:
+ *     voice keeps working exactly as sending and AI do;
+ *   * from day 3 (access "restricted")               -> PAST_DUE: paused;
+ *   * cancelled / read-only                          -> as stored: off.
+ *
+ * Before this, voice read the raw status and stopped the moment any invoice
+ * failed, while the rest of the product was still in its grace days.
+ */
+export function addOnSubscriptionStatus(entitlements: { status: string; access: BillingAccess }): string {
+  if ((entitlements.status === "PAST_DUE" || entitlements.status === "UNPAID") && entitlements.access === "full") {
+    return "ACTIVE";
+  }
+  return entitlements.status;
+}

@@ -154,8 +154,8 @@ class Layout {
 }
 
 function drawRows(layout: Layout, heading: string, rows: { label: string; value: string; strong?: boolean }[]) {
-  layout.ensure(40);
-  layout.gap(14);
+  layout.ensure(46);
+  layout.gap(22);
   layout.text(MARGIN, layout.y, heading, 10.5, true);
   layout.gap(4);
   for (const row of rows) {
@@ -172,7 +172,7 @@ function drawRows(layout: Layout, heading: string, rows: { label: string; value:
 function drawTable(layout: Layout, doc: QuoteDocument) {
   const cols = doc.lineColumns.length;
   // Description takes what the numeric columns leave.
-  const numericW = cols === 7 ? [48, 62, 58, 62, 70, 66] : [60, 72, 66, 80];
+  const numericW = cols === 7 ? [46, 62, 86, 62, 78, 62] : [56, 72, 90, 80];
   const descW = CONTENT_W - numericW.reduce((a, b) => a + b, 0);
   const rightEdges: number[] = [];
   let edge = MARGIN + descW;

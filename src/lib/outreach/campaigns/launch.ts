@@ -16,6 +16,7 @@ import { reserveCampaignBudget } from "./budget";
 import { loadDraft } from "./draft";
 import { validateForLaunch } from "./validation";
 import { recordCampaignEvent } from "./lifecycle";
+import { senderLimitLaunchProblem } from "@/lib/billing/sender-limit";
 
 /**
  * The launch transaction (V4 section 17.8).
@@ -55,6 +56,11 @@ export async function launchCampaign(input: {
     if (error instanceof CampaignTransitionError) return { ok: false, error: error.message };
     throw error;
   }
+
+  // Over the plan's sender allowance (after a downgrade): refused until the
+  // workspace is back within it (billing/sender-limit.ts).
+  const senderLimit = await senderLimitLaunchProblem(input.businessId);
+  if (senderLimit) return { ok: false, error: senderLimit };
 
   // Step-by-step validation is re-run server-side. Reaching step 6 in the
   // browser proves nothing about what is stored.

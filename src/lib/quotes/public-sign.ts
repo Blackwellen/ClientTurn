@@ -106,6 +106,13 @@ export type PublicDeps = {
   markViewed: (context: PublicQuoteContext) => Promise<{ firstView: boolean }>;
   nextStep: (context: PublicQuoteContext) => Promise<NextStep>;
   emit: (context: PublicQuoteContext, type: "quote.accepted" | "quote.signed" | "quote.viewed") => Promise<void>;
+  /**
+   * Every view of a live quote (brief §72): a lead who opens it again and
+   * again is weighing it up, which the live implementation records as a HIGH
+   * buying-intent signal once the views reach the threshold
+   * (quotes/follow-up.ts). Never throws. Optional: absent in older wiring.
+   */
+  onView?: (context: PublicQuoteContext) => Promise<void>;
 };
 
 export type AcceptanceEvidence = { email: string; ip: string; userAgent: string; documentHash: string };
@@ -152,9 +159,14 @@ export async function handleQuoteViewRequest(deps: PublicDeps, token: string, he
   if (!verifyFormNonce(deps.secret, token, nonce, deps.now())) return { status: 403, body: { ok: false, error: "This page has expired. Reload it." } };
   const context = await deps.resolve(token);
   if (!context) return GENERIC_404;
+  if (context.quoteStatus === "VIEWED") {
+    if (deps.onView) await deps.onView(context);
+    return { status: 200, body: { ok: true, recorded: false } };
+  }
   if (context.quoteStatus !== "SENT") return { status: 200, body: { ok: true, recorded: false } };
   const { firstView } = await deps.markViewed(context);
   if (firstView) await deps.emit(context, "quote.viewed");
+  if (deps.onView) await deps.onView(context);
   return { status: 200, body: { ok: true, recorded: firstView } };
 }
 

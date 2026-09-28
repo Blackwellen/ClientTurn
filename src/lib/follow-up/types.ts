@@ -46,6 +46,8 @@ export const FOLLOW_UP_TABS = [
   { id: "sequence", label: "Sequence" },
   { id: "settings", label: "Settings" },
   { id: "enrolment", label: "Enrolment rules" },
+  // Event-triggered rules for calls, quotes and payments (gap map §45).
+  { id: "rules", label: "Automations" },
   { id: "performance", label: "Performance" },
 ] as const;
 

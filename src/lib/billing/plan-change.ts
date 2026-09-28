@@ -122,6 +122,35 @@ export function decidePlanChange(input: {
  * `business_id` is carried on each phase so the subscription's metadata --
  * which the webhook uses to find the workspace -- survives the transition.
  */
+/**
+ * The subscription's other items across a scheduled downgrade (OD-2). A
+ * schedule phase lists EVERY item it keeps, so an item left out is removed
+ * at the phase change. The Starter/Growth dedicated-number item (and any
+ * other non-plan item) carries into the new plan; only the Pro £100 voice
+ * item goes when the target is not Pro (the customer is offered packs plus
+ * the £11.99 number instead). Minute packs are prepaid balance, not items,
+ * so they are untouched.
+ */
+export function carriedItems(input: {
+  items: readonly { id: string; priceId: string | null; quantity: number | null }[];
+  planItemId: string;
+  proVoicePriceId: string | null;
+  targetPlan: string;
+}): { current: { price: string; quantity: number }[]; target: { price: string; quantity: number }[]; droppedProVoice: boolean } {
+  const current: { price: string; quantity: number }[] = [];
+  const target: { price: string; quantity: number }[] = [];
+  let droppedProVoice = false;
+  for (const item of input.items) {
+    if (item.id === input.planItemId || !item.priceId) continue;
+    const entry = { price: item.priceId, quantity: item.quantity ?? 1 };
+    current.push(entry);
+    const isProVoice = input.proVoicePriceId !== null && item.priceId === input.proVoicePriceId;
+    if (isProVoice && input.targetPlan !== "pro") droppedProVoice = true;
+    else target.push(entry);
+  }
+  return { current, target, droppedProVoice };
+}
+
 export function downgradeSchedulePhases(input: {
   currentPriceId: string;
   targetPriceId: string;
@@ -130,6 +159,8 @@ export function downgradeSchedulePhases(input: {
   currentPeriodEnd: number;
   interval: BillingInterval;
   businessId: string;
+  /** Non-plan items (carriedItems): kept now, and in the new plan unless dropped. */
+  otherItems?: { current: { price: string; quantity: number }[]; target: { price: string; quantity: number }[] };
 }) {
   const metadata = { business_id: input.businessId };
   return {
@@ -137,14 +168,14 @@ export function downgradeSchedulePhases(input: {
     proration_behavior: "none" as const,
     phases: [
       {
-        items: [{ price: input.currentPriceId, quantity: input.quantity }],
+        items: [{ price: input.currentPriceId, quantity: input.quantity }, ...(input.otherItems?.current ?? [])],
         start_date: input.currentPhaseStart,
         end_date: input.currentPeriodEnd,
         proration_behavior: "none" as const,
         metadata,
       },
       {
-        items: [{ price: input.targetPriceId, quantity: input.quantity }],
+        items: [{ price: input.targetPriceId, quantity: input.quantity }, ...(input.otherItems?.target ?? [])],
         start_date: input.currentPeriodEnd,
         duration: { interval: input.interval, interval_count: 1 },
         proration_behavior: "none" as const,

@@ -25,6 +25,7 @@ import {
   trackedTokenFor,
   trackingParamFor,
 } from "../payments/tracking.ts";
+import { aiAuthoritySchema, parseAiAuthority, type AiAuthority } from "./ai-permissions.ts";
 
 export const CHECKOUT_LINKS_MAX = 25;
 
@@ -81,6 +82,11 @@ export const commercialAuthoritySchema = z
     requires_human_above_value_minor: z.number().int().min(0).nullable(),
     /** Abandoned-checkout follow-up (0143). Absent = the defaults. */
     abandoned_checkout: abandonedCheckoutSchema.optional(),
+    /**
+     * What the AI may do, v2 (0158, ai-permissions.ts). Absent = the
+     * least-privilege defaults (qualify and book only).
+     */
+    ai: aiAuthoritySchema.optional(),
   })
   .superRefine((value, ctx) => {
     const ids = new Set<string>();
@@ -135,7 +141,14 @@ export function parseAuthority(row: unknown): CommercialAuthority {
         ? null
         : Number(ceiling),
     abandoned_checkout: parseAbandonedSettings(raw),
+    // 0158 columns; absent before it is applied, which parses as the defaults.
+    ai: parseAiAuthority(raw.ai_permissions, raw.ai_discount_policy),
   };
+}
+
+/** The AI authority in force: the stored v2 block, else the least-privilege defaults. */
+export function aiAuthorityOf(authority: CommercialAuthority | null | undefined): AiAuthority {
+  return authority?.ai ?? parseAiAuthority(null, null);
 }
 
 /** The abandoned-checkout settings in force (the defaults when none are stored). */

@@ -1,6 +1,7 @@
 import "server-only";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { listRecentInvoices } from "@/lib/billing/invoices";
+import { monthlyRevenue } from "@/lib/billing/revenue";
 import { domainFromWebsite, titleise } from "./format";
 import {
   adminRead,
@@ -48,15 +49,38 @@ export function planLabel(plan: string): string {
   return definition?.name ?? titleise(plan);
 }
 
-/** Monthly price for a plan, normalised so an annual subscription is comparable. */
-function monthlyPriceFor(plan: string, interval: string | null): number {
-  if (plan === "trial") return 0;
-  const definition = PLANS[plan as Exclude<PlanId, "trial">];
-  if (!definition) return 0;
-  if (interval === "year") {
-    return definition.yearlyPrice ? Math.round(definition.yearlyPrice / 12) : 0;
+/**
+ * Monthly revenue for a subscription: the real Stripe amount
+ * (`subscriptions.mrr_minor`, from paid invoices: discounts and coupons
+ * applied, before VAT, annual / 12), falling back to the list price only
+ * where no paid invoice has been recorded yet (billing/revenue.ts).
+ */
+function monthlyPriceFor(plan: string, interval: string | null, mrrMinor?: number | null): number {
+  return Math.round(monthlyRevenue({ mrrMinor, plan, interval }).gbp * 100) / 100;
+}
+
+/**
+ * Real MRR per workspace (0165). Read on its own and tolerant of failure, so
+ * the admin billing page still renders (on list prices) before the migration
+ * is applied.
+ */
+async function mrrByBusiness(supabase: AdminClient, businessIds?: string[]): Promise<Map<string, number | null>> {
+  let query = (supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("subscriptions")
+    .select("business_id, mrr_minor")
+    .limit(20_000);
+  if (businessIds) {
+    if (businessIds.length === 0) return new Map();
+    query = query.in("business_id", businessIds);
   }
-  return definition.monthlyPrice ?? 0;
+  const { data, error } = await query;
+  if (error) return new Map();
+  return new Map(
+    ((data ?? []) as { business_id: string; mrr_minor: number | string | null }[]).map((row) => [
+      row.business_id,
+      row.mrr_minor === null ? null : Number(row.mrr_minor),
+    ]),
+  );
 }
 
 /** MRR only counts subscriptions that are actually billing. */
@@ -88,10 +112,11 @@ const SUBSCRIPTION_COLUMNS =
 function toRow(
   record: SubscriptionRecord,
   business: { name: string; website: string | null } | undefined,
+  mrrMinor: number | null = null,
 ): SubscriptionRow {
   const status = record.status as SubscriptionStatus;
   const mrr = contributesToMrr(status)
-    ? monthlyPriceFor(record.plan, record.billing_interval)
+    ? monthlyPriceFor(record.plan, record.billing_interval, mrrMinor)
     : 0;
 
   return {
@@ -177,10 +202,13 @@ async function buildSummary(
 ): Promise<BillingSummary> {
   const window = rangeWindow(range);
 
-  const { data } = await supabase
-    .from("subscriptions")
-    .select("plan, status, billing_interval, cancelled_at, created_at")
-    .limit(20_000);
+  const [{ data }, realMrr] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .select("business_id, plan, status, billing_interval, cancelled_at, created_at")
+      .limit(20_000),
+    mrrByBusiness(supabase),
+  ]);
 
   const rows = data ?? [];
   let mrr = 0;
@@ -197,7 +225,7 @@ async function buildSummary(
     else if (row.status === "CANCELLED") cancelled += 1;
 
     const value = contributesToMrr(row.status)
-      ? monthlyPriceFor(row.plan, row.billing_interval)
+      ? monthlyPriceFor(row.plan, row.billing_interval, realMrr.get(row.business_id) ?? null)
       : 0;
     mrr += value;
 
@@ -227,7 +255,7 @@ async function buildSummary(
       window.buckets - 1,
       Math.floor((created - window.start.getTime()) / window.bucketMs),
     );
-    mrrSeries[index] += monthlyPriceFor(row.plan, row.billing_interval);
+    mrrSeries[index] += monthlyPriceFor(row.plan, row.billing_interval, realMrr.get(row.business_id) ?? null);
   }
 
   return {
@@ -284,13 +312,16 @@ async function listSubscriptions(
     .range(from, from + filters.pageSize - 1);
 
   const records = (data ?? []) as unknown as SubscriptionRecord[];
-  const businesses = await businessesFor(
-    supabase,
-    records.map((row) => row.business_id),
-  );
+  const [businesses, realMrr] = await Promise.all([
+    businessesFor(
+      supabase,
+      records.map((row) => row.business_id),
+    ),
+    mrrByBusiness(supabase, records.map((row) => row.business_id)),
+  ]);
 
   return {
-    rows: records.map((row) => toRow(row, businesses.get(row.business_id))),
+    rows: records.map((row) => toRow(row, businesses.get(row.business_id), realMrr.get(row.business_id) ?? null)),
     total: count ?? 0,
     page: filters.page,
     pageSize: filters.pageSize,
@@ -517,8 +548,12 @@ async function getSubscriptionDetail(
   if (!data) return null;
 
   const record = data as unknown as SubscriptionRecord;
-  const businesses = await businessesFor(supabase, [record.business_id]);
-  const row = toRow(record, businesses.get(record.business_id));
+  const [businesses, realMrr] = await Promise.all([
+    businessesFor(supabase, [record.business_id]),
+    mrrByBusiness(supabase, [record.business_id]),
+  ]);
+  const recordMrr = realMrr.get(record.business_id) ?? null;
+  const row = toRow(record, businesses.get(record.business_id), recordMrr);
 
   const [invoiceResult, credits, entitlements, events, usage] = await Promise.all([
     listRecentInvoices(record.business_id, 6),
@@ -551,7 +586,7 @@ async function getSubscriptionDetail(
     // is the place to see them, which is what "View in Stripe" is for.
     paymentMethod: null,
     createdAt: record.created_at,
-    price: monthlyPriceFor(record.plan, record.billing_interval),
+    price: monthlyPriceFor(record.plan, record.billing_interval, recordMrr),
     stripeDashboardUrl: record.stripe_customer_id
       ? `https://dashboard.stripe.com/customers/${record.stripe_customer_id}`
       : null,

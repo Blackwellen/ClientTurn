@@ -1,0 +1,285 @@
+{
+  "uri": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search?publishedFrom=2026-09-20T00:00:00Z&publishedTo=2026-09-27T00:00:00Z&stages=tender&limit=3",
+  "version": "1.1",
+  "publishedDate": "2026-09-25T16:13:34+01:00",
+  "publisher": {
+    "name": "Cabinet Office",
+    "scheme": "GB-GOR",
+    "uid": "D2",
+    "uri": "https://www.gov.uk/government/organisations/cabinet-office"
+  },
+  "license": "http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "publicationPolicy": "https://www.gov.uk/government/publications/open-contracting",
+  "releases": [
+    {
+      "ocid": "ocds-b5fd17-1bf8aadf-8e42-4140-b426-6720c8201561",
+      "id": "d245118f-2e95-4cc4-a216-257955b8d7b4-915570",
+      "language": "en",
+      "date": "2026-09-25T16:13:33+01:00",
+      "tag": [
+        "tenderAmendment"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "PSA 09/2026",
+        "title": "Research project: What more could pre-registration education and training of health and care professionals do to uphold professionalism, encourage positive working cultures and prevent future misconduct?",
+        "description": "We are looking to invite research proposals for a piece of research entitled 'What more could pre-registration education and training of health and care professionals do to uphold professionalism, encourage positive working cultures and prevent future misconduct?' for the Professional Standards Authority (the PSA).\r\n\r\n\r\nCut off time for queries in relation to the Invitation to tender is 11:59 pm / 23:59 hrs on Thursday 8th October.\r\n\r\nDeadline for submission of proposals is 11:59pm/ 23:59 hrs on Wednesday 14th October\r\n\r\nFurther details can be found in the ITT.",
+        "datePublished": "2026-09-16T14:57:52+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "73000000",
+          "description": "Research and development services and related consultancy services"
+        },
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "postalCode": "EC4V 6AG"
+              }
+            ]
+          }
+        ],
+        "procurementMethod": "open",
+        "procurementMethodDetails": "Open procedure (below threshold)",
+        "tenderPeriod": {
+          "endDate": "2026-10-14T23:59:00+01:00"
+        },
+        "contractPeriod": {
+          "startDate": "2026-11-16T00:00:00Z",
+          "endDate": "2027-03-31T23:59:59+01:00"
+        },
+        "suitability": {
+          "sme": true,
+          "vcse": true
+        },
+        "mainProcurementCategory": "services"
+      },
+      "parties": [
+        {
+          "id": "GB-SRS-supplierregistration.cabinetoffice.gov.uk/3yA5YCEM",
+          "name": "Professional Standards Authority for Health And Social Care",
+          "identifier": {
+            "legalName": "Professional Standards Authority for Health And Social Care",
+            "scheme": "GB-SRS",
+            "id": "supplierregistration.cabinetoffice.gov.uk/3yA5YCEM"
+          },
+          "address": {
+            "streetAddress": "16-18 New Bridge street",
+            "locality": "London",
+            "postalCode": "EC4V 6AG",
+            "countryName": "England"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@professionalstandards.org.uk"
+          },
+          "details": {
+            "url": "http://www.professionalstandards.org.uk"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-SRS-supplierregistration.cabinetoffice.gov.uk/3yA5YCEM",
+        "name": "Professional Standards Authority for Health And Social Care"
+      }
+    },
+    {
+      "ocid": "ocds-b5fd17-0ccf08fa-6d39-4244-ba62-9562b0a08b43",
+      "id": "9566b75e-d76e-4674-b2fb-59a111017418-915557",
+      "language": "en",
+      "date": "2026-09-25T15:33:11+01:00",
+      "tag": [
+        "tender"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "TRAF001-DN299325-70641373",
+        "title": "Children and Young People's Residential Placements Flexible Procurement System (Round 19)",
+        "description": "The North West Local Authorities are developing a Flexible Procurement System (FPS) to facilitate the commissioning of high quality Children's Residential Placements. We are looking to knowledgeable and experienced providers to work with us to transform the lives of children, enabling them to break down barriers and turn challenging situations into positive ones. Through the FPS we are looking for sustainability, transformation and innovation with providers and Local Authorities and wider partners to work together to ensure each one of our children has the capacity, skills, independence and re",
+        "datePublished": "2026-09-25T15:33:11+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "85300000",
+          "description": "Social work and related services"
+        },
+        "additionalClassifications": [
+          {
+            "scheme": "CPV",
+            "id": "85311000",
+            "description": "Social work services with accommodation"
+          }
+        ],
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "region": "England",
+                "countryName": "United Kingdom"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "amount": 1110000000,
+          "currency": "GBP"
+        },
+        "procurementMethod": "open",
+        "procurementMethodDetails": "Open procedure (above threshold)",
+        "tenderPeriod": {
+          "endDate": "2026-10-30T12:00:00Z"
+        },
+        "contractPeriod": {
+          "startDate": "2026-12-01T00:00:00Z",
+          "endDate": "2028-01-01T23:59:59Z"
+        },
+        "suitability": {
+          "sme": true,
+          "vcse": true
+        },
+        "mainProcurementCategory": "services"
+      },
+      "parties": [
+        {
+          "id": "GB-CFS-62539",
+          "name": "Trafford Council",
+          "identifier": {
+            "legalName": "Trafford Council"
+          },
+          "address": {
+            "streetAddress": "1st Floor, Trafford Town Hall",
+            "locality": "Stretford",
+            "postalCode": "M32 0TH",
+            "countryName": "United Kingdom"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@star-procurement.gov.uk"
+          },
+          "details": {
+            "url": "http://www.trafford.gov.uk/"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-CFS-62539",
+        "name": "Trafford Council"
+      }
+    },
+    {
+      "ocid": "ocds-b5fd17-6ff1faae-7221-4f78-b508-b99b1babc027",
+      "id": "f00a68f1-47ca-45ba-8784-c2a777bad2ee-915541",
+      "language": "en",
+      "date": "2026-09-25T15:09:48+01:00",
+      "tag": [
+        "tenderAmendment"
+      ],
+      "initiationType": "tender",
+      "tender": {
+        "id": "ESOP1000127",
+        "title": "National Trust -NI- Marine Salvage of Vessels and Debris located in Strangford Lough",
+        "description": "The National Trust is seeking experienced marine salvage and environmental contractors to remove and appropriately dispose of a number of abandoned vessels and marine debris sites located around Strangford Lough. \r\n\r\nThe project aims to restore affected shoreline and seabed areas to their natural condition while protecting the Lough's internationally important habitats and wildlife. Contractors must demonstrate their ability to deliver the works in accordance with all statutory consents, minimise disturbance to sensitive foreshore and marine environments, and avoid adverse impacts on designate",
+        "datePublished": "2026-09-24T20:39:57+01:00",
+        "status": "active",
+        "classification": {
+          "scheme": "CPV",
+          "id": "63725000",
+          "description": "Salvage and refloating services"
+        },
+        "additionalClassifications": [
+          {
+            "scheme": "CPV",
+            "id": "63725100",
+            "description": "Vessel-salvaging services"
+          },
+          {
+            "scheme": "CPV",
+            "id": "63725200",
+            "description": "Standby vessel services"
+          },
+          {
+            "scheme": "CPV",
+            "id": "63725300",
+            "description": "Vessel refloating services"
+          },
+          {
+            "scheme": "CPV",
+            "id": "90500000",
+            "description": "Refuse and waste related services"
+          },
+          {
+            "scheme": "CPV",
+            "id": "90721800",
+            "description": "Natural risks or hazards protection services"
+          }
+        ],
+        "items": [
+          {
+            "id": "1",
+            "deliveryAddresses": [
+              {
+                "region": "Northern Ireland",
+                "countryName": "United Kingdom"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "amount": 15000,
+          "currency": "GBP"
+        },
+        "procurementMethod": "open",
+        "procurementMethodDetails": "Open procedure (below threshold)",
+        "tenderPeriod": {
+          "endDate": "2026-10-15T12:00:00+01:00"
+        },
+        "contractPeriod": {
+          "startDate": "2026-12-07T00:00:00Z",
+          "endDate": "2027-12-13T23:59:59Z"
+        },
+        "suitability": {
+          "sme": true,
+          "vcse": false
+        },
+        "mainProcurementCategory": "works"
+      },
+      "parties": [
+        {
+          "id": "GB-SRS-sid4gov.cabinetoffice.gov.uk/BTvR42rM",
+          "name": "THE NATIONAL TRUST FOR PLACES OF HISTORIC INTEREST OR NATURAL BEAUTY",
+          "identifier": {
+            "legalName": "THE NATIONAL TRUST FOR PLACES OF HISTORIC INTEREST OR NATURAL BEAUTY",
+            "scheme": "GB-SRS",
+            "id": "sid4gov.cabinetoffice.gov.uk/BTvR42rM"
+          },
+          "address": {
+            "streetAddress": "HEELIS",
+            "locality": "SWINDON",
+            "postalCode": "SN22NA",
+            "countryName": "England"
+          },
+          "contactPoint": {
+            "name": "[redacted]",
+            "email": "procurement@nationaltrust.org.uk"
+          },
+          "roles": [
+            "buyer"
+          ]
+        }
+      ],
+      "buyer": {
+        "id": "GB-SRS-sid4gov.cabinetoffice.gov.uk/BTvR42rM",
+        "name": "THE NATIONAL TRUST FOR PLACES OF HISTORIC INTEREST OR NATURAL BEAUTY"
+      }
+    }
+  ]
+}

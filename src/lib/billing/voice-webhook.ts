@@ -46,7 +46,8 @@ export async function applyVoicePackCheckout(event: Stripe.Event): Promise<void>
     return;
   }
 
-  const result = await creditVoicePack({ businessId, minutes: pack.minutes, stripeRef: session.id });
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+  const result = await creditVoicePack({ businessId, minutes: pack.minutes, stripeRef: session.id, paymentIntentId });
   if (result !== "APPLIED" && result !== "REPLAY") {
     throw new Error(`voice pack credit not applied (${result})`);
   }
@@ -104,4 +105,34 @@ async function grantVoiceViaPack(businessId: string): Promise<void> {
     { onConflict: "business_id,entitlement_key" },
   );
   if (upsertError) throw new Error(`voice pack grant: ${upsertError.message}`);
+}
+
+/**
+ * `charge.refunded` for a voice minute pack. Ack-fast half, like the other
+ * top-ups: queue `billing.refund_reverse`, which takes back only the pack's
+ * unused minutes (FIFO, never below zero). Keyed on the PaymentIntent and the
+ * cumulative refunded amount, so a replay queues nothing new.
+ */
+export async function applyVoicePackRefund(event: Stripe.Event): Promise<void> {
+  if (event.type !== "charge.refunded") return;
+  const charge = event.data.object as Stripe.Charge;
+  if (charge.metadata?.kind !== VOICE_PACK_METADATA_KIND) return;
+  const businessId = charge.metadata?.business_id;
+  const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+  if (!businessId || !paymentIntentId) return;
+  const amountRefundedMinor = Number(charge.amount_refunded ?? 0);
+  const { enqueue } = await import("@/lib/jobs/queue");
+  await enqueue(
+    "billing.refund_reverse",
+    { kind: "voice_pack", businessId, paymentIntentId, amountMinor: Number(charge.amount ?? 0), amountRefundedMinor },
+    { businessId, idempotencyKey: `billing.refund_reverse:voice_pack:${paymentIntentId}:${amountRefundedMinor}` },
+  );
+  await recordAudit({
+    businessId,
+    actorUserId: null,
+    actorType: "provider",
+    action: "billing.voice_pack_refunded",
+    entityType: "voice_minute_pack",
+    metadata: { paymentIntentId, amountRefundedMinor, unusedMinuteReversal: "queued", stripe_event: event.type },
+  });
 }

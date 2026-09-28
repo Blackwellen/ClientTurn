@@ -31,6 +31,7 @@ import {
   withWhatsAppScope,
 } from "@/lib/leads/whatsapp-opt-in";
 import { defineOperation, ServiceError } from "../runtime";
+import { meterLeadIfNeeded } from "@/lib/billing/lead-meter";
 import {
   CLOSED_LEAD_STATUSES,
   leadStatusTransition,
@@ -851,6 +852,12 @@ defineOperation("lead.resume_follow_up", {
     });
     if (block) throw new ServiceError(block.serviceCode, block.message);
 
+    // A lead stored as a record only (an import without follow-up, a held
+    // over-cap enquiry) counts against the plan's lead cap the first time it
+    // is worked (billing/lead-cap.ts). Already counted: nothing more.
+    const metered = await meterLeadIfNeeded(context.businessId, args.leadId);
+    if (!metered.ok) throw new ServiceError("PLAN_LIMIT", metered.message);
+
     const after = await patchLead(context.businessId, args.leadId, {
       human_takeover: false,
       automation_active: true,
@@ -1042,6 +1049,16 @@ defineOperation("lead.create", {
         permission: { recordedBy: context.userId, source: `api:${s.provider}` },
       },
     );
+
+    // The plan's lead cap (billing/lead-cap.ts): nothing was stored.
+    if (result.outcome === "REJECTED" && (result.reasons.includes("plan_limit") || result.reasons.includes("subscription_inactive"))) {
+      throw new ServiceError(
+        "PLAN_LIMIT",
+        result.reasons.includes("plan_limit")
+          ? "This workspace has reached its plan's new-lead limit for this billing period. Nothing was stored."
+          : "This workspace's subscription is not active, so new leads cannot be added. Nothing was stored.",
+      );
+    }
 
     const data = {
       outcome: result.outcome,

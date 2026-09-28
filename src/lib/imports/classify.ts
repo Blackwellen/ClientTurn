@@ -218,7 +218,15 @@ export const IMPORT_FIELDS = [
   { key: "roleTitle", label: "Job title" },
   { key: "sourceDetail", label: "Where they came from" },
   { key: "notes", label: "Notes" },
+  // Company facts from the customer's own CRM or list (imports/company-facts.ts):
+  // they feed the renewal, headcount-growth and tool-adoption signals.
+  { key: "contractRenewalDate", label: "Contract renewal date" },
+  { key: "headcount", label: "Headcount" },
+  { key: "technologies", label: "Technologies used" },
 ] as const;
+
+/** The optional company-fact columns, shown apart from the person's details. */
+export const COMPANY_FACT_FIELDS: readonly ImportField[] = ["contractRenewalDate", "headcount", "technologies"];
 
 export type ImportField = (typeof IMPORT_FIELDS)[number]["key"];
 
@@ -233,6 +241,9 @@ const HEADER_HINTS: Record<ImportField, string[]> = {
   roleTitle: ["title", "job title", "role", "position"],
   sourceDetail: ["source", "lead source", "origin", "how they found us"],
   notes: ["notes", "note", "comments", "description"],
+  contractRenewalDate: ["renewal date", "contract renewal", "contract renewal date", "renewal", "contract end", "contract end date", "contract expiry", "renews on"],
+  headcount: ["headcount", "employees", "employee count", "number of employees", "no of employees", "company size", "staff", "team size"],
+  technologies: ["technologies", "technology", "tech stack", "tools", "software", "tools used", "technologies used"],
 };
 
 function normaliseHeader(value: string): string {

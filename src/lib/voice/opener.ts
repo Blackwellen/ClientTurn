@@ -170,3 +170,39 @@ export function validateEditableSuffix(text: string, maxLength = 240): StyleViol
   }
   return out;
 }
+
+// ------------------------------------------------------------ closing line
+
+/**
+ * Owner decision 2026-09-28 (amends OD-1): every call ends with a fixed
+ * attribution line, spoken as the call wraps up (after the next step is
+ * agreed, or on a polite end). Factual attribution, never a pitch: no link,
+ * no offer. Removed only with the white-label capability
+ * (`white_label_public_pages`), off by default. Not spoken when the lead opted
+ * out or the call dropped. Versioned like the opener; `attribution_spoken` is
+ * stored on the call's outcome (0162).
+ */
+export const CLOSING_VERSION = "close.2026-09-28.v1";
+
+export const CLOSING_TEMPLATE = "Thanks for your time. You've been speaking with {calling_as_name}'s AI assistant, powered by ClientTurn.";
+
+/** The white-label closing: thanks only, no attribution. */
+export const WHITE_LABEL_CLOSING = "Thanks for your time.";
+
+export function renderClosingLine(input: { callingAsName: string; whiteLabel: boolean }): { version: string; text: string; attribution: boolean } {
+  if (input.whiteLabel) return { version: CLOSING_VERSION, text: WHITE_LABEL_CLOSING, attribution: false };
+  const name = cleanName(input.callingAsName);
+  if (!name) throw new Error("callingAsName is required for the closing line");
+  return { version: CLOSING_VERSION, text: CLOSING_TEMPLATE.replace("{calling_as_name}", name), attribution: true };
+}
+
+/**
+ * Whether the attribution was actually spoken: the closing line, exactly
+ * (typographic quotes and whitespace normalised), in an agent turn. Read from
+ * the transcript, never from the model's say-so.
+ */
+export function attributionSpoken(agentTurns: readonly string[], closing: { text: string; attribution: boolean }): boolean {
+  if (!closing.attribution) return false;
+  const want = canonical(closing.text).toLowerCase();
+  return agentTurns.some((turn) => canonical(turn).toLowerCase().includes(want));
+}

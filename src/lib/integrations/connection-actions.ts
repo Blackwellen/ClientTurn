@@ -10,6 +10,7 @@ import {
   selectMetaPage,
   type MetaPageOption,
 } from "@/lib/integrations/providers/meta-lead-ads";
+import { actionFailure } from "@/lib/errors/action-error";
 
 /**
  * Per-provider choices made after a connection exists (tracker 8.23): which
@@ -196,10 +197,7 @@ export async function loadMetaPagesAction(): Promise<Result<MetaPageOption[]>> {
     revalidatePath(SETTINGS_PATH);
     return { ok: true, data: pages };
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Your Pages could not be loaded.",
-    };
+    return actionFailure(error, "meta.pages.refresh", "Your Pages could not be loaded. Try again, or reconnect Meta.");
   }
 }
 
@@ -233,9 +231,6 @@ export async function selectMetaPageAction(input: unknown): Promise<Result<{ nam
     revalidatePath(SETTINGS_PATH);
     return { ok: true, data: { name: result.name } };
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "The Page could not be switched.",
-    };
+    return actionFailure(error, "meta.pages.select", "The Page could not be switched. Try again, or reconnect Meta.");
   }
 }

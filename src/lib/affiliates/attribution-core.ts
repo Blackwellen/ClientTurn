@@ -102,7 +102,7 @@ export function visitorHash(
  */
 export function looksAutomated(userAgent: string): boolean {
   if (!userAgent.trim()) return true;
-  return /bot|crawler|spider|crawl|slurp|curl|wget|python-requests|headless|preview|monitor|scrape/i.test(
+  return /bot|crawler|spider|crawl|slurp|curl|wget|python-requests|headless|preview|monitor|scrape|facebookexternalhit|whatsapp\/|lighthouse|phantomjs|selenium|puppeteer|playwright|okhttp|go-http-client|axios\/|node-fetch|undici|postmanruntime|httpclient|libwww|scrapy/i.test(
     userAgent,
   );
 }
@@ -112,3 +112,21 @@ export function clampCookieDays(days: number): number {
   if (!Number.isFinite(days)) return 1;
   return Math.min(Math.max(Math.floor(days), 1), MAX_COOKIE_DAYS);
 }
+
+/* ------------------------------------------------ consent (2026-09-28) -- */
+
+export { REFERRAL_PARAM, looksLikeReferralToken, withReferralParam } from "./referral-param.ts";
+
+/**
+ * Last click between the consented cookie and the URL-carried token: the one
+ * clicked most recently wins. Either may be null.
+ */
+export function latestReferral(
+  a: ReferralCookie | null,
+  b: ReferralCookie | null,
+): ReferralCookie | null {
+  if (!a) return b;
+  if (!b) return a;
+  return new Date(b.clickedAt).getTime() > new Date(a.clickedAt).getTime() ? b : a;
+}
+

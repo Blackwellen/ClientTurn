@@ -201,7 +201,7 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     key: "DONT_UNDERSTAND",
     label: "Doesn't understand the offer",
     patterns: [
-      /\b(don'?t|do not) (understand|get it|follow)\b/i,
+      /\b(don'?t|do not) (really |quite |fully )?(understand|get it|follow)\b/i,
       /\bwhat (exactly )?(is|does) (this|it|that|your (product|service))\b/i,
       /\b(confused|not sure what you (do|mean))\b/i,
     ],
@@ -222,6 +222,10 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
       /\bhow do i know\b/i,
       /\b(never heard of|who are) you\b/i,
       /\b(reviews|references|testimonials|case stud(y|ies))\b/i,
+      // The AI concern (objection matrix pass): "is this a bot?", "I'd rather
+      // not talk to a robot". Answered honestly (trust-ai-honest).
+      /\b(is this|are you|am i (talking|speaking|chatting) to) (a |an )?(bot|robot|chatbot|machine|computer|ai|automated)\b/i,
+      /\b(don'?t|do not|rather not) (want to |like )?(talk|talking|speak|speaking|deal|dealing) (to|with) (a |an )?(bot|robot|chatbot|machine|ai)\b/i,
     ],
     underlyingConcerns: [
       "They do not know the business.",
@@ -241,7 +245,7 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     key: "IMPLEMENTATION",
     label: "Implementation effort",
     patterns: [
-      /\b(how long|how hard|how much work) (does it|would it|will it) (take )?(to )?(set ?up|implement|onboard|get started)\b/i,
+      /\b(how long|how hard|how much work) (does it|would it|will it) (take |be )?(to )?(set ?up|implement|onboard|get started)\b/i,
       /\b(setup|set up|implementation|onboarding|rollout|migration)\b[^.?!]{0,30}\b(effort|time|work|pain|hassle)\b/i,
     ],
     underlyingConcerns: ["They lack time or people to implement.", "A previous rollout went badly."],
@@ -395,7 +399,9 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     key: "SEND_INFORMATION",
     label: "Send me information",
     patterns: [
-      /\b(send|email|forward) (me|us|over) (some |more )?(info|information|details|a brochure|something|the details|pricing)\b/i,
+      /\b(send|email|forward) (me|us|over) (some |more |the )?(info|information|details|a brochure|something|pricing)\b/i,
+      // Spoken forms (objection matrix pass): "just send it over", "pop it in an email".
+      /\b(send|email|forward|pop|stick) (it|that|them|something|the info) (over|across|through|in an email)\b/i,
       /\bdo you have (a )?(brochure|deck|website|pdf)\b/i,
     ],
     underlyingConcerns: ["A polite brush-off.", "Genuine interest, but not ready to talk."],

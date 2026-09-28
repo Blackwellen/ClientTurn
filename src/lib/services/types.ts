@@ -98,8 +98,14 @@ export function riskRank(risk: RiskClass): number {
  * MCP client parks a risky action for a human, whereas an API caller is a
  * program the customer wrote and can be told plainly that an operation needs a
  * person and refused. Neither may ever set `confirmed`.
+ *
+ * `AUTOMATION` is a workspace automation rule (lib/automation/rule-runner.ts)
+ * acting on the authority of the owner or admin who enabled it, with their
+ * live role re-read on every run. It is not SYSTEM: platform maintenance
+ * pauses it like a person's change, and it may only reach an operation that
+ * lists it in `callers`.
  */
-export type CallerKind = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM";
+export type CallerKind = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM" | "AUTOMATION";
 
 export type ServiceContext = {
   businessId: string;
@@ -114,6 +120,12 @@ export type ServiceContext = {
    * agent can never set it at all.
    */
   confirmed?: boolean;
+  /**
+   * Where `confirmed` came from, for the audit row: a person on this request,
+   * or (agent quote sends only) the owner's standing permission in Settings ->
+   * AI & selling -> What the AI may do. Absent = a person.
+   */
+  confirmationSource?: "person" | "standing_permission";
   /** Correlates every row this call writes — audit, usage, policy. */
   correlationId: string;
   /** Makes a retried call idempotent where the operation supports it. */

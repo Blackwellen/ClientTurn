@@ -1,5 +1,6 @@
 import "server-only";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
+import { monthlyRevenue } from "@/lib/billing/revenue";
 import { domainFromWebsite, jobLabel } from "./format";
 import { getProviderHealth } from "./providers";
 import {
@@ -121,6 +122,20 @@ function cumulativeSeries(
   return { series, atStart };
 }
 
+/** Real MRR across paying subscriptions (billing/revenue.ts), or null when unreadable. */
+async function realMrrNow(supabase: AdminClient): Promise<number | null> {
+  const { data, error } = await (supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("subscriptions")
+    .select("plan, billing_interval, mrr_minor")
+    .in("status", ["ACTIVE", "PAST_DUE"])
+    .limit(20_000);
+  if (error) return null;
+  return ((data ?? []) as { plan: string; billing_interval: string | null; mrr_minor: number | string | null }[]).reduce(
+    (total, row) => total + monthlyRevenue({ mrrMinor: row.mrr_minor, plan: row.plan, interval: row.billing_interval }).gbp,
+    0,
+  );
+}
+
 function monthlyValueOf(plan: string, interval: string | null): number {
   const definition = PLANS[plan as Exclude<PlanId, "trial">];
   if (!definition || definition.monthlyPrice === null) return 0;
@@ -187,9 +202,21 @@ export async function getAdminOverview(
 
   const activeCustomers = cumulativeSeries(forMetric("active_customers"), window);
   const trials = cumulativeSeries(forMetric("trials"), window);
-  const mrr = cumulativeSeries(forMetric("paying"), window, (row) =>
+  const listMrr = cumulativeSeries(forMetric("paying"), window, (row) =>
     monthlyValueOf(row.plan, row.billing_interval || null),
   );
+  // The headline is what paying subscriptions are actually billed (0165
+  // `mrr_minor`, from paid Stripe invoices: discounts applied, before VAT),
+  // list price only where no invoice is recorded yet. The trend line has no
+  // per-day history of real amounts, so it is the list-price line scaled to
+  // today's real figure.
+  const realNow = await realMrrNow(supabase);
+  const listNow = listMrr.series[window.buckets - 1] ?? listMrr.atStart;
+  const scale = realNow !== null && listNow > 0 ? realNow / listNow : 1;
+  const mrr = {
+    series: listMrr.series.map((value) => value * scale),
+    atStart: listMrr.atStart * scale,
+  };
 
   const suffix = range === "24h" ? " today" : "";
 
@@ -220,7 +247,7 @@ export async function getAdminOverview(
     },
     {
       key: "mrr",
-      label: "MRR (mirror)",
+      label: "MRR",
       value: Math.round(mrr.series[window.buckets - 1] ?? mrr.atStart),
       money: true,
       previous: Math.round(mrr.atStart),
@@ -229,7 +256,7 @@ export async function getAdminOverview(
         mrr.atStart,
       ),
       series: mrr.series.map((value) => Math.round(value)),
-      hint: "Local mirror of Stripe-backed subscriptions, priced from the plan catalogue. Stripe remains the source of truth for billing. The line plots subscriptions by start date and does not replay historic plan changes.",
+      hint: "What paying subscriptions are billed a month, from the amounts on paid Stripe invoices (discounts applied, before VAT); list price only where no paid invoice is recorded yet. The line plots subscriptions by start date, scaled to today's figure, and does not replay historic plan changes.",
     },
     flowMetric("signups", "New signups", series, window, {
       hint: "Workspaces created within the selected window.",

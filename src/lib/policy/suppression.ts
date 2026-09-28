@@ -404,10 +404,16 @@ export async function recentComplaints(
 }
 
 /** Voice calls share the central suppression boundary, including platform and expiry rules. */
-export async function checkVoiceSuppression(businessId: string, destination?: string | null): Promise<{ suppressed: boolean; voiceOptedOut: boolean }> {
+export async function checkVoiceSuppression(
+  businessId: string,
+  destination?: string | null,
+): Promise<{ suppressed: boolean; voiceOptedOut: boolean; allChannels: boolean }> {
   // Suppression for calls: a VOICE or ALL entry for the number, this workspace or platform-wide.
   let suppressed = false;
   let voiceOptedOut = false;
+  // An ALL entry: suppressed on every channel (inbound return calls read this:
+  // a calls-only opt-out does not stop answering a call the person made).
+  let allChannels = false;
   const phone = destination ? normalisePhone(destination) : null;
   if (phone) {
     const { data: hits, error } = await createAdminClient()
@@ -422,9 +428,10 @@ export async function checkVoiceSuppression(businessId: string, destination?: st
     const live = ((hits ?? []) as { channel: string; expires_at: string | null }[]).filter((h) => !h.expires_at || Date.parse(h.expires_at) > now);
     suppressed = live.length > 0;
     voiceOptedOut = live.some((h) => h.channel === "VOICE");
+    allChannels = live.some((h) => h.channel === "ALL");
   }
 
-  return { suppressed, voiceOptedOut };
+  return { suppressed, voiceOptedOut, allChannels };
 }
 
 /** Persist a voice opt-out, failing closed on deployments awaiting the VOICE migration. */

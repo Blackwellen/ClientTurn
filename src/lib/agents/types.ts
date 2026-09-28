@@ -100,14 +100,14 @@ export const AGENT_TYPE_DEFINITIONS: Record<AgentType, AgentTypeDefinition> = {
   },
   BOOKING: {
     type: "BOOKING",
-    label: "Booking agent",
-    tagline: "Chases qualified leads that have not booked.",
+    label: "Closing agent",
+    tagline: "Chases qualified leads that have not reached their goal.",
     description:
-      "Finds qualified leads that have gone quiet for a day or more without booking. Set to run automatically, it hands them back to your follow-up sequence; otherwise it lists them for you. Offering times and confirming bookings is done by the conversation assistant and your booking link, not by this agent.",
+      "Finds qualified leads that have gone quiet short of their goal: a meeting not booked, a product or service not bought, a subscription or trial not started. Leads already being chased by a checkout link or a quote are left to that follow-up. Set to run automatically, it hands the rest back to your follow-up; otherwise it lists them for you.",
     capabilities: [
-      "Finds qualified leads with no booking and no recent contact",
+      "Works to each lead's goal: meeting, sale, subscription or trial",
+      "Skips leads a checkout link or quote is already chasing",
       "Checks each lead can still be contacted before acting",
-      "Restarts follow-up, or lists the lead for you to chase",
       "Never sends a message itself: follow-up's own checks apply",
     ],
     tabs: ["overview", "leads", "queue", "campaign", "activity", "settings"],
@@ -131,12 +131,12 @@ export const AGENT_TYPE_DEFINITIONS: Record<AgentType, AgentTypeDefinition> = {
   COMBINED: {
     type: "COMBINED",
     label: "Combined agent",
-    tagline: "Sourcing, booking and re-engagement in one.",
+    tagline: "Sourcing, closing and re-engagement in one.",
     description:
-      "Each run does all three jobs in turn: runs your search plan, chases qualified leads that have not booked, and drafts a re-engagement campaign for quiet leads. One set of limits and one approval setting cover all of it.",
+      "Each run does all three jobs in turn: runs your search plan, chases qualified leads that have not reached their goal, and drafts a re-engagement campaign for quiet leads. One set of limits and one approval setting cover all of it.",
     capabilities: [
       "Everything a sourcing agent does",
-      "Everything a booking agent does",
+      "Everything a closing agent does",
       "Everything a re-engagement agent does",
       "One set of daily and monthly limits",
     ],

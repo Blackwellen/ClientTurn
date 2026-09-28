@@ -18,6 +18,7 @@ export const HELP_CATEGORY_SLUGS = [
   "reactivation",
   "copilot",
   "ai-agents",
+  "voice",
   "settings",
   "integrations",
   "developers",
@@ -38,6 +39,7 @@ export type HelpIconKey =
   | "repeat"
   | "sparkles"
   | "bot"
+  | "phone"
   | "settings"
   | "plug"
   | "terminal"
@@ -95,6 +97,12 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
     title: "AI agents",
     description: "Background agents, the conversation assistant and their limits.",
     icon: "bot",
+  },
+  {
+    slug: "voice",
+    title: "Voice",
+    description: "The AI voice agent: setting it up, who it may call and voice minutes.",
+    icon: "phone",
   },
   {
     slug: "settings",

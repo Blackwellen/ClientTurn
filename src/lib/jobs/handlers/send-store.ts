@@ -28,6 +28,8 @@ import { claimSenderSlot, sendingIdentityFor, type SendingIdentity } from "@/lib
 import { frequencyGateForMessage } from "@/lib/reengagement/service";
 import { triggerOfSendKey } from "@/lib/reengagement/triggers";
 import { isPaymentThanksSendKey } from "@/lib/payments/send-keys";
+import { getMaintenanceStatus } from "@/lib/maintenance/state";
+import { outboundPauseUntil } from "@/lib/maintenance/schedule";
 import type { Channel, SendResult } from "@/lib/messaging/types";
 import type {
   OutboundMessageRecord,
@@ -507,13 +509,17 @@ export function createSendStore(): SendStore & {
     async snapshot(
       message: OutboundMessageRecord,
     ): Promise<SendGuardSnapshot | null> {
-      const [business, lead] = await Promise.all([
+      const [business, lead, maintenance] = await Promise.all([
         loadBusinessContext(message.businessId),
         loadLead(message.leadId),
+        getMaintenanceStatus(),
       ]);
       if (!business || !lead) return null;
 
       return {
+        // Platform maintenance holds outbound sends while the app or site is
+        // offline, unless the operator kept automated follow-up running.
+        maintenancePauseUntil: outboundPauseUntil(maintenance, new Date()),
         // Channel suppression (below) is the opt-out check; the lead-wide flag
         // binds only where it cannot be derived (guardOptedOut).
         lead: { ...leadState(lead), optedOut: guardOptedOut(lead, message.channel) },

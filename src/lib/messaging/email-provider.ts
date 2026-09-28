@@ -1,6 +1,6 @@
 import "server-only";
 import { sendEmail } from "@/lib/email/smtp";
-import { recordEmailHealth } from "@/lib/email/store";
+import { applyEmailSendOutcome } from "@/lib/email/send-outcome";
 import type {
   InboundMessage,
   MessageStatusEvent,
@@ -49,19 +49,10 @@ export function createEmailProvider(): MessagingProvider {
       });
 
       // The connection's health is a property of the mailbox, not of one
-      // message, so every send updates it: a customer sees "action required"
-      // in Settings the moment their password stops working.
-      await recordEmailHealth(
-        request.businessId,
-        result.ok
-          ? { ok: true }
-          : {
-              ok: false,
-              code: result.errorCode,
-              message: result.errorMessage,
-              permanent: result.permanent,
-            },
-      );
+      // message: a customer sees "action required" in Settings the moment
+      // their password stops working. A refusal of ONE address is not a
+      // mailbox problem: that address is suppressed instead (audit 15 #8).
+      await applyEmailSendOutcome(request.businessId, request.to, result, "SMTP_SEND");
 
       return result;
     },

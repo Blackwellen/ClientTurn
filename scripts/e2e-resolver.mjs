@@ -51,6 +51,12 @@ export function resolve(specifier, context, nextResolve) {
     };
   }
 
+  // `next/server` has no `exports` map, so bare Node needs the file name. The
+  // same mapping the story harness makes (tests/stories/README.md).
+  if (specifier === "next/server") {
+    return nextResolve("next/server.js", context);
+  }
+
   if (specifier.startsWith("@/")) {
     const resolved = firstExisting(path.join(srcRoot, specifier.slice(2)));
     if (resolved) {

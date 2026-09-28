@@ -1,4 +1,5 @@
 import "server-only";
+import { paidEnrichmentEnabled, paidEnrichmentKey } from "@/lib/find-leads/paid-enrichment";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -151,11 +152,16 @@ export const serverEnv = {
   /**
    * Retell, the conversational layer of the voice sales agent (phase P2,
    * docs/VOICE.md). Absent key = voice is `integration-required` everywhere:
-   * nothing dials, nothing throws. The same key verifies Retell webhooks
-   * (only a key with the webhook badge does, research §2).
+   * nothing dials, nothing throws. Retell signs webhooks with this same
+   * key (X-Retell-Signature, verified in retell-protocol.ts).
    */
   retell: {
-    apiKey: optional("RETELL_API_KEY"),
+    /**
+     * The SERVER secret key (canonical name RETELL_SECRET_KEY; RETELL_API_KEY
+     * is accepted for compatibility). Never RETELL_PUBLIC_KEY: that one is
+     * for browser web calls only and must not authenticate the server.
+     */
+    apiKey: optional("RETELL_SECRET_KEY") ?? optional("RETELL_API_KEY"),
     /** The platform's default Retell agent; a workspace may override it (voice_settings.provider_agent_id). */
     agentId: optional("RETELL_AGENT_ID"),
   },
@@ -169,6 +175,13 @@ export const serverEnv = {
     webhookBaseUrl: optional("VOICE_WEBHOOK_BASE_URL"),
     /** Platform kill switch: "1"/"true" stops every AI call on every workspace. */
     callsDisabled: /^(1|true|yes)$/i.test(process.env.VOICE_CALLS_DISABLED ?? ""),
+    /**
+     * The Retell SIP domain an inbound return call is handed to
+     * (`<Dial><Sip>sip:{number}@{domain}</Sip></Dial>`), e.g. sip.retellai.com.
+     * UNVERIFIED: confirm with Retell before relying on it. Absent = inbound
+     * callers get the polite message and a text back (or a transfer), never the AI.
+     */
+    retellSipDomain: optional("RETELL_SIP_DOMAIN"),
     /** Where Twilio emails regulatory bundle status (a platform ops mailbox). */
     bundleNotificationEmail: optional("VOICE_BUNDLE_NOTIFICATION_EMAIL"),
   },
@@ -290,8 +303,15 @@ export const serverEnv = {
    * issue rather than inventing records.
    */
   sourcing: {
-    apolloApiKey: optional("APOLLO_API_KEY"),
-    hunterApiKey: optional("HUNTER_API_KEY"),
+    /**
+     * Paid enrichment (Apollo, Hunter, Clearbit) is OFF unless
+     * ENABLE_PAID_ENRICHMENT=true (CLAUDE.md resolved conflict 7): with the
+     * switch off these keys are never read, so a key left in the environment
+     * cannot switch a vendor on. See find-leads/paid-enrichment.ts.
+     */
+    paidEnrichmentEnabled: paidEnrichmentEnabled(process.env),
+    apolloApiKey: paidEnrichmentKey(process.env, "APOLLO_API_KEY"),
+    hunterApiKey: paidEnrichmentKey(process.env, "HUNTER_API_KEY"),
     /**
      * Companies House. Free, and issued instantly from their developer portal.
      *
@@ -301,7 +321,7 @@ export const serverEnv = {
      * assuming it.
      */
     companiesHouseApiKey: optional("COMPANIES_HOUSE_API_KEY"),
-    clearbitApiKey: optional("CLEARBIT_API_KEY"),
+    clearbitApiKey: paidEnrichmentKey(process.env, "CLEARBIT_API_KEY"),
     googlePlacesApiKey: optional("GOOGLE_PLACES_API_KEY") ?? optional("GOOGLE_MAPS_API_KEY"),
     /** Meta Ad Library. A public-data token, not the Lead Ads app secret. */
     metaAdLibraryToken: optional("META_AD_LIBRARY_TOKEN"),

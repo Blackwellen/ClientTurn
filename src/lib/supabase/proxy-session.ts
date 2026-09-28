@@ -1,7 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function updateSession(request: NextRequest) {
+/**
+ * Refreshes the Supabase session and reports whose it is. `userId` comes from
+ * `auth.getUser()`, which Supabase verifies, never from a decoded cookie.
+ * The maintenance gate uses it for the admin bypass (lib/maintenance/proxy-gate.ts).
+ */
+export async function refreshSessionWithUser(request: NextRequest): Promise<{
+  response: NextResponse;
+  supabase: SupabaseClient;
+  userId: string | null;
+}> {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,7 +35,13 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return response;
+  return { response, supabase: supabase as unknown as SupabaseClient, userId: user?.id ?? null };
+}
+
+export async function updateSession(request: NextRequest) {
+  return (await refreshSessionWithUser(request)).response;
 }

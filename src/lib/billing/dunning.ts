@@ -7,6 +7,8 @@ import { recordAudit } from "@/lib/audit";
 import { queueNotification } from "@/lib/jobs/handlers/shared";
 import { stripe } from "./stripe";
 import { attemptInvoiceCharge } from "./dunning-core";
+import { actionRequiredNotice, invoiceFailureDecision } from "./stripe-events";
+import { READ_ONLY_RETENTION_DAYS } from "./cancellation";
 import {
   DUNNING_WINDOW_DAYS,
   GRACE_FULL_ACCESS_DAYS,
@@ -120,7 +122,7 @@ const NOTICE_COPY: Record<
     title: "Subscription cancelled after failed payments",
     body:
       `After ${MAX_DUNNING_ATTEMPTS} daily retries the payment still failed, so the subscription has been cancelled. ` +
-      "Your workspace is read-only: your data is intact and can be exported. Resubscribe at any time to carry on.",
+      `Your workspace is read-only for ${READ_ONLY_RETENTION_DAYS} days: your data is intact and can be exported, and resubscribing restores it. After that it is deleted, as our privacy policy sets out.`,
   }),
   recovered: () => ({
     severity: "info",
@@ -168,9 +170,21 @@ async function sendNotice(row: DunningRow, notice: DunningNotice): Promise<void>
  * must not reset the clock or the attempt count.
  */
 export async function recordInvoiceFailure(invoice: Stripe.Invoice, eventId: string): Promise<void> {
-  const subscriptionId = subscriptionIdOfInvoice(invoice);
   const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
   if (!customerId || !invoice.id) return;
+
+  // Only the subscription governs access (stripe-events.ts): a failed
+  // ONE-OFF invoice (a top-up or pack receipt, a manual invoice) must never
+  // move the workspace to PAST_DUE. It used to, before this check, and with
+  // no dunning row to clear it the workspace stayed PAST_DUE and voice stayed
+  // blocked. The purchase itself simply grants nothing until it is paid.
+  const decision = invoiceFailureDecision({
+    id: invoice.id,
+    billing_reason: invoice.billing_reason ?? null,
+    subscriptionId: subscriptionIdOfInvoice(invoice),
+  });
+  if (decision.action !== "dun") return;
+  const subscriptionId = decision.subscriptionId;
 
   const businessId = await businessForCustomer(customerId);
   if (!businessId) return;
@@ -184,10 +198,6 @@ export async function recordInvoiceFailure(invoice: Stripe.Invoice, eventId: str
     "stripe webhook: mark past due",
     { eventId, businessId },
   );
-
-  // One-off purchases (top-ups) are not subscription invoices; only a failed
-  // subscription charge is dunned.
-  if (!subscriptionId) return;
 
   const insert = await db()
     .from("billing_dunning")
@@ -217,6 +227,43 @@ export async function recordInvoiceFailure(invoice: Stripe.Invoice, eventId: str
     metadata: { status: "PAST_DUE", stripe_event: "invoice.payment_failed", invoice: invoice.id },
   });
   await sendNotice(row, "failed");
+}
+
+/**
+ * `invoice.payment_action_required`: the card issuer wants 3-D Secure (SCA)
+ * before a subscription charge can be taken. Off-session retries cannot pass
+ * it, so the owner is sent to Stripe's hosted invoice page to confirm. No
+ * status change here: if the charge then fails, `invoice.payment_failed`
+ * opens dunning as usual, and a confirmed payment arrives as `invoice.paid`.
+ * One notice per invoice.
+ */
+export async function recordInvoiceActionRequired(invoice: Stripe.Invoice, eventId: string): Promise<void> {
+  const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+  if (!customerId || !invoice.id) return;
+  const businessId = await businessForCustomer(customerId);
+  if (!businessId) return;
+
+  const notice = actionRequiredNotice({
+    hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+    amountDueMinor: invoice.amount_due ?? null,
+    currency: invoice.currency ?? null,
+  });
+  await queueNotification({
+    businessId,
+    type: "billing",
+    severity: "warning",
+    title: notice.title,
+    body: notice.body,
+    linkUrl: notice.linkUrl,
+    dedupeKey: `invoice_action_required:${invoice.id}`,
+  });
+  await recordAudit({
+    businessId,
+    actorType: "provider",
+    action: "billing.payment_action_required",
+    entityType: "subscription",
+    metadata: { stripe_event: "invoice.payment_action_required", invoice: invoice.id, eventId },
+  });
 }
 
 /** `invoice.paid`. Stops retrying that invoice, immediately. */

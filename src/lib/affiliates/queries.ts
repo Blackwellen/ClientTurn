@@ -91,7 +91,7 @@ async function loadPlan(planId: string | null): Promise<CommissionPlan | null> {
     .from("affiliate_commission_plans")
     .select(
       `id, name, commission_type, percent, flat_amount_minor, currency,
-       recurring_months, attribution_window_days, cookie_window_days,
+       attribution_window_days, cookie_window_days,
        hold_days, minimum_payout_minor`,
     )
     .eq("id", planId)
@@ -107,7 +107,6 @@ function toPlan(row: {
   percent: number | null;
   flat_amount_minor: number | null;
   currency: string;
-  recurring_months: number | null;
   attribution_window_days: number;
   cookie_window_days: number;
   hold_days: number;
@@ -120,7 +119,6 @@ function toPlan(row: {
     percent: row.percent,
     flatAmountMinor: row.flat_amount_minor,
     currency: row.currency,
-    recurringMonths: row.recurring_months,
     attributionWindowDays: row.attribution_window_days,
     cookieWindowDays: row.cookie_window_days,
     holdDays: row.hold_days,
@@ -326,7 +324,7 @@ function mapReferrals(
 ): ReferralRow[] {
   return rows.map((row) => ({
     id: row.id,
-    label: referralLabel(row.display_label, row.created_at),
+    label: referralLabel(row.display_label, row.created_at, row.id),
     status: row.status as ReferralStatus,
     planKey: row.plan_key,
     signupAt: row.signup_at,
@@ -447,7 +445,7 @@ export async function getPublicPlan(): Promise<CommissionPlan | null> {
     .from("affiliate_commission_plans")
     .select(
       `id, name, commission_type, percent, flat_amount_minor, currency,
-       recurring_months, attribution_window_days, cookie_window_days,
+       attribution_window_days, cookie_window_days,
        hold_days, minimum_payout_minor`,
     )
     .eq("is_default", true)

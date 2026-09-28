@@ -9,6 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { assertCapability } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
+import { senderIdentityCreateProblem, senderLimitLaunchProblem } from "@/lib/billing/sender-limit";
 import { loadEmailAccount } from "@/lib/email/store";
 
 /**
@@ -110,6 +111,11 @@ export async function createSenderIdentityAction(
 
   // Healthy *and* able to send: an inbound-only connection cannot run a
   // campaign, and a stored password is what proves SMTP was set up.
+  // The plan's sender-identity allowance (billing/sender-limit.ts). A new
+  // address needs a free slot; re-saving an existing identity is an update.
+  const senderProblem = await senderIdentityCreateProblem(access.workspace.businessId, fromEmail);
+  if (senderProblem) return fail(senderProblem);
+
   const healthy =
     account.status !== "ACTION_REQUIRED" &&
     account.status !== "DISCONNECTED" &&
@@ -224,6 +230,9 @@ export async function launchCampaignAction(
   if (!sender.postal_footer) {
     return fail("Cold email needs a postal address on the sending identity.");
   }
+  // Over the plan's sender allowance (after a downgrade): refused until back within it.
+  const senderLimit = await senderLimitLaunchProblem(access.workspace.businessId);
+  if (senderLimit) return fail(senderLimit);
 
   const { data: step } = await admin
     .from("outreach_steps")

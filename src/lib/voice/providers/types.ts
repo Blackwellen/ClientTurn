@@ -136,6 +136,24 @@ export const outboundCallRequestSchema = z.object({
   metadata: z.record(z.string(), z.string()),
   /** Values the agent prompt reads (the locked preamble among them). */
   dynamicVariables: z.record(z.string(), z.string()),
+  /**
+   * Per-call agent settings (voice P3): the hard duration ceiling from the
+   * time governor, and the voicemail action (the fixed, versioned script only
+   * when the consent basis allows it, §26; otherwise hang up).
+   */
+  overrides: z
+    .object({
+      maxCallDurationMs: z.number().int().min(60_000).max(7_200_000).optional(),
+      voicemail: z
+        .discriminatedUnion("mode", [
+          z.object({ mode: z.literal("STATIC_TEXT"), text: z.string().min(1).max(1000) }),
+          z.object({ mode: z.literal("HANG_UP") }),
+        ])
+        .optional(),
+      /** How the assistant sounds (voice-profile.ts voiceAgentFields): Retell agent fields. */
+      voice: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    })
+    .optional(),
 });
 export type OutboundCallRequest = z.infer<typeof outboundCallRequestSchema>;
 
@@ -234,6 +252,12 @@ export interface NumberProvider {
   readonly name: "twilio" | "fake";
   /** Idempotent by `friendlyName`: an existing subaccount with that name is returned. */
   createSubaccount(input: { friendlyName: string }): Promise<{ accountSid: string; created: boolean }>;
+  /**
+   * The subaccount's own auth token, to store sealed for verifying its
+   * webhooks (voice P3, P2 gap b). Optional: a provider without subaccounts
+   * returns nothing.
+   */
+  subaccountAuthToken?(accountSid: string): Promise<string | null>;
   submitRegulatoryBundle(input: BundleSubmission): Promise<{ bundleSid: string; addressSid: string; endUserSid: string; status: BundleStatus }>;
   getBundleStatus(input: { accountSid: string; bundleSid: string }): Promise<{ status: BundleStatus; failureReason: string | null }>;
   searchAvailable(input: {

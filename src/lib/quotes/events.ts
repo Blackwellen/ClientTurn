@@ -14,6 +14,7 @@ import { emitWebhookEvent } from "@/lib/webhooks/emit";
 
 /** Quote timeline type -> automation event type. `quote.signed` is `signature.completed`. */
 const AUTOMATION_TYPE: Record<string, AutomationEventType> = {
+  "quote.requested": "quote.requested",
   "quote.created": "quote.created",
   "quote.approval_requested": "quote.approval_requested",
   "quote.approved": "quote.approved",
@@ -28,6 +29,7 @@ const AUTOMATION_TYPE: Record<string, AutomationEventType> = {
   "quote.reminded": "quote.reminded",
   "quote.signed": "signature.completed",
   "signature.completed": "signature.completed",
+  "invoice.created": "invoice.created",
   "invoice.issued": "invoice.issued",
   "invoice.paid": "invoice.paid",
   "invoice.overdue": "invoice.overdue",

@@ -8,10 +8,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * are not shared — an in-memory counter would reset on every cold start and
  * would not be enforced across concurrent instances.
  *
- * Fails OPEN: if the limiter itself errors we allow the request rather than
- * locking every customer out of signing in because of an infrastructure blip.
- * The trade-off is deliberate; abuse is still bounded by the provider limits
- * behind these endpoints.
+ * Fails OPEN for most buckets: if the limiter itself errors we allow the
+ * request, because abuse there is still bounded by the provider limits behind
+ * the endpoint.
+ *
+ * Fails CLOSED for the credential buckets (`FAIL_CLOSED_BUCKETS`: sign-in,
+ * sign-up, password reset, admin sign-in and step-up). A Supabase or RPC blip
+ * must not quietly remove brute-force protection from a password form (gap
+ * audit 15 §3). Refusing a sign-in for the length of an outage costs little:
+ * the same outage would fail the sign-in itself.
  */
 
 export type RateLimitRule = {
@@ -40,11 +45,12 @@ export const RATE_LIMITS = {
   "admin:event_retry": { limit: 30, windowSeconds: 300 },
   "admin:provider_refresh": { limit: 6, windowSeconds: 300 },
   "admin:search": { limit: 120, windowSeconds: 60 },
-  // Affiliate programme. Applications are per IP; the click endpoint is high
-  // volume by design and is bounded generously, with bot filtering doing the
-  // real work of keeping junk out of the attribution record.
+  // Affiliate programme. Applications are per IP. Clicks are counted at most
+  // 20 per 10 minutes per network (keyed by a salted IP hash, never the raw
+  // address); over that the visitor still reaches the page, uncounted and
+  // uncookied (affiliate audit 17, fraud-rules.ts CLICK_RATE_LIMIT).
   "affiliate:apply": { limit: 5, windowSeconds: 3600 },
-  "affiliate:click": { limit: 240, windowSeconds: 60 },
+  "affiliate:click": { limit: 20, windowSeconds: 600 },
   // Each attempt creates or mutates a Stripe Connect account and mints a
   // single-use onboarding link, so this is bounded tightly.
   "affiliate:connect": { limit: 10, windowSeconds: 600 },
@@ -77,9 +83,35 @@ export const RATE_LIMITS = {
   // A real signer needs two or three; the token is 256 bits, so this only
   // bounds hammering, never guessing.
   "quote:public": { limit: 30, windowSeconds: 600 },
+  // In-app global search (/api/search), per signed-in user. Each keystroke
+  // after the debounce is a query across several tables.
+  "app:search": { limit: 60, windowSeconds: 60 },
+  // CSV exports (/api/exports/*), per signed-in user. Each one reads up to the
+  // export row cap, so a script looping over them is bounded here.
+  "app:export": { limit: 10, windowSeconds: 600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;
+
+/** Buckets that refuse the request when the limiter cannot answer. */
+export const FAIL_CLOSED_BUCKETS: ReadonlySet<RateLimitKey> = new Set<RateLimitKey>([
+  "auth:signin",
+  "auth:signup",
+  "auth:reset",
+  "admin:signin",
+  "admin:stepup",
+]);
+
+/** How long a fail-closed refusal asks the caller to wait. */
+export const FAIL_CLOSED_RETRY_SECONDS = 30;
+
+/** The answer when the limiter itself is unavailable. Pure: tested directly. */
+export function limiterUnavailableResult(key: RateLimitKey): RateLimitResult {
+  if (FAIL_CLOSED_BUCKETS.has(key)) {
+    return { allowed: false, remaining: 0, retryAfterSeconds: FAIL_CLOSED_RETRY_SECONDS };
+  }
+  return { allowed: true, remaining: RATE_LIMITS[key].limit, retryAfterSeconds: 0 };
+}
 
 export type RateLimitResult = {
   allowed: boolean;
@@ -117,7 +149,7 @@ export async function checkRateLimit(
     });
 
     if (error || !data || data.length === 0) {
-      return { allowed: true, remaining: rule.limit, retryAfterSeconds: 0 };
+      return limiterUnavailableResult(key);
     }
 
     const row = data[0];
@@ -127,8 +159,23 @@ export async function checkRateLimit(
       retryAfterSeconds: row.retry_after,
     };
   } catch {
-    return { allowed: true, remaining: rule.limit, retryAfterSeconds: 0 };
+    return limiterUnavailableResult(key);
   }
+}
+
+/** A 429 for a refused result, with Retry-After. */
+export function tooManyRequests(result: RateLimitResult): Response {
+  return new Response(
+    JSON.stringify({ error: "Too many requests. Please try again shortly." }),
+    {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "retry-after": String(Math.max(1, result.retryAfterSeconds)),
+      },
+    },
+  );
 }
 
 /** Convenience for route handlers: returns a 429 Response, or null to proceed. */

@@ -124,3 +124,36 @@ export async function handleVoiceWebhookIngest(job: ClaimedJob): Promise<void> {
   );
   if (failure) throw new Error(failure);
 }
+
+const textBackPayload = z.object({
+  businessId: z.uuid(),
+  leadId: z.uuid().nullable().optional(),
+  to: z.string().min(5).max(32),
+  body: z.string().min(1).max(480),
+});
+
+/**
+ * voice.text_back (§25): the text to a caller the dedicated number could not
+ * answer. A reply to a call the person made, not marketing, and it carries
+ * STOP. Re-checks the SMS suppression list first; a suppressed number is
+ * never texted. Sent through the ordinary SMS path, so it goes from the
+ * workspace's own number when that is ACTIVE (messaging/sms-sender.ts).
+ */
+export async function handleVoiceTextBack(job: ClaimedJob): Promise<void> {
+  const input = parse(textBackPayload, job);
+  const { checkSuppression } = await import("@/lib/policy/suppression");
+  const hit = await checkSuppression(input.businessId, "SMS", { phone: input.to });
+  if (hit) return;
+  const { getMessagingProvider } = await import("@/lib/messaging/registry");
+  const result = await getMessagingProvider().send({
+    businessId: input.businessId,
+    to: input.to,
+    body: input.body,
+    channel: "sms",
+    sendKey: `voice-text-back:${job.id}`,
+  });
+  if (!result.ok) {
+    if (result.permanent) throw new PermanentJobError(`voice.text_back: ${result.errorCode}`);
+    throw new Error(`voice.text_back: ${result.errorMessage}`);
+  }
+}

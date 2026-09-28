@@ -48,6 +48,29 @@ export async function handleWebhookReplay(job: ClaimedJob) {
     return;
   }
 
+  // Voice (P3, P2 gap d): the stored, already-verified event goes back
+  // through the voice ingest job, the path the live webhook uses. The
+  // reduction is idempotent and voice_call_events is deduped on the event's
+  // dedupe key, so a replay can never move a call twice.
+  if (event.provider === "retell" || event.provider === "twilio_voice") {
+    const { data: row } = await admin
+      .from("webhook_events")
+      .select("external_event_id")
+      .eq("id", event.id)
+      .maybeSingle();
+    const externalEventId = (row as { external_event_id: string | null } | null)?.external_event_id;
+    if (!externalEventId) {
+      throw new PermanentJobError(`Voice webhook event ${event.id} has no event key to replay.`);
+    }
+    await admin.from("webhook_events").update({ status: "received", last_error: null, processed_at: null }).eq("id", event.id);
+    await enqueue(
+      "voice.webhook_ingest",
+      { provider: event.provider === "retell" ? "retell" : "twilio", externalEventId },
+      { priority: 10, idempotencyKey: `voice.webhook_ingest:replay:${event.id}:${job.id}` },
+    );
+    return;
+  }
+
   // Stripe is reconciled from Stripe itself, never from a stored copy.
   await admin
     .from("webhook_events")

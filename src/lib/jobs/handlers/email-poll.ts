@@ -10,7 +10,7 @@ import {
   recordEmailHealth,
   saveInboundCursor,
 } from "@/lib/email/store";
-import { normaliseEmail } from "@/lib/email/account";
+import { parseBounce } from "@/lib/email/bounce";
 import { escapeIlike } from "@/lib/supabase/ilike";
 import { parsePayload } from "./parse";
 import { emailPollPayload } from "./payloads";
@@ -25,16 +25,6 @@ import { emailPollPayload } from "./payloads";
  * conservative: a bounded batch per run, a stored cursor so nothing is read
  * twice, and machine mail routed to suppression rather than to qualification.
  */
-
-const BOUNCE_HINTS = [
-  "user unknown",
-  "no such user",
-  "mailbox unavailable",
-  "address rejected",
-  "does not exist",
-  "recipient not found",
-  "550 5.1.1",
-];
 
 /** Fans the poll out to every workspace with a mailbox that reads replies. */
 export async function scheduleEmailPolls() {
@@ -63,27 +53,6 @@ export async function scheduleEmailPolls() {
   }
 }
 
-function looksLikeBounce(subject: string | null, body: string): boolean {
-  const haystack = `${subject ?? ""} ${body}`.toLowerCase();
-  if (
-    haystack.includes("delivery status notification") ||
-    haystack.includes("undeliverable") ||
-    haystack.includes("mail delivery failed") ||
-    haystack.includes("returned mail")
-  ) {
-    return true;
-  }
-  return BOUNCE_HINTS.some((hint) => haystack.includes(hint));
-}
-
-/** Pulls the failed recipient out of a bounce so the right address is suppressed. */
-function bouncedAddress(body: string): string | null {
-  const match =
-    body.match(/(?:failed recipient|original-recipient|final-recipient)[^\n]*?([\w.+-]+@[\w.-]+)/i) ??
-    body.match(/<([\w.+-]+@[\w.-]+)>/);
-  return match ? normaliseEmail(match[1]) : null;
-}
-
 export async function handleEmailPoll(job: ClaimedJob) {
   const payload = parsePayload(emailPollPayload, job.payload);
   const businessId = payload.businessId;
@@ -107,6 +76,14 @@ export async function handleEmailPoll(job: ClaimedJob) {
   }
 
   const admin = createAdminClient();
+
+  // An NDR always quotes the original sender. These addresses are never
+  // suppressed as the "failed recipient".
+  const ownAddresses = [
+    credentials.config.fromEmail,
+    credentials.config.replyTo,
+    credentials.config.smtp.username,
+  ].filter((a): a is string => Boolean(a && a.includes("@")));
 
   for (const message of result.messages) {
     const from = message.from;
@@ -133,12 +110,26 @@ export async function handleEmailPoll(job: ClaimedJob) {
       continue;
     }
 
-    // Bounces and complaints are suppression events, never replies: treating
-    // a mailer-daemon as a lead reply would stop the follow-up for the wrong
+    // Bounces are suppression events, never replies: treating a
+    // mailer-daemon as a lead reply would stop the follow-up for the wrong
     // reason and pollute the conversation.
-    if (message.autoSubmitted || looksLikeBounce(message.subject, message.text)) {
-      const failed = bouncedAddress(message.text) ?? from;
-      if (looksLikeBounce(message.subject, message.text)) {
+    //
+    // Only a HARD bounce whose failed address can be named from the report
+    // itself is suppressed. There is no fallback to the report's sender:
+    // that is the mailer-daemon or postmaster, never the recipient (audit 15
+    // #8). A soft bounce (delayed, mailbox full) suppresses nothing.
+    const bounce = parseBounce(
+      {
+        from,
+        subject: message.subject,
+        text: message.text,
+        deliveryStatus: message.deliveryStatus ?? null,
+        failedRecipientsHeader: message.failedRecipients ?? null,
+      },
+      ownAddresses,
+    );
+    if (bounce.isBounce || message.autoSubmitted) {
+      if (bounce.isBounce && bounce.hard && bounce.recipient) {
         // On the one list (0069), so a hard bounce recorded here also stops the
         // cold dispatcher sending to the same address.
         await suppress({
@@ -147,7 +138,7 @@ export async function handleEmailPoll(job: ClaimedJob) {
           reason: "BOUNCE",
           source: "EMAIL_POLL",
           sourceReference: String(message.uid),
-          email: failed,
+          email: bounce.recipient,
         });
       }
       continue;

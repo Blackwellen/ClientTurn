@@ -547,6 +547,8 @@ export const ASSIST_REASONS = [
   "ARRANGE_TIME",
   /** A booked meeting that closes through a person: the hand-off brief. */
   "MEETING_BRIEF",
+  /** A quote the assistant drafted that a person approves or sends (brief §74). */
+  "QUOTE_REVIEW",
 ] as const;
 export type AssistReason = (typeof ASSIST_REASONS)[number];
 
@@ -558,6 +560,7 @@ export const ASSIST_REASON_LABEL: Record<AssistReason, string> = {
   SEND_ORDER_DETAILS: "Send the details to get a ready buyer started",
   ARRANGE_TIME: "Arrange a time: the calendar had nothing free",
   MEETING_BRIEF: "Meeting booked: brief for the person taking it",
+  QUOTE_REVIEW: "Approve or send the quote the assistant drafted",
 };
 
 /**
@@ -574,6 +577,7 @@ export const ASSIST_REASON_STORED_AS: Record<AssistReason, HandoverReason> = {
   SEND_ORDER_DETAILS: "READY_TO_BUY",
   ARRANGE_TIME: "POLICY",
   MEETING_BRIEF: "HIGH_VALUE",
+  QUOTE_REVIEW: "READY_TO_BUY",
 };
 
 // ------------------------------------------------------------ model I/O

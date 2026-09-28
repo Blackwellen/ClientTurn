@@ -94,6 +94,8 @@ export const SIGNAL_FEEDS = [
   "OWN_SOCIAL_ACCOUNTS",
   "COMPANY_SEARCH",
   "PLACES",
+  // UK public-sector tenders (Contracts Finder). Free and keyless.
+  "PUBLIC_TENDERS",
 ] as const;
 export type SignalFeed = (typeof SIGNAL_FEEDS)[number];
 
@@ -105,6 +107,7 @@ export const SIGNAL_FEED_PROVIDERS: Record<SignalFeed, string[]> = {
   COMPANY_SEARCH: ["google_places", "meta_ad_library", "tiktok_commercial_content"],
   // Business listings: corroborates a location, never dates it.
   PLACES: ["google_places"],
+  PUBLIC_TENDERS: ["contracts_finder"],
 };
 
 /** What to connect when a feed is missing. Written for a customer. */
@@ -115,6 +118,7 @@ export const SIGNAL_FEED_NEEDS: Record<SignalFeed, string> = {
   OWN_SOCIAL_ACCOUNTS: "Needs a connected Facebook, Instagram or TikTok account.",
   COMPANY_SEARCH: "Needs a company search source, such as Google Places.",
   PLACES: "Needs a Google Places key.",
+  PUBLIC_TENDERS: "Nothing to connect: this reads the UK government's free Contracts Finder register.",
 };
 
 /**

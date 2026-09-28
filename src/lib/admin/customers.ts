@@ -1,4 +1,5 @@
 import "server-only";
+import { monthlyRevenue } from "@/lib/billing/revenue";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { providerLabel, domainFromWebsite, titleise } from "./format";
 import {
@@ -485,6 +486,16 @@ export async function getCustomerDetail(
 
   const statuses = (integrations.data ?? []).map((row) => row.status);
 
+  // What the customer is actually billed a month (0165 `mrr_minor`, from paid
+  // Stripe invoices: discounts applied, before VAT), else the list price.
+  // Read on its own so the drawer works before the migration is applied.
+  const mrrRead = await (supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
+    .from("subscriptions")
+    .select("mrr_minor")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  const mrrMinor = mrrRead.error ? null : ((mrrRead.data as { mrr_minor: number | string | null } | null)?.mrr_minor ?? null);
+
   return {
     id: business.id,
     name: business.name,
@@ -499,7 +510,10 @@ export async function getCustomerDetail(
     activatedAt: business.activated_at,
     plan,
     planLabel: planLabel(plan),
-    planMonthlyPrice: planMonthlyPrice(plan),
+    planMonthlyPrice:
+      mrrMinor !== null
+        ? monthlyRevenue({ mrrMinor, plan, interval: subscription?.billing_interval ?? null }).gbp
+        : planMonthlyPrice(plan),
     subscriptionStatus: subscription?.status ?? "TRIALING",
     billingInterval: subscription?.billing_interval ?? null,
     trialEndsAt: subscription?.trial_ends_at ?? null,

@@ -102,8 +102,10 @@ export const EVIDENCE_SIGNAL_TYPE: Record<
  */
 export function evidenceSignalType(
   evidence: Pick<IntentEvidence, "kind" | "source">,
-): "COMPANY_REGISTRY" | "COMPANY_WEBSITE" | "JOB_POSTING" {
+): "COMPANY_REGISTRY" | "COMPANY_WEBSITE" | "JOB_POSTING" | "TENDER_NOTICE" | "CUSTOMER_DATASET" {
   const source = evidence.source.toLowerCase();
+  if (source.includes("contracts finder")) return "TENDER_NOTICE";
+  if (source.includes("your crm or list")) return "CUSTOMER_DATASET";
   if (source.includes("companies house")) return "COMPANY_REGISTRY";
   if (source.includes("careers")) return "JOB_POSTING";
   if (source.includes("website")) return evidence.kind === "HIRING" ? "JOB_POSTING" : "COMPANY_WEBSITE";

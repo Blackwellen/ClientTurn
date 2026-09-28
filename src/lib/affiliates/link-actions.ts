@@ -48,13 +48,36 @@ const promoSchema = z.object({
 });
 
 /**
- * Issues a promo code from an approved offer.
+ * Promo codes are OFF (owner decision 2026-09-28, affiliate audit 17 #6).
  *
- * The discount comes entirely from the offer row. The only thing the affiliate
- * influences is the visible string, and even that is prefixed with their own
- * referral code so a code cannot be made to impersonate another partner's.
+ * Chosen over wiring them to Stripe promotion codes because, in this product,
+ * that would be disproportionate and would add risk without adding reach:
+ *
+ * - There is no offer or coupon system to build on: no admin surface creates
+ *   offers, no Stripe coupon exists behind them, and `stripe_promotion_code_id`
+ *   was never set. Real codes need an offer -> coupon -> promotion-code
+ *   pipeline, an admin editor, a checkout field and webhook attribution.
+ * - The subscription checkout is a card-up-front free trial. A code entered
+ *   there only discounts the first paid invoice, and its attribution arrives
+ *   by webhook after the workspace exists: a second attribution path that
+ *   competes with last-click and the one-attribution-per-business rule.
+ * - Commission is one-off on the first payment's cash. A discount on that
+ *   same invoice both cuts the partner's commission and costs ClientTurn
+ *   margin, for a customer the link had already brought.
+ * - Consent-free attribution is already covered by the referral parameter
+ *   carried in the URL to signup (no storage), see `/r` and `attribution.ts`.
+ *
+ * The rows and table stay (nothing destructive); nothing issues or shows a
+ * code. Both actions refuse. `tests/affiliate-owner-decisions.test.ts` pins it.
  */
+// Not exported: a "use server" module may only export async functions.
+const PROMO_CODES_ENABLED: boolean = false;
+
 export async function requestPromoCode(input: unknown): Promise<LinkActionResult> {
+  if (!PROMO_CODES_ENABLED) {
+    void input;
+    return { ok: false, error: "Promo codes are not part of the programme. Share your referral link instead." };
+  }
   const context = await requireActiveAffiliate();
   if (!context) {
     return { ok: false, error: "Your affiliate account is not active." };
@@ -193,6 +216,9 @@ export async function attachPromoCode(input: {
   linkId: string;
   promoCodeId: string | null;
 }): Promise<LinkActionResult> {
+  if (!PROMO_CODES_ENABLED && input.promoCodeId !== null) {
+    return { ok: false, error: "Promo codes are not part of the programme." };
+  }
   const context = await requireActiveAffiliate();
   if (!context) return { ok: false, error: "Your affiliate account is not active." };
 

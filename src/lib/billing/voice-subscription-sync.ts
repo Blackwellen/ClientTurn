@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
-import { grantVoicePeriodMinutes } from "@/lib/voice/minutes";
+import { expireVoiceIncludedMinutes, grantVoicePeriodMinutes } from "@/lib/voice/minutes";
 import { VOICE_ADDON } from "./plans";
 import {
   VOICE_ITEM_GRANT_KEYS,
@@ -86,6 +86,16 @@ async function applyVoiceItems(
 
   if (changes.revokeKeys.length > 0) {
     await revokeItemGrants(client, businessId, changes.revokeKeys);
+  }
+
+  // No live Pro voice item (removed, or its scheduled end has passed): the
+  // included minutes end with it. Idempotent per granted period; a no-op
+  // when there are none (Starter/Growth never hold included minutes).
+  if (!items.proVoice || ended) {
+    const expired = await expireVoiceIncludedMinutes(businessId, "Pro voice item ended");
+    if (expired !== "APPLIED" && expired !== "REPLAY" && expired !== "NOTHING_TO_EXPIRE") {
+      console.error("[stripe] voice included minutes not expired", { businessId, result: expired });
+    }
   }
 
   // The Pro item's included minutes for its current period. Only once the

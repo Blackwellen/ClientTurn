@@ -148,6 +148,12 @@ export type SubscriptionFacts = {
   createdAt: string | null;
   cancelledAt: string | null;
   trialEndsAt: string | null;
+  /**
+   * What the subscription is actually billed a month, in pence, from paid
+   * Stripe invoices (0165 `subscriptions.mrr_minor`: discounts applied,
+   * before VAT). Null or absent: the plan's list price is used instead.
+   */
+  mrrMinor?: number | null;
 };
 
 export type EconomicsPeriod = {
@@ -368,6 +374,11 @@ export function subscriptionRevenue(
   // Stripe on the subscription charge is planCost's own line: the same
   // formula the margin test asserts, not a second copy of it.
   const line = planCost(planInputFor(key as "starter" | "growth" | "pro"), interval, "max");
+  // The real billed amount when a paid invoice has recorded it (coupons and
+  // discounts included); the fee stays the list-price line's estimate.
+  if (sub.mrrMinor !== null && sub.mrrMinor !== undefined && Number.isFinite(sub.mrrMinor)) {
+    return { monthly: sub.mrrMinor / 100, interval, stripeFee: line.stripe };
+  }
   return { monthly: line.revenue, interval, stripeFee: line.stripe };
 }
 

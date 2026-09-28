@@ -79,7 +79,12 @@ export type CtaPlacement =
   | "voice_agent_section"
   | "quotes_section"
   | "pricing_voice_pro"
-  | "pricing_voice_addon";
+  | "pricing_voice_addon"
+  /* /sdr-cost-calculator */
+  | "sdr_calculator_results"
+  | "sdr_calculator_enterprise"
+  | "sdr_calculator_final"
+  | "sdr_calculator_contact_sales";
 
 /**
  * Non-CTA engagement on a product page: opening a drawer, expanding a score

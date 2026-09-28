@@ -75,6 +75,7 @@ const ROUTE_LABELS: Record<string, string> = {
   NURTURE: "Nurture",
   REACTIVATION: "Reactivation",
   INBOUND: "Inbound call",
+  RETURN_CALL: "Return call",
 };
 
 const FACT_LABELS: Record<string, string> = {

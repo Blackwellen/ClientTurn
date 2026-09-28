@@ -37,6 +37,13 @@ export type InboundEmail = {
   feedbackReport: string | null;
   /** The reported original message attached to a feedback report, if any. */
   reportedMessage: string | null;
+  /**
+   * The `message/delivery-status` part of a bounce (RFC 3464), which, like the
+   * feedback report, arrives as an attachment. Null when absent.
+   */
+  deliveryStatus?: string | null;
+  /** The `X-Failed-Recipients` header some servers add to a bounce. */
+  failedRecipients?: string | null;
 };
 
 export type InboundCursor = EmailAccountConfig["cursor"];
@@ -92,6 +99,18 @@ export function isAutomatedMail(headers: {
   return (headers.returnPath ?? "").trim() === "<>";
 }
 
+/** The DSN part of a bounce, read as text. */
+function deliveryStatusPart(
+  attachments: readonly { contentType?: string | null; content?: Buffer | Uint8Array | string | null }[] | null | undefined,
+): string | null {
+  const part = (attachments ?? []).find((a) => {
+    const type = (a.contentType ?? "").toLowerCase();
+    return type === "message/delivery-status" || type === "message/global-delivery-status";
+  });
+  if (!part || part.content == null) return null;
+  return typeof part.content === "string" ? part.content : Buffer.from(part.content).toString("utf8");
+}
+
 async function parseRaw(raw: string | Buffer, uid: string): Promise<InboundEmail> {
   const parsed = await simpleParser(raw);
   const headerValue = (name: string) => {
@@ -120,6 +139,8 @@ async function parseRaw(raw: string | Buffer, uid: string): Promise<InboundEmail
     }),
     feedbackReport: report.feedbackReport,
     reportedMessage: report.reportedMessage,
+    deliveryStatus: deliveryStatusPart(parsed.attachments),
+    failedRecipients: headerValue("x-failed-recipients"),
   };
 }
 

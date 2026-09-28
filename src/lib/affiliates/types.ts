@@ -235,7 +235,8 @@ export type CommissionPlan = {
   percent: number | null;
   flatAmountMinor: number | null;
   currency: string;
-  recurringMonths: number | null;
+  // No `recurringMonths`: commission is one-off (owner decision 2026-09-28).
+  // The column stays in the database, forced to 1 by migration 0169.
   attributionWindowDays: number;
   cookieWindowDays: number;
   holdDays: number;
@@ -243,36 +244,27 @@ export type CommissionPlan = {
 };
 
 /**
- * What a single billing event earns under a plan.
+ * What a single billing event earns under a plan. **One-off**: only the
+ * referred customer's first payment (`paymentIndex === 0`) earns, on its full
+ * amount; every later payment earns nothing. A legacy `RECURRING_PERCENT` row
+ * is read the same way (see `ledger-rules.ts` `commissionForPayment`).
  *
- * Rounds to whole minor units with `Math.round`, so a half-penny does not
- * silently favour either side, and never returns more than the base amount —
- * a misconfigured percent over 100 would otherwise pay out more than the
- * customer paid.
+ * Rounds to whole minor units with `Math.round`, and never returns more than
+ * the base amount.
  */
 export function commissionFor(
   plan: CommissionPlan,
   baseAmountMinor: number,
   paymentIndex: number,
 ): number {
-  if (baseAmountMinor <= 0) return 0;
+  if (baseAmountMinor <= 0 || paymentIndex > 0) return 0;
 
   switch (plan.commissionType) {
     case "FLAT_AMOUNT":
       return Math.min(Math.max(plan.flatAmountMinor ?? 0, 0), baseAmountMinor);
-
     case "FIRST_PAYMENT_PERCENT":
-      if (paymentIndex > 0) return 0;
+    case "RECURRING_PERCENT":
       return capped(baseAmountMinor, plan.percent);
-
-    case "RECURRING_PERCENT": {
-      // A null `recurringMonths` means "for the life of the customer".
-      if (plan.recurringMonths !== null && paymentIndex >= plan.recurringMonths) {
-        return 0;
-      }
-      return capped(baseAmountMinor, plan.percent);
-    }
-
     default:
       return 0;
   }
@@ -352,13 +344,17 @@ export function formatRate(value: number | null): string {
 export function referralLabel(
   displayLabel: string | null,
   createdAt: string,
+  /** The referral row id: a short, non-identifying suffix tells same-day referrals apart. */
+  referralId?: string,
 ): string {
   if (displayLabel && displayLabel.trim()) return displayLabel.trim();
-  return `Referral · ${new Date(createdAt).toLocaleDateString("en-GB", {
+  const date = new Date(createdAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
-  })}`;
+  });
+  const suffix = referralId ? referralId.replace(/[^0-9a-f]/gi, "").slice(0, 4).toUpperCase() : "";
+  return suffix ? `Referral · ${date} · #${suffix}` : `Referral · ${date}`;
 }
 
 /* ---------------------------------------------------------------- shapes --- */

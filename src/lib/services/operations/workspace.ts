@@ -1188,7 +1188,9 @@ defineOperation("message.send", {
         channel: args.channel,
         body: args.body,
         status: "QUEUED",
-        origin: "manual",
+        // An automation rule's send is automated: the send gate applies the
+        // stop conditions an unattended message is held to.
+        origin: context.caller === "AUTOMATION" ? "automation" : "manual",
         send_key: sendKey,
       })
       .select("id")

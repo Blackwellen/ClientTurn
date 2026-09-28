@@ -1,9 +1,11 @@
 import "server-only";
 import { crmCompanyField, existingCrmRecordId } from "@/lib/integrations/crm-pull/plan";
 import { serverEnv } from "@/lib/env";
+import { SCOPE_OUTDATED } from "@/lib/integrations/oauth-health";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getLiveAccessToken,
+  markReconnectRequired,
   refreshAccessToken,
   type OAuthConfig,
   type TokenResponse,
@@ -225,7 +227,7 @@ async function ensureLiveApiDomain(
   // A connection made before `afterConnect` learned to cache `api_domain`
   // directly: refresh once purely to learn it, then persist so every
   // subsequent push reads it straight from the row.
-  const refreshed = await refreshAccessToken(oauthConfig, secret.refresh_token);
+  const refreshed = await refreshAccessToken(oauthConfig, secret.refresh_token, { integrationId });
   const apiDomain =
     typeof refreshed.raw.api_domain === "string" && refreshed.raw.api_domain
       ? refreshed.raw.api_domain
@@ -338,6 +340,12 @@ async function push(params: {
     // creating would duplicate. Only a record that is genuinely gone falls
     // through to create.
     if (updateResponse.status !== 404 && updateResponse.status !== 400) {
+      // A 401/403 here is the missing UPDATE scope on a connection made
+      // before the scope fix: prompt a reconnect rather than failing quietly
+      // on every sync (audit 15 #9).
+      if (updateResponse.status === 401 || updateResponse.status === 403) {
+        await markReconnectRequired(params.integrationId, String(updateResponse.status), SCOPE_OUTDATED);
+      }
       throw new Error(
         `Zoho CRM refused the update of Lead ${target} (status ${updateResponse.status}).`,
       );

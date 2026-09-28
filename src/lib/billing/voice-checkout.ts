@@ -6,6 +6,7 @@ import { recordAudit } from "@/lib/audit";
 import { TERMS_PATH, TERMS_VERSION } from "@/lib/marketing/terms-version";
 import { stripe } from "./stripe";
 import { getEntitlements } from "./entitlements";
+import { automaticTaxEnabled } from "./tax";
 import {
   addVoiceNumberItem,
   createVoicePackCheckout,
@@ -61,6 +62,7 @@ async function contextFor(workspace: Workspace): Promise<VoicePurchaseContext> {
     site: serverEnv.siteUrl.replace(/\/$/, ""),
     termsPath: TERMS_PATH,
     termsVersion: TERMS_VERSION,
+    automaticTax: automaticTaxEnabled(),
   };
 }
 
@@ -104,6 +106,66 @@ export async function addVoiceNumber(workspace: Workspace): Promise<VoiceNumberO
     });
   }
   return outcome;
+}
+
+export type RemoveVoiceOutcome =
+  | { ok: true; releaseNumberAt: string | null; keepsNumber: boolean }
+  | { ok: false; error: string };
+
+/**
+ * OD-2 "remove voice": Pro without voice is £399. Deletes only the £100 voice
+ * item, prorated (Stripe TEST keys only, env.ts). The included minutes end
+ * with the item (the webhook's sync expires them); packs stay. The dedicated
+ * number is kept to the end of the period, then released, unless the £11.99
+ * number item is on the subscription. The owner is warned first (dialog) and
+ * again by notification.
+ */
+export async function removeProVoice(workspace: Workspace): Promise<RemoveVoiceOutcome> {
+  const { voiceRemovalPlan } = await import("./voice-line-items");
+  const { data } = await db().from("subscriptions").select("plan, stripe_subscription_id").eq("business_id", workspace.businessId).maybeSingle();
+  const row = data as { plan: string | null; stripe_subscription_id: string | null } | null;
+  if (!row?.stripe_subscription_id) return { ok: false, error: "There is no live subscription to change." };
+  const prices = voicePriceConfig();
+  try {
+    const subscription = await stripe.subscriptions.retrieve(row.stripe_subscription_id);
+    const plan = voiceRemovalPlan({
+      plan: row.plan ?? "",
+      items: subscription.items.data.map((i) => ({ id: i.id, priceId: i.price?.id ?? null, currentPeriodEnd: i.current_period_end ?? null })),
+      voiceAddonPriceId: prices.addonMonthly ?? null,
+      numberPriceId: prices.numberMonthly ?? null,
+    });
+    if (!plan.ok) {
+      return { ok: false, error: plan.reason === "NO_VOICE_ITEM" ? "Your subscription has no voice item to remove." : "Voice can only be removed from a Pro subscription." };
+    }
+    await stripe.subscriptionItems.del(plan.itemId, { proration_behavior: "create_prorations" });
+    if (plan.releaseNumberAt) {
+      const { scheduleNumberRelease } = await import("@/lib/voice/runtime-core");
+      const { serverVoiceDeps } = await import("@/lib/voice/server-deps");
+      await scheduleNumberRelease(serverVoiceDeps(), { businessId: workspace.businessId, releaseAfter: plan.releaseNumberAt }).catch(() => null);
+    }
+    const { queueNotification } = await import("@/lib/jobs/handlers/shared");
+    await queueNotification({
+      businessId: workspace.businessId,
+      type: "billing",
+      severity: "info",
+      title: "Voice removed from Pro",
+      body: plan.keepsNumber
+        ? "Your £100 voice item is removed and prorated. Your dedicated number stays on its own £11.99 item. Buy minute packs to keep calling."
+        : `Your £100 voice item is removed and prorated. Your dedicated number is kept until ${plan.releaseNumberAt ? plan.releaseNumberAt.slice(0, 10) : "the end of the period"}, then released unless you add it for £11.99 a month.`,
+      linkUrl: "/app/settings?section=voice&panel=budget",
+      dedupeKey: `voice-removed:${workspace.businessId}:${plan.itemId}`,
+    });
+    await recordAudit({
+      businessId: workspace.businessId,
+      actorUserId: workspace.userId,
+      action: "billing.voice_removed",
+      entityType: "subscription",
+      metadata: { itemId: plan.itemId, releaseNumberAt: plan.releaseNumberAt, keepsNumber: plan.keepsNumber },
+    });
+    return { ok: true, releaseNumberAt: plan.releaseNumberAt, keepsNumber: plan.keepsNumber };
+  } catch {
+    return { ok: false, error: "Voice could not be removed. Try again or open the billing portal." };
+  }
 }
 
 /**

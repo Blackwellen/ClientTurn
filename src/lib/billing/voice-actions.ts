@@ -11,7 +11,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { hasRole, requireRole } from "@/lib/auth/session";
 import { VOICE_MINUTE_PACKS } from "./plans";
-import { addVoiceNumber, readVoicePurchaseState, startVoicePackCheckout } from "./voice-checkout";
+import { addVoiceNumber, readVoicePurchaseState, removeProVoice, startVoicePackCheckout, type RemoveVoiceOutcome } from "./voice-checkout";
 import type { VoiceNumberOutcome, VoicePackCheckoutOutcome, VoicePurchaseState } from "./voice-purchase";
 
 const PACK_MINUTES = VOICE_MINUTE_PACKS.map((pack) => pack.minutes) as number[];
@@ -38,6 +38,15 @@ export async function addVoiceNumberAction(): Promise<VoiceNumberOutcome> {
   }
   const outcome = await addVoiceNumber(workspace);
   if (outcome.ok && outcome.changed) revalidatePath("/app/settings");
+  return outcome;
+}
+
+/** OD-2: removes the £100 voice item from Pro (prorated); the number is kept to the period end. Owner only. */
+export async function removeProVoiceAction(): Promise<RemoveVoiceOutcome> {
+  const workspace = await requireRole("owner").catch(() => null);
+  if (!workspace) return { ok: false, error: "Only the workspace owner can change the subscription." };
+  const outcome = await removeProVoice(workspace);
+  if (outcome.ok) revalidatePath("/app/settings");
   return outcome;
 }
 

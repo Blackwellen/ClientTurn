@@ -87,3 +87,43 @@ export async function setCampaignExperimentState(input: unknown): Promise<Experi
   revalidatePath("/app/reactivation");
   return { ok: true };
 }
+
+/**
+ * Promote the winning variant to every contact, roll back to the control
+ * copy, or allow automatic promotion (§43, 0158). Admin/owner only. The
+ * registry operations re-check everything: the minimum sample per arm, a
+ * non-control winner, and that nothing compliance-sensitive (opener,
+ * disclosure, pricing) is ever promoted automatically.
+ */
+const promotionSchema = z.object({
+  experimentId: z.uuid(),
+  to: z.enum(["promote", "rollback"]),
+  reason: z.string().trim().min(3, "Say why, for the history.").max(500),
+  confirm: z.literal(true, { message: "Tick the confirmation first." }),
+});
+
+export async function setCampaignExperimentPromotion(input: unknown): Promise<ExperimentActionResult> {
+  const parsed = promotionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That request is not valid." };
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: "Only an admin or owner can promote or roll back a variant." };
+  const result = await runOperation(
+    parsed.data.to === "promote" ? "experiment.promote" : "experiment.rollback",
+    { experimentId: parsed.data.experimentId, reason: parsed.data.reason, confirm: true },
+    { ...context(workspace), confirmed: true },
+  );
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/reactivation");
+  return { ok: true };
+}
+
+export async function setCampaignExperimentAutoPromote(input: unknown): Promise<ExperimentActionResult> {
+  const parsed = z.object({ experimentId: z.uuid(), enabled: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That test could not be found." };
+  const workspace = await admin();
+  if (!workspace) return { ok: false, error: "Only an admin or owner can change automatic promotion." };
+  const result = await runOperation("experiment.set_auto_promote", parsed.data, context(workspace));
+  if (!result.success) return { ok: false, error: result.message };
+  revalidatePath("/app/reactivation");
+  return { ok: true };
+}

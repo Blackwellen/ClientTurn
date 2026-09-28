@@ -35,7 +35,7 @@ const TW_ENV = { TWILIO_ACCOUNT_SID: AC, TWILIO_AUTH_TOKEN: "parent-token" };
 test("Retell: missing key throws ProviderNotConfigured on use, not on import", async () => {
   const p = createRetellVoiceProvider({ env: {}, fetch: recorder([]).fetch });
   assert.equal(retellConfigured({}), false);
-  await assert.rejects(() => p.getCall("c1"), (e: unknown) => e instanceof ProviderNotConfigured && e.missing[0] === "RETELL_API_KEY");
+  await assert.rejects(() => p.getCall("c1"), (e: unknown) => e instanceof ProviderNotConfigured && e.missing[0] === "RETELL_SECRET_KEY");
   assert.throws(() => p.verifyWebhook({ rawBody: "{}", headers: {}, now: new Date() }), ProviderNotConfigured);
 });
 

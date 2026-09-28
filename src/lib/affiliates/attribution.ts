@@ -1,8 +1,13 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { clientIdentifier } from "@/lib/security/rate-limit";
+import { affiliateFingerprints, applySignals, hashesFor } from "./fraud";
+import { assessSignup, isPrefetch, proxySuspected } from "./fraud-rules";
 import {
   clampCookieDays,
+  latestReferral,
+  looksLikeReferralToken,
   parseCookie,
   REFERRAL_COOKIE_NAME,
   serialiseCookie,
@@ -15,8 +20,19 @@ export {
   looksAutomated,
   MAX_COOKIE_DAYS,
   REFERRAL_COOKIE_NAME,
+  REFERRAL_PARAM,
   type ReferralCookie,
 } from "./attribution-core";
+
+/**
+ * Verifies a referral carried in the URL (`?ct_ref=`), which is the same
+ * signed value the consented cookie holds. Null for anything forged, expired
+ * or malformed.
+ */
+export function parseReferralToken(raw: string | null | undefined): ReferralCookie | null {
+  if (!looksLikeReferralToken(raw)) return null;
+  return parseCookie(cookieSecret(), raw);
+}
 
 /**
  * Referral attribution (V4 §31).
@@ -92,15 +108,23 @@ export async function clearReferralCookie(): Promise<void> {
 export async function attributeSignup(input: {
   userId: string;
   businessId: string;
+  /** The signer-up's email, when the caller has it; otherwise read from their profile. */
+  email?: string | null;
+  /**
+   * The referral carried in the URL to signup (`?ct_ref=`), for a visitor who
+   * did not accept cookies (owner decision 2026-09-28). Verified here; the
+   * consented cookie and this token compete on last click.
+   */
+  referralToken?: string | null;
 }): Promise<void> {
-  const cookie = await readReferralCookie();
+  const cookie = latestReferral(await readReferralCookie(), parseReferralToken(input.referralToken));
   if (!cookie) return;
 
   const db = createAdminClient();
 
   const { data: affiliate } = await db
     .from("affiliates")
-    .select("id, user_id, status")
+    .select("id, user_id, status, contact_email")
     .eq("id", cookie.affiliateId)
     .maybeSingle();
 
@@ -126,6 +150,12 @@ export async function attributeSignup(input: {
     return;
   }
 
+  // The signer-up's network and device, as keyed hashes only (audit 17 §1).
+  const requestHeaders = await headers();
+  const ip = clientIdentifier(requestHeaders);
+  const userAgent = requestHeaders.get("user-agent") ?? "";
+  const hashes = ip && ip !== "unknown" ? hashesFor(ip, userAgent) : null;
+
   const { data: attribution, error } = await db
     .from("affiliate_attributions")
     .insert({
@@ -147,18 +177,102 @@ export async function attributeSignup(input: {
     return;
   }
 
-  await db.from("affiliate_referrals").insert({
-    affiliate_id: affiliate.id,
-    business_id: input.businessId,
-    attribution_id: attribution.id,
-    status: "SIGNED_UP",
-    signup_at: new Date().toISOString(),
-    attribution_expires_at: cookie.expiresAt,
-  });
+  if (hashes) {
+    // 0166 columns; ignored (logged by PostgREST as an error result) before it is applied.
+    await (db as unknown as import("@supabase/supabase-js").SupabaseClient)
+      .from("affiliate_attributions")
+      .update({ signup_ip_hash: hashes.ipHash, signup_device_hash: hashes.deviceHash })
+      .eq("id", attribution.id);
+  }
+
+  const { data: referral } = await db
+    .from("affiliate_referrals")
+    .insert({
+      affiliate_id: affiliate.id,
+      business_id: input.businessId,
+      attribution_id: attribution.id,
+      status: "SIGNED_UP",
+      signup_at: new Date().toISOString(),
+      attribution_expires_at: cookie.expiresAt,
+      source_link_id: cookie.linkId,
+    })
+    .select("id")
+    .maybeSingle();
 
   if (cookie.linkId) {
     await db.rpc("increment_affiliate_link_signup", { p_link_id: cookie.linkId });
   }
 
+  if (referral) {
+    try {
+      await screenSignup({
+        affiliate: { id: affiliate.id, userId: affiliate.user_id, email: affiliate.contact_email },
+        referralId: referral.id,
+        businessId: input.businessId,
+        userId: input.userId,
+        email: input.email ?? null,
+        hashes,
+        clickedAt: cookie.clickedAt,
+        proxy: proxySuspected(requestHeaders) && !isPrefetch(requestHeaders),
+      });
+    } catch (screenError) {
+      // Screening is a safety net, never a gate on account creation.
+      console.error("[affiliates] signup screening failed", screenError instanceof Error ? screenError.message : String(screenError));
+    }
+  }
+
   await clearReferralCookie();
+}
+
+/**
+ * Self-referral, duplicate-account and device checks on a fresh referral
+ * (audit 17 §1). BLOCK signals reject it, REVIEW signals hold it for an admin,
+ * INFO signals are stored for context. See `fraud-rules.ts`.
+ */
+async function screenSignup(input: {
+  affiliate: { id: string; userId: string; email: string };
+  referralId: string;
+  businessId: string;
+  userId: string;
+  email: string | null;
+  hashes: { ipHash: string; deviceHash: string } | null;
+  clickedAt: string;
+  proxy: boolean;
+}): Promise<void> {
+  const db = createAdminClient();
+
+  const [prints, profile, memberships] = await Promise.all([
+    affiliateFingerprints(input.affiliate.id),
+    input.email
+      ? Promise.resolve({ data: { email: input.email } })
+      : db.from("profiles").select("email").eq("id", input.userId).maybeSingle(),
+    db.from("business_members").select("business_id").eq("user_id", input.userId),
+  ]);
+
+  const email = (profile.data as { email: string | null } | null)?.email ?? null;
+  const prior = ((memberships.data ?? []) as { business_id: string }[]).filter(
+    (row) => row.business_id !== input.businessId,
+  ).length;
+  const clicked = new Date(input.clickedAt).getTime();
+
+  const signals = assessSignup({
+    affiliate: { userId: input.affiliate.userId, email: input.affiliate.email, ...prints },
+    signup: {
+      userId: input.userId,
+      email,
+      ipHash: input.hashes?.ipHash ?? null,
+      deviceHash: input.hashes?.deviceHash ?? null,
+      priorWorkspaceCount: prior,
+      msSinceClick: Number.isFinite(clicked) ? Date.now() - clicked : null,
+      proxySuspected: input.proxy,
+    },
+  });
+
+  await applySignals({
+    affiliateId: input.affiliate.id,
+    referralId: input.referralId,
+    businessId: input.businessId,
+    signals,
+    source: "SIGNUP",
+  });
 }

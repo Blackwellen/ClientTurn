@@ -25,7 +25,7 @@ import { validateCatalogue } from "../catalogue/validate.ts";
 import type { Catalogue, CatalogueBundle, CatalogueItem } from "../catalogue/types.ts";
 import type { Capability } from "../billing/capability-rules.ts";
 import { calculateQuote } from "./calculate.ts";
-import { evaluateDiscount, roleRank, type ApproverRole, type WorkspaceRole } from "./discount-policy.ts";
+import { evaluateDiscount, roleRank, type ApproverRole, type DiscountPolicy, type WorkspaceRole } from "./discount-policy.ts";
 import { quoteActionKey, quoteRequestKey } from "./idempotency.ts";
 import { assertEditable, validUntilFrom, type QuoteAction, type QuoteEventType, type QuoteState } from "./lifecycle.ts";
 import { buildQuoteRenderModel, renderModelHash } from "./render-model.ts";
@@ -518,7 +518,12 @@ export type CreateQuoteArgs = DraftContent & {
   internalNote?: string | null;
   aiRationale?: string | null;
   origin?: "LEAD_REQUEST";
-  ai?: { afterObjection: boolean; priorAiConcessions: number };
+  /**
+   * The assistant's context (agent runtime only): the objection and
+   * concession state, and the policy it is held to (discount-policy.ts
+   * aiDiscountPolicy), which replaces the quote policy for an AI actor.
+   */
+  ai?: { afterObjection: boolean; priorAiConcessions: number; policy?: DiscountPolicy };
 };
 
 export async function createQuote(deps: QuoteDeps, businessId: string, actor: QuoteActor, args: CreateQuoteArgs) {
@@ -547,7 +552,8 @@ export async function createQuote(deps: QuoteDeps, businessId: string, actor: Qu
   const { result, input } = priceDraft(settings, catalogue, args);
   if (!result.ok) calcFailure(result);
   const approvals = await deps.can("quote_approval_enabled");
-  const verdict = approvalVerdict(settings, result.quote, actor, approvals.allowed, args.ai);
+  const governing = actor.kind === "AI" && args.ai?.policy ? { ...settings, discountPolicy: args.ai.policy } : settings;
+  const verdict = approvalVerdict(governing, result.quote, actor, approvals.allowed, args.ai);
   if (verdict.denied) throw new QuoteServiceError("POLICY_BLOCKED", verdict.detail);
 
   const number = await deps.store.allocateNumber(businessId, "QUOTE");
@@ -580,6 +586,8 @@ export async function createQuote(deps: QuoteDeps, businessId: string, actor: Qu
   await deps.store.setCurrentRevision(businessId, inserted.id, revision.id);
   if (args.origin === "LEAD_REQUEST") {
     await deps.store.insertEvent(businessId, inserted.id, revision.id, "quote.requested", transitionActor(actor), {});
+    // Automation trigger (gap map §45): the lead asked for a quote.
+    await deps.effects.emit(businessId, "quote.requested", { quoteId: inserted.id, opportunityId: opportunity.id, leadId: opportunity.leadId });
   }
   await deps.store.insertEvent(businessId, inserted.id, revision.id, "quote.created", transitionActor(actor), { number });
   await deps.effects.emit(businessId, "quote.created", { quoteId: inserted.id, opportunityId: opportunity.id, leadId: opportunity.leadId, number });

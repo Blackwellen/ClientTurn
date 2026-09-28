@@ -5,11 +5,33 @@ import { reverseRefundedCreditPurchase } from "@/lib/billing/message-credits";
 import { reverseRefundedTokenPurchase } from "@/lib/billing/token-service";
 import { parsePayload } from "./parse";
 
-const payloadSchema = z.object({
-  kind: z.enum(["message_credits", "ai_tokens"]),
-  purchaseId: z.string().uuid(),
-  amountRefundedMinor: z.number().int().min(0),
-});
+const payloadSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("message_credits"),
+    purchaseId: z.string().uuid(),
+    amountRefundedMinor: z.number().int().min(0),
+  }),
+  z.object({
+    kind: z.literal("ai_tokens"),
+    purchaseId: z.string().uuid(),
+    amountRefundedMinor: z.number().int().min(0),
+  }),
+  // A voice minute pack (voice P2): no purchases table; the ledger row is keyed by its PaymentIntent.
+  z.object({
+    kind: z.literal("voice_pack"),
+    businessId: z.string().uuid(),
+    paymentIntentId: z.string().min(1).max(200),
+    amountMinor: z.number().int().min(0),
+    amountRefundedMinor: z.number().int().min(0),
+  }),
+  // A chargeback (billing/disputes.ts): claw back the disputed purchase's
+  // unused units when it opens, give them back if it is won.
+  z.object({
+    kind: z.literal("dispute"),
+    disputeId: z.string().min(1).max(200),
+    action: z.enum(["reverse", "restore"]),
+  }),
+]);
 
 /**
  * `billing.refund_reverse`: queued by the Stripe `charge.refunded` webhook for
@@ -27,6 +49,18 @@ const payloadSchema = z.object({
  */
 export async function handleBillingRefundReverse(job: ClaimedJob): Promise<void> {
   const payload = parsePayload(payloadSchema, job.payload);
+  if (payload.kind === "dispute") {
+    const { runDisputeJob } = await import("@/lib/billing/disputes");
+    const units = await runDisputeJob({ disputeId: payload.disputeId, action: payload.action });
+    console.info(`[billing.refund_reverse] kind=dispute dispute=${payload.disputeId} action=${payload.action} units=${units}`);
+    return;
+  }
+  if (payload.kind === "voice_pack") {
+    const { reverseVoicePackRefund } = await import("@/lib/voice/minutes");
+    const seconds = await reverseVoicePackRefund(payload);
+    console.info(`[billing.refund_reverse] kind=voice_pack pi=${payload.paymentIntentId} refunded_minor=${payload.amountRefundedMinor} reversed_sec=${seconds}`);
+    return;
+  }
   const reversed =
     payload.kind === "message_credits"
       ? await reverseRefundedCreditPurchase(payload)

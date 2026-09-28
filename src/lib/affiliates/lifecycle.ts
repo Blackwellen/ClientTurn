@@ -124,6 +124,11 @@ export async function flagSuspectReferrals(): Promise<number> {
        affiliates ( user_id, contact_email )`,
     )
     .is("flagged_reason", null)
+    // Recent referrals, newest first: the old unordered first-500 scan could
+    // re-read the same rows forever and never reach a new one. Older rows are
+    // covered by the payment-side check (fraud.ts checkPaidReferrals).
+    .gte("created_at", new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
     .limit(500);
 
   if (!referrals || referrals.length === 0) return 0;

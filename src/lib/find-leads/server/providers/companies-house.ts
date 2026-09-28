@@ -1,5 +1,6 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
+import { normaliseCompaniesHouseKey } from "@/lib/find-leads/companies-house-key";
 import { providerJson, unconfigured } from "./http";
 import {
   isRecognisedRegistryType,
@@ -76,7 +77,7 @@ type CompanySearchItem = {
 };
 
 function key(): string | undefined {
-  return serverEnv.sourcing.companiesHouseApiKey;
+  return normaliseCompaniesHouseKey(serverEnv.sourcing.companiesHouseApiKey);
 }
 
 // Which register types are corporate subscribers lives in
@@ -403,3 +404,66 @@ export const companiesHouseProvider: SourcingProvider = {
   enrichCompanies,
   fetchIntent,
 };
+
+/* ------------------------------------------------------------------------
+ * The workspace's OWN registration, for Settings, Voice (the Twilio
+ * regulatory details: legal name, company number, registered office). A
+ * free, first-party lookup of the customer's own company; nothing here is
+ * about a lead. Given a company number it reads that profile; given a name
+ * it takes the register's best match (lookupCompany) first. Null on a miss,
+ * a missing key or any failure: prefill is a convenience, never a blocker.
+ * ---------------------------------------------------------------------- */
+
+export type OwnCompanyRegistration = {
+  companyNumber: string;
+  registeredName: string;
+  status: string | null;
+  address: { line1: string; line2: string | null; city: string; region: string | null; postcode: string; country: string } | null;
+};
+
+type ChOfficeAddress = {
+  premises?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  locality?: string;
+  region?: string;
+  postal_code?: string;
+  country?: string;
+};
+
+export async function ownCompanyRegistration(input: { companyNumber?: string | null; name?: string | null }): Promise<OwnCompanyRegistration | null> {
+  const apiKey = key();
+  if (!apiKey) return null;
+  try {
+    let number = (input.companyNumber ?? "").toUpperCase().replace(/\s+/g, "") || null;
+    if (!number && input.name?.trim()) {
+      const verdict = await lookupCompany(input.name);
+      number = verdict.companyNumber;
+    }
+    if (!number) return null;
+    const result = await providerJson<{
+      company_number?: string;
+      company_name?: string;
+      company_status?: string;
+      registered_office_address?: ChOfficeAddress;
+    }>({ url: `${API}/company/${encodeURIComponent(number)}`, headers: authHeaders(apiKey) });
+    if (!result.ok || !result.data.company_number || !result.data.company_name) return null;
+    const a = result.data.registered_office_address;
+    const line1 = [a?.premises, a?.address_line_1].filter(Boolean).join(" ").trim();
+    const address =
+      a && line1 && a.locality && a.postal_code
+        ? {
+            line1,
+            line2: a.address_line_2 ?? null,
+            city: a.locality,
+            region: a.region ?? null,
+            postcode: a.postal_code,
+            // Registered offices in the UK register are UK addresses.
+            country: "GB",
+          }
+        : null;
+    return { companyNumber: result.data.company_number, registeredName: result.data.company_name, status: result.data.company_status ?? null, address };
+  } catch {
+    return null;
+  }
+}

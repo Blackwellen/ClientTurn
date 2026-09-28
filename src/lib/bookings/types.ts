@@ -97,67 +97,6 @@ export const bookingFilterSchema = z.object({
 
 export type BookingFilters = z.infer<typeof bookingFilterSchema>;
 
-function first(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-export function parseBookingFilters(
-  params: Record<string, string | string[] | undefined>,
-): BookingFilters {
-  return bookingFilterSchema.parse({
-    tab: first(params.tab),
-    view: first(params.view),
-    status: first(params.status),
-    service: first(params.service),
-    assignee: first(params.assignee),
-    from: first(params.from),
-    to: first(params.to),
-    month: first(params.month),
-    page: first(params.page),
-    pageSize: first(params.pageSize),
-    lead: first(params.lead),
-    leadTab: first(params.leadTab),
-  });
-}
-
-const DEFAULTS: Record<string, string> = {
-  tab: "upcoming",
-  view: "list",
-  status: "all",
-  page: "1",
-  pageSize: "25",
-};
-
-export function bookingFiltersToQuery(
-  filters: Partial<BookingFilters> & Record<string, unknown>,
-) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === null || value === "") continue;
-    const asString = String(value);
-    if (DEFAULTS[key] === asString) continue;
-    params.set(key, asString);
-  }
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
-export function bookingsHref(
-  filters: Partial<BookingFilters> & Record<string, unknown>,
-) {
-  return `/app/bookings${bookingFiltersToQuery(filters)}`;
-}
-
-export function hasActiveBookingFilters(filters: BookingFilters) {
-  return Boolean(
-    filters.status !== "all" ||
-      filters.service ||
-      filters.assignee ||
-      filters.from ||
-      filters.to,
-  );
-}
-
 // ----------------------------------------------------------------- calendar
 
 export type CalendarDay = {

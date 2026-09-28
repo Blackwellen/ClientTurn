@@ -81,6 +81,13 @@ import {
   toMessageReplyClassification,
 } from "./types";
 import { interestForReplyClassification } from "@/lib/inbox/interest";
+import { runOperation, type ServiceContext, type ServiceResult } from "@/lib/services";
+import { aiMay, type AiAuthority } from "@/lib/commercial/ai-permissions";
+import { claimCommercialAction } from "@/lib/commercial/lead-lock";
+import { agentQuoteActionKey } from "@/lib/commercial/locks";
+import { quoteToolGate, type QuoteCalculationView, type QuoteTool } from "./quote-flow";
+import type { QuoteLineInput } from "@/lib/quotes/types";
+import type { ApprovalVerdict } from "@/lib/quotes/service-core";
 
 // ------------------------------------------------------------- declaration
 
@@ -121,6 +128,15 @@ export const TOOL_NAMES = [
   "stop_follow_up",
   "record_reply_classification",
   "propose_checkout",
+  // Quote-to-cash (brief §7, §74). Every one goes through the service
+  // registry as caller AGENT (AGENT_QUOTE_OPERATIONS), never a separate
+  // implementation, after `quoteToolGate` (AI on, quote_ai_enabled, the
+  // workspace's per-capability AI permission).
+  "calculate_quote",
+  "draft_quote",
+  "request_quote_approval",
+  "send_quote",
+  "propose_discount",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -230,6 +246,43 @@ export const TOOL_REGISTRY: Record<ToolName, ToolDeclaration> = {
     requirements: { requiresContactability: true },
     idempotent: true,
   },
+  calculate_quote: {
+    name: "calculate_quote",
+    description: "Price catalogue lines (quote.calculate). The only source of any figure the assistant may state.",
+    risk: "LOW",
+    requirements: {},
+    idempotent: true,
+  },
+  draft_quote: {
+    name: "draft_quote",
+    description: "Create a draft quote from catalogue items the lead's facts support (quote.create), once per request.",
+    // MEDIUM: a draft is internal until someone sends it.
+    risk: "MEDIUM",
+    requirements: {},
+    idempotent: true,
+  },
+  request_quote_approval: {
+    name: "request_quote_approval",
+    description: "Ask an owner or admin to approve a drafted quote (quote.submit_for_approval).",
+    risk: "MEDIUM",
+    requirements: {},
+    idempotent: true,
+  },
+  send_quote: {
+    name: "send_quote",
+    description: "Send a quote to the lead (quote.send), only where the workspace lets the assistant send quotes.",
+    // HIGH: a binding commercial document leaves the building.
+    risk: "HIGH",
+    requirements: { requiresContactability: true },
+    idempotent: true,
+  },
+  propose_discount: {
+    name: "propose_discount",
+    description: "Apply a discount within the workspace's AI discount policy (quote.apply_discount); the policy decides.",
+    risk: "HIGH",
+    requirements: {},
+    idempotent: true,
+  },
 };
 
 // ------------------------------------------------------------- invocation
@@ -256,6 +309,27 @@ export type ToolContext = {
   };
   /** Confidence of the proposal that led here; null for deterministic calls. */
   confidence: number | null;
+  /**
+   * What the workspace lets the assistant do (commercial authority v2) and
+   * whether AI quoting is on (brief §74). Absent = the least-privilege
+   * defaults: book allowed, every quote tool refused.
+   */
+  ai?: QuoteToolAccess;
+  /**
+   * Who holds the lead's commercial lease for this action (commercial/locks.ts).
+   * Absent = the text assistant ("AI", keyed by the conversation). A voice
+   * call's tools (voice/tools/work.ts) act as "VOICE", keyed by the call, so a
+   * call and a text turn never act on the lead at once.
+   */
+  holder?: { kind: "VOICE"; ref: string };
+};
+
+/** The inputs of `quoteToolGate`, built by the runtime from live state. */
+export type QuoteToolAccess = {
+  aiEnabled: boolean;
+  /** can(businessId, "quote_ai_enabled"). */
+  quoteAiCapability: boolean;
+  authority: AiAuthority;
 };
 
 export type ToolResult<T = Record<string, unknown>> =
@@ -274,6 +348,21 @@ async function invoke<T extends Record<string, unknown>>(
 ): Promise<ToolResult<T>> {
   const declaration = TOOL_REGISTRY[name];
   const startedAt = Date.now();
+
+  // "Book meetings" is on by default; an owner who turned it off gets a
+  // person to arrange the time instead (the refusal is the audit row).
+  if ((name === "create_booking" || name === "send_booking_link") && context.ai && !aiMay(context.ai.authority, "book")) {
+    const detail = "The workspace has not let the assistant book meetings.";
+    await recordAction(context.run, {
+      toolName: name,
+      riskLevel: declaration.risk,
+      status: "DENIED_PERMISSION",
+      denialReason: detail,
+      input: inputSummary,
+      latencyMs: Date.now() - startedAt,
+    });
+    return { ok: false, code: "DENIED_PERMISSION", detail, recoverable: false };
+  }
 
   const gate = evaluateToolGate({
     riskLevel: declaration.risk,
@@ -789,6 +878,247 @@ export async function proposeCheckout(
       ok: true as const,
       data: { messageId, opportunityId: advanced.ok ? advanced.opportunityId : null },
     };
+  });
+}
+
+// -------------------------------------------------------------- quote tools
+
+/**
+ * The service context an agent quote call runs under: caller AGENT, no user,
+ * member role (the quote core never shows the assistant cost or margin), one
+ * correlation id per run. `confirmed` is set for `quote.send` only, and only
+ * when the owner turned "Send quotes" on for the assistant: that setting is
+ * the standing confirmation, and the audit row says so.
+ */
+function agentServiceContext(context: ToolContext, idempotencyKey: string, standingConfirmation = false): ServiceContext {
+  return {
+    businessId: context.business.businessId,
+    userId: null,
+    role: "member",
+    caller: "AGENT",
+    correlationId: `agent:${context.run.id}`,
+    idempotencyKey,
+    ...(standingConfirmation ? { confirmed: true, confirmationSource: "standing_permission" as const } : {}),
+  };
+}
+
+function fromService<T extends Record<string, unknown>>(result: ServiceResult<T>): ToolResult<T> {
+  if (result.success) return { ok: true, data: result.data };
+  return { ok: false, code: result.code, detail: result.message, recoverable: result.code === "UNAVAILABLE" };
+}
+
+/**
+ * The quote tools' entry: `quoteToolGate` first (AI on, the plan's
+ * quote_ai_enabled, the workspace's AI permission), recorded as a denial when
+ * it refuses; then the ordinary policy gate and decision log.
+ */
+async function invokeQuote<T extends Record<string, unknown>>(
+  name: QuoteTool,
+  context: ToolContext,
+  inputSummary: Record<string, unknown>,
+  run: () => Promise<ToolResult<T>>,
+): Promise<ToolResult<T>> {
+  const access = context.ai ?? null;
+  const gate = access
+    ? quoteToolGate(name, access)
+    : ({ allowed: false, reason: "NOT_PERMITTED", detail: "The assistant has no quote permissions in this turn." } as const);
+  if (!gate.allowed) {
+    await recordAction(context.run, {
+      toolName: name,
+      riskLevel: TOOL_REGISTRY[name].risk,
+      status: "DENIED_PERMISSION",
+      denialReason: gate.detail,
+      input: inputSummary,
+      latencyMs: 0,
+    });
+    return { ok: false, code: gate.reason, detail: gate.detail, recoverable: false };
+  }
+  return invoke(name, context, inputSummary, run);
+}
+
+/**
+ * One actor at a time on the lead (commercial/locks.ts). A person working the
+ * lead holds it; the assistant then leaves the quote to them this turn.
+ */
+async function claimForAssistant(context: ToolContext, kind: "QUOTE_CREATE" | "QUOTE_SEND" | "QUOTE_APPROVAL_REQUEST" | "QUOTE_DISCOUNT", actionKey: string) {
+  return claimCommercialAction({
+    businessId: context.business.businessId,
+    leadId: context.lead.id,
+    holder: context.holder?.kind ?? "AI",
+    holderRef: context.holder?.ref ?? context.conversationId,
+    kind,
+    actionKey,
+  });
+}
+
+export type CalculatedQuote = {
+  ok: boolean;
+  calculation: QuoteCalculationView | null;
+  approval: ApprovalVerdict | null;
+  issues: { message: string }[];
+};
+
+/** calculate_quote: prices lines from the catalogue. Writes nothing. */
+export async function calculateQuoteForLead(
+  context: ToolContext,
+  input: { lines: QuoteLineInput[]; key: string },
+): Promise<ToolResult<CalculatedQuote>> {
+  return invokeQuote("calculate_quote", context, { lines: input.lines.length }, async () => {
+    const result = await runOperation<{ ok: boolean; calculation?: QuoteCalculationView; approval?: ApprovalVerdict; issues?: { message: string }[] }>(
+      "quote.calculate",
+      { lines: input.lines },
+      agentServiceContext(context, input.key),
+    );
+    if (!result.success) return { ok: false, code: result.code, detail: result.message, recoverable: result.code === "UNAVAILABLE" };
+    const data = result.data;
+    return {
+      ok: true,
+      data: { ok: data.ok, calculation: data.calculation ?? null, approval: data.approval ?? null, issues: data.issues ?? [] },
+    };
+  });
+}
+
+export type DraftedQuote = {
+  quoteId: string;
+  revisionId: string | null;
+  approvalRequired: boolean;
+  duplicate: boolean;
+  calculation: QuoteCalculationView | null;
+};
+
+/**
+ * draft_quote: one draft per request (quote.create is idempotent on the
+ * request id: the conversation plus the message that asked). A person
+ * working the lead right now holds it: nothing is drafted.
+ */
+export async function draftQuote(
+  context: ToolContext,
+  input: { opportunityId: string; lines: QuoteLineInput[]; requestId: string; title?: string; afterObjection: boolean; priorAiConcessions: number; rationale: string },
+): Promise<ToolResult<DraftedQuote>> {
+  return invokeQuote("draft_quote", context, { opportunityId: input.opportunityId, lines: input.lines.length }, async () => {
+    const claim = await claimForAssistant(context, "QUOTE_CREATE", input.requestId);
+    if (!claim.ok) return { ok: false, code: "LEAD_HELD", detail: "A person is working on this lead right now.", recoverable: true };
+    const result = await runOperation<{
+      quote: { id: string; currentRevisionId: string | null };
+      revision: { id: string; approvalRequired: boolean; calculation: QuoteCalculationView } | null;
+      duplicate: boolean;
+    }>(
+      "quote.create",
+      {
+        opportunityId: input.opportunityId,
+        lines: input.lines,
+        requestId: input.requestId,
+        ...(input.title ? { title: input.title } : {}),
+        aiRationale: input.rationale,
+        agent: { afterObjection: input.afterObjection, priorAiConcessions: input.priorAiConcessions },
+      },
+      agentServiceContext(context, input.requestId),
+    );
+    if (!result.success) return { ok: false, code: result.code, detail: result.message, recoverable: result.code === "UNAVAILABLE" };
+    const { quote, revision, duplicate } = result.data;
+    return {
+      ok: true,
+      data: {
+        quoteId: quote.id,
+        revisionId: revision?.id ?? quote.currentRevisionId,
+        approvalRequired: revision?.approvalRequired ?? false,
+        duplicate,
+        calculation: revision?.calculation ?? null,
+      },
+    };
+  });
+}
+
+/** request_quote_approval: once per quote revision. */
+export async function requestQuoteApproval(
+  context: ToolContext,
+  input: { quoteId: string; revisionId: string; note: string },
+): Promise<ToolResult<{ status: string; requiredRole: string; duplicate: boolean }>> {
+  return invokeQuote<{ status: string; requiredRole: string; duplicate: boolean }>("request_quote_approval", context, { quoteId: input.quoteId }, async () => {
+    const key = agentQuoteActionKey("QUOTE_APPROVAL_REQUEST", input.quoteId, input.revisionId);
+    const claim = await claimForAssistant(context, "QUOTE_APPROVAL_REQUEST", key);
+    if (!claim.ok) return { ok: false, code: "LEAD_HELD", detail: "A person is working on this lead right now.", recoverable: true };
+    if (claim.duplicate) return { ok: true, data: { status: "PENDING_APPROVAL", requiredRole: "admin", duplicate: true } };
+    const result = await runOperation<{ status: string; requiredRole: string }>(
+      "quote.submit_for_approval",
+      { quoteId: input.quoteId, note: input.note.slice(0, 2000) },
+      agentServiceContext(context, key),
+    );
+    const mapped = fromService(result);
+    return mapped.ok ? { ok: true, data: { ...mapped.data, duplicate: false } } : mapped;
+  });
+}
+
+export type SentQuote = { status: string; publicUrl: string; validUntil: string; emailed: boolean; duplicate: boolean };
+
+/**
+ * send_quote: only where the workspace turned "Send quotes" on for the
+ * assistant (the gate) -- that setting is the owner's standing confirmation
+ * for this EXTERNAL operation. Once per revision. Emailed when the lead has an
+ * email; otherwise the private link comes back for the reply to carry.
+ */
+export async function sendQuoteToLead(
+  context: ToolContext,
+  input: { quoteId: string; revisionId: string; hasEmail: boolean },
+): Promise<ToolResult<SentQuote>> {
+  return invokeQuote("send_quote", context, { quoteId: input.quoteId }, async () => {
+    const key = agentQuoteActionKey("QUOTE_SEND", input.quoteId, input.revisionId);
+    const claim = await claimForAssistant(context, "QUOTE_SEND", key);
+    if (!claim.ok) return { ok: false, code: "LEAD_HELD", detail: "A person is working on this lead right now.", recoverable: true };
+    const channel = input.hasEmail ? "email" : "link";
+    const result = await runOperation<{ status: string; publicUrl: string; validUntil: string; delivery: { queued: boolean }; duplicate: boolean }>(
+      "quote.send",
+      { quoteId: input.quoteId, channel },
+      agentServiceContext(context, key, true),
+    );
+    if (!result.success) return { ok: false, code: result.code, detail: result.message, recoverable: result.code === "UNAVAILABLE" };
+    return {
+      ok: true,
+      data: {
+        status: result.data.status,
+        publicUrl: result.data.publicUrl,
+        validUntil: result.data.validUntil,
+        emailed: channel === "email" && result.data.delivery.queued,
+        duplicate: result.data.duplicate || claim.duplicate,
+      },
+    };
+  });
+}
+
+export type DiscountOutcome = {
+  revisionId: string | null;
+  revised: boolean;
+  approval: ApprovalVerdict;
+  calculation: QuoteCalculationView;
+  dryRun: boolean;
+};
+
+/**
+ * propose_discount: the quote core decides with the assistant's policy and
+ * the full calculation. `dryRun` asks for the decision only. A refusal
+ * (POLICY_BLOCKED) is the DENY: the reply holds the price.
+ */
+export async function proposeDiscount(
+  context: ToolContext,
+  input: { quoteId: string; revisionId: string; bps: number; afterObjection: boolean; priorAiConcessions: number; dryRun: boolean },
+): Promise<ToolResult<DiscountOutcome>> {
+  return invokeQuote("propose_discount", context, { quoteId: input.quoteId, bps: input.bps, dryRun: input.dryRun }, async () => {
+    const key = agentQuoteActionKey("QUOTE_DISCOUNT", input.quoteId, `${input.revisionId}:${input.bps}`);
+    if (!input.dryRun) {
+      const claim = await claimForAssistant(context, "QUOTE_DISCOUNT", key);
+      if (!claim.ok) return { ok: false, code: "LEAD_HELD", detail: "A person is working on this lead right now.", recoverable: true };
+    }
+    const result = await runOperation<DiscountOutcome>(
+      "quote.apply_discount",
+      {
+        quoteId: input.quoteId,
+        bps: input.bps,
+        dryRun: input.dryRun,
+        agent: { afterObjection: input.afterObjection, priorAiConcessions: input.priorAiConcessions },
+      },
+      agentServiceContext(context, input.dryRun ? `${key}:dry` : key),
+    );
+    return fromService(result);
   });
 }
 

@@ -33,13 +33,20 @@ import { buildEntitlementSnapshot, callConsentFrom, phoneSourceOf, subscriberTyp
 import { advisoryLockId, voiceCallKey, voiceLeadLockKey, type CanCallLeadInput, type ConsentBasis } from "./eligibility.ts";
 import type { VoiceEntryPoint } from "./entitlement.ts";
 import { parseCallingHoursConfig, type CallingHoursConfig, type UkRegion } from "./calling-hours.ts";
-import { buildLockedPreamble, OPENER_VERSION } from "./opener.ts";
+import { attributionSpoken, buildLockedPreamble, CLOSING_VERSION, OPENER_VERSION, renderClosingLine } from "./opener.ts";
 import { identityAnswer, identityReadiness } from "./identity.ts";
 import { reserveMinutes, settleMinutes, releaseMinutes, MinuteStoreUnavailable, type MinuteStore } from "./minutes-core.ts";
 import { reduceVoiceEvent, callRefOf, type FollowUp } from "./ingest.ts";
 import { analyseCall, type CallAnalysis } from "./post-call.ts";
 import { callCostLines, type CostLine } from "./cost.ts";
-import { planRetry, type DialOutcome } from "./retry-policy.ts";
+import { planRetry, renderVoicemailScript, voicemailAllowed, VOICEMAIL_SCRIPT_VERSION, type DialOutcome } from "./retry-policy.ts";
+import { PROVIDER_MAX_DURATION_SEC } from "./time-governor.ts";
+import { isPremiumProfile, parseVoiceProfile, premiumBilledSec, PREMIUM_TTS_EXTRA_USD_PER_MIN, voiceAgentFields } from "./voice-profile.ts";
+import { buildCallMemoryNote, type CallMemoryNote } from "./continuity.ts";
+import { decideNextChannel, missedCallText, type ChannelDecision, type TextChannel } from "./channel-orchestration.ts";
+import { DEFAULT_FREQUENCY_CAPS, evaluateFrequency } from "../reengagement/frequency.ts";
+import type { CallerIdentity } from "./identity.ts";
+import type { LockedPreamble } from "./opener.ts";
 import { classifyDestination, type DestinationClass } from "./destinations.ts";
 import { DEFAULT_PLATFORM_CONCURRENCY, DEFAULT_WORKSPACE_CONCURRENCY, type QueuePriority, type RouteAllocations } from "./budget.ts";
 import {
@@ -52,6 +59,7 @@ import {
 } from "./numbers/provisioning.ts";
 import type { WorkspaceNumber } from "./numbers/sender.ts";
 import type { CallState } from "./state-machine.ts";
+import { adminVoiceBlocks, type AdminVoiceBlockReason } from "../admin/voice-ops-model.ts";
 import {
   ProviderNotConfigured,
   ProviderRequestError,
@@ -136,6 +144,8 @@ export type VoiceSettingsRow = {
   workspace_concurrency: number;
   transfer_number_e164: string | null;
   provider_agent_id: string | null;
+  /** 0162: how the assistant sounds (voice-profile.ts). Absent = the Retell agent's own voice. */
+  voice_profile?: unknown;
 };
 
 export type LeadRow = {
@@ -171,7 +181,39 @@ export type DialContext = {
   activeCallForLead: boolean;
   concurrency: { workspaceActive: number; platformActive: number };
   allocation: { allocations: RouteAllocations; periodTotalSec: number; usedByRouteSec: number; disabledRoutes: string[] } | null;
+  /**
+   * The platform operator's controls (0158): outbound pause, number
+   * suspension and the monthly provider-spend ceiling. Absent = none set.
+   */
+  adminControls?: AdminControls | null;
 };
+
+export type AdminControls = {
+  outboundPaused: boolean;
+  numberSuspended: boolean;
+  spendLimitGbpMonth: number | null;
+  spentGbpThisMonth: number;
+};
+
+export const ADMIN_BLOCK_MESSAGES: Readonly<Record<AdminVoiceBlockReason, string>> = {
+  ADMIN_KILL_SWITCH: "AI calling has been paused for this workspace by ClientTurn support.",
+  ADMIN_OUTBOUND_PAUSED: "Outbound AI calls are paused for this workspace by ClientTurn support.",
+  ADMIN_NUMBER_SUSPENDED: "Your calling number is suspended by ClientTurn support, so no AI calls can be made from it.",
+  ADMIN_SPEND_LIMIT_REACHED: "This workspace has reached its monthly AI calling limit set by ClientTurn support.",
+};
+
+/** The operator's controls for an outbound call (kill switch is the entitlement gate's). */
+export function adminOutboundBlocks(controls: AdminControls | null | undefined): AdminVoiceBlockReason[] {
+  if (!controls) return [];
+  return adminVoiceBlocks({
+    direction: "OUTBOUND",
+    killSwitch: false,
+    outboundPaused: controls.outboundPaused,
+    numberSuspended: controls.numberSuspended,
+    spendLimitGbpMonth: controls.spendLimitGbpMonth,
+    spentGbpThisMonth: controls.spentGbpThisMonth,
+  });
+}
 
 export type BeginDialResult = "OK" | "NOT_FOUND" | "NOT_QUEUED" | "HUMAN_ACTIVE" | "LEAD_BUSY" | "WORKSPACE_FULL" | "PLATFORM_FULL";
 
@@ -202,7 +244,8 @@ export type VoiceAuditAction =
   | "number.activated"
   | "number.needs_attention"
   | "number.bundle_rejected"
-  | "number.release_scheduled";
+  | "number.release_scheduled"
+  | "voice.inbound_answered";
 
 export type AuditEntry = {
   businessId: string;
@@ -248,11 +291,23 @@ export type VoiceRepo = {
     payload: Record<string, string | number | boolean | null>;
   }): Promise<boolean>;
   saveTranscript(input: { businessId: string; callId: string; segments: TranscriptTurn[]; retainUntil: string | null }): Promise<void>;
-  saveOutcome(input: { businessId: string; callId: string; leadId: string; analysis: CallAnalysis; qualificationBefore: string | null }): Promise<void>;
+  saveOutcome(input: {
+    businessId: string;
+    callId: string;
+    leadId: string;
+    analysis: CallAnalysis;
+    qualificationBefore: string | null;
+    /** Voice P3: whether the closing attribution line was spoken (from the transcript), and its version. */
+    attribution?: { spoken: boolean; closingVersion: string };
+  }): Promise<void>;
   /** Inserts only the keys not already recorded for the call. */
   saveObjections(input: { businessId: string; leadId: string; callId: string; objections: CallAnalysis["objections"]; occurredAt: string }): Promise<void>;
   saveCostLines(input: { businessId: string; callId: string; lines: CostLine[]; occurredAt: string }): Promise<void>;
-  recordVoiceOptOut(input: { businessId: string; leadId: string; phone: string | null; callId: string }): Promise<void>;
+  /**
+   * `scope` ALL ("take me off your list", speech-intents.ts): every channel
+   * for this lead, not only calls. Absent reads as CALLS.
+   */
+  recordVoiceOptOut(input: { businessId: string; leadId: string; phone: string | null; callId: string; scope?: "CALLS" | "ALL" }): Promise<void>;
   /** Through the QI service: signals + a lead.score reassessment. */
   writeQualificationSignals(input: { businessId: string; leadId: string; callId: string; analysis: CallAnalysis; observedAt: string }): Promise<void>;
   saveRecording(input: {
@@ -279,9 +334,51 @@ export type VoiceRepo = {
   loadProvisioningDetails(businessId: string): Promise<unknown>;
   findNumberByBundle(bundleSid: string): Promise<{ id: string; businessId: string; record: ProvisioningRecord } | null>;
   quarantinedE164s(): Promise<Set<string>>;
-  upsertTelephonyAccount(input: { businessId: string; subaccountSid: string }): Promise<void>;
+  /** The subaccount, with its auth token sealed when one is given (P2 gap b). */
+  upsertTelephonyAccount(input: { businessId: string; subaccountSid: string; authToken?: string | null }): Promise<void>;
+  /** Whether a sealed subaccount token is already stored (voice P3). */
+  telephonyTokenStored?(businessId: string): Promise<boolean>;
   notifyOwner(input: { businessId: string; title: string; body: string; dedupeKey: string; linkUrl: string }): Promise<void>;
   audit(entry: AuditEntry): Promise<void>;
+
+  /* ---- voice P3 (0162); optional so a store without them keeps working ---- */
+  /** A voicemail was already left for this lead on this route (§26: once per request). */
+  voicemailAlreadyLeft?(businessId: string, leadId: string, route: string): Promise<boolean>;
+  /** What the dial planned: the brief version and the voicemail script version. */
+  recordCallPlan?(callId: string, plan: { briefVersion: string | null; voicemailScriptVersion: string | null; premiumVoice?: boolean }): Promise<void>;
+  loadCallPlan?(callId: string): Promise<{ briefVersion: string | null; voicemailScriptVersion: string | null; premiumVoice?: boolean } | null>;
+  /** The assistant's own end_call_summary tool result, if it called it. */
+  loadAgentSummary?(callId: string): Promise<{ summary: string; disposition: string; nextStep: string | null } | null>;
+  /** Continuity: the call's note merged into the lead's shared opportunity memory. */
+  recordCallMemory?(input: { businessId: string; leadId: string; callId: string; note: CallMemoryNote }): Promise<void>;
+  /** Live calls between two numbers since a time (matching a carrier callback, 0162). */
+  findLiveCallsByNumbers?(input: { fromE164: string; toE164: string; since: Date }): Promise<CallRow[]>;
+  /** Record the carrier's call id on a call (idempotent: only when it is still empty). */
+  recordCarrierCallSid?(callId: string, sid: string, source: "RETELL_TELEPHONY_ID" | "NUMBER_PAIR_MATCH"): Promise<void>;
+  /** Channel orchestration facts for a missed call (§71): touches, texts since the call, WhatsApp window. */
+  loadChannelFacts?(input: { businessId: string; leadId: string; since: Date }): Promise<ChannelFacts>;
+  /** One follow-up text through the ordinary send path (guards, quiet hours, suppression, the conversation). */
+  queueFollowUpText?(input: { businessId: string; leadId: string; channel: TextChannel; body: string; sendKey: string }): Promise<boolean>;
+};
+
+export type ChannelFacts = {
+  /** Automated touches' send times (the frequency guard's input). */
+  automatedSentAt: string[];
+  touchesSinceEngagement: number;
+  intentState: string | null;
+  preferredChannel: "phone" | "sms" | "whatsapp" | "email" | null;
+  /** Texts already sent since the call ended (V5 sequence). */
+  sentSinceLastCall: TextChannel[];
+  /** WhatsApp's 24-hour customer-care window is open (a free-form message is lawful). */
+  whatsappWindowOpen: boolean;
+};
+
+/** What the call brief builder is given at dial time (voice P3). */
+export type BriefRequest = {
+  call: CallRow;
+  ctx: DialContext;
+  identity: CallerIdentity;
+  preamble: LockedPreamble;
 };
 
 export type VoiceProviders = {
@@ -291,7 +388,7 @@ export type VoiceProviders = {
 };
 
 export type EnqueueFn = (
-  type: "voice.dial" | "voice.post_call" | "voice.recording_fetch" | "voice.retry" | "voice.number_provision" | "voice.number_release",
+  type: "voice.dial" | "voice.post_call" | "voice.recording_fetch" | "voice.retry" | "voice.number_provision" | "voice.number_release" | "voice.text_back",
   payload: Record<string, unknown>,
   options: { businessId: string; runAt?: Date; idempotencyKey: string; priority?: number },
 ) => Promise<void>;
@@ -310,6 +407,19 @@ export type VoiceDeps = {
   providers(): VoiceProviders;
   enqueue: EnqueueFn;
   storage?: RecordingStorage;
+  /**
+   * Voice P3: the per-call brief (call-brief.ts) as Retell dynamic variables,
+   * built from the same strategy, NBA, facts, offer and objections as a text
+   * turn. Absent or null: the P2 variables only (the agent still speaks the
+   * locked opener).
+   */
+  briefFor?(input: BriefRequest): Promise<{ version: string; dynamicVariables: Record<string, string> } | null>;
+  /**
+   * Platform maintenance (docs/MAINTENANCE.md): when outbound work is held,
+   * until when. A dial is re-scheduled for after the window, never dropped.
+   * Absent or null: not held.
+   */
+  maintenancePauseUntil?(): Promise<Date | null>;
   config: {
     /** Platform-wide default Retell agent (RETELL_AGENT_ID); a workspace may override. */
     defaultAgentId: string | null;
@@ -362,6 +472,12 @@ export function eligibilityInputOf(ctx: DialContext): Omit<CanCallLeadInput, "no
 }
 
 function decide(deps: VoiceDeps, facts: EntitlementFacts, ctx: DialContext, call: CallRow | null, route: string, entryPoint: VoiceEntryPoint): DialDecision {
+  // The operator's controls first: an outbound pause, a suspended number or a
+  // reached spend ceiling stops every AI dial, whoever asked for it.
+  const blocks = adminOutboundBlocks(ctx.adminControls);
+  if (blocks.length) {
+    return { kind: "CANCEL", reason: blocks[0], reasons: blocks, productState: "error", message: ADMIN_BLOCK_MESSAGES[blocks[0]] };
+  }
   if (ctx.allocation?.disabledRoutes.includes(route)) {
     return { kind: "CANCEL", reason: "ROUTE_DISABLED", reasons: ["ROUTE_DISABLED"], productState: "integration-required", message: "This call route is switched off in Settings, Voice." };
   }
@@ -488,8 +604,13 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
   const callKey = voiceCallKey(input.businessId, input.leadId, input.route, attemptNumber);
   const settings = ctx.settings;
   const consent = callConsentFrom(ctx.permission);
-  const notBefore =
+  let notBefore =
     decision.kind === "DEFER" ? decision.runAt : input.notBefore && input.notBefore.getTime() > now.getTime() ? input.notBefore : now;
+  // Platform maintenance holds outbound calls like texts: the call is booked
+  // for after the window (and re-checked at dial time), never dropped.
+  const held = await maintenanceHold(deps);
+  const heldForMaintenance = Boolean(held && held.getTime() > notBefore.getTime());
+  if (held && heldForMaintenance) notBefore = held;
 
   const { row, inserted } = await deps.repo.insertCall({
     business_id: input.businessId,
@@ -530,9 +651,20 @@ export async function requestCall(deps: VoiceDeps, input: RequestCallInput): Pro
     ok: true,
     callId: row.id,
     scheduledFor: (row.queued_at && !inserted ? row.queued_at : notBefore.toISOString()),
-    deferredReason: decision.kind === "DEFER" ? decision.reason : null,
+    deferredReason: heldForMaintenance ? "MAINTENANCE_WINDOW" : decision.kind === "DEFER" ? decision.reason : null,
     existing: !inserted,
   };
+}
+
+/** When platform maintenance holds outbound work, until when (fail open: an unreadable state holds nothing). */
+async function maintenanceHold(deps: VoiceDeps): Promise<Date | null> {
+  if (!deps.maintenancePauseUntil) return null;
+  try {
+    const until = await deps.maintenancePauseUntil();
+    return until && until.getTime() > deps.now().getTime() ? until : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ============================================================= dialCall */
@@ -557,6 +689,11 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
     }
     return { status: "SKIPPED", reason: `STATE_${call.state}` };
   }
+
+  // Platform maintenance (APP_OFFLINE / SITE_OFFLINE without "keep automated
+  // follow-up running"): re-scheduled for after the window, never dropped.
+  const held = await maintenanceHold(deps);
+  if (held) return deferCall(deps, call, "MAINTENANCE_WINDOW", held);
 
   const providers = deps.providers();
   if (!providers.voice) return cancelCall(deps, call, "PROVIDER_NOT_CONFIGURED", "integration-required", null);
@@ -636,6 +773,31 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
     recordingEnabled: call.recording_enabled,
   });
 
+  // Voice P3: the call brief (the same plan a text turn gets, for speech) and
+  // the voicemail plan (§26). A brief that cannot be built is not a reason to
+  // fail the call: the agent still speaks the locked opener and the general
+  // prompt's default tells it to end politely without a plan.
+  let brief: { version: string; dynamicVariables: Record<string, string> } | null = null;
+  if (deps.briefFor) {
+    try {
+      brief = await deps.briefFor({ call, ctx, identity: identity.identity, preamble });
+    } catch {
+      brief = null;
+    }
+  }
+  const voicemail = await planVoicemail(deps, call, ctx, { timezone: decision.timezone, now, enquiryAt, callingAsName: identity.identity.callingAsName });
+  // How the assistant sounds: the workspace's profile (a premium voice only
+  // with the surcharge accepted, which marks the call premium).
+  const profile = parseVoiceProfile(settings?.voice_profile);
+  const premiumVoice = isPremiumProfile(profile);
+  if (deps.repo.recordCallPlan) {
+    try {
+      await deps.repo.recordCallPlan(call.id, { briefVersion: brief?.version ?? null, voicemailScriptVersion: voicemail ? VOICEMAIL_SCRIPT_VERSION : null, premiumVoice });
+    } catch {
+      // Before 0162 the columns do not exist; the plan is also in the audit row.
+    }
+  }
+
   try {
     const started = await providers.voice.startOutboundCall({
       fromNumber: decision.callerId,
@@ -644,6 +806,7 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
       callKey: call.call_key,
       metadata: { voice_call_id: call.id, business_id: call.business_id, call_key: call.call_key, route: call.route },
       dynamicVariables: {
+        ...(brief?.dynamicVariables ?? {}),
         locked_preamble: preamble.text,
         opener_version: preamble.version,
         calling_as_name: identity.identity.callingAsName,
@@ -652,6 +815,12 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
         opener_suffix: settings?.opener_suffix ?? "",
         route: call.route,
         lead_first_name: ctx.lead.first_name ?? "",
+      },
+      overrides: {
+        // The time governor's absolute ceiling: budget plus both extensions.
+        maxCallDurationMs: PROVIDER_MAX_DURATION_SEC * 1000,
+        voicemail: voicemail ? { mode: "STATIC_TEXT", text: voicemail } : { mode: "HANG_UP" },
+        voice: voiceAgentFields(profile),
       },
     });
     await deps.repo.patchCall(call.id, {
@@ -668,7 +837,16 @@ export async function dialCall(deps: VoiceDeps, callId: string): Promise<DialRes
       action: "voice.call_placed",
       entityType: "voice_call",
       entityId: call.id,
-      metadata: { lead_id: call.lead_id, route: call.route, attempt: call.attempt_number, provider: providers.voice.name, reserved_sec: reserved.reservation.heldSec },
+      metadata: {
+        lead_id: call.lead_id,
+        route: call.route,
+        attempt: call.attempt_number,
+        provider: providers.voice.name,
+        reserved_sec: reserved.reservation.heldSec,
+        brief_version: brief?.version ?? null,
+        voicemail_script_version: voicemail ? VOICEMAIL_SCRIPT_VERSION : null,
+        premium_voice: premiumVoice,
+      },
     });
     return { status: "DIALLED", providerCallId: started.providerCallId };
   } catch (error) {
@@ -722,6 +900,47 @@ async function deferCall(deps: VoiceDeps, call: CallRow, reason: string, runAt: 
   return { status: "DEFERRED", reason, runAt: runAt.toISOString() };
 }
 
+/**
+ * The voicemail to leave if the call reaches one (§26), decided before the
+ * dial because Retell leaves it itself (agent_override voicemail_option).
+ * Only when the workspace turned voicemail on, the consent basis supports an
+ * automated message (CALL_REQUESTED or FORM_CONSENT_TO_CALL), and none was
+ * left for this request yet. The script is fixed and versioned
+ * (retry-policy.ts); what it promises next is what the retry policy will do.
+ */
+export async function planVoicemail(
+  deps: VoiceDeps,
+  call: CallRow,
+  ctx: DialContext,
+  input: { timezone: string; now: Date; enquiryAt: Date; callingAsName: string },
+): Promise<string | null> {
+  let alreadyLeft = false;
+  if (deps.repo.voicemailAlreadyLeft) {
+    try {
+      alreadyLeft = await deps.repo.voicemailAlreadyLeft(call.business_id, call.lead_id, call.route);
+    } catch {
+      alreadyLeft = true; // unreadable: never risk a second voicemail
+    }
+  }
+  const allowed = voicemailAllowed({
+    enabled: Boolean(ctx.settings?.voicemail_enabled),
+    alreadyLeftForThisRequest: alreadyLeft || call.voicemail_left,
+    consentBasis: (call.consent_basis as ConsentBasis | null) ?? "PHONE_NUMBER_PROVIDED",
+  });
+  if (!allowed) return null;
+  const maxAttempts = ctx.settings?.max_attempts ?? 3;
+  const phone = call.to_e164 ?? ctx.lead?.phone ?? "";
+  const followUp =
+    call.attempt_number < maxAttempts
+      ? "CALL_AGAIN"
+      : phone.startsWith("+") && classifyDestination(phone) === "UK_MOBILE"
+        ? "SMS"
+        : ctx.lead?.email
+          ? "EMAIL"
+          : null;
+  return renderVoicemailScript({ callingAsName: input.callingAsName, enquiryAt: input.enquiryAt, now: input.now, timezone: input.timezone, followUp });
+}
+
 async function failCall(deps: VoiceDeps, call: CallRow, reason: string): Promise<void> {
   const updated = await deps.repo.transitionCall(call.id, ["DIALLING"], {
     state: "FAILED",
@@ -749,7 +968,25 @@ export async function ingestVoiceEvent(deps: VoiceDeps, event: VoiceEvent, extra
   let call: CallRow | null = null;
   if (ref.callId) call = await deps.repo.loadCall(ref.callId);
   if (!call && ref.providerCallId) call = await deps.repo.findCallByProviderId(ref.providerCallId);
+  const meta: Record<string, string> = ("metadata" in event ? event.metadata : undefined) ?? {};
+  // Voice P3 (0162): a carrier status callback for a Retell-placed call has
+  // no id of ours. It is matched on the number pair to the ONE live call
+  // between them, and the carrier id is recorded so later callbacks match.
+  if (!call && event.provider === "twilio" && ref.providerCallId && meta.carrier_from && meta.carrier_to && deps.repo.findLiveCallsByNumbers) {
+    const since = new Date(deps.now().getTime() - 2 * 60 * 60_000);
+    const candidates = (await deps.repo.findLiveCallsByNumbers({ fromE164: meta.carrier_from, toE164: meta.carrier_to, since })).filter((c) => !c.carrier_call_sid);
+    if (candidates.length === 1) {
+      call = candidates[0];
+      if (deps.repo.recordCarrierCallSid) await deps.repo.recordCarrierCallSid(call.id, ref.providerCallId, "NUMBER_PAIR_MATCH");
+      call = { ...call, carrier_call_sid: ref.providerCallId };
+    }
+  }
   if (!call) return { status: "UNMATCHED", reason: "NO_CALL_FOR_EVENT" };
+  // Retell reports the carrier's id for the leg (UNVERIFIED field): recorded once.
+  if (event.provider === "retell" && meta.carrier_call_sid && !call.carrier_call_sid && deps.repo.recordCarrierCallSid) {
+    await deps.repo.recordCarrierCallSid(call.id, meta.carrier_call_sid, "RETELL_TELEPHONY_ID");
+    call = { ...call, carrier_call_sid: meta.carrier_call_sid };
+  }
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const reduced = reduceVoiceEvent(call, event, deps.now());
@@ -890,13 +1127,40 @@ export async function postProcessCall(
 
   const durationSec = call.duration_sec ?? details?.durationSec ?? 0;
   const endedAt = new Date(call.ended_at ?? deps.now().toISOString());
+  // The assistant's own end_call_summary (voice P3) is preferred over the
+  // provider's generated one: it was written against the call's brief.
+  let agentSummary: { summary: string; disposition: string; nextStep: string | null } | null = null;
+  if (deps.repo.loadAgentSummary) {
+    try {
+      agentSummary = await deps.repo.loadAgentSummary(call.id);
+    } catch {
+      agentSummary = null;
+    }
+  }
   const analysis = analyseCall({
     outcome: (call.outcome as CallOutcome | null) ?? details?.outcome ?? null,
     durationSec,
     transcript: details?.transcript ?? [],
-    providerSummary: input.providerSummary ?? null,
+    providerSummary: agentSummary?.summary ?? input.providerSummary ?? null,
     endedAt,
   });
+  if (agentSummary?.nextStep && analysis.nextAction && analysis.disposition !== "OPTED_OUT" && analysis.disposition !== "NO_CONVERSATION") {
+    analysis.nextAction = `${analysis.nextAction} Agreed on the call: ${agentSummary.nextStep}`.slice(0, 500);
+  }
+
+  // A voicemail reached on a call that planned one: Retell left the fixed
+  // script (§26), so no second one is left for this request.
+  if (call.outcome === "VOICEMAIL" && !call.voicemail_left && deps.repo.loadCallPlan) {
+    try {
+      const plan = await deps.repo.loadCallPlan(call.id);
+      if (plan?.voicemailScriptVersion) {
+        await deps.repo.patchCall(call.id, { voicemail_left: true });
+        call = { ...call, voicemail_left: true };
+      }
+    } catch {
+      // Unknown: nothing is recorded, and the next dial reads the stored flag.
+    }
+  }
 
   const ctx = await deps.repo.loadDialContext(call.business_id, call.lead_id, call.route, call.id);
   const retentionDays = ctx.settings?.recording_retention_days ?? 90;
@@ -905,18 +1169,67 @@ export async function postProcessCall(
   if (details?.transcript.length) {
     await deps.repo.saveTranscript({ businessId: call.business_id, callId: call.id, segments: details.transcript, retainUntil });
   }
-  await deps.repo.saveOutcome({ businessId: call.business_id, callId: call.id, leadId: call.lead_id, analysis, qualificationBefore: ctx.lead?.qualification_state ?? null });
+  // The closing attribution (owner decision 2026-09-28): spoken or not, read
+  // from what the agent actually said. Never counted on an opted-out or
+  // unanswered call.
+  const agentWords = (details?.transcript ?? []).filter((t) => t.role === "agent").map((t) => t.content);
+  const spoken =
+    analysis.disposition !== "NO_CONVERSATION" && call.calling_as_name
+      ? attributionSpoken(agentWords, renderClosingLine({ callingAsName: call.calling_as_name, whiteLabel: false }))
+      : false;
+  await deps.repo.saveOutcome({
+    businessId: call.business_id,
+    callId: call.id,
+    leadId: call.lead_id,
+    analysis,
+    qualificationBefore: ctx.lead?.qualification_state ?? null,
+    attribution: { spoken, closingVersion: CLOSING_VERSION },
+  });
   if (analysis.objections.length) {
     await deps.repo.saveObjections({ businessId: call.business_id, leadId: call.lead_id, callId: call.id, objections: analysis.objections, occurredAt: endedAt.toISOString() });
   }
   if (analysis.leadText) {
     await deps.repo.writeQualificationSignals({ businessId: call.business_id, leadId: call.lead_id, callId: call.id, analysis, observedAt: endedAt.toISOString() });
   }
+  // The number the lead is on: the one we called, or the one they rang from.
+  const leadPhone = call.direction === "INBOUND" ? (call.from_e164 ?? call.to_e164) : call.to_e164;
   if (analysis.voiceOptOut) {
-    await deps.repo.recordVoiceOptOut({ businessId: call.business_id, leadId: call.lead_id, phone: call.to_e164, callId: call.id });
+    await deps.repo.recordVoiceOptOut({ businessId: call.business_id, leadId: call.lead_id, phone: leadPhone, callId: call.id, scope: analysis.optOutScope ?? "CALLS" });
+  } else if (analysis.disposition === "WRONG_PERSON") {
+    // A wrong number reaches a stranger: that number is not rung again
+    // (data minimisation), whether or not the model called opt_out.
+    await deps.repo.recordVoiceOptOut({ businessId: call.business_id, leadId: call.lead_id, phone: leadPhone, callId: call.id, scope: "CALLS" });
   }
   if (analysis.nextAction) {
     await deps.repo.setLeadNextAction({ businessId: call.business_id, leadId: call.lead_id, nextAction: analysis.nextAction });
+  }
+  // Continuity (continuity.ts): the call joins the lead's shared memory, so
+  // the next text turn continues from it. Only a real conversation.
+  if (deps.repo.recordCallMemory && analysis.disposition !== "NO_CONVERSATION") {
+    const note: CallMemoryNote = buildCallMemoryNote({
+      endedAt: endedAt.toISOString(),
+      route: call.route,
+      disposition: analysis.disposition,
+      summary: analysis.summary,
+      nextStep: agentSummary?.nextStep ?? analysis.nextAction,
+      objectionKeys: analysis.objections.map((o) => o.key),
+    });
+    try {
+      await deps.repo.recordCallMemory({ businessId: call.business_id, leadId: call.lead_id, callId: call.id, note });
+    } catch {
+      // The facts and next action above already carry the call; the memory is a convenience.
+    }
+  }
+
+  // Premium voice (voice-profile.ts): the +£0.20/min surcharge is settled in
+  // minutes at PREMIUM_MINUTE_FACTOR; the extra TTS cost is its own ledger line.
+  let premiumVoice = false;
+  if (deps.repo.loadCallPlan) {
+    try {
+      premiumVoice = Boolean((await deps.repo.loadCallPlan(call.id))?.premiumVoice);
+    } catch {
+      premiumVoice = false;
+    }
   }
 
   // Minutes: settle what was used (to the second), or return the whole hold.
@@ -924,7 +1237,7 @@ export async function postProcessCall(
   try {
     const answered = Boolean(call.answered_at) || analysis.disposition !== "NO_CONVERSATION";
     if (answered && durationSec > 0) {
-      const settled = await settleMinutes(deps.minutes, { businessId: call.business_id, callId: call.id, route: call.route, actualSec: durationSec });
+      const settled = await settleMinutes(deps.minutes, { businessId: call.business_id, callId: call.id, route: call.route, actualSec: premiumVoice ? premiumBilledSec(durationSec) : durationSec });
       if (settled.ok) billedSec = settled.billedSec;
       else if (settled.reason === "CONTENDED") throw new Error("voice minutes contended; retry");
     } else {
@@ -942,6 +1255,7 @@ export async function postProcessCall(
     recording: call.recording_enabled,
     providerCostCents: input.providerCostCents ?? details?.costCents ?? null,
     destinationClass: (call.destination_class as DestinationClass | null) ?? null,
+    premiumTtsExtraUsdPerMin: premiumVoice ? PREMIUM_TTS_EXTRA_USD_PER_MIN : 0,
   });
   if (lines.length) await deps.repo.saveCostLines({ businessId: call.business_id, callId: call.id, lines, occurredAt: endedAt.toISOString() });
 
@@ -959,7 +1273,8 @@ export async function postProcessCall(
       metadata: { lead_id: call.lead_id, disposition: analysis.disposition, billed_sec: billedSec, outcome: call.outcome },
     });
     const outcome = dialOutcomeOf(call);
-    if (outcome && !analysis.voiceOptOut) {
+    // Only an outbound call is retried; a missed inbound call is the caller's own.
+    if (outcome && !analysis.voiceOptOut && call.direction === "OUTBOUND") {
       await deps.enqueue("voice.retry", { callId: call.id }, { businessId: call.business_id, idempotencyKey: `voice.retry:${call.id}` });
     }
   }
@@ -969,7 +1284,7 @@ export async function postProcessCall(
 /* =========================================================== planCallRetry */
 
 export type RetryResult =
-  | { status: "RETRY_QUEUED"; callId: string; at: string }
+  | { status: "RETRY_QUEUED"; callId: string; at: string; followUp?: string | null }
   | { status: "FALLBACK"; channel: string }
   | { status: "STOP"; reason: string }
   | { status: "REFUSED"; reason: string; productState: string };
@@ -1001,6 +1316,13 @@ export async function planCallRetry(deps: VoiceDeps, callId: string): Promise<Re
     },
   });
 
+  // Channel orchestration (§71, channel-orchestration.ts V5): a missed call
+  // is followed by ONE text now (SMS, then WhatsApp on the next miss, where
+  // lawful), while the retry call below stays scheduled at the best time.
+  // The retry continues the original request (a person's, or the lead's), so
+  // it is not an AI-initiated call; every gate still runs at dial time.
+  const followUp = await missedCallFollowUp(deps, call, ctx, plan.next.action === "RETRY_CALL" ? plan.next.at : null, cls === "UK_MOBILE");
+
   if (plan.next.action === "RETRY_CALL") {
     // The retry is a new request: the entitlement gate and canCallLead run again.
     const requested = await requestCall(deps, {
@@ -1013,9 +1335,10 @@ export async function planCallRetry(deps: VoiceDeps, callId: string): Promise<Re
       notBefore: plan.next.at,
     });
     if (!requested.ok) return { status: "REFUSED", reason: requested.reason, productState: requested.productState };
-    return { status: "RETRY_QUEUED", callId: requested.callId, at: requested.scheduledFor };
+    return { status: "RETRY_QUEUED", callId: requested.callId, at: requested.scheduledFor, followUp: followUp?.move ?? null };
   }
   if (plan.next.action === "FALLBACK") {
+    if (followUp && followUp.move !== "NONE" && followUp.move !== "WAIT") return { status: "FALLBACK", channel: followUp.move };
     await deps.repo.setLeadNextAction({
       businessId: call.business_id,
       leadId: call.lead_id,
@@ -1024,6 +1347,63 @@ export async function planCallRetry(deps: VoiceDeps, callId: string): Promise<Re
     return { status: "FALLBACK", channel: plan.next.channel };
   }
   return { status: "STOP", reason: plan.next.reason };
+}
+
+/**
+ * The V5 move after a missed call, taken once per call (the send key). Only
+ * with the orchestration facts (voice P3 repo); without them the P2
+ * behaviour stands (the fallback is written as the lead's next action).
+ */
+async function missedCallFollowUp(deps: VoiceDeps, call: CallRow, ctx: DialContext, retryAt: Date | null, isUkMobile: boolean): Promise<ChannelDecision | null> {
+  if (!deps.repo.loadChannelFacts || !ctx.lead || call.direction !== "OUTBOUND") return null;
+  const lead = ctx.lead;
+  const now = deps.now();
+  let facts: ChannelFacts;
+  try {
+    facts = await deps.repo.loadChannelFacts({ businessId: call.business_id, leadId: call.lead_id, since: new Date(call.ended_at ?? call.created_at) });
+  } catch {
+    return null;
+  }
+  const frequency = evaluateFrequency({
+    now,
+    automatedSentAt: facts.automatedSentAt,
+    caps: DEFAULT_FREQUENCY_CAPS,
+    touchesSinceEngagement: facts.touchesSinceEngagement,
+    intentState: facts.intentState,
+  });
+  const decision = decideNextChannel({
+    now,
+    point: "CALL_MISSED",
+    lead: {
+      consentBasis: (call.consent_basis as ConsentBasis | null) ?? null,
+      askedForCallNow: false,
+      replyChannel: null,
+      preferredChannel: facts.preferredChannel,
+      intentState: facts.intentState,
+      buyingSignal: false,
+      urgent: false,
+    },
+    // The retry continues the original request: not an AI-initiated call.
+    voice: { usable: true, aiMayCall: true, nextCallableAt: retryAt, attemptsUsed: call.attempt_number, maxAttempts: ctx.settings?.max_attempts ?? 3 },
+    channels: {
+      SMS: isUkMobile && Boolean(lead.phone) && !lead.opted_out && !ctx.suppressed,
+      WHATSAPP: facts.whatsappWindowOpen && !lead.opted_out,
+      EMAIL: Boolean(lead.email) && !lead.opted_out,
+    },
+    sentSinceLastCall: facts.sentSinceLastCall,
+    frequency: frequency.action === "allow" ? { action: "allow" } : frequency.action === "defer" ? { action: "defer", at: frequency.at } : { action: "skip" },
+    retryCallAt: retryAt,
+  });
+  if ((decision.move === "SMS" || decision.move === "WHATSAPP" || decision.move === "EMAIL") && deps.repo.queueFollowUpText && call.calling_as_name) {
+    await deps.repo.queueFollowUpText({
+      businessId: call.business_id,
+      leadId: call.lead_id,
+      channel: decision.move,
+      body: missedCallText({ callingAsName: call.calling_as_name, firstName: lead.first_name, channel: decision.move }),
+      sendKey: `voice-missed:${call.id}`,
+    });
+  }
+  return decision;
 }
 
 /* ========================================================= provisionStep */
@@ -1068,7 +1448,7 @@ export async function provisionStep(deps: VoiceDeps, businessId: string): Promis
     }
     if (result.log.length) await deps.repo.appendNumberEvents({ businessId, numberId: found.id, log: result.log });
     if (result.record.subaccountSid && !found.record.subaccountSid) {
-      await deps.repo.upsertTelephonyAccount({ businessId, subaccountSid: result.record.subaccountSid });
+      await deps.repo.upsertTelephonyAccount({ businessId, subaccountSid: result.record.subaccountSid, authToken: await subaccountToken(numbers, result.record.subaccountSid) });
     }
     if (result.record.state === "ACTIVE" && found.record.state !== "ACTIVE") {
       await deps.repo.audit({ businessId, action: "number.activated", entityType: "business_number", entityId: found.id, metadata: { e164: result.record.e164 } });
@@ -1097,6 +1477,18 @@ export async function provisionStep(deps: VoiceDeps, businessId: string): Promis
     }
   }
 
+  // A subaccount created before the token was stored (P2): store it now, once.
+  if (result.record.subaccountSid && found.record.subaccountSid && deps.repo.telephonyTokenStored && numbers.subaccountAuthToken) {
+    try {
+      if (!(await deps.repo.telephonyTokenStored(businessId))) {
+        const token = await subaccountToken(numbers, result.record.subaccountSid);
+        if (token) await deps.repo.upsertTelephonyAccount({ businessId, subaccountSid: result.record.subaccountSid, authToken: token });
+      }
+    } catch {
+      // Best effort: the parent token still verifies the platform's own webhooks.
+    }
+  }
+
   let runAt: Date | null = null;
   if (result.outcome === "WAIT_UNTIL" && result.runAt) runAt = new Date(result.runAt);
   else {
@@ -1111,6 +1503,16 @@ export async function provisionStep(deps: VoiceDeps, businessId: string): Promis
     });
   }
   return { outcome: result.outcome, state: result.record.state, rescheduledFor: runAt?.toISOString() ?? null };
+}
+
+/** The subaccount's auth token from the numbers provider, or null (never throws). */
+async function subaccountToken(numbers: NumberProvider, accountSid: string): Promise<string | null> {
+  if (!numbers.subaccountAuthToken) return null;
+  try {
+    return await numbers.subaccountAuthToken(accountSid);
+  } catch {
+    return null;
+  }
 }
 
 /** Start provisioning (NOT_REQUESTED -> DETAILS_REQUIRED) and run the first step. */

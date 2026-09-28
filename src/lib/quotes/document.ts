@@ -97,7 +97,8 @@ export function quoteDocumentSections(model: QuoteRenderModel, options: { docume
 
   const paymentRows: DocumentRow[] = [
     ...(model.totalDiscount ? [{ label: "Total discount", value: model.totalDiscount }] : []),
-    ...(model.deposit ? [{ label: "Deposit", value: model.deposit }] : []),
+    // The deposit is the schedule's first row; it is not listed twice.
+    ...(model.deposit && !model.schedule.some((row) => row.label === "Deposit") ? [{ label: "Deposit", value: model.deposit }] : []),
     ...model.schedule.map((row) => ({ label: `${row.label} (${row.due.toLowerCase()})`, value: row.amount })),
     { label: "Due on acceptance", value: model.firstPayment, strong: true },
   ];

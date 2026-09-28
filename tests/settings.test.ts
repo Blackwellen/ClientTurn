@@ -54,6 +54,8 @@ describe("settings sections", () => {
         "business-profile",
         "ai-selling",
         "quotes",
+        // Voice (P2) sits beside Quotes: both configure how the agent sells.
+        "voice",
         "team",
         "developer",
         "data-controls",

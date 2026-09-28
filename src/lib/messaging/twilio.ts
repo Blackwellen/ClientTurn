@@ -15,6 +15,8 @@ import {
 import { decideSmsSender, twilioErrorSuppression } from "./sms-compliance";
 import { suppress } from "@/lib/policy/suppression";
 import { twilioContentVariables } from "./whatsapp-templates";
+import { smsSendTarget } from "./sms-sender";
+import { readSmsSenderContext } from "@/lib/voice/sender-context";
 
 const API_ROOT = "https://api.twilio.com/2010-04-01";
 
@@ -246,12 +248,32 @@ class TwilioProvider implements MessagingProvider {
       };
     }
 
-    const from =
-      request.channel === "whatsapp"
-        ? credentials.whatsappFrom
-        : credentials.smsFrom;
+    // SMS: the workspace's own dedicated number when it has an ACTIVE one
+    // (its Messaging Service, under its subaccount), else the platform
+    // sender exactly as before (messaging/sms-sender.ts).
+    let accountSid = credentials.accountSid;
+    let from: string | undefined;
+    let messagingServiceSid = credentials.messagingServiceSid;
+    if (request.channel === "whatsapp") {
+      from = credentials.whatsappFrom;
+    } else {
+      const { number, subaccountSid } = await readSmsSenderContext(request.businessId);
+      const target = smsSendTarget({
+        number,
+        subaccountSid,
+        platform: { from: credentials.smsFrom ?? null, messagingServiceSid: credentials.messagingServiceSid ?? null },
+        platformAccountSid: credentials.accountSid,
+      });
+      if (target.kind === "DEDICATED") {
+        accountSid = target.accountSid ?? credentials.accountSid;
+        from = undefined;
+        messagingServiceSid = target.messagingServiceSid ?? undefined;
+      } else {
+        from = credentials.smsFrom;
+      }
+    }
 
-    if (!from && !credentials.messagingServiceSid) {
+    if (!from && !messagingServiceSid) {
       return {
         ok: false,
         errorCode: "provider_not_configured",
@@ -300,7 +322,7 @@ class TwilioProvider implements MessagingProvider {
       form.set("Body", body);
     }
     if (from) form.set("From", addressFor(request.channel, from));
-    else form.set("MessagingServiceSid", credentials.messagingServiceSid!);
+    else form.set("MessagingServiceSid", messagingServiceSid!);
 
     // Phase 3.5: delivery status on every send, to the existing webhook route
     // (which already records message.status). The same URL signature
@@ -311,7 +333,7 @@ class TwilioProvider implements MessagingProvider {
     let response: Response;
     try {
       response = await fetch(
-        `${API_ROOT}/Accounts/${credentials.accountSid}/Messages.json`,
+        `${API_ROOT}/Accounts/${accountSid}/Messages.json`,
         {
           method: "POST",
           headers: {

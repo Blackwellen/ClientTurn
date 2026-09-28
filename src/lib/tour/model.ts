@@ -564,8 +564,8 @@ export const SECTION_TOURS: readonly SectionTour[] = [
     },
     {
       id: "booking",
-      title: "Booking agents",
-      body: "Chase qualified leads that have not booked yet.",
+      title: "Closing agents",
+      body: "Chase qualified leads that have not booked, bought or signed up yet.",
       targets: ["agents-booking"],
       placement: "top",
     },

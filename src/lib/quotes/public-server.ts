@@ -13,6 +13,9 @@ import { hashToken, verifyPublicToken } from "./tokens";
 import { signatureRpcPayload, type NextStep, type PublicDeps, type PublicQuoteContext } from "./public-sign";
 import type { QuoteState } from "./lifecycle";
 import type { QuoteRenderModel } from "./types";
+import { QUOTE_VIEW_SIGNAL_STRENGTH, viewIntentReached, viewSignalSourceRef } from "./follow-up";
+import { buildSignalWrite } from "@/lib/qualification-intelligence/signals";
+import { writeIntentSignals } from "@/lib/qualification-intelligence/service";
 
 /**
  * The live dependencies of the public quote page and its two POST handlers.
@@ -195,6 +198,40 @@ export async function paymentNextStep(context: PublicQuoteContext): Promise<Next
   return { kind: "PAY", label: context.renderModel.deposit ? `Pay the ${amount} deposit` : `Pay ${amount} now`, url: link.url };
 }
 
+/**
+ * Views across every link of the revision; at QUOTE_VIEW_INTENT_THRESHOLD a
+ * HIGH buying-intent signal for the lead (once per revision: the signal's
+ * dedupe key is the revision). Never throws: a view is never refused over it.
+ */
+async function recordRepeatViews(context: PublicQuoteContext): Promise<void> {
+  if (!context.leadId) return;
+  try {
+    const { data, error } = await db()
+      .from("quote_access_tokens")
+      .select("view_count")
+      .eq("business_id", context.businessId)
+      .eq("revision_id", context.revisionId);
+    if (error) return;
+    const total = ((data ?? []) as { view_count: number | null }[]).reduce((sum, row) => sum + (row.view_count ?? 0), 0);
+    if (!viewIntentReached(total, false)) return;
+    const write = buildSignalWrite({
+      leadId: context.leadId,
+      serviceId: null,
+      type: "QUOTE_VIEWED_REPEATEDLY",
+      strength: QUOTE_VIEW_SIGNAL_STRENGTH,
+      confidence: 1,
+      source: "TOUCH",
+      sourceRef: viewSignalSourceRef(context.revisionId),
+      observedAt: new Date().toISOString(),
+      reason: `Opened their quote ${total} times`,
+    });
+    await writeIntentSignals(context.businessId, [write]);
+  } catch (error) {
+    // Before migration 0160 the CHECK refuses the type: the view still counts.
+    console.warn("[quote view] repeat-view signal not recorded", { quoteId: context.quoteId, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 const AUDIT_ACTION = {
   "quote.accepted": "quote.customer_accepted",
   "quote.signed": "quote.customer_signed",
@@ -263,6 +300,7 @@ export function livePublicDeps(): PublicDeps {
       return { firstView: Boolean(result?.ok && result.to === "VIEWED") };
     },
     nextStep: paymentNextStep,
+    onView: recordRepeatViews,
     async emit(context, type) {
       await emitQuoteEvent(context.businessId, type, {
         quoteId: context.quoteId,

@@ -28,9 +28,13 @@ import "./operations/team";
 import "./operations/prospect-imports";
 import "./operations/qualification";
 import "./operations/billing";
+import "./operations/voice";
 import "./operations/catalogue";
 import "./operations/quotes";
 import "./operations/invoices";
+import "./operations/admin-voice";
+import "./operations/voice-agent";
+import "./operations/automation";
 
 export { runOperation, ServiceError, hasHandler, implementedOperations } from "./runtime";
 export {

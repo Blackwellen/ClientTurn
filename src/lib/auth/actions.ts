@@ -217,7 +217,9 @@ export async function signUp(
     // any. Runs after the workspace exists so an affiliate is never shown a
     // referral for an account that failed to provision, and swallows its own
     // errors for the same reason as the marketing attribution above.
-    await attributeSignup({ userId, businessId });
+    // The referral carried in the URL (`ct_ref`) covers a visitor who did not
+    // accept cookies; the consented cookie is read inside.
+    await attributeSignup({ userId, businessId, referralToken: str(formData, "ct_ref") || null });
   } catch {
     // Referral credit must never block account creation either.
   }

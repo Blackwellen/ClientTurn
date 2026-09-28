@@ -6,6 +6,7 @@ import { enqueue, type ClaimedJob } from "@/lib/jobs/queue";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { emitAutomationEvent, type AutomationEventType } from "@/lib/automation/events";
+import { derivedFromDomainEvent } from "@/lib/automation/derived-events";
 import {
   AUTOMATION_PROJECTION,
   exceedsCausationDepth,
@@ -159,6 +160,16 @@ const webhookConsumer: Consumer = {
 const automationConsumer: Consumer = {
   name: "automation_events",
   async run(event) {
+    // Triggers derived from facts already recorded (automation/derived-events.ts):
+    // an intent change, an objection in a reply.
+    for (const derived of derivedFromDomainEvent(event)) {
+      await emitAutomationEvent({
+        businessId: event.business_id,
+        leadId: derived.leadId,
+        eventType: derived.eventType,
+        payload: { domain_event_id: event.id, ...derived.payload },
+      });
+    }
     const projected = AUTOMATION_PROJECTION[event.type as AnyEventType];
     if (!projected) return;
     // automation_events has no idempotency key of its own, so a re-dispatch

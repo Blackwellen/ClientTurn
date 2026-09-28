@@ -202,7 +202,7 @@ async function sfFetch(
     if (!refreshToken) {
       throw new Error("Salesforce session expired and there is no refresh token; reconnect Salesforce.");
     }
-    const refreshed = await refreshAccessToken(oauthConfig, refreshToken);
+    const refreshed = await refreshAccessToken(oauthConfig, refreshToken, { integrationId });
     await persistRefreshedToken(integrationId, refreshed);
     response = await call(refreshed.accessToken);
   }

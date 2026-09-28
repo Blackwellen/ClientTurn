@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { serverEnv } from "@/lib/env";
@@ -11,7 +12,10 @@ import { serverEnv } from "@/lib/env";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 const ALLOWED_TYPES: Record<string, string[]> = {
-  logo: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"],
+  // No SVG: an SVG is a document that can carry script. It is inert inside
+  // an <img>, but a signed URL opened directly would run that script on the
+  // storage origin (gap audit 15 §3). Raster formats only.
+  logo: ["image/png", "image/jpeg", "image/webp"],
   import: ["text/csv", "application/vnd.ms-excel"],
   // Support attachments (V4 §23.7). Screenshots, exports and log excerpts —
   // the things people actually attach to a ticket. No archives and no
@@ -101,9 +105,20 @@ export async function createUploadUrl(
 export async function createDownloadUrl(key: string, expiresIn = 300) {
   return getSignedUrl(
     r2(),
-    new GetObjectCommand({ Bucket: serverEnv.r2.bucket, Key: key }),
+    new GetObjectCommand({
+      Bucket: serverEnv.r2.bucket,
+      Key: key,
+      // Logos uploaded before SVG was refused: still render in an <img>, but
+      // a direct open downloads instead of executing (audit 15 §3).
+      ...(isSvgKey(key) ? { ResponseContentDisposition: "attachment" } : {}),
+    }),
     { expiresIn },
   );
+}
+
+/** True for an object stored with an .svg name. */
+export function isSvgKey(key: string): boolean {
+  return /\.svg$/i.test(key);
 }
 
 export async function getObjectText(key: string) {
@@ -152,4 +167,30 @@ export async function putObject(
       ContentType: contentType,
     }),
   );
+}
+
+/**
+ * Up to `max` object keys under a tenant prefix (`logo/<business>/` etc.),
+ * for the day-90 workspace deletion (billing/workspace-deletion.ts). The
+ * prefix must name one workspace, so this can never list the whole bucket.
+ */
+export async function listObjectKeys(prefix: string, max = 1000): Promise<string[]> {
+  if (!/^(logo|import|support|quotes)\/[0-9a-f-]{36}\/$/.test(prefix)) {
+    throw new Error("Refusing to list outside one workspace's prefix.");
+  }
+  const keys: string[] = [];
+  let token: string | undefined;
+  do {
+    const page = await r2().send(
+      new ListObjectsV2Command({
+        Bucket: serverEnv.r2.bucket,
+        Prefix: prefix,
+        ContinuationToken: token,
+        MaxKeys: Math.min(1000, max - keys.length),
+      }),
+    );
+    for (const item of page.Contents ?? []) if (item.Key) keys.push(item.Key);
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token && keys.length < max);
+  return keys;
 }

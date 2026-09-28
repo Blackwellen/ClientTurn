@@ -51,6 +51,14 @@ export type SendGuardSnapshot = {
   quietHours: QuietHours;
   origin: SendOrigin;
   /**
+   * Platform maintenance (docs/MAINTENANCE.md): while the app or the site is
+   * offline, outbound sends wait until this time unless the operator kept
+   * automated follow-up running. A hold, never a stop: the message is
+   * rescheduled exactly like quiet hours, and every other check still runs
+   * again when it comes due.
+   */
+  maintenancePauseUntil?: Date | null;
+  /**
    * A `booking_reminder` automation step (Phase 3.1): exempt from the BOOKED
    * and replied stop conditions only. Honoured for `automation` origin alone.
    */
@@ -241,6 +249,10 @@ export function evaluateSend(
     bookingReminder: snapshot.origin === "automation" && snapshot.bookingReminder === true,
   });
   if (stop) return { action: "abort", reason: stop };
+
+  if (snapshot.maintenancePauseUntil && snapshot.maintenancePauseUntil.getTime() > at.getTime()) {
+    return { action: "reschedule", at: snapshot.maintenancePauseUntil };
+  }
 
   if (isWithinQuietHours(at, snapshot.quietHours)) {
     return {

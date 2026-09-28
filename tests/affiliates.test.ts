@@ -68,7 +68,6 @@ const RECURRING: CommissionPlan = {
   percent: 20,
   flatAmountMinor: null,
   currency: "GBP",
-  recurringMonths: null,
   attributionWindowDays: 60,
   cookieWindowDays: 60,
   holdDays: 30,
@@ -76,16 +75,10 @@ const RECURRING: CommissionPlan = {
 };
 
 describe("commission arithmetic", () => {
-  test("recurring percent pays on every payment when there is no month limit", () => {
+  test("a legacy recurring plan is read as one-off: only the first payment earns", () => {
     assert.equal(commissionFor(RECURRING, 10000, 0), 2000);
-    assert.equal(commissionFor(RECURRING, 10000, 11), 2000);
-    assert.equal(commissionFor(RECURRING, 10000, 99), 2000);
-  });
-
-  test("recurring percent stops after the configured number of months", () => {
-    const capped = { ...RECURRING, recurringMonths: 12 };
-    assert.equal(commissionFor(capped, 10000, 11), 2000);
-    assert.equal(commissionFor(capped, 10000, 12), 0, "month 13 must earn nothing");
+    assert.equal(commissionFor(RECURRING, 10000, 1), 0, "a renewal earns nothing");
+    assert.equal(commissionFor(RECURRING, 10000, 11), 0);
   });
 
   test("first-payment percent pays once and never again", () => {
@@ -395,6 +388,7 @@ describe("application review", () => {
     lifetimeMinor: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     approvedAt: null,
+    tier: "STANDARD",
   };
 
   test("a complete application has nothing flagged", () => {

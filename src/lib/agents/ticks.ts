@@ -8,6 +8,8 @@ import { resumeFollowUpBlock } from "@/lib/leads/resume-rule";
 import { AgentBlocked, chooseReengagementChannel } from "./policy";
 import { channelUsable } from "@/lib/integrations/platform-channels";
 import { platformConfigured } from "@/lib/integrations/queries";
+import { closingVerdict } from "./closing-rules";
+import type { GoalKey } from "@/lib/qualification-intelligence/types";
 
 /**
  * Booking and re-engagement agent ticks.
@@ -52,11 +54,14 @@ type AgentRow = {
 /* ---------------------------------------------------------------- booking */
 
 /**
- * Qualified leads that have gone quiet without booking.
+ * Qualified leads that have gone quiet short of their goal (the closing agent;
+ * the stored type is still BOOKING).
  *
- * "Stalled" is deliberately conservative: qualified, no booking, not won or
- * lost, not opted out, no human handling it, and nothing sent for at least a
- * day. A lead being actively worked is left alone.
+ * "Stalled" is deliberately conservative: qualified, not won or lost, not
+ * opted out, no human handling it, nothing sent for at least a day, and the
+ * goal not reached (`closingVerdict`: a meeting booked for meeting goals, a
+ * sale for direct-sale and sign-up goals). Leads the checkout or quote
+ * follow-up is already working are left to that loop.
  */
 export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
   const admin = createAdminClient();
@@ -64,11 +69,10 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
 
   let query = admin
     .from("leads")
-    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active, status, archived_at")
+    .select("id, first_name, last_name, email, phone, opted_out, last_contact_at, automation_active, status, archived_at, booked_at")
     .eq("business_id", agent.business_id)
     .eq("is_test", false)
     .eq("qualification_state", "QUALIFIED")
-    .is("booked_at", null)
     .is("won_at", null)
     .is("lost_at", null)
     .eq("opted_out", false)
@@ -78,13 +82,23 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
 
   if (agent.service_id) query = query.eq("service_id", agent.service_id);
 
-  const { data: leads, error } = await query;
+  const { data: candidates, error } = await query;
   if (error) throw new Error("Qualified leads could not be read.");
+
+  const verdicts = await closingContext(admin, agent.business_id, (candidates ?? []).map((l) => l.id));
+  const leads = (candidates ?? []).filter((lead) =>
+    closingVerdict({
+      booked: Boolean(lead.booked_at),
+      openGoals: verdicts.goals.get(lead.id) ?? [],
+      checkoutInFlight: verdicts.checkout.has(lead.id),
+      quoteInFlight: verdicts.quote.has(lead.id),
+    }).stalled,
+  );
 
   let actioned = 0;
   let blocked = 0;
 
-  for (const lead of leads ?? []) {
+  for (const lead of leads) {
     // Policy first. A lead who cannot be contacted is queued as BLOCKED with
     // the reason, so the person reading the queue learns why rather than
     // finding an agent that silently did nothing.
@@ -161,14 +175,68 @@ export async function runBookingTick(agent: AgentRow): Promise<TickResult> {
   }
 
   return {
-    examined: leads?.length ?? 0,
+    examined: candidates?.length ?? 0,
     actioned,
     blocked,
     detail:
       agent.autonomy === "AUTO"
-        ? `Handed ${actioned} qualified lead(s) with no booking back to follow-up.`
-        : `Listed ${actioned} qualified lead(s) with no booking for you to chase.`,
+        ? `Handed ${actioned} qualified lead(s) that have not reached their goal back to follow-up.`
+        : `Listed ${actioned} qualified lead(s) that have not reached their goal for you to chase.`,
   };
+}
+
+/**
+ * Goals of each lead's open opportunities, and which leads a checkout or quote
+ * loop is already working. Read in three batched queries, never per lead.
+ */
+async function closingContext(
+  admin: ReturnType<typeof createAdminClient>,
+  businessId: string,
+  leadIds: string[],
+): Promise<{ goals: Map<string, (GoalKey | null)[]>; checkout: Set<string>; quote: Set<string> }> {
+  const goals = new Map<string, (GoalKey | null)[]>();
+  const checkout = new Set<string>();
+  const quote = new Set<string>();
+  if (leadIds.length === 0) return { goals, checkout, quote };
+
+  const { data: opps, error: oppError } = await admin
+    .from("opportunities")
+    .select("id, lead_id, goal")
+    .eq("business_id", businessId)
+    .eq("outcome", "OPEN")
+    .in("lead_id", leadIds);
+  if (oppError) throw new Error("Open opportunities could not be read.");
+  const leadByOpp = new Map<string, string>();
+  for (const opp of opps ?? []) {
+    if (!opp.lead_id) continue;
+    leadByOpp.set(opp.id, opp.lead_id);
+    goals.set(opp.lead_id, [...(goals.get(opp.lead_id) ?? []), (opp.goal as GoalKey | null) ?? null]);
+  }
+
+  const { data: attempts, error: attemptError } = await admin
+    .from("checkout_attempts")
+    .select("lead_id")
+    .eq("business_id", businessId)
+    .eq("status", "SENT")
+    .in("lead_id", leadIds);
+  if (attemptError) throw new Error("Checkout attempts could not be read.");
+  for (const attempt of attempts ?? []) checkout.add(attempt.lead_id);
+
+  const oppIds = [...leadByOpp.keys()];
+  if (oppIds.length > 0) {
+    const { data: quotes, error: quoteError } = await admin
+      .from("quotes")
+      .select("opportunity_id")
+      .eq("business_id", businessId)
+      .in("status", ["PENDING_APPROVAL", "APPROVED", "SENT", "VIEWED", "ACCEPTED"])
+      .in("opportunity_id", oppIds);
+    if (quoteError) throw new Error("Quotes could not be read.");
+    for (const q of quotes ?? []) {
+      const leadId = leadByOpp.get(q.opportunity_id);
+      if (leadId) quote.add(leadId);
+    }
+  }
+  return { goals, checkout, quote };
 }
 
 /* --------------------------------------------------------- re-engagement */

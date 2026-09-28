@@ -18,6 +18,12 @@ export type WorkspaceHealth = {
   /** Worst integration status across connected providers, for the top-bar dot. */
   integrationStatus: "HEALTHY" | "DEGRADED" | "ACTION_REQUIRED" | "DISCONNECTED";
   usage: { leads: number; leadLimit: number; atLimit: boolean };
+  /**
+   * Connections the provider no longer accepts (a revoked or expired grant, or
+   * a Zoho connection missing the UPDATE scope). Rendered as the app-wide
+   * Reconnect banner, so a silent sync failure is visible on every page.
+   */
+  reconnect: { providerType: string; label: string; message: string | null }[];
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -28,7 +34,18 @@ const PROVIDER_LABELS: Record<string, string> = {
   google_calendar: "Google Calendar",
   calendly: "Calendly",
   email: "Email delivery",
+  imap_smtp: "Your mailbox",
+  hubspot: "HubSpot",
+  salesforce: "Salesforce",
+  zoho_crm: "Zoho CRM",
+  slack: "Slack",
+  google_ads: "Google Ads",
+  linkedin_ads: "LinkedIn Ads",
+  tiktok_ads: "TikTok Ads",
 };
+
+/** Error codes that mean "only reconnecting fixes this". */
+const RECONNECT_CODES = new Set(["reconnect_required", "scope_outdated", "token_expired", "missing_token"]);
 
 /**
  * The banner must only ever surface work the user can actually do, so this
@@ -41,7 +58,7 @@ export const getWorkspaceHealth = cache(
     const [integrationsResult, entitlements] = await Promise.all([
       supabase
         .from("integrations")
-        .select("provider_type, status, last_error_message")
+        .select("provider_type, status, last_error_code, last_error_message")
         .eq("business_id", workspace.businessId),
       getEntitlements(workspace.businessId),
     ]);
@@ -127,8 +144,21 @@ export const getWorkspaceHealth = cache(
       }
     }
 
+    const reconnect = integrations
+      .filter(
+        (i) =>
+          i.status === "ACTION_REQUIRED" &&
+          RECONNECT_CODES.has((i as { last_error_code?: string | null }).last_error_code ?? ""),
+      )
+      .map((i) => ({
+        providerType: i.provider_type,
+        label: PROVIDER_LABELS[i.provider_type] ?? i.provider_type.replace(/_/g, " "),
+        message: i.last_error_message ?? null,
+      }));
+
     return {
       issues,
+      reconnect,
       integrationStatus,
       usage: {
         leads: usage.leads,

@@ -4,6 +4,7 @@ import type { Capability } from "../../cost-model";
 import { apolloProvider } from "./apollo";
 import { clearbitProvider } from "./clearbit";
 import { companiesHouseProvider } from "./companies-house";
+import { contractsFinderProvider } from "./contracts-finder";
 import { googlePlacesProvider } from "./google-places";
 import { hunterProvider } from "./hunter";
 import { linkedinSalesNavigatorProvider } from "./linkedin-sales-navigator";
@@ -14,6 +15,7 @@ import { tiktokEngagementProvider } from "./tiktok-engagement";
 import { websiteContactsProvider } from "./website-contacts";
 import { websiteIntentProvider } from "./website-intent";
 import type { SourcingProvider } from "./types";
+import { allowedProviders, paidEnrichmentEnabled } from "../../paid-enrichment";
 
 /**
  * The sourcing provider registry.
@@ -24,7 +26,7 @@ import type { SourcingProvider } from "./types";
  * the most recent stage.
  */
 
-const PROVIDERS: SourcingProvider[] = [
+const REGISTERED: SourcingProvider[] = [
   // Your own audience first. These cost nothing, and someone who already
   // messaged or commented is a better prospect than any stranger a paid
   // database will sell you.
@@ -50,7 +52,17 @@ const PROVIDERS: SourcingProvider[] = [
   linkedinSalesNavigatorProvider,
   clearbitProvider,
   websiteIntentProvider,
+  // UK public-sector tenders (free, keyless, rate-limited process-wide).
+  contractsFinderProvider,
 ];
+
+/**
+ * What the registry exposes. Apollo, Hunter and Clearbit are dropped unless
+ * ENABLE_PAID_ENRICHMENT=true (CLAUDE.md resolved conflict 7): a server-side
+ * guard on top of env.ts never reading their keys, so neither a stray key nor
+ * an admin health row can route a run to a paid vendor.
+ */
+const PROVIDERS: SourcingProvider[] = allowedProviders(REGISTERED, paidEnrichmentEnabled(process.env));
 
 export function allProviders(): SourcingProvider[] {
   return PROVIDERS;

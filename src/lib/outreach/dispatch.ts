@@ -5,6 +5,7 @@ import { recordAudit, recordUsage } from "@/lib/audit";
 import { checkCapacity } from "@/lib/billing/v4-entitlements";
 import { evaluate } from "@/lib/policy/service";
 import { sendEmail, unsubscribeUrl } from "@/lib/email/smtp";
+import { applyEmailSendOutcome } from "@/lib/email/send-outcome";
 import {
   buildSourceDisclosure,
   emailDisclosureDue,
@@ -514,6 +515,13 @@ export async function dispatchCampaign(input: {
     if (!result.ok) {
       await releaseCampaignSlot(input);
 
+      // Only a refusal of THIS address is a bounce. A mailbox-level failure
+      // (password, TLS, sending policy) is not the prospect's fault: the run
+      // is retried later and the mailbox's health records the problem, so a
+      // wrong password can no longer mark a whole campaign's list BOUNCED.
+      const recipientBounce = result.permanent && result.scope === "recipient";
+      await applyEmailSendOutcome(input.businessId, email, result, "OUTREACH_SEND");
+
       // The claim above already cleared `next_step_due_at`, so a failure here
       // strands the run rather than re-sending it. Logged, not thrown: the
       // rest of the batch is unaffected.
@@ -521,12 +529,12 @@ export async function dispatchCampaign(input: {
         await admin
           .from("outreach_recipient_runs")
           .update({
-            status: result.permanent ? "BOUNCED" : "SCHEDULED",
+            status: recipientBounce ? "BOUNCED" : "SCHEDULED",
             stop_reason: result.errorCode,
-            next_step_due_at: result.permanent
+            next_step_due_at: recipientBounce
               ? null
               : new Date(Date.now() + 3600_000).toISOString(),
-            bounced_at: result.permanent ? new Date().toISOString() : null,
+            bounced_at: recipientBounce ? new Date().toISOString() : null,
           })
           .eq("business_id", input.businessId)
           .eq("id", run.id),
@@ -536,10 +544,11 @@ export async function dispatchCampaign(input: {
           campaignId: input.campaignId,
           runId: run.id,
           permanent: result.permanent,
+          recipientBounce,
         },
       );
 
-      if (result.permanent && variant) {
+      if (recipientBounce && variant) {
         await recordVariantEvent({
           businessId: input.businessId,
           variantId: variant.id,
@@ -547,7 +556,7 @@ export async function dispatchCampaign(input: {
         });
       }
 
-      if (result.permanent) {
+      if (recipientBounce) {
         logWriteError(
           await admin
             .from("prospects")

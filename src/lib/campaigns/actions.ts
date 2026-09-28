@@ -884,12 +884,12 @@ export async function confirmImportFile(
       headers: { "content-type": "text/csv" },
     });
     if (!response.ok) {
-      storageWarning = `The original file could not be archived (storage returned ${response.status}). The contacts were still imported.`;
+      console.error("[campaign] csv archive rejected", { status: response.status });
+      storageWarning = "The original file could not be archived. The contacts were still imported.";
     }
   } catch (error) {
-    storageWarning = `The original file could not be archived: ${
-      error instanceof Error ? error.message : "storage is unavailable"
-    }. The contacts were still imported.`;
+    console.error("[campaign] csv archive failed", { message: error instanceof Error ? error.message : String(error) });
+    storageWarning = "The original file could not be archived. The contacts were still imported.";
   }
 
   const { data: importRow } = await admin

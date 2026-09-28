@@ -12,6 +12,8 @@ import { liveQuoteDeps } from "@/lib/quotes/effects";
 import { loadQuoteSettings } from "@/lib/quotes/store";
 import { MAX_NUDGES, QuoteServiceError, sendQuote } from "@/lib/quotes/service-core";
 import { checkAutomatedTouchAllowed } from "@/lib/reengagement/service";
+import { planQuoteExpiredTrigger } from "@/lib/reengagement/planner";
+import { quoteNudgeDecision } from "@/lib/quotes/follow-up";
 import type { QuoteRenderModel } from "@/lib/quotes/types";
 import { parsePayload } from "./parse";
 
@@ -110,6 +112,13 @@ export async function handleQuoteExpire(job: ClaimedJob): Promise<void> {
   const leadId = (opp as { lead_id: string | null } | null)?.lead_id ?? null;
   await emitQuoteEvent(q.business_id, "quote.expired", { quoteId: q.id, number: q.number, leadId }, { leadId, eventId: `quote.expired:${revisionId}` });
   await recordAudit({ businessId: q.business_id, actorType: "system", action: "quote.expired", entityType: "quote", entityId: q.id, metadata: { revision_id: revisionId } });
+  // Expired -> the re-engagement route (brief §72): one check-in a week later,
+  // through the trigger job's stop conditions and the frequency guard.
+  if (leadId) {
+    await planQuoteExpiredTrigger({ businessId: q.business_id, leadId, quoteId: q.id, expiredAt: new Date().toISOString() }).catch((error) => {
+      console.warn("[quote.expire] re-engagement not planned", { quoteId: q.id, error: error instanceof Error ? error.message : String(error) });
+    });
+  }
 }
 
 /* ----------------------------------------------------------------- nudge */
@@ -125,16 +134,53 @@ export async function handleQuoteNudge(job: ClaimedJob): Promise<void> {
   const settings = await loadQuoteSettings(q.business_id);
   if (!settings.quoteNudgesEnabled) return;
 
-  const { data: revision } = await client.from("quote_revisions").select("valid_until").eq("id", payload.revisionId).maybeSingle();
-  const validUntil = (revision as { valid_until: string | null } | null)?.valid_until ?? null;
-  if (validUntil && Date.parse(validUntil) < Date.now() + 12 * 3_600_000) return; // too close to expiry to be useful
+  const { data: revision } = await client.from("quote_revisions").select("valid_until, sent_at, first_viewed_at").eq("id", payload.revisionId).maybeSingle();
+  const rev = revision as { valid_until: string | null; sent_at: string | null; first_viewed_at: string | null } | null;
+  const validUntil = rev?.valid_until ?? null;
 
   const { data: opp } = await client.from("opportunities").select("lead_id").eq("id", q.opportunity_id).maybeSingle();
   const leadId = (opp as { lead_id: string | null } | null)?.lead_id ?? null;
   if (!leadId) return;
 
+  // Brief §72: step 1 reminds only an unopened quote; a viewed one moves on to
+  // the expiry reminder; a lead who has replied is in a live conversation.
+  let repliedSinceSent = false;
+  if (rev?.sent_at) {
+    const { data: inbound } = await client
+      .from("messages")
+      .select("id")
+      .eq("business_id", q.business_id)
+      .eq("lead_id", leadId)
+      .eq("direction", "inbound")
+      .gt("created_at", rev.sent_at)
+      .limit(1);
+    repliedSinceSent = (inbound ?? []).length > 0;
+  }
+  const decision = quoteNudgeDecision({
+    step: payload.step,
+    status: q.status,
+    sentAt: rev?.sent_at ?? null,
+    firstViewedAt: rev?.first_viewed_at ?? null,
+    validUntil,
+    now: new Date(),
+    nudgesEnabled: settings.quoteNudgesEnabled,
+    leadRepliedSinceSent: repliedSinceSent,
+  });
+  if (decision.action === "SKIP") {
+    console.info("[quote.nudge] skipped", { quoteId: q.id, step: payload.step, reason: decision.reason });
+    return;
+  }
+  if (decision.action === "RESCHEDULE") {
+    await enqueue("quote.nudge", { ...payload, step: decision.step }, {
+      businessId: q.business_id,
+      runAt: decision.at,
+      idempotencyKey: `quote.nudge:${payload.revisionId}:${decision.step}`,
+    });
+    return;
+  }
+
   // The re-engagement frequency guard: never a burst, never over the caps.
-  const verdict = await checkAutomatedTouchAllowed({ businessId: q.business_id, leadId, loop: "checkout_nudge" });
+  const verdict = await checkAutomatedTouchAllowed({ businessId: q.business_id, leadId, loop: "quote_follow_up" });
   if (verdict.action === "skip") {
     console.info("[quote.nudge] skipped by the frequency guard", { quoteId: q.id, step: payload.step, reason: verdict.reason });
     return;
@@ -168,7 +214,7 @@ export async function handleQuoteNudge(job: ClaimedJob): Promise<void> {
     revision_id: payload.revisionId,
     event_type: "quote.reminded",
     actor_kind: "SYSTEM",
-    detail: { step: payload.step },
+    detail: { step: payload.step, kind: decision.kind },
   });
   await emitQuoteEvent(q.business_id, "quote.reminded", { quoteId: q.id, number: q.number, step: payload.step, leadId }, { leadId });
   await recordAudit({ businessId: q.business_id, actorType: "system", action: "quote.nudged", entityType: "quote", entityId: q.id, metadata: { step: payload.step } });

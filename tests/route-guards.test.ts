@@ -233,6 +233,13 @@ const MECHANISMS: Record<string, RegExp> = {
   // with the workspace's secret (payments/signatures.ts, constant time).
   "order-paid-signature": /verifyOrderPaidSignature\s*\(/,
   "twilio-signature": /verifyTwilioSignature\s*\(/,
+  // Voice P2: Twilio voice/regulatory callbacks, verified with the parent
+  // account token and, for a subaccount number, its sealed token
+  // (lib/voice/webhook-inbox.ts, which calls verifyTwilioSignature).
+  "twilio-voice-signature": /verifyTwilioVoiceRequest\s*\(/,
+  // Retell's X-Retell-Signature: HMAC-SHA256 over body + timestamp with the
+  // API key, constant time, 5-minute tolerance (voice/providers/retell-protocol.ts).
+  "retell-signature": /verifyRetellSignature\s*\(/,
   // Slack's HMAC-SHA256 over `v0:{timestamp}:{body}`, verified in one place
   // (`lib/integrations/providers/slack.ts`) and reused by every Slack route.
   "slack-signature": /verifySlackSignature\s*\(/,
@@ -252,6 +259,9 @@ const MECHANISMS: Record<string, RegExp> = {
   // A signed-in user who also has an affiliate account. The partner portal is
   // a separate identity from a workspace membership.
   affiliate: /getAffiliate(Account)?\s*\(/,
+  // A platform operator, resolved server-side from profiles.platform_role
+  // (admin/guard.ts). Unknown callers get a 404, like every /admin surface.
+  "platform-admin": /\b(getPlatformOperator|requirePlatformAdmin)\s*\(/,
   // A platform API key, resolved and scope-checked by one wrapper.
   "api-key": /\bwithApiKey\s*[<(]/,
   // An MCP bearer token or OAuth grant.
@@ -260,6 +270,12 @@ const MECHANISMS: Record<string, RegExp> = {
   public: /.*/,
   // Non-production only.
   "dev-only": /process\.env\.NODE_ENV\s*===\s*["']production["']/,
+  // The public quote link: rate limit, same-origin + form nonce (CSRF) and a
+  // token verified by hash in constant time, all inside this one handler
+  // (lib/quotes/public-sign.ts, tests/quote-public-sign.test.ts).
+  "quote-token": /\bhandleQuote(Sign|View)Request\s*\(/,
+  // The quote PDF: the same token verification as the page, then a signed URL.
+  "quote-token-read": /\bresolvePublicQuote\s*\(/,
 };
 
 const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
@@ -271,14 +287,21 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "affiliates/app/referrals/export/route.ts": "affiliate",
   "affiliates/app/resources/[id]/download/route.ts": "affiliate",
   "affiliates/app/settings/connect/refresh/route.ts": "affiliate",
+  // Admin -> Affiliates CSV export (affiliate audit 17): operators only, audited.
+  "admin/(ops)/affiliates/export/route.ts": "platform-admin",
   "auth/callback/route.ts": "public",
   "r/[slug]/route.ts": "public",
+  // The referral cookie, set only after cookie consent (owner decision 2026-09-28).
+  "api/affiliates/referral/route.ts": "public",
   "api/analytics/export/route.ts": "session",
   "api/auth/google/connect/route.ts": "public",
   "api/auth/google/callback/route.ts": "public",
   "api/avatar/[scope]/[id]/route.ts": "session",
   "api/apps/[id]/events/route.ts": "hmac",
   "api/cron/daily/route.ts": "cron-secret",
+  // Uptime-monitor heartbeat: returns only {ok}, cached 30 s; sends a deduped
+  // ops alert when the worker is down. No secret, by design (docs/CRON.md).
+  "api/cron/heartbeat/route.ts": "public",
   "api/cron/worker/route.ts": "cron-secret",
   "api/dev/seed/route.ts": "dev-only",
   "api/exports/attribution/route.ts": "session",
@@ -290,6 +313,8 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/marketing/track/route.ts": "public",
   "api/mcp/route.ts": "mcp-token",
   "api/search/route.ts": "session",
+  // A signed-in person dismissing a platform banner for themselves (0161).
+  "api/platform/banners/dismiss/route.ts": "session",
   "api/unsubscribe/[token]/route.ts": "public",
   "api/v1/route.ts": "public",
   "api/v1/events/route.ts": "api-key",
@@ -305,8 +330,18 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   "api/webhooks/slack/interactive/route.ts": "slack-signature",
   "api/webhooks/stripe/route.ts": "stripe-signature",
   "api/webhooks/twilio/route.ts": "twilio-signature",
+  "api/webhooks/twilio/voice/route.ts": "twilio-voice-signature",
+  "api/webhooks/twilio/regulatory/route.ts": "twilio-voice-signature",
+  "api/webhooks/retell/route.ts": "retell-signature",
+  "api/webhooks/retell/inbound/route.ts": "retell-signature",
+  // Voice P3: Retell custom functions (the voice agent's tools), signed like
+  // the call webhook and verified with the same helper.
+  "api/voice/tools/[tool]/route.ts": "retell-signature",
   "api/webhooks/payments/stripe/[endpointId]/route.ts": "customer-stripe-signature",
   "api/webhooks/payments/order-paid/[endpointId]/route.ts": "order-paid-signature",
+  "(public)/q/[token]/sign/route.ts": "quote-token",
+  "(public)/q/[token]/view/route.ts": "quote-token",
+  "(public)/q/[token]/pdf/route.ts": "quote-token-read",
 };
 
 /**
@@ -314,6 +349,10 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
  * correct rather than an oversight.
  */
 const PUBLIC_ROUTES: Record<string, string> = {
+  "api/cron/heartbeat/route.ts":
+    "the worker heartbeat for an external uptime monitor, which usually cannot send a secret header. It returns " +
+    "only {ok: boolean} (200 or 503), is cached for 30 seconds per instance, reads nothing a caller supplies, and " +
+    "at most sends the operator a deduped ops alert when the worker has genuinely stopped (docs/CRON.md, Alerts).",
   "api/unsubscribe/[token]/route.ts":
     "the RFC 8058 one-click unsubscribe target that mailbox providers POST to. The unguessable token in the path " +
     "is the credential, exactly as for the unsubscribe page; a recipient must never need an account to opt out. " +
@@ -331,6 +370,10 @@ const PUBLIC_ROUTES: Record<string, string> = {
   "r/[slug]/route.ts":
     "an affiliate referral link, which is a public URL by definition -- it is printed in adverts. It resolves the slug, records a click and redirects, " +
     "and only to a destination on the allow-list, so a tampered row cannot produce an open redirect.",
+  "api/affiliates/referral/route.ts":
+    "stores a partner referral cookie for an anonymous website visitor after they accept cookies, so there is no account " +
+    "by definition. It requires a same-origin Origin/Referer, accepts only a referral signed by our own HMAC secret and " +
+    "still inside its window, sets nothing else, and DELETE only clears that one cookie.",
   "api/integrations/[provider]/callback/route.ts":
     "the OAuth callback: the provider redirects the browser here with no session cookie guaranteed. " +
     "Its credential is the single-use `state`, consumed by consumeOAuthState() before any token exchange.",

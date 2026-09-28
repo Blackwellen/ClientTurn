@@ -6,8 +6,11 @@ import { PROMOTION_RELATIONSHIP_CHOICES } from "./types";
 import { requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { assertCapability } from "@/lib/billing/v4-entitlements";
+import { assertCapability, getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
+import { savedSearchGate } from "@/lib/billing/allowance-gates";
+import { leadCapMessage, startWorkGate } from "@/lib/billing/lead-cap";
+import { leadCapacity, meterLeadIfNeeded } from "@/lib/billing/lead-meter";
 import { checkPlanReadiness, searchPlanSchema, type SearchPlan } from "./plan";
 import {
   appendMessage,
@@ -689,6 +692,11 @@ export async function createRecurringSearchAction(
 
   const admin = createAdminClient();
 
+  // Saved searches (plan_entitlements.saved_search): ACTIVE schedules count.
+  // Refused at the limit, and while over it after a downgrade.
+  const slotProblem = await savedSearchSlotProblem(admin, access.workspace.businessId);
+  if (slotProblem) return fail(slotProblem);
+
   // Approving the strategy is what makes it eligible for the unattended sweep.
   await admin
     .from("search_strategies")
@@ -746,6 +754,19 @@ export async function setRecurringSearchStatusAction(
   if (!access.ok) return access;
 
   const admin = createAdminClient();
+  if (on.data) {
+    // Resuming takes a slot like creating does (pausing frees one).
+    const { data: current } = await admin
+      .from("recurring_searches")
+      .select("status")
+      .eq("business_id", access.workspace.businessId)
+      .eq("id", id.data)
+      .maybeSingle();
+    if (current && current.status !== "ACTIVE") {
+      const slotProblem = await savedSearchSlotProblem(admin, access.workspace.businessId);
+      if (slotProblem) return fail(slotProblem);
+    }
+  }
   const { data } = await admin
     .from("recurring_searches")
     .update({
@@ -770,6 +791,31 @@ export async function setRecurringSearchStatusAction(
 
   refresh();
   return ok(undefined);
+}
+
+/**
+ * Null when one more ACTIVE saved search fits the plan, else the sentence to
+ * show. A failed read refuses: unknown usage is never "room left".
+ */
+async function savedSearchSlotProblem(
+  admin: ReturnType<typeof createAdminClient>,
+  businessId: string,
+): Promise<string | null> {
+  const [entitlements, active] = await Promise.all([
+    getV4Entitlements(businessId),
+    admin
+      .from("recurring_searches")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "ACTIVE"),
+  ]);
+  if (active.error) return "Your saved-search allowance could not be confirmed. Try again.";
+  const limit = entitlements.allowances.saved_search.hardLimit;
+  const gate = savedSearchGate({ activeSchedules: active.count ?? 0, limit });
+  if (gate.allowed) return null;
+  return gate.overBy > 0
+    ? `Your plan includes ${limit} saved searches and ${gate.used} are active. Pause or stop ${gate.overBy + 1} to add another.`
+    : `Your plan includes ${limit} saved search${limit === 1 ? "" : "es"}, and all are in use. Pause or stop one, or upgrade, to add another.`;
 }
 
 /** Stops a schedule for good. Runs it already produced are untouched. */
@@ -925,6 +971,17 @@ export async function promoteProspectToLeadAction(
     return fail("This prospect is suppressed and cannot be promoted.");
   }
 
+  // A promoted prospect is a new lead: refused at the plan's lead cap
+  // (billing/lead-cap.ts), and counted once promoted.
+  let capacity: Awaited<ReturnType<typeof leadCapacity>>;
+  try {
+    capacity = await leadCapacity(access.workspace.businessId);
+  } catch {
+    return fail("Your plan's lead allowance could not be confirmed. Try again.");
+  }
+  const capGate = startWorkGate({ alreadyMetered: false, ...capacity });
+  if (!capGate.allowed) return fail(leadCapMessage(capGate.reason, capacity.limit));
+
   const { data: leadId, error } = await admin.rpc("promote_reviewed_prospect", {
     p_business_id: access.workspace.businessId,
     p_prospect_id: id.data,
@@ -959,6 +1016,16 @@ export async function promoteProspectToLeadAction(
   }
 
   const lead = { id: leadId };
+
+  // Counted against the lead cap now (same key lead.process uses, so never twice).
+  try {
+    await meterLeadIfNeeded(access.workspace.businessId, lead.id);
+  } catch (meterError) {
+    console.error("[find-leads] promotion meter failed", {
+      leadId: lead.id,
+      message: meterError instanceof Error ? meterError.message : String(meterError),
+    });
+  }
 
   await recordAudit({
     businessId: access.workspace.businessId,

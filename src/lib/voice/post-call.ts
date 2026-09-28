@@ -16,6 +16,7 @@
 import { extractTextSignals, type TextSignalHit } from "../qualification-intelligence/signals.ts";
 import { matchObjection } from "../sales-library/objections.ts";
 import type { CallOutcome, TranscriptTurn } from "./providers/types.ts";
+import { detectSpokenIntents, isMachineOnly } from "./speech-intents.ts";
 
 export const DISPOSITIONS = [
   "CONVERSATION",
@@ -46,6 +47,12 @@ export type CallAnalysis = {
   objections: CallObjection[];
   /** The person asked not to be called again. */
   voiceOptOut: boolean;
+  /**
+   * What the opt-out covers, read from their words (speech-intents.ts): ALL
+   * for "take me off your list" / "stop contacting me", CALLS otherwise.
+   * Null when there was no opt-out.
+   */
+  optOutScope: "CALLS" | "ALL" | null;
   /** Signals from the lead's words, for the QI service. */
   signals: TextSignalHit[];
   /** The lead's words only (never the agent's), for the QI extractors. */
@@ -96,8 +103,13 @@ export function analyseCall(input: {
   providerSummary: string | null;
   endedAt: Date;
 }): CallAnalysis {
-  const turns = leadTurns(input.transcript);
+  // A voicemail greeting or phone menu that reached the model is not the
+  // lead talking (speech-intents.ts): no conversation, and its words never
+  // reach the qualification extractors.
+  const machine = isMachineOnly(leadTurns(input.transcript).map((t) => t.content));
+  const turns = machine ? [] : leadTurns(input.transcript);
   const leadText = turns.map((t) => t.content.trim()).join("\n").slice(0, 8000);
+  const spoken = turns.flatMap((t) => detectSpokenIntents(t.content));
 
   const signals = leadText ? extractTextSignals(leadText, input.endedAt) : [];
   const types = new Set<string>(signals.map((s) => s.type));
@@ -117,7 +129,9 @@ export function analyseCall(input: {
     }
   }
 
-  const voiceOptOut = OPT_OUT.test(leadText) || types.has("UNSUBSCRIBE");
+  const spokenOptOut = spoken.find((i) => i.key === "OPT_OUT_ALL") ?? spoken.find((i) => i.key === "OPT_OUT_CALLS");
+  const voiceOptOut = OPT_OUT.test(leadText) || types.has("UNSUBSCRIBE") || Boolean(spokenOptOut);
+  const optOutScope: CallAnalysis["optOutScope"] = voiceOptOut ? (spokenOptOut?.optOutScope ?? (types.has("UNSUBSCRIBE") ? "ALL" : "CALLS")) : null;
   const callbackHit = signals.find((s) => s.type === ("NOT_NOW") || s.type === ("CALLBACK_REQUEST"));
   const callback = CALLBACK.test(leadText) || Boolean(callbackHit);
 
@@ -126,7 +140,7 @@ export function analyseCall(input: {
   else if (input.outcome === "TRANSFERRED") disposition = "TRANSFERRED_TO_HUMAN";
   else if (turns.length === 0) disposition = "NO_CONVERSATION";
   else if (voiceOptOut) disposition = "OPTED_OUT";
-  else if (types.has("WRONG_PERSON")) disposition = "WRONG_PERSON";
+  else if (types.has("WRONG_PERSON") || spoken.some((i) => i.key === "WRONG_NUMBER")) disposition = "WRONG_PERSON";
   else if (types.has("NOT_INTERESTED") || seen.has("NOT_INTERESTED")) disposition = "NOT_INTERESTED";
   else if (callback) disposition = "CALLBACK_REQUESTED";
   else if (types.has("QUOTE_REQUEST") || QUOTE.test(leadText)) disposition = "QUOTE_REQUESTED";
@@ -145,7 +159,7 @@ export function analyseCall(input: {
   const nextAction = nextActionFor(disposition, facts, callbackRequestedFor);
   const summary = (input.providerSummary?.trim() || fallbackSummary(disposition, input.durationSec, turns.length)).slice(0, MAX_SUMMARY);
 
-  return { disposition, summary, facts, nextAction, callbackRequestedFor, objections, voiceOptOut, signals, leadText };
+  return { disposition, summary, facts, nextAction, callbackRequestedFor, objections, voiceOptOut, optOutScope, signals, leadText };
 }
 
 function nextActionFor(disposition: Disposition, facts: Record<string, string>, callbackAt: string | null): string | null {

@@ -501,7 +501,7 @@ export const SERVICE_OPERATIONS = [
     // name in front of a real person is not something a chat assistant in the
     // corner of the screen should be able to do. This is the human-initiated
     // door; both of those would be ways round the guardrails, not through them.
-    callers: ["UI", "MCP", "API"],
+    callers: ["UI", "MCP", "API", "AUTOMATION"],
   },
 
   /* ---------------------------------------------------------- bookings */
@@ -581,7 +581,7 @@ export const SERVICE_OPERATIONS = [
     scope: "leads:write",
     summary: "Move an open opportunity to a different stage",
     entityType: "opportunity",
-    callers: ["UI", "COPILOT", "MCP", "API"],
+    callers: ["UI", "COPILOT", "MCP", "API", "AUTOMATION"],
   },
   {
     name: "opportunity.close",
@@ -695,7 +695,7 @@ export const SERVICE_OPERATIONS = [
     scope: "campaigns:write",
     summary: "Add a lead to a draft, scheduled or paused reactivation campaign",
     entityType: "campaign",
-    callers: ["UI", "MCP"],
+    callers: ["UI", "MCP", "AUTOMATION"],
   },
 
   /* --------------------------------------------------------- prospects */
@@ -894,7 +894,7 @@ export const SERVICE_OPERATIONS = [
     scope: "leads:write",
     summary: "Re-score a lead now from what is currently known about it",
     entityType: "lead",
-    callers: ["UI", "COPILOT", "MCP", "API"],
+    callers: ["UI", "COPILOT", "MCP", "API", "AUTOMATION"],
   },
   {
     name: "lead.takeover",
@@ -1483,7 +1483,7 @@ export const SERVICE_OPERATIONS = [
     scope: "leads:write",
     summary: "Create a draft quote for an opportunity from the catalogue",
     entityType: "quote",
-    callers: ["UI", "MCP", "API", "AGENT"],
+    callers: ["UI", "MCP", "API", "AGENT", "AUTOMATION"],
   },
   {
     name: "quote.update_draft",
@@ -1496,6 +1496,19 @@ export const SERVICE_OPERATIONS = [
     callers: ["UI", "MCP", "API"],
   },
   {
+    // The assistant's discount (brief §74): a whole-quote percentage, decided
+    // by the discount policy in the quote core (never by the model). A sent
+    // quote gets a new revision; one needing approval is left for a person.
+    name: "quote.apply_discount",
+    domain: "quote",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Apply the assistant's discount to a quote, within the workspace's discount policy",
+    entityType: "quote",
+    callers: ["AGENT"],
+  },
+  {
     name: "quote.submit_for_approval",
     domain: "quote",
     risk: "REVERSIBLE_WRITE",
@@ -1503,7 +1516,7 @@ export const SERVICE_OPERATIONS = [
     scope: "leads:write",
     summary: "Ask an owner or admin to approve a quote",
     entityType: "quote",
-    callers: ["UI", "MCP", "API", "AGENT"],
+    callers: ["UI", "MCP", "API", "AGENT", "AUTOMATION"],
   },
   {
     name: "quote.approve",
@@ -1536,7 +1549,7 @@ export const SERVICE_OPERATIONS = [
     effect:
       "The quote is frozen as it stands, a private link is created, and it is emailed to the customer (or the link is given to you to share). After this it can only be changed by issuing a new revision.",
     entityType: "quote",
-    callers: ["UI", "MCP", "API", "AGENT"],
+    callers: ["UI", "MCP", "API", "AGENT", "AUTOMATION"],
   },
   {
     name: "quote.revise",
@@ -1587,7 +1600,7 @@ export const SERVICE_OPERATIONS = [
     effect:
       "An invoice is drafted for each payment in the quote's schedule. With automatic issue on, each is numbered and emailed to the customer on its date, starting with any payment due on acceptance.",
     entityType: "invoice",
-    callers: ["UI", "MCP", "API"],
+    callers: ["UI", "MCP", "API", "AUTOMATION"],
   },
   {
     name: "invoice.issue",
@@ -1643,6 +1656,437 @@ export const SERVICE_OPERATIONS = [
     summary: "List invoices, optionally for one quote or opportunity",
     entityType: "invoice",
   },
+  /* --------------------------------------------------------------- voice
+   *
+   * The AI voice sales agent (phase P2, docs/VOICE.md). Every operation that
+   * can lead to a call runs the entitlement gate (voice/entitlement.ts) and
+   * canCallLead server-side, so a trial, demo or free workspace can never
+   * dial whoever calls it. Identity, the number and billing are owner/admin
+   * only; releasing the number is owner only and destructive. A manual call
+   * places a real call and spends minutes, so it is EXTERNAL (a person
+   * confirms it). AGENT is deliberately not a caller yet.
+   */
+  {
+    name: "voice.settings_get",
+    domain: "voice",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read this workspace's voice settings, number and minutes",
+    entityType: "voice_settings",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "voice.settings_update",
+    domain: "voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change how the AI voice agent calls for this workspace",
+    entityType: "voice_settings",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "voice.number_request",
+    domain: "voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Start setting up this workspace's dedicated calling number",
+    entityType: "business_number",
+    callers: ["UI"],
+  },
+  {
+    name: "voice.number_status",
+    domain: "voice",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "business:read",
+    summary: "Show where the dedicated calling number is in its set-up",
+    entityType: "business_number",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "voice.number_release",
+    domain: "voice",
+    risk: "DESTRUCTIVE",
+    minimumRole: "owner",
+    scope: "business:write",
+    summary: "Release this workspace's dedicated calling number",
+    effect:
+      "Your dedicated number is released and can't be got back. AI calls stop, and texts go from the shared ClientTurn sender. The number is held in quarantine for 90 days so nobody else receives your leads' replies.",
+    entityType: "business_number",
+    callers: ["UI"],
+  },
+  {
+    name: "voice.request_call",
+    domain: "voice",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Have the AI voice agent call a lead",
+    effect:
+      "The AI assistant will phone this lead from your dedicated number, within their calling hours, and uses voice minutes. It says it is an AI calling from your business at the start of the call.",
+    entityType: "voice_call",
+    callers: ["UI", "MCP", "API", "AUTOMATION"],
+  },
+  {
+    name: "voice.cancel_call",
+    domain: "voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Cancel an AI call that hasn't started yet",
+    entityType: "voice_call",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "voice.calls_list",
+    domain: "voice",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "List AI calls, for the workspace or one lead",
+    entityType: "voice_call",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "voice.call_get",
+    domain: "voice",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "leads:read",
+    summary: "Read one AI call: outcome, summary and transcript",
+    entityType: "voice_call",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  // The platform kill switch for one workspace. Only the admin shell calls
+  // it, as SYSTEM, after requirePlatformAdmin and step-up (resolved conflict 4).
+  {
+    name: "voice.admin_disable_workspace",
+    domain: "voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Pause or resume all AI calling for a workspace (ClientTurn staff)",
+    entityType: "voice_settings",
+    callers: ["SYSTEM"],
+  },
+  /* ------------------------------------------------ P5 insight and ops
+   *
+   * Appended by the P5 insight/ops change (brief §43, §58). Experiment
+   * promotion (0158): advice is a read; promote and rollback are confirmed by
+   * a person in the UI (`confirm: true` in the arguments, enforced by the
+   * handler), and SYSTEM is the only caller that may promote automatically,
+   * which learning/promotion.ts refuses for opener, disclosure or pricing.
+   * Not offered to Copilot or an agent: rolling copy out to every lead is a
+   * person's decision.
+   */
+  {
+    name: "experiment.promotion_advice",
+    domain: "experiment",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "campaigns:read",
+    summary: "Show whether an experiment's winning variant can be promoted, and its promotion history",
+    entityType: "experiment",
+    callers: ["UI", "COPILOT", "MCP", "API"],
+  },
+  {
+    name: "experiment.promote",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Promote an experiment's winning variant to every lead",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API", "SYSTEM"],
+  },
+  {
+    name: "experiment.rollback",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Roll a promoted experiment back to the control copy",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "experiment.set_auto_promote",
+    domain: "experiment",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "campaigns:write",
+    summary: "Allow or stop automatic promotion of an experiment's winner",
+    entityType: "experiment",
+    callers: ["UI", "MCP", "API"],
+  },
+  // Platform-operator voice controls (0158). Only the admin shell calls
+  // them, as SYSTEM, after requirePlatformAdmin and step-up (resolved
+  // conflict 4); each also requires `confirm: true` in its arguments.
+  {
+    name: "admin_voice.pause_outbound",
+    domain: "admin_voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Pause or resume outbound AI calls for a workspace (ClientTurn staff)",
+    entityType: "voice_settings",
+    callers: ["SYSTEM"],
+  },
+  {
+    name: "admin_voice.suspend_number",
+    domain: "admin_voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Suspend or reinstate a workspace's voice number (ClientTurn staff)",
+    entityType: "business_number",
+    callers: ["SYSTEM"],
+  },
+  {
+    name: "admin_voice.set_spend_limit",
+    domain: "admin_voice",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Set a workspace's monthly voice provider spend ceiling (ClientTurn staff)",
+    entityType: "voice_settings",
+    callers: ["SYSTEM"],
+  },
+  // Voice phase P3: the voice agent's tools (docs/VOICE.md §16). Retell's
+  // hosted LLM calls /api/voice/tools/<tool> during a call; each runs here as
+  // caller AGENT, reusing the text agent's own tool functions and gates.
+  // Idempotent per (call, tool call id) in voice_tool_calls (0162).
+  {
+    name: "voice_agent.record_fact",
+    domain: "voice_agent",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record what a lead said on an AI call (a signal; an AI-inferred fact at most)",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.check_availability",
+    domain: "voice_agent",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "leads:read",
+    summary: "Read bookable times from the connected calendar during an AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.book_meeting",
+    domain: "voice_agent",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Book a meeting at a time the calendar offered during this AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.calculate_quote",
+    domain: "voice_agent",
+    risk: "READ",
+    minimumRole: "member",
+    scope: "leads:read",
+    summary: "Price catalogue items a lead asked for on an AI call, without saving anything",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.send_quote",
+    domain: "voice_agent",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Draft and send the quote priced on an AI call",
+    effect:
+      "The quote priced on the call is created and, where the workspace lets the assistant send quotes, frozen and sent to the lead. Otherwise it waits for a person's approval.",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.send_checkout_link",
+    domain: "voice_agent",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Text or email an approved checkout link agreed on an AI call",
+    effect: "One approved checkout link, with its approved price wording, is sent to the lead by text or email.",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.send_booking_link",
+    domain: "voice_agent",
+    risk: "EXTERNAL",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Text or email the business's booking link when a lead on an AI call asks for details instead",
+    effect: "The workspace's own booking link is sent to the lead by text or email, through the ordinary send path.",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.transfer_to_human",
+    domain: "voice_agent",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Hand an AI call to a person, where the workspace's transfer setting allows it",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.schedule_callback",
+    domain: "voice_agent",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record a call-back a lead asked for on an AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.opt_out",
+    domain: "voice_agent",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Stop calls (or all contact) to a lead who asked on an AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.log_objection",
+    domain: "voice_agent",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record an objection a lead raised on an AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  {
+    name: "voice_agent.end_call_summary",
+    domain: "voice_agent",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Record the assistant's own factual summary of an AI call",
+    entityType: "voice_call",
+    callers: ["AGENT"],
+  },
+  /* ------------------------------------------------ automation rules (§45)
+   *
+   * Event-triggered rules: "when this happens, do that". The rule's actions
+   * are not operations of their own: each one runs an existing operation
+   * above through runOperation with caller AUTOMATION, so the permission,
+   * capability, eligibility and audit rules are the ones every other caller
+   * meets (lib/automation/rule-runner.ts). Managing rules is admin work from
+   * the app only.
+   */
+  {
+    name: "automation_rule.list",
+    domain: "automation_rule",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "List the workspace's automation rules and their recent runs",
+    entityType: "automation_rule",
+    callers: ["UI"],
+  },
+  {
+    name: "automation_rule.save",
+    domain: "automation_rule",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Create or change an automation rule",
+    entityType: "automation_rule",
+    callers: ["UI"],
+  },
+  {
+    name: "automation_rule.set_enabled",
+    domain: "automation_rule",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Turn an automation rule on or off",
+    entityType: "automation_rule",
+    callers: ["UI"],
+  },
+  {
+    name: "automation_rule.delete",
+    domain: "automation_rule",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Delete an automation rule (its run history is kept)",
+    entityType: "automation_rule",
+    callers: ["UI"],
+  },
+  {
+    // A person-set label on a lead, beside the derived tags the scoring
+    // engine manages (lead_tags, 0121). The engine only clears the tags it
+    // manages, so a custom tag stays until someone removes it.
+    name: "lead.add_tag",
+    domain: "lead",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "leads:write",
+    summary: "Add a tag to a lead",
+    entityType: "lead",
+    callers: ["UI", "MCP", "API", "AUTOMATION"],
+  },
+
+  {
+    // An in-app notification to the workspace (and email per each member's
+    // notification settings). The one action a workspace-level automation
+    // trigger (a budget threshold, an exhausted allowance) can take.
+    name: "team.notify",
+    domain: "team",
+    risk: "SAFE_WRITE",
+    minimumRole: "member",
+    scope: "business:write",
+    summary: "Notify the team",
+    entityType: "notification",
+    callers: ["AUTOMATION"],
+  },
+
+  /* ------------------------------------------- pipeline semantics (§46)
+   *
+   * How ClientTurn's system events (Quoted, Booking pending, Payment
+   * pending, Won...) land on the workspace's own pipeline stages. The map is
+   * data; the moves it causes are still forward-only and motion-aware
+   * (lib/opportunities/pipeline-semantics.ts).
+   */
+  {
+    name: "pipeline.get_mapping",
+    domain: "pipeline",
+    risk: "READ",
+    minimumRole: "viewer",
+    scope: "business:read",
+    summary: "Read how system events map onto the pipeline stages",
+    entityType: "pipeline_stage_map",
+    callers: ["UI", "MCP", "API"],
+  },
+  {
+    name: "pipeline.set_mapping",
+    domain: "pipeline",
+    risk: "REVERSIBLE_WRITE",
+    minimumRole: "admin",
+    scope: "business:write",
+    summary: "Change how system events map onto the pipeline stages",
+    entityType: "pipeline_stage_map",
+    callers: ["UI"],
+  },
 ] as const satisfies readonly ServiceDeclaration[];
 
 /**
@@ -1672,17 +2116,20 @@ export type RegisteredOperation = ServiceDeclaration & { name: ServiceOperationN
 export const ALL_OPERATIONS: readonly RegisteredOperation[] = SERVICE_OPERATIONS;
 
 /**
- * The quote operations the agent may use once its tools are wired (another
- * phase): price, draft, ask for approval, and send where commercial
- * authority permits. `quote.send` is EXTERNAL, so an agent call still needs a
- * person's confirmation (the runtime refuses it otherwise). Asserted against
- * each declaration's `callers` in tests/quote-service.test.ts.
+ * The quote operations the agent's tools use (agent/tools.ts, brief §7, §74):
+ * price, draft, ask for approval, send, and apply its discount. `quote.send`
+ * is EXTERNAL: the agent may call it only when the workspace turned on "Send
+ * quotes" for the assistant, which is the owner's standing confirmation
+ * (recorded as `confirmation_source: standing_permission`); otherwise a
+ * person sends it. Asserted against each declaration's `callers` in
+ * tests/quote-service.test.ts and tests/agent-quotes.test.ts.
  */
 export const AGENT_QUOTE_OPERATIONS = [
   "quote.calculate",
   "quote.create",
   "quote.submit_for_approval",
   "quote.send",
+  "quote.apply_discount",
 ] as const satisfies readonly ServiceOperationName[];
 
 /* ------------------------------------------------------------- accessors */

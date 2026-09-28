@@ -13,6 +13,9 @@
  *   NO_SHOW_NUDGE    ...and one more nudge at 24 hours.
  *   WIN_BACK         a lost deal: one message after a delay chosen by the
  *                    recorded loss reason (lib/leads/close-reasons.ts).
+ *   QUOTE_EXPIRED    a quote that ran out unanswered (brief §72): one
+ *                    check-in QUOTE_EXPIRED_DELAY_DAYS after it expired,
+ *                    offering to refresh it. Never a discount or a new price.
  *
  * This module only decides WHEN and WHETHER. Every trigger is a scheduled job
  * (`reengage.trigger`) that re-reads live state before acting, and every
@@ -33,6 +36,7 @@ export const REENGAGEMENT_TRIGGERS = [
   "NO_SHOW_REBOOK",
   "NO_SHOW_NUDGE",
   "WIN_BACK",
+  "QUOTE_EXPIRED",
 ] as const;
 
 export type ReengagementTrigger = (typeof REENGAGEMENT_TRIGGERS)[number];
@@ -57,6 +61,7 @@ export const LOOP_KEYS = [
   "not_now_resume",
   "deadline",
   "checkout_nudge",
+  "quote_follow_up",
 ] as const;
 
 export type LoopKey = (typeof LOOP_KEYS)[number];
@@ -70,6 +75,7 @@ export const LOOP_LABEL: Record<LoopKey, string> = {
   not_now_resume: "“Not now” resume",
   deadline: "Stated date passed",
   checkout_nudge: "Abandoned checkout nudges",
+  quote_follow_up: "Quote follow-up",
 };
 
 export const TRIGGER_LOOP: Record<ReengagementTrigger, LoopKey> = {
@@ -78,6 +84,7 @@ export const TRIGGER_LOOP: Record<ReengagementTrigger, LoopKey> = {
   NO_SHOW_REBOOK: "no_show",
   NO_SHOW_NUDGE: "no_show",
   WIN_BACK: "win_back",
+  QUOTE_EXPIRED: "quote_follow_up",
 };
 
 /* --------------------------------------------------------- send keys --- */
@@ -160,6 +167,29 @@ export const NO_SHOW_NUDGE_VALID_MS = 72 * HOUR;
 
 /** A trigger whose moment passed this long ago is not sent late. */
 export const INTENT_TRIGGER_VALID_MS = 14 * DAY;
+
+/**
+ * An expired quote: the check-in waits a week. Long enough not to read as
+ * chasing the day it lapsed (the expiry reminder went two days before), short
+ * enough that the lead still remembers the quote.
+ */
+export const QUOTE_EXPIRED_DELAY_DAYS = 7;
+/** Still worth sending up to this long after its planned day. */
+export const QUOTE_EXPIRED_VALID_MS = 21 * DAY;
+
+/** A quote that expired: one check-in after QUOTE_EXPIRED_DELAY_DAYS. Null without a date. */
+export function planQuoteExpired(quote: { id: string; expiredAt: string | null }): TriggerPlan | null {
+  const at = valid(quote.expiredAt);
+  if (!at) return null;
+  const dueAt = new Date(at.getTime() + QUOTE_EXPIRED_DELAY_DAYS * DAY);
+  return {
+    trigger: "QUOTE_EXPIRED",
+    sourceId: quote.id,
+    dueAt,
+    expiresAt: new Date(dueAt.getTime() + QUOTE_EXPIRED_VALID_MS),
+    optimiseSendTime: true,
+  };
+}
 
 /** Win-back is not planned for a deal lost more than a year ago. */
 export const WIN_BACK_MAX_AGE_MS = 365 * DAY;
@@ -512,6 +542,11 @@ export function reengagementReasonLine(reason: ReengagementReason): string {
       break;
     case "WIN_BACK":
       why = reason.lossCategory ? `a win-back after a lost deal (reason: ${reason.lossCategory.toLowerCase()})` : "a win-back after a lost deal";
+      break;
+    case "QUOTE_EXPIRED":
+      why = date
+        ? `their quote expired on ${date}; offer to refresh it if it is still useful, with no figure and no pressure`
+        : "their quote has expired; offer to refresh it if it is still useful, with no figure and no pressure";
       break;
   }
   return `Why you are writing: a planned check-in, because ${why}. Say so in one short clause in their terms.`;

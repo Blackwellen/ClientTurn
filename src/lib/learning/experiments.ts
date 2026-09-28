@@ -346,4 +346,33 @@ export type CampaignExperimentView = {
   verdict: ExperimentResult["verdict"];
   winner: string | null;
   explanation: string;
+  /** Promote / rollback (0158). Absent before that migration is applied. */
+  promotion?: ExperimentPromotionView;
+};
+
+/** What the experiment panel shows about promotion: the advice and the history. */
+export type ExperimentPromotionView = {
+  promotedArm: string | null;
+  promotedAt: string | null;
+  version: number;
+  autoPromote: boolean;
+  advice: {
+    action: "AUTO_PROMOTE" | "SUGGEST_PROMOTE" | "HOLD";
+    candidate: string | null;
+    pValue: number | null;
+    reasons: string[];
+    sensitiveFields: string[];
+  };
+  history: {
+    action: "PROMOTE" | "ROLLBACK";
+    arm: string;
+    fromArm: string | null;
+    version: number;
+    pValue: number | null;
+    sampleByArm: Record<string, number>;
+    conversionByArm: Record<string, number | null>;
+    decidedBy: "HUMAN" | "AUTO";
+    reason: string;
+    at: string;
+  }[];
 };

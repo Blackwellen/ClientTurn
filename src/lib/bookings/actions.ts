@@ -107,7 +107,6 @@ export async function updateBookingStatus(input: {
     },
   });
 
-  revalidatePath("/app/bookings");
   revalidatePath("/app/leads");
   revalidatePath("/app");
   return { ok: true };

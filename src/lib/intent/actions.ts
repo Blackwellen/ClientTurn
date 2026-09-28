@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertCapacity, getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { EntitlementError } from "@/lib/billing/entitlements";
+import { countGate } from "@/lib/billing/allowance-gates";
 import { recordAudit } from "@/lib/audit";
 import {
   SIGNAL_SOURCES,
@@ -199,6 +200,23 @@ export async function createIntentMonitor(input: unknown): Promise<ActionResult>
   } catch (error) {
     if (error instanceof EntitlementError) return { ok: false, error: error.message };
     return { ok: false, error: "Monitor capacity could not be confirmed." };
+  }
+  // `intent_monitor` limits how many monitors RUN at once. The period meter
+  // above is never written for monitors, so on its own it never bit; the
+  // ACTIVE count is the real limit (the same rule resume already applies,
+  // billing/allowance-gates.ts).
+  {
+    const monitorAllowance = await getV4Entitlements(workspace.businessId);
+    const { count, error: countError } = await createAdminClient()
+      .from("intent_monitors")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", workspace.businessId)
+      .eq("status", "ACTIVE");
+    if (countError) return { ok: false, error: "Monitor capacity could not be confirmed." };
+    const slot = countGate({ used: count ?? 0, limit: monitorAllowance.allowances.intent_monitor.hardLimit });
+    if (!slot.allowed) {
+      return { ok: false, error: "You have as many active monitors as your plan allows. Pause one first, or upgrade." };
+    }
   }
 
   // How often it runs is a plan feature too, and a faster cadence is the more

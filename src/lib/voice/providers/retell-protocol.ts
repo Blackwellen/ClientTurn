@@ -102,6 +102,8 @@ type RetellCall = {
   metadata?: Record<string, unknown>;
   call_analysis?: { call_summary?: string; call_successful?: boolean };
   call_cost?: { combined_cost?: number };
+  /** UNVERIFIED: the carrier's own id for the leg (e.g. Twilio's CallSid over an Elastic SIP trunk). */
+  telephony_identifier?: { twilio_call_sid?: string };
 };
 
 function stringMap(m: Record<string, unknown> | undefined): Record<string, string> {
@@ -124,7 +126,12 @@ export function parseRetellWebhook(rawBody: string): VoiceEvent[] {
   const call = body.call ?? {};
   const id = call.call_id;
   if (!id) return [{ type: "UNKNOWN", provider: "retell", dedupeKey: `retell:noid:${event}`, occurredAt: null, rawType: event }];
-  const common = { provider: "retell" as const, providerCallId: id, dedupeKey: `${id}:${event}`, metadata: stringMap(call.metadata) };
+  const carrierSid = call.telephony_identifier?.twilio_call_sid;
+  const metadata = stringMap(call.metadata);
+  // The carrier's id, when Retell reports it, rides in the metadata so the
+  // ingest job can record it and match Twilio's status callbacks (0162).
+  if (typeof carrierSid === "string" && /^CA[0-9a-fA-F]{32}$/.test(carrierSid)) metadata.carrier_call_sid = carrierSid;
+  const common = { provider: "retell" as const, providerCallId: id, dedupeKey: `${id}:${event}`, metadata };
 
   switch (event) {
     case "call_started":
@@ -195,6 +202,29 @@ export function toCallDetails(call: RetellCall): ProviderCallDetails {
   };
 }
 
+export type CallOverrides = {
+  maxCallDurationMs?: number;
+  voicemail?: { mode: "STATIC_TEXT"; text: string } | { mode: "HANG_UP" };
+  /** Agent voice fields (voice_id, responsiveness, ...), already validated (voice-profile.ts). */
+  voice?: Record<string, string | number | boolean>;
+};
+
+/**
+ * `agent_override.agent` on create-phone-call (verified 2026-09-27,
+ * api-references/create-phone-call: it accepts the agent request fields,
+ * including max_call_duration_ms and voicemail_option). Only the fields we
+ * set are sent, so the agent's own configuration stays the default.
+ */
+export function agentOverrideOf(o: CallOverrides | undefined): Record<string, unknown> | null {
+  if (!o) return null;
+  const agent: Record<string, unknown> = { ...(o.voice ?? {}) };
+  if (o.maxCallDurationMs) agent.max_call_duration_ms = o.maxCallDurationMs;
+  if (o.voicemail) {
+    agent.voicemail_option = o.voicemail.mode === "STATIC_TEXT" ? { action: { type: "static_text", text: o.voicemail.text } } : { action: { type: "hangup" } };
+  }
+  return Object.keys(agent).length ? { agent } : null;
+}
+
 export function buildCreatePhoneCallBody(req: {
   fromNumber: string;
   toNumber: string;
@@ -202,12 +232,15 @@ export function buildCreatePhoneCallBody(req: {
   callKey: string;
   metadata: Record<string, string>;
   dynamicVariables: Record<string, string>;
+  overrides?: CallOverrides;
 }): Record<string, unknown> {
+  const override = agentOverrideOf(req.overrides);
   return {
     from_number: req.fromNumber,
     to_number: req.toNumber,
     override_agent_id: req.agentId,
     metadata: { ...req.metadata, call_key: req.callKey },
     retell_llm_dynamic_variables: req.dynamicVariables,
+    ...(override ? { agent_override: override } : {}),
   };
 }

@@ -91,7 +91,7 @@ export interface InvoiceStore {
 export interface InvoiceEffects {
   deliverInvoice(input: { businessId: string; invoice: InvoiceRecord; leadId: string | null; sendKey: string; kind: "ISSUED" | "REMINDER" }): Promise<{ queued: boolean; detail: string }>;
   enqueue(type: "invoice.issue" | "invoice.remind", payload: Record<string, unknown>, options: { businessId: string; runAt?: Date; idempotencyKey: string }): Promise<void>;
-  emit(businessId: string, type: "invoice.issued" | "invoice.paid" | "invoice.voided" | "invoice.credited" | "invoice.overdue", payload: Record<string, unknown>): Promise<void>;
+  emit(businessId: string, type: "invoice.created" | "invoice.issued" |"invoice.paid" | "invoice.voided" | "invoice.credited" | "invoice.overdue", payload: Record<string, unknown>): Promise<void>;
 }
 
 export type InvoiceDeps = {
@@ -155,6 +155,10 @@ export async function createInvoicesFromQuote(deps: InvoiceDeps, businessId: str
     const result = await deps.store.insertDraft(businessId, { draft, quote, seller, buyer });
     const issueOn = draft.due ? invoiceIssueDate(draft.due, acceptedOn, settings.paymentTermsDays) : acceptedOn;
     created.push({ id: result.id, kind: draft.kind, created: result.created, issueOn });
+    // Automation trigger (gap map §45): once per new draft, never on a repeat.
+    if (result.created) {
+      await deps.effects.emit(businessId, "invoice.created", { invoiceId: result.id, kind: draft.kind, quoteId: args.quoteId, opportunityId: quote.opportunityId, issueOn });
+    }
     if (args.autoIssue && result.created && issueOn) {
       const today = deps.now().toISOString().slice(0, 10);
       const runAt = issueOn <= today ? deps.now() : new Date(`${issueOn}T08:00:00.000Z`);

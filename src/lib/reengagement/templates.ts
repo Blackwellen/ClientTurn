@@ -96,6 +96,13 @@ export function reengagementCopy(input: {
       };
     case "WIN_BACK":
       return winBackCopy(values, input.lossCategory ?? null, input.offer ?? null);
+    case "QUOTE_EXPIRED":
+      // No figure, no discount, no new validity date: a person or the
+      // assistant re-issues the quote only if the lead wants it.
+      return {
+        subject: `Your quote`,
+        body: `${greeting}, it's ${business}. The quote we sent for ${about(values)} has now expired. If it's still something you're looking at, reply and we'll refresh it for you.`,
+      };
   }
 }
 

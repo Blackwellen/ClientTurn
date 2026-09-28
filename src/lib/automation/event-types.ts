@@ -58,6 +58,25 @@ export const AUTOMATION_EVENT_TYPES = [
   "invoice.overdue",
   "invoice.voided",
   "invoice.credited",
+  // Voice, quote, payment and signal triggers (gap map §45; CHECK in migration
+  // 0163). Voice events come from lib/automation/voice-events.ts, which wraps
+  // the voice repo; the rest from their source paths.
+  "call.requested",
+  "call.started",
+  "call.answered",
+  "call.missed",
+  "call.voicemail",
+  "call.qualified",
+  "voice.lead_eligible",
+  "voice.budget_threshold",
+  "intent.threshold_exceeded",
+  "quote.requested",
+  "invoice.created",
+  "payment.direct_sale",
+  "human.requested",
+  "objection.detected",
+  "reactivation.succeeded",
+  "usage.exhausted",
 ] as const;
 
 export type AutomationEventType = (typeof AUTOMATION_EVENT_TYPES)[number];

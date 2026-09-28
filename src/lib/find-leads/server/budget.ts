@@ -1,5 +1,8 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { USD_TO_GBP_MODEL } from "@/lib/billing/unit-costs";
+import { unitCostsFromPriceBook, type PriceBookRow } from "../price-book";
 import {
   getV4Entitlements,
   getV4Usage,
@@ -92,26 +95,24 @@ export function budgetReasonSentence(reason: BudgetReason): string {
  */
 export async function loadUnitCosts(): Promise<UnitCosts> {
   const admin = createAdminClient();
-  const { data } = await admin
+  // Matched on the `capability` column (0038), not `product`: the product
+  // names ("company_lookup", ...) never equal a capability, so matching on
+  // them fell through to the fallbacks for every run. The row's currency is
+  // converted to pence at the model rate (price-book.ts), never read as pence.
+  const { data, error } = await (admin as unknown as SupabaseClient)
     .from("provider_price_book")
-    .select("product, unit_cost, effective_from, effective_to")
-    .in("product", CAPABILITIES)
-    .lte("effective_from", new Date().toISOString())
-    .order("effective_from", { ascending: false });
-
-  const costs: UnitCosts = {};
-  const now = Date.now();
-
-  for (const row of data ?? []) {
-    const capability = row.product as Capability;
-    if (!CAPABILITIES.includes(capability)) continue;
-    // Rows arrive newest-first, so the first live row per capability wins.
-    if (costs[capability] !== undefined) continue;
-    if (row.effective_to && new Date(row.effective_to).getTime() <= now) continue;
-    costs[capability] = Math.ceil(Number(row.unit_cost) * 100);
+    .select("capability, currency, unit_cost, effective_from, effective_to")
+    .in("capability", CAPABILITIES)
+    .lte("effective_from", new Date().toISOString());
+  if (error) {
+    // Unknown is not free: the pessimistic fallbacks in cost-model.ts apply.
+    console.error("[find-leads budget] price book read failed", { message: error.message });
+    return {};
   }
-
-  return costs;
+  return unitCostsFromPriceBook((data ?? []) as PriceBookRow[], {
+    now: new Date(),
+    usdToGbp: USD_TO_GBP_MODEL,
+  });
 }
 
 export type BudgetRequest = {

@@ -19,6 +19,7 @@ import { recordAudit } from "@/lib/audit";
 import { TERMS_VERSION } from "@/lib/marketing/terms-version";
 import { stripe } from "./stripe";
 import { topUpCheckoutTerms } from "./checkout";
+import { automaticTaxEnabled, taxCheckoutParams } from "./tax";
 import { getTokenStatus, listTokenPurchases } from "./token-service";
 import { isTokenPackKey, TOKEN_PACKS, type TokenPackKey } from "./tokens";
 
@@ -101,6 +102,11 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
         ? undefined
         : (profile?.email ?? undefined),
       client_reference_id: workspace.businessId,
+      ...taxCheckoutParams({
+        enabled: automaticTaxEnabled(),
+        mode: "payment",
+        hasCustomer: Boolean(subscription?.stripe_customer_id),
+      }),
       // Terms clause 9.9 (non-refundable once any credit is used) must be
       // accepted to pay; the webhook records it with the purchase.
       ...topUpCheckoutTerms(serverEnv.siteUrl.replace(/\/$/, "")),

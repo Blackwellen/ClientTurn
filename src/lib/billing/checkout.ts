@@ -9,6 +9,7 @@ import { TERMS_PATH, TERMS_VERSION } from "@/lib/marketing/terms-version";
 import { stripe, priceIdFor, planForPriceId } from "./stripe";
 import { selectPlanItem } from "./subscription-items";
 import { voicePriceIds } from "./voice-subscription-sync";
+import { planChangeItems, subscriptionCheckoutItems } from "./voice-line-items";
 import {
   PLANS,
   TRIAL_CREDIT_PURCHASE_REFUSAL,
@@ -18,9 +19,13 @@ import {
   type PlanId,
 } from "./plans";
 import { getEntitlements } from "./entitlements";
+import { automaticTaxEnabled, taxCheckoutParams } from "./tax";
+import { overLimitForPlan } from "./over-limit-service";
+import type { OverLimitItem } from "./allowance-gates";
 import { trialOffer, type SubscriptionRowLike } from "./lifecycle";
 import {
   decidePlanChange,
+  carriedItems,
   downgradeSchedulePhases,
   pendingChangeFromSchedule,
   resolvePlanInterval,
@@ -90,6 +95,8 @@ export async function createSubscriptionCheckout(
   workspace: Workspace,
   plan: Exclude<PlanId, "trial" | "enterprise">,
   interval: "month" | "year",
+  /** OD-2: Pro carries the £100 voice item unless the owner removed it. */
+  options: { includeVoice?: boolean } = {},
 ): Promise<UrlOutcome> {
   const priceId = priceIdFor(plan, interval);
   if (!priceId) {
@@ -107,13 +114,29 @@ export async function createSubscriptionCheckout(
   const offer = trialOffer(row, new Date());
   const site = serverEnv.siteUrl.replace(/\/$/, "");
 
+  // OD-2: monthly Pro is sold with the voice item by default (voice-line-items.ts).
+  const lines = subscriptionCheckoutItems({
+    plan,
+    interval,
+    planPriceId: priceId,
+    voiceAddonPriceId: voicePriceIds().addonMonthly ?? null,
+    includeVoice: options.includeVoice,
+  });
+
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: lines.items,
     customer: row?.stripe_customer_id ?? undefined,
     customer_email: row?.stripe_customer_id ? undefined : await ownerEmail(workspace.userId),
     client_reference_id: workspace.businessId,
     payment_method_collection: "always",
+    // Stripe Tax, VAT number and billing address: only with
+    // STRIPE_AUTOMATIC_TAX=true (tax.ts); otherwise nothing is added.
+    ...taxCheckoutParams({
+      enabled: automaticTaxEnabled(),
+      mode: "subscription",
+      hasCustomer: Boolean(row?.stripe_customer_id),
+    }),
     consent_collection: { terms_of_service: "required" },
     custom_text: {
       terms_of_service_acceptance: {
@@ -139,6 +162,7 @@ export async function createSubscriptionCheckout(
       user_id: workspace.userId,
       plan,
       terms_version: TERMS_VERSION,
+      voice_included: lines.voiceIncluded ? "1" : "0",
     },
     success_url: `${site}/start-trial?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${site}/start-trial?checkout=cancelled`,
@@ -153,7 +177,7 @@ export async function createSubscriptionCheckout(
       actorUserId: workspace.userId,
       action: "billing.trial_checkout_started",
       entityType: "subscription",
-      metadata: { plan, interval, trial: offer.kind === "trial_days" ? offer.days : 0 },
+      metadata: { plan, interval, trial: offer.kind === "trial_days" ? offer.days : 0, voice_included: lines.voiceIncluded, voice_excluded_reason: lines.voiceUnavailableReason },
     });
     return { ok: true, url: session.url };
   } catch (error) {
@@ -181,12 +205,14 @@ export async function createSubscriptionCheckout(
  * second, parallel subscription.
  */
 export type PlanChangeOutcome =
-  | { ok: true; changed: boolean; mode?: "immediate" | "scheduled"; effectiveAt?: string }
+  | { ok: true; changed: boolean; mode?: "immediate" | "scheduled"; effectiveAt?: string; overLimit?: OverLimitItem[] }
   | { ok: false; error: string; noLiveSubscription?: boolean };
 
 export async function changeSubscriptionPlan(
   workspace: Workspace,
   plan: Exclude<PlanId, "trial" | "enterprise">,
+  /** OD-2: moving onto monthly Pro adds the voice item unless the owner removed it. */
+  options: { includeVoice?: boolean } = {},
 ): Promise<PlanChangeOutcome> {
   const row = await readSubscription(workspace.businessId);
   if (!row?.stripe_subscription_id || !LIVE_STATUSES.has(row.status)) {
@@ -238,8 +264,17 @@ export async function changeSubscriptionPlan(
     if (decision.kind === "immediate") {
       // A pending downgrade is superseded by a change made now.
       if (scheduleId) await stripe.subscriptionSchedules.release(scheduleId);
+      const change = planChangeItems({
+        planItemId: item.id,
+        targetPriceId: priceId,
+        targetPlan: plan,
+        interval,
+        existingPriceIds: subscription.items.data.map((i) => i.price?.id ?? null),
+        voiceAddonPriceId: voicePriceIds().addonMonthly ?? null,
+        includeVoice: options.includeVoice,
+      });
       await stripe.subscriptions.update(subscription.id, {
-        items: [{ id: item.id, price: priceId }],
+        items: change.items,
         proration_behavior: decision.prorationBehavior,
         metadata: { business_id: workspace.businessId },
       });
@@ -256,6 +291,14 @@ export async function changeSubscriptionPlan(
     const currentPhase =
       schedule.phases.find((phase) => phase.start_date <= nowUnix && phase.end_date > nowUnix) ??
       schedule.phases[0];
+    // The number item and any other non-plan item carry over; the Pro voice
+    // item is dropped when leaving Pro (OD-2, plan-change.ts carriedItems).
+    const others = carriedItems({
+      items: subscription.items.data.map((i) => ({ id: i.id, priceId: i.price?.id ?? null, quantity: i.quantity ?? 1 })),
+      planItemId: item.id,
+      proVoicePriceId: voicePriceIds().addonMonthly ?? null,
+      targetPlan: plan,
+    });
     await stripe.subscriptionSchedules.update(
       schedule.id,
       downgradeSchedulePhases({
@@ -266,11 +309,44 @@ export async function changeSubscriptionPlan(
         currentPeriodEnd: decision.effectiveAt,
         interval,
         businessId: workspace.businessId,
+        otherItems: others,
       }),
     );
+    if (others.droppedProVoice) {
+      const { queueNotification } = await import("@/lib/jobs/handlers/shared");
+      await queueNotification({
+        businessId: workspace.businessId,
+        type: "billing",
+        severity: "info",
+        title: "Voice leaves with the Pro plan",
+        body:
+          "Your £100 voice item and its included minutes end when the downgrade takes effect. To keep calling, buy minute packs and add the dedicated number (£11.99 a month) in Settings, Voice, before then so your number is kept.",
+        linkUrl: "/app/settings?section=voice&panel=budget",
+        dedupeKey: `voice-downgrade:${workspace.businessId}:${decision.effectiveAt}`,
+      });
+    }
     const effectiveAt = new Date(decision.effectiveAt * 1000).toISOString();
     await auditPlanChange(workspace, { from: currentPlan, to: plan, interval, mode: "scheduled", effectiveAt });
-    return { ok: true, changed: true, mode: "scheduled", effectiveAt };
+    // Downgrade pre-check (allowance-gates.ts): allowed, but if the workspace
+    // holds more than the lower plan allows, say now exactly what to reduce
+    // and what will be refused from the change date. Never blocks the change.
+    const overLimit = await overLimitForPlan(workspace.businessId, plan).catch(() => [] as OverLimitItem[]);
+    if (overLimit.length > 0) {
+      const { queueNotification } = await import("@/lib/jobs/handlers/shared");
+      const on = new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeZone: "Europe/London" }).format(new Date(effectiveAt));
+      await queueNotification({
+        businessId: workspace.businessId,
+        type: "billing",
+        severity: "warning",
+        title: `Before ${on}: reduce what is over the ${PLANS[plan].name} plan's limits`,
+        body:
+          `Nothing will be removed. From ${on}, ${overLimit.map((i) => i.blocked.toLowerCase()).join(", ")} are refused until you are within the plan. ` +
+          overLimit.map((i) => `${i.label}: ${i.used} of ${i.limit}. ${i.action}`).join(" "),
+        linkUrl: "/app/settings?section=billing",
+        dedupeKey: `downgrade-over-limit:${workspace.businessId}:${decision.effectiveAt}`,
+      });
+    }
+    return { ok: true, changed: true, mode: "scheduled", effectiveAt, overLimit };
   } catch (error) {
     console.error("[checkout] plan change failed", {
       businessId: workspace.businessId,
@@ -466,6 +542,11 @@ export async function createCreditCheckout(workspace: Workspace, bundleKey: stri
       client_reference_id: workspace.businessId,
       // Receipts for the history table: Stripe emails one and keeps it.
       invoice_creation: row?.stripe_customer_id ? { enabled: true } : undefined,
+      ...taxCheckoutParams({
+        enabled: automaticTaxEnabled(),
+        mode: "payment",
+        hasCustomer: Boolean(row?.stripe_customer_id),
+      }),
       // Checkout will not complete without the terms box ticked; the webhook
       // records the acceptance with the purchase (source "top_up").
       ...topUpCheckoutTerms(site, bundle.channel === "whatsapp" ? "whatsapp_tokens" : "credit"),

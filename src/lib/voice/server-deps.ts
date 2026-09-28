@@ -6,8 +6,11 @@ import { serverEnv } from "@/lib/env";
 import { enqueue } from "@/lib/jobs/queue";
 import { recordAudit, type AnyAuditAction } from "@/lib/audit";
 import { getEntitlements } from "@/lib/billing/entitlements";
+import { addOnSubscriptionStatus } from "@/lib/billing/lifecycle";
 import { can } from "@/lib/billing/capabilities";
-import { checkVoiceSuppression, recordVoiceSuppression } from "@/lib/policy/suppression";
+import { canStoreSecrets, sealSecret } from "@/lib/security/secret-box";
+import { loadVoiceCallBrief, p3Repo, voiceMaintenancePauseUntil } from "./server-p3";
+import { checkVoiceSuppression, recordVoiceSuppression, suppress } from "@/lib/policy/suppression";
 import { putObject } from "@/lib/storage/r2";
 import { buildSignalWrite } from "@/lib/qualification-intelligence/signals";
 import { writeIntentSignals, enqueueReassessment } from "@/lib/qualification-intelligence/service";
@@ -16,8 +19,11 @@ import { voiceProviders, provisioningUrls } from "./providers/registry";
 import { detailsFingerprint, provisioningReadiness } from "./numbers/provisioning-details";
 import { newProvisioningRecord, type ProvisioningRecord, type ProvisioningState } from "./numbers/provisioning";
 import type { WorkspaceNumber } from "./numbers/sender";
+import type { InboundLookups } from "./inbound-core";
+import { USD_TO_GBP } from "./cost";
 import type { BundleStatus } from "./providers/types";
 import type { CallState } from "./state-machine";
+import { voiceRepoWithAutomationEvents } from "@/lib/automation/voice-events-server";
 import type { EntitlementFacts, PermissionRow } from "./snapshot";
 import type {
   AuditEntry,
@@ -30,6 +36,7 @@ import type {
   VoiceRepo,
   VoiceSettingsRow,
   LeadRow,
+  AdminControls,
 } from "./runtime-core";
 
 /**
@@ -205,7 +212,12 @@ export async function readVoiceSettings(businessId: string): Promise<VoiceSettin
     if (error.code && MISSING.has(error.code)) return null;
     throw new Error(`voice settings read: ${error.message}`);
   }
-  return (data as VoiceSettingsRow | null) ?? null;
+  const row = (data as VoiceSettingsRow | null) ?? null;
+  if (!row) return null;
+  // 0162's voice profile, read apart so a database without it still dials
+  // (the Retell agent's own voice is used).
+  const vp = await db().from("voice_settings").select("voice_profile").eq("business_id", businessId).maybeSingle();
+  return { ...row, voice_profile: vp.error ? null : ((vp.data as { voice_profile?: unknown } | null)?.voice_profile ?? null) };
 }
 
 /** The live voice grants written by the Stripe sync (billing lane). */
@@ -238,7 +250,8 @@ export async function loadEntitlementFacts(businessId: string): Promise<Entitlem
   ]);
   return {
     plan: entitlements.plan,
-    subscriptionStatus: entitlements.status,
+    // Add-on items follow the subscription's dunning grace (billing batch 2).
+    subscriptionStatus: addOnSubscriptionStatus(entitlements),
     businessStatus: (business.data as { status: string } | null)?.status ?? null,
     voiceCapability: capability.allowed,
     grants,
@@ -322,6 +335,8 @@ async function loadDialContext(businessId: string, leadId: string, route: string
     };
   }
 
+  const adminControls = await readAdminControls(businessId);
+
   return {
     lead,
     permission,
@@ -337,6 +352,7 @@ async function loadDialContext(businessId: string, leadId: string, route: string
       routeTotal: calls.filter((c) => c.route === route).length,
     },
     activeCallForLead: calls.some((c) => ACTIVE.includes(c.state)),
+    adminControls,
     concurrency: { workspaceActive: activeWs.count ?? 0, platformActive: activePlatform.count ?? 0 },
     allocation,
   };
@@ -503,24 +519,26 @@ const repo: VoiceRepo = {
 
   async saveOutcome(input) {
     const a = input.analysis;
-    check(
-      "outcome",
-      await db()
-        .from("voice_call_outcomes")
-        .upsert(
-          {
-            voice_call_id: input.callId,
-            business_id: input.businessId,
-            lead_id: input.leadId,
-            disposition: a.disposition,
-            summary: a.summary,
-            facts: { ...a.facts, ...(input.qualificationBefore ? { qualification_before: input.qualificationBefore } : {}) },
-            next_action: a.nextAction,
-            callback_requested_for: a.callbackRequestedFor,
-          },
-          { onConflict: "voice_call_id" },
-        ),
-    );
+    const row = {
+      voice_call_id: input.callId,
+      business_id: input.businessId,
+      lead_id: input.leadId,
+      disposition: a.disposition,
+      summary: a.summary,
+      facts: { ...a.facts, ...(input.qualificationBefore ? { qualification_before: input.qualificationBefore } : {}) },
+      next_action: a.nextAction,
+      callback_requested_for: a.callbackRequestedFor,
+    };
+    const withAttribution = input.attribution
+      ? { ...row, attribution_spoken: input.attribution.spoken, closing_version: input.attribution.closingVersion }
+      : row;
+    const first = await db().from("voice_call_outcomes").upsert(withAttribution, { onConflict: "voice_call_id" });
+    // Before 0162 the attribution columns do not exist: the outcome is still saved.
+    if (first.error && input.attribution && ["42703", "PGRST204"].includes(first.error.code ?? "")) {
+      check("outcome", await db().from("voice_call_outcomes").upsert(row, { onConflict: "voice_call_id" }));
+      return;
+    }
+    check("outcome", first);
   },
 
   async saveObjections(input) {
@@ -563,6 +581,28 @@ const repo: VoiceRepo = {
 
   async recordVoiceOptOut(input) {
     await recordVoiceSuppression(input);
+    if (input.scope === "ALL") {
+      // "Take me off your list" on a call: every channel, the same as the
+      // text agent's applySuppression(scope all). The lead flag is what
+      // follow-up, reactivation and the send guard read.
+      const { data } = await db().from("leads").select("email").eq("business_id", input.businessId).eq("id", input.leadId).maybeSingle();
+      await suppress({
+        businessId: input.businessId,
+        channel: "ALL",
+        reason: "OPT_OUT",
+        source: "VOICE_CALL",
+        sourceReference: `voice_call:${input.callId}`,
+        note: "Asked on an AI call not to be contacted again.",
+        phone: input.phone,
+        email: (data as { email?: string | null } | null)?.email ?? null,
+      });
+      const { error } = await db()
+        .from("leads")
+        .update({ opted_out: true, automation_active: false })
+        .eq("business_id", input.businessId)
+        .eq("id", input.leadId);
+      if (error) throw new Error(`voice opt-out (all channels): ${error.message}`);
+    }
   },
 
   async writeQualificationSignals(input) {
@@ -703,15 +743,43 @@ const repo: VoiceRepo = {
     );
   },
 
-  async upsertTelephonyAccount({ businessId, subaccountSid }) {
+  async upsertTelephonyAccount({ businessId, subaccountSid, authToken }) {
+    // Voice P3 (P2 gap b): the subaccount's auth token, sealed with the
+    // secret box (AES-GCM, SECRETS_ENCRYPTION_KEY), so its webhooks can be
+    // verified (webhook-inbox.ts verifyTwilioVoiceRequest). Never stored in
+    // clear, never returned; absent key = not stored (parent token only).
+    let sealed: string | null = null;
+    if (authToken && canStoreSecrets()) {
+      try {
+        sealed = sealSecret(authToken);
+      } catch {
+        sealed = null;
+      }
+    }
     const { data, error } = await db()
       .from("telephony_accounts")
-      .upsert({ business_id: businessId, provider: "twilio", subaccount_sid: subaccountSid, friendly_name: `ct-${businessId}`.slice(0, 64) }, { onConflict: "business_id,provider" })
+      .upsert(
+        {
+          business_id: businessId,
+          provider: "twilio",
+          subaccount_sid: subaccountSid,
+          friendly_name: `ct-${businessId}`.slice(0, 64),
+          ...(sealed ? { auth_token_ciphertext: sealed } : {}),
+        },
+        { onConflict: "business_id,provider" },
+      )
       .select("id")
       .single();
     if (error) throw new Error(`voice telephony account: ${error.message}`);
     await db().from("business_numbers").update({ telephony_account_id: (data as { id: string }).id }).eq("business_id", businessId).not("provisioning_state", "in", "(RELEASED,QUARANTINED)");
   },
+
+  async telephonyTokenStored(businessId) {
+    const { data } = await db().from("telephony_accounts").select("auth_token_ciphertext").eq("business_id", businessId).eq("provider", "twilio").maybeSingle();
+    return Boolean((data as { auth_token_ciphertext: string | null } | null)?.auth_token_ciphertext);
+  },
+
+  ...p3Repo,
 
   async notifyOwner(input) {
     const { queueNotification } = await import("@/lib/jobs/handlers/shared");
@@ -740,7 +808,9 @@ export function provisioningFingerprint(details: unknown): string | null {
 export function serverVoiceDeps(): VoiceDeps {
   return {
     now: () => new Date(),
-    repo,
+    // Automation triggers (gap map §45): call started/answered/missed,
+    // voicemail, qualified, objections. Emitted after each write succeeds.
+    repo: voiceRepoWithAutomationEvents(repo),
     minutes: supabaseMinuteStore,
     providers: voiceProviders,
     enqueue: async (type, payload, options) => {
@@ -751,6 +821,8 @@ export function serverVoiceDeps(): VoiceDeps {
         priority: options.priority,
       });
     },
+    briefFor: loadVoiceCallBrief,
+    maintenancePauseUntil: voiceMaintenancePauseUntil,
     storage: {
       async fetch(url: string) {
         const res = await fetch(url);
@@ -766,5 +838,119 @@ export function serverVoiceDeps(): VoiceDeps {
       platformKill: serverEnv.voice.callsDisabled,
       provisioningUrls: provisioningUrls(),
     },
+  };
+}
+
+/* ------------------------------------------------------ inbound lookups */
+
+/** Database reads for the inbound return-call path (inbound-core.ts). No provider I/O. */
+export const inboundLookups: InboundLookups = {
+  async numbersFor(e164) {
+    const { data } = await db()
+      .from("business_numbers")
+      .select("business_id, provisioning_state, e164, messaging_service_sid, quarantine_until")
+      .eq("e164", e164);
+    return ((data ?? []) as { business_id: string; provisioning_state: string; e164: string | null; messaging_service_sid: string | null; quarantine_until: string | null }[]).map((r) => ({
+      businessId: r.business_id,
+      state: r.provisioning_state as ProvisioningState,
+      e164: r.e164,
+      messagingServiceSid: r.messaging_service_sid,
+      quarantineUntil: r.quarantine_until,
+    }));
+  },
+  async leadsByPhone(businessId, e164) {
+    const { data } = await db()
+      .from("leads")
+      .select("id, business_id, phone, phone_normalized, anonymised_at, last_contact_at, created_at")
+      .eq("business_id", businessId)
+      .or(`phone_normalized.eq.${e164},phone.eq.${e164}`)
+      .limit(20);
+    return ((data ?? []) as { id: string; business_id: string; phone: string | null; phone_normalized: string | null; anonymised_at: string | null; last_contact_at: string | null; created_at: string }[]).map((l) => ({
+      leadId: l.id,
+      businessId: l.business_id,
+      phone: l.phone_normalized ?? l.phone,
+      anonymised: Boolean(l.anonymised_at),
+      lastActivityAt: l.last_contact_at ?? l.created_at,
+    }));
+  },
+  async settingsFor(businessId) {
+    const s = await readVoiceSettings(businessId);
+    let transferMode: "ON_REQUEST" | "ON_REQUEST_OR_ESCALATION" | "NEVER" = "ON_REQUEST";
+    const tm = await db().from("voice_settings").select("transfer_mode").eq("business_id", businessId).maybeSingle();
+    const raw = (tm.data as { transfer_mode?: string } | null)?.transfer_mode;
+    if (!tm.error && (raw === "ON_REQUEST_OR_ESCALATION" || raw === "NEVER" || raw === "ON_REQUEST")) transferMode = raw;
+    return {
+      callingAsName: s?.calling_as_name ?? null,
+      legalEntityName: s?.legal_entity_name ?? null,
+      identificationContact: s?.identification_contact ?? null,
+      personaName: s?.assistant_persona_name ?? null,
+      recordingEnabled: Boolean(s?.recording_enabled),
+      transferMode,
+      transferNumber: s?.transfer_number_e164 ?? null,
+      agentId: s?.provider_agent_id ?? null,
+    };
+  },
+  adminControls: (businessId) => readAdminControls(businessId),
+  async leadFlags(businessId, leadId) {
+    const { data } = await db().from("leads").select("first_name, phone, phone_normalized, opted_out, anonymised_at").eq("business_id", businessId).eq("id", leadId).maybeSingle();
+    const lead = data as { first_name: string | null; phone: string | null; phone_normalized: string | null; opted_out: boolean; anonymised_at: string | null } | null;
+    // Only a suppression of ALL channels blocks: a calls-only opt-out does not
+    // stop answering a call the person chose to make (inbound.ts). A failed
+    // lookup is treated as suppressed: never the AI, never a text.
+    let suppressed = false;
+    const phone = lead ? lead.phone_normalized ?? lead.phone : null;
+    if (phone) {
+      try {
+        suppressed = (await checkVoiceSuppression(businessId, phone)).allChannels;
+      } catch {
+        suppressed = true;
+      }
+    }
+    return {
+      optedOut: Boolean(lead?.opted_out),
+      suppressed,
+      anonymised: !lead || Boolean(lead.anonymised_at),
+      firstName: lead?.first_name ?? null,
+    };
+  },
+};
+
+/**
+ * The platform operator's voice controls (0158): the outbound pause and the
+ * monthly provider-spend ceiling on voice_settings, and a suspension on the
+ * live number. Spend is this calendar month's voice_cost_ledger in GBP. A read
+ * failure is treated as "paused": an unknown control never lets a call through.
+ */
+export async function readAdminControls(businessId: string): Promise<AdminControls> {
+  const client = db();
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const [settings, number, spend] = await Promise.all([
+    client.from("voice_settings").select("admin_outbound_paused, admin_spend_limit_gbp_month").eq("business_id", businessId).maybeSingle(),
+    client
+      .from("business_numbers")
+      .select("admin_suspended_at")
+      .eq("business_id", businessId)
+      .not("provisioning_state", "in", "(RELEASED,QUARANTINED)")
+      .limit(1)
+      .maybeSingle(),
+    client.from("voice_cost_ledger").select("total_cost, currency").eq("business_id", businessId).gte("occurred_at", monthStart.toISOString()),
+  ]);
+  if (settings.error || number.error || spend.error) {
+    return { outboundPaused: true, numberSuspended: false, spendLimitGbpMonth: null, spentGbpThisMonth: 0 };
+  }
+  const s = settings.data as { admin_outbound_paused: boolean | null; admin_spend_limit_gbp_month: number | string | null } | null;
+  const n = number.data as { admin_suspended_at: string | null } | null;
+  let spent = 0;
+  for (const row of (spend.data ?? []) as { total_cost: number | string; currency: string }[]) {
+    const amount = Number(row.total_cost) || 0;
+    spent += row.currency === "GBP" ? amount : amount * USD_TO_GBP;
+  }
+  return {
+    outboundPaused: Boolean(s?.admin_outbound_paused),
+    numberSuspended: Boolean(n?.admin_suspended_at),
+    spendLimitGbpMonth: s?.admin_spend_limit_gbp_month == null ? null : Number(s.admin_spend_limit_gbp_month),
+    spentGbpThisMonth: Math.round(spent * 100) / 100,
   };
 }

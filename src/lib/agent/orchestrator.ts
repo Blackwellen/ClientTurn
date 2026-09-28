@@ -124,7 +124,7 @@ import { trackCheckoutLink } from "@/lib/payments/attempts";
 import { loadAttemptForNudge, db as paymentsDb } from "@/lib/payments/store";
 import { checkoutNudgeOf, checkoutNudgeSendKey } from "@/lib/payments/nudge-event";
 import { nudgeGuidance } from "@/lib/payments/abandoned";
-import { latestLeadOpportunity } from "@/lib/opportunities/service";
+import { advanceLeadOpportunitySafely, latestLeadOpportunity } from "@/lib/opportunities/service";
 import {
   applySuppression,
   createBooking,
@@ -139,9 +139,40 @@ import {
   sendMessage,
   stopFollowUp,
   updateLeadFields,
+  calculateQuoteForLead,
+  draftQuote,
+  proposeDiscount,
+  requestQuoteApproval,
+  sendQuoteToLead,
   type HandoverSummary,
+  type QuoteToolAccess,
   type ToolContext,
 } from "./tools";
+import { loadQuoteTurn, type QuoteTurnData } from "./quote-turn";
+import {
+  detectQuoteRequest,
+  emptyQuotePathState,
+  markAsked,
+  matchCatalogueItems,
+  planConcession,
+  planQuoteStep,
+  quoteFallbackText,
+  quoteFigures,
+  quoteIsTheClose,
+  quoteStrategyBlock,
+  quoteStrategyLines,
+  quoteToolGate,
+  readQuoteInputs,
+  validationFactsFor,
+  type QuoteCalculationView,
+  type QuoteFigures,
+  type QuoteMessageKind,
+  type QuotePathState,
+  type QuoteValidationFacts,
+} from "./quote-flow";
+import { agentQuoteRequestId } from "@/lib/commercial/locks";
+import { aiAuthorityOf } from "@/lib/commercial/authority";
+import { aiMay } from "@/lib/commercial/ai-permissions";
 import { maybeRefreshSummary } from "./summary";
 import { matchOfferedSlot, type Slot } from "./availability/slots";
 import { bookingFailureRoute, bookingReplyText } from "@/lib/bookings/confirmation";
@@ -299,7 +330,7 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
   run.qi = () => qiRunRecord(stats);
 
   try {
-    return await executeTurn({
+    const turnInput: ExecuteInput = {
       event,
       context,
       run,
@@ -311,10 +342,48 @@ export async function runAgentTurn(event: AgentEvent): Promise<TurnResult> {
       injection,
       strategy,
       stats,
-    });
+    };
+    // Voice P3 (§71): a call request may become an AI call now. When it does,
+    // the reply is one fixed line and the call is the turn's one move.
+    if (callClose && latestMessage) {
+      const called = await callTheLeadInstead(turnInput);
+      if (called) return called;
+    }
+    return await executeTurn(turnInput);
   } finally {
     await releaseTurn(context.conversation.conversationId, turnSeq);
   }
+}
+
+/**
+ * Voice P3 (brief §71, voice/channel-orchestration.ts rule V1): the lead
+ * asked on a text channel for a call. The deterministic channel choice
+ * (consent, the owner's "Phone leads" permission, entitlement, intent,
+ * calling hours) decides whether the AI calls now; the call itself goes
+ * through every voice gate. Null = the turn goes on as before (it offers
+ * bookable call times).
+ */
+async function callTheLeadInstead(input: ExecuteInput): Promise<TurnResult | null> {
+  const { context, run } = input;
+  const { planCallFromText } = await import("@/lib/voice/text-to-call");
+  const planned = await planCallFromText({
+    businessId: context.business.businessId,
+    leadId: context.lead.id,
+    channel: input.channel,
+    message: input.latestMessage ?? "",
+  });
+  if (!planned.queued) return null;
+  const delivered = await deliverFixed(input, planned.line, `voice-call-ack:${planned.callId}`);
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome,
+    intent: "BOOKING_REQUEST",
+    replyClassification: "BOOKING_INTENT",
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: { mode: input.mode, action: "VOICE_CALL", voiceCallId: planned.callId, channelRule: planned.decision.rule, scheduledFor: planned.scheduledFor },
+  });
+  return { outcome: delivered.outcome, runId: run.id, detail: "They asked for a call: the AI voice agent is calling them." };
 }
 
 // --------------------------------------------------------------- the turn
@@ -338,6 +407,15 @@ type ExecuteInput = {
   guidance?: string[];
   /** Per-turn tallies for the engine's accounting, shared by every branch. */
   stats: TurnStats;
+  /**
+   * The quote in play this turn (quote-flow.ts): the figures the validator
+   * admits, and the quote's private link when the reply carries it.
+   */
+  quote?: { validation: QuoteValidationFacts; extraUrls: string[] };
+  /** The quote step owns the turn's one question, so the engine's question QA does not apply. */
+  skipQuestionQa?: boolean;
+  /** What the assistant may do with quotes this turn (quoteToolGate inputs). */
+  quoteAccess?: QuoteToolAccess;
 };
 
 /**
@@ -1010,6 +1088,31 @@ async function executeTurn(initial: ExecuteInput): Promise<TurnResult> {
     if (strategy.record.channelPreferenceAsked) {
       await markChannelPreferenceAsked(context.business.businessId, context.lead.id);
     }
+  }
+
+  // ---- quote-to-cash (brief §7, §13-14, §72-74) --------------------------
+  // A lead asking for a quote or a price for configured catalogue items is
+  // taken down one path: collect the inputs, draft, then approval or send.
+  // One move per turn, for the interest the turn is about. A quote they
+  // already have is answered from, discounted within policy, or chased to
+  // its next step. Nothing here runs unless the lead's words, a quote in
+  // progress or a live quote make it relevant (quote-turn.ts).
+  const quoteData = await loadQuoteTurn({
+    context,
+    runId: run.id,
+    latestMessage: input.latestMessage,
+    serviceId: qi?.interests?.primary.serviceId ?? context.lead.service_id ?? null,
+    nbaAction: qi?.mode === "LIVE" ? qi.nba.next_action : null,
+  }).catch((error) => {
+    console.error("[agent] quote turn could not be loaded", { runId: run.id, error });
+    return null;
+  });
+  if (quoteData) {
+    input = { ...input, quoteAccess: quoteData.access };
+    const legacyDiscountLine = onMessage.kind === "CONTINUE" && onMessage.discount ? discountGuidance(onMessage.discount) : null;
+    const quoted = await quoteTheLead(input, quoteData, legacyDiscountLine);
+    if (quoted && "result" in quoted) return quoted.result;
+    if (quoted && "guidance" in quoted) input = { ...input, guidance: [...(input.guidance ?? []), ...quoted.guidance] };
   }
 
   // ---- slots before the model, when booking is the plan -------------------
@@ -1910,6 +2013,442 @@ async function nudgeTheCheckout(
   return { outcome: "MESSAGE_SENT", runId: run.id, detail: `Checkout reminder ${nudge.nudge} sent.` };
 }
 
+// ------------------------------------------------------------ quote path
+
+type QuoteBranch = { result: TurnResult } | { guidance: string[] } | null;
+
+/**
+ * One quote move (quote-flow.ts decides it; tools.ts executes it through the
+ * service registry). Returns a finished turn, extra guidance for the ordinary
+ * turn, or null when the quote path has nothing to do.
+ */
+async function quoteTheLead(input: ExecuteInput, data: QuoteTurnData, legacyDiscountLine: string | null): Promise<QuoteBranch> {
+  const { context, run } = input;
+  const qi = input.stats.qi;
+  const focusServiceId = qi?.interests?.primary.serviceId ?? null;
+  const serviceId = focusServiceId ?? context.lead.service_id ?? null;
+  const asksQuote = detectQuoteRequest(input.latestMessage);
+  const sellableForService = data.items.filter((item) => item.active && !item.addOnOnly && item.serviceId === serviceId);
+  const closeByQuote =
+    !data.openQuote &&
+    quoteIsTheClose({ pricingModel: data.pricingModel, itemsForService: sellableForService.length, nbaAction: qi?.mode === "LIVE" ? qi.nba.next_action : null });
+
+  // ---- which items: named now, else the state's, else the offer's own
+  // A path whose quote is no longer live (expired, declined, won, withdrawn)
+  // is finished: a new ask starts a new request (and so a new quote).
+  let state: QuotePathState = data.state.quoteId && !data.openQuote ? emptyQuotePathState() : data.state;
+  if (!state.quoteId && !data.openQuote) {
+    const named = matchCatalogueItems(input.latestMessage, data.items, { serviceId: asksQuote || closeByQuote ? serviceId : null });
+    if (named.length > 0 && (asksQuote || state.itemIds.length === 0 || closeByQuote)) {
+      state = { ...state, itemIds: [...new Set(named.map((item) => item.id))].slice(0, 10) };
+    } else if (state.itemIds.length === 0 && closeByQuote && sellableForService.length === 1) {
+      state = { ...state, itemIds: [sellableForService[0].id] };
+    }
+  }
+  const items = state.itemIds
+    .map((id) => data.items.find((item) => item.id === id))
+    .filter((item): item is (typeof data.items)[number] => Boolean(item));
+  const history = context.conversation.recentMessages.filter((m) => m.role === "lead").map((m) => m.body).join("\n");
+  state = readQuoteInputs({ state, items, text: history, facts: data.facts, answering: null });
+  state = readQuoteInputs({ state, items, text: input.latestMessage, facts: data.facts, answering: data.answering });
+  if (items.length > 0 && !state.requestMessageId) state = { ...state, requestMessageId: input.event.eventId ?? run.id };
+
+  const step = planQuoteStep({
+    text: input.latestMessage,
+    state,
+    items,
+    openQuote: data.openQuote,
+    gate: data.access,
+    focusServiceId,
+    quoteIsTheClose: closeByQuote,
+  });
+  const remember = (next: QuotePathState, extra: Record<string, unknown> = {}) => {
+    run.marks = { ...(run.marks ?? {}), quote: next, quoteStep: { kind: step.kind, ...extra } };
+  };
+  if (items.length > 0 || data.openQuote) remember(state);
+
+  const firstName = context.lead.first_name ?? null;
+  const figuresOf = (calc: QuoteCalculationView | null, validUntil: string | null) => (calc ? quoteFigures(calc, { validUntil }) : null);
+
+  switch (step.kind) {
+    case "NONE":
+      if (items.length === 0 && !data.openQuote) delete run.marks?.quote;
+      return null;
+    case "NOT_PERMITTED":
+      // The ordinary price handling carries on (a colleague confirms the price).
+      remember(state, { reason: step.gate.reason });
+      return null;
+    case "DEFERRED":
+      remember(state, { itemIds: step.itemIds });
+      return { guidance: ["They also asked about pricing for another offer: say you will come back to that once this is sorted. No figure."] };
+
+    case "COLLECT": {
+      const asked = markAsked(state, step.input);
+      run.marks = { ...(run.marks ?? {}), quote: asked, quoteAsk: step.input, quoteStep: { kind: "COLLECT", input: step.input.kind } };
+      return deliverQuoteMessage(input, {
+        lines: quoteStrategyLines(step, null),
+        figures: null,
+        message: { kind: "COLLECT", question: step.question },
+        legacyDiscountLine,
+        detail: `Asked for the ${step.input.kind.toLowerCase()} the quote needs.`,
+      });
+    }
+
+    case "DRAFT": {
+      const tools = toolContext(input, null);
+      const key = agentQuoteRequestId(context.conversation.conversationId, state.requestMessageId ?? run.id);
+      const priced = await calculateQuoteForLead(tools, { lines: step.lines, key: `${key}:calc` });
+      if (!priced.ok || !priced.data.ok || !priced.data.calculation) {
+        await raiseAssist(input, "CONFIRM_PRICE", "The assistant could not price this quote from the catalogue.");
+        remember(state, { failed: priced.ok ? "CALCULATION" : priced.code });
+        return { guidance: ["A colleague will confirm the price: say so in one short clause, never state a figure, then carry on."] };
+      }
+      const opportunityId = await openOpportunityFor(input, focusServiceId);
+      if (!opportunityId) {
+        await raiseAssist(input, "CONFIRM_PRICE", "The assistant priced a quote but the lead has no open opportunity to attach it to.");
+        return { guidance: ["A colleague will confirm the price: say so in one short clause, never state a figure, then carry on."] };
+      }
+      const drafted = await draftQuote(tools, {
+        opportunityId,
+        lines: step.lines,
+        requestId: key,
+        afterObjection: data.priceObjectionSeen,
+        priorAiConcessions: state.concessions,
+        rationale: `Requested by the lead in conversation; lines from the catalogue items they named (${items.map((item) => item.name).join(", ")}).`,
+      });
+      if (!drafted.ok) {
+        remember(state, { failed: drafted.code });
+        if (drafted.code === "LEAD_HELD") return { guidance: ["A colleague is preparing their quote: say so in one short clause, no figure."] };
+        await raiseAssist(input, "CONFIRM_PRICE", `The assistant could not draft the quote: ${drafted.detail}`);
+        return { guidance: ["A colleague will confirm the price: say so in one short clause, never state a figure, then carry on."] };
+      }
+      const next: QuotePathState = { ...state, quoteId: drafted.data.quoteId };
+      const revisionId = drafted.data.revisionId ?? "";
+      return finishDraftedQuote(input, data, next, {
+        quoteId: drafted.data.quoteId,
+        revisionId,
+        approvalRequired: drafted.data.approvalRequired,
+        calculation: drafted.data.calculation ?? priced.data.calculation,
+        validUntil: null,
+        legacyDiscountLine,
+        firstName,
+      });
+    }
+
+    case "SEND": {
+      const open = data.openQuote!;
+      return finishDraftedQuote(input, data, { ...state, quoteId: open.id }, {
+        quoteId: open.id,
+        revisionId: open.revisionId ?? "",
+        approvalRequired: false,
+        calculation: open.calculation,
+        validUntil: open.validUntil,
+        legacyDiscountLine,
+        firstName,
+      });
+    }
+
+    case "ANSWER_FROM_QUOTE": {
+      const open = data.openQuote!;
+      const figures = figuresOf(open.calculation, open.validUntil);
+      remember({ ...state, quoteId: open.id });
+      return deliverQuoteMessage(input, {
+        lines: quoteStrategyLines(step, figures),
+        figures,
+        message: { kind: "ANSWER_FROM_QUOTE" },
+        legacyDiscountLine,
+        detail: "Answered from the lead's quote.",
+      });
+    }
+
+    case "AWAITING_APPROVAL": {
+      remember({ ...state, quoteId: data.openQuote?.id ?? state.quoteId });
+      return deliverQuoteMessage(input, {
+        lines: quoteStrategyLines(step, null),
+        figures: null,
+        message: { kind: "AWAITING_APPROVAL" },
+        legacyDiscountLine,
+        detail: "Told the lead their quote is with a colleague.",
+      });
+    }
+
+    case "NEXT_STEP": {
+      const open = data.openQuote!;
+      const permitted = aiMay(data.access.authority, open.status === "ACCEPTED" ? "request_signature" : "send_payment_link");
+      const figures = figuresOf(open.calculation, open.validUntil);
+      remember({ ...state, quoteId: open.id });
+      return deliverQuoteMessage(input, {
+        lines: permitted
+          ? quoteStrategyLines(step, figures)
+          : ["They have taken the next step on their quote. Thank them; a colleague will be in touch about what comes next. No figure, no link."],
+        figures: permitted ? figures : null,
+        message: { kind: "NEXT_STEP", status: open.status, permitted },
+        legacyDiscountLine,
+        detail: `The quote is ${open.status.toLowerCase()}.`,
+      });
+    }
+
+    case "DISCOUNT":
+      return discountTheQuote(input, data, state, step.requestedPercent, legacyDiscountLine);
+  }
+}
+
+/** The lead's open opportunity for the turn's interest, created at QUALIFIED when there is none. */
+async function openOpportunityFor(input: ExecuteInput, serviceId: string | null): Promise<string | null> {
+  const { context } = input;
+  const businessId = context.business.businessId;
+  const query = createAdminClient()
+    .from("opportunities")
+    .select("id, service_id")
+    .eq("business_id", businessId)
+    .eq("lead_id", context.lead.id)
+    .eq("outcome", "OPEN")
+    .order("updated_at", { ascending: false })
+    .limit(5);
+  const { data } = await query;
+  const rows = (data ?? []) as { id: string; service_id: string | null }[];
+  const match = rows.find((row) => serviceId && row.service_id === serviceId) ?? rows[0];
+  if (match) return match.id;
+  const advanced = await advanceLeadOpportunitySafely({
+    businessId,
+    leadId: context.lead.id,
+    event: "QUALIFIED",
+    serviceId,
+    motion: serviceId ? context.sales.motion : null,
+  });
+  return advanced.ok ? advanced.opportunityId : null;
+}
+
+/**
+ * After a draft (or an approved quote): approval when the policy requires
+ * it, a send when the workspace lets the assistant send, otherwise a person
+ * sends it. The reply states figures only once the quote has gone out.
+ */
+async function finishDraftedQuote(
+  input: ExecuteInput,
+  data: QuoteTurnData,
+  state: QuotePathState,
+  quote: {
+    quoteId: string;
+    revisionId: string;
+    approvalRequired: boolean;
+    calculation: QuoteCalculationView | null;
+    validUntil: string | null;
+    legacyDiscountLine: string | null;
+    firstName: string | null;
+  },
+): Promise<QuoteBranch> {
+  const { run } = input;
+  const tools = toolContext(input, null);
+  let then: "SENT" | "APPROVAL" | "PERSON_SENDS";
+  let validUntil = quote.validUntil;
+  const extraUrls: string[] = [];
+  let linkToAppend: string | null = null;
+
+  if (quote.approvalRequired) {
+    const requested = await requestQuoteApproval(tools, {
+      quoteId: quote.quoteId,
+      revisionId: quote.revisionId,
+      note: "Drafted by the assistant from the lead's request; the workspace's policy needs a person to approve it.",
+    });
+    await raiseAssist(input, "QUOTE_REVIEW", requested.ok ? "The assistant drafted a quote that needs approval." : `The assistant drafted a quote; asking for approval failed (${requested.detail}).`);
+    then = "APPROVAL";
+  } else if (quoteToolGate("send_quote", data.access).allowed) {
+    const sent = await sendQuoteToLead(tools, { quoteId: quote.quoteId, revisionId: quote.revisionId, hasEmail: data.leadHasEmail });
+    if (sent.ok) {
+      then = "SENT";
+      validUntil = sent.data.validUntil;
+      if (!sent.data.emailed) {
+        // No email address: the reply carries the private link itself.
+        linkToAppend = sent.data.publicUrl;
+        extraUrls.push(sent.data.publicUrl);
+      }
+    } else {
+      await raiseAssist(input, "QUOTE_REVIEW", `The assistant drafted a quote but could not send it (${sent.detail}).`);
+      then = "PERSON_SENDS";
+    }
+  } else {
+    await raiseAssist(input, "QUOTE_REVIEW", "The assistant drafted a quote for the lead; a person sends it.");
+    then = "PERSON_SENDS";
+  }
+
+  run.marks = { ...(run.marks ?? {}), quote: state, quoteStep: { kind: "DRAFTED", then, quoteId: quote.quoteId } };
+  const figures = then === "SENT" && quote.calculation ? quoteFigures(quote.calculation, { validUntil }) : null;
+  const drafted = { kind: "DRAFTED" as const, then };
+  return deliverQuoteMessage(input, {
+    lines: quoteStrategyLines(drafted, figures),
+    figures,
+    message: drafted,
+    legacyDiscountLine: quote.legacyDiscountLine,
+    extraUrls,
+    appendUrl: linkToAppend,
+    detail: then === "SENT" ? "Quote sent." : then === "APPROVAL" ? "Quote drafted; waiting for approval." : "Quote drafted; a person sends it.",
+  });
+}
+
+/**
+ * A discount ask on a quote the lead has. The quote core decides (the
+ * assistant's policy, the full calculation): ALLOW applies it and sends the
+ * revision where permitted; REQUIRE_APPROVAL applies it for a person to
+ * approve and tells the lead honestly it is being checked; DENY (or no
+ * discount permission) holds the price with objection craft.
+ */
+async function discountTheQuote(
+  input: ExecuteInput,
+  data: QuoteTurnData,
+  state: QuotePathState,
+  requestedPercent: number | null,
+  legacyDiscountLine: string | null,
+): Promise<QuoteBranch> {
+  const { run } = input;
+  const open = data.openQuote!;
+  const tools = toolContext(input, null);
+  // The legacy two-step discount rule is replaced by the policy's own
+  // (TWO_STEP_ESCALATION goes to approval, not to a hand-over).
+  if (run.marks) delete run.marks.discountDemand;
+  const current = open.calculation ? quoteFigures(open.calculation, { validUntil: open.validUntil }) : null;
+  const hold = () =>
+    deliverQuoteMessage(input, {
+      lines: quoteStrategyLines({ kind: "DISCOUNT", quoteId: open.id, requestedPercent }, current, { concession: null }),
+      figures: current,
+      message: { kind: "DISCOUNT", outcome: "DENY", sent: false, bps: null },
+      legacyDiscountLine,
+      detail: "Held the price.",
+    });
+
+  if (!open.calculation || !open.revisionId || !quoteToolGate("propose_discount", data.access).allowed) {
+    run.marks = { ...(run.marks ?? {}), quote: { ...state, quoteId: open.id }, quoteStep: { kind: "DISCOUNT", outcome: "DENY", reason: "NOT_PERMITTED" } };
+    return hold();
+  }
+  const concession = planConcession({
+    policy: data.aiPolicy,
+    calculation: open.calculation,
+    requestedPercent,
+    afterObjection: data.priceObjectionSeen,
+    priorAiConcessions: state.concessions,
+  });
+  run.marks = {
+    ...(run.marks ?? {}),
+    quote: { ...state, quoteId: open.id },
+    quoteStep: { kind: "DISCOUNT", outcome: concession.decision.outcome, reason: concession.decision.reason, bps: concession.bps, countered: concession.countered },
+  };
+  if (concession.decision.outcome === "DENY") return hold();
+
+  const applied = await proposeDiscount(tools, {
+    quoteId: open.id,
+    revisionId: open.revisionId,
+    bps: concession.bps,
+    afterObjection: data.priceObjectionSeen,
+    priorAiConcessions: state.concessions,
+    dryRun: false,
+  });
+  if (!applied.ok) return hold(); // POLICY_BLOCKED: the core's full check (margin) said no.
+
+  const next: QuotePathState = { ...state, quoteId: open.id, concessions: state.concessions + 1 };
+  const newRevision = applied.data.revisionId ?? open.revisionId;
+  if (applied.data.approval.required) {
+    await requestQuoteApproval(tools, { quoteId: open.id, revisionId: newRevision, note: `The lead asked for a better price; the assistant proposed ${concession.bps / 100}% off, which needs approval.` });
+    await raiseAssist(input, "QUOTE_REVIEW", `The lead asked for a discount; ${concession.bps / 100}% off is waiting for approval.`);
+    run.marks = { ...(run.marks ?? {}), quote: next, quoteStep: { kind: "DISCOUNT", outcome: "REQUIRE_APPROVAL", bps: concession.bps } };
+    return deliverQuoteMessage(input, {
+      lines: quoteStrategyLines({ kind: "DISCOUNT", quoteId: open.id, requestedPercent }, null, {
+        concession: { ...concession, decision: { outcome: "REQUIRE_APPROVAL", role: "admin", reason: "APPROVAL_THRESHOLD", detail: "", discountBps: concession.bps, matchedRuleIds: [] } },
+      }),
+      figures: null,
+      message: { kind: "DISCOUNT", outcome: "REQUIRE_APPROVAL", sent: false, bps: concession.bps },
+      legacyDiscountLine,
+      discountUnderReview: true,
+      detail: "A discount is waiting for approval.",
+    });
+  }
+
+  let sent = false;
+  const extraUrls: string[] = [];
+  let appendUrl: string | null = null;
+  if (quoteToolGate("send_quote", data.access).allowed) {
+    const delivered = await sendQuoteToLead(tools, { quoteId: open.id, revisionId: newRevision, hasEmail: data.leadHasEmail });
+    sent = delivered.ok;
+    if (delivered.ok && !delivered.data.emailed) {
+      appendUrl = delivered.data.publicUrl;
+      extraUrls.push(delivered.data.publicUrl);
+    }
+  }
+  if (!sent) await raiseAssist(input, "QUOTE_REVIEW", `The assistant took ${concession.bps / 100}% off the quote; a person sends the revised quote.`);
+  const figures = quoteFigures(applied.data.calculation, { validUntil: null });
+  run.marks = { ...(run.marks ?? {}), quote: next, quoteStep: { kind: "DISCOUNT", outcome: "ALLOW", bps: concession.bps, sent } };
+  return deliverQuoteMessage(input, {
+    lines: quoteStrategyLines({ kind: "DISCOUNT", quoteId: open.id, requestedPercent }, figures, { concession }),
+    figures,
+    message: { kind: "DISCOUNT", outcome: "ALLOW", sent, bps: concession.bps },
+    legacyDiscountLine,
+    extraUrls,
+    appendUrl,
+    detail: sent ? "Discount applied and the revised quote sent." : "Discount applied; a person sends the revised quote.",
+  });
+}
+
+/**
+ * Composes the quote step's one message (the model words it from the quote
+ * strategy block; its figures are the only ones the validator admits), falls
+ * back to the deterministic wording when no draft passes, and sends it
+ * through the ordinary send gate.
+ */
+async function deliverQuoteMessage(
+  input: ExecuteInput,
+  plan: {
+    lines: string[];
+    figures: QuoteFigures | null;
+    message: QuoteMessageKind;
+    legacyDiscountLine: string | null;
+    detail: string;
+    extraUrls?: string[];
+    appendUrl?: string | null;
+    discountUnderReview?: boolean;
+  },
+): Promise<QuoteBranch> {
+  const { run, context } = input;
+  const guidance = (input.guidance ?? []).filter((line) => line !== plan.legacyDiscountLine);
+  const quoteInput: ExecuteInput = {
+    ...input,
+    strategy: { ...input.strategy, text: quoteStrategyBlock(plan.lines) },
+    guidance,
+    quote: { validation: validationFactsFor(plan.figures, { discountUnderReview: plan.discountUnderReview }), extraUrls: plan.extraUrls ?? [] },
+    skipQuestionQa: true,
+  };
+  const withLink = (text: string) => (plan.appendUrl && !text.includes(plan.appendUrl) ? `${text.trim()} ${plan.appendUrl}` : text.trim());
+
+  let body: string | null = null;
+  const proposal = await proposeDecision(quoteInput, null);
+  if (proposal.decision?.message) {
+    const composed = await composeWithFacts(quoteInput, proposal.decision, [], null, validationFactsForTurn(quoteInput, [], null));
+    if (composed) body = withLink(composed);
+  }
+  if (!body) {
+    const fallback = withLink(quoteFallbackText(plan.message, plan.figures, context.lead.first_name ?? null));
+    const check = validateResponse(fallback, validationFactsForTurn(quoteInput, [], null));
+    if (!check.ok) {
+      return {
+        result: await handover(input, "OUT_OF_SCOPE", "A safe quote message could not be composed.", { trigger: "VALIDATOR_REJECTED" }),
+      };
+    }
+    body = check.body;
+  }
+
+  const delivered = await deliverFixed(input, body, `agent:${run.id}`);
+  await maybeRefreshSummary(context, run.id);
+  await closeRun(run, {
+    status: delivered.outcome === "FAILED" ? "FAILED" : "COMPLETED",
+    outcome: delivered.outcome,
+    intent: proposal.decision?.intent ?? input.heuristic?.intent ?? "UNKNOWN",
+    intentConfidence: proposal.decision?.confidence,
+    replyClassification: replyClassificationFor(proposal.decision?.intent ?? input.heuristic?.intent ?? "UNKNOWN"),
+    lifecycleAfter: context.lifecycle,
+    errorCode: delivered.errorCode,
+    decision: { mode: input.mode, action: "QUOTE", detail: plan.detail },
+  });
+  return { result: { outcome: delivered.outcome, runId: run.id, detail: plan.detail } };
+}
+
 // ---------------------------------------------------------------- model
 
 /**
@@ -1991,8 +2530,14 @@ async function composeValidated(
   confirmedSlots: string[],
   checkout: CheckoutLink | null = null,
 ): Promise<string | null> {
+  const facts = validationFactsForTurn(input, confirmedSlots, checkout);
+  return composeWithFacts(input, decision, confirmedSlots, checkout, facts);
+}
+
+/** Everything the validator checks a draft of this turn against. */
+function validationFactsForTurn(input: ExecuteInput, confirmedSlots: string[], checkout: CheckoutLink | null): ValidationFacts {
   const authority = input.context.commerce?.authority ?? null;
-  const facts: ValidationFacts = {
+  return {
     channel: input.channel,
     businessName: input.context.workspace.businessName,
     // A proposed checkout adds exactly its own approved price text, nothing more.
@@ -2002,8 +2547,9 @@ async function composeValidated(
     ],
     confirmedSlots,
     bookingConfirmed: false,
-    // The checkout URL is allowed only on the turn that proposes it.
-    allowedUrls: [...allowedUrls(input.context), ...(checkout ? [checkout.url] : [])],
+    // The checkout URL is allowed only on the turn that proposes it; a
+    // quote's private link only on the turn that sends it.
+    allowedUrls: [...allowedUrls(input.context), ...(checkout ? [checkout.url] : []), ...(input.quote?.extraUrls ?? [])],
     serviceAreaConfirmed: false,
     // Style lint: failures take the same one-retry -> handover path.
     forbiddenPhrases: input.context.offer.voice.forbiddenPhrases,
@@ -2024,13 +2570,25 @@ async function composeValidated(
     verifyingStaleFact: verifiesStaleFact(input.stats.qi),
     // Human-style lint: the lead's name once at most (human-style.ts).
     leadFirstName: input.context.lead.first_name ?? null,
+    // The quote in play: only its calculated figures may be stated
+    // (quote-flow.ts quoteFigures; brief §7).
+    quote: input.quote?.validation ?? null,
   };
+}
 
+async function composeWithFacts(
+  input: ExecuteInput,
+  decision: AgentDecision,
+  confirmedSlots: string[],
+  checkout: CheckoutLink | null,
+  facts: ValidationFacts,
+): Promise<string | null> {
   // Pre-send question QA (design 08 §16): every draft of an engine-planned
   // turn is checked against the NBA and the fact state. LIVE: a rejection
   // takes the same retry -> handover path as any validator failure. SHADOW:
   // the draft is the legacy one; QA and the grade are recorded, never acted on.
-  const qa = input.stats.qi ? qaContextFor(input, input.stats.qi) : null;
+  // A quote step owns its one question (quote-flow.ts), so QA does not apply.
+  const qa = input.stats.qi && !input.skipQuestionQa ? qaContextFor(input, input.stats.qi) : null;
   if (qa && input.stats.qi?.mode === "LIVE") {
     facts.extraChecks = (body) => {
       const result = runQuestionQa(body, qa);
@@ -2524,6 +3082,14 @@ function toolContext(input: ExecuteInput, confidence: number | null): ToolContex
       bookingEnabled: Boolean(input.context.booking.bookingUrl),
     },
     confidence,
+    // What the workspace lets the assistant do (commercial authority v2):
+    // "Book meetings" binds the booking tools; the quote tools need the
+    // turn's quote access (AI on, quote_ai_enabled) as well.
+    ai: input.quoteAccess ?? {
+      aiEnabled: input.context.business.aiAssistEnabled && input.context.business.agent.mode !== "OFF",
+      quoteAiCapability: false,
+      authority: aiAuthorityOf(input.context.commerce?.authority),
+    },
   };
 }
 

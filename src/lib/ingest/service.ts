@@ -20,6 +20,8 @@ import {
   type IdentityProspect,
 } from "@/lib/identity/resolve";
 import { normaliseIngest, type NormalisedIngest } from "./normalise";
+import { leadCapPolicyFor, leadIntakeGate } from "@/lib/billing/lead-cap";
+import { leadCapacity } from "@/lib/billing/lead-meter";
 import {
   domainEventFor,
   idempotencyKeyFor,
@@ -544,6 +546,29 @@ export async function ingestLead(
 
     if (plan.action === "INSERT") {
       const review = plan.outcome === "REVIEW";
+
+      // The plan's lead cap (billing/lead-cap.ts). A lead someone is CREATING
+      // (Add lead, a CSV import with follow-up on, the API, MCP) that would be
+      // followed up is refused at the cap, before anything is written. An
+      // enquiry that ARRIVES is never refused: lead.process holds it instead.
+      if (attempt === 0 && leadCapPolicyFor(input.source.type) === "REFUSE_AT_CAP") {
+        const willBeWorked =
+          options.process !== false &&
+          processModeFor({
+            outcome: plan.outcome,
+            sourceType: input.source.type,
+            requested: options.process?.mode,
+          }) === "FULL";
+        if (willBeWorked) {
+          const capacity = await leadCapacity(businessId);
+          const gate = leadIntakeGate({ sourceType: input.source.type, willBeWorked, ...capacity });
+          if (!gate.allowed) {
+            // Nothing stored: not the lead, not a touch, not an idempotency
+            // row (a retry once there is room must be able to succeed).
+            return { outcome: "REJECTED", leadId: null, touchId: null, matchedBy: null, reasons: [...reasons, gate.reason] };
+          }
+        }
+      }
       const row: Record<string, unknown> = {
         business_id: businessId,
         first_name: person.firstName,

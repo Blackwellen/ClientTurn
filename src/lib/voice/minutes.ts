@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Reservation } from "./budget";
 import {
   creditPackMinutes,
+  expireIncludedMinutes,
   grantIncludedPeriod,
   MinuteStoreUnavailable,
   releaseMinutes,
@@ -17,6 +18,7 @@ import {
   type ReserveOutcome,
   type SettleOutcome,
 } from "./minutes-core";
+import { voicePackRefund } from "./pack-refund";
 
 /**
  * The voice minute balance, server side: the Supabase `MinuteStore` over the
@@ -184,6 +186,9 @@ export async function settleCallMinutes(input: {
         message: error instanceof Error ? error.message : String(error),
       });
     });
+    // Automation triggers (gap map §45), once per crossing like the alert.
+    const { emitVoiceBudgetEvents } = await import("@/lib/automation/voice-events-server");
+    await emitVoiceBudgetEvents(input.businessId, result.alert, result.remainingSec);
   }
   return result;
 }
@@ -227,14 +232,69 @@ async function notifyMinutesLow(businessId: string, threshold: 75 | 90 | 100, re
 export async function creditVoicePack(input: {
   businessId: string;
   minutes: number;
+  /** The Checkout session id: the idempotency key. */
   stripeRef: string;
+  /** The PaymentIntent, recorded as the ledger's stripe_ref so a refund finds the pack. */
+  paymentIntentId?: string | null;
 }): Promise<ApplyResult> {
   return creditPackMinutes(supabaseMinuteStore, {
     businessId: input.businessId,
     minutes: input.minutes,
-    stripeRef: input.stripeRef,
+    stripeRef: input.paymentIntentId ?? input.stripeRef,
     idempotencyKey: `voice:pack:${input.stripeRef}`,
   });
+}
+
+/**
+ * `charge.refunded` for a voice pack (billing.refund_reverse): take back only
+ * the pack's still-unused minutes (FIFO, voice/pack-refund.ts), never below
+ * zero, keyed on the PaymentIntent and Stripe's cumulative refunded amount so
+ * a replay reverses nothing more. Returns the seconds reversed.
+ */
+export async function reverseVoicePackRefund(input: {
+  businessId: string;
+  paymentIntentId: string;
+  amountMinor: number;
+  amountRefundedMinor: number;
+}): Promise<number> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const snap = await supabaseMinuteStore.load(input.businessId, null);
+    const { data, error } = await db()
+      .from("voice_minute_ledger")
+      .select("kind, stripe_ref, pack_delta_sec, created_at")
+      .eq("business_id", input.businessId)
+      .in("kind", ["PACK_PURCHASE", "PACK_REFUND"]);
+    if (error) throw new Error(`voice pack refund: ${error.message}`);
+    const plan = voicePackRefund({
+      ledger: ((data ?? []) as { kind: "PACK_PURCHASE" | "PACK_REFUND"; stripe_ref: string | null; pack_delta_sec: number; created_at: string }[]).map((r) => ({
+        kind: r.kind,
+        stripeRef: r.stripe_ref,
+        packDeltaSec: r.pack_delta_sec,
+        createdAt: r.created_at,
+      })),
+      refundedRef: input.paymentIntentId,
+      amountMinor: input.amountMinor,
+      amountRefundedMinor: input.amountRefundedMinor,
+      packRemainingSec: snap.balance.packRemainingSec,
+    });
+    if (!plan || plan.reverseSec <= 0) return 0;
+    const result = await supabaseMinuteStore.apply({
+      businessId: input.businessId,
+      expected: { includedSec: snap.balance.includedRemainingSec, packSec: snap.balance.packRemainingSec },
+      delta: { includedSec: 0, packSec: -plan.reverseSec },
+      ledger: {
+        kind: "PACK_REFUND",
+        voiceCallId: null,
+        route: null,
+        idempotencyKey: plan.idempotencyKey,
+        reason: "Refunded pack: unused minutes reversed",
+        stripeRef: input.paymentIntentId,
+      },
+    });
+    if (result === "APPLIED") return plan.reverseSec;
+    if (result === "REPLAY") return 0;
+  }
+  throw new Error("voice pack refund: balance contended; retry");
 }
 
 /** The Pro voice item's included minutes for a billing period (no roll-over). */
@@ -245,6 +305,11 @@ export async function grantVoicePeriodMinutes(input: {
   periodEnd: string | null;
 }): Promise<ApplyResult> {
   return grantIncludedPeriod(supabaseMinuteStore, input);
+}
+
+/** The Pro voice item ended: its included minutes end with it (packs untouched). */
+export async function expireVoiceIncludedMinutes(businessId: string, reason: string) {
+  return expireIncludedMinutes(supabaseMinuteStore, { businessId, reason });
 }
 
 /** For the Settings overview and the entitlement snapshot. Never throws. */

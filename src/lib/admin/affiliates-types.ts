@@ -11,6 +11,8 @@ export const AFFILIATE_TABS = [
   "referrals",
   "commissions",
   "payouts",
+  "flags",
+  "tiers",
   "resources",
 ] as const;
 export type AffiliateTab = (typeof AFFILIATE_TABS)[number];
@@ -21,6 +23,8 @@ export const TAB_LABELS: Record<AffiliateTab, string> = {
   referrals: "Referrals",
   commissions: "Commissions",
   payouts: "Payouts",
+  flags: "Fraud review",
+  tiers: "Tiers & settings",
   resources: "Resources",
 };
 
@@ -54,6 +58,7 @@ export type AdminAffiliateRow = {
   lifetimeMinor: number;
   createdAt: string;
   approvedAt: string | null;
+  tier: string;
 };
 
 export type AdminReferralRow = {
@@ -92,6 +97,56 @@ export type AdminPayoutRow = {
   method: string | null;
   createdAt: string;
   paidAt: string | null;
+  failureReason?: string | null;
+};
+
+/** One held or rejected referral in the fraud review queue (audit 17). */
+export type AdminFlagRow = {
+  referralId: string;
+  affiliateId: string;
+  affiliateName: string;
+  businessName: string | null;
+  referralStatus: string;
+  heldReason: string | null;
+  signals: { code: string; label: string; severity: string; status: string; source: string }[];
+  createdAt: string;
+};
+
+export type AdminTierRow = {
+  key: string;
+  name: string;
+  rank: number;
+  /** Paid referred customers in the last 12 months. */
+  minActiveCustomers: number;
+  /** The one-off commission rate (1-10%). */
+  commissionPercent: number | null;
+  description: string | null;
+};
+
+export type AdminProgrammeSettings = {
+  autoApprovePayouts: boolean;
+  autoDispatchPayouts: boolean;
+  envAutoPayout: boolean;
+  available: boolean;
+};
+
+export type AdminAffiliateDetail = {
+  id: string;
+  displayName: string;
+  code: string;
+  status: string;
+  tier: string;
+  tierLocked: boolean;
+  activeCustomers: number;
+  referredMrrMinor: number;
+  nextTier: string | null;
+  tierPercent: number;
+  sales: { label: string; customers: number; mrrMinor: number }[];
+  tierHistory: { fromTier: string | null; toTier: string; reason: string; createdAt: string }[];
+  balances: { pendingMinor: number; approvedMinor: number; availableMinor: number; paidMinor: number; reversedMinor: number };
+  payoutReadiness: string;
+  connectState: string;
+  openFlags: number;
 };
 
 export type AdminResourceRow = {
@@ -120,6 +175,11 @@ export type AdminAffiliatesData = {
   commissions: AdminCommissionRow[];
   payouts: AdminPayoutRow[];
   resources: AdminResourceRow[];
+  flags: AdminFlagRow[];
+  tiers: AdminTierRow[];
+  settings: AdminProgrammeSettings;
+  /** The partner opened with `?affiliate=<id>`, or null. */
+  detail: AdminAffiliateDetail | null;
 };
 
 /**

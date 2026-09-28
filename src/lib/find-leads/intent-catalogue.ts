@@ -55,6 +55,9 @@ export const INTENT_GROUP_LABELS: Record<IntentGroup, string> = {
  *   * COMPANY_WEBSITE   the company's own news, press, blog and about pages.
  *   * COMPANY_CAREERS   the company's own careers and jobs pages.
  *   * CUSTOMER_DATA     the customer's own CRM or list import.
+ *   * PUBLIC_TENDERS    UK public-sector tender notices (Contracts Finder):
+ *                       evidence about the buying organisation, matched by its
+ *                       own web domain.
  *   * GOOGLE_PLACES     a business listing: corroborates a location only.
  */
 export const INTENT_SOURCES = [
@@ -63,6 +66,7 @@ export const INTENT_SOURCES = [
   "COMPANY_CAREERS",
   "CUSTOMER_DATA",
   "GOOGLE_PLACES",
+  "PUBLIC_TENDERS",
 ] as const;
 export type IntentSource = (typeof INTENT_SOURCES)[number];
 
@@ -72,6 +76,7 @@ export const INTENT_SOURCE_LABELS: Record<IntentSource, string> = {
   COMPANY_CAREERS: "Company careers page",
   CUSTOMER_DATA: "Your CRM or list",
   GOOGLE_PLACES: "Google Places",
+  PUBLIC_TENDERS: "Contracts Finder",
 };
 
 /**
@@ -85,6 +90,7 @@ export const INTENT_SOURCE_FEED: Record<IntentSource, SignalFeed | null> = {
   COMPANY_CAREERS: "COMPANY_WEBSITE",
   CUSTOMER_DATA: null,
   GOOGLE_PLACES: "PLACES",
+  PUBLIC_TENDERS: "PUBLIC_TENDERS",
 };
 
 /**
@@ -296,6 +302,7 @@ const CAREERS = (shows: string): IntentTypeSource => ({ source: "COMPANY_CAREERS
 const REGISTER = (shows: string): IntentTypeSource => ({ source: "COMPANIES_HOUSE", role: "DETECTED", shows });
 const REGISTER_HINT = (shows: string): IntentTypeSource => ({ source: "COMPANIES_HOUSE", role: "CORROBORATES", shows });
 const CUSTOMER = (shows: string): IntentTypeSource => ({ source: "CUSTOMER_DATA", role: "SUPPLIED", shows });
+const TENDERS = (shows: string): IntentTypeSource => ({ source: "PUBLIC_TENDERS", role: "DETECTED", shows });
 
 const NAMED_ROUND_CAVEAT =
   "Only the company's own announcement names a round. A share allotment at Companies House shows money went in, not which round it was.";
@@ -888,14 +895,17 @@ export const INTENT_CATALOGUE: readonly IntentTypeDefinition[] = [
     id: "TENDER_PUBLISHED",
     group: "EVENTS",
     label: "Tender or RFP published",
-    description: "The company invited proposals, quotes or tenders on its own site.",
+    description: "The organisation invited proposals, quotes or tenders: on its own site, or as a UK public-sector notice on Contracts Finder, with the buyer and the deadline.",
     evidenceKind: "TRIGGER_EVENT",
     indicates: {
       archetypes: ["CREATIVE_WEB_STUDIO", "MARKETING_AGENCY", "IT_CONSULTANCY", "MANAGEMENT_CONSULTING"],
       needs: "An active buying process with a deadline.",
     },
-    sources: [WEBSITE_NEWS("An invitation to tender or request for proposal posted on the company's own site.")],
-    caveat: "Public-sector notices (Contracts Finder, Find a Tender) are free to read but not connected yet, so only tenders on the company's own site are found.",
+    sources: [
+      WEBSITE_NEWS("An invitation to tender or request for proposal posted on the company's own site."),
+      TENDERS("An open UK public-sector tender from the organisation, mentioning one of your services or category keywords, with its closing date."),
+    ],
+    caveat: "Public-sector notices are matched to an organisation by its own web domain, so they find councils, NHS bodies, universities and other public buyers rather than private companies. Find a Tender (above-threshold notices) is not read.",
     strength: "STRONG",
     decayDays: 45,
     aliases: ["tender", "rfp", "request for proposal", "procurement", "invitation to tender"],

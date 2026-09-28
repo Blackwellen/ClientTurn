@@ -151,3 +151,90 @@ export function nextPayoutDate(now: Date = new Date()): Date {
   }
   return next;
 }
+
+/* ------------------------------------------------------ payout run (audit 17) -- */
+
+/**
+ * The payout lifecycle: DRAFT (pending approval) -> APPROVED -> PROCESSING ->
+ * PAID, or FAILED (commissions released) / CANCELLED (commissions released).
+ * Anything else is refused, so a stale admin page cannot move a payout
+ * backwards.
+ */
+export const PAYOUT_TRANSITIONS: Record<string, readonly string[]> = {
+  DRAFT: ["APPROVED", "CANCELLED"],
+  APPROVED: ["PROCESSING", "PAID", "CANCELLED", "FAILED"],
+  PROCESSING: ["PAID", "FAILED"],
+  FAILED: ["APPROVED", "CANCELLED"],
+  PAID: [],
+  CANCELLED: [],
+};
+
+export function canTransitionPayout(from: string, to: string): boolean {
+  return (PAYOUT_TRANSITIONS[from] ?? []).includes(to);
+}
+
+export type PayoutRunDecision =
+  | { action: "skip"; reason: "not_ready" | "below_threshold" | "negative_balance" }
+  | { action: "raise"; initialStatus: "DRAFT" | "APPROVED" };
+
+/**
+ * Whether the monthly run raises a payout for one partner, and in what state.
+ *
+ * A raised payout is DRAFT ("pending approval") unless an admin has switched
+ * on auto-approval in the programme settings. Sending is a further, separate
+ * switch. Nothing here ever sends money.
+ */
+export function payoutRunDecision(input: {
+  readiness: string;
+  availableMinor: number;
+  minimumPayoutMinor: number;
+  autoApprove: boolean;
+}): PayoutRunDecision {
+  if (input.availableMinor < 0) return { action: "skip", reason: "negative_balance" };
+  if (input.readiness !== "READY") return { action: "skip", reason: "not_ready" };
+  if (input.availableMinor < input.minimumPayoutMinor) return { action: "skip", reason: "below_threshold" };
+  return { action: "raise", initialStatus: input.autoApprove ? "APPROVED" : "DRAFT" };
+}
+
+/**
+ * Automatic sending needs both the admin setting and the deployment switch
+ * (`AFFILIATE_AUTO_PAYOUT=true`). Either one off means a person presses Send.
+ */
+export function autoDispatchAllowed(input: { settingEnabled: boolean; envEnabled: boolean }): boolean {
+  return input.settingEnabled && input.envEnabled;
+}
+
+/**
+ * Whether ClientTurn self-bills VAT-registered partners. **No at launch**
+ * (owner decision 2026-09-28): HMRC self-billing (VAT Notice 700/62) needs a
+ * written agreement with each partner and a process to keep it current, which
+ * the programme does not run. A VAT-registered partner sends ClientTurn a VAT
+ * invoice; every statement is remittance advice.
+ */
+export const SELF_BILLING_AT_LAUNCH = false;
+
+/**
+ * The tax wording on a partner statement. Always remittance advice, never a
+ * VAT invoice, while `SELF_BILLING_AT_LAUNCH` is false: `selfBillingAgreement`
+ * is accepted for when that changes and is ignored until then.
+ */
+export function selfBillingLines(input: {
+  taxCountry: string | null;
+  vatRegistered: boolean;
+  selfBillingAgreement: boolean;
+}): string[] {
+  const uk = (input.taxCountry ?? "GB").toUpperCase() === "GB";
+  if (!uk) {
+    return ["Remittance advice, not a VAT invoice. You are responsible for declaring this income where you are tax resident."];
+  }
+  if (SELF_BILLING_AT_LAUNCH && input.vatRegistered && input.selfBillingAgreement) {
+    return [
+      "Self-billing invoice issued by ClientTurn on behalf of the supplier under a self-billing agreement.",
+      "The VAT shown is your output tax charged to ClientTurn.",
+    ];
+  }
+  return [
+    "Remittance advice, not a VAT invoice. ClientTurn does not self-bill: if you are VAT registered, send ClientTurn a VAT invoice for this amount.",
+    "You are responsible for declaring this income to HMRC.",
+  ];
+}

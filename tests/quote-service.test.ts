@@ -351,8 +351,12 @@ describe("registry declarations", () => {
     assert.equal(requiresConfirmation(serviceOperation("quote.calculate")!.risk), false);
   });
 
-  test("the agent may later use exactly calculate, create, request approval and send", () => {
-    assert.deepEqual([...AGENT_QUOTE_OPERATIONS].sort(), ["quote.calculate", "quote.create", "quote.send", "quote.submit_for_approval"]);
+  test("the agent uses exactly calculate, create, request approval, send and its own discount", () => {
+    // quote.apply_discount was added deliberately with the agent's quote tools
+    // (brief §74, agent/tools.ts propose_discount): the assistant's discount,
+    // decided by the discount policy in the quote core. update_draft, approve,
+    // reject and withdraw stay closed to the agent (below).
+    assert.deepEqual([...AGENT_QUOTE_OPERATIONS].sort(), ["quote.apply_discount", "quote.calculate", "quote.create", "quote.send", "quote.submit_for_approval"]);
     for (const name of AGENT_QUOTE_OPERATIONS) {
       const callers = serviceOperation(name)!.callers;
       assert.ok(!callers || callers.includes("AGENT"), `${name} must admit the AGENT caller`);

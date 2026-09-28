@@ -29,6 +29,7 @@
 
 import { z } from "zod";
 import type { CommercialAuthority } from "../commercial/authority.ts";
+import type { AiAuthority } from "../commercial/ai-permissions.ts";
 import { bpsSchema, minorSchema } from "../catalogue/types.ts";
 import { mulDivFloor, ratioBps } from "./money.ts";
 
@@ -109,6 +110,59 @@ export function policyFromAuthority(authority: CommercialAuthority): DiscountPol
         ? [{ id: "authority-value-ceiling", valueAboveMinor: authority.requires_human_above_value_minor, role: "admin" }]
         : [],
   });
+}
+
+/**
+ * The policy the ASSISTANT is held to (brief §74, commercial authority v2):
+ * the workspace's quote policy (quote_settings.discount_policy: its approval
+ * rules and margin floor bind everyone) plus what the owner lets the AI do
+ * (ai-permissions.ts), which is the one source of the AI's own limits:
+ *
+ *   restraint      the AI setting; NEVER when the "Offer discounts" switch is off
+ *   aiMaxBps       the AI maximum percent
+ *   aiMaxMinor     the AI money cap
+ *   first step     the AI first concession, capped at the maximum
+ *   margin floor   the higher of the two floors
+ *   approvals      the quote policy's rules plus the AI thresholds (percent,
+ *                  amount, value) and the v1 "a person above this value" ceiling,
+ *                  each needing the role the owner chose
+ *
+ * Pure; `evaluateDiscount` then decides every proposal with it.
+ */
+export function aiDiscountPolicy(
+  base: DiscountPolicy | DiscountPolicyInput,
+  ai: AiAuthority,
+  legacy: { requiresHumanAboveValueMinor?: number | null } = {},
+): DiscountPolicy {
+  const quote = discountPolicySchema.parse(base);
+  const d = ai.discount;
+  const allowed = ai.capabilities.discount === true && d.restraint !== "NEVER";
+  const toBps = (percent: number) => Math.max(0, Math.min(10_000, Math.round(percent * 100)));
+  const aiMaxBps = allowed ? toBps(d.maxPercent) : 0;
+  const firstBps = d.firstConcessionPercent !== null ? Math.min(toBps(d.firstConcessionPercent), aiMaxBps) : null;
+  const floors = [quote.marginFloorBps, d.marginFloorPercent !== null ? Math.round(d.marginFloorPercent * 100) : null].filter(
+    (v): v is number => v !== null,
+  );
+  const rules: ApprovalRule[] = [...quote.approvalRules];
+  if (d.approvalAbovePercent !== null) rules.push({ id: "ai-discount-percent", discountAboveBps: toBps(d.approvalAbovePercent), role: d.approvalRole });
+  if (d.approvalAboveAmountMinor !== null) rules.push({ id: "ai-discount-amount", discountAboveMinor: d.approvalAboveAmountMinor, role: d.approvalRole });
+  if (d.approvalAboveValueMinor !== null) rules.push({ id: "ai-quote-value", valueAboveMinor: d.approvalAboveValueMinor, role: d.approvalRole });
+  if (legacy.requiresHumanAboveValueMinor != null) {
+    rules.push({ id: "authority-value-ceiling", valueAboveMinor: legacy.requiresHumanAboveValueMinor, role: "admin" });
+  }
+  return discountPolicySchema.parse({
+    restraint: allowed ? d.restraint : "NEVER",
+    aiMaxBps,
+    aiMaxMinor: allowed ? d.maxAmountMinor : null,
+    firstConcessionMaxBps: allowed ? firstBps : null,
+    marginFloorBps: floors.length > 0 ? Math.max(...floors) : null,
+    approvalRules: rules.slice(0, 20),
+  });
+}
+
+/** The assistant's policy for a workspace, from its quote policy and its commercial authority row. */
+export function aiDiscountPolicyFromAuthority(base: DiscountPolicy | DiscountPolicyInput, authority: CommercialAuthority, ai: AiAuthority): DiscountPolicy {
+  return aiDiscountPolicy(base, ai, { requiresHumanAboveValueMinor: authority.requires_human_above_value_minor });
 }
 
 export type DiscountActor = { kind: "AI" } | { kind: "HUMAN"; role: WorkspaceRole };

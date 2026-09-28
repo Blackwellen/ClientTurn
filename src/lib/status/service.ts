@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { JobType } from "@/lib/jobs/queue";
+import { getMaintenanceStatusForStaticPage } from "@/lib/maintenance/state";
+import { LEVEL_LABEL } from "@/lib/maintenance/types";
 
 /**
  * StatusService — the one public-safe view of platform health (V4 §22).
@@ -461,20 +463,40 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
   const outages = allStatuses.filter((status) => status === "OUTAGE").length;
   const degraded = allStatuses.filter((status) => status === "DEGRADED").length;
 
-  const overall: ServiceStatus = allStatuses.includes("MAINTENANCE")
-    ? "MAINTENANCE"
-    : outages > 0
-      ? "OUTAGE"
-      : degraded >= 2
+  // Planned maintenance (0161) is read from the same tagged cache the website
+  // uses, so the page and the maintenance banner can never disagree.
+  const maintenanceStatus = await getMaintenanceStatusForStaticPage(now);
+  const maintenanceWindow = maintenanceStatus.active ?? maintenanceStatus.upcoming;
+  const maintenance: StatusSnapshot["maintenance"] = maintenanceWindow
+    ? {
+        phase: maintenanceStatus.active ? "ACTIVE" : "SCHEDULED",
+        level: maintenanceWindow.level,
+        levelLabel: LEVEL_LABEL[maintenanceWindow.level],
+        startsAt: maintenanceWindow.startsAt,
+        endsAt: maintenanceWindow.endsAt,
+        expectedBackAt: maintenanceWindow.expectedBackAt,
+        message: maintenanceWindow.message,
+      }
+    : null;
+
+  // Maintenance in force reads as MAINTENANCE unless something is actually
+  // down, which stays the headline (the same order as `worst`).
+  const overall: ServiceStatus =
+    (maintenanceStatus.phase === "ACTIVE" && outages === 0) || allStatuses.includes("MAINTENANCE")
+      ? "MAINTENANCE"
+      : outages > 0
         ? "OUTAGE"
-        : degraded > 0
-          ? "DEGRADED"
-          : "OPERATIONAL";
+        : degraded >= 2
+          ? "OUTAGE"
+          : degraded > 0
+            ? "DEGRADED"
+            : "OPERATIONAL";
 
   const newestProbe = probeRows[0]?.checked_at ?? null;
 
   return {
     overall,
+    maintenance,
     generatedAt: now.toISOString(),
     // Said out loud rather than hidden: a page that cannot see the platform
     // must not present its last known reading as current.

@@ -8,7 +8,15 @@ import {
   twilioConfigProblems,
   twilioCredentials,
 } from "@/lib/messaging/twilio";
-import { getLiveAccessToken } from "@/lib/integrations/oauth";
+import { getLiveAccessToken, markReconnectRequired } from "@/lib/integrations/oauth";
+import {
+  OAuthRefreshError,
+  RECONNECT_REQUIRED,
+  SCOPE_OUTDATED,
+  classifyPing,
+  pingSpec,
+  zohoScopeOutdated,
+} from "@/lib/integrations/oauth-health";
 import { getOAuthProviderConfig } from "@/lib/integrations/providers/registry";
 // Populates that registry. Without it `probeSlack` below sees no config for a
 // provider that is, in fact, configured -- the same class of bug `all.ts`
@@ -248,13 +256,103 @@ function probeEmail(): Probe {
     : actionRequired("missing_api_key", "No email provider key is configured.");
 }
 
-async function probe(providerType: string, integrationId: string): Promise<Probe> {
+type IntegrationRow = { scopes?: string[] | null; config?: unknown };
+
+/**
+ * The token checks, then one cheap authenticated GET where the provider has
+ * one (`pingSpec`). A 401/403, or a refresh the provider refuses for good,
+ * flips the connection to Reconnect through `markReconnectRequired`, which
+ * is also the one place that notifies about it.
+ */
+async function probeLive(
+  providerType: string,
+  integrationId: string,
+  row: IntegrationRow,
+): Promise<Probe> {
+  const base = await probeToken(integrationId, providerType);
+  if (base.status !== "HEALTHY") return base;
+
+  // Zoho connections made before the UPDATE-scope fix: every re-sync of an
+  // existing record is refused. Prompt the reconnect instead of staying green.
+  if (providerType === "zoho_crm" && zohoScopeOutdated(row.scopes)) {
+    await markReconnectRequired(integrationId, "scope", SCOPE_OUTDATED);
+    return actionRequired(SCOPE_OUTDATED.code, SCOPE_OUTDATED.message);
+  }
+
+  const admin = createAdminClient();
+  const { data: secret } = await admin
+    .from("integration_secrets")
+    .select("access_token, token_expires_at, extra")
+    .eq("integration_id", integrationId)
+    .maybeSingle();
+  if (!secret?.access_token) return base;
+
+  let token = secret.access_token;
+  const expiresAt = secret.token_expires_at ? new Date(secret.token_expires_at).getTime() : null;
+  if (expiresAt !== null && expiresAt - Date.now() < 60_000) {
+    // Zoho refreshes against the data centre it connected to, which only its
+    // own sync path knows. Its next sync proves the refresh; no ping here.
+    if (providerType === "zoho_crm") return base;
+    const config = getOAuthProviderConfig(providerType);
+    if (!config) return base;
+    try {
+      token = await getLiveAccessToken(integrationId, config);
+    } catch (error) {
+      if (error instanceof OAuthRefreshError && error.needsReconnect) {
+        return actionRequired(RECONNECT_REQUIRED.code, RECONNECT_REQUIRED.message);
+      }
+      return {
+        status: "DEGRADED",
+        errorCode: "refresh_failed",
+        errorMessage: "The provider did not answer a token refresh. It will be retried.",
+        verified: false,
+      };
+    }
+  }
+
+  const extra = (secret.extra ?? {}) as Record<string, unknown>;
+  const config = (row.config ?? {}) as Record<string, unknown>;
+  const spec = pingSpec(providerType, token, {
+    apiDomain: typeof extra.api_domain === "string" ? extra.api_domain : null,
+    instanceUrl: typeof config.instanceUrl === "string" ? config.instanceUrl : null,
+  });
+  if (!spec) return base;
+
+  try {
+    const response = await fetch(spec.url, {
+      method: "GET",
+      headers: spec.headers,
+      signal: AbortSignal.timeout(8_000),
+    });
+    const verdict = classifyPing(response.status);
+    if (verdict === "ok") return VERIFIED_OK;
+    if (verdict === "reconnect") {
+      await markReconnectRequired(integrationId, String(response.status));
+      return actionRequired(RECONNECT_REQUIRED.code, RECONNECT_REQUIRED.message);
+    }
+    return {
+      status: "DEGRADED",
+      errorCode: String(response.status),
+      errorMessage: `The provider responded with ${response.status} to a health check.`,
+      verified: false,
+    };
+  } catch (error) {
+    return {
+      status: "DEGRADED",
+      errorCode: "network_error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      verified: false,
+    };
+  }
+}
+
+async function probe(providerType: string, integrationId: string, row: IntegrationRow = {}): Promise<Probe> {
   if (providerType === "twilio_sms" || providerType === "twilio_whatsapp") {
     return probeTwilio();
   }
   if (providerType === "email") return probeEmail();
   if (providerType === "slack") return probeSlack(integrationId);
-  return probeToken(integrationId, providerType);
+  return probeLive(providerType, integrationId, row);
 }
 
 export type HealthCheckOutcome = {
@@ -283,7 +381,7 @@ export async function runIntegrationHealthChecks(params: {
 
   let query = admin
     .from("integrations")
-    .select("id, provider_type, status")
+    .select("id, provider_type, status, scopes, config")
     .eq("business_id", params.businessId)
     .neq("status", "DISCONNECTED");
 
@@ -293,7 +391,10 @@ export async function runIntegrationHealthChecks(params: {
   const outcomes: HealthCheckOutcome[] = [];
 
   for (const integration of integrations ?? []) {
-    const result = await probe(integration.provider_type, integration.id);
+    const result = await probe(integration.provider_type, integration.id, {
+      scopes: integration.scopes as string[] | null,
+      config: integration.config,
+    });
     const now = new Date().toISOString();
 
     await admin
@@ -340,7 +441,11 @@ export async function runIntegrationHealthChecks(params: {
       });
     }
 
-    if (params.notify && becameBroken && business.notify.integrationFailure) {
+    // A Reconnect state notified already, from `markReconnectRequired`.
+    const alreadyNotified =
+      result.errorCode === RECONNECT_REQUIRED.code || result.errorCode === SCOPE_OUTDATED.code;
+
+    if (params.notify && becameBroken && !alreadyNotified && business.notify.integrationFailure) {
       await queueNotification({
         businessId: params.businessId,
         type: "integration_failure",

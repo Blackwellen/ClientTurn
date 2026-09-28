@@ -10,6 +10,8 @@ import { ingestLead } from "@/lib/ingest/service";
 import { logWriteError } from "@/lib/supabase/write-result";
 import { normalisePhone } from "@/lib/messaging/types";
 import { companyDedupeKey, normaliseDomain } from "@/lib/prospects/dedupe";
+import { hasCompanyFacts, readCompanyFacts, type CompanyFacts } from "@/lib/imports/company-facts";
+import { categoryPicker, recordCompanyFacts } from "@/lib/imports/company-facts-server";
 import {
   classifyRow,
   IMPORT_FIELDS,
@@ -84,6 +86,29 @@ function readRow(
     notes: value("notes"),
     relationshipType: null,
   };
+}
+
+/** The company-fact cells of one raw row, parsed (imports/company-facts.ts). */
+function readFacts(raw: string[], mapping: Partial<Record<ImportField, number>>): CompanyFacts {
+  const cell = (field: ImportField) => {
+    const index = mapping[field];
+    return index === undefined ? null : (raw[index]?.trim() ?? null);
+  };
+  return readCompanyFacts({
+    contractRenewalDate: cell("contractRenewalDate"),
+    headcount: cell("headcount"),
+    technologies: cell("technologies"),
+  });
+}
+
+/** Stored mapping from lead_imports.mapping_json, read defensively. */
+function storedMapping(value: unknown): Partial<Record<ImportField, number>> {
+  const out: Partial<Record<ImportField, number>> = {};
+  if (!value || typeof value !== "object") return out;
+  for (const [key, index] of Object.entries(value as Record<string, unknown>)) {
+    if ((FIELD_KEYS as readonly string[]).includes(key) && Number.isInteger(index)) out[key as ImportField] = index as number;
+  }
+  return out;
 }
 
 /**
@@ -171,8 +196,13 @@ export async function createImport(input: unknown): Promise<ActionResult<{ id: s
     });
 
     counts[verdict.classification] += 1;
+    const facts = readFacts(value.rows[index], value.mapping);
 
     return {
+      // Company facts (0163 columns): stripped again below if the migration is not applied.
+      contract_renewal_date: facts.contractRenewalDate,
+      headcount: facts.headcount,
+      technologies: facts.technologies.length > 0 ? facts.technologies : null,
       business_id: workspace.businessId,
       import_id: created.id,
       row_number: index + 1,
@@ -198,7 +228,16 @@ export async function createImport(input: unknown): Promise<ActionResult<{ id: s
   // Chunked: a single 5,000-row insert exceeds the request limit.
   for (let offset = 0; offset < rowRecords.length; offset += 500) {
     const chunk = rowRecords.slice(offset, offset + 500);
-    const { error: rowError } = await db.from("lead_import_rows").insert(chunk);
+    let { error: rowError } = await db.from("lead_import_rows").insert(chunk as never); // 0163 columns post-date the generated types
+    // 0163 not applied: the three company-fact columns do not exist yet. The
+    // facts are re-read from raw_json at commit, so nothing is lost.
+    if (rowError && (rowError.code === "PGRST204" || rowError.code === "42703")) {
+      const stripped = chunk.map(({ contract_renewal_date: _d, headcount: _h, technologies: _t, ...rest }) => {
+        void _d; void _h; void _t;
+        return rest;
+      });
+      ({ error: rowError } = await db.from("lead_import_rows").insert(stripped));
+    }
     if (rowError) {
       await db.from("lead_imports").update({ status: "FAILED" }).eq("id", created.id);
       return { ok: false, error: "The file could not be stored for review." };
@@ -366,7 +405,7 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
 
   const { data: job } = await db
     .from("lead_imports")
-    .select("id, status, default_relationship_type, default_source_detail, start_follow_up")
+    .select("id, status, default_relationship_type, default_source_detail, start_follow_up, mapping_json")
     .eq("id", parsed.data)
     .eq("business_id", workspace.businessId)
     .maybeSingle();
@@ -379,7 +418,7 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
   const { data: rows } = await db
     .from("lead_import_rows")
     .select(
-      "id, first_name, last_name, company_name, email, phone_e164, postcode, role_title, notes, source_detail, classification, user_classification",
+      "id, row_number, raw_json, first_name, last_name, company_name, email, phone_e164, postcode, role_title, notes, source_detail, classification, user_classification",
     )
     .eq("business_id", workspace.businessId)
     .eq("import_id", job.id)
@@ -403,6 +442,9 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
   let leadCount = 0;
   let prospectCount = 0;
   let failed = 0;
+  let signalsRecorded = 0;
+  const importMapping = storedMapping((job as { mapping_json?: unknown }).mapping_json);
+  const pick = await categoryPicker(workspace.businessId);
 
   for (const row of candidates) {
     const decision = (row.user_classification ?? row.classification) as RowClassification;
@@ -462,12 +504,22 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
         );
 
         if (ingested.outcome === "REJECTED") {
+          // Refused for the plan's lead cap (only when the import starts
+          // follow-up, billing/lead-cap.ts) or because the contact is suppressed.
+          const capped = ingested.reasons.includes("plan_limit") || ingested.reasons.includes("subscription_inactive");
           logWriteError(
             await db
               .from("lead_import_rows")
-              .update({ import_state: "SKIPPED", error_message: "Suppressed before import" })
+              .update({
+                import_state: "SKIPPED",
+                error_message: capped
+                  ? ingested.reasons.includes("plan_limit")
+                    ? "Plan lead limit reached for this billing period"
+                    : "Subscription not active"
+                  : "Suppressed before import",
+              })
               .eq("id", row.id),
-            "import: mark row suppressed",
+            "import: mark row skipped",
             { businessId: workspace.businessId },
           );
           continue;
@@ -546,6 +598,28 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
 
         if (error || !prospect) throw new Error("insert failed");
 
+        // Company facts from the customer's own data (renewal, headcount,
+        // technologies) become intent evidence on the prospect. Never fails
+        // the row: the prospect exists either way.
+        const cells = ((row as { raw_json?: { cells?: unknown } }).raw_json?.cells ?? []) as string[];
+        const facts = readFacts(Array.isArray(cells) ? cells : [], importMapping);
+        if (hasCompanyFacts(facts)) {
+          try {
+            const outcome = await recordCompanyFacts({
+              businessId: workspace.businessId,
+              prospectId: prospect.id,
+              companyId: company?.id ?? null,
+              domain,
+              facts,
+              reference: `import-${job.id}-row-${(row as { row_number?: number }).row_number ?? 0}`,
+              pick,
+            });
+            signalsRecorded += outcome.recorded;
+          } catch (factError) {
+            console.error("[imports] company facts not recorded", { importId: job.id, message: factError instanceof Error ? factError.message : String(factError) });
+          }
+        }
+
         await db.from("lead_source_evidence").insert({
           business_id: workspace.businessId,
           subject_type: "PROSPECT",
@@ -589,7 +663,7 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
     action: "lead.imported",
     entityType: "lead_import",
     entityId: job.id,
-    metadata: { leads: leadCount, prospects: prospectCount, failed },
+    metadata: { leads: leadCount, prospects: prospectCount, failed, intent_signals: signalsRecorded },
   });
 
   revalidatePath("/app/leads");

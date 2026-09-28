@@ -552,7 +552,7 @@ export function mergeQualificationPolicy(
   return next;
 }
 
-export type PolicyCaller = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM";
+export type PolicyCaller = "UI" | "COPILOT" | "AGENT" | "MCP" | "API" | "SYSTEM" | "AUTOMATION";
 
 /**
  * Why a policy change is refused for this caller, or null. The narrow-only

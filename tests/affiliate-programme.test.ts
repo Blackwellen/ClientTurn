@@ -57,21 +57,23 @@ describe("programme policy", () => {
   const recurring: ProgrammePolicy = { ...FALLBACK_POLICY };
 
   test("states the rate the same way everywhere", () => {
-    assert.equal(describeRate(recurring), "20%");
+    assert.equal(describeRate(recurring), "6%");
     assert.equal(
       describeRate({ ...recurring, commissionType: "FLAT_AMOUNT", commissionFlatMinor: 5000 }),
       "£50",
     );
   });
 
-  test("a bounded recurring plan states its duration", () => {
-    assert.match(describeCommission(recurring), /first 12 months/);
+  test("the programme states a one-off commission on the first payment, annual included", () => {
+    assert.match(describeCommission(recurring), /one-off 6% commission/);
+    assert.match(describeCommission(recurring), /full amount of an annual plan/);
+    assert.doesNotMatch(describeCommission(recurring), /every payment|for as long as|12 months/);
   });
 
-  test("an unbounded recurring plan says so rather than implying a limit", () => {
-    const lifetime = { ...recurring, recurringMonths: null };
-    assert.match(describeCommission(lifetime), /as long as the customer stays/);
-    assert.doesNotMatch(describeCommission(lifetime), /months/);
+  test("a legacy recurring row is described as one-off too", () => {
+    const legacy = { ...recurring, commissionType: "RECURRING_PERCENT" as const };
+    assert.match(describeCommission(legacy), /one-off/);
+    assert.doesNotMatch(describeCommission(legacy), /every payment|for as long as/);
   });
 
   test("a first-payment plan does not claim recurring earnings", () => {

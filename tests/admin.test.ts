@@ -84,13 +84,14 @@ describe("admin shell navigation", () => {
         "/admin/support",
         "/admin/affiliates",
         "/admin/system",
+        "/admin/site",
         "/admin/billing",
         "/admin/settings",
       ],
     );
     assert.deepEqual(
       ADMIN_NAV.map((item) => item.label),
-      ["Overview", "Economics", "Customers", "Support", "Affiliates", "System", "Billing", "Settings"],
+      ["Overview", "Economics", "Customers", "Support", "Affiliates", "System", "Site", "Billing", "Settings"],
     );
     for (const { href } of ADMIN_NAV) {
       const segment = href.replace(/^\/admin\/?/, "");

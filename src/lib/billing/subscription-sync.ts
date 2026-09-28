@@ -11,7 +11,9 @@ import { SUBSCRIPTION_WELCOME_KIND, shouldQueueWelcome, welcomeJobKey } from "@/
 import { stripe, mapSubscriptionStatus, planForPriceId, entitlementsForPlan } from "./stripe";
 import { recordTermsAcceptance } from "./terms-acceptance";
 import { PLANS } from "./plans";
-import { selectPlanItem } from "./subscription-items";
+import { selectPlanItem, voiceItemsOf } from "./subscription-items";
+import { subscriptionHasEnded } from "./cancellation";
+import { cancelNumberReleaseOnResubscribe, scheduleNumberReleaseAfterEnd } from "./number-release";
 import { syncVoiceItems, voicePriceIds } from "./voice-subscription-sync";
 
 /**
@@ -60,6 +62,17 @@ export async function applyStripeSubscription(
   const status = deleted ? "CANCELLED" : mapSubscriptionStatus(subscription.status);
   const trialing = !deleted && subscription.status === "trialing";
   const paymentMethodId = idOf(subscription.default_payment_method);
+
+  // The row as it was, to tell a resubscription (a new subscription after a
+  // cancelled one) from an update of the same one. Read failures throw: the
+  // webhook retries rather than guess.
+  const previousRead = await db()
+    .from("subscriptions")
+    .select("stripe_subscription_id, status")
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (previousRead.error) throw new Error(`stripe: subscription read failed: ${previousRead.error.message}`);
+  const previous = previousRead.data as { stripe_subscription_id: string | null; status: string } | null;
 
   const update = await db()
     .from("subscriptions")
@@ -122,6 +135,24 @@ export async function applyStripeSubscription(
   // `business_entitlement_grants` separately. A failure there is logged and
   // never breaks the plan mirror above.
   await syncVoiceItems(subscription, { businessId, deleted, eventId: context.eventId });
+
+  // The dedicated number after the end (cancellation.ts, number-release.ts):
+  // released 14 days after a subscription ends, so the rent stops; kept if
+  // the workspace resubscribes with voice before then.
+  if (subscriptionHasEnded({ deleted, stripeStatus: subscription.status })) {
+    const endedAt =
+      iso((subscription as unknown as { ended_at?: number | null }).ended_at) ??
+      iso(subscription.canceled_at) ??
+      new Date().toISOString();
+    await scheduleNumberReleaseAfterEnd({ businessId, subscriptionId: subscription.id, endedAt });
+  } else if (
+    subscription.status === "active" &&
+    (previous?.status === "CANCELLED" ||
+      (previous?.stripe_subscription_id != null && previous.stripe_subscription_id !== subscription.id))
+  ) {
+    const voice = voiceItemsOf(subscription.items?.data ?? [], voicePriceIds());
+    if (voice.proVoice || voice.number) await cancelNumberReleaseOnResubscribe(businessId);
+  }
 
   // Active on a paid plan (a trial that converted, or a direct subscribe):
   // the one welcome email about the plan and its add-ons.

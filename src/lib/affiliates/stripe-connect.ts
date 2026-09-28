@@ -61,7 +61,7 @@ export async function ensureConnectAccount(input: {
       product_description: "ClientTurn affiliate programme partner",
     },
     capabilities: { transfers: { requested: true } },
-    metadata: { affiliate_id: input.affiliateId, platform: "clientturn_affiliates" },
+    metadata: { affiliate_id: input.affiliateId, platform: "clientturn_affiliates", app: "clientturn" },
   });
 
   await db
@@ -209,7 +209,7 @@ export async function sendConnectTransfer(input: {
         currency: input.currency.toLowerCase(),
         destination: input.accountId,
         description: input.description,
-        metadata: { affiliate_payout_id: input.payoutId },
+        metadata: { affiliate_payout_id: input.payoutId, app: "clientturn" },
       },
       { idempotencyKey: `affiliate_payout_${input.payoutId}` },
     );

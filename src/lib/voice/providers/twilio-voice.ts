@@ -204,6 +204,13 @@ export function createTwilioVoiceProvider(opts: TwilioVoiceOptions = {}): Teleph
     },
 
     // -------------------------------------------------------------- numbers
+    async subaccountAuthToken(accountSid: string) {
+      // GET /Accounts/{Sid}.json with the parent credentials returns the
+      // subaccount's auth_token (the same read subCreds uses).
+      const c = await subCreds(accountSid);
+      return c.sid === accountSid ? c.token : null;
+    },
+
     async createSubaccount({ friendlyName }) {
       const p = parent();
       const found = (await request(p, "GET", `${TWILIO_API_BASE}/Accounts.json`, { FriendlyName: friendlyName, Status: "active" })) as {

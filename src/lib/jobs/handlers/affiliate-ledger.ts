@@ -12,6 +12,11 @@ import {
   autoDispatchEnabled,
   dispatchApprovedPayouts,
 } from "@/lib/affiliates/dispatch";
+import { autoDispatchAllowed, payoutRunDecision } from "@/lib/affiliates/payout-rules";
+import { getProgrammeSettings, untypedDb } from "@/lib/affiliates/programme-settings";
+import { recalculateTiers } from "@/lib/affiliates/tiers";
+import { checkPaidReferrals } from "@/lib/affiliates/fraud";
+import { isSchemaMissing } from "@/lib/billing/stripe-events";
 
 /**
  * The affiliate ledger tick (V4 §35).
@@ -28,22 +33,35 @@ import {
  * reads PENDING rows, payout creation is keyed by period, and commission
  * claiming is guarded by `payout_id is null` inside a single statement.
  *
- * What this job deliberately does **not** do is send money. It creates the
- * payout record and claims the commissions into it; the actual Connect
- * transfer is a separate, explicitly-invoked step. An automated job that moves
- * real money on a timer is not something to enable by default.
+ * What this job deliberately does **not** do by default is send money, or
+ * even approve a payout. It raises the payout as DRAFT ("pending approval")
+ * and claims the commissions into it; an admin approves and sends it in
+ * Admin -> Affiliates -> Payouts. Auto-approval and auto-sending are two
+ * separate admin settings (0166), and sending also needs the deployment
+ * switch AFFILIATE_AUTO_PAYOUT=true.
+ *
+ * It also recalculates partner tiers, runs the payment-side self-referral
+ * check and purges identifiers past their retention (audit 17).
  */
 export async function handleAffiliateLedger(): Promise<void> {
+  const settings = await getProgrammeSettings();
   const approved = await approveDueCommissions();
   const expired = await expireStaleTrials();
   const flagged = await flagSuspectReferrals();
-  const payouts = await runPayoutBatch();
+  // Payment-side self-referral checks (same Stripe customer or card). Stripe
+  // is read here, in the job, never in the webhook (audit 17 §1).
+  const paymentFlags = await checkPaidReferrals(listCardFingerprints);
+  // Tiers: promotions daily, demotions on the monthly review (audit 17 §3).
+  const tiers = await recalculateTiers();
+  const payouts = await runPayoutBatch(settings.autoApprovePayouts);
+  const purged = await purgeIdentifiers();
 
-  // Sending is opt-in. Without AFFILIATE_AUTO_PAYOUT=true the payouts sit
-  // APPROVED for a person to release from the admin surface — a platform that
-  // starts wiring money on a cron the day it deploys is one misconfigured plan
-  // away from an incident.
-  const dispatched = autoDispatchEnabled()
+  // Sending needs BOTH the admin setting and AFFILIATE_AUTO_PAYOUT=true.
+  // Otherwise payouts wait for a person to approve and send them in admin.
+  const dispatched = autoDispatchAllowed({
+    settingEnabled: settings.autoDispatchPayouts,
+    envEnabled: autoDispatchEnabled(),
+  })
     ? await dispatchApprovedPayouts()
     : null;
 
@@ -51,11 +69,30 @@ export async function handleAffiliateLedger(): Promise<void> {
   // can see whether a quiet night was "nothing due" or "nothing ran".
   console.info(
     `[affiliate.ledger] approved=${approved} trialsExpired=${expired} ` +
-      `flagged=${flagged} payoutsRaised=${payouts} ` +
+      `flagged=${flagged} paymentFlags=${paymentFlags} tiersChanged=${tiers.changed}/${tiers.evaluated} ` +
+      `payoutsRaised=${payouts} identifiersPurged=${purged} ` +
       (dispatched
         ? `sent=${dispatched.sent} failed=${dispatched.failed} skipped=${dispatched.skipped}`
         : "dispatch=manual"),
   );
+}
+
+/** Card fingerprints on a Stripe customer, for the self-referral check. */
+async function listCardFingerprints(customerId: string): Promise<string[]> {
+  const { stripe } = await import("@/lib/billing/stripe");
+  const methods = await stripe.paymentMethods.list({ customer: customerId, type: "card", limit: 20 });
+  return methods.data.map((method) => method.card?.fingerprint).filter((value): value is string => Boolean(value));
+}
+
+/** GDPR minimisation: hashes after 120 days, click rows after 400 (0166). */
+async function purgeIdentifiers(): Promise<number> {
+  const { data, error } = await untypedDb().rpc("purge_affiliate_identifiers");
+  if (error) {
+    if (!isSchemaMissing(error)) console.error("[affiliate.ledger] purge failed", error.message);
+    return 0;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as { hashes_cleared?: number; clicks_deleted?: number } | null;
+  return Number(row?.hashes_cleared ?? 0) + Number(row?.clicks_deleted ?? 0);
 }
 
 /**
@@ -66,7 +103,7 @@ export async function handleAffiliateLedger(): Promise<void> {
  * submitted, and the available balance must clear the threshold. A payout
  * raised without those either fails at Stripe or sits stuck.
  */
-async function runPayoutBatch(): Promise<number> {
+async function runPayoutBatch(autoApprove: boolean): Promise<number> {
   const db = createAdminClient();
 
   const { data: affiliates } = await db
@@ -107,8 +144,15 @@ async function runPayoutBatch(): Promise<number> {
 
     await syncReadiness(affiliate.id, readiness.readiness);
 
-    if (readiness.readiness !== "READY") continue;
-    if (balances.availableMinor < plan.minimumPayoutMinor) continue;
+    // Negative balances (clawbacks) and below-threshold balances wait; a
+    // raised payout is DRAFT ("pending approval") unless auto-approval is on.
+    const decision = payoutRunDecision({
+      readiness: readiness.readiness,
+      availableMinor: balances.availableMinor,
+      minimumPayoutMinor: plan.minimumPayoutMinor,
+      autoApprove,
+    });
+    if (decision.action !== "raise") continue;
 
     const result = await createPayout({
       affiliateId: affiliate.id,
@@ -120,6 +164,7 @@ async function runPayoutBatch(): Promise<number> {
       // Keyed by affiliate and period, so re-running the job in the same month
       // finds the payout already exists rather than raising a second one.
       idempotencyKey: `payout:${affiliate.id}:${periodEnd.toISOString().slice(0, 7)}`,
+      initialStatus: decision.initialStatus,
     });
 
     if (result.status === "created") created += 1;

@@ -13,6 +13,8 @@ import { createCreditCheckout, createSubscriptionCheckout, type UrlOutcome } fro
 const trialSchema = z.object({
   plan: z.enum(["starter", "growth", "pro"]),
   interval: z.enum(["month", "year"]),
+  /** OD-2: Pro includes the voice item unless the owner chose "Pro without voice". */
+  includeVoice: z.boolean().optional(),
 });
 
 export async function startTrialCheckout(input: unknown): Promise<UrlOutcome> {
@@ -22,7 +24,7 @@ export async function startTrialCheckout(input: unknown): Promise<UrlOutcome> {
   const workspace = await requireRole("owner").catch(() => null);
   if (!workspace) return { ok: false, error: "Only the workspace owner can start the subscription." };
 
-  return createSubscriptionCheckout(workspace, parsed.data.plan, parsed.data.interval);
+  return createSubscriptionCheckout(workspace, parsed.data.plan, parsed.data.interval, { includeVoice: parsed.data.includeVoice });
 }
 
 const creditSchema = z.object({ bundleKey: z.string().min(1).max(40) });

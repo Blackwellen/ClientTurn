@@ -83,11 +83,17 @@ export function parseTwilioWebhook(rawBody: string): VoiceEvent[] {
   const sid = p.CallSid;
   const status = p.CallStatus ?? "";
   if (!sid) return [{ type: "UNKNOWN", provider: "twilio", dedupeKey: `twilio:noid:${status}`, occurredAt: null, rawType: status }];
+  // The number pair, for matching a carrier callback to the Retell-placed
+  // call it belongs to when the carrier id is not yet on the call (0162).
+  const pair: Record<string, string> = {};
+  if (p.From && /^\+[1-9]\d{7,14}$/.test(p.From)) pair.carrier_from = p.From;
+  if (p.To && /^\+[1-9]\d{7,14}$/.test(p.To)) pair.carrier_to = p.To;
   const common = {
     provider: "twilio" as const,
     providerCallId: sid,
     dedupeKey: `${sid}:${status}`,
     occurredAt: p.Timestamp ? new Date(p.Timestamp).toISOString() : null,
+    ...(Object.keys(pair).length ? { metadata: pair } : {}),
   };
   switch (status) {
     case "queued":

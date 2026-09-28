@@ -6,6 +6,7 @@ import {
   computeExperimentResult,
   reactivationArmReport,
   type CampaignExperimentView,
+  type ExperimentPromotionView,
   type ReactivationArmCounts,
   type ReactivationArmRow,
   type ArmOutcomes,
@@ -14,6 +15,7 @@ import {
   type ExperimentVariant,
   type PrimaryMetric,
 } from "./experiments";
+import { decidePromotion, servedArm } from "./promotion";
 
 /**
  * The server side of governed experiments (0131). Assignment and the maths
@@ -42,10 +44,33 @@ export type ExperimentRow = {
   created_at: string;
   started_at: string | null;
   stopped_at: string | null;
+  /** 0158. Absent (undefined) until that migration is applied. */
+  promoted_arm?: string | null;
+  promoted_at?: string | null;
+  version?: number;
+  auto_promote?: boolean;
+  significance_alpha?: number | string;
 };
 
 export const EXPERIMENT_FIELDS =
   "id, business_id, kind, target_id, name, status, holdout_percent, variants, primary_metric, min_sample_per_arm, created_at, started_at, stopped_at";
+
+/** EXPERIMENT_FIELDS plus the 0158 promotion columns. */
+export const EXPERIMENT_FIELDS_WITH_PROMOTION = `${EXPERIMENT_FIELDS}, promoted_arm, promoted_at, version, auto_promote, significance_alpha`;
+
+/**
+ * Runs a select with the promotion columns, falling back to the 0131 columns
+ * when 0158 is not applied yet (so nothing is promoted and every read behaves
+ * exactly as before).
+ */
+export async function selectExperiments<T>(
+  build: (fields: string) => PromiseLike<{ data: T; error: { code?: string | null; message: string } | null }>,
+): Promise<{ data: T; error: { code?: string | null; message: string } | null; promotionColumns: boolean }> {
+  const first = await build(EXPERIMENT_FIELDS_WITH_PROMOTION);
+  if (!first.error || !isSchemaLag(first.error)) return { ...first, promotionColumns: true };
+  const second = await build(EXPERIMENT_FIELDS);
+  return { ...second, promotionColumns: false };
+}
 
 function db(): Untyped {
   return createAdminClient() as unknown as Untyped;
@@ -57,14 +82,16 @@ export async function runningExperiment(
   targetId: string,
 ): Promise<ExperimentRow | null> {
   try {
-    const { data, error } = await db()
-      .from("experiments")
-      .select(EXPERIMENT_FIELDS)
-      .eq("business_id", businessId)
-      .eq("kind", kind)
-      .eq("target_id", targetId)
-      .eq("status", "RUNNING")
-      .maybeSingle();
+    const { data, error } = await selectExperiments((fields) =>
+      db()
+        .from("experiments")
+        .select(fields)
+        .eq("business_id", businessId)
+        .eq("kind", kind)
+        .eq("target_id", targetId)
+        .eq("status", "RUNNING")
+        .maybeSingle(),
+    );
     if (error) {
       if (!isSchemaLag(error)) console.error("[experiments] read failed", { businessId, message: error.message });
       return null;
@@ -98,6 +125,17 @@ export async function questionStrategyExperiment(
  * recorded where the data-rights rules already cover it (see 0131).
  */
 export function armForLead(experiment: ExperimentRow, leadId: string): string {
+  // A promoted experiment (0158) serves the promoted variant to everyone.
+  return servedArm(experiment.promoted_arm ?? null, () =>
+    assignArm(
+      { id: experiment.id, holdoutPercent: experiment.holdout_percent, variants: experiment.variants },
+      leadId,
+    ),
+  );
+}
+
+/** The randomised arm, ignoring any promotion: what the results are measured on. */
+function assignedArm(experiment: ExperimentRow, leadId: string): string {
   return assignArm(
     { id: experiment.id, holdoutPercent: experiment.holdout_percent, variants: experiment.variants },
     leadId,
@@ -162,7 +200,12 @@ async function exposures(
   for (const row of (heldContacts.data ?? []) as { lead_id: string; updated_at: string | null }[]) {
     if (!first.has(row.lead_id)) first.set(row.lead_id, row.updated_at ?? experiment.started_at ?? experiment.created_at);
   }
-  return [...first.entries()].map(([leadId, at]) => ({ lead_id: leadId, arm: armForLead(experiment, leadId), assigned_at: at }));
+  // After a promotion everyone gets the winner: that is a rollout, not the
+  // test, so only exposures before the promotion are measured.
+  const cutoff = experiment.promoted_at ?? null;
+  return [...first.entries()]
+    .filter(([, at]) => !cutoff || at <= cutoff)
+    .map(([leadId, at]) => ({ lead_id: leadId, arm: assignedArm(experiment, leadId), assigned_at: at }));
 }
 
 /**
@@ -173,6 +216,18 @@ export async function experimentResults(
   businessId: string,
   experiment: ExperimentRow,
 ): Promise<ExperimentResult> {
+  return computeExperimentResult({
+    metric: experiment.primary_metric,
+    minSamplePerArm: experiment.min_sample_per_arm,
+    arms: await experimentArmOutcomes(businessId, experiment),
+  });
+}
+
+/** Raw per-arm outcomes (the promotion decision needs the counts, not just the intervals). */
+export async function experimentArmOutcomes(
+  businessId: string,
+  experiment: ExperimentRow,
+): Promise<ArmOutcomes[]> {
   const admin = createAdminClient();
   const assignments = await exposures(businessId, experiment);
 
@@ -224,11 +279,7 @@ export async function experimentResults(
     }
   }
 
-  return computeExperimentResult({
-    metric: experiment.primary_metric,
-    minSamplePerArm: experiment.min_sample_per_arm,
-    arms: [...byArm.values()],
-  });
+  return [...byArm.values()];
 }
 
 /**
@@ -281,14 +332,16 @@ export async function reactivationExperimentReport(
   businessId: string,
   campaignId: string,
 ): Promise<ReactivationExperimentReport | null> {
-  const { data, error } = await db()
-    .from("experiments")
-    .select(EXPERIMENT_FIELDS)
-    .eq("business_id", businessId)
-    .eq("kind", "REACTIVATION")
-    .eq("target_id", campaignId)
-    .order("created_at", { ascending: false })
-    .limit(5);
+  const { data, error } = await selectExperiments((fields) =>
+    db()
+      .from("experiments")
+      .select(fields)
+      .eq("business_id", businessId)
+      .eq("kind", "REACTIVATION")
+      .eq("target_id", campaignId)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  );
   if (error) {
     if (!isSchemaLag(error)) console.error("[experiments] campaign read failed", { campaignId, message: error.message });
     return null;
@@ -372,9 +425,105 @@ export async function campaignExperimentView(
       verdict: report.result.verdict,
       winner: report.result.winner,
       explanation: report.result.explanation,
+      promotion: await promotionView(businessId, report.experiment, armsFromRows(report.rows), report.result),
     };
   } catch (error) {
     console.error("[experiments] campaign view failed", { campaignId, error });
     return null;
   }
+}
+
+/* ------------------------------------------------ promote / rollback (0158) */
+
+/** Reactivation rows -> the outcome counts the promotion decision reads. */
+export function armsFromRows(rows: readonly ReactivationArmRow[]): ArmOutcomes[] {
+  return rows.map((row) => ({
+    arm: row.arm,
+    leads: row.leads,
+    wins: row.sales,
+    bookings: row.meetings,
+    positiveReplies: row.replies,
+    optOuts: row.optOuts,
+  }));
+}
+
+type PromotionRow = {
+  action: "PROMOTE" | "ROLLBACK";
+  arm: string;
+  from_arm: string | null;
+  version: number;
+  p_value: number | string | null;
+  sample_by_arm: Record<string, number> | null;
+  conversion_by_arm: Record<string, number | null> | null;
+  decided_by_kind: "HUMAN" | "AUTO";
+  reason: string;
+  created_at: string;
+};
+
+/** The promotion history, newest first. Empty before 0158. */
+export async function promotionHistory(businessId: string, experimentId: string): Promise<ExperimentPromotionView["history"]> {
+  const { data, error } = await db()
+    .from("experiment_promotions")
+    .select("action, arm, from_arm, version, p_value, sample_by_arm, conversion_by_arm, decided_by_kind, reason, created_at")
+    .eq("business_id", businessId)
+    .eq("experiment_id", experimentId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    if (!isSchemaLag(error)) console.error("[experiments] promotion history read failed", { experimentId, message: error.message });
+    return [];
+  }
+  return ((data ?? []) as PromotionRow[]).map((row) => ({
+    action: row.action,
+    arm: row.arm,
+    fromArm: row.from_arm,
+    version: row.version,
+    pValue: row.p_value === null ? null : Number(row.p_value),
+    sampleByArm: row.sample_by_arm ?? {},
+    conversionByArm: row.conversion_by_arm ?? {},
+    decidedBy: row.decided_by_kind,
+    reason: row.reason,
+    at: row.created_at,
+  }));
+}
+
+/** The decision for this experiment right now (pure: promotion.ts). */
+export function promotionDecisionFor(experiment: ExperimentRow, arms: readonly ArmOutcomes[], result: ExperimentResult) {
+  return decidePromotion({
+    kind: experiment.kind,
+    status: experiment.status,
+    promotedArm: experiment.promoted_arm ?? null,
+    variants: experiment.variants,
+    metric: experiment.primary_metric,
+    minSamplePerArm: experiment.min_sample_per_arm,
+    arms,
+    result,
+    autoPromote: Boolean(experiment.auto_promote),
+    alpha: experiment.significance_alpha === undefined ? undefined : Number(experiment.significance_alpha),
+  });
+}
+
+/** Null when the 0158 columns are not there (the panel then hides promotion). */
+async function promotionView(
+  businessId: string,
+  experiment: ExperimentRow,
+  arms: readonly ArmOutcomes[],
+  result: ExperimentResult,
+): Promise<ExperimentPromotionView | undefined> {
+  if (experiment.version === undefined) return undefined;
+  const decision = promotionDecisionFor(experiment, arms, result);
+  return {
+    promotedArm: experiment.promoted_arm ?? null,
+    promotedAt: experiment.promoted_at ?? null,
+    version: experiment.version,
+    autoPromote: Boolean(experiment.auto_promote),
+    advice: {
+      action: decision.action,
+      candidate: decision.candidate,
+      pValue: decision.pValue,
+      reasons: decision.reasons,
+      sensitiveFields: decision.sensitiveFields,
+    },
+    history: await promotionHistory(businessId, experiment.id),
+  };
 }

@@ -41,9 +41,12 @@
  *                             turning it on here changes nothing that exists.
  *   voice_sales_enabled       0 on every plan (0151): granted by the voice item
  *   voice_minutes_included    or a minute pack, never by the plan (OD-2).
- *   white_label_public_pages  OFF everywhere. OD-1: the "Powered by
- *                             ClientTurn" badge stays unless a grant row adds
- *                             this (a future paid add-on).
+ *   white_label_public_pages  OFF everywhere. "White label": OD-1's
+ *                             "Powered by ClientTurn" badge on the public
+ *                             pages AND (owner decision 2026-09-28) the call's
+ *                             closing attribution line stay unless a grant row
+ *                             adds this (a future paid add-on). The key keeps
+ *                             its original name so stored grants still match.
  */
 
 export const CAPABILITIES = [
@@ -77,7 +80,7 @@ export const CAPABILITY_LABEL: Readonly<Record<Capability, string>> = {
   direct_close_enabled: "Direct close",
   voice_sales_enabled: "Voice sales agent",
   voice_minutes_included: "Included voice minutes",
-  white_label_public_pages: "White-label public pages",
+  white_label_public_pages: "White label (public pages and call attribution)",
 };
 
 /**

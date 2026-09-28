@@ -20,6 +20,7 @@ import {
 import { trackedTokenFor, trackingParamFor } from "../payments/tracking.ts";
 import type { AgentChannel } from "./types.ts";
 import type { QaCode } from "../qualification-intelligence/types.ts";
+import type { QuoteValidationFacts } from "./quote-flow.ts";
 import { humanStyleFailures, type HumanStyleCode } from "./human-style.ts";
 
 export type ValidationFacts = {
@@ -75,6 +76,16 @@ export type ValidationFacts = {
   verifyingStaleFact?: boolean;
   /** The lead's first name: the human-style lint allows it once (human-style.ts). */
   leadFirstName?: string | null;
+  /**
+   * The quote in play this turn (agent/quote-flow.ts): the figures a
+   * calculate_quote result or the current quote revision produced, formatted
+   * as the quote shows them. A money amount is allowed when it is one of
+   * these (or published wording, or an approved checkout link's price text);
+   * VAT may be mentioned only for a VAT-registered quote, and a VAT rate or a
+   * discount percentage only when the quote carries it. Absent = no quote:
+   * no VAT or tax statement of any kind.
+   */
+  quote?: QuoteValidationFacts | null;
 };
 
 export type ValidationFailure = {
@@ -98,6 +109,8 @@ export type ValidationCode =
   | "UNSUPPORTED_DISCOUNT"
   | "PURCHASE_CLAIM"
   | "CHECKOUT_PRICE_MISMATCH"
+  | "UNSUPPORTED_VAT_CLAIM"
+  | "UNSUPPORTED_DELIVERY_CLAIM"
   | StyleCode
   | QaCode;
 
@@ -187,6 +200,36 @@ function priceIsPublished(amount: string, published: string[]): boolean {
   return published.some((text) => text.replace(/[^\d.]/g, "").includes(digits));
 }
 
+/**
+ * VAT and tax (resolved conflict 1: the AI never improvises VAT). A mention
+ * of VAT, tax, "zero-rated" or "exempt" is a statement about the price.
+ */
+const VAT_PATTERN = /\b(?:vat|v\.a\.t\.?|sales\s+tax|tax(?:es)?|zero[\s-]?rated|vat[\s-]?exempt|tax[\s-]?free|ex(?:cl(?:uding)?)?\.?\s+vat|inc(?:l(?:uding)?)?\.?\s+vat)\b/i;
+
+/**
+ * A delivery, start or completion promise: a commitment to a date or a
+ * duration the quote does not make ("ready in two weeks", "we can start on
+ * Monday", "delivered by Friday", "turnaround of 5 days").
+ */
+const DELIVERY_PATTERN =
+  /\b(?:deliver(?:ed|y)?|turnaround|lead\s+time|ready|complete(?:d)?|finish(?:ed)?|live|launch(?:ed)?|start(?:ed)?|kick\s+off|begin|ship(?:ped)?|installed|done)\b[^.?!\n]{0,40}?\b(?:(?:with)?in|by|on|of)\s+(?:(?:\d+|a|an|one|two|three|four|five|six|seven|eight|ten|a\s+couple\s+of|a\s+few)\s+(?:working\s+|business\s+)?(?:days?|weeks?|months?)|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month)|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:week|month))\b/i;
+
+function vatPercents(sentence: string): number[] {
+  return [...sentence.matchAll(/(\d+(?:\.\d+)?)\s*(?:%|per\s?cent\b)/gi)].map((m) => Number(m[1]));
+}
+
+/** A money amount is one of this turn's quote figures (digits compared, as for published prices). */
+function isQuoteFigure(amount: string, quote: QuoteValidationFacts | null | undefined): boolean {
+  if (!quote || quote.figures.length === 0) return false;
+  const digits = amount.replace(/[^\d.]/g, "").replace(/\.$/, "");
+  if (!digits) return false;
+  return quote.figures.some((figure) => {
+    const f = figure.replace(/[^\d.]/g, "");
+    // "£1,200" for "£1,200.00" is the same figure; "£120" is not.
+    return f === digits || f === `${digits}.00` || f.replace(/\.00$/, "") === digits;
+  });
+}
+
 export function validateResponse(
   body: string,
   facts: ValidationFacts,
@@ -231,15 +274,49 @@ export function validateResponse(
   }
 
   for (const amount of folded.match(MONEY_PATTERN) ?? []) {
-    if (!priceIsPublished(amount, facts.publishedPriceText)) {
+    if (!priceIsPublished(amount, facts.publishedPriceText) && !isQuoteFigure(amount, facts.quote)) {
       failures.push({
         code: "UNSUPPORTED_PRICE_CLAIM",
-        detail: `"${amount}" is not a published price for this workspace.`,
-        correction:
-          "Do not state any price. Say pricing depends on their requirements and offer the next step.",
+        detail: facts.quote?.figures.length
+          ? `"${amount}" is not one of this quote's figures.`
+          : `"${amount}" is not a published price for this workspace.`,
+        correction: facts.quote?.figures.length
+          ? `State only these figures, exactly as written: ${facts.quote.figures.slice(0, 6).join(", ")}. Do not calculate or round anything.`
+          : "Do not state any price. Say pricing depends on their requirements and offer the next step.",
       });
       break;
     }
+  }
+
+  // ---- VAT and tax: never improvised (resolved conflict 1)
+  if (VAT_PATTERN.test(folded)) {
+    const quote = facts.quote ?? null;
+    if (!quote || !quote.vatRegistered) {
+      failures.push({
+        code: "UNSUPPORTED_VAT_CLAIM",
+        detail: quote ? "Mentioned VAT on a quote that carries none." : "Mentioned VAT or tax with no quote in hand.",
+        correction: "Do not mention VAT or tax at all.",
+      });
+    } else {
+      const sentences = folded.split(/(?<=[.!?\n])\s+/).filter((sentence) => VAT_PATTERN.test(sentence));
+      const stray = sentences.flatMap(vatPercents).filter((pct) => !quote.vatRatesPercent.includes(pct) && !quote.discountPercents.includes(pct));
+      if (stray.length > 0) {
+        failures.push({
+          code: "UNSUPPORTED_VAT_CLAIM",
+          detail: `Stated a VAT rate of ${stray[0]}% that is not on the quote.`,
+          correction: "Say nothing about VAT beyond the quote's own figures.",
+        });
+      }
+    }
+  }
+
+  // ---- delivery, start and completion dates: never promised
+  if (DELIVERY_PATTERN.test(folded)) {
+    failures.push({
+      code: "UNSUPPORTED_DELIVERY_CLAIM",
+      detail: "Promised a delivery, start or completion time.",
+      correction: "Do not promise when anything will start, be delivered or be finished. Say the team will confirm the timeline.",
+    });
   }
 
   // ---- discounts (decision Q2)
@@ -250,7 +327,15 @@ export function validateResponse(
   // only up to its maximum. An unquantified "a discount" is never allowed.
   const commercial = facts.commercial ?? null;
   const allowance = commercial?.enabled ? commercial.maxDiscountPercent : 0;
-  const offers = discountOffers(folded);
+  const quoteDiscounts = facts.quote?.discountPercents ?? [];
+  const underReview = facts.quote?.discountUnderReview === true;
+  const offers = discountOffers(folded).filter(
+    (percent) =>
+      // The discount the quote itself carries this turn (a calculate_quote
+      // result) may be stated exactly; one with a person for approval may be
+      // mentioned, never quantified.
+      !quoteDiscounts.includes(percent) && !(underReview && percent === Number.POSITIVE_INFINITY),
+  );
   const excessive = offers.filter((percent) => !(percent > 0 && percent <= allowance));
   if (excessive.length > 0) {
     failures.push({

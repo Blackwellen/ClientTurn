@@ -9,6 +9,8 @@ import { notificationSendPayload } from "./payloads";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { consumeSystemEmail } from "@/lib/email/system-email-budget";
 import { SUBSCRIPTION_WELCOME_KIND, subscriptionWelcomeEmail } from "@/lib/email/subscription-welcome";
+import { MAINTENANCE_NOTICE_KIND } from "@/lib/maintenance/email";
+import { sendMaintenanceNotice } from "@/lib/maintenance/notice-send";
 
 type Payload = ReturnType<typeof notificationSendPayload.parse>;
 
@@ -284,6 +286,11 @@ export async function handleNotificationSend(job: ClaimedJob) {
   const payload = parsePayload(notificationSendPayload, job.payload);
   if (payload.kind === SUBSCRIPTION_WELCOME_KIND) {
     await sendSubscriptionWelcome(payload);
+    return;
+  }
+  // Planned-maintenance notice (0161): owners only, re-reads the window.
+  if (payload.kind === MAINTENANCE_NOTICE_KIND) {
+    await sendMaintenanceNotice(payload, sendEmail);
     return;
   }
   const resolved = resolve(payload);

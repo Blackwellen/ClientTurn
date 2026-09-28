@@ -32,6 +32,7 @@ import { handleOutreachAudience } from "./handlers/outreach-audience";
 import { handleOutreachOptimize } from "./handlers/outreach-optimize";
 import { handleAppIngest } from "./handlers/app-ingest";
 import { handleAffiliateLedger } from "./handlers/affiliate-ledger";
+import { handleAffiliateBillingEvent } from "./handlers/affiliate-billing-event";
 import { handleSocialTick, handleSocialAdvance } from "./handlers/social-tick";
 import { handleSocialExecute } from "./handlers/social-execute";
 import { handleIngestWebhook } from "./handlers/ingest-webhook";
@@ -55,10 +56,15 @@ import {
   handleVoicePostCall,
   handleVoiceRecordingFetch,
   handleVoiceRetry,
+  handleVoiceTextBack,
   handleVoiceWebhookIngest,
 } from "./handlers/voice";
+import { handleExperimentAutoPromote, handleVoiceMarginCheck } from "./handlers/daily-voice-and-experiments";
 import { handleQuoteExpire, handleQuoteNudge, handleQuoteRenderPdf } from "./handlers/quote-jobs";
 import { handleInvoiceIssue, handleInvoiceRemind } from "./handlers/invoice-jobs";
+import { handleAutomationDispatch } from "@/lib/automation/rule-runner";
+import { handleVoiceRetention } from "./handlers/voice-retention";
+import { handleWorkspaceDeletion } from "./handlers/workspace-deletion";
 // The provider adapters, which register themselves on import. One list, in
 // `providers/all`, so a new adapter reaches the OAuth routes and the queue
 // together rather than only whichever one its author remembered.
@@ -76,6 +82,7 @@ export function registerJobHandlers() {
   registered = true;
 
   registerHandler("affiliate.ledger", handleAffiliateLedger);
+  registerHandler("affiliate.billing_event", handleAffiliateBillingEvent);
   registerHandler("lead.process", handleLeadProcess);
   registerHandler("handoff.brief", handleHandoffBrief);
   registerHandler("domain.health_check", handleDomainHealthCheck);
@@ -138,6 +145,12 @@ export function registerJobHandlers() {
   registerHandler("voice.retry", handleVoiceRetry);
   registerHandler("voice.number_provision", handleVoiceNumberProvision);
   registerHandler("voice.number_release", handleVoiceNumberRelease);
+  registerHandler("voice.text_back", handleVoiceTextBack);
+  registerHandler("voice.margin_check", handleVoiceMarginCheck);
+  registerHandler("experiment.auto_promote", handleExperimentAutoPromote);
+  registerHandler("automation.dispatch", handleAutomationDispatch);
+  registerHandler("voice.retention", handleVoiceRetention);
+  registerHandler("billing.workspace_deletion", handleWorkspaceDeletion);
 }
 
 registerJobHandlers();
