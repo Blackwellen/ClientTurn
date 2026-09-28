@@ -4,7 +4,7 @@ summary: Your organisation's legal details, markets, permitted data sources, bas
 category: settings
 keywords: [legal name, registered address, privacy notice url, privacy contact, dpo, markets, data sources, lawful basis, retention period, strictness, social outreach, privacy requests, suppression list, evidence, cold outreach ready]
 order: 70
-updated: 2026-09-27
+updated: 2026-09-28
 screenshots:
   - src: /help/screenshots/settings/data-controls-settings-1.png
     alt: "The Data Controls form with the Organisation and Data sources cards"
@@ -63,6 +63,7 @@ How much of connect-then-message outreach runs without someone watching:
 - **Privacy requests:** log requests and track the 30-day and one-month deadlines. See [Data rights](/help/compliance/data-rights).
 - **Suppression:** how many contacts must not be contacted again, by reason. Entries cannot be removed here. See [Suppression, STOP and unsubscribe](/help/compliance/suppression-and-unsubscribe).
 - **Evidence you can produce:** the last 30 days of contact decisions, and the rule versions currently in force.
+- **Audit log export:** every change made in the workspace, by a person, the API, MCP or the system, with who did it and when. Choose **From** and **To** (up to 366 days per export) and a **Format** (CSV or JSON), then **Export**. Only the owner or an admin can export it.
 
 > **Note:** ClientTurn's compliance features are tools, not legal advice. See the [Compliance overview](/help/compliance/compliance-overview).
 

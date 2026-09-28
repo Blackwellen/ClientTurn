@@ -4,7 +4,7 @@ summary: Set how much the assistant researches and how readily it asks leads to 
 category: settings
 keywords: [what the ai may do, ai permissions, draft quotes, send quotes, offer discounts, discount limits, margin floor, approval, ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia, objections, reassurance, guarantees, case studies, try it]
 order: 40
-updated: 2026-09-27
+updated: 2026-09-28
 screenshots:
   - src: /help/screenshots/settings/ai-and-selling-settings-1.png
     alt: "The AI strategy card with automation level, research depth and risk tolerance"
@@ -105,6 +105,17 @@ The objections your business hears most and your own best answers. The assistant
 Under **Reassurance you stand behind**, add service levels, guarantees, case studies, testimonials you own and response-time commitments. The assistant quotes them as written, or not at all.
 
 **Try it** runs a message through the same matching, plan and checks the assistant uses and shows an example reply. It uses no AI tokens. See [Objection handling](/help/sales-knowledge/objection-handling).
+
+## Competitors
+
+The competitors your leads mention, what you can factually say about them, and what never to say.
+
+1. Choose **Add a competitor** and give its **Name**. Under **Also known as**, add other names leads use, comma separated.
+2. Under **Approved comparison points**, add factual, verifiable points that name the competitor, one per line (for example "Unlike Acme, onboarding is included in every plan.").
+3. Under **Never say**, add lines the assistant must never use, one per line.
+4. Choose **Save competitor**. Switch off **Use this competitor** to keep it without using it.
+
+When a lead names a competitor, the assistant may use an approved point word for word and nothing else. Every reply is checked before it is sent: a put-down, an unapproved claim about a competitor or a **Never say** line is refused.
 
 ## Channels
 

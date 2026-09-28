@@ -183,4 +183,3 @@ External API host,Companies House API,api.company-information.service.gov.uk,Ext
 External API host,Apollo API,api.apollo.io,External API,src/lib/find-leads/server/providers/apollo.ts,
 External API host,Hunter API,api.hunter.io,External API,src/lib/find-leads/server/providers/hunter.ts,
 External API host,Clearbit API,company.clearbit.com,External API,src/lib/find-leads/server/providers/clearbit.ts,
-External API host,Gravatar,www.gravatar.com,External API,src/lib/,Avatar fallback

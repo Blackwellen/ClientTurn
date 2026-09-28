@@ -20,6 +20,7 @@ Before the agent can make any call, your workspace needs all of these:
 3. **A dedicated calling number** that has finished its set-up. It comes with the Pro voice item, or costs £11.99 a month on its own.
 4. **A complete calling identity** (below).
 5. **Voice switched on** for the workspace.
+6. **The AI assistant switched on** in **Settings → Workspace**. Without it a call could not record the lead's answers or arrange a next step, so no AI call is placed.
 
 If any of these is missing, a call is refused with the reason, and nothing is charged.
 
@@ -69,6 +70,7 @@ These settings change how the assistant speaks for your business, so only an own
 | Attempts per lead | 3 | 1 to 5 |
 | Calls running at once | 2 | 1 to 20 |
 | Call recording | Off | Kept for 1 to 365 days, 90 by default |
+| Leave a voicemail | Off | Only for a lead who asked to be called or agreed to calls on your form, and once per request |
 | Transfer to a person | On request | A transfer number is needed unless transfers are set to never |
 
 You can also add a short line of your own that the assistant says after its fixed opening, of up to 240 characters. It cannot claim the assistant is a person, repeat the fixed opening or the recording notice, or use emoji or dashes. See [Calls and consent](/help/voice/calls-and-consent) for what the assistant always says first.
@@ -99,10 +101,19 @@ Each call records its outcome and a summary, the transcript when the call provid
 
 What the call cost ClientTurn is shown to owners and admins only.
 
-## What the agent does not do yet
+## When a call reaches voicemail
 
-- It does not answer calls made **to** your dedicated number. An inbound call to that number is ended.
-- It does not leave voicemail messages.
+With **Leave a voicemail** on (Settings → Voice → Voicemail and retries), the assistant leaves one short, fixed message: that it is an AI assistant calling from your business about their enquiry, and what happens next. It never mentions a price or a deadline. It is only left for a lead who asked to be called or agreed to calls on your form, and only once per call request.
+
+## When someone calls your number
+
+A call **to** your dedicated number is handled like this:
+
+- **A lead of yours**, once AI answering is switched on for your number: the AI agent can answer, knowing who they are and what they asked about. The call uses your minutes like any other. AI answering of incoming calls is being rolled out; until it is on for your number, incoming calls follow the next point.
+- **Anyone else, or when the AI cannot take the call**: the call is transferred to your transfer number if you have set one and transfers are allowed. Otherwise the caller hears a short message and, from a UK mobile, gets a text back.
+- **A lead who opted out of all contact** is never answered by the AI and never texted.
+
+A missed incoming call is never called back by the AI on its own.
 
 ## Releasing your number
 

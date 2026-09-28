@@ -132,5 +132,6 @@ Files over 1 MB need splitting.
 
 ## Related
 
+- [LinkedIn Assist](/help/finding-leads/linkedin-assist): your daily LinkedIn list in Follow-Up, with messages written for you
 - [LinkedIn Lead Gen Forms](/help/finding-leads/linkedin-lead-gen-forms)
 - [LinkedIn company-page engagement](/help/finding-leads/linkedin-company-page-engagement)

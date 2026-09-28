@@ -27,6 +27,7 @@ screenshots:
    - choose the **Approved search plan** (or **No plan yet — save as draft**);
    - choose whether to **Find a work email address** (addresses are verified before use). Agents never collect phone numbers: texts and calls only go to a number the person gave you themselves.
 4. **Limits** — under **How careful should it be?**, give it an **Agent name** and optional **Description**, then set:
+   - **What it sells**: the whole catalogue, or chosen products and services (choosing a product covers every priced item under it). The agent only offers what is in its target, and recommends the best fit for the lead from those by fixed rules. You can change it later in the agent's **Settings** tab. With an empty catalogue, the agent sells whatever the conversation is about;
    - **Approval**: **Review everything**, **Review new companies only**, or **Run automatically**;
    - **Schedule**: **Only when I run it**, **Every hour**, **Once a day** or **Once a week**;
    - **Daily limit** and **Monthly limit**: the most it may process. The daily limit must be at least 1, and the monthly limit cannot be lower than the daily one.

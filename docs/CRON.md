@@ -97,6 +97,7 @@ only one of each is ever pending:
 |---|---|---|
 | Outreach sequences | `outreach.tick` | Finds email sequence steps that are due across every workspace |
 | Social outreach | `social.tick` | Finds workspaces with due `social_connection_states` rows and fans out one `social.advance` job each |
+| Stuck voice calls (every 15 min) | `voice.reconcile` | Closes calls stuck live: a dial that crashed after `DIALLING` (FAILED after 10 min, never re-dialled), or a call whose `CALL_ENDED` never arrived (asks the provider once, then ENDED/FAILED). Frees the lead, the minutes hold and the concurrency slot (`runtime-core.ts reconcileStaleCalls`) |
 
 `social.advance` is what makes connect-then-message run unattended: it decides
 what is due for each prospect, withdraws invites that have gone unanswered,

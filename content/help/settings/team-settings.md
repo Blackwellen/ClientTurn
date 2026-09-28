@@ -1,10 +1,10 @@
 ---
 title: Team settings
-summary: Invite people, choose their role, resend or revoke invitations, remove someone and hand their work on, transfer ownership, and how seats are counted
+summary: Invite people, choose their role and permissions, resend or revoke invitations, remove someone and hand their work on, transfer ownership, and how seats are counted
 category: settings
 keywords: [team, invite, invitation, colleague, user, seat, seats, roles, owner, admin, member, viewer, permissions, remove member, transfer ownership, resend invitation, expired invite]
 order: 50
-updated: 2026-09-27
+updated: 2026-09-28
 screenshots:
   - src: /help/screenshots/settings/team-settings-1.png
     alt: "The Team members table with an owner, an admin, a member and an expired invitation"
@@ -26,6 +26,18 @@ screenshots:
 | Viewer | Read-only access to leads and reporting |
 
 There is always exactly one owner. Ownership is never assigned; it only moves when the owner transfers it.
+
+## Permissions
+
+Under **Permissions**, a table shows what each role can do by default. For larger teams, three things can be allowed or withheld per person on top of their role:
+
+| Permission | What it covers | Owner | Admin | Member | Viewer |
+|---|---|---|---|---|---|
+| **Send outbound** | Send messages and booking links, launch campaigns, send quotes and invoices, and request AI calls | Always | Yes, adjustable | Yes, adjustable | Never |
+| **Manage integrations** | Connect, disconnect and configure CRMs, calendars, lead sources and channels | Always | Yes, adjustable | No, adjustable | Never |
+| **Manage billing** | Change the plan, buy credits, minutes and numbers, and open the billing portal | Always | No, adjustable | Never | Never |
+
+For each person, choose **Role default**, **Allowed** or **Not allowed**. The owner always has everything, a viewer is always read-only, and billing can be given to an admin but never to a member. Changing someone's role puts their permissions back to the role defaults. Every change is checked on the server and recorded in the audit log.
 
 ## Invite someone
 

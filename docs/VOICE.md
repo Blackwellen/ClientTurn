@@ -560,8 +560,11 @@ against the live provider before the first live call.
     unmatched. P3: the carrier id is recorded from Retell's telephony
     identifier (UNVERIFIED field) or by the number-pair match (§16.11 c); the
     SIP trunk itself is still owner configuration.
-20. **Inbound call handling is not built.** The Twilio voice route answers
-    with empty TwiML, so an inbound call to the dedicated number is ended.
+20. **Inbound call handling is built (§14) but not yet switched on in
+    production** (2026-09-28): `RETELL_SIP_DOMAIN` is unset, so an inbound
+    call gets the transfer or the message and text back, never the AI. Turning
+    it on is step 5a of the go-live checklist. (This item used to say inbound
+    was not built; that was superseded by §14.)
 
 ---
 

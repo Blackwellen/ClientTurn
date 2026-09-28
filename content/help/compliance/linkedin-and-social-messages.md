@@ -38,7 +38,7 @@ Corporate subscribers (companies, LLPs, Scottish partnerships) are not affected 
 
 ## Why ClientTurn never automates LinkedIn sending
 
-LinkedIn's User Agreement prohibits bots that add contacts or send messages, and browser extensions that scrape. LinkedIn's messaging APIs are restricted to approved partners. So ClientTurn's LinkedIn prospecting is **assisted**: it prepares the task, drafts the note and gives you a link, and **you** send the invitation or message yourself from LinkedIn. See [LinkedIn and Sales Navigator (assisted)](/help/finding-leads/linkedin-sales-navigator-assisted).
+LinkedIn's User Agreement prohibits bots that add contacts or send messages, and browser extensions that scrape. LinkedIn's messaging APIs are restricted to approved partners. So ClientTurn's LinkedIn prospecting is **assisted**: it prepares the task, drafts the note and gives you a link, and **you** send the invitation or message yourself from LinkedIn. See [LinkedIn and Sales Navigator (assisted)](/help/finding-leads/linkedin-sales-navigator-assisted). For a daily list of LinkedIn actions with the messages written for you, see [LinkedIn Assist](/help/finding-leads/linkedin-assist).
 
 ## The first message must say where you found them
 
