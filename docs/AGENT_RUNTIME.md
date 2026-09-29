@@ -1108,6 +1108,74 @@ RLS on, no policies.
 Skipped runs are recorded too — "why did the assistant not reply to this" is
 answerable without re-running anything.
 
+## ICP evaluation (2026-09-29)
+
+`tests/agent-icp-eval.test.ts` runs 66 conversations across agencies, web
+studios, SaaS, ecommerce, professional services and the roofing test
+workspace (`tests/fixtures/agent-icp-eval/`) through the real deterministic
+pipeline in the orchestrator's order: binding classification and injection
+detection, `policyOnMessage`, the engine (interpret, facts, intent, goal,
+NBA), the NBA strategy block, the offer card, the validator with pre-send
+question QA, the reply grader and the send gate. The scripted model is the
+excellent reply the grader wrote for each case, plus the weak replies a model
+plausibly writes. On the code before this pass the same set had failures in
+26 of 66 cases; after, none. It proves the pipeline allows the excellent
+reply and blocks the bad ones; only live traffic proves the model writes the
+excellent one. `ICP_EVAL_DEBUG=1` prints each case's plan, QA and verdicts.
+
+Defects it found, fixed:
+
+* **Validator holes.** An invented time in the calendar's own format
+  ("11:00am") matched no clock pattern and passed; "it'll be with you by
+  Friday", "within the hour", "all set up and paid for", "prices go up next
+  month", "if you sign today", "your partner doesn't need to be involved",
+  "No, I'm Sam from the studio", and a put-down of the lead's current
+  supplier all passed. New `UNSUPPORTED_CREDENTIAL_CLAIM`: a guarantee,
+  warranty, certification, insurance, named integration or "free" offer only
+  as an approved line states it, with its condition ("10-year", "over £100");
+  `approvedClaims` is the offer card's approved lines (`approvedCardLines`).
+* **Validator false positives.** "Is it the tax return that's due?" was a
+  VAT claim; a published "from £650 plus VAT" could not be quoted; an approved
+  "free delivery on orders over £100" was refused for its amount; "10am" was
+  refused against a slot labelled "10:00am"; "£12.50" read as a time.
+* **The planned question rejected.** 32 of 472 library and archetype
+  questions read as another dimension to QA ("Roughly how many people work at
+  the company?" as TEAM_SIZE, "in-house, another agency" as PROPERTY_TYPE), so
+  asking the plan word for word was rejected and, after three, handed over.
+  QA now recognises the planned question by its own words and treats
+  indistinguishable dimensions as one ask.
+* **Objection turns.** The move said "ask <the planned question>" while the
+  objection shape said "clarify the real concern", and QA rejected the
+  clarifying question. The first time an objection is raised its clarifying
+  question is the one question (`strategy.record.objectionClarify`, read by
+  QA). Missed phrasings: "we don't have the budget", "sorted it with someone
+  else" (now NOT_INTERESTED, so the engine stops instead of asking the next
+  question).
+* **The engine read too little.** A symptom ("costs a fortune for very few
+  demos") is a stated problem; "live before Christmas" is a timeline;
+  "flat roof" names the service "Flat roof / GRP"; "new roof" answers the
+  roofer's "repair or replacement?"; "will someone ring me back?" is a call
+  request (a warm close, not a hand-over).
+* **A goal picked in the Add Lead wizard** was stored as "Submitted a direct
+  purchase form" and made a fresh lead PURCHASE_READY; the goal is now intent
+  only when it came with the lead's own act (a form, a DM, the API).
+* **The offer card** stripped a leading figure as if it were a bullet:
+  "10-year workmanship guarantee" reached the model as "year workmanship
+  guarantee".
+
+Known limits (not deterministically catchable, left to the prompt and the
+card): an invented product fact with no credential word ("it's dishwasher
+safe"), and a confirmed time said on the wrong day.
+
+**Background agents** (`agents/tick-core.ts`, `tests/agent-ticks.test.ts`):
+the closing and re-engagement ticks are pure cores over injected
+dependencies, run with fakes together with "Phone leads with AI" in the
+scheduler's order. Fixed: a direct-sale or sign-up lead who booked a demo was
+filed BLOCKED "follow-up has done its job" every run (follow-up stops at a
+booking), now listed for a person as "booked, not bought yet"; a closing
+nudge deleted the same lead's open call approval whenever that run's voice
+tick had not covered it, now the queue replaces only a row of the same type.
+
 ## Prompt injection
 
 Lead text is untrusted content. It is never interpolated into a labelled

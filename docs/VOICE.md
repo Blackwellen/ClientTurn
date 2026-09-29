@@ -1172,6 +1172,55 @@ call): now `NO CALENDAR ON THIS CALL` plus a colleague-confirmed time via
 own questions, then the workspace-wide ones (`service_id` null), each by
 position, one per dimension or intent.
 
+### 16.17 AI QA on real inputs (2026-09-29): every route and permission, graded
+
+No call had been placed since 2026-09-28 (read-only check of `voice_calls`
+for the live workspace). The two calls of 2026-09-28 showed one more fault
+§16.16 did not record: tool refusals took 2.4 to 18.8 seconds (a full
+context assembly per tool call), past the 8-second tool timeout, which is why
+the second call's summary says "call-back scheduling failed due to tool
+errors".
+
+**The dry run now covers every combination.** `node
+scripts/voice-brief-dry-run.mjs <lead> --matrix` reads the live sources once
+(`server-p3.ts gatherVoiceBriefSources`) and builds, through the dial's own
+`voiceBriefFromSources`, the brief for every route x booking on/off x
+calendar (none, slots, link) x AI assistant x recording x transfer (288 per
+lead), varying the permissions in memory; each brief is read by
+`voice/brief-lint.ts`, a checker for the contradictions a model would act on.
+The single-route dry run now takes recording from the voice settings (it
+said "recorded" on a workspace that records nothing) and makes a return call
+INBOUND. Before: all 12 live briefs (2 leads x 6 routes) failed, 80 findings.
+After: 0 of 576.
+
+| Defect (live data) | Fix |
+|---|---|
+| Every non-qualification route opened with the lead's stale INFORM, "share one useful point ... ask if it would help", the pitch that sank the first call | A call placed for a close, a check-in, a win-back or a caller who rang us keeps its own move over a point-only NBA (INFORM, NURTURE, ANSWER); ESCALATE, DISQUALIFY and WAIT still bind every route |
+| "Goal: Direct sale" above "Close on a meeting"; on a booking call a meeting move and a "colleague sends the details" close | The plan's close follows the goal (a colleague sends the details when checkout is off); a booking or direct-close call's CLOSE is "take it as YOUR ONE MOVE says" |
+| "WHAT YOU MAY DO: book meetings" beside "never call book_meeting" | With no calendar: "arrange a meeting time for a colleague to confirm" |
+| "Ask 1 to 2 before any close" (read as "one or two questions") | "Ask questions 1 to 2" / "Ask question 1" |
+| "a colleague will send the details today" | No send time is promised |
+| "call schedule_callback" for a person's call-back | "schedule_callback by PERSON" |
+| A nurture or reactivation call closing "they may be ready to buy" with a trial close | "No hard close", the goal's step only if they are keen |
+| "YOU ARE the assistant, an AI assistant" | "YOU ARE an AI assistant" |
+| The brief loader derived permissions by hand and omitted the booking link and contactability, so it never offered `send_booking_link` the endpoint allowed | One derivation, `tools/core.ts callPermissionsFromContext`, used by the loader and the endpoint |
+| Every tool call (even `record_fact`, after every answer) assembled the whole context before its gate | `record_fact`, `log_objection` and `opt_out` never read permissions |
+| An AI call-back without consent was refused with "a colleague will call you back", and nothing was recorded | It becomes a person's call-back and is recorded |
+
+The general prompt and the tool definitions did not change: **no
+`retell-setup.mjs --apply` is needed for these fixes** (the brief rides in
+per-call dynamic variables). `CALL_BRIEF_VERSION` is `brief.2026-09-29.v5`.
+
+Data, not code: both live test leads were created in the Add Lead wizard
+with conversion goal "Purchase", so the engine assessed a roof as a direct
+sale. A wizard-picked goal is no longer read as the lead's own request
+(`signals.ts originSignals`, below in AGENT_RUNTIME.md); signals already
+stored on those two leads stay until they are reassessed or re-added.
+
+Tests: `tests/voice-brief-matrix.test.ts` (432 synthetic briefs across three
+workspaces, each defect by name, the lint tested to fail, the endpoint and
+permission parity).
+
 ### 16.13 Migration 0162 (written, NOT applied)
 
 `0162_voice_agent_tools.sql`: `voice_tool_calls` (member-read, service-role
