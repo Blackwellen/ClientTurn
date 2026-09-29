@@ -167,19 +167,23 @@ describe("the enterprise page cannot claim a control we do not hold", () => {
     assert.equal(certification.status, "not_available");
   });
 
-  test("SSO and workspace MFA are declared unavailable", () => {
-    for (const id of ["sso", "workspace-mfa"]) {
-      const control = SECURITY_CONTROLS.find((c) => c.id === id);
-      assert.ok(control, id);
-      assert.equal(control.status, "not_available", id);
-    }
+  test("SSO is declared unavailable; workspace MFA is opt-in, not claimed as on by default", () => {
+    const sso = SECURITY_CONTROLS.find((c) => c.id === "sso");
+    assert.ok(sso);
+    assert.equal(sso.status, "not_available");
+    assert.match(sso.detail, /^Planned, not available today\./);
+    // Built 2026-09-29 (TOTP): each member turns it on, or the owner requires it.
+    const mfa = SECURITY_CONTROLS.find((c) => c.id === "workspace-mfa");
+    assert.ok(mfa);
+    assert.equal(mfa.status, "configurable");
   });
 
   test("gaps are surfaced rather than omitted", () => {
     // A buyer who cannot find SSO on the page assumes it exists. The page
     // renders this list, so it must never be empty while gaps remain.
     const gaps = unavailableControls();
-    assert.ok(gaps.length >= 3);
+    // SSO and certifications at least (workspace MFA closed 2026-09-29).
+    assert.ok(gaps.length >= 2);
     assert.ok(gaps.every((gap) => gap.detail.length > 40));
   });
 

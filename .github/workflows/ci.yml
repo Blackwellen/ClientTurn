@@ -1,0 +1,73 @@
+# Continuous integration (internal review IR-13).
+#
+# Runs on every pull request and every push to main: typecheck, lint, the
+# three unit-test groups and a production-dependency audit. Needs no secrets:
+# the unit tests use fakes only (no Supabase, Stripe, Twilio or AI calls), and
+# nothing here deploys. Vercel deploys independently of this workflow.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  # Group 1 alone is 250+ test files and the typecheck is a large program.
+  NODE_OPTIONS: --max-old-space-size=6144
+
+jobs:
+  checks:
+    name: Typecheck, lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # next-env.d.ts and .next/types are generated (git-ignored); the
+      # typecheck needs the route types they declare.
+      - name: Generate Next.js types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # All three groups (test:g1 plain, test:g2 react-server, test:g3 with the
+      # server resolver). The runner always runs every group and fails if any
+      # group fails or a registered test file is missing.
+      - name: Unit tests
+        run: npm test
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Production dependencies only; fails on a high or critical advisory.
+      # Reads package-lock.json, so no install is needed.
+      - name: npm audit (production, high and above)
+        run: npm audit --omit=dev --audit-level=high

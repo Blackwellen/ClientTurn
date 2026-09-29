@@ -216,6 +216,7 @@ const SETTINGS_KEYWORDS: Record<string, string[]> = {
   "ai-selling": ["ai", "brand", "voice", "budget", "strategy"],
   quotes: ["quote", "catalogue", "products", "pricing", "vat", "e-signature", "deposit", "invoicing"],
   team: ["members", "invite", "users", "roles"],
+  security: ["two-factor", "2fa", "mfa", "authenticator", "sessions", "sign out everywhere", "idle timeout", "audit retention"],
   developer: ["api", "api keys", "webhooks", "mcp"],
   "data-controls": ["gdpr", "privacy", "retention", "suppression", "compliance"],
   billing: ["plan", "subscription", "invoices", "usage", "upgrade"],

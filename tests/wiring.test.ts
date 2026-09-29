@@ -226,7 +226,7 @@ describe("server action authority", () => {
    * the step-up and writes the audit row in one place.
    */
   const PRIMITIVE =
-    /\b(requireRole|requireCapability|requireWorkspace|requirePlatformAdmin|requireAffiliate|requireActiveAffiliate|getActiveWorkspace|getUser)\s*\(/;
+    /\b(requireRole|requireCapability|requireWorkspace|requirePlatformAdmin|requireAffiliate|requireActiveAffiliate|getActiveWorkspace|getSecureWorkspace|getUser)\s*\(/;
 
   /** Actions that legitimately run before an actor exists. */
   const PRE_AUTH = new Set([

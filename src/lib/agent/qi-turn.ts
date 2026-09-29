@@ -335,6 +335,8 @@ export function qaContextFromNba(input: {
   customerType?: QaContext["customerType"];
   /** Several interests: the one light-touch question on another interest (interests.ts). */
   companion?: InterestTurn["companion"] | null;
+  /** The strategy asked an objection's clarifying question in place of the planned one (strategy.ts). */
+  objectionClarify?: boolean;
 }): QaContext {
   const q = input.nba.question_intent;
   return {
@@ -352,6 +354,7 @@ export function qaContextFromNba(input: {
     leadAskedQuestion: input.interpretation?.lead_asked_question,
     recentOutbound: input.recentOutbound,
     customerType: input.customerType ?? "B2B",
+    objectionClarify: input.objectionClarify === true,
   };
 }
 

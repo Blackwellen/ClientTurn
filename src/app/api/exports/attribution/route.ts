@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { csvCell } from "@/lib/csv";
-import { getActiveWorkspace } from "@/lib/auth/session";
+import { getSecureWorkspace } from "@/lib/auth/session";
 import { getAttributionRows } from "@/lib/analytics/queries";
 import { parseAnalyticsParams, sortAttribution } from "@/lib/analytics/types";
 import { resolveRange, toDayString } from "@/lib/dates";
@@ -26,7 +26,7 @@ const HEADERS = [
 ];
 
 export async function GET(request: Request) {
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

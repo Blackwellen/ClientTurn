@@ -275,7 +275,7 @@ export function discountOffers(text: string): number[] {
 
 /** The agent never says a purchase, order or payment happened. */
 export const PURCHASE_CLAIM_PATTERN =
-  /\b(?:(?:your|the)\s+(?:order|purchase|payment|subscription)\s+(?:is|has been|was)\s+(?:confirmed|complete|completed|received|processed|placed|active)|(?:you(?:'ve| have)|we(?:'ve| have))\s+(?:purchased|bought|paid|ordered|subscribed)|thanks?\s+(?:you\s+)?for\s+(?:your\s+)?(?:purchase|order|payment)|payment\s+(?:received|confirmed|successful)|you(?:'re| are)\s+(?:now\s+)?(?:signed\s+up|subscribed|a\s+customer))\b/i;
+  /\b(?:(?:your|the)\s+(?:order|purchase|payment|subscription)\s+(?:is|has been|was)\s+(?:confirmed|complete|completed|received|processed|placed|active)|(?:you(?:'ve| have)|we(?:'ve| have))\s+(?:purchased|bought|paid|ordered|subscribed)|thanks?\s+(?:you\s+)?for\s+(?:your\s+)?(?:purchase|order|payment)|payment\s+(?:received|confirmed|successful)|you(?:'re| are)\s+(?:now\s+)?(?:signed\s+up|subscribed|a\s+customer)|(?:is|are|has\s+been|it(?:'s| is)|that(?:'s| is))\s+(?:all\s+)?(?:set\s+up\s+and\s+paid|paid\s+(?:for|up|in\s+full))|your\s+account\s+is\s+(?:all\s+|now\s+)?(?:set\s+up|live|active|ready))\b/i;
 
 export function claimsPurchase(text: string): boolean {
   return PURCHASE_CLAIM_PATTERN.test(text.normalize("NFKC"));

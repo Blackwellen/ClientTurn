@@ -9,7 +9,8 @@ import { confirmStepUp } from "@/lib/admin/actions";
 
 /**
  * Re-authentication gate. Mutating support actions require a recent password
- * confirmation, so possession of a live session is never sufficient on its own.
+ * and authenticator-code confirmation, so possession of a live session is
+ * never sufficient on its own.
  */
 export function StepUpDialog(props: {
   open: boolean;
@@ -31,6 +32,7 @@ function StepUpForm({
   onConfirmed: () => void | Promise<void>;
 }) {
   const [password, setPassword] = React.useState("");
+  const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
 
@@ -41,6 +43,7 @@ function StepUpForm({
     try {
       const formData = new FormData();
       formData.set("password", password);
+      formData.set("code", code);
       const result = await confirmStepUp(null, formData);
       if (result.ok) await onConfirmed();
       else setError(result.error);
@@ -57,8 +60,9 @@ function StepUpForm({
             <ShieldCheck className="text-warning-600 size-4" />
           </span>
           <p className="text-content-secondary text-[13px]">
-            This action changes a customer workspace. Re-enter your password to
-            continue. The confirmation lasts 30 minutes.
+            This action changes a customer workspace. Re-enter your password
+            and the current code from your authenticator app. The confirmation
+            lasts 30 minutes.
           </p>
         </div>
 
@@ -76,11 +80,25 @@ function StepUpForm({
           </FormField>
         </div>
 
+        <div className="mt-3">
+          <FormField label="Authenticator code" htmlFor="step-up-code">
+            <Input
+              id="step-up-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123 456"
+              required
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </FormField>
+        </div>
+
         <div className="mt-5 flex items-center justify-end gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" loading={pending} disabled={!password}>
+          <Button type="submit" size="sm" loading={pending} disabled={!password || code.replace(/\s+/g, "").length !== 6}>
             Confirm
           </Button>
         </div>

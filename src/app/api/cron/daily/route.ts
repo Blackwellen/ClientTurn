@@ -41,6 +41,10 @@ export async function GET(request: Request) {
   await enqueue("voice.retention", {}, { idempotencyKey: `voice-retention:${dateKey}`, maxAttempts: 3 });
   enqueued.push("voice.retention");
 
+  // Audit log past each workspace's retention (12 months by default, IR-09).
+  await enqueue("audit.retention", {}, { idempotencyKey: `audit-retention:${dateKey}`, maxAttempts: 3 });
+  enqueued.push("audit.retention");
+
   // Expires stale intent matches and releases reservations left behind by a
   // worker that died mid-flight. Without this, expired signals keep inflating
   // prospect scores and abandoned reservations permanently consume allowance.

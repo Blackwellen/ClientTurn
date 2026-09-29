@@ -19967,6 +19967,44 @@ export type Database = {
           },
         ]
       }
+      workspace_security_settings: {
+        Row: {
+          audit_retention_months: number
+          business_id: string
+          created_at: string
+          idle_timeout_minutes: number | null
+          require_mfa: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          audit_retention_months?: number
+          business_id: string
+          created_at?: string
+          idle_timeout_minutes?: number | null
+          require_mfa?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          audit_retention_months?: number
+          business_id?: string
+          created_at?: string
+          idle_timeout_minutes?: number | null
+          require_mfa?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_security_settings_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_stream_events: {
         Row: {
           business_id: string
@@ -20519,6 +20557,10 @@ export type Database = {
         }[]
       }
       approve_due_commissions: { Args: never; Returns: number }
+      audit_log_purge_batch: {
+        Args: { p_before: string; p_business_id: string | null; p_limit?: number }
+        Returns: number
+      }
       automation_message_outcomes: {
         Args: { p_business_id: string; p_since: string }
         Returns: {
@@ -20937,6 +20979,19 @@ export type Database = {
         Returns: number
       }
       opportunity_stage_rank: { Args: { p_stage: string }; Returns: number }
+      my_auth_sessions: {
+        Args: never
+        Returns: {
+          aal: string
+          created_at: string
+          id: string
+          ip: string
+          is_current: boolean
+          refreshed_at: string
+          updated_at: string
+          user_agent: string
+        }[]
+      }
       outreach_audience_geo_count: {
         Args: {
           p_business_id: string

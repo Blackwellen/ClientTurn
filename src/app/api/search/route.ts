@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getActiveWorkspace } from "@/lib/auth/session";
+import { getSecureWorkspace } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { globalSearch } from "@/lib/search/queries";
 import { checkRateLimit, tooManyRequests } from "@/lib/security/rate-limit";
@@ -29,7 +29,7 @@ const querySchema = z.object({
  * A failure is never reported as an empty result.
  */
 export async function GET(request: Request) {
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }

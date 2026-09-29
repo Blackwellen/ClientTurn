@@ -128,7 +128,9 @@ describe("part B: the closing motion per goal", () => {
       const i = input({ motion, permissions: none });
       assert.match(voiceGoalStep(i), /colleague/, motion);
       assert.doesNotMatch(voiceGoalStep(i), /send_checkout_link|calculate_quote|check_availability/, motion);
-      assert.match(sendDetailsLine(i), /a colleague will send the details today/, motion);
+      // No "today": a send time is a promise only a person can keep (live dry run 2026-09-29).
+      assert.match(sendDetailsLine(i), /a colleague will send the details \(schedule_callback by PERSON/, motion);
+      assert.doesNotMatch(sendDetailsLine(i), /today/, motion);
     }
   });
 

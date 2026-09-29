@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { enforceWorkspaceSecurity, evaluateCurrentAccess } from "./account-security";
 
 export type BusinessRole = "owner" | "admin" | "member" | "viewer";
 
@@ -74,7 +75,23 @@ export async function requireWorkspace() {
   await requireUser();
   const workspace = await getActiveWorkspace();
   if (!workspace) redirect("/onboarding");
+  // Two-factor (own factor, or the workspace's "require two-factor") and the
+  // workspace idle timeout. Server-side on every page, Server Action and
+  // service operation that resolves a workspace (lib/auth/account-security.ts).
+  await enforceWorkspaceSecurity(workspace.businessId);
   return workspace;
+}
+
+/**
+ * For route handlers that answer with JSON rather than a redirect: the
+ * workspace only when the session also passes the workspace's security
+ * policy, otherwise null (the route's own 401).
+ */
+export async function getSecureWorkspace(): Promise<ActiveWorkspace | null> {
+  const workspace = await getActiveWorkspace();
+  if (!workspace) return null;
+  const decision = await evaluateCurrentAccess(workspace.businessId);
+  return decision.ok ? workspace : null;
 }
 
 const RANK: Record<BusinessRole, number> = {

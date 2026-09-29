@@ -109,6 +109,14 @@ export type QaContext = {
   companionDimensions?: DimensionView[];
   /** The planned intent's own applicability, when the library supplied one. */
   plannedIntent?: Pick<QuestionIntent, "appliesTo" | "stages" | "channels"> | null;
+  /**
+   * The lead raised an objection this turn and the plan asks its clarifying
+   * question instead of the planned one (strategy.ts objectionClarify). The
+   * question is theirs to raise, so it is neither unplanned, premature nor a
+   * reason to close; everything else (known, intrusive, repeat, one question)
+   * still binds.
+   */
+  objectionClarify?: boolean;
   /** Who this lead is, for `appliesTo`. Absent fields are not checked. */
   profile?: {
     archetypeKey?: string | null;
@@ -179,7 +187,8 @@ const DETECT_RULES: { dimension: QiDimensionKey; pattern: RegExp }[] = [
   { dimension: "VOLUME", pattern: /\b(volumes?|per month|each month|a month|monthly|orders)\b/i },
   { dimension: "HIRING_NEED", pattern: /\b(hir(e|ing)|recruit\w*|roles? (are you|to fill))\b/i },
   { dimension: "LOCATION", pattern: /\b(postcode|post code|location|where (are you|is the|would the)|based)\b/i },
-  { dimension: "PROPERTY_TYPE", pattern: /\b(property type|type of property|house|flat|bungalow|premises type)\b/i },
+  // "in-house" is who does the work, not a house (ICP evaluation 2026-09-29).
+  { dimension: "PROPERTY_TYPE", pattern: /\b(property type|type of property|(?<!\bin[\s-])house|flat|bungalow|premises type)\b/i },
   { dimension: "AVAILABILITY", pattern: /\b(availability|(what|which) (days?|times?) (suit|work)|suit you better|free (on|next))\b/i },
   { dimension: "TIMING", pattern: /\b(when|timescale|timeline|timeframe|how soon|start date|deadline|get started|go live|launch)\b/i },
   { dimension: "OUTCOME", pattern: /\b((what|which) (outcome|result)s?|hoping to achieve|good result look)\b/i },
@@ -325,10 +334,40 @@ function contentWords(text: string): string[] {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !stop.has(w));
 }
 
+/**
+ * Dimensions the keyword rules cannot tell apart in one question: asking one
+ * is asking the other ("how many people work at the company?" is the
+ * COMPANY_SIZE question and reads as TEAM_SIZE).
+ */
+const SAME_ASK: ReadonlyArray<ReadonlySet<string>> = [
+  new Set(["COMPANY_SIZE", "TEAM_SIZE"]),
+  new Set(["PROBLEM", "DISSATISFACTION"]),
+  new Set(["SUITABILITY", "OUTCOME"]),
+];
+
+/** Share of the planned rendering's content words the sentence uses. */
+function renderingOverlap(sentence: string, rendering: string | null | undefined): number {
+  const words = contentWords(rendering ?? "");
+  if (words.length === 0) return 0;
+  const draft = new Set(contentWords(sentence));
+  return words.filter((w) => draft.has(w)).length / words.length;
+}
+
 /** Whether a question sentence is the planned question. */
 export function matchesPlanned(sentence: string, detected: FactDimension | null, planned: PlannedQuestion | null): boolean {
   if (!planned) return false;
-  if (planned.dimension !== UNMAPPED_DIMENSION) return detected === planned.dimension;
+  if (planned.dimension !== UNMAPPED_DIMENSION) {
+    if (detected === planned.dimension) return true;
+    if (detected && SAME_ASK.some((set) => set.has(detected) && set.has(planned.dimension))) return true;
+    // The planned question in (nearly) its own words is the planned question,
+    // whatever the keyword rules read into it. ICP evaluation 2026-09-29: 32
+    // of 472 library and archetype questions read as another dimension (the
+    // accountant's "Is there a particular deadline or issue driving this?" as
+    // TIMING, the agency's "in-house, another agency" as PROPERTY_TYPE), so a
+    // reply that asked the plan word for word was rejected, retried and, on
+    // the third rejection, handed over.
+    return renderingOverlap(sentence, planned.rendering) >= 0.6;
+  }
   // A custom question has no dimension: recognise it by its own words.
   if (detected && detected !== UNMAPPED_DIMENSION) return false;
   const words = contentWords(planned.rendering ?? "");
@@ -411,13 +450,16 @@ export function runQuestionQa(draft: string, ctx: QaContext): QaResult {
   const ctaCarriesQuestion = action === "CTA_BOOK" && planned !== null;
 
   for (const [index, question] of questions.entries()) {
-    const dimension = asked[index];
-    const isCompanion = matchesPlanned(question, dimension, ctx.companionQuestion ?? null);
-    const isPlanned = matchesPlanned(question, dimension, planned) || isCompanion;
+    const read = asked[index];
+    const isCompanion = matchesPlanned(question, read, ctx.companionQuestion ?? null);
+    const isPlanned = matchesPlanned(question, read, planned) || isCompanion;
+    // The planned question is judged as what the plan asks, not as the
+    // dimension the keyword rules read into its wording.
+    const dimension = isPlanned && !isCompanion && planned && planned.dimension !== UNMAPPED_DIMENSION ? (planned.dimension as FactDimension) : read;
     const view = statusOf(isCompanion ? (ctx.companionDimensions ?? []) : ctx.dimensions, dimension);
 
     // 1 Necessary: a qualifying question the plan did not choose.
-    if (action !== null && isQualifying(dimension) && !isPlanned) {
+    if (action !== null && isQualifying(dimension) && !isPlanned && !ctx.objectionClarify) {
       const isCta = action && (CTA_ACTIONS as readonly string[]).includes(action);
       if (!isCta) {
         findings.push(finding("QA_UNPLANNED_QUESTION", 1, "REJECT", `Asks ${dimension}; the plan ${planned ? `asks ${planned.dimension}` : `is ${action} with no question`}.`));
@@ -440,7 +482,7 @@ export function runQuestionQa(draft: string, ctx: QaContext): QaResult {
       const off = appliesToHolds(ctx);
       if (off) findings.push(finding("QA_OFF_PROFILE", 3, "REJECT", `The planned question is ${off}.`));
     }
-    if (isQualifying(dimension) && prematurityOf(dimension, ctx.stage, known) > 0.6) {
+    if (isQualifying(dimension) && !ctx.objectionClarify && prematurityOf(dimension, ctx.stage, known) > 0.6) {
       findings.push(finding("QA_PREMATURE", 5, "REJECT", `${dimension} is premature at ${ctx.stage}.`));
     }
 
@@ -462,7 +504,7 @@ export function runQuestionQa(draft: string, ctx: QaContext): QaResult {
     }
 
     // 12 Should close instead.
-    if (action && (CTA_ACTIONS as readonly string[]).includes(action) && isQualifying(dimension) && !(ctaCarriesQuestion && isPlanned) && !isCompanion) {
+    if (action && (CTA_ACTIONS as readonly string[]).includes(action) && isQualifying(dimension) && !(ctaCarriesQuestion && isPlanned) && !isCompanion && !ctx.objectionClarify) {
       findings.push(finding("QA_SHOULD_CLOSE", 12, "REJECT", `The plan is ${action}; the draft qualifies on ${dimension}.`));
     }
     // A silent plan has no message at all: any question, recognised or not, pursues the lead.
@@ -482,7 +524,7 @@ export function runQuestionQa(draft: string, ctx: QaContext): QaResult {
   }
 
   // 1 (warn) The plan asked, the draft did not.
-  if (planned && (action === "ASK" || action === "ANSWER_AND_ASK") && !asksPlanned) {
+  if (planned && (action === "ASK" || action === "ANSWER_AND_ASK") && !asksPlanned && !ctx.objectionClarify) {
     findings.push(finding("QA_UNPLANNED_QUESTION", 1, "WARN", `The planned ${planned.dimension} question was not asked.`));
   }
 

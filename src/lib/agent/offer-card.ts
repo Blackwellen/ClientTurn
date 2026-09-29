@@ -158,7 +158,11 @@ export function splitList(value: string | null | undefined): string[] {
   if (!value) return [];
   return value
     .split(/\r?\n|;|•|•/)
-    .map((item) => item.replace(/^\s*[-*\d.)]+\s*/, "").trim())
+    // Only a list marker ("- ", "* ", "1. ", "2) ") is stripped. ICP evaluation
+    // 2026-09-29: the old /^[-*\d.)]+/ also ate a leading figure, so the
+    // approved claim "10-year workmanship guarantee" reached the card as
+    // "year workmanship guarantee" and "14-day free trial" as "day free trial".
+    .map((item) => item.replace(/^\s*(?:[-*•]\s+|\d{1,2}[.)]\s+)/, "").trim())
     .filter(Boolean);
 }
 
@@ -180,6 +184,42 @@ export function jsonStrings(value: unknown): string[] {
     return jsonStrings((value as { items: unknown }).items);
   }
   return [];
+}
+
+/**
+ * The card's sections whose items the business stands behind: what a reply
+ * may state as fact. Never the NEVER CLAIM / NEVER SAY / RESTRICTIONS items,
+ * the voice lines or the style examples.
+ */
+export const APPROVED_CARD_SECTIONS: readonly string[] = [
+  "APPROVED CLAIMS",
+  "PUBLISHED PRICES (quote verbatim, nothing else)",
+  "VALUE PROPOSITION",
+  "KEY MESSAGES",
+  "WHAT THEY SELL",
+  "WHO FOR",
+  "DIFFERENTIATORS",
+  "FAQS",
+];
+
+/**
+ * The approved lines of a rendered card (buildOfferCard's text), for the
+ * validator's credential check (validate.ts approvedClaims): a guarantee,
+ * certification, integration or "free" offer in a reply must be one of these.
+ */
+export function approvedCardLines(cardText: string): string[] {
+  const out: string[] = [];
+  let section: string | null = null;
+  for (const raw of cardText.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("- ")) {
+      if (section && APPROVED_CARD_SECTIONS.includes(section)) out.push(line.slice(2).trim());
+      continue;
+    }
+    section = line;
+  }
+  return out;
 }
 
 /** Keeps whole leading sentences up to the cap; null when even one is too long. */

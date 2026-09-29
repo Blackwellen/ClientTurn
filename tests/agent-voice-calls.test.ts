@@ -498,7 +498,8 @@ describe("no double contact: the call is the touch", () => {
     assert.ok(scheduler.indexOf("runAgentVoiceTick(") < scheduler.indexOf("for (const work of workForType("));
     assert.match(scheduler, /calledLeadIds = new Set\(voice\.touchedLeadIds\)/);
     assert.match(scheduler, /runBookingTick\(agent, calledLeadIds\)/);
-    const ticks = readFileSync("src/lib/agents/ticks.ts", "utf8");
+    // The closing tick's logic is a pure core since 2026-09-29 (tick-core.ts; behaviour in tests/agent-ticks.test.ts).
+    const ticks = readFileSync("src/lib/agents/tick-core.ts", "utf8");
     assert.match(ticks, /const \{ leads, covered \} = leadsForFollowUp\(stalled\.leads, calledLeadIds\);/);
   });
 

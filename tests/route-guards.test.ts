@@ -94,6 +94,10 @@ const SELF_GUARDED: Record<string, string> = {
   // Card-first trial (8.10): the app layout redirects here until Stripe has
   // confirmed a subscription, so it cannot sit under that layout either.
   "start-trial/page.tsx": "requireUser",
+  // Mandatory admin two-factor (IR-06): reached by an operator whose session
+  // is password-only, which is exactly what requirePlatformAdmin refuses. It
+  // resolves the operator itself and redirects anyone else to /admin/login.
+  "admin/mfa/page.tsx": "getPlatformOperatorSession",
 };
 
 /**
@@ -220,7 +224,7 @@ describe("the development harnesses cannot be reached in production", () => {
  */
 const MECHANISMS: Record<string, RegExp> = {
   // A signed-in workspace member.
-  session: /\b(requireWorkspace|requireRole|requireCapability|getActiveWorkspace)\s*\(/,
+  session: /\b(requireWorkspace|requireRole|requireCapability|getActiveWorkspace|getSecureWorkspace)\s*\(/,
   // The pg_cron shared secret (docs/CRON.md).
   "cron-secret": /serverEnv\.cronSecret/,
   // An HMAC over the raw body, compared in constant time.
@@ -290,6 +294,9 @@ const ROUTE_AUTH: Record<string, keyof typeof MECHANISMS> = {
   // Admin -> Affiliates CSV export (affiliate audit 17): operators only, audited.
   "admin/(ops)/affiliates/export/route.ts": "platform-admin",
   "auth/callback/route.ts": "public",
+  // Idle-timeout sign-out (Settings -> Security): acts only on the signed-in
+  // user's own session, and only with a fresh token minted for that user.
+  "auth/session-expired/route.ts": "session",
   "r/[slug]/route.ts": "public",
   // The referral cookie, set only after cookie consent (owner decision 2026-09-28).
   "api/affiliates/referral/route.ts": "public",

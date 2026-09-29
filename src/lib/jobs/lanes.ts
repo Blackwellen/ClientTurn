@@ -167,6 +167,7 @@ export const JOB_CLASSES: Partial<Record<JobType, JobClass>> = {
   "whatsapp.template_sync": c("BULK", "long", "nightly_summaries"),
   "notification.slack_digest": c("BULK", "slow", "notifications"),
   "voice.retention": c("BULK", "long", "nightly_summaries"),
+  "audit.retention": c("BULK", "long", "nightly_summaries"),
   "billing.workspace_deletion": c("BULK", "long", "payments_billing"),
 };
 

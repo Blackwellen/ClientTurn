@@ -38,10 +38,9 @@ import { queueNotification } from "@/lib/jobs/handlers/shared";
 import { cancelQueuedCall, requestCall } from "../runtime-core";
 import { localWhen } from "../post-call";
 import { serverVoiceDeps } from "../server-deps";
-import { classifyDestination } from "../destinations";
 import { spokenSlotChoice, spokenSlotLabel, spokenWhen } from "../spoken-time";
 import type { VoiceToolArgs } from "./definitions";
-import { deriveToolPermissions, type PortOutcome, type ToolPermissions, type ToolCallRow } from "./core";
+import { callPermissionsFromContext, type PortOutcome, type ToolPermissions, type ToolCallRow } from "./core";
 
 /**
  * The work behind each voice tool, run by the `voice_agent.*` service
@@ -170,17 +169,18 @@ export async function voiceToolPermissions(call: VoiceCallLite): Promise<ToolPer
     return { aiEnabled: false, book: false, quote: false, sendQuote: false, checkout: false, transferMode: "NEVER", transferNumberSet: false, transferHuman: false, aiCall: false, hasEmail: false, smsLawful: false, bookingLink: false };
   }
   const access = await quoteAccess(context);
-  const direct = context.commerce?.authority ?? DISABLED_AUTHORITY;
-  const phone = context.lead.phone ?? null;
-  const derived = deriveToolPermissions({
-    aiEnabled: access.aiEnabled,
+  // The same derivation the brief loader uses (server-p3.ts), so the brief
+  // never offers a tool this gate refuses, nor hides one it allows.
+  const derived = callPermissionsFromContext({
+    aiAssistEnabled: context.business.aiAssistEnabled,
+    agentMode: context.business.agent.mode,
     quoteAiCapability: access.quoteAiCapability,
-    authority: access.authority,
-    directClose: { enabled: direct.enabled, motionAllows: motionAllowsDirectClose(context.sales.motion), approvedLinks: direct.approved_checkout_links.length },
+    authority: context.commerce?.authority,
+    motion: context.sales.motion,
     transfer: { mode, numberSet: Boolean(s?.transfer_number_e164) },
-    hasEmail: Boolean(context.lead.email) && !context.lead.opted_out,
-    smsLawful: Boolean(phone && phone.startsWith("+") && classifyDestination(phone) === "UK_MOBILE" && !context.lead.opted_out && context.leadContext.contactable),
-    bookingLink: Boolean(context.business.bookingUrl),
+    lead: { phone: context.lead.phone, email: context.lead.email, optedOut: Boolean(context.lead.opted_out) },
+    contactable: context.leadContext.contactable,
+    bookingUrl: context.business.bookingUrl,
   });
   // The deterministic verdict: end_call_summary may say "qualified" only when this does.
   return { ...derived, qualificationVerdict: context.lead.qualification_state ?? null, timezone: context.business.timezone };

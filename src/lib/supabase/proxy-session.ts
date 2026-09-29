@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { withActivity } from "@/lib/auth/activity-proxy";
 
 /**
  * Refreshes the Supabase session and reports whose it is. `userId` comes from
@@ -42,6 +43,12 @@ export async function refreshSessionWithUser(request: NextRequest): Promise<{
   return { response, supabase: supabase as unknown as SupabaseClient, userId: user?.id ?? null };
 }
 
+/**
+ * The session refresh every non-maintenance request goes through. Also feeds
+ * the workspace idle timeout (lib/auth/activity-proxy.ts): the page is handed
+ * the previous activity time and the cookie is moved on to now.
+ */
 export async function updateSession(request: NextRequest) {
-  return (await refreshSessionWithUser(request)).response;
+  const { response, userId } = await refreshSessionWithUser(request);
+  return withActivity(request, response, userId);
 }

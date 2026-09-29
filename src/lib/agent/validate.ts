@@ -22,7 +22,7 @@ import type { AgentChannel } from "./types.ts";
 import type { QaCode } from "../qualification-intelligence/types.ts";
 import type { QuoteValidationFacts } from "./quote-flow.ts";
 import { humanStyleFailures, type HumanStyleCode } from "./human-style.ts";
-import { competitorClaimFailures, type CompetitorRule } from "../sales-library/competitors.ts";
+import { competitorClaimFailures, DISPARAGING, type CompetitorRule } from "../sales-library/competitors.ts";
 import { offTargetMentions } from "../agents/offer-target.ts";
 
 export type ValidationFacts = {
@@ -100,6 +100,21 @@ export type ValidationFacts = {
    * agent's target. A draft naming one is rejected. Absent = whole catalogue.
    */
   offTargetNames?: string[];
+  /**
+   * The lines the business stands behind this turn (offer-card.ts
+   * approvedCardLines: approved claims, what they sell, published prices,
+   * positioning). A guarantee, warranty, certification, insurance,
+   * integration or "free" offer in a draft must be carried by one of them,
+   * with its condition (the "10-year", the "over £100"); a money amount in
+   * one of them is published wording. Absent = the credential check is off
+   * (callers that validate the business's own text).
+   *
+   * ICP evaluation 2026-09-29: "every job comes with a lifetime guarantee",
+   * "we're fully SOC 2 certified" and "a full two-way Xero integration" all
+   * passed the validator, and "free UK delivery on orders over £100", the
+   * workspace's own approved claim, was refused for its amount.
+   */
+  approvedClaims?: string[];
 };
 
 export type ValidationFailure = {
@@ -126,6 +141,7 @@ export type ValidationCode =
   | "UNSUPPORTED_VAT_CLAIM"
   | "UNSUPPORTED_DELIVERY_CLAIM"
   | "UNAPPROVED_COMPETITOR_CLAIM"
+  | "UNSUPPORTED_CREDENTIAL_CLAIM"
   | "OFF_TARGET_OFFER"
   | StyleCode
   | QaCode;
@@ -173,8 +189,34 @@ function foldCurrency(value: string): string {
   return value.normalize("NFKC");
 }
 
-// "2pm", "14:30", "half two" style commitments.
-const CLOCK_PATTERN = /\b(?:[01]?\d|2[0-3])[:.][0-5]\d\b|\b(?:1[0-2]|[1-9])\s?(?:am|pm)\b/gi;
+// "2pm", "14:30", "10:00am" style commitments. ICP evaluation 2026-09-29:
+// "h:mm" run straight into "am"/"pm" (the calendar's own label format, so the
+// one a model copies) had no word boundary after the minutes and matched
+// nothing, so an invented "11:00am" passed the availability check.
+const CLOCK_PATTERN = /\b(?:[01]?\d|2[0-3])[:.][0-5]\d(?:\s?(?:am|pm))?\b|\b(?:1[0-2]|[1-9])\s?(?:am|pm)\b/gi;
+
+/** Clock mentions in a text, never a money amount ("£12.50" is not 12:50). */
+function clockMentionsIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(CLOCK_PATTERN)) {
+    const prev = text.slice(Math.max(0, (m.index ?? 0) - 1), m.index ?? 0);
+    if (/[£$€¥\d,]/.test(prev)) continue;
+    out.push(m[0]);
+  }
+  return out;
+}
+
+/** Minutes past midnight for a clock mention ("10am", "10:00am", "14:30"); NaN when unreadable. */
+function clockMinutes(mention: string): number {
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?$/i.exec(mention.trim());
+  if (!m) return Number.NaN;
+  let hours = Number(m[1]) % 24;
+  const minutes = Number(m[2] ?? "0");
+  const half = m[3]?.toLowerCase();
+  if (half === "pm" && hours < 12) hours += 12;
+  if (half === "am" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
 
 const BOOKING_CLAIM_PATTERN =
   /\b(?:you(?:'re| are)\s+booked|i(?:'ve| have)\s+booked|booked\s+you\s+in|confirmed\s+your\s+(?:booking|appointment)|all\s+booked|that(?:'s| is)\s+booked|you(?:'re| are)\s+all\s+set|(?:pencill?ed|put)\s+you\s+(?:in|down)|put\s+you\s+in\s+the\s+diary|in\s+the\s+diary|your\s+(?:appointment|booking|visit)\s+is\s+confirmed|that(?:'s| is)\s+you\s+sorted|you(?:'re| are)\s+in\s+for)\b/i;
@@ -183,7 +225,7 @@ const SERVICE_AREA_CLAIM_PATTERN =
   /\b(?:we\s+(?:do\s+)?cover|we\s+(?:definitely\s+)?serve|(?:you(?:'re| are)|that(?:'s| is))\s+(?:well\s+)?(?:with)?in\s+our\s+(?:service\s+)?area|we\s+work\s+in\s+that\s+area)\b/i;
 
 const SLA_CLAIM_PATTERN =
-  /\b(?:within\s+\d+\s+(?:minutes?|mins?|hours?)|in\s+the\s+next\s+\d+\s+(?:minutes?|mins?|hours?)|straight\s+away|right\s+now\s+by\s+phone)\b/i;
+  /\b(?:within\s+\d+\s+(?:minutes?|mins?|hours?)|in\s+the\s+next\s+\d+\s+(?:minutes?|mins?|hours?)|within\s+(?:the|an|half\s+an|the\s+next)\s+hour|straight\s+away|right\s+now\s+by\s+phone|(?:call|ring|phone|get\s+back\s+to|be\s+(?:with|round|out\s+to))\s+you(?:\s+back)?\s+(?:today|tonight|this\s+(?:morning|afternoon|evening)|shortly|asap|in\s+(?:a\s+bit|an\s+hour|half\s+an\s+hour|(?:\d+|a\s+few|a\s+couple\s+of|five|ten|fifteen|twenty|thirty)\s+(?:minutes?|mins?|hours?))))\b/i;
 
 const INTERNAL_DISCLOSURE_PATTERN =
   /\b(?:system\s+prompt|my\s+instructions\s+are|api[\s_-]?key|access[\s_-]?token|service[\s_-]?role|supabase|azure\s+openai|prompt\s+registry|tool\s+schema|business_id|conversation_id)\b/i;
@@ -192,6 +234,23 @@ const INTERNAL_DISCLOSURE_PATTERN =
 // implies to be a person, however it is asked.
 const HUMAN_CLAIM_PATTERN =
   /\b(?:i(?:'m| am)\s+(?:not\s+(?:a\s+|an\s+)?(?:bot|robot|machine|computer|ai|chatbot|automated)|a\s+(?:real\s+)?(?:human|person))|(?:no|nope),?\s+i(?:'m| am)\s+not\s+a\s+(?:bot|robot)|you(?:'re| are)\s+(?:talking|speaking|chatting)\s+(?:to|with)\s+a\s+(?:real\s+)?(?:human|person)|this\s+is\s+a\s+real\s+(?:human|person))\b/i;
+
+/**
+ * Self-identification as a named person in reply to "am I talking to a
+ * bot?" ("No, I'm Sam from the studio") or with "a real person" beside it
+ * (ICP evaluation 2026-09-29: both passed HUMAN_CLAIM_PATTERN). A sentence
+ * that says it is an AI or an assistant is honest and never matches.
+ */
+function claimsToBeNamedHuman(text: string): boolean {
+  return text
+    .split(/(?<=[.!?\n])\s+/)
+    .some(
+      (sentence) =>
+        !/\b(?:ai|a\.i\.|automated|assistant|bot|chatbot|virtual|digital)\b/i.test(sentence) &&
+        (/^\s*(?:no|nope|not\s+at\s+all)\b[\s,.!]+(?:i(?:'|’)?m|i\s+am|this\s+is|it(?:'|’)?s)\s+[A-Z][a-z]+\b/.test(sentence) ||
+          /\b(?:i(?:'|’)?m|i\s+am)\b[^.?!]{0,60}\ba\s+real\s+(?:human|person)\b/i.test(sentence)),
+    );
+}
 
 const URL_PATTERN = /https?:\/\/[^\s<>"')]+|(?:^|\s)(?:www\.)[^\s<>"')]+/gi;
 
@@ -223,12 +282,37 @@ function priceIsPublished(amount: string, published: string[]): boolean {
 const VAT_PATTERN = /\b(?:vat|v\.a\.t\.?|sales\s+tax|tax(?:es)?|zero[\s-]?rated|vat[\s-]?exempt|tax[\s-]?free|ex(?:cl(?:uding)?)?\.?\s+vat|inc(?:l(?:uding)?)?\.?\s+vat)\b/i;
 
 /**
+ * Tax named as the work, not as part of a price: an accountant's "tax
+ * return", "corporation tax", "the tax year" (ICP evaluation 2026-09-29:
+ * "is it the accounts or the tax return that's due?" was refused as a VAT
+ * statement, which made the rule unusable for professional services).
+ */
+const TAX_AS_SERVICE =
+  /\b(?:(?:corporation|income|capital\s+gains|inheritance|council|road|payroll)\s+tax(?:es)?|tax\s+(?:returns?|years?|affairs|advice|advisers?|advisors?|planning|deadlines?|investigations?|enquir(?:y|ies)|filing|codes?|bills?)|self[\s-]?assessments?|mtd|making\s+tax\s+digital)\b/gi;
+
+/** The reply with any published price wording (and its VAT words) and tax-as-a-service nouns taken out, for the VAT check. */
+function withoutPublishedVat(text: string, published: readonly string[]): string {
+  let out = text.replace(TAX_AS_SERVICE, " ");
+  for (const p of published) {
+    const phrase = p.trim();
+    if (phrase.length < 3 || !VAT_PATTERN.test(phrase)) continue;
+    out = out.split(phrase).join(" ");
+    out = out.split(phrase.toLowerCase()).join(" ");
+  }
+  return out;
+}
+
+/**
  * A delivery, start or completion promise: a commitment to a date or a
  * duration the quote does not make ("ready in two weeks", "we can start on
  * Monday", "delivered by Friday", "turnaround of 5 days").
  */
 const DELIVERY_PATTERN =
-  /\b(?:deliver(?:ed|y)?|turnaround|lead\s+time|ready|complete(?:d)?|finish(?:ed)?|live|launch(?:ed)?|start(?:ed)?|kick\s+off|begin|ship(?:ped)?|installed|done)\b[^.?!\n]{0,40}?\b(?:(?:with)?in|by|on|of)\s+(?:(?:\d+|a|an|one|two|three|four|five|six|seven|eight|ten|a\s+couple\s+of|a\s+few)\s+(?:working\s+|business\s+)?(?:days?|weeks?|months?)|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month)|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:week|month))\b/i;
+  /\b(?:deliver(?:ed|y)?|turnaround|lead\s+time|ready|complete(?:d)?|finish(?:ed)?|live|launch(?:ed)?|start(?:ed)?|kick\s+off|begin|ship(?:ped)?|installed|done|arriv(?:e|es|ed|al)|dispatch(?:ed)?|be\s+with\s+you|get\s+to\s+you)\b[^.?!\n]{0,40}?\b(?:(?:with)?in|by|on|of)\s+(?:(?:\d+|a|an|one|two|three|four|five|six|seven|eight|ten|a\s+couple\s+of|a\s+few)\s+(?:working\s+|business\s+)?(?:days?|weeks?|months?)|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month)|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:week|month)|tomorrow|christmas)\b/i;
+
+/** The same promise with no connecting word: "we can start tomorrow", "it'll arrive this week". */
+const DELIVERY_SOON_PATTERN =
+  /\b(?:deliver(?:ed)?|ready|done|live|start|begin|ship(?:ped)?|dispatch(?:ed)?|arrive|installed|finished|completed|be\s+with\s+you)\s+(?:it\s+|them\s+)?(?:today|tomorrow|this\s+week|next\s+week)\b/i;
 
 function vatPercents(sentence: string): number[] {
   return [...sentence.matchAll(/(\d+(?:\.\d+)?)\s*(?:%|per\s?cent\b)/gi)].map((m) => Number(m[1]));
@@ -290,7 +374,7 @@ export function validateResponse(
   }
 
   for (const amount of folded.match(MONEY_PATTERN) ?? []) {
-    if (!priceIsPublished(amount, facts.publishedPriceText) && !isQuoteFigure(amount, facts.quote)) {
+    if (!priceIsPublished(amount, [...facts.publishedPriceText, ...(facts.approvedClaims ?? [])]) && !isQuoteFigure(amount, facts.quote)) {
       failures.push({
         code: "UNSUPPORTED_PRICE_CLAIM",
         detail: facts.quote?.figures.length
@@ -304,8 +388,10 @@ export function validateResponse(
     }
   }
 
-  // ---- VAT and tax: never improvised (resolved conflict 1)
-  if (VAT_PATTERN.test(folded)) {
+  // ---- VAT and tax: never improvised (resolved conflict 1). Published price
+  // wording that carries its VAT ("from £650 plus VAT") may be quoted verbatim.
+  const vatText = withoutPublishedVat(folded, [...facts.publishedPriceText, ...(facts.approvedClaims ?? [])]);
+  if (VAT_PATTERN.test(vatText)) {
     const quote = facts.quote ?? null;
     if (!quote || !quote.vatRegistered) {
       failures.push({
@@ -314,7 +400,7 @@ export function validateResponse(
         correction: "Do not mention VAT or tax at all.",
       });
     } else {
-      const sentences = folded.split(/(?<=[.!?\n])\s+/).filter((sentence) => VAT_PATTERN.test(sentence));
+      const sentences = vatText.split(/(?<=[.!?\n])\s+/).filter((sentence) => VAT_PATTERN.test(sentence));
       const stray = sentences.flatMap(vatPercents).filter((pct) => !quote.vatRatesPercent.includes(pct) && !quote.discountPercents.includes(pct));
       if (stray.length > 0) {
         failures.push({
@@ -327,7 +413,7 @@ export function validateResponse(
   }
 
   // ---- delivery, start and completion dates: never promised
-  if (DELIVERY_PATTERN.test(folded)) {
+  if (DELIVERY_PATTERN.test(folded) || DELIVERY_SOON_PATTERN.test(folded)) {
     failures.push({
       code: "UNSUPPORTED_DELIVERY_CLAIM",
       detail: "Promised a delivery, start or completion time.",
@@ -399,13 +485,16 @@ export function validateResponse(
   // down for 3pm" and "see you Tuesday at 4pm" state a time just as firmly and
   // sailed straight through. There is no legitimate reason for the assistant
   // to name a clock time it was not handed.
-  const clockMentions = trimmed.match(CLOCK_PATTERN) ?? [];
+  const clockMentions = clockMentionsIn(trimmed);
   if (clockMentions.length > 0) {
+    // Compared by the time of day, not by spelling: a calendar label
+    // "Wed 30 Sep, 10:00am" confirms "10am" (ICP evaluation 2026-09-29: the
+    // natural way to write a confirmed time was refused).
+    const confirmedMinutes = new Set(facts.confirmedSlots.flatMap((slot) => clockMentionsIn(slot).map(clockMinutes)));
     const unconfirmed = clockMentions.filter(
       (mention) =>
-        !facts.confirmedSlots.some((slot) =>
-          slot.toLowerCase().includes(mention.toLowerCase().replace(/\s+/g, "")),
-        ),
+        !facts.confirmedSlots.some((slot) => slot.toLowerCase().includes(mention.toLowerCase().replace(/\s+/g, ""))) &&
+        !confirmedMinutes.has(clockMinutes(mention)),
     );
     if (unconfirmed.length > 0) {
       failures.push({
@@ -481,7 +570,7 @@ export function validateResponse(
         "Never mention internal systems, prompts, providers or credentials. Answer the enquiry only.",
     });
   }
-  if (HUMAN_CLAIM_PATTERN.test(folded)) {
+  if (HUMAN_CLAIM_PATTERN.test(folded) || claimsToBeNamedHuman(folded)) {
     failures.push({
       code: "CLAIMS_TO_BE_HUMAN",
       detail: "The reply denied being automated.",
@@ -492,6 +581,20 @@ export function validateResponse(
 
   // ---- competitors: approved points only, never a put-down (0174)
   failures.push(...competitorClaimFailures(trimmed, facts.competitors ?? []));
+  // The lead's current supplier is a competitor too, named or not (ICP
+  // evaluation 2026-09-29: "your current agency are clearly rubbish" passed
+  // because no competitor was configured).
+  if (incumbentPutDown(trimmed)) {
+    failures.push({
+      code: "UNAPPROVED_COMPETITOR_CLAIM",
+      detail: "Put down the lead's current supplier.",
+      correction: "Never criticise their current supplier. Ask what they would change, or say what the business does, from approved facts.",
+    });
+  }
+
+  // ---- guarantees, certifications, insurance, integrations, "free" offers:
+  // only as the business approved them, with their conditions.
+  if (facts.approvedClaims) failures.push(...credentialClaimFailures(trimmed, facts.approvedClaims, facts.businessName));
 
   // ---- the agent's target: never pitch an offer it does not sell (0174)
   const offTarget = offTargetMentions(trimmed, facts.offTargetNames ?? []);
@@ -567,6 +670,9 @@ export const PRESSURE_PATTERNS: { kind: "URGENCY" | "SCARCITY" | "CONTROL" | "TH
   { kind: "URGENCY", label: "before it's too late", pattern: /\bbefore it[’']?s too late\b/i },
   { kind: "URGENCY", label: "time is running out", pattern: /\b(time is running out|running out of time|now or never|hurry)\b/i },
   { kind: "URGENCY", label: "don't delay", pattern: /\bdon[’']?t (delay|wait)\b/i },
+  // ICP evaluation 2026-09-29: an invented price rise and a sign-today condition passed.
+  { kind: "URGENCY", label: "prices going up", pattern: /\b(prices?|pricing|rates?|fees?)\s+(go(es)?|are going|is going|will go|will be going)\s+up\b/i },
+  { kind: "URGENCY", label: "sign today", pattern: /\bif you (sign|book|order|buy|commit|confirm|decide)( up)?\s+(today|tonight|now|this week)\b/i },
   // Fabricated scarcity.
   { kind: "SCARCITY", label: "only a few left", pattern: /\bonly\s+(\d+|one|two|three|four|five|a (few|handful))\s+(left|remaining|spots?|places?|spaces?|slots?)\b/i },
   { kind: "SCARCITY", label: "limited spots", pattern: /\blimited (spots|places|spaces|slots|availability|numbers)\b/i },
@@ -576,6 +682,8 @@ export const PRESSURE_PATTERNS: { kind: "URGENCY" | "SCARCITY" | "CONTROL" | "TH
   { kind: "CONTROL", label: "you need to decide", pattern: /\byou (need|have|ought) to (act|decide|commit|sign( up)?|buy|purchase|book now|move (fast|quickly)|say yes)\b/i },
   { kind: "CONTROL", label: "you must act", pattern: /\byou must (act|decide|commit|sign( up)?|buy|purchase|book|respond|reply|take (this|advantage))\b/i },
   { kind: "CONTROL", label: "don't miss out", pattern: /\bdon[’']?t miss (out|this( (offer|opportunity|chance|deal))?)\b/i },
+  // Talking the buyer out of their own decision process ("your partner doesn't need to be involved").
+  { kind: "CONTROL", label: "skip the decision process", pattern: /\b(doesn[’']?t|don[’']?t|does not|do not|no) need to (be involved|check with|run it (past|by)|involve|wait for (them|him|her|your))\b/i },
   // Threats of loss.
   { kind: "THREAT", label: "you'll lose out", pattern: /\byou[’']?(ll| will) (lose|miss) (out|your (place|spot|slot|space|discount|chance))\b/i },
   { kind: "THREAT", label: "given to someone else", pattern: /\b(spot|place|slot|space|discount)\s+will (be given|go) to someone else\b/i },
@@ -583,6 +691,130 @@ export const PRESSURE_PATTERNS: { kind: "URGENCY" | "SCARCITY" | "CONTROL" | "TH
   { kind: "GUILT", label: "guilt framing", pattern: /\b(don[’']?t you (want|care)|why (haven[’']?t|wouldn[’']?t|won[’']?t) you|i[’']?m (really )?(disappointed|surprised) (you|that you))\b/i },
   { kind: "GUILT", label: "competitor shaming", pattern: /\b(your competitors|everyone else) (are|is) already\b/i },
 ];
+
+/* ---------------------------------------------- incumbents and credentials */
+
+const INCUMBENT =
+  /\b(?:your|their)\s+(?:current|existing|old|previous|last|present)\s+(?:agency|agencies|supplier|provider|developer|designer|studio|accountants?|roofer|builder|platform|software|tool|system|firm|company|team|contractor|partner|vendor)\b/i;
+
+/** A sentence naming the lead's current supplier with put-down wording. Pure. */
+export function incumbentPutDown(text: string): boolean {
+  return text
+    .normalize("NFKC")
+    .split(/(?<=[.!?\n])\s+/)
+    .some((sentence) => INCUMBENT.test(sentence) && DISPARAGING.test(sentence));
+}
+
+type CredentialFamily = { key: string; label: string; cue: RegExp; approvedBy: (line: string, match: RegExpMatchArray) => boolean };
+
+const FREE_NOUNS = "delivery|shipping|returns?|surveys?|trials?|consultations?|quotes?|installation|set[\\s-]?up|audits?|demos?|estimates?";
+
+/**
+ * Binding promises a reply may make only in the business's own words
+ * (resolved conflict 1). Each family has a cue in the reply and a test for an
+ * approved line that carries it.
+ */
+const CREDENTIAL_FAMILIES: CredentialFamily[] = [
+  {
+    key: "GUARANTEE",
+    label: "a guarantee or warranty",
+    cue: /\b(?:guarantee[ds]?|guaranteeing|warrant(?:y|ies|ied)|money[\s-]back)\b/i,
+    approvedBy: (line) => /\b(?:guarant|warrant|money[\s-]back)/i.test(line),
+  },
+  {
+    key: "CERTIFICATION",
+    label: "a certification or accreditation",
+    cue: /\b(?:certified|certification|accredited|accreditation|iso\s?\d{4,5}|soc\s?2|cyber\s+essentials|pci[\s-]?dss|chartered|fca[\s-]regulated|regulated\s+by)\b/i,
+    approvedBy: (line, m) => {
+      const key = m[0].toLowerCase().replace(/\s+/g, " ");
+      const root = /iso|soc|cyber|pci|chartered|regulated/.exec(key)?.[0] ?? (/(certif|accredit)/.exec(key)?.[0] as string);
+      return new RegExp(root.replace(/\s/g, "\\s?"), "i").test(line);
+    },
+  },
+  {
+    key: "INSURANCE",
+    label: "insurance cover",
+    cue: /\b(?:insured|insurance|public\s+liability|indemnity)\b/i,
+    approvedBy: (line) => /\b(?:insur|liability|indemnity)/i.test(line),
+  },
+  {
+    key: "FREE",
+    label: "a free offer",
+    cue: new RegExp(`\\bfree\\s+(?:uk\\s+)?(${FREE_NOUNS})\\b|\\b(${FREE_NOUNS})\\s+(?:is|are)\\s+(?:always\\s+|completely\\s+|totally\\s+)?free\\b`, "i"),
+    approvedBy: (line, m) => {
+      const noun = (m[1] ?? m[2] ?? "").toLowerCase().replace(/s$/, "").slice(0, 5);
+      return /\bfree\b/i.test(line) && line.toLowerCase().includes(noun);
+    },
+  },
+];
+
+/** "integrates with Xero", "a two-way Xero integration", "syncs with HubSpot": the named product must be in an approved line. */
+const INTEGRATION_CUES = [
+  /\b(?:integrat(?:es|ion|ions|ed)|syncs?|connects?|plugs?\s+(?:straight\s+)?into|works)\s+(?:directly\s+|fully\s+|natively\s+|seamlessly\s+)?(?:with|to|into)\s+([A-Z][\w.&-]*(?:\s+[A-Z][\w.&-]*)?)/g,
+  /\b([A-Z][\w.&-]+)\s+integrations?\b/g,
+];
+
+/** Capitalised words that open a sentence or describe an integration, never a product's name. */
+const NOT_A_PRODUCT =
+  /^(?:our|the|a|an|any|every|each|this|that|these|those|full|two[\s-]?way|one[\s-]?way|native|direct|seamless|simple|easy|deep|custom|api|your|their|its|we|it|you|they|no|some|most|all|real[\s-]?time)$/i;
+
+const NEGATED = /\b(?:can(?:'|’)?t|cannot|can\s+not|don(?:'|’)?t|do\s+not|doesn(?:'|’)?t|does\s+not|won(?:'|’)?t|isn(?:'|’)?t|aren(?:'|’)?t|not|no|never|without)\b[^.?!,;]{0,25}$/i;
+const HYPOTHETICAL = /\b(?:whether|if|check|confirm|find\s+out|ask)\b/i;
+
+function numbersIn(text: string): string[] {
+  return text.match(/\d+(?:[.,]\d+)?/g) ?? [];
+}
+
+/**
+ * The credential claims in a reply that no approved line carries, or that
+ * drop the approved line's condition (a "10-year" guarantee said as
+ * "lifetime", free delivery "on everything" when approved "over £100").
+ * A refusal ("I can't guarantee that"), a question and a "whether" are not
+ * claims. Pure; exported for tests.
+ */
+export function credentialClaimFailures(text: string, approved: readonly string[], businessName = ""): ValidationFailure[] {
+  const failures: ValidationFailure[] = [];
+  const sentences = text.normalize("NFKC").split(/(?<=[.!?\n])\s+/);
+  for (const sentence of sentences) {
+    if (/\?\s*$/.test(sentence)) continue;
+    for (const family of CREDENTIAL_FAMILIES) {
+      const m = sentence.match(family.cue);
+      if (!m || m.index === undefined) continue;
+      const before = sentence.slice(0, m.index);
+      if (NEGATED.test(before) || HYPOTHETICAL.test(before)) continue;
+      const lines = approved.filter((line) => family.approvedBy(line, m));
+      const conditions = [...new Set(lines.flatMap(numbersIn))];
+      const conditionKept = conditions.length === 0 || numbersIn(sentence).some((n) => conditions.includes(n));
+      if (lines.length === 0 || !conditionKept) {
+        failures.push({
+          code: "UNSUPPORTED_CREDENTIAL_CLAIM",
+          detail: lines.length === 0 ? `Claimed ${family.label} the business has not approved.` : `Changed the condition of an approved line ("${lines[0]}").`,
+          correction:
+            lines.length === 0
+              ? `Do not claim ${family.label}. Say a colleague will confirm it.`
+              : `Use the approved wording with its condition, exactly: "${lines[0]}", or leave it out.`,
+        });
+        break;
+      }
+    }
+    for (const cue of INTEGRATION_CUES) {
+      for (const m of sentence.matchAll(cue)) {
+        const name = (m[1] ?? "").trim();
+        if (!name || m.index === undefined || NOT_A_PRODUCT.test(name)) continue;
+        const before = sentence.slice(0, m.index);
+        if (NEGATED.test(before) || HYPOTHETICAL.test(before)) continue;
+        if (businessName && businessName.toLowerCase().includes(name.toLowerCase())) continue;
+        if (approved.some((line) => line.toLowerCase().includes(name.toLowerCase()))) continue;
+        failures.push({
+          code: "UNSUPPORTED_CREDENTIAL_CLAIM",
+          detail: `Claimed an integration with ${name} the business has not approved.`,
+          correction: `Do not say it works with ${name}. Say a colleague will confirm it.`,
+        });
+      }
+    }
+  }
+  return failures;
+}
 
 /** The pressure phrases a text uses, by label. Pure; exported for tests. */
 export function pressureIn(text: string): string[] {

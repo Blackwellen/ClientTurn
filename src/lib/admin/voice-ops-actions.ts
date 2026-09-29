@@ -43,7 +43,7 @@ async function authorise(operatorId: string, input: { reason: string; confirm: b
   if (verdict.ok) return null;
   switch (verdict.code) {
     case "step_up_required":
-      return { ok: false, code: "step_up_required", error: "Confirm your password to continue." };
+      return { ok: false, code: "step_up_required", error: "Confirm your password and authenticator code to continue." };
     case "confirmation_required":
       return { ok: false, error: "Tick the confirmation before applying this control." };
     case "reason_required":

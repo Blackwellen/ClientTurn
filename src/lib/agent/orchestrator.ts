@@ -179,6 +179,7 @@ import { instagramReplyGate, META_APPROVAL_TRIGGER } from "./meta-gate";
 import { maybeRefreshSummary } from "./summary";
 import { matchOfferedSlot, type Slot } from "./availability/slots";
 import { bookingFailureRoute, bookingReplyText } from "@/lib/bookings/confirmation";
+import { approvedCardLines } from "./offer-card";
 import {
   AGENT_TURN_LOCK_SECONDS,
   agentDecisionSchema,
@@ -663,6 +664,7 @@ function qaContextFor(input: ExecuteInput, qi: QiTurn) {
     recentOutbound: qi.recentOutbound,
     customerType: qi.customerType,
     companion: qi.interests?.companion ?? null,
+    objectionClarify: input.strategy?.record.objectionClarify === true,
   });
 }
 
@@ -2596,6 +2598,10 @@ function validationFactsForTurn(input: ExecuteInput, confirmedSlots: string[], c
     // outside the lead's agent's target.
     competitors: competitorRules(input.context.commercialRules?.competitors ?? []),
     offTargetNames: input.context.commercialRules?.offTargetNames ?? [],
+    // Guarantees, certifications, insurance, integrations and "free" offers
+    // only as the offer card's approved lines state them, with their
+    // conditions; a money amount in one of them is published wording.
+    approvedClaims: approvedCardLines(input.context.offer.text),
   };
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getActiveWorkspace, getUser } from "@/lib/auth/session";
+import { getSecureWorkspace, getUser } from "@/lib/auth/session";
 import { workspaceCan } from "@/lib/auth/permissions";
 import { createPortalSession } from "@/lib/billing/checkout";
 import { serverEnv } from "@/lib/env";
@@ -17,7 +17,7 @@ export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.redirect(`${site}/login?redirect=/api/billing/portal`);
 
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace || !(await workspaceCan(workspace, "manage_billing"))) {
     return NextResponse.redirect(`${site}/app/settings?section=billing`);
   }

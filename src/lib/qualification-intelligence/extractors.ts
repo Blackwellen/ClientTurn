@@ -474,6 +474,31 @@ const RELATIVE_TIMELINE: { pattern: RegExp; days: number }[] = [
   { pattern: /\b(next year|in a year|(twelve|12) months)\b/i, days: 365 },
 ];
 
+/**
+ * A dated anchor people name instead of a date: "live before Christmas", "by
+ * the end of the year" (ICP evaluation 2026-09-29: a studio lead's "we'd want
+ * it live before Christmas" left TIMING unknown, so the next question asked
+ * for the launch date they had just given). "Our year end" is an accounting
+ * term, not a deadline, and is not read here.
+ */
+const ANCHOR_TIMELINE: { pattern: RegExp; month: number; day: number }[] = [
+  { pattern: /\b(?:before|by|for|in\s+time\s+for|ahead\s+of|over)\s+(?:the\s+)?(?:christmas|xmas)\b/i, month: 11, day: 20 },
+  { pattern: /\b(?:before|by)\s+the\s+end\s+of\s+(?:the|this)\s+year\b/i, month: 11, day: 31 },
+];
+
+function anchorTimeline(input: string, now: Date): Extraction | null {
+  for (const { pattern, month, day } of ANCHOR_TIMELINE) {
+    const match = pattern.exec(input);
+    if (!match) continue;
+    let date = new Date(Date.UTC(now.getUTCFullYear(), month, day));
+    if (date.getTime() < now.getTime()) date = new Date(Date.UTC(now.getUTCFullYear() + 1, month, day));
+    const days = Math.max(0, Math.round((date.getTime() - now.getTime()) / DAY_MS));
+    const phrase = match[0].trim();
+    return { value: phrase, normalised: String(days), confidence: 0.85, selfStated: true, evidence: phrase, statedDate: isoDate(date) };
+  }
+  return null;
+}
+
 /** A season, as a timeframe: "in the spring", "not until the summer", "late autumn". */
 const SEASON =
   /\b(?:(?:not\s+)?(?:until|till|before|by|in|over|during|from|this|next)\s+)?(?:the\s+)?(early|late|mid[- ]?)?\s*(spring|summer|autumn|winter)\b/i;
@@ -533,6 +558,8 @@ function extractTimeline(text: string, ctx?: ExtractorContext): Extraction | nul
       };
     }
   }
+  const anchor = anchorTimeline(input, now);
+  if (anchor) return anchor;
   const season = seasonTimeline(input, now);
   if (season) return season;
   const date = extractDate(input, ctx);
@@ -693,8 +720,17 @@ function extractProvider(text: string, ctx?: ExtractorContext): Extraction | nul
 
 function extractServiceName(text: string, ctx?: ExtractorContext): Extraction | null {
   const names = (ctx?.serviceNames ?? []).filter((name) => name.trim().length > 1);
+  // A name that lists alternatives ("Flat roof / GRP", "Guttering & fascias")
+  // is named by any one of them (ICP evaluation 2026-09-29: "the flat roof"
+  // never matched the live workspace's "Flat roof / GRP").
+  const head = text.slice(0, MAX_INPUT);
   const found = names
-    .map((name) => ({ name, match: new RegExp(`\\b${escapeRegExp(name.trim())}\\b`, "i").exec(text.slice(0, MAX_INPUT)) }))
+    .map((name) => {
+      const whole = name.trim();
+      const alternatives = [whole, ...whole.split(/\s*(?:\/|&|\+)\s*/).map((part) => part.trim()).filter((part) => part.length >= 3 && part !== whole)];
+      const match = alternatives.map((alt) => new RegExp(`\\b${escapeRegExp(alt)}\\b`, "i").exec(head)).find(Boolean) ?? null;
+      return { name, match };
+    })
     .filter((entry) => entry.match);
   if (found.length === 1) {
     const { name, match } = found[0];

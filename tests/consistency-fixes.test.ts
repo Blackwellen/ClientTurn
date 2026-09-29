@@ -160,7 +160,8 @@ describe("agents: booking copy matches the tick (6)", () => {
   test("an automatic booking tick actually queues the follow-up step", () => {
     const ticks = read("src/lib/agents/ticks.ts");
     assert.match(ticks, /enqueue\(\s*"automation\.advance"/);
-    assert.match(ticks, /resumeFollowUpBlock\(/);
+    // The rule itself runs in the pure core (tick-core.ts, 2026-09-29; behaviour in tests/agent-ticks.test.ts).
+    assert.match(read("src/lib/agents/tick-core.ts"), /resumeFollowUpBlock\(/);
   });
 });
 

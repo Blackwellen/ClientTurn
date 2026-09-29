@@ -208,7 +208,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: "Is SSO or SAML available?",
-    a: "Not today. Sign-in is email and password with email verification, and workspace MFA is not yet available; step-up verification covers platform administration only. If SSO is a hard requirement, raise it before you evaluate.",
+    a: "Not today; SSO is planned. Sign-in is email and password with email verification, or Google. Members can turn on two-factor authentication with an authenticator app, and a workspace owner can require it for everyone. If SSO is a hard requirement, raise it before you evaluate.",
   },
   {
     q: "Are you SOC 2 or ISO 27001 certified?",

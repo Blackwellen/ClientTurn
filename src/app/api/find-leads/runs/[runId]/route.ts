@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getActiveWorkspace } from "@/lib/auth/session";
+import { getSecureWorkspace } from "@/lib/auth/session";
 import { hasRole } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { getRun } from "@/lib/find-leads/server/runs";
@@ -30,7 +30,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }

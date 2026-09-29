@@ -116,6 +116,8 @@ export type JobType =
   // Daily: voice recordings and transcripts past the workspace's retention,
   // and R2 objects of deleted rows and workspaces from the tombstones (0150).
   | "voice.retention"
+  // Daily: audit_log rows past each workspace's retention (IR-09, 0180).
+  | "audit.retention"
   // Daily: day-60/83 notices and the day-90 deletion of cancelled workspaces
   // (billing/workspace-deletion.ts, 0170).
   | "billing.workspace_deletion"

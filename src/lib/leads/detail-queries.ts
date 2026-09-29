@@ -9,6 +9,7 @@ import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { GOAL_LABEL } from "@/lib/qualification-intelligence/types";
 import { actionWords, summariseInterests, type InterestCard } from "@/lib/qualification-intelligence/interests";
 import { getWorkspaceMembers } from "./queries";
+import { isLeadId } from "./detail-page";
 import type { WorkspaceMember } from "./types";
 import { hasWhatsAppOptIn } from "./whatsapp-opt-in";
 import {
@@ -396,6 +397,12 @@ function humanise(code: string): string {
 }
 
 export async function loadActivity(businessId: string, leadId: string): Promise<ActivityRow[]> {
+  // Self-defending: `leadId` is interpolated into the two PostgREST `.or()`
+  // filters below, so a non-uuid value must never reach them even if a future
+  // caller forgets to validate. Rows stay tenant-scoped by the `business_id`
+  // equality regardless; this closes the filter-injection surface at source
+  // (pentest PT-03, 2026-09-29).
+  if (!isLeadId(leadId)) return [];
   const admin = createAdminClient();
   const supabase = await createClient();
   const [audit, events, notes, members] = await Promise.all([

@@ -57,6 +57,8 @@ describe("settings sections", () => {
         // Voice (P2) sits beside Quotes: both configure how the agent sells.
         "voice",
         "team",
+        // Security (2026-09-29): two-factor, sessions, workspace policy.
+        "security",
         "developer",
         "data-controls",
         "billing",

@@ -70,6 +70,10 @@ import { matchAnswer, type QuestionRecord } from "../qualification/next-question
 
 export const INTERPRET_VERSION = "int-1";
 
+/** A business problem stated as a symptom: poor results, high cost for them, something that keeps failing. */
+const PROBLEM_SYMPTOM =
+  /\b(?:costs?\s+(?:us\s+)?(?:a\s+fortune|too\s+much)|(?:very\s+few|hardly\s+any|not\s+(?:getting\s+)?(?:any|enough)|barely\s+any)\s+(?:leads|demos|enquiries|sales|customers|bookings|sign[\s-]?ups|conversions)|(?:doesn'?t|does\s+not|isn'?t|is\s+not|aren'?t|are\s+not)\s+(?:bring(?:ing)?\s+in|generat(?:e|ing)|convert(?:ing)?|getting)\s+(?:any\s+|many\s+|enough\s+)?(?:leads|demos|enquiries|sales|customers|bookings|traffic)|keeps?\s+(?:crashing|breaking|going\s+down|falling\s+over))\b/i;
+
 /** One candidate from the AI assist (the caller's `answer_extraction` result). */
 export type AiCandidate = {
   dimension: string;
@@ -129,6 +133,9 @@ const PHRASES: { type: SignalType; strength: number; pattern: RegExp; reason: st
 
 const NEGATIVE_PHRASES: { type: SignalType; pattern: RegExp; reason: string }[] = [
   { type: "NOT_INTERESTED", pattern: /\b(not interested|no thanks|no thank you|not for us|we'?re (fine|good|ok|okay) (thanks|thank you)|please don'?t (contact|chase)|leave (me|us) alone)\b/i, reason: "Said they are not interested" },
+  // Gone elsewhere (ICP evaluation 2026-09-29: "sorted it with someone else now thanks" was asked the next qualifying question).
+  { type: "NOT_INTERESTED", pattern: /\b(sorted|fixed|done|gone|went|going|booked|chose|chosen|found|hired)\b[^.?!]{0,25}\b(someone|somebody|another (company|firm|agency|supplier|roofer|studio|accountant)|a different (company|firm|agency|supplier)|elsewhere)\b/i, reason: "Said they have gone elsewhere" },
+  { type: "NO_NEED", pattern: /\bno longer (need|needed|required|looking)\b/i, reason: "Said they no longer need it" },
   { type: "NO_NEED", pattern: /\b(don'?t need (it|this|one|anything|that)|no need|already sorted|we'?re sorted|all sorted|got it covered|we'?re covered)\b/i, reason: "Said they have no need" },
   { type: "WRONG_PERSON", pattern: /\b(wrong person|not the right person|not my (area|department|responsibility)|i'?m not responsible for|no longer (work|working) (there|here))\b/i, reason: "Said they are the wrong person" },
 ];
@@ -469,13 +476,25 @@ export function interpret(reply: string, state: InterpretState, aiCandidates?: r
   if (!facts.some((f) => f.dimension === "PROBLEM") && statusOf(state.dimensions, "PROBLEM") !== "CONFIRMED") {
     const need = /\b(we need|we're looking for|we are looking for|problem with|issue with|struggling with|need help with)\b/i.exec(text);
     const dissatisfied = facts.find((f) => f.dimension === "DISSATISFACTION");
-    const clause = need ? clauseAround(text, need.index, need[0].length) : dissatisfied?.value;
+    const needClause = need ? clauseAround(text, need.index, need[0].length) : null;
     // "We need a new website" states what they want made (PROJECT_SCOPE),
     // and "we need something to route leads to the right rep" what they want
     // the product to do (USE_CASE): neither is a problem, so no PROBLEM is
     // inferred from that clause.
-    const scope = need ? (extractProjectScope(clause ?? "") ?? extractUseCase(clause ?? "")) : null;
-    if (clause && clause.length >= 5 && !scope) {
+    const scope = needClause ? (extractProjectScope(needClause) ?? extractUseCase(needClause)) : null;
+    // A symptom stated outright is the problem too (ICP evaluation
+    // 2026-09-29: "our paid social costs a fortune for very few demos" was
+    // answered with "what's the main growth goal you want help with?").
+    const symptom = PROBLEM_SYMPTOM.exec(text);
+    const clause =
+      needClause && !scope
+        ? needClause
+        : symptom
+          ? clauseAround(text, symptom.index, symptom[0].length)
+          : needClause
+            ? null
+            : dissatisfied?.value;
+    if (clause && clause.length >= 5) {
       facts.push({
         dimension: "PROBLEM",
         value: clip(clause, FACT_VALUE_MAX),

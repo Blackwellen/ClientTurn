@@ -94,6 +94,9 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     label: "Budget",
     patterns: [
       /\bno (budget|money)\b/i,
+      // ICP evaluation 2026-09-29: "we don't have the budget for an agency right now" matched nothing.
+      /\b(don'?t|do not|haven'?t|have not)\s+(have|got)\s+(the |a |any |much |enough )?(budget|money|funds)\b/i,
+      /\b(budget|money|cash)\s+(is|'s)\s+(tight|limited|an issue|a problem)\b/i,
       /\bbudget\b[^.?!]{0,30}\b(gone|spent|tight|frozen|allocated|used up|cut)\b/i,
       /\bcan'?t afford\b/i,
       /\bnot in (the|our|this year'?s?) budget\b/i,
@@ -418,6 +421,10 @@ export const OBJECTIONS: Record<ObjectionKey, ObjectionEntry> = {
     label: "Not interested",
     patterns: [
       /\bnot interested\b/i,
+      // Gone elsewhere or no longer needed (ICP evaluation 2026-09-29: "sorted it with someone else now thanks" was pursued).
+      /\b(sorted|fixed|done|gone|went|going|booked|chose|chosen|found|hired|using)\b[^.?!]{0,25}\b(someone|somebody|another (company|firm|agency|supplier|roofer|studio)|a different (company|firm|agency|supplier)|elsewhere)\b/i,
+      /\b(all|already|now|it'?s|we'?re|i'?m) sorted\b/i,
+      /\bno longer (need|needed|required|looking)\b/i,
       /\bno,? thank(s| you)\b/i,
       /\b(please )?(stop|don'?t) (contacting|messaging|emailing|texting) me\b/i,
       /\bleave me alone\b/i,

@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
-import { getPlatformOperator } from "@/lib/admin/guard";
+import {
+  ADMIN_MFA_PATH,
+  getPlatformOperator,
+  getPlatformOperatorSession,
+} from "@/lib/admin/guard";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { AdminLoginForm } from "./login-form";
@@ -24,6 +28,8 @@ export const dynamic = "force-dynamic";
 export default async function AdminLoginPage() {
   // An operator who is already signed in has no reason to see this.
   if (await getPlatformOperator()) redirect("/admin");
+  // Password accepted but two-factor not yet done this session.
+  if (await getPlatformOperatorSession()) redirect(ADMIN_MFA_PATH);
 
   return (
     <AuthShell variant="admin">
@@ -42,8 +48,9 @@ export default async function AdminLoginPage() {
             aria-hidden
           />
           <p className="text-[12.5px] leading-relaxed text-[var(--auth-text-muted)]">
-            Every sign-in is recorded, and each change asks you to confirm your
-            password again before it is applied.
+            Every sign-in is recorded. Two-factor authentication is mandatory,
+            and each change asks for your password and a fresh authenticator
+            code before it is applied.
           </p>
         </div>
 

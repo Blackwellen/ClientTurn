@@ -1,7 +1,7 @@
 import * as React from "react";
 import { z } from "zod";
 import Link from "next/link";
-import { History } from "lucide-react";
+import { History, KeyRound } from "lucide-react";
 import { getPlatformSettings } from "@/lib/admin/platform-settings";
 import { SETTINGS_VIEWS } from "@/lib/admin/platform-settings-types";
 import { SettingsView } from "@/components/admin/settings/settings-view";
@@ -48,6 +48,14 @@ export default async function AdminSettingsPage({
           settings through its own guarded action, so a single button cannot
           quietly commit a change the operator made on a tab they have left.
         */}
+        <div className="flex shrink-0 flex-wrap gap-2">
+        <Link
+          href="/admin/settings/security"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[12.5px] font-medium text-content-secondary shadow-xs transition-colors hover:bg-surface-hover hover:text-content"
+        >
+          <KeyRound className="size-3.5" aria-hidden />
+          Your sign-in security
+        </Link>
         <Link
           href="/admin/settings?view=providers#change-log"
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[12.5px] font-medium text-content-secondary shadow-xs transition-colors hover:bg-surface-hover hover:text-content"
@@ -55,6 +63,7 @@ export default async function AdminSettingsPage({
           <History className="size-3.5" aria-hidden />
           View change log
         </Link>
+        </div>
       </div>
 
       <SettingsView data={data} search={params.q} />

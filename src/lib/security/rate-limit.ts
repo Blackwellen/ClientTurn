@@ -32,6 +32,9 @@ export const RATE_LIMITS = {
   "auth:reset": { limit: 5, windowSeconds: 3600 },
   "admin:signin": { limit: 5, windowSeconds: 900 },
   "admin:stepup": { limit: 10, windowSeconds: 900 },
+  // Two-factor set-up and verification codes, per user. A six-digit code has
+  // a million values; ten tries in five minutes makes guessing pointless.
+  "auth:mfa": { limit: 10, windowSeconds: 300 },
   "marketing:track": { limit: 120, windowSeconds: 60 },
   "marketing:enquiry": { limit: 5, windowSeconds: 3600 },
   "webhook:inbound": { limit: 600, windowSeconds: 60 },
@@ -103,6 +106,7 @@ export const FAIL_CLOSED_BUCKETS: ReadonlySet<RateLimitKey> = new Set<RateLimitK
   "auth:reset",
   "admin:signin",
   "admin:stepup",
+  "auth:mfa",
 ]);
 
 /** How long a fail-closed refusal asks the caller to wait. */

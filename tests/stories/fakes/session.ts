@@ -52,3 +52,5 @@ export async function requireRole(minimum: BusinessRole) {
 export async function isPlatformAdmin() {
   return false;
 }
+// Stories run without two-factor or idle policy: the secure read is the plain read.
+export const getSecureWorkspace = readActiveWorkspace;

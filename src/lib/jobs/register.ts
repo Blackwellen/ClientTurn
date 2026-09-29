@@ -66,6 +66,7 @@ import { handleQuoteExpire, handleQuoteNudge, handleQuoteRenderPdf } from "./han
 import { handleInvoiceIssue, handleInvoiceRemind } from "./handlers/invoice-jobs";
 import { handleAutomationDispatch } from "@/lib/automation/rule-runner";
 import { handleVoiceRetention } from "./handlers/voice-retention";
+import { handleAuditRetention } from "./handlers/audit-retention";
 import { handleWorkspaceDeletion } from "./handlers/workspace-deletion";
 // The provider adapters, which register themselves on import. One list, in
 // `providers/all`, so a new adapter reaches the OAuth routes and the queue
@@ -153,6 +154,7 @@ export function registerJobHandlers() {
   registerHandler("experiment.auto_promote", handleExperimentAutoPromote);
   registerHandler("automation.dispatch", handleAutomationDispatch);
   registerHandler("voice.retention", handleVoiceRetention);
+  registerHandler("audit.retention", handleAuditRetention);
   registerHandler("billing.workspace_deletion", handleWorkspaceDeletion);
   registerHandler("linkedin_assist.draft", handleLinkedInAssistDraft);
 }

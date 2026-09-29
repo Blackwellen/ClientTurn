@@ -51,7 +51,7 @@ export function authorizeSiteChange(check: SiteChangeCheck): SiteChangeVerdict {
     return { ok: false, code: "forbidden", message: "Not permitted." };
   }
   if (!(check.stepUpRemainingMs > 0)) {
-    return { ok: false, code: "step_up_required", message: "Confirm your password to continue." };
+    return { ok: false, code: "step_up_required", message: "Confirm your password and authenticator code to continue." };
   }
   if (isOfflineLevel(check.level)) {
     if (!OFFLINE_ROLES.has(check.platformRole)) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getActiveWorkspace } from "@/lib/auth/session";
+import { getSecureWorkspace } from "@/lib/auth/session";
 import { isDismissKey, recordDismissal } from "@/lib/banners/server";
 import { isSameOriginRequest } from "@/lib/security/same-origin";
 import { serverEnv } from "@/lib/env";
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Cross-origin request refused." }, { status: 403 });
   }
 
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
 
   const parsed = body.safeParse(await request.json().catch(() => null));

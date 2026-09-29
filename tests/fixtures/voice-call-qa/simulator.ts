@@ -474,7 +474,9 @@ export function planFromBrief(text: string): { questions: PlanQ[]; required: num
   const section = /QUESTION PLAN\.[^\n]*/.exec(text)?.[0] ?? "";
   const questions: PlanQ[] = [];
   for (const m of section.matchAll(/(\d+)\. (.+?) \[([A-Za-z0-9_.:-]+)\]/g)) questions.push({ text: m[2].trim(), key: m[3] });
-  const required = Number(/Ask 1 to (\d+) before/.exec(section)?.[1] ?? questions.length);
+  // "Ask questions 1 to N before" (or "Ask question 1 before"), as the model reads it.
+  const count = /Ask questions 1 to (\d+) before/.exec(section)?.[1] ?? (/Ask question 1 before/.test(section) ? "1" : null);
+  const required = Number(count ?? questions.length);
   return { questions, required };
 }
 

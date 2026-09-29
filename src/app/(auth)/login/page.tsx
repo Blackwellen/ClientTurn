@@ -33,7 +33,11 @@ export default async function LoginPage({
       ? "Your password has been updated. Sign in with your new password."
       : one(params.verified) === "1"
         ? "Your email is confirmed. Sign in to continue."
-        : undefined;
+        : one(params.reason) === "idle"
+          ? "You were signed out after a period of inactivity, as your workspace requires. Sign in to continue."
+          : one(params.reason) === "signed_out_everywhere"
+            ? "You have been signed out on every device. Sign in to continue."
+            : undefined;
 
   const errorCode = one(params.error);
   const problem =

@@ -615,6 +615,13 @@ const SERVICE_TERMS: Record<string, { label: string; pattern: string }[]> = {
     { label: "payroll", pattern: "\\b(?:payroll|payslips?|pay slips?|auto[- ]enrol(?:l?ment)?|pensions? admin)\\b" },
     { label: "advisory", pattern: "\\b(?:advisory|business advice|cash ?flow|forecasting|forecasts?|fractional (?:cfo|fd)|virtual (?:cfo|fd))\\b" },
   ],
+  // The roofer archetype's own question ("Is it a repair, a replacement, or
+  // something else?"). ICP evaluation 2026-09-29: "how much for a new roof?"
+  // and "need the flat roof replaced" were asked it again.
+  "SERVICE_NEEDED.ROOFER": [
+    { label: "a repair", pattern: "\\b(?:repair(?:ed|s|ing)?|fix(?:ed|ing)?|patch(?:ed|ing)?|a few (?:slipped |loose |missing |broken )?tiles|re-?point(?:ed|ing)?)\\b" },
+    { label: "a replacement", pattern: "\\b(?:new roof|re-?roof(?:ed|ing)?|replace(?:d|ment)?|full roof|strip and re-?roof)\\b" },
+  ],
 };
 
 /** The service vocabulary for a business type: its SERVICE_NEEDED intents' options. */
@@ -624,6 +631,8 @@ export function serviceTermsFor(archetypeKey: string | null | undefined): { labe
   for (const [key, terms] of Object.entries(SERVICE_TERMS)) {
     const intent = BY_KEY.get(key);
     if (intent && (!intent.appliesTo.archetypes || intent.appliesTo.archetypes.includes(archetypeKey))) out.push(...terms);
+    // An archetype's own SERVICE_NEEDED question (archetypes.ts), keyed by the archetype.
+    else if (!intent && key === `SERVICE_NEEDED.${archetypeKey}`) out.push(...terms);
   }
   return out;
 }

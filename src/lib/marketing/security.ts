@@ -65,25 +65,25 @@ export const SECURITY_CONTROLS: SecurityControl[] = [
   {
     id: "admin-step-up",
     group: "access",
-    name: "Step-up verification for platform administration",
+    name: "Mandatory two-factor and step-up for platform administration",
     detail:
-      "Platform administration uses a separate login, a separate session check and a mandatory step-up challenge. The administrator role is read from the database server-side on every request.",
+      "Platform administration uses a separate login, a separate session check and mandatory two-factor authentication with an authenticator app. Every administrative change also needs the password and a fresh authenticator code from the last 30 minutes. The administrator role is read from the database server-side on every request.",
     status: "in_place",
   },
   {
     id: "workspace-mfa",
     group: "access",
-    name: "Multi-factor authentication for workspace users",
+    name: "Two-factor authentication for workspace users",
     detail:
-      "Not yet available for customer workspace sign-in. Step-up verification currently covers platform administration only. Tell us if MFA is a requirement for your rollout.",
-    status: "not_available",
+      "Any member can protect their account with an authenticator app (TOTP); once it is on, every sign-in asks for the code. A workspace owner can require two-factor for all members, which is enforced on the server, and can set an idle timeout. Members can see their active sessions and sign out everywhere.",
+    status: "configurable",
   },
   {
     id: "sso",
     group: "access",
     name: "SSO / SAML / SCIM",
     detail:
-      "Not available today. Sign-in is email and password with email verification. If single sign-on is a procurement requirement, raise it with sales before you evaluate further.",
+      "Planned, not available today. Sign-in is email and password with email verification (optionally with two-factor), or Google. If single sign-on is a procurement requirement, raise it with sales before you evaluate further.",
     status: "not_available",
   },
   {

@@ -53,6 +53,14 @@ export const SETTINGS_SECTIONS = [
   },
   { id: "team", label: "Team", description: "Manage your team" },
   {
+    // Account security (2026-09-29): the person's own two-factor and
+    // sessions (Profile -> Security links here), plus the owner's workspace
+    // policy (require two-factor, idle timeout, audit retention).
+    id: "security",
+    label: "Security",
+    description: "Two-factor, sessions and policy",
+  },
+  {
     id: "developer",
     label: "Developer",
     description: "API keys, webhooks and assistants",

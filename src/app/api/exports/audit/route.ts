@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getActiveWorkspace } from "@/lib/auth/session";
+import { getSecureWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { serverEnv } from "@/lib/env";
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!mayExportAudit(workspace.role)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

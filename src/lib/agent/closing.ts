@@ -49,7 +49,7 @@ export function detectBuyingSignal(text: string | null | undefined): boolean {
 }
 
 const CALL_REQUEST =
-  /\b(call me|ring me|phone me|give (me|us) a (call|ring|bell|buzz)|can (someone|somebody|you|we) (call|ring|phone)( me| us)?|(have|jump on|hop on|arrange|book|set up|do) a (quick |short )?(call|phone call|chat on the phone)|(speak|talk|chat) (on|over) the phone|prefer a (call|phone call))\b/i;
+  /\b(call me|ring me|phone me|give (me|us) a (call|ring|bell|buzz)|(can|could|will|would) (someone|somebody|you|we) (call|ring|phone)( me| us)?|(have|jump on|hop on|arrange|book|set up|do) a (quick |short )?(call|phone call|chat on the phone)|(speak|talk|chat) (on|over) the phone|prefer a (call|phone call))\b/i;
 
 /** The lead asks to talk by phone. An opt-out ("don't call me") is caught first by classifyDeterministic. */
 export function isCallRequest(text: string | null | undefined): boolean {

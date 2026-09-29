@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { csvCell } from "@/lib/csv";
-import { getActiveWorkspace, hasRole } from "@/lib/auth/session";
+import { getSecureWorkspace, hasRole } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/audit";
 import {
   ANALYTICS_VIEWS,
@@ -48,7 +48,7 @@ function percent(value: number | null | undefined, digits = 1): string {
 }
 
 export async function GET(request: Request) {
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

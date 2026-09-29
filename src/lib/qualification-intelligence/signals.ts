@@ -651,7 +651,16 @@ export function originSignals(origin: LeadOriginInput, touches: TouchInput[]): I
       reason: "Contacted the business themselves",
     }),
   );
-  const goalType = origin.conversionGoalType ? GOAL_SIGNAL[origin.conversionGoalType] : undefined;
+  // The conversion goal is what the lead asked for only when it came with
+  // their own act: a form, a DM, the API or a connector (created INBOUND/API
+  // or a lead-originated touch). A goal a person picked in the Add Lead
+  // wizard is where the business routes the lead, not the lead's request.
+  // Live voice QA 2026-09-29: both wizard-added test leads were stored
+  // "Submitted a direct purchase form" (0.8), assessed PURCHASE_READY before
+  // a word was said, and the calls skipped straight to "a colleague will send
+  // the details". They still count as an inbound enquiry.
+  const ownAct = INBOUND_CREATED_VIA.has(origin.createdVia ?? "") || Boolean(firstOwn);
+  const goalType = ownAct && origin.conversionGoalType ? GOAL_SIGNAL[origin.conversionGoalType] : undefined;
   if (goalType) {
     out.push(
       buildSignalWrite({

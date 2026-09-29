@@ -161,6 +161,19 @@ export type AuditAction =
   | "profile.updated"
   | "profile.password_changed"
   | "profile.password_reset_requested"
+  // Account security (2026-09-29): two-factor, sessions, workspace policy
+  // and audit retention. Platform admins' rows use actorType platform_admin.
+  | "security.mfa_enrolment_started"
+  | "security.mfa_enrolled"
+  | "security.mfa_enrolment_failed"
+  | "security.mfa_unenrolled"
+  | "security.mfa_unenrol_refused"
+  | "security.mfa_verified"
+  | "security.mfa_challenge_failed"
+  | "security.sessions_revoked"
+  | "security.session_idle_timeout"
+  | "security.policy_updated"
+  | "security.audit_log_purged"
   | "billing.portal_opened"
   | "export.performed"
   // Settings -> Data Controls: the workspace audit trail itself exported.

@@ -141,6 +141,12 @@ export type StrategyRecord = {
   /** The channel-preference question was planned this turn. */
   channelPreferenceAsked?: boolean;
   /**
+   * Engine LIVE, an objection raised for the first time: its clarifying
+   * question is this turn's one question in place of the planned one (the
+   * planned question waits). Pre-send QA reads it (qa.ts objectionClarify).
+   */
+  objectionClarify?: boolean;
+  /**
    * Set when the qualification engine planned the turn (engine LIVE): the
    * question intent the NBA chose, and the NBA action. The strategy and the
    * NBA are one source of truth: `nextQuestionId` is the NBA's
@@ -490,6 +496,18 @@ export function buildNbaStrategyBlock(
 
   const ask = question ? craftedAsk(question.rendering) : null;
   const motionTarget = MOTIONS[input.motion ?? DEFAULT_MOTION].closeTarget;
+  // ICP evaluation 2026-09-29: on an objection turn ("we don't have the
+  // budget right now") the move said "ask <the planned question>" while the
+  // objection shape said "clarify the real concern with one question", and
+  // pre-send QA rejected the clarifying question as unplanned, so the reply
+  // ignored the objection. The first time an objection is raised, its
+  // clarifying question is the one question; the planned one waits a turn.
+  const objectionEntry = legacy.objection && !legacy.objection.respectAsRefusal && !legacy.objection.handoverRequired && !legacy.objection.assistRequired ? OBJECTIONS[legacy.objection.key] : null;
+  const objectionClarify =
+    objectionEntry !== null &&
+    input.callRequested !== true &&
+    ["ASK", "ANSWER_AND_ASK", "ANSWER", "INFORM", "NURTURE"].includes(nba.next_action) &&
+    Boolean(pickResponsePattern(objectionEntry.key, { seenBefore: input.objectionSeenBefore === true, text: input.latestMessage }).clarify);
   const route: CloseRoute = options.booking;
   // A call request is a warm close (closing.ts): offered as bookable call
   // times whatever the plan was, unless nothing can be booked.
@@ -500,6 +518,11 @@ export function buildNbaStrategyBlock(
     // were fetched, but SEND_BOOKING_OPTIONS was never proposed).
     lines.push(`Move: stop qualifying and propose a meeting: ${nbaBookingHow(route)}.`);
     lines.push(closeLine(motionTarget === "BUSINESS_CASE" ? "BUSINESS_CASE" : "BOOK_MEETING", route, { callRequested: true }));
+  } else if (objectionClarify && objectionEntry) {
+    lines.push(
+      `Move: ${nba.next_action === "ANSWER_AND_ASK" || nba.next_action === "ANSWER" ? "answer their question from the offer card first, then " : ""}` +
+        `handle their objection (the shape below). Its one clarifying question replaces any other question this turn, in your own words: "${objectionEntry.clarifyingQuestion}"`,
+    );
   } else switch (nba.next_action) {
     case "ASK":
       lines.push(`Move: acknowledge briefly, then ${ask}`);
@@ -542,7 +565,7 @@ export function buildNbaStrategyBlock(
   if (!callClose && legacy.objectionLines?.length) lines.push(...legacy.objectionLines);
   // The channel question, once, only on a turn that asks nothing else.
   const channelPreferenceAsked =
-    input.askChannelPreference === true && !question && !callClose && (nba.next_action === "ANSWER" || nba.next_action === "INFORM");
+    input.askChannelPreference === true && !question && !callClose && !objectionClarify && (nba.next_action === "ANSWER" || nba.next_action === "INFORM");
   if (channelPreferenceAsked) lines.push(CHANNEL_PREFERENCE_LINE);
 
   const known = nba.known_dimensions
@@ -568,6 +591,7 @@ export function buildNbaStrategyBlock(
       nbaAction: nba.next_action,
       callClose,
       channelPreferenceAsked,
+      objectionClarify,
     },
     objection: legacy.objection,
     objectionLines: legacy.objectionLines,

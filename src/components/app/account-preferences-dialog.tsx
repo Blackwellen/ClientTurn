@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormField, Input, Switch } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
@@ -241,6 +241,24 @@ export function AccountPreferencesDialog({
               >
                 <Lock className="size-3.5" aria-hidden />
                 Reset password
+              </Button>
+            </div>
+
+            <div className="space-y-2 border-t border-line-subtle pt-4">
+              <h3 className="text-[15px] font-semibold text-content">Security</h3>
+              <p className="text-[13px] text-content-muted">
+                Two-factor authentication, your active sessions and signing out everywhere.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  onClose();
+                  router.push("/app/settings?section=security");
+                }}
+              >
+                <ShieldCheck className="size-3.5" aria-hidden />
+                Manage security
               </Button>
             </div>
 

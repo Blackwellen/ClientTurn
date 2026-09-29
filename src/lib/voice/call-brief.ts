@@ -44,7 +44,7 @@ import { houseStyleViolations, recordingAnswer } from "./opener.ts";
 import { boundPlan, buildQuestionPlan, knownDimensionsFromLabels, type PlanQuestion } from "./question-plan.ts";
 import { spokenNow } from "./spoken-time.ts";
 
-export const CALL_BRIEF_VERSION = "brief.2026-09-28.v4";
+export const CALL_BRIEF_VERSION = "brief.2026-09-29.v5";
 /**
  * ~4 characters per token (strategy.ts estimateTokens).
  *
@@ -363,16 +363,45 @@ function planSection(plan: readonly PlanQuestion[]): string {
   return (
     "QUESTION PLAN. Ask in order, one a turn, in your own words; skip any already answered; after each answer call record_fact with its [key]. " +
     `${items} ` +
-    `Ask 1 to ${required} before any close, next step or closing line, unless they opt out, say it is a bad time, want a person or it is the wrong person. ` +
+    // "Ask 1 to 2" read as "ask one or two questions" (live dry run 2026-09-29).
+    `Ask ${required === 1 ? "question 1" : `questions 1 to ${required}`} before any close, next step or closing line, unless they opt out, say it is a bad time, want a person or it is the wrong person. ` +
     "Would rather not say: move on. A bare yes is not an answer: ask more simply."
   );
 }
 
 function checkoutClose(input: CallBriefInput): string {
   if (!input.permissions.checkout) {
-    return "They may be ready to buy: say a colleague will send the details to get started, and call schedule_callback. Never give a price yourself.";
+    return "They may be ready to buy: say a colleague will send the details to get started, and call schedule_callback by PERSON noting what to send. Never give a price yourself.";
   }
   return "Close on the purchase: offer to text or email the checkout link, and call send_checkout_link. Say the price only as the tool returns it.";
+}
+
+/**
+ * NBA moves that only share a point or answer: on a call placed for another
+ * purpose (a close, a check-in, a win-back, a caller who rang us) they never
+ * outrank the route. Live dry run 2026-09-29: every non-qualification route
+ * for the live leads carried the lead's stale INFORM ("share one useful
+ * point ... ask if it would help to talk further"), the exact pitch that sank
+ * the first real call, instead of the close or check-in the call was for.
+ */
+const POINT_ONLY_ACTIONS: ReadonlySet<string> = new Set(["INFORM", "NURTURE", "ANSWER"]);
+
+/** The route's own move (a call placed for a purpose, or with no assessment yet). */
+function routeMove(input: CallBriefInput): string | null {
+  switch (input.route) {
+    case "BOOKING_CLOSE":
+      return meetingClose(input);
+    case "DIRECT_CLOSE":
+      return checkoutClose(input);
+    case "NURTURE":
+      return "Check in: ask how things are going with what they enquired about. No pitch. Always leave a next step: a short call if they are keen, else agree when to check in (schedule_callback).";
+    case "REACTIVATION":
+      return "They enquired a while ago. Ask whether it is still something they are looking at. If yes, ask what has changed, then close on the goal's step. If not now, agree when to check in (schedule_callback) and accept a no.";
+    case "RETURN_CALL":
+      return "They rang back. Thank them, ask how you can help, then follow the plan for their goal.";
+    default:
+      return null;
+  }
 }
 
 /** The ONE opening move, from the lead's next-best-action, adapted for speech. */
@@ -388,7 +417,7 @@ export function voiceMove(input: CallBriefInput): string {
   }
   const offer = hasOffer(input);
   if (nba?.handover_reason || nba?.next_action === "ESCALATE") {
-    return "A person should take this lead. Tell them a colleague will follow up, then offer transfer_to_human if it is allowed, else schedule_callback.";
+    return "A person should take this lead. Tell them a colleague will follow up, then offer transfer_to_human if it is allowed, else schedule_callback by PERSON.";
   }
   if (nba?.next_action === "DISQUALIFY" || nba?.next_action === "NO_ACTION") {
     return "Do not sell. Thank them for their time, ask if there is anything they need, and end politely.";
@@ -396,6 +425,10 @@ export function voiceMove(input: CallBriefInput): string {
   if (nba?.next_action === "WAIT") {
     return "They said it is not the right time before. Ask lightly whether anything has changed; if not, agree a better time with schedule_callback.";
   }
+  // A caller who rang us is always asked how we can help first; a call placed
+  // for a close, a check-in or a win-back keeps that purpose over a point-only NBA.
+  const own = routeMove(input);
+  if (own && (input.route === "RETURN_CALL" || !nba || POINT_ONLY_ACTIONS.has(nba.next_action))) return own;
   const q = nba?.question_intent;
   switch (nba?.next_action) {
     case "ASK":
@@ -418,40 +451,42 @@ export function voiceMove(input: CallBriefInput): string {
     default:
       break;
   }
-  // No assessment yet: the route's own move.
-  switch (input.route) {
-    case "BOOKING_CLOSE":
-      return meetingClose(input);
-    case "DIRECT_CLOSE":
-      return checkoutClose(input);
-    case "NURTURE":
-      return "Check in: ask how things are going with what they enquired about. No pitch. Always leave a next step: a short call if they are keen, else agree when to check in (schedule_callback).";
-    case "REACTIVATION":
-      return "They enquired a while ago. Ask whether it is still something they are looking at. If yes, ask what has changed, then close on the goal's step. If not now, agree when to check in (schedule_callback) and accept a no.";
-    case "RETURN_CALL":
-      return "They rang back. Thank them, ask how you can help, then follow the plan for their goal.";
-    default:
-      return goal === "B_BOOK_MEETING" || goal === "E_HUMAN_CLOSER"
-        ? `Ask what prompted their enquiry, then ${meetingClose(input).replace(/^Close on a meeting: /, "").replace(/\.$/, "")}.`
-        : input.enquirySummary?.trim()
-          ? "Confirm in one sentence what they enquired about (THEIR ENQUIRY), then ask what matters most to them. When they answer, call record_fact, then move toward the goal's step."
-          : "Ask what prompted their enquiry (one question). When they answer, call record_fact, then move toward the goal's step.";
+  // No assessment yet (a qualification call without a plan): the goal's own move.
+  // With THEIR ENQUIRY on file it is confirmed, never asked (second live call).
+  const opening = input.enquirySummary?.trim() ? "Confirm in one sentence what they enquired about (THEIR ENQUIRY)" : "Ask what prompted their enquiry";
+  if (goal === "B_BOOK_MEETING" || goal === "E_HUMAN_CLOSER") {
+    return `${opening}, then ${meetingClose(input).replace(/^Close on a meeting: /, "").replace(/\.$/, "")}.`;
   }
+  return input.enquirySummary?.trim()
+    ? `${opening}, then ask what matters most to them. When they answer, call record_fact, then move toward the goal's step.`
+    : `${opening} (one question). When they answer, call record_fact, then move toward the goal's step.`;
+}
+
+/** A check-in or win-back call never closes hard, whatever the lead's goal. */
+function softRoute(input: CallBriefInput): boolean {
+  return input.route === "NURTURE" || input.route === "REACTIVATION";
 }
 
 function closeFor(input: CallBriefInput, move?: string): string {
   const goal = goalOf(input);
   if (questionPlanFor(input).length) {
-    const after = (goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL") && input.permissions.checkout ? checkoutClose(input) : meetingClose(input);
+    // The close follows the goal the brief names (live dry run 2026-09-29:
+    // "Goal: Direct sale" above a meeting close). Without the checkout
+    // permission, a direct sale's step is a colleague sending the details.
+    const after = goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL" ? checkoutClose(input) : meetingClose(input);
     return `Only after the QUESTION PLAN: ${after}`;
   }
   // The move already takes the close with its tools: say so, not twice.
   if (move && /check_availability|send_checkout_link/.test(move)) return "Take it as YOUR ONE MOVE says.";
+  // A booking or direct-close call's move IS the close: a second, different
+  // step under CLOSE (a meeting above, "a colleague sends the details"
+  // below) left the model two next steps (live dry run 2026-09-29).
+  if (move && (input.route === "BOOKING_CLOSE" || input.route === "DIRECT_CLOSE") && move === routeMove(input)) return "Take it as YOUR ONE MOVE says.";
   const target = MOTIONS[input.motion ?? "BOOK_MEETING_B2B"].closeTarget;
-  if (goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL" || input.route === "DIRECT_CLOSE") return checkoutClose(input);
-  if (goal === "F_NURTURE" || goal === "G_DISQUALIFY") {
-    return "No hard close. Keen: offer a short call. Otherwise agree when to check in next (schedule_callback).";
+  if (softRoute(input) || goal === "F_NURTURE" || goal === "G_DISQUALIFY") {
+    return `No hard close. Keen: offer ${voiceGoalStep(input)}. Otherwise agree when to check in next (schedule_callback).`;
   }
+  if (goal === "C_DIRECT_SALE" || goal === "D_SIGNUP_TRIAL" || input.route === "DIRECT_CLOSE") return checkoutClose(input);
   // The motion's own close wording (agent/closing.ts), for how a good closer
   // phrases it. The tools to take it are in the move (or meetingClose).
   const how = speechSafe(closeLine(target === "BUSINESS_CASE" ? "BUSINESS_CASE" : "BOOK_MEETING", input.booking)).replace(/^Close: /, "");
@@ -500,7 +535,8 @@ export function sendDetailsLine(input: CallBriefInput): string {
   if ((goal === "DIRECT_SALE" || goal === "TRIAL") && p.checkout) send = "send the link now with send_checkout_link";
   else if (goal === "QUOTE" && p.quote && p.sendQuote) send = "price it with calculate_quote and send it with send_quote";
   else if (p.bookingLink) send = "send the booking link now with send_booking_link";
-  else send = "say a colleague will send the details today (schedule_callback by a person, noting what to send)";
+  // No "today": a send time is a promise only a person can keep (live dry run 2026-09-29).
+  else send = "say a colleague will send the details (schedule_callback by PERSON, noting what to send)";
   return `SEND ME SOMETHING. If they say "just email me" or "send me something", say yes, ${send}, ${follow}.`;
 }
 
@@ -539,7 +575,7 @@ function workspaceAnswers(input: CallBriefInput): { text: string; keys: string[]
 function escalationSection(input: CallBriefInput): string {
   const t = input.transfer;
   if (t.mode === "NEVER" || !t.available) {
-    return "A PERSON. Live transfer is off. If they want a person, say a colleague will call them back and call schedule_callback with a time that suits them. That is the last resort, not the first.";
+    return "A PERSON. Live transfer is off. If they want a person, say a colleague will call them back and call schedule_callback by PERSON with a time that suits them. That is the last resort, not the first.";
   }
   const when = t.mode === "ON_REQUEST" ? "only when they ask for a person" : "when they ask for a person, or you are stuck after offering to text the details";
   return `A PERSON. Call transfer_to_human ${when}. Tell them first that you are putting them through. Never transfer to avoid a question you can answer.`;
@@ -637,10 +673,15 @@ export function recordingLine(recordingEnabled: boolean | undefined): string {
   return `RECORDING. If asked whether the call is recorded, say exactly: "${recordingAnswer(recordingEnabled)}"`;
 }
 
-function permissionLine(p: BriefPermissions): string {
+function permissionLine(input: CallBriefInput): string {
+  const p = input.permissions;
   const can: string[] = [];
   const cannot: string[] = [];
-  (p.book ? can : cannot).push("book meetings");
+  // Booking allowed with no calendar on the call: the assistant arranges a
+  // time a colleague confirms (live dry run 2026-09-29: "WHAT YOU MAY DO: book
+  // meetings" sat under "never call book_meeting").
+  if (p.book && input.booking !== "SLOTS") can.push("arrange a meeting time for a colleague to confirm");
+  else (p.book ? can : cannot).push("book meetings");
   (p.quote ? can : cannot).push("price a quote");
   (p.sendQuote ? can : cannot).push("send a quote");
   (p.checkout ? can : cannot).push("send a checkout link");
@@ -653,7 +694,8 @@ function permissionLine(p: BriefPermissions): string {
 export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
   const goal = goalOf(input);
   const move = voiceMove(input);
-  const persona = input.personaName?.trim() || "the assistant";
+  // No persona name: "YOU ARE an AI assistant", never "the assistant, an AI assistant".
+  const persona = input.personaName?.trim() ? `${input.personaName.trim()}, an AI assistant` : "an AI assistant";
   const name = input.callingAsName.replace(/\s+/g, " ").trim();
   const objections = objectionSection(input);
   const answers = workspaceAnswers(input);
@@ -663,7 +705,7 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
     {
       key: "role",
       text:
-        `YOU ARE ${persona}, an AI assistant ${input.direction === "INBOUND" ? "answering a call" : "calling"} for ${name}. ` +
+        `YOU ARE ${persona} ${input.direction === "INBOUND" ? "answering a call" : "calling"} for ${name}. ` +
         `This is a ${ROUTE_LABEL[input.route].toLowerCase()}. Goal: ${GOAL_LABEL[goal]}. ${serviceOf(input) ? `They enquired about: ${serviceOf(input)}. ` : ""}` +
         `If asked who you are or how to contact the business, say: ${speechSafe(input.identityAnswer)} If asked who built you, say: ${BUILT_BY_ANSWER} Never claim to be human.`,
     },
@@ -687,10 +729,10 @@ export function buildVoiceCallBrief(input: CallBriefInput): CallBrief {
     ...(input.openerSuffix?.trim() ? [{ key: "suffix", text: `After the permission question, the business asked you to say: ${cap(speechSafe(input.openerSuffix), 240)}` }] : []),
     {
       key: "close",
-      text: `CLOSE. ${closeFor(input, move)}${plan.length ? "" : ' When they sound keen, one light trial close first ("Does that sound like it would help?"); on a yes, close at once.'}`,
+      text: `CLOSE. ${closeFor(input, move)}${plan.length || softRoute(input) ? "" : ' When they sound keen, one light trial close first ("Does that sound like it would help?"); on a yes, close at once.'}`,
     },
     { key: "send", text: sendDetailsLine(input) },
-    { key: "money", text: `${MONEY_RULES} ${permissionLine(input.permissions)}` },
+    { key: "money", text: `${MONEY_RULES} ${permissionLine(input)}` },
     { key: "speech", text: SPEECH_RULES },
     { key: "hearing", text: HEARING_RULES },
     { key: "recording", text: recordingLine(input.recordingEnabled) },

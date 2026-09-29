@@ -8,7 +8,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
-import { getPlatformOperator } from "./guard";
+import { ADMIN_MFA_PATH, getPlatformOperator } from "./guard";
+import { passwordMatches } from "@/lib/auth/password-check";
+import { parseTotpCode } from "@/lib/auth/security-policy";
 import { guarded, type AdminActionResult } from "./guarded";
 import { MAX_SAFE_RETRIES, parseEventId } from "./events";
 import { runProviderProbes, recordProbeResults } from "./providers";
@@ -79,18 +81,19 @@ export async function adminSignIn(
     return { ok: false, error: GENERIC_SIGN_IN_ERROR };
   }
 
-  // The password was just entered, so this login opens the step-up window.
-  await grantStepUp(data.user.id);
-
+  // Password accepted: this is only the first factor. Two-factor is
+  // mandatory for operators (IR-06), so the session is AAL1 until /admin/mfa
+  // verifies a code (or enrols the first authenticator). Step-up is granted
+  // there, on the fresh code, not here on the password alone.
   await recordAudit({
     businessId: null,
     actorUserId: data.user.id,
     actorType: "platform_admin",
     action: "admin.login",
-    metadata: { email: parsed.data.email },
+    metadata: { email: parsed.data.email, stage: "password" },
   });
 
-  return { ok: true, redirectTo: "/admin" };
+  return { ok: true, redirectTo: ADMIN_MFA_PATH };
 }
 
 export async function adminSignOut(): Promise<AdminActionResult> {
@@ -119,27 +122,47 @@ export async function confirmStepUp(
   if (!operator) return { ok: false, code: "forbidden", error: "Not permitted." };
 
   const password = String(formData.get("password") ?? "");
+  const code = parseTotpCode(formData.get("code"));
   if (!password) return { ok: false, error: "Enter your password." };
+  if (!code) return { ok: false, error: "Enter the 6-digit code from your authenticator app." };
 
   const limit = await checkRateLimit("admin:stepup", operator.id);
   if (!limit.allowed) {
     return { ok: false, error: "Too many attempts. Please wait and try again." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: operator.email,
-    password,
-  });
-
-  if (error) {
+  // Step-up is a fresh password AND a fresh authenticator code (IR-06).
+  // The password is checked on a throwaway client: signing in again on this
+  // session would replace it with an AAL1 one and undo the two-factor.
+  const passwordOk = await passwordMatches(operator.email, password);
+  if (!passwordOk) {
     await recordAudit({
       businessId: null,
       actorUserId: operator.id,
       actorType: "platform_admin",
       action: "admin.step_up_failed",
+      metadata: { factor: "password" },
     });
-    return { ok: false, error: "That password was not accepted." };
+    return { ok: false, error: "That password and code were not accepted." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const factor = (user?.factors ?? []).find((candidate) => candidate.status === "verified");
+  const verified = factor
+    ? await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code })
+    : null;
+  if (!factor || !verified || verified.error) {
+    await recordAudit({
+      businessId: null,
+      actorUserId: operator.id,
+      actorType: "platform_admin",
+      action: "security.mfa_challenge_failed",
+      metadata: { surface: "admin", purpose: "step_up", factor_id: factor?.id ?? null },
+    });
+    return { ok: false, error: "That password and code were not accepted." };
   }
 
   await grantStepUp(operator.id);
@@ -148,6 +171,7 @@ export async function confirmStepUp(
     actorUserId: operator.id,
     actorType: "platform_admin",
     action: "admin.step_up",
+    metadata: { factors: ["password", "totp"] },
   });
 
   return { ok: true, message: "Confirmed for the next 30 minutes." };

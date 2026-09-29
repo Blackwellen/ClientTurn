@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { csvCell } from "@/lib/csv";
-import { getActiveWorkspace, hasRole } from "@/lib/auth/session";
+import { getSecureWorkspace, hasRole } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { checkRateLimit, tooManyRequests } from "@/lib/security/rate-limit";
@@ -46,7 +46,7 @@ function isoDay(value: string | null): string {
 }
 
 export async function POST(request: Request) {
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

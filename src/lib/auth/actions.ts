@@ -281,6 +281,13 @@ export async function signIn(
   const requested = sanitizeRedirectPath(formData.get("redirect"));
   const destination = requested ?? (await destinationForUser(data.user.id));
 
+  // An account with an authenticator is only half signed in (AAL1) until the
+  // code is entered. requireWorkspace() would send them to /mfa anyway; going
+  // there directly saves a hop and keeps the destination.
+  if ((data.user.factors ?? []).some((factor) => factor.status === "verified")) {
+    return { ok: true, redirectTo: `/mfa?next=${encodeURIComponent(destination)}` };
+  }
+
   return { ok: true, redirectTo: destination };
 }
 

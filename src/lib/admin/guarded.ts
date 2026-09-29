@@ -49,7 +49,7 @@ export async function guarded(
       return {
         ok: false,
         code: "step_up_required",
-        error: "Confirm your password to continue.",
+        error: "Confirm your password and authenticator code to continue.",
       };
     }
     if (error instanceof Error && error.message === "FORBIDDEN") {

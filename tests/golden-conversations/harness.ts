@@ -124,6 +124,8 @@ export type TurnRow = {
   interpretation: Interpretation;
   dimensions: DimensionStatusEntry[];
   resolved: ResolvedOffer;
+  /** The conversation stage the turn was planned at (goals.ts deriveConversationStage). */
+  stage: ReturnType<typeof deriveConversationStage>;
   qa: QaResult | null;
   asksSoFar: Record<string, number>;
 };
@@ -378,6 +380,7 @@ export function runConversation(conversation: GoldenConversation): TurnRow[] {
       interpretation,
       dimensions: input.dimensions,
       resolved,
+      stage,
       qa,
       asksSoFar: Object.fromEntries(asks),
     });

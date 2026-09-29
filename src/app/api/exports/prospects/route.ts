@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { csvCell } from "@/lib/csv";
-import { getActiveWorkspace, hasRole } from "@/lib/auth/session";
+import { getSecureWorkspace, hasRole } from "@/lib/auth/session";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { parseProspectFilters } from "@/lib/prospects/filters";
 import { listProspects } from "@/lib/prospects/queries";
@@ -69,7 +69,7 @@ function isoDay(value: string | null): string {
 }
 
 export async function GET(request: Request) {
-  const workspace = await getActiveWorkspace();
+  const workspace = await getSecureWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

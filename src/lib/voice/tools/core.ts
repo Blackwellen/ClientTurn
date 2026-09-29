@@ -32,6 +32,9 @@ import { timeRouteFor, type BriefRoute, type TransferModeLike } from "../call-br
 import { checkAgentTurn, agentTargets, measurePace } from "../pacing.ts";
 import { houseStyleViolations } from "../opener.ts";
 import { aiMay, type AiAuthority } from "../../commercial/ai-permissions.ts";
+import { aiAuthorityOf, DISABLED_AUTHORITY, type CommercialAuthority } from "../../commercial/authority.ts";
+import { motionAllowsDirectClose } from "../../opportunities/stages.ts";
+import { classifyDestination } from "../destinations.ts";
 import { quoteToolGate } from "../../agent/quote-flow.ts";
 import { guardCallSummary, type RecordedFact } from "../summary-guard.ts";
 import { pastTimeReprompt } from "../spoken-time.ts";
@@ -114,6 +117,38 @@ export function deriveToolPermissions(input: {
     smsLawful: input.smsLawful,
     bookingLink: Boolean(input.bookingLink),
   };
+}
+
+/**
+ * The call's permissions from the text agent's context: the ONE derivation
+ * the brief loader (server-p3.ts) and the tool endpoint (work.ts) both use.
+ * Live dry run 2026-09-29: the loader derived them by hand and left out the
+ * booking link and the lead's contactability, so the brief never offered
+ * send_booking_link that the endpoint would have allowed.
+ */
+export function callPermissionsFromContext(input: {
+  aiAssistEnabled: boolean;
+  agentMode: string;
+  quoteAiCapability: boolean;
+  authority: CommercialAuthority | null | undefined;
+  motion: string | null | undefined;
+  transfer: { mode: TransferModeLike; numberSet: boolean };
+  lead: { phone: string | null | undefined; email: string | null | undefined; optedOut: boolean };
+  contactable: boolean;
+  bookingUrl: string | null | undefined;
+}): ToolPermissions {
+  const direct = input.authority ?? DISABLED_AUTHORITY;
+  const phone = input.lead.phone ?? "";
+  return deriveToolPermissions({
+    aiEnabled: input.aiAssistEnabled && input.agentMode !== "OFF",
+    quoteAiCapability: input.quoteAiCapability,
+    authority: aiAuthorityOf(input.authority),
+    directClose: { enabled: direct.enabled, motionAllows: motionAllowsDirectClose(input.motion), approvedLinks: direct.approved_checkout_links.length },
+    transfer: input.transfer,
+    hasEmail: Boolean(input.lead.email) && !input.lead.optedOut,
+    smsLawful: phone.startsWith("+") && classifyDestination(phone) === "UK_MOBILE" && !input.lead.optedOut && input.contactable,
+    bookingLink: Boolean(input.bookingUrl),
+  });
 }
 
 export type PriorToolResult = { tool: VoiceToolName; status: string; result: Record<string, unknown> };
@@ -276,6 +311,24 @@ const REFUSAL_SAY: Readonly<Record<string, string>> = {
 const BOOKING_OFF_SAY = "A colleague will arrange a time with you.";
 const BOOKING_OFF_NEXT =
   "Say only the say line, once, then ask which day and time of day suits a colleague to call and call schedule_callback by PERSON with it. Never offer times.";
+
+/** Tools whose gate reads no permission: noting what the lead said, and an opt-out. */
+const PERMISSION_FREE_TOOLS: ReadonlySet<VoiceToolName> = new Set(["record_fact", "log_objection", "opt_out"]);
+/** What those tools are gated with: nothing commercial allowed (their gate passes on the core-call rule). */
+const CORE_ONLY_PERMISSIONS: ToolPermissions = {
+  aiEnabled: false,
+  book: false,
+  quote: false,
+  sendQuote: false,
+  checkout: false,
+  transferMode: "NEVER",
+  transferNumberSet: false,
+  transferHuman: false,
+  aiCall: false,
+  hasEmail: false,
+  smsLawful: false,
+  bookingLink: false,
+};
 
 /** The only tools a call may still run once the lead has opted out in it. */
 const AFTER_OPT_OUT: ReadonlySet<VoiceToolName> = new Set(["opt_out", "end_call_summary", "log_objection", "get_call_status"]);
@@ -446,14 +499,29 @@ export async function runVoiceTool(ports: VoiceToolPorts, req: VoiceToolRequest)
     return { status: 200, body: response };
   };
 
-  const [permissions, prior] = await Promise.all([ports.permissions(call), ports.priorResults(call.id)]);
-  const gate = voiceToolGate({ name, args, call, permissions, prior, now });
+  // Silent notes and an opt-out decide nothing commercial, so they never wait
+  // on the permission read (a whole context assembly). Live calls 2026-09-28:
+  // refusals took 2.4 to 18.8 seconds, past the 8-second tool timeout, and
+  // record_fact runs after every answer.
+  const [permissions, prior] = await Promise.all([
+    PERMISSION_FREE_TOOLS.has(name) ? Promise.resolve(CORE_ONLY_PERMISSIONS) : ports.permissions(call),
+    ports.priorResults(call.id),
+  ]);
+  let gateArgs = args;
+  let gate = voiceToolGate({ name, args, call, permissions, prior, now });
+  if (!gate.allowed && gate.code === "NO_CONSENT_FOR_AI_CALLBACK") {
+    // The lead has just agreed a call-back: a colleague makes it and it is
+    // recorded, never a spoken promise with nothing behind it (the refusal
+    // line "a colleague will call you back" used to record nothing).
+    gateArgs = { ...(args as VoiceToolArgs<"schedule_callback">), by: "PERSON" } as typeof args;
+    gate = voiceToolGate({ name, args: gateArgs, call, permissions, prior, now });
+  }
   if (!gate.allowed) return finish("REFUSED", refusal(name, gate.code, call, now, gate.say), null, gate.code);
 
   // The assistant's own summary may not label the lead "qualified" unless the
   // deterministic verdict says so, and it states what this call recorded
   // (live-call fix 2026-09-28, summary-guard.ts).
-  let workArgs = args;
+  let workArgs = gateArgs;
   if (name === "end_call_summary") {
     const a = args as VoiceToolArgs<"end_call_summary">;
     const guarded = guardCallSummary({ summary: a.summary, verdict: permissions.qualificationVerdict ?? null, facts: recordedFacts(prior) });
