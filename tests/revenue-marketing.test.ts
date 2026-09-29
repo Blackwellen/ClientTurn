@@ -406,7 +406,9 @@ describe("the sub-processor register names the voice provider", () => {
     assert.ok(retell, "Retell AI is missing from the register");
     assert.equal(retell.optional, true);
     assert.match(retell.location, /United States/);
-    assert.match(retell.transfer, /To be confirmed/, "an unverified mechanism must say so");
+    // Checked against Retell AI's published privacy policy on 2026-09-29.
+    assert.match(retell.transfer, /UK International Data Transfer Agreement/);
+    assert.doesNotMatch(retell.location + retell.transfer, /To be confirmed/);
     assert.ok(SUBPROCESSOR_CHANGES.some((entry) => /Retell/.test(entry.change)));
   });
 });

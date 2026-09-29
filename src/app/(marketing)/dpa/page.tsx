@@ -344,10 +344,11 @@ const SECTIONS: LegalSection[] = [
           Annex 3 gives the location of each.
         </p>
         <p>
-          Retell AI (the optional AI voice agent) data region:{" "}
-          <Placeholder>Retell AI data region and transfer mechanism — owner to supply from the signed Retell DPA</Placeholder>
-          . Until confirmed, voice processing should be treated as taking place
-          in the United States.
+          Retell AI (the optional AI voice agent) processes and stores call
+          data in the United States (Amazon Web Services US regions). The
+          transfer relies on the UK International Data Transfer Agreement or
+          the Standard Contractual Clauses with the UK Addendum, under Retell
+          AI&apos;s data processing agreement.
         </p>
       </>
     ),

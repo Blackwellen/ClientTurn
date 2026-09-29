@@ -317,7 +317,9 @@ describe("intent signal schema", () => {
       signal({ reason: "x".repeat(201) }),
       signal({ evidence_excerpt: "x".repeat(241) }),
       signal({ resume_at: later }),
-      signal({ expires_at: new Date(Date.now() - 1000).toISOString() }),
+      // Before observed_at (`now` is taken when this file loads; "now minus
+      // one second" at run time can be later than it on a slow full run).
+      signal({ expires_at: new Date(Date.parse(now) - 60_000).toISOString() }),
       signal({ signal_type: "PAGE_VIEW" }),
       signal({ lead_id: "not-a-uuid" }),
     ]) {

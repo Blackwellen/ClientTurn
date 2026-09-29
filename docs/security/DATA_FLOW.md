@@ -43,7 +43,7 @@ flowchart LR
     RESEND[Resend: email]
     SMTP[Customer's own mailbox<br/>SMTP/IMAP]
     TWILIO[Twilio: SMS / WhatsApp<br/>voice numbers]
-    RETELL[Retell AI: voice calls<br/>US — region to be confirmed]
+    RETELL[Retell AI: voice calls<br/>US (AWS US regions)]
     CAL[Google Calendar / Calendly]
     STRIPE_C[Customer's own Stripe<br/>quote + invoice payments]
     CRMOUT[CRM push / Slack]

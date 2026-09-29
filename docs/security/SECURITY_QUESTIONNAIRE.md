@@ -13,7 +13,7 @@ Last reviewed: 28 September 2026. Companion documents: `docs/security/DATA_FLOW.
 | # | Question | Answer |
 |---|---|---|
 | A1 | Legal entity | Blackwellen Limited (trading as ClientTurn), England and Wales, company no. 16482166, 61 Bridge Street, Kington, Herefordshire, HR5 3DJ (`src/lib/marketing/company.ts`). |
-| A2 | ICO registration | [ICO registration number — owner to supply] |
+| A2 | ICO registration | ZC160806 (Blackwellen Ltd, registered 29 May 2026, renew by 28 May 2027) |
 | A3 | Named security / data protection contact | legal@clientturn.com (formal), support@clientturn.com (operational). No appointed DPO (not required at current scale). |
 | A4 | Certifications (SOC 2, ISO 27001, Cyber Essentials) | **None.** Not yet. Stated publicly (`src/lib/marketing/security.ts`). |
 | A5 | Written information security policy | Partially: engineering rules in `CLAUDE.md` and `docs/` (security headers, restore, observability, billing, developer platform). No single ISMS policy document yet. |
@@ -93,4 +93,4 @@ Last reviewed: 28 September 2026. Companion documents: `docs/security/DATA_FLOW.
 |---|---|---|
 | H1 | Sub-processor list | Yes, public at `/sub-processors`, with change log and 30 days' notice. |
 | H2 | DPA | Yes, public at `/dpa`, UK GDPR Art. 28, annexes for processing details, TOMs and sub-processors. |
-| H3 | International transfers | UK adequacy or IDTA / UK Addendum to the SCCs; Retell AI region: [owner to supply]. |
+| H3 | International transfers | UK adequacy or IDTA / UK Addendum to the SCCs; Retell AI: United States (AWS US regions), UK IDTA or SCCs with the UK Addendum under Retell's DPA. |

@@ -146,12 +146,18 @@ describe("sub-processor register and DPA", () => {
     assert.ok(SUBPROCESSOR_CHANGES.some((entry) => /Google Places/.test(entry.change)));
   });
 
-  test("the DPA exists, links the register, and shows placeholders rather than invented numbers", () => {
+  test("the DPA exists, links the register, and states only facts we hold", () => {
     const dpa = read("src/app/(marketing)/dpa/page.tsx");
+    const company = read("src/lib/marketing/company.ts");
     assert.match(dpa, /href="\/sub-processors"/);
     assert.match(dpa, /Article 28/);
-    assert.match(dpa, /ICO registration number — owner to supply/);
-    assert.match(dpa, /Retell AI data region/);
+    // The ICO number comes from COMPANY (verified on the ICO register 2026-09-29),
+    // with the placeholder kept only as the fallback for an empty value.
+    assert.match(dpa, /COMPANY\.icoRegistration/);
+    assert.match(company, /icoRegistration: "ZC160806"/);
+    // Retell's region as Retell publishes it (privacy policy checked 2026-09-29).
+    assert.match(dpa, /Retell AI \(the optional AI voice agent\) processes and stores call\s+data in the United States/);
+    assert.doesNotMatch(dpa, /owner to supply from the signed Retell DPA/);
     assert.doesNotMatch(dpa, /restore-tested/);
   });
 });

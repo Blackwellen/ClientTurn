@@ -97,9 +97,9 @@ export const SUBPROCESSORS: SubProcessor[] = [
   },
   {
     // Added 27 September 2026 for the AI Voice Sales Agent. Entity, hosting
-    // and location are as Retell AI publishes them (retellai.com/legal and
-    // docs.retellai.com/general/compliance); not yet confirmed against a
-    // signed DPA. Its own LLM and text-to-speech sub-processors are listed on
+    // and location are as Retell AI publishes them (retellai.com/legal/privacy-policy,
+    // checked 2026-09-29: US storage and processing; transfers under the UK IDTA
+    // or SCCs). Its own LLM and text-to-speech sub-processors are listed on
     // its trust centre (trust.retellai.com/subprocessors) and must be checked
     // before the first live call (gap map Risk R2).
     entity: "Retell AI, Inc. (United States)",
@@ -108,9 +108,9 @@ export const SUBPROCESSORS: SubProcessor[] = [
       "Runs the AI Voice Sales Agent's calls: speech recognition, the voice, and the real-time connection between the call and ClientTurn's agent. Only used when a customer turns voice on.",
     data: "The lead's phone number, the live call audio, the call transcript and, where the customer turns recording on, the call recording.",
     location:
-      "United States, hosted on Amazon Web Services (as stated by Retell AI; Retell states it does not currently operate services within the EU). To be confirmed in our DPA with Retell.",
+      "United States, hosted on Amazon Web Services US regions (Retell AI's privacy policy: data is primarily stored and processed in the United States).",
     transfer:
-      "To be confirmed: UK International Data Transfer Addendum to the EU Standard Contractual Clauses, under Retell AI's data processing agreement.",
+      "UK International Data Transfer Agreement, or the EU Standard Contractual Clauses with the UK Addendum, under Retell AI's data processing agreement.",
     role: "core",
     optional: true,
   },

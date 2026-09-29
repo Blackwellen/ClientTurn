@@ -50,7 +50,8 @@ export const COMPANY = {
    * do not hold.
    */
   vatNumber: "",
-  icoRegistration: "",
+  /** ICO register of fee payers, verified 2026-09-29: Blackwellen Ltd, registered 29 May 2026, expires 28 May 2027 (renew before then). */
+  icoRegistration: "ZC160806",
 } as const;
 
 /**
