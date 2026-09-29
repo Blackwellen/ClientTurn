@@ -69,7 +69,7 @@ const MONTHS = [
  * an impossible sample reads as an earnings claim: 4 paid customers keeps the
  * partner on the 6% Partner tier (Pro Partner starts at 5); the two paid
  * referrals below are still inside the 30-day hold (Pending £35.88); Approved
- * is one earlier Growth annual referral (6% of £2,030) and clears the £50
+ * is one earlier Growth annual referral (6% of £2,030) and clears the £10
  * payout minimum; Paid out is one Starter monthly referral.
  *
  * Sample one-off commissions at the 6% starting rate on a first monthly

@@ -71,7 +71,7 @@ const RECURRING: CommissionPlan = {
   attributionWindowDays: 60,
   cookieWindowDays: 60,
   holdDays: 30,
-  minimumPayoutMinor: 5000,
+  minimumPayoutMinor: 1000,
 };
 
 describe("commission arithmetic", () => {
@@ -134,7 +134,7 @@ describe("payout eligibility", () => {
     taxStatus: "VERIFIED",
     hasPaymentDetails: true,
     payableMinor: 10000,
-    minimumPayoutMinor: 5000,
+    minimumPayoutMinor: 1000,
   };
 
   test("an eligible partner has no blocker", () => {
@@ -156,9 +156,9 @@ describe("payout eligibility", () => {
   });
 
   test("a balance under the minimum names both numbers", () => {
-    const blocker = payoutBlocker({ ...base, payableMinor: 1000 });
-    assert.match(blocker!, /£50\.00/);
+    const blocker = payoutBlocker({ ...base, payableMinor: 500 });
     assert.match(blocker!, /£10\.00/);
+    assert.match(blocker!, /£5\.00/);
   });
 
   test("invalid tax details block payment", () => {

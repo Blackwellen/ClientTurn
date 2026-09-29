@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -109,6 +110,18 @@ export function DirectCloseEditor({
       </CardHeader>
 
       <CardContent className="space-y-4 px-5 pt-4 pb-5">
+        <p className="text-[12.5px] text-content-muted">
+          These are fixed-price checkout links for direct sales: the assistant can send one in a
+          conversation, and a catalogue item can offer one as the pay step after a quote is accepted.
+          The Pay now button on invoices is set separately, in{" "}
+          <Link
+            href="/app/settings?section=quotes"
+            className="font-medium text-content-accent underline-offset-4 hover:underline"
+          >
+            Quotes &amp; invoices, How invoices are paid
+          </Link>
+          .
+        </p>
         <label className="flex items-start gap-2.5 text-[13px]">
           <input
             type="checkbox"

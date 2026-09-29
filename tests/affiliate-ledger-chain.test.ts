@@ -103,7 +103,7 @@ beforeEach(() => {
   rows("affiliate_commission_plans").push({
     id: PLAN, name: "Default", commission_type: "RECURRING_PERCENT", percent: 20, flat_amount_minor: null,
     currency: "GBP", recurring_months: 12, attribution_window_days: 90, cookie_window_days: 90, hold_days: 30,
-    minimum_payout_minor: 5000, is_default: true, active: true,
+    minimum_payout_minor: 1000, is_default: true, active: true,
   });
   rows("affiliates").push({
     id: AFF, user_id: "user-aff", status: "ACTIVE", commission_plan_id: PLAN, tier: "STANDARD", notification_prefs: {},
@@ -295,7 +295,7 @@ describe("payouts", () => {
   test("the monthly run raises a payout PENDING APPROVAL; approval, then cancel releases the commission", async () => {
     approvedCommission(8000);
     const raised = await payouts.createPayout({
-      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 5000,
+      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 1000,
       method: "Stripe Connect", idempotencyKey: "payout:a:2026-08",
     });
     assert.equal(raised.status, "created");
@@ -315,13 +315,13 @@ describe("payouts", () => {
   });
 
   test("a clawback that nets the claim below the minimum releases everything and raises nothing", async () => {
-    approvedCommission(6000);
+    approvedCommission(1500);
     rows("affiliate_commissions").push({
-      id: "neg", affiliate_id: AFF, referral_id: REF, status: "APPROVED", entry_type: "REVERSAL", commission_amount_minor: -2000,
+      id: "neg", affiliate_id: AFF, referral_id: REF, status: "APPROVED", entry_type: "REVERSAL", commission_amount_minor: -800,
       currency: "GBP", payout_id: null, available_at: new Date(Date.now() - DAY).toISOString(), created_at: new Date().toISOString(),
     });
     const result = await payouts.createPayout({
-      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 5000,
+      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 1000,
       method: "Stripe Connect", idempotencyKey: "payout:b:2026-08",
     });
     assert.deepEqual(result, { status: "skipped", reason: "below_threshold" });
@@ -332,7 +332,7 @@ describe("payouts", () => {
   test("retrying a failed payout re-claims the released commission instead of paying it twice", async () => {
     approvedCommission(9000);
     await payouts.createPayout({
-      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 5000,
+      affiliateId: AFF, periodStart: "2026-08-01", periodEnd: "2026-08-31", minimumPayoutMinor: 1000,
       method: "Stripe Connect", idempotencyKey: "payout:c:2026-08", initialStatus: "APPROVED",
     });
     const payout = rows("affiliate_payouts")[0];

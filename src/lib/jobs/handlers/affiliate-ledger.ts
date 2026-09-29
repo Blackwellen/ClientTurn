@@ -16,6 +16,7 @@ import { autoDispatchAllowed, payoutRunDecision } from "@/lib/affiliates/payout-
 import { getProgrammeSettings, untypedDb } from "@/lib/affiliates/programme-settings";
 import { recalculateTiers } from "@/lib/affiliates/tiers";
 import { checkPaidReferrals } from "@/lib/affiliates/fraud";
+import { FALLBACK_POLICY } from "@/lib/affiliates/programme";
 import { isSchemaMissing } from "@/lib/billing/stripe-events";
 
 /**
@@ -186,7 +187,7 @@ async function minimumFor(
     : await query.eq("is_default", true).eq("active", true).maybeSingle();
 
   return {
-    minimumPayoutMinor: data?.minimum_payout_minor ?? 10000,
+    minimumPayoutMinor: data?.minimum_payout_minor ?? FALLBACK_POLICY.minimumPayoutMinor,
     currency: data?.currency ?? "GBP",
   };
 }

@@ -63,6 +63,22 @@ export async function createDraft(input: {
   return data ? { id: data.id } : null;
 }
 
+/**
+ * Removes a DRAFT row that a failed Create inserted but could not fill, so a
+ * failed Create leaves nothing behind. Only ever a DRAFT in this workspace;
+ * anything launched is untouched.
+ */
+export async function discardDraft(businessId: string, campaignId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("outreach_campaigns")
+    .delete()
+    .eq("business_id", businessId)
+    .eq("id", campaignId)
+    .eq("status", "DRAFT");
+  if (error) console.error("[campaigns] discarding an unfilled draft failed", error.message);
+}
+
 /** Reads a stored campaign back into the wizard's shape. */
 export async function loadDraft(
   businessId: string,

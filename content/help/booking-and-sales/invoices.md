@@ -61,6 +61,8 @@ Customers pay you directly, through your own Stripe account. ClientTurn never ho
 | **One Stripe Payment Link for every invoice** | Every invoice carries the same link. Make it a "let customers choose what to pay" link in Stripe: the email tells the customer the amount to enter. |
 | **A Stripe Payment Link pasted on each invoice** | You paste a fixed-price Payment Link on each invoice from the lead page (**Quotes**, then **Add pay link**). An invoice without one shows no button. |
 
+These settings are for invoices only. The fixed-price checkout links the assistant sends when a lead is ready to buy, and the pay step a catalogue item offers straight after a quote is accepted, are a separate list in **Settings → Business Profile → Selling: direct close**. See [Direct close with checkout links](/help/booking-and-sales/direct-close-checkout-links).
+
 With a link set, **Pay now** appears in the invoice email and every reminder, on the quote page after signing (for the earliest unpaid invoice), and as **Copy pay link** on the lead page. The link carries a reference to the invoice, never the lead.
 
 For payments to be matched automatically, connect your Stripe payments webhook in **Settings → Connections → Payments**. Then:

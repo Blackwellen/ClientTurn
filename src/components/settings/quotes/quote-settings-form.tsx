@@ -136,7 +136,14 @@ export function QuoteSettingsForm({
         <fieldset className="space-y-3 rounded-lg border border-line-subtle p-4" aria-describedby="qs-pay-help">
           <legend className="px-1 text-[13.5px] font-semibold text-content">How invoices are paid</legend>
           <p id="qs-pay-help" className="text-[12.5px] text-content-muted">
-            Customers pay you directly, through your own Stripe account; ClientTurn never holds the money. With a link set, each invoice email and the quote page show a Pay now button, and a payment through it is recorded on the invoice automatically.
+            For invoices only. Customers pay you directly, through your own Stripe account; ClientTurn never holds the money. With a link set, each invoice email and the invoice on the quote page show a Pay now button, and a payment through it is recorded on the invoice automatically.
+          </p>
+          <p className="text-[12.5px] text-content-muted">
+            Fixed-price checkout links (the ones the assistant sends when a lead is ready to buy, and the pay step straight after a quote is accepted) are set separately in{" "}
+            <Link href="/app/settings?section=business-profile" className="font-medium text-content-accent underline-offset-4 hover:underline">
+              Business Profile, Direct close
+            </Link>
+            .
           </p>
           <FormField label="Payment method" htmlFor="qs-pay-mode">
             <Select native id="qs-pay-mode" value={draft.payMode} onChange={(e) => set("payMode", e.target.value as InvoicePayMode)} disabled={disabled}>

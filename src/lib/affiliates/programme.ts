@@ -455,8 +455,9 @@ export type ProgrammePolicy = {
  * The terms used when no default plan row exists yet.
  *
  * Not a silent guess: the public page and the portal both show these only
- * because they match the seeded default in migration 0056. If someone changes
- * the plan row, the DB value wins everywhere.
+ * because they match the live default plan (seeded in 0056; minimum payout set
+ * to £10 by 0179, owner decision 2026-09-29). If someone changes the plan row,
+ * the DB value wins everywhere.
  */
 export const FALLBACK_POLICY: ProgrammePolicy = {
   attributionWindowDays: 90,
@@ -465,7 +466,7 @@ export const FALLBACK_POLICY: ProgrammePolicy = {
   commissionPercent: 6,
   commissionFlatMinor: null,
   holdDays: 30,
-  minimumPayoutMinor: 10000,
+  minimumPayoutMinor: 1000,
   payoutFrequency: "MONTHLY",
   currency: "GBP",
   selfReferralsAllowed: false,

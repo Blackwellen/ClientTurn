@@ -12,6 +12,7 @@ import { QuoteSettingsForm } from "@/components/settings/quotes/quote-settings-f
 import { CatalogueCard } from "@/components/settings/quotes/catalogue-card";
 import { PaymentReviewCard } from "@/components/settings/quotes/payment-review-card";
 import { loadPaymentReviewQueue } from "@/lib/invoicing/payment-review-store";
+import { INVOICE_PAY_MODE_LABEL } from "@/lib/invoicing/pay-link";
 
 /**
  * Settings -> Quotes & invoices (gap map §44). One Settings section, not a
@@ -94,26 +95,33 @@ export async function QuotesSection() {
         <CardHeader>
           <div>
             <CardTitle>Payment</CardTitle>
-            <CardDescription>How a customer pays after accepting a quote, and how invoices are chased.</CardDescription>
+            <CardDescription>
+              Two separate links: the Pay now button on invoices (set in How invoices are paid, above), and an optional pay step straight after a quote is accepted (a checkout link from Direct close).
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-[13px] text-content-secondary">
+          <p>
+            <span className="font-semibold text-content">Invoices:</span> {INVOICE_PAY_MODE_LABEL[view.settings.invoicePayMode]}.
+          </p>
           {view.checkoutLinks.length === 0 ? (
             <div className="flex items-start gap-3 rounded-lg border border-line bg-surface-sunken px-4 py-3" role="status">
               <CreditCard className="mt-0.5 size-4 shrink-0 text-content-muted" aria-hidden />
               <div>
-                <p className="font-semibold text-content">No payment link connected</p>
+                <p className="font-semibold text-content">No pay step after acceptance</p>
                 <p className="mt-0.5">
-                  Customers can accept quotes, but there is no pay-now step yet. Add your own Stripe or shop checkout link under{" "}
+                  Customers can accept quotes, and invoices are paid as set above, but nothing asks for payment the moment a quote is accepted. To add that, create a fixed-price checkout link under{" "}
                   <Link href="/app/settings?section=business-profile" className="font-medium text-content-accent underline-offset-4 hover:underline">Business Profile, Direct close</Link>
-                  {" "}and confirm payments by connecting your payment webhook in{" "}
+                  {" "}and choose it on a catalogue item. Payments are confirmed through your payment webhook in{" "}
                   <Link href="/app/settings?section=connections" className="font-medium text-content-accent underline-offset-4 hover:underline">Connections</Link>.
                 </p>
               </div>
             </div>
           ) : (
             <p>
-              {view.checkoutLinks.length} approved checkout link{view.checkoutLinks.length === 1 ? "" : "s"}. Choose one per catalogue item: after a customer accepts, the quote page offers it as the payment step (the deposit, or the amount due on acceptance). Payments are confirmed from your own Stripe account; ClientTurn never holds the money.
+              <span className="font-semibold text-content">After acceptance:</span> {view.checkoutLinks.length} approved checkout link{view.checkoutLinks.length === 1 ? "" : "s"} from{" "}
+              <Link href="/app/settings?section=business-profile" className="font-medium text-content-accent underline-offset-4 hover:underline">Direct close</Link>
+              . Choose one per catalogue item: after a customer accepts, the quote page offers it as the payment step (the deposit, or the amount due on acceptance). Payments are confirmed from your own Stripe account; ClientTurn never holds the money.
             </p>
           )}
           <p>

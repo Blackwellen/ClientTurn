@@ -123,6 +123,8 @@ The owner decided all of these on 2026-09-28. They are implemented and pinned by
    - The MRR threshold is removed: it is kept as a column, set to 0 and unread, because one-off commission does not pay on later revenue.
    - Public pages and the terms read the rates from the tier table.
 
+7. **Minimum payout £10** (owner decision 2026-09-29). Previously the live default plan held £50 while the 0056 seed and the code fallback said £100. Migration `0179_affiliate_min_payout_10.sql` (written, **not applied**) sets the default plan, and any plan still on 5000/10000, to 1000 and changes the column default; `FALLBACK_POLICY` and the payout-run fallback in `jobs/handlers/affiliate-ledger.ts` are 1000. Every public, terms, portal and admin surface reads the plan value. Stripe Connect transfers impose no conflicting floor (the code refuses only amounts <= 0). Pinned by `tests/affiliate-owner-decisions.test.ts`.
+
 ### Earlier open items (historical)
 
 1. **Referral cookie consent (H).** `ct_ref` is set on click, with no consent, and is not in the Cookie Policy. Options:

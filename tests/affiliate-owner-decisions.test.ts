@@ -75,7 +75,7 @@ beforeEach(() => {
   table(db, "affiliate_commission_plans").push({
     id: PLAN, name: "Partner 6% one-off", commission_type: "FIRST_PAYMENT_PERCENT", percent: 6, flat_amount_minor: null,
     currency: "GBP", recurring_months: 1, attribution_window_days: 90, cookie_window_days: 90, hold_days: 30,
-    minimum_payout_minor: 5000, is_default: true, active: true,
+    minimum_payout_minor: 1000, is_default: true, active: true,
   });
   for (const tier of DEFAULT_TIERS) {
     table(db, "affiliate_tiers").push({
@@ -365,5 +365,23 @@ describe("promo codes are removed from the programme", () => {
   test("the terms say there are no promo codes", () => {
     assert.match(read("src/app/(marketing)/affiliates/terms/page.tsx"), /There are no partner promo\s+codes/);
     assert.ok(existsSync(new URL("../src/app/api/affiliates/referral/route.ts", import.meta.url)));
+  });
+});
+
+describe("minimum payout is £10 (owner decision 2026-09-29)", () => {
+  test("the fallback policy and the payout-run fallback are £10", async () => {
+    const { FALLBACK_POLICY, describePayout } = await import("../src/lib/affiliates/programme.ts");
+    assert.equal(FALLBACK_POLICY.minimumPayoutMinor, 1000);
+    assert.match(describePayout(FALLBACK_POLICY), /£10\b/);
+    const handler = read("src/lib/jobs/handlers/affiliate-ledger.ts");
+    assert.match(handler, /minimum_payout_minor \?\? FALLBACK_POLICY\.minimumPayoutMinor/);
+    assert.doesNotMatch(handler, /\?\? 10000/);
+  });
+
+  test("migration 0179 sets the live default plan (and the column default) to 1000", () => {
+    const sql = read("supabase/migrations/0179_affiliate_min_payout_10.sql");
+    assert.match(sql, /set minimum_payout_minor = 1000/);
+    assert.match(sql, /is_default/);
+    assert.match(sql, /alter column minimum_payout_minor set default 1000/);
   });
 });

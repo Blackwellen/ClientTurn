@@ -13,6 +13,8 @@ screenshots:
 
 For businesses that sell without a call, such as self-serve SaaS or ecommerce, the assistant can close the sale by sending a checkout link. It is **off** until you turn it on, and even then it can only send links you have approved, with the price wording you wrote.
 
+The same approved links can also be chosen on a catalogue item, as the pay step straight after a customer accepts a quote. The **Pay now** button on invoices is set up separately, in **Settings → Quotes & invoices → How invoices are paid**. See [Invoices](/help/booking-and-sales/invoices).
+
 ## What you need
 
 - A sales motion that closes without a person: self-serve, ecommerce or direct B2B. Set it under **How you sell** in **Settings → AI & selling → Sales behaviour**. On any other motion the assistant will not send a checkout link, because your sale closes through a person.

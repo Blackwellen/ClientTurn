@@ -242,7 +242,7 @@ describe("payout readiness", () => {
     identityStatus: "VERIFIED",
     taxStatus: "VERIFIED",
     availableMinor: 52000,
-    minimumPayoutMinor: 10000,
+    minimumPayoutMinor: 1000,
   };
 
   test("a fully set-up partner is READY", () => {

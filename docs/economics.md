@@ -1105,6 +1105,8 @@ ClientTurn is priced as a managed sales channel, not as raw minutes: several tim
 
 Owner decisions of 2026-09-28: commission is paid **once** per referred customer, it is treated as a marketing (acquisition) cost, and it replaces "20% recurring for 12 months". Code: `src/lib/affiliates/ledger-rules.ts`, `commissions.ts`; live tiers from migration 0169 (STANDARD 6% at 0 paid referrals, PARTNER 8% at 5, PREMIUM 10% at 15, counted over 12 months).
 
+**Minimum payout: £10** (owner decision 2026-09-29; `affiliate_commission_plans.minimum_payout_minor = 1000`, migration 0179, fallback `FALLBACK_POLICY` in `src/lib/affiliates/programme.ts`). Approved commission is paid monthly once the balance reaches £10, so a single Starter-monthly referral at 6% (£5.94) waits for a second; any Growth or Pro referral clears it alone. Stripe Connect transfers add no floor above this.
+
 ### 14.1 Commission per referral (base = first paid subscription invoice, excluding VAT)
 
 | First invoice | Partner 6% | Pro Partner 8% | Elite 10% |

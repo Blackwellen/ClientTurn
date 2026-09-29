@@ -18,7 +18,8 @@ import {
 } from "./campaign-draft";
 import type { LaunchCheck } from "./campaign-validation";
 import { CAMPAIGN_PRIORITIES, type CampaignPriority } from "./types";
-import { createDraft, loadDraft, saveDraft } from "./campaigns/draft";
+import { createDraft, discardDraft, loadDraft, saveDraft } from "./campaigns/draft";
+import { createCampaignFromDraft } from "./campaigns/create-from-draft";
 import { estimateAudience, type AudienceEstimate } from "./campaigns/audience";
 import { launchCampaign } from "./campaigns/launch";
 import {
@@ -193,6 +194,32 @@ export async function validateCampaignAction(
   return ok({ checks: validation.checks, blocked: validation.blocked });
 }
 
+/**
+ * Launch checks for the new-campaign wizard before anything is saved.
+ *
+ * The wizard holds an unsaved form until the person presses Create, so there is
+ * no row to validate yet. This runs the same checks against the form. It is a
+ * preview only: Create stores the form and the launch gate validates the stored
+ * row again.
+ */
+export async function previewLaunchChecksAction(
+  input: unknown,
+): Promise<ActionResult<LaunchPreview>> {
+  const parsed = z.object({ draft: campaignDraftSchema }).safeParse(input);
+  if (!parsed.success) return fail("Some of those settings are not valid.");
+
+  const access = await requireCampaignAdmin();
+  if (!access.ok) return access;
+
+  const validation = await validateForLaunch({
+    businessId: access.workspace.businessId,
+    draft: parsed.data.draft,
+    campaignId: null,
+  });
+
+  return ok({ checks: validation.checks, blocked: validation.blocked });
+}
+
 /* ---------------------------------------------------------------- launch */
 
 const launchSchema = z.object({
@@ -225,6 +252,62 @@ export async function launchAcquisitionCampaignAction(
 
   refresh(parsed.data.campaignId);
   return ok({ campaignId: result.campaignId, status: result.status });
+}
+
+const createSchema = z.object({
+  draft: campaignDraftSchema,
+  startMode: z.enum(["MANUAL_REVIEW", "IMMEDIATE"]),
+});
+
+/**
+ * Create (and launch) a campaign from the new wizard's unsaved form.
+ *
+ * The only place the new wizard writes: nothing exists until this runs. See
+ * `campaigns/create-from-draft.ts` for the order and the clean-up. When a
+ * launch check blocks, the draft is kept and its id returned so the wizard
+ * carries on editing the saved draft.
+ */
+export async function createAcquisitionCampaignAction(
+  input: unknown,
+): Promise<
+  | { ok: true; data: { campaignId: string; status: string } }
+  | { ok: false; error: string; campaignId: string | null; checks?: LaunchCheck[] }
+> {
+  const parsed = createSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Some of those settings are not valid, so nothing was created.", campaignId: null };
+  }
+
+  const access = await requireCampaignAdmin();
+  if (!access.ok) return { ...access, campaignId: null };
+  if (!(await workspaceCan(access.workspace, "send_outbound"))) {
+    return { ok: false, error: "Your permissions in this workspace do not allow sending. Ask the owner or an admin.", campaignId: null };
+  }
+
+  const { businessId, userId } = access.workspace;
+  const result = await createCampaignFromDraft({
+    createDraft: () => createDraft({ businessId, userId }),
+    saveDraft: async (id) => {
+      const saved = await saveDraft({ businessId, campaignId: id, draft: parsed.data.draft, step: "review" });
+      return saved.ok ? { ok: true } : { ok: false, error: saved.error };
+    },
+    discardDraft: (id) => discardDraft(businessId, id),
+    recordCreated: async (id) => {
+      await recordAudit({
+        businessId,
+        actorUserId: userId,
+        action: "outreach_campaign.created",
+        entityType: "outreach_campaign",
+        entityId: id,
+        metadata: { status: "DRAFT", via: "wizard_create" },
+      });
+    },
+    launch: (id) => launchCampaign({ businessId, campaignId: id, userId, startMode: parsed.data.startMode }),
+  });
+
+  refresh(result.ok ? result.campaignId : (result.campaignId ?? undefined));
+  if (!result.ok) return result;
+  return { ok: true, data: { campaignId: result.campaignId, status: result.status } };
 }
 
 /* ------------------------------------------------------------- lifecycle */

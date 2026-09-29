@@ -25,8 +25,10 @@ import type {
 import type { CampaignBudgetContext } from "@/lib/outreach/campaign-budget";
 import type { SenderHealth } from "@/lib/outreach/campaigns/sender";
 import {
+  createAcquisitionCampaignAction,
   estimateAudienceAction,
   launchAcquisitionCampaignAction,
+  previewLaunchChecksAction,
   saveCampaignDraftAction,
   validateCampaignAction,
 } from "@/lib/outreach/campaign-actions";
@@ -45,9 +47,15 @@ import { ReviewStep } from "./review-step";
  * screen is linkable and browser Back does what a person expects rather than
  * leaving the wizard entirely.
  *
- * Two rules hold the whole thing together:
- *   - the draft is saved server-side, debounced, so nothing is lost to a
- *     refresh, a closed tab or a different device;
+ * Two modes, by `campaignId`:
+ *   - null (a new campaign): the form lives in the browser and nothing is
+ *     written until the person presses Create on the review step (owner
+ *     decision 2026-09-29), so merely opening the wizard never leaves an
+ *     "Untitled campaign" behind;
+ *   - an id (a saved DRAFT): the draft is saved server-side, debounced, so
+ *     nothing is lost to a refresh, a closed tab or a different device.
+ *
+ * In both:
  *   - a step cannot be entered until the ones before it validate, and the same
  *     validators run again on the server at launch. The client's opinion about
  *     completeness is a convenience, never the gate.
@@ -69,7 +77,8 @@ export function CampaignWizard({
   initialInsights,
   aiAvailable,
 }: {
-  campaignId: string;
+  /** null for a new, unsaved campaign: nothing is stored until Create. */
+  campaignId: string | null;
   initialDraft: CampaignDraft;
   initialStep: WizardStepKey | null;
   options: CampaignWizardOptions;
@@ -82,6 +91,7 @@ export function CampaignWizard({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const unsaved = campaignId === null;
 
   const [draft, setDraft] = React.useState<CampaignDraft>(initialDraft);
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
@@ -160,7 +170,8 @@ export function CampaignWizard({
   );
 
   React.useEffect(() => {
-    if (!dirty.current) return;
+    // An unsaved campaign has no row to save to, by design.
+    if (!dirty.current || campaignId === null) return;
 
     const token = ++saveToken.current;
 
@@ -180,6 +191,17 @@ export function CampaignWizard({
 
     return () => clearTimeout(timer);
   }, [draft, campaignId, step, toast]);
+
+  // The unsaved form is only in this tab, so warn before it is thrown away.
+  React.useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!dirty.current) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
 
   /* ------------------------------------------------------- audience estimate */
 
@@ -232,7 +254,10 @@ export function CampaignWizard({
     let cancelled = false;
 
     void (async () => {
-      const result = await validateCampaignAction(campaignId);
+      const result =
+        campaignId === null
+          ? await previewLaunchChecksAction({ draft })
+          : await validateCampaignAction(campaignId);
       if (cancelled) return;
       if (result.ok) setResolvedChecks({ key: validationKey, checks: result.data.checks });
       else toast({ variant: "error", title: result.error });
@@ -241,6 +266,8 @@ export function CampaignWizard({
     return () => {
       cancelled = true;
     };
+    // `draft` is represented by `validationKey`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onReview, validationKey, campaignId, resolvedChecks?.key, toast]);
 
   /* ---------------------------------------------------------------- launch */
@@ -248,6 +275,10 @@ export function CampaignWizard({
   const launch = async () => {
     setLaunching(true);
     try {
+      if (campaignId === null) {
+        await createFromForm();
+        return;
+      }
       const result = await launchAcquisitionCampaignAction({
         campaignId,
         startMode: draft.outreach.startMode,
@@ -281,6 +312,46 @@ export function CampaignWizard({
     } finally {
       setLaunching(false);
     }
+  };
+
+  /** Create: the first and only write for a new campaign. */
+  const createFromForm = async () => {
+    const result = await createAcquisitionCampaignAction({
+      draft,
+      startMode: draft.outreach.startMode,
+    });
+
+    if (!result.ok) {
+      if (result.checks) setResolvedChecks({ key: validationKey, checks: result.checks });
+      if (result.campaignId) {
+        // Created, but a launch check blocked it. The campaign is now a saved
+        // draft; carry on editing that one instead of the unsaved form.
+        dirty.current = false;
+        toast({
+          variant: "error",
+          title: result.error,
+          description: "Your campaign is saved as a draft. Fix the check above, then launch it.",
+        });
+        router.replace(`/app/find-leads/campaigns/new?draft=${result.campaignId}&step=review`, {
+          scroll: false,
+        });
+        return;
+      }
+      toast({ variant: "error", title: result.error });
+      return;
+    }
+
+    dirty.current = false;
+    toast({
+      variant: "success",
+      title:
+        result.data.status === "ACTIVE" ? "Campaign is live." : "Campaign created and ready for review.",
+      description:
+        result.data.status === "ACTIVE"
+          ? "Sending starts shortly. Every recipient is re-checked immediately before their message goes out."
+          : "Activate it from the campaign page when you are happy with it.",
+    });
+    router.push(`/app/find-leads/campaigns/${result.data.campaignId}`);
   };
 
   const next = () => {
@@ -394,7 +465,13 @@ export function CampaignWizard({
               Previous
             </Button>
           )}
-          <SaveIndicator state={saveState} />
+          {unsaved ? (
+            <span className="text-[12px] text-content-muted">
+              Not saved yet. Nothing is created until you press Create on the last step.
+            </span>
+          ) : (
+            <SaveIndicator state={saveState} />
+          )}
         </div>
 
         {showErrors && !completed[step] && (
@@ -413,7 +490,7 @@ export function CampaignWizard({
             onClick={() => setConfirmLaunch(true)}
           >
             <Rocket className="size-4" aria-hidden />
-            Launch campaign
+            {draft.outreach.startMode === "IMMEDIATE" ? "Launch campaign" : "Create campaign"}
           </Button>
         ) : (
           <Button variant="success" size="md" onClick={next}>
@@ -455,7 +532,11 @@ export function CampaignWizard({
         onClose={() => setConfirmCancel(false)}
         onConfirm={() => router.push("/app/find-leads?view=campaigns")}
         title="Leave this campaign?"
-        scope="Your draft is saved, so you can pick it up again from the Campaigns list."
+        scope={
+          unsaved
+            ? "This campaign has not been created, so what you have entered here will be discarded."
+            : "Your draft is saved, so you can pick it up again from the Campaigns list."
+        }
         consequence="Nothing has been sent and no budget has been reserved."
         confirmLabel="Leave"
       />

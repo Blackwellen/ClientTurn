@@ -9,11 +9,7 @@ import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAzureConfigured } from "@/lib/ai/azure-client";
 import { EmptyState, PlanLimitState } from "@/components/ui/feedback";
-import {
-  createDraft,
-  findResumableDraft,
-  loadDraft,
-} from "@/lib/outreach/campaigns/draft";
+import { findResumableDraft, loadDraft } from "@/lib/outreach/campaigns/draft";
 import { estimateAudience, loadIntentInsights, loadWizardOptions } from "@/lib/outreach/campaigns/audience";
 import { resolveCampaignBudgetContext } from "@/lib/outreach/campaigns/budget";
 import { loadSenderHealth } from "@/lib/outreach/campaigns/sender";
@@ -42,10 +38,13 @@ function WizardHeader({ subtitle }: { subtitle?: string }) {
 /**
  * `/app/find-leads/campaigns/new`
  *
- * A draft is a real DRAFT campaign row, so the wizard needs an id before it can
- * save anything. The page resolves one and redirects to `?draft=<id>` rather
- * than creating it inside the render that also reads it back — a read after a
- * write in the same render returns the pre-write state.
+ * Without `?draft=`, the wizard starts from an unsaved form held in the
+ * browser: opening this page writes nothing (owner decision 2026-09-29). The
+ * campaign row is created only when the person presses Create on the review
+ * step (`createAcquisitionCampaignAction`). An unfinished draft from an
+ * earlier visit is offered as a link, never opened or created automatically.
+ *
+ * With `?draft=<id>`, an existing saved DRAFT is edited and autosaved as before.
  */
 export default async function NewCampaignPage({
   searchParams,
@@ -104,28 +103,58 @@ export default async function NewCampaignPage({
   const requestedStep = Array.isArray(params.step) ? params.step[0] : params.step;
 
   if (!requestedDraft) {
-    // Resume what this person left unfinished rather than silently abandoning
-    // it and starting again.
-    const resumable = await findResumableDraft(workspace.businessId, workspace.userId);
-    const draftId = resumable?.id ?? (await createDraft({
-      businessId: workspace.businessId,
-      userId: workspace.userId,
-    }))?.id;
+    // Nothing is created here. The form lives in the browser until Create.
+    const draft = emptyDraft();
+    const [resumable, options, senders, budgetContext, estimate, aiEnabled] = await Promise.all([
+      findResumableDraft(workspace.businessId, workspace.userId),
+      loadWizardOptions(workspace.businessId),
+      loadSenderHealth(workspace.businessId),
+      resolveCampaignBudgetContext({
+        businessId: workspace.businessId,
+        senderIdentityId: draft.outreach.senderIdentityId,
+        excludeCampaignId: null,
+      }),
+      estimateAudience(workspace.businessId, draft),
+      aiAssistEnabled(workspace.businessId),
+    ]);
+    const insights = await loadIntentInsights(
+      workspace.businessId,
+      draft.intentScore.intentCategoryIds,
+      draft.intentScore.maxIntentAgeDays,
+    );
 
-    if (!draftId) {
-      return (
-        <div className="space-y-5">
-          <WizardHeader />
-          <PlanLimitState
-            title="That campaign could not be created"
-            description="Something went wrong setting up a new draft. Try again, and if it keeps happening let us know."
-          />
-        </div>
-      );
-    }
-
-    const step = resumable?.step ?? "goal";
-    redirect(`/app/find-leads/campaigns/new?draft=${draftId}&step=${step}`);
+    return (
+      <div className="space-y-5">
+        <WizardHeader />
+        {resumable && (
+          <div
+            role="status"
+            className="rounded-lg border border-line bg-surface-sunken px-4 py-3 text-[13px] text-content-secondary"
+          >
+            You have an unfinished draft,{" "}
+            <span className="font-semibold text-content">{resumable.name}</span>.{" "}
+            <Link
+              href={`/app/find-leads/campaigns/new?draft=${resumable.id}&step=${resumable.step ?? "goal"}`}
+              className="font-medium text-content-accent underline-offset-4 hover:underline"
+            >
+              Continue that draft
+            </Link>{" "}
+            or start a new campaign below.
+          </div>
+        )}
+        <CampaignWizard
+          campaignId={null}
+          initialDraft={draft}
+          initialStep="goal"
+          options={options}
+          senders={senders}
+          budgetContext={budgetContext}
+          initialEstimate={estimate}
+          initialInsights={insights}
+          aiAvailable={isAzureConfigured() && aiEnabled}
+        />
+      </div>
+    );
   }
 
   const loaded = await loadDraft(workspace.businessId, requestedDraft);

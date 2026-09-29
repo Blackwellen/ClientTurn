@@ -424,10 +424,10 @@ describe("tiers", () => {
 
 describe("payouts", () => {
   test("the monthly run raises pending-approval payouts unless an admin enabled auto-approval", () => {
-    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: 20000, minimumPayoutMinor: 5000, autoApprove: false }), { action: "raise", initialStatus: "DRAFT" });
-    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: 20000, minimumPayoutMinor: 5000, autoApprove: true }), { action: "raise", initialStatus: "APPROVED" });
-    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: -100, minimumPayoutMinor: 5000, autoApprove: true }), { action: "skip", reason: "negative_balance" });
-    assert.deepEqual(payoutRunDecision({ readiness: "ACTION_REQUIRED", availableMinor: 20000, minimumPayoutMinor: 5000, autoApprove: true }), { action: "skip", reason: "not_ready" });
+    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: 20000, minimumPayoutMinor: 1000, autoApprove: false }), { action: "raise", initialStatus: "DRAFT" });
+    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: 20000, minimumPayoutMinor: 1000, autoApprove: true }), { action: "raise", initialStatus: "APPROVED" });
+    assert.deepEqual(payoutRunDecision({ readiness: "READY", availableMinor: -100, minimumPayoutMinor: 1000, autoApprove: true }), { action: "skip", reason: "negative_balance" });
+    assert.deepEqual(payoutRunDecision({ readiness: "ACTION_REQUIRED", availableMinor: 20000, minimumPayoutMinor: 1000, autoApprove: true }), { action: "skip", reason: "not_ready" });
   });
 
   test("sending needs the admin setting AND the deployment switch", () => {
