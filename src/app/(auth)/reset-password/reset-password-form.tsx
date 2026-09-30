@@ -7,6 +7,7 @@ import { useActionState } from "react";
 import { ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updatePassword, type AuthResult } from "@/lib/auth/actions";
+import { isRecoverySession } from "@/lib/auth/recovery-session";
 import {
   AuthError,
   PasswordField,
@@ -48,14 +49,18 @@ export function ResetPasswordForm({ hasSession }: { hasSession: boolean }) {
         });
         if (!cancelled) {
           window.history.replaceState(null, "", window.location.pathname);
-          setLinkState(error ? "invalid" : "valid");
-          if (!error) router.refresh();
+          const valid = !error && isRecoverySession(accessToken);
+          setLinkState(valid ? "valid" : "invalid");
+          if (valid) router.refresh();
         }
         return;
       }
 
+      // An ordinary signed-in session is not a reset link (recovery-session.ts).
       const { data } = await supabase.auth.getSession();
-      if (!cancelled) setLinkState(data.session ? "valid" : "invalid");
+      if (!cancelled) {
+        setLinkState(isRecoverySession(data.session?.access_token) ? "valid" : "invalid");
+      }
     }
 
     void adopt();

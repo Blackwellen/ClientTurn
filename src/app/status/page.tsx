@@ -200,7 +200,7 @@ export default async function StatusPage() {
             <StatusLegend />
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             {snapshot.groups.map((group) => (
               <StatusGroup key={group.key} group={group} />
             ))}

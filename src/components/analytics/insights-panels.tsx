@@ -388,7 +388,17 @@ export function RoiPanel({ result, compact = false }: { result: InsightResult<Ro
     if (result.status !== "ok") return <NotReady status={result.status} message={result.message} />;
     const card = result.data;
     if (card.status === "empty") {
-      return <EmptyState icon={TrendingUp} title="Nothing to measure yet" description={card.reason} className={compact ? "py-6" : "py-8"} />;
+      // On the Dashboard an empty ROI panel is one quiet line, not a 200px
+      // hero: nothing here needs a decision yet.
+      if (compact) {
+        return (
+          <p className="flex flex-wrap gap-x-1.5 text-[12.5px] text-content-muted">
+            <span className="font-medium text-content">Nothing to measure yet.</span>
+            <span>{card.reason}</span>
+          </p>
+        );
+      }
+      return <EmptyState icon={TrendingUp} title="Nothing to measure yet" description={card.reason} className="py-8" />;
     }
     return (
       <>

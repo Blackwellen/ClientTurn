@@ -531,7 +531,7 @@ export function BusinessStep({
 
       <div className="rounded-[14px] border border-[rgba(130,155,180,0.2)] bg-[rgba(255,255,255,0.012)] p-4">
         <OSectionTitle
-          hint={`Popular services for ${business.industry ? business.industry.toLowerCase() : "B2B"} businesses. Add the ones you offer.`}
+          hint={`Popular services for ${business.industry ? industryPhrase(business.industry) : "B2B"} businesses. Add the ones you offer.`}
         >
           Suggested services
         </OSectionTitle>
@@ -563,4 +563,15 @@ export function BusinessStep({
       </div>
     </div>
   );
+}
+
+/**
+ * Lower-cases an industry label for use mid-sentence, but keeps acronyms such
+ * as "B2B" and "SaaS" as written ("b2b saas businesses" read as a typo).
+ */
+function industryPhrase(industry: string): string {
+  return industry
+    .split(/\s+/)
+    .map((word) => (/[A-Z].*[A-Z0-9]/.test(word) ? word : word.toLowerCase()))
+    .join(" ");
 }

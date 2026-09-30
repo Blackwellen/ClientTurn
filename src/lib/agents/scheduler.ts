@@ -40,10 +40,21 @@ type Db = ReturnType<typeof createAdminClient>;
  * agent sources, then chases stalled bookings, then drafts re-engagement, each
  * behind its own guards and recorded separately on the agent's timeline. A job
  * that is blocked does not stop the others from running this tick. */
-export async function scheduleAgents() {
+export async function scheduleAgents(
+  /**
+   * Restricts the tick to one workspace (and optionally one agent). Only the
+   * end-to-end harness passes it (tests/stories/find-leads-engagement.test.ts),
+   * so it can drive the real scheduler without claiming other workspaces'
+   * agents. The cron calls this with no argument: unchanged behaviour.
+   */
+  scope?: { businessId: string; agentId?: string },
+) {
   const db = createAdminClient();
   const now = new Date().toISOString();
-  const { data: due, error } = await db.from("agents").select("id, name, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap")
+  let dueQuery = db.from("agents").select("id, name, business_id, created_by, agent_type, autonomy, service_id, conversion_goal_id, search_strategy_id, next_run_at, cadence, daily_prospect_cap, monthly_prospect_cap");
+  if (scope) dueQuery = dueQuery.eq("business_id", scope.businessId);
+  if (scope?.agentId) dueQuery = dueQuery.eq("id", scope.agentId);
+  const { data: due, error } = await dueQuery
     .eq("status", "ACTIVE")
     .in("agent_type", ["SOURCING", "BOOKING", "REENGAGEMENT", "COMBINED"])
     .lte("next_run_at", now)

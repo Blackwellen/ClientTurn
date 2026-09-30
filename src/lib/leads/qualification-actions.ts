@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { revalidatePath } from "next/cache";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { runOperation, type ServiceResult } from "@/lib/services";
@@ -52,7 +53,7 @@ function finish(result: ServiceResult, leadId: string, success: string): Qualifi
 const DENIED = "Your role can view this lead's qualification but not change it.";
 
 function invalid(error: { issues: { message: string }[] }): QualificationActionResult {
-  return { ok: false, error: error.issues[0]?.message ?? "Check the details and try again." };
+  return { ok: false, error: friendlyIssue(error, "Check the details and try again.") };
 }
 
 export async function requalifyLeadAction(input: unknown): Promise<QualificationActionResult> {

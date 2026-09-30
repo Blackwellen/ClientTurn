@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  Activity,
   Brain,
   Building2,
   FileSignature,
@@ -20,6 +21,7 @@ const ICONS: Record<
   SettingsSection,
   React.ComponentType<{ className?: string }>
 > = {
+  "system-check": Activity,
   workspace: Building2,
   connections: Link2,
   "business-profile": Brain,
@@ -47,7 +49,7 @@ const ICONS: Record<
 export function SettingsSectionNav({ active }: { active: SettingsSection }) {
   return (
     <nav aria-label="Settings sections" data-tour="settings-nav">
-      {/* Eleven sections: rows of four on wide screens, two on tablets; on
+      {/* Twelve sections: rows of four on wide screens, two on tablets; on
           mobile they stack. */}
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {SETTINGS_SECTIONS.map((section) => {

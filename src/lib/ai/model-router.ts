@@ -9,7 +9,7 @@ import { getPrompt } from "./prompt-registry";
 import { recordAiUsage } from "./usage-meter";
 import {
   SCHEMAS,
-  FAST_STRUCTURED_TASKS,
+  CONFIDENCE_BANDED_TASKS,
   confidenceBand,
   type TaskType,
   type ConfidenceBand,
@@ -214,7 +214,7 @@ export async function runTask<T = unknown>(
     // generation tasks (reply/summary/reactivation copy) have no notion of
     // confidence, so a missing field must not be treated as "low confidence"
     // and silently discard a perfectly valid generated message.
-    const usesConfidence = FAST_STRUCTURED_TASKS.has(input.taskType);
+    const usesConfidence = CONFIDENCE_BANDED_TASKS.has(input.taskType);
     const band = !usesConfidence ? "automatic" : confidence === null ? "review" : confidenceBand(confidence);
     const requiresReview = !parsed.success || (usesConfidence && band === "review");
 

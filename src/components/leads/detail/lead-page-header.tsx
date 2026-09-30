@@ -16,6 +16,8 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { formatDateTime, formatRelative } from "@/lib/dates";
 import { STAGE_LABEL, type OpportunityStage } from "@/lib/opportunities/stages";
 import { leadDisplayName } from "@/lib/leads/types";
+import { formatEvidenceValue } from "@/lib/scoring/evidence-display";
+import { formatPhoneDisplay } from "@/lib/phone-display";
 import type { LeadPageHeader as HeaderData } from "@/lib/leads/detail-queries";
 
 /**
@@ -97,7 +99,7 @@ export function LeadPageHeader({ header }: { header: HeaderData }) {
               className="inline-flex items-center gap-1.5 underline-offset-4 hover:text-content hover:underline"
             >
               <Phone className="size-3.5 text-content-subtle" aria-hidden />
-              {lead.phone}
+              {formatPhoneDisplay(lead.phone)}
             </a>
           )}
           <span>Added {formatRelative(lead.created_at)}</span>
@@ -275,7 +277,7 @@ export function LeadScoreBreakdown({ header }: { header: HeaderData }) {
                         <span className="min-w-0">
                           {item.label}
                           {item.value && item.value !== "true" ? (
-                            <span className="text-content">: {evidenceValue(item.value)}</span>
+                            <span className="text-content">: {formatEvidenceValue(item.label, item.value)}</span>
                           ) : null}
                           <span className="text-content-subtle"> · {evidenceSource(item.source)}</span>
                         </span>
@@ -324,6 +326,4 @@ function evidenceSource(source: string): string {
   return source.replace(/[._]/g, " ");
 }
 
-function evidenceValue(value: string): string {
-  return /^[A-Z][A-Z_]+$/.test(value) ? value.replace(/_/g, " ").toLowerCase() : value;
-}
+

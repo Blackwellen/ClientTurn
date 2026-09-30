@@ -25,11 +25,24 @@ export function PrivacyRequestForm() {
   );
   const [type, setType] = React.useState<PrivacyRequestKind>("ACCESS");
   const errorRef = React.useRef<HTMLDivElement>(null);
-  const startedAt = React.useRef<HTMLInputElement>(null);
-
+  // When the form mounted; the server rejects a submission sooner than a
+  // person could fill it. Added to the FormData on submit, so no re-render of
+  // a hidden input can clear it.
+  const startedAt = React.useRef(0);
   React.useEffect(() => {
-    if (startedAt.current) startedAt.current.value = String(Date.now());
+    startedAt.current = Date.now();
   }, []);
+
+  // A transition rather than `<form action>`: React resets an action form
+  // after every submission, which wiped the request whenever the server
+  // answered with a validation error (surface QA 2026-09-30).
+  const [, startSubmit] = React.useTransition();
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (startedAt.current > 0) formData.set("startedAt", String(startedAt.current));
+    startSubmit(() => action(formData));
+  }
 
   React.useEffect(() => {
     if (state?.ok === false) errorRef.current?.focus();
@@ -58,7 +71,7 @@ export function PrivacyRequestForm() {
     state?.ok === false && state.field === name ? state.error : null;
 
   return (
-    <form action={action} className="pub-form-card" noValidate>
+    <form onSubmit={onSubmit} className="pub-form-card" noValidate>
       <h2>Make a request</h2>
       <p className="pub-form-intro">
         Tell us who you are and what you would like us to do. We will email you
@@ -176,7 +189,6 @@ export function PrivacyRequestForm() {
         aria-hidden
         className="hidden"
       />
-      <input ref={startedAt} type="hidden" name="startedAt" />
 
       <label className="pub-field flex-row items-start gap-2">
         <input type="checkbox" name="confirm" className="mt-1" required />

@@ -47,6 +47,7 @@ import { CheckoutPaymentsCard, CheckoutPaymentsSkeleton } from "@/components/lea
 import { RevenueJourneyCard, RevenueJourneySkeleton } from "@/components/leads/detail/revenue-journey-card";
 import { LeadQuotesCard, LeadQuotesSkeleton } from "@/components/quotes/lead-quotes-card";
 import { LeadCallsTimeline, LeadVoiceCard, LeadVoiceSkeleton } from "@/components/voice/lead-voice-card";
+import { LeadWhyCard, LeadWhySkeleton } from "@/components/system-check/lead-why-card";
 
 export const dynamic = "force-dynamic";
 
@@ -163,6 +164,10 @@ export default async function LeadDetailPage({
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[auto_1fr] xl:items-start">
         <div className="min-w-0 space-y-4 xl:col-start-2 xl:row-start-1">
           {actions}
+          {/* Troubleshooting: what is holding this lead up, and what comes next. */}
+          <React.Suspense fallback={<LeadWhySkeleton />}>
+            <LeadWhyCard workspace={workspace} leadId={lead.id} />
+          </React.Suspense>
           {/* What the qualification engine would do next, and why (§B.17). */}
           <React.Suspense fallback={<NextBestActionSkeleton />}>
             <NextBestActionCard

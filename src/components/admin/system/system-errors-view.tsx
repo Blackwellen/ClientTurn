@@ -31,7 +31,7 @@ import { useAdminAction } from "@/components/admin/use-admin-action";
 import { ErrorDetailPanel } from "./error-detail-panel";
 import { setErrorStatus } from "@/lib/admin/actions";
 import { formatChange, formatNumber } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+
 import {
   ADMIN_RANGES,
   ADMIN_RANGE_COMPARISON,
@@ -46,6 +46,7 @@ import {
   type ErrorTriageStatus,
   type PlatformErrorRow,
 } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 const SEVERITY_CARD: Record<
   ErrorSeverity,
@@ -259,7 +260,10 @@ export function SystemErrorsView({
                 })
               }
               className={cn(
-                "rounded-xl border bg-surface px-4 py-3.5 text-left shadow-xs",
+                // flex-col + justify-start: a card without a sparkline used to
+                // centre vertically in the stretched grid cell and sit lower
+                // than its neighbours.
+                "flex flex-col justify-start rounded-xl border bg-surface px-4 py-3.5 text-left shadow-xs",
                 "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent",
                 filters.severity === severity
                   ? "border-accent-500"
@@ -415,7 +419,7 @@ export function SystemErrorsView({
                           <SeverityBadge severity={row.severity} />
                         </td>
                         <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {formatRelative(row.lastSeen, { style: "ago" })}
+                          <RelativeTime value={row.lastSeen} options={{ style: "ago" }} />
                         </td>
                         <td className="lr-tabular px-3 py-2 text-[12.5px] whitespace-nowrap text-content-accent">
                           {row.reference}

@@ -1200,6 +1200,13 @@ export async function createBooking(
      * read from, so the re-check and the event write use it too.
      */
     calendarIntegrationId?: string | null;
+    /**
+     * When the workspace books through Calendly (which books on its own side):
+     * "refuse" (the default, the text agent sends the link instead) or
+     * "hold_as_request" (a voice call: the time the lead chose aloud is held
+     * as a pending request for a person to confirm, the manual path).
+     */
+    providerBooksItself?: "refuse" | "hold_as_request";
   },
 ): Promise<ToolResult<CreatedBooking>> {
   return invoke<CreatedBooking>("create_booking", context, { slot: input.slotLabel }, async () => {
@@ -1239,10 +1246,11 @@ export async function createBooking(
       calendarStatus = integration?.status ?? null;
     }
 
-    const route = planBookingRoute({
+    let route = planBookingRoute({
       bookingMode: context.business.bookingMode,
       calendarUsable: calendarIsUsable(calendarStatus),
     });
+    if (route === "calendly_link" && input.providerBooksItself === "hold_as_request") route = "pending";
 
     if (route === "calendly_link") {
       return {

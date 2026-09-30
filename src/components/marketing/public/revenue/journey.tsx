@@ -4,10 +4,10 @@ import * as React from "react";
 import {
   motion,
   useMotionValueEvent,
-  useReducedMotion,
   useScroll,
   useSpring,
 } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import {
   BarChart3,
   CalendarCheck,

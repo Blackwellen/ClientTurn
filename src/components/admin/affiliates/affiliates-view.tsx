@@ -44,6 +44,8 @@ import {
   PayoutRunBar,
   TiersPanel,
 } from "./programme-panels";
+import { RelativeTime } from "@/components/admin/relative-time";
+import { askReason } from "@/components/admin/admin-prompt";
 
 /**
  * Admin -> Affiliates (V4 section 41).
@@ -241,7 +243,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                       </Badge>
                     </Td>
                     <Td>{row.planKey ?? "—"}</Td>
-                    <Td>{formatRelative(row.signupAt, { style: "ago" })}</Td>
+                    <Td><RelativeTime value={row.signupAt} options={{ style: "ago" }} /></Td>
                     <Td numeric>{formatMoney(row.lifetimeRevenueMinor / 100)}</Td>
                   </tr>
                 ))}
@@ -314,8 +316,8 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                             size="xs"
                             variant="ghost"
                             loading={pending === `reverse:${row.id}`}
-                            onClick={() => {
-                              const reason = window.prompt(
+                            onClick={async () => {
+                              const reason = await askReason(
                                 "Why is this commission being reversed? The partner will see this.",
                               );
                               if (!reason) return;
@@ -392,9 +394,10 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                           size="xs"
                           variant="secondary"
                           loading={pending === `payout:${row.id}`}
-                          onClick={() => {
-                            const reference = window.prompt(
+                          onClick={async () => {
+                            const reference = await askReason(
                               "Enter the payment reference from your bank.",
+                              { title: "Mark payout as paid", label: "Payment reference" },
                             );
                             if (!reference) return;
                             run(
@@ -452,7 +455,7 @@ export function AffiliatesView({ data }: { data: AdminAffiliatesData }) {
                       </Badge>
                     </Td>
                     <Td numeric>{formatNumber(row.downloadCount)}</Td>
-                    <Td>{formatRelative(row.updatedAt, { style: "ago" })}</Td>
+                    <Td><RelativeTime value={row.updatedAt} options={{ style: "ago" }} /></Td>
                   </tr>
                 ))}
               </Grid>
@@ -533,8 +536,8 @@ function ApplicationQueue({
                       size="xs"
                       variant="ghost"
                       loading={pending === `reject:${row.id}`}
-                      onClick={() => {
-                        const reason = window.prompt(
+                      onClick={async () => {
+                        const reason = await askReason(
                           "Why is this application being declined? The applicant will see this.",
                         );
                         if (!reason) return;
@@ -599,8 +602,8 @@ function StatusActions({
       size="xs"
       variant="ghost"
       loading={pending === `end:${row.id}`}
-      onClick={() => {
-        const reason = window.prompt(
+      onClick={async () => {
+        const reason = await askReason(
           "Why is this partnership ending? The partner will see this. Any negative balance is written off (not invoiced).",
         );
         if (!reason) return;
@@ -626,8 +629,8 @@ function StatusActions({
           size="xs"
           variant="ghost"
           loading={pending === `suspend:${row.id}`}
-          onClick={() => {
-            const reason = window.prompt(
+          onClick={async () => {
+            const reason = await askReason(
               "Why is this partner being suspended? They will see this.",
             );
             if (!reason) return;

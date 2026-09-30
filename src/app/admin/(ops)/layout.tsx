@@ -5,6 +5,7 @@ import { requirePlatformAdmin } from "@/lib/admin/guard";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { getAdminTopBarData } from "@/lib/admin/overview";
 import { ToastProvider } from "@/components/ui/toast";
+import { AdminPromptHost } from "@/components/admin/admin-prompt";
 
 export const metadata: Metadata = {
   title: "Platform operations",
@@ -35,6 +36,7 @@ export default async function AdminLayout({
       >
         {children}
       </AdminShell>
+      <AdminPromptHost />
     </ToastProvider>
   );
 }

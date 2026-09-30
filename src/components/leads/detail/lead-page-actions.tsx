@@ -33,7 +33,7 @@ import {
   type ActionAvailability,
   type LeadPageAction,
 } from "@/lib/leads/detail-page";
-import type { WorkspaceMember } from "@/lib/leads/types";
+import { assignableMembers, type WorkspaceMember } from "@/lib/leads/types";
 import {
   addLeadNoteAction,
   archiveLeadAction,
@@ -261,7 +261,7 @@ export function LeadPageActions({
               }
             >
               <option value="">Unassigned</option>
-              {members.map((member) => (
+              {assignableMembers(members, assignedUserId).map((member) => (
                 <option key={member.userId} value={member.userId}>
                   {member.name}
                 </option>

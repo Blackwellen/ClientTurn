@@ -169,14 +169,24 @@ export function TestGoLiveStep({
             Send a test lead
           </OSectionTitle>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <OField label="Name">
-              <OInput value={name} onChange={(e) => setName(e.target.value)} />
+            <OField label="Name" htmlFor="test-lead-name">
+              <OInput id="test-lead-name" value={name} onChange={(e) => setName(e.target.value)} />
             </OField>
-            <OField label="Phone number">
-              <OInput value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <OField
+              label="Phone number"
+              htmlFor="test-lead-phone"
+              hint="Yours or a teammate's, or leave blank for a dummy number."
+            >
+              <OInput
+                id="test-lead-phone"
+                type="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
             </OField>
-            <OField label="Service">
-              <OSelect value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+            <OField label="Service" htmlFor="test-lead-service">
+              <OSelect id="test-lead-service" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
                 {services.length === 0 && <option value="">No services configured</option>}
                 {services.map((service) => (
                   <option key={service.id} value={service.id}>
@@ -185,15 +195,19 @@ export function TestGoLiveStep({
                 ))}
               </OSelect>
             </OField>
-            <OField label="Message (optional)">
-              <OInput value={message} onChange={(e) => setMessage(e.target.value)} />
+            <OField label="Message (optional)" htmlFor="test-lead-message">
+              <OInput id="test-lead-message" maxLength={500} value={message} onChange={(e) => setMessage(e.target.value)} />
             </OField>
           </div>
           <OButton className="mt-3 w-full" onClick={run} loading={running}>
             <Play className="size-3.5" aria-hidden />
             {outcome ? "Run test lead again" : "Run test lead"}
           </OButton>
-          {error && <p className="mt-1.5 text-[12.5px] text-[#ff6b70]">{error}</p>}
+          {error && (
+            <p role="alert" className="mt-1.5 text-[12.5px] text-[#ff6b70]">
+              {error}
+            </p>
+          )}
         </div>
 
         <div>

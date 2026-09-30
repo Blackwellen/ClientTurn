@@ -49,7 +49,8 @@ export function runStatusTone(
     case "RUNNING":
       return "info";
     case "QUEUED":
-      return "accent";
+      // Waiting, not healthy: neutral rather than the green-reading accent.
+      return "neutral";
     case "PAUSED":
     case "PARTIAL":
       return "warning";

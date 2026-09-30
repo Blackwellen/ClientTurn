@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useInView } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import { Bot, CalendarCheck, FileText, Mic, ShieldCheck, TriangleAlert, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { CALL_BUDGET_MINUTES } from "@/lib/marketing/voice-offer";

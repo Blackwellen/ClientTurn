@@ -373,7 +373,7 @@ defineOperation("lead.assign", {
     if (args.userId) {
       const { data: membership } = await admin
         .from("business_members")
-        .select("user_id, status")
+        .select("user_id, status, role")
         .eq("business_id", context.businessId)
         .eq("user_id", args.userId)
         .maybeSingle();
@@ -382,6 +382,13 @@ defineOperation("lead.assign", {
         throw new ServiceError(
           "INVALID_INPUT",
           "That person is not an active member of this workspace.",
+        );
+      }
+      // Viewers are read-only, so they can't own a lead.
+      if (membership.role === "viewer") {
+        throw new ServiceError(
+          "INVALID_INPUT",
+          "Viewers can't be assigned leads. Change their role in Settings, Team first.",
         );
       }
     }

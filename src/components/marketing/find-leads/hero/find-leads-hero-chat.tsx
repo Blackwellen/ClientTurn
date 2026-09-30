@@ -368,9 +368,9 @@ export function FindLeadsHeroChat() {
         {/* --------------------------------------- acquisition profile */}
         <section className="fl-ctx" aria-labelledby="fl-ctx-title">
           <div className="fl-ctx-head">
-            <h3 className="fl-panel-title" id="fl-ctx-title">
+            <h2 className="fl-panel-title" id="fl-ctx-title">
               Your acquisition profile
-            </h3>
+            </h2>
             <span className="fl-mini-btn">
               <Pencil size={11} />
               Edit
@@ -409,9 +409,9 @@ export function FindLeadsHeroChat() {
         {/* ----------------------------------------- previous searches */}
         <section className="fl-recent" aria-labelledby="fl-recent-title">
           <div className="fl-ctx-head">
-            <h3 className="fl-panel-title" id="fl-recent-title">
+            <h2 className="fl-panel-title" id="fl-recent-title">
               Previous searches
-            </h3>
+            </h2>
             <button type="button" className="fl-mini-link" onClick={openHistory}>
               View all
             </button>

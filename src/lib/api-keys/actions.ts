@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { PLATFORM_SCOPES, isPlatformScope, roleMeets } from "@/lib/platform/scopes";
 import { createApiKey, revokeApiKey } from "./service";
-import { expiryToDate, isAllowedIpEntry } from "./types";
+import {
+  API_KEY_EXPIRY_OPTIONS,
+  expiryToDate,
+  isAllowedIpEntry,
+  type ApiKeyExpiryOption,
+} from "./types";
 
 /**
  * Creating and revoking workspace API keys.
@@ -32,7 +37,14 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(80),
   environment: z.enum(["live", "test"]).default("live"),
   scopes: z.array(z.string()).min(1).max(PLATFORM_SCOPES.length),
-  expiry: z.string().trim().max(10).default("90"),
+  // Only the offered choices. A free string let anything unparseable fall
+  // through expiryToDate() to "no expiry", and any number of days through.
+  expiry: z
+    .enum(API_KEY_EXPIRY_OPTIONS.map((option) => option.value) as [
+      ApiKeyExpiryOption,
+      ...ApiKeyExpiryOption[],
+    ])
+    .default("90"),
   allowedIps: z.array(z.string().trim().max(64)).max(20).default([]),
 });
 

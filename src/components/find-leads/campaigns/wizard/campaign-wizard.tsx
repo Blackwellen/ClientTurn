@@ -376,7 +376,10 @@ export function CampaignWizard({
       <div
         ref={headingRef}
         tabIndex={-1}
-        className="outline-none"
+        // Inline, not the `outline-none` utility: the global :focus-visible
+        // rule is unlayered and beats every Tailwind utility, so this
+        // zero-height focus target drew a green bar above the stepper.
+        style={{ outline: "none" }}
         aria-live="polite"
       >
         <span className="sr-only">
@@ -493,7 +496,9 @@ export function CampaignWizard({
             {draft.outreach.startMode === "IMMEDIATE" ? "Launch campaign" : "Create campaign"}
           </Button>
         ) : (
-          <Button variant="success" size="md" onClick={next}>
+          // The brand primary, as the Reactivation wizard's Continue: green
+          // is reserved for "healthy", and moving a step on is not a status.
+          <Button variant="primary" size="md" onClick={next}>
             Next step
             <ArrowRight className="size-4" aria-hidden />
           </Button>

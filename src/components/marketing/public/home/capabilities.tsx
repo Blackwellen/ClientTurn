@@ -140,8 +140,8 @@ function Row({ children, last }: { children: React.ReactNode; last?: boolean }) 
 function InboxFragment() {
   const rows = [
     { initials: "JT", name: "James Taylor", source: "New enquiry", msg: "Hi, I'm interested in …", time: "2m ago", live: true },
-    { initials: "SS", name: "Sophie Smith", source: "Website enquiry", msg: "Do you cover this area?", time: "12m ago", live: true },
-    { initials: "MD", name: "Michael Davies", source: "Property developer", msg: "Can you send more info?", time: "1h ago" },
+    { initials: "SS", name: "Sophie Smith", source: "Website enquiry", msg: "Do you work with SaaS teams?", time: "12m ago", live: true },
+    { initials: "MD", name: "Michael Davies", source: "Demo request", msg: "Can you send more info?", time: "1h ago" },
     { initials: "EC", name: "Emma Carter", source: "Referral", msg: "Looking to get a quote …", time: "2h ago" },
   ];
   return (
@@ -192,20 +192,20 @@ function InboxFragment() {
 }
 
 function FindLeadsFragment() {
-  const rows = ["Riverside Homes", "Oakwood Developments", "Centurion Living"];
+  const rows = ["Kestrel Commerce", "Fernbank Goods", "Halden & Co Store"];
   return (
     <Panel>
       <div className="flex items-center gap-2 px-3.5 pt-3.5">
         <span className="flex flex-1 items-center gap-2 rounded-lg border border-[rgb(117_148_180/0.2)] bg-[rgb(255_255_255/0.02)] px-2.5 py-2">
           <Search aria-hidden className="size-3.5 shrink-0 text-[var(--pub-text-muted)]" />
           <span className="truncate text-[11px] text-[var(--pub-text-secondary)]">
-            Residential developers in Manchester
+            Shopify brands in Manchester, 10-50 staff
           </span>
         </span>
         <MiniButton tone="lime">Search</MiniButton>
       </div>
       <div className="flex flex-wrap gap-1.5 px-3.5 py-3">
-        {["Construction", "Residential", "Manchester"].map((chip) => (
+        {["Ecommerce", "Shopify", "Manchester"].map((chip) => (
           <span key={chip} className="pub-chip !py-1 !text-[10px]">
             {chip}
             <span aria-hidden className="text-[var(--pub-text-muted)]">
@@ -234,7 +234,7 @@ function FindLeadsFragment() {
               {name}
             </span>
             <span className="block truncate text-[10px] text-[var(--pub-text-muted)]">
-              Residential developer &middot; Manchester
+              Shopify brand &middot; Manchester
             </span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--pub-lime-border)] bg-[var(--pub-lime-soft)] px-2 py-0.5 text-[9.5px] font-semibold text-[var(--pub-lime)]">
@@ -298,8 +298,8 @@ function QualificationFragment() {
   const criteria = [
     { label: "Budget", question: "What's your estimated budget?", required: true },
     { label: "Timescale", question: "When do you plan to start?", required: true },
-    { label: "Project type", question: "What type of project is this?", required: true },
-    { label: "Location", question: "Where is the project located?", required: false },
+    { label: "Service", question: "Which service are you interested in?", required: true },
+    { label: "Team size", question: "How many people are in your team?", required: false },
   ];
   return (
     <Panel>
@@ -476,7 +476,7 @@ const CAPABILITIES: Capability[] = [
     icon: User,
     title: "Lead Management",
     copy: "Keep warm leads and their history in one operational inbox.",
-    href: ANCHORS.proof,
+    href: "/product/lead-conversion",
     fragment: <InboxFragment />,
   },
   {
@@ -484,7 +484,7 @@ const CAPABILITIES: Capability[] = [
     icon: Search,
     title: "Find Leads",
     copy: "Build a verified prospect list from a plain-English target.",
-    href: ANCHORS.proof,
+    href: "/product/find-leads",
     fragment: <FindLeadsFragment />,
   },
   {
@@ -509,7 +509,7 @@ const CAPABILITIES: Capability[] = [
     icon: RefreshCw,
     title: "Reactivation",
     copy: "Re-engage older eligible leads with suppression built in.",
-    href: "/pricing",
+    href: "/help/reactivation/reactivation-overview",
     fragment: <ReactivationFragment />,
   },
   {
@@ -517,7 +517,7 @@ const CAPABILITIES: Capability[] = [
     icon: BarChart3,
     title: "Analytics",
     copy: "See acquisition, outreach and conversion performance together.",
-    href: ANCHORS.proof,
+    href: "/results",
     fragment: <AnalyticsFragment />,
   },
 ];
@@ -578,7 +578,7 @@ export function CapabilitiesSection() {
                     className="pub-link mt-3"
                     onClick={() => trackEngagement("capability_click", capability.id)}
                   >
-                    Learn more
+                    Learn more<span className="sr-only"> about {capability.title}</span>
                     <ArrowRight aria-hidden className="size-4" />
                   </Link>
                 </div>

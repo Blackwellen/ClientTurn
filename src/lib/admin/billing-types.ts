@@ -86,8 +86,13 @@ export type BillingSummary = {
   trials: number;
   pastDue: number;
   cancelled: number;
-  /** Sum of MRR across non-cancelled subscriptions, in pounds. */
+  /**
+   * MRR in pounds: billing/revenue.ts `mrrContribution` summed. Only active or
+   * past-due subscriptions billed through Stripe count.
+   */
   mrr: number;
+  /** On a paid plan with no Stripe subscription (owner, demo, comped): £0 of MRR. */
+  complimentary: number;
   churnRate30d: number | null;
   /** Per-bucket MRR across the window, for the trend chart. */
   mrrSeries: number[];

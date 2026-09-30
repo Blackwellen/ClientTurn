@@ -2,6 +2,7 @@ import * as React from "react";
 import { z } from "zod";
 import { listCustomers, getCustomerDetail } from "@/lib/admin/customers";
 import { getCustomerSupportSignals } from "@/lib/admin/support-signals";
+import { getCustomerSystemCheck } from "@/lib/admin/system-check";
 import { CUSTOMER_FILTERS, CUSTOMER_SORTS } from "@/lib/admin/types";
 import { CustomersView } from "@/components/admin/customers/customers-view";
 import { PageHeader } from "@/components/app/page-header";
@@ -57,6 +58,13 @@ export default async function AdminCustomersPage({
         return null;
       })
     : null;
+  // The customer's own System check, read-only (troubleshooting for support).
+  const systemCheck = detail
+    ? await getCustomerSystemCheck(detail.id).catch((error: unknown) => {
+        console.error("[admin] system check unavailable", error);
+        return null;
+      })
+    : null;
 
   return (
     <div className="space-y-4">
@@ -72,6 +80,7 @@ export default async function AdminCustomersPage({
         direction={params.dir}
         detail={detail}
         signals={signals}
+        systemCheck={systemCheck}
       />
     </div>
   );

@@ -380,6 +380,7 @@ export async function getDashboardData(
     attentionResult,
     messageResult,
     failedResult,
+    testLeadResult,
   ] = await Promise.all([
     supabase
       .from("leads")
@@ -426,11 +427,23 @@ export async function getDashboardData(
       .limit(MESSAGE_LIMIT),
     supabase
       .from("messages")
-      .select("id", { count: "exact", head: true })
+      .select("lead_id")
       .eq("business_id", businessId)
       .eq("status", "FAILED")
-      .gte("created_at", failedSince.toISOString()),
+      .gte("created_at", failedSince.toISOString())
+      .limit(MESSAGE_LIMIT),
+    // Test leads are left out of every figure on the Dashboard, so their
+    // messages must be too (a failed test text read as a 100% failure rate).
+    supabase
+      .from("leads")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("is_test", true)
+      .limit(LEAD_LIMIT),
   ]);
+
+  const testLeadIds = new Set(((testLeadResult.data ?? []) as { id: string }[]).map((row) => row.id));
+  const notTestLead = (row: { lead_id: string | null }) => !row.lead_id || !testLeadIds.has(row.lead_id);
 
   const cohort = (cohortResult.data ?? []) as unknown as CohortRow[];
   const currentRows = cohort.filter(
@@ -440,7 +453,7 @@ export async function getDashboardData(
     (row) => new Date(row.created_at) < range.from,
   );
 
-  const messages = (messageResult.data ?? []) as MessageRow[];
+  const messages = ((messageResult.data ?? []) as MessageRow[]).filter(notTestLead);
   const currentMessages = messages.filter(
     (row) => new Date(row.created_at) >= range.from,
   );
@@ -532,7 +545,7 @@ export async function getDashboardData(
       followUpSnapshot(previousRows, previousMessages),
     ),
     leadAttention,
-    failedMessages: failedResult.count ?? 0,
+    failedMessages: ((failedResult.data ?? []) as { lead_id: string | null }[]).filter(notTestLead).length,
   };
 }
 

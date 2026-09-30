@@ -154,6 +154,12 @@ export type SubscriptionFacts = {
    * before VAT). Null or absent: the plan's list price is used instead.
    */
   mrrMinor?: number | null;
+  /**
+   * False when the workspace has no Stripe subscription (owner, demo, comped):
+   * it is on a plan but pays nothing, so its revenue and Stripe fee are £0
+   * (billing/revenue.ts `mrrContribution`). Absent: treated as billed.
+   */
+  billed?: boolean;
 };
 
 export type EconomicsPeriod = {
@@ -365,6 +371,7 @@ export function subscriptionRevenue(
   period: EconomicsPeriod,
 ): { monthly: number | null; interval: Interval | null; stripeFee: number | null } {
   if (!sub || !wasPayingDuring(sub, period)) return { monthly: 0, interval: null, stripeFee: 0 };
+  if (sub.billed === false) return { monthly: 0, interval: null, stripeFee: 0 };
   const key = planKeyOf(sub.plan);
   const plan = key ? PLANS[key] : null;
   const interval: Interval = sub.billingInterval === "year" ? "annual" : "monthly";

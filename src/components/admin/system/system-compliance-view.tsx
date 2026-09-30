@@ -31,7 +31,7 @@ import {
 } from "@/lib/admin/compliance-actions";
 import { NewPolicyVersionDialog } from "./new-policy-version-dialog";
 import { formatNumber } from "@/lib/admin/format";
-import { formatDate, formatRelative } from "@/lib/dates";
+import { formatDate } from "@/lib/dates";
 import {
   POLICY_CHANNEL_LABEL,
   POLICY_STANCE_LABEL,
@@ -47,6 +47,8 @@ import {
   type PolicyChannel,
   type PolicyStance,
 } from "@/lib/admin/compliance-types";
+import { RelativeTime } from "@/components/admin/relative-time";
+import { askReason } from "@/components/admin/admin-prompt";
 
 /** The columns of the country matrix, in the order the reference shows them. */
 const MATRIX_CHANNELS: PolicyChannel[] = [
@@ -140,7 +142,9 @@ export function SystemComplianceView({
   return (
     <div className="space-y-4">
       {/* --------------------------------------------------------- summary */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      {/* Six across only where each label fits; at 1440px with the sidebar
+          they truncated to "Countries cover…" and "Privacy notices (…". */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.key}
@@ -148,7 +152,10 @@ export function SystemComplianceView({
           >
             <div className="flex items-center gap-2.5">
               <IconTile icon={card.icon} tone={card.tone} />
-              <p className="min-w-0 truncate text-[12px] font-medium text-content-muted">
+              <p
+                className="min-w-0 truncate text-[12px] font-medium text-content-muted"
+                title={card.label}
+              >
                 {card.label}
               </p>
             </div>
@@ -162,7 +169,8 @@ export function SystemComplianceView({
             )}
             {card.key === "privacyNotices" && data.summary.pendingPrivacyRequests > 0 && (
               <p className="mt-1.5 text-[11.5px] font-medium text-warning-700">
-                {data.summary.pendingPrivacyRequests} requests pending
+                {data.summary.pendingPrivacyRequests}{" "}
+                {data.summary.pendingPrivacyRequests === 1 ? "request" : "requests"} pending
               </p>
             )}
           </div>
@@ -170,7 +178,7 @@ export function SystemComplianceView({
       </div>
 
       {/* ------------------------------------------- versions · country matrix */}
-      <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr]">
+      <div className="grid gap-4 2xl:grid-cols-[1fr_1.3fr]">
         <Panel
           icon={ScrollText}
           tone="accent"
@@ -305,7 +313,7 @@ export function SystemComplianceView({
       </div>
 
       {/* ---------------------------------------- channel matrix · review queue */}
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 2xl:grid-cols-[1fr_1fr]">
         <Panel
           icon={Radio}
           tone="accent"
@@ -408,7 +416,7 @@ export function SystemComplianceView({
                         </Badge>
                       </td>
                       <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-                        {formatRelative(item.createdAt, { style: "ago" })}
+                        <RelativeTime value={item.createdAt} options={{ style: "ago" }} />
                       </td>
                     </tr>
                   ))}
@@ -420,7 +428,7 @@ export function SystemComplianceView({
       </div>
 
       {/* ------------------------------- suppression search · privacy requests */}
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 2xl:grid-cols-[1fr_1fr]">
         <Panel
           icon={Search}
           tone="danger"
@@ -488,8 +496,8 @@ export function SystemComplianceView({
                         variant="ghost"
                         size="sm"
                         disabled={pending === `suppression:${entry.id}`}
-                        onClick={() => {
-                          const reason = window.prompt(
+                        onClick={async () => {
+                          const reason = await askReason(
                             "Why is this suppression being lifted? This is recorded against your account.",
                           );
                           if (reason && reason.trim().length >= 8) {
@@ -544,7 +552,7 @@ export function SystemComplianceView({
                       {PRIVACY_REQUEST_TYPE_LABEL[request.type]} · {request.subject}
                     </span>
                     <span className="block truncate text-[11.5px] text-content-subtle">
-                      Received {formatRelative(request.receivedAt, { style: "ago" })}
+                      Received <RelativeTime value={request.receivedAt} options={{ style: "ago" }} />
                       {request.overdue ? " · overdue" : ""}
                     </span>
                   </span>
@@ -566,8 +574,8 @@ export function SystemComplianceView({
                       variant="ghost"
                       size="sm"
                       disabled={pending === `privacy:${request.id}`}
-                      onClick={() => {
-                        const note = window.prompt(
+                      onClick={async () => {
+                        const note = await askReason(
                           "How was this request resolved? Recorded against your account.",
                         );
                         if (note && note.trim().length > 0) {
@@ -614,7 +622,7 @@ export function SystemComplianceView({
                 {data.auditRows.map((row) => (
                   <tr key={row.id} className="hover:bg-surface-hover">
                     <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.at, { style: "ago" })}
+                      <RelativeTime value={row.at} options={{ style: "ago" }} />
                     </td>
                     <td className="px-4 py-2.5 text-[12.5px] text-content">{row.event}</td>
                     <td className="px-4 py-2.5 text-[12px] text-content-secondary">

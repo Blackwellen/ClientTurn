@@ -151,7 +151,7 @@ function SlackPreferencesCard({
   }
 
   return (
-    <Card>
+    <Card id="messaging" className="scroll-mt-24">
       <CardHeader>
         <SectionHeader
           icon={Bell}

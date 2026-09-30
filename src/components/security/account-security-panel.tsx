@@ -97,6 +97,9 @@ function TwoFactorCard({
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const enabled = factors.length > 0;
+  // Where two-factor is mandatory the server refuses to remove the last
+  // authenticator, so the button says so instead of failing on click.
+  const lastRequired = Boolean(mfaRequiredNote) && factors.length === 1;
 
   async function start() {
     setError(null);
@@ -187,8 +190,14 @@ function TwoFactorCard({
                   size="sm"
                   variant="ghost"
                   loading={busy === factor.id}
+                  disabled={lastRequired}
+                  title={lastRequired ? "Add another authenticator before removing this one: two-factor is required." : undefined}
                   onClick={() => remove(factor.id)}
-                  aria-label={`Remove ${factor.friendlyName}`}
+                  aria-label={
+                    lastRequired
+                      ? `Remove ${factor.friendlyName} (unavailable: add another authenticator first)`
+                      : `Remove ${factor.friendlyName}`
+                  }
                 >
                   <Trash2 className="size-3.5" aria-hidden />
                   Remove

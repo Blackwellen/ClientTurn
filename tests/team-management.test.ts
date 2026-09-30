@@ -81,6 +81,23 @@ describe("existing-account invitation email", () => {
     assert.ok(team.includes("sendExistingAccountInvite("));
     assert.ok(team.includes("hasAccount: Boolean(profile)"));
   });
+
+  test("a new address the Supabase mailer refused gets its one-time link through Resend", () => {
+    const email = existingAccountInviteEmail({
+      workspaceName: "Northwind Studio",
+      role: "member",
+      invitedAt: new Date("2026-09-01T09:00:00Z"),
+      siteUrl: "https://app.clientturn.com/",
+      acceptLink: "https://project.supabase.co/auth/v1/verify?token=abc&type=invite",
+    });
+    assert.equal(email.link, "https://project.supabase.co/auth/v1/verify?token=abc&type=invite");
+    assert.match(email.text, /open this link and choose a password/);
+    assert.doesNotMatch(email.text, /sign in with this email address/);
+
+    const team = source("src/lib/services/operations/team.ts");
+    assert.ok(team.includes('generateLink({\n      type: "invite"'), "falls back to generateLink for a new address");
+    assert.ok(team.includes("acceptLink,"), "passes the link to the Resend email");
+  });
 });
 
 describe("seat counting", () => {

@@ -81,13 +81,20 @@ export const UNIT_BASIS_LABEL: Record<UnitBasis, string> = {
   MINUTE: "per minute",
 };
 
-export type ProviderHealthState = "HEALTHY" | "DEGRADED" | "INCIDENT" | "OFFLINE" | "UNKNOWN";
+export type ProviderHealthState =
+  | "HEALTHY"
+  | "DEGRADED"
+  | "INCIDENT"
+  | "OFFLINE"
+  | "DISABLED"
+  | "UNKNOWN";
 
 export const PROVIDER_HEALTH_LABEL: Record<ProviderHealthState, string> = {
   HEALTHY: "Healthy",
   DEGRADED: "Degraded",
   INCIDENT: "Incident",
   OFFLINE: "Offline",
+  DISABLED: "Disabled by policy",
   UNKNOWN: "Not monitored",
 };
 
@@ -96,6 +103,7 @@ export const PROVIDER_HEALTH_TONE = {
   DEGRADED: "warning",
   INCIDENT: "danger",
   OFFLINE: "danger",
+  DISABLED: "neutral",
   UNKNOWN: "neutral",
 } as const;
 

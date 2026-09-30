@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/cn";
 import { MergeCandidateActions } from "./merge-candidate-actions";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 /**
  * The revenue-engine views inside Admin -> System (design doc 05, Phase 5):
@@ -218,7 +219,7 @@ export function SystemLeadOpsView({
                     <TableCell>
                       <StatusBadge kind="lead" value={row.status} dense />
                     </TableCell>
-                    <TableCell>{formatRelative(row.firstRepliedAt, { style: "ago" })}</TableCell>
+                    <TableCell><RelativeTime value={row.firstRepliedAt} options={{ style: "ago" }} /></TableCell>
                     <TableCell>
                       {row.lastOutboundAt
                         ? formatRelative(row.lastOutboundAt, { style: "ago" })

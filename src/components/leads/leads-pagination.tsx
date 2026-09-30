@@ -103,11 +103,9 @@ export function LeadsPagination({
         </div>
 
         <label className="hidden items-center gap-2 text-[13px] text-content-muted sm:flex">
-          <span className="hidden lg:inline">
-            {filters.view === "table" ? "Rows per page" : "Per page"}
-          </span>
+          <span>{filters.view === "table" ? "Rows per page" : "Per page"}</span>
           <Select
-            className="h-9 w-[86px] rounded-lg text-[13px]"
+            className="h-9 w-[72px] rounded-lg text-[13px]"
             value={filters.pageSize}
             aria-label="Results per page"
             onChange={(event) =>
@@ -116,7 +114,9 @@ export function LeadsPagination({
           >
             {PAGE_SIZE_OPTIONS[filters.view].map((size) => (
               <option key={size} value={size}>
-                {filters.view === "table" ? size : `${size} per page`}
+                {/* The label already says "Per page"; "12 per page" in an
+                    86px select was clipped to "12 pe...". */}
+                {size}
               </option>
             ))}
           </Select>

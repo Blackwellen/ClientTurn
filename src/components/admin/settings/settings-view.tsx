@@ -44,6 +44,8 @@ import {
   type PlatformSettingsData,
   type SettingsView,
 } from "@/lib/admin/platform-settings-types";
+import { RelativeTime } from "@/components/admin/relative-time";
+import { askReason } from "@/components/admin/admin-prompt";
 
 export function SettingsView({
   data,
@@ -217,7 +219,7 @@ function SummaryStrip({ data }: { data: PlatformSettingsData }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
       {cards.map((card) => (
         <div
           key={card.label}
@@ -329,10 +331,16 @@ function ProvidersView({
                           <span className="block truncate text-[13px] font-medium text-content">
                             {row.label}
                           </span>
-                          {!row.credentialConfigured && (
-                            <span className="block text-[11px] text-danger-600">
-                              Credential not set
+                          {row.status === "DISABLED" ? (
+                            <span className="block text-[11px] text-content-subtle">
+                              Off by owner decision
                             </span>
+                          ) : (
+                            !row.credentialConfigured && (
+                              <span className="block text-[11px] text-danger-600">
+                                Credential not set
+                              </span>
+                            )
                           )}
                         </span>
                       </span>
@@ -461,8 +469,8 @@ function AiView({
             variant={ai.killSwitch ? "secondary" : "danger"}
             size="sm"
             disabled={pending === "kill"}
-            onClick={() => {
-              const reason = window.prompt(
+            onClick={async () => {
+              const reason = await askReason(
                 ai.killSwitch
                   ? "Why is the kill switch being released?"
                   : "Why is the kill switch being engaged? This stops all AI across the platform.",
@@ -960,7 +968,7 @@ function FlagRow({
         {formatNumber(flag.workspaceCount)}
       </td>
       <td className="px-4 py-2.5 text-[12px] whitespace-nowrap text-content-muted">
-        {formatRelative(flag.updatedAt, { style: "ago" })}
+        <RelativeTime value={flag.updatedAt} options={{ style: "ago" }} />
       </td>
       <td className="px-4 py-2.5 text-right">
         {dirty && (
@@ -1002,7 +1010,7 @@ function ChangeLog({ data }: { data: PlatformSettingsData }) {
                 </span>
               </span>
               <span className="shrink-0 text-[11.5px] whitespace-nowrap text-content-muted">
-                {formatRelative(change.at, { style: "ago" })}
+                <RelativeTime value={change.at} options={{ style: "ago" }} />
               </span>
             </li>
           ))}

@@ -25,6 +25,7 @@ export const HELP_CATEGORY_SLUGS = [
   "compliance",
   "billing",
   "sales-knowledge",
+  "troubleshooting",
   "faq",
 ] as const;
 
@@ -46,7 +47,8 @@ export type HelpIconKey =
   | "shield"
   | "credit-card"
   | "graduation-cap"
-  | "circle-help";
+  | "circle-help"
+  | "wrench";
 
 export type HelpCategory = {
   slug: HelpCategorySlug;
@@ -139,6 +141,12 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
     title: "Sales knowledge",
     description: "Sales methods, industry scoring and evidence-graded technique.",
     icon: "graduation-cap",
+  },
+  {
+    slug: "troubleshooting",
+    title: "Troubleshooting",
+    description: "Something isn't working: find out why and fix it, starting from System check.",
+    icon: "wrench",
   },
   {
     slug: "faq",

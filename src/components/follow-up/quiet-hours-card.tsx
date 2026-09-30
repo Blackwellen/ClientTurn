@@ -26,10 +26,16 @@ import type { QuietHoursSettings } from "@/lib/automations/types";
 export function QuietHoursCard({
   quietHours,
   canEdit,
+  timezoneLabels,
 }: {
   quietHours: QuietHoursSettings;
   canEdit: boolean;
+  /** Labels computed once on the server. The offset comes from each runtime's
+   *  own tz database and Node's and Chrome's disagree for some zones
+   *  (Casablanca), which broke hydration of this select. */
+  timezoneLabels?: Record<string, string>;
 }) {
+  const label = (zone: string) => timezoneLabels?.[zone] ?? formatTimezoneLabel(zone);
   const { toast } = useToast();
   const [enabled, setEnabled] = React.useState(quietHours.enabled);
   const [start, setStart] = React.useState(quietHours.start);
@@ -130,11 +136,11 @@ export function QuietHoursCard({
           >
             {TIMEZONES.map((zone) => (
               <option key={zone} value={zone}>
-                {formatTimezoneLabel(zone)}
+                {label(zone)}
               </option>
             ))}
             {!TIMEZONES.includes(timezone as (typeof TIMEZONES)[number]) && (
-              <option value={timezone}>{formatTimezoneLabel(timezone)}</option>
+              <option value={timezone}>{label(timezone)}</option>
             )}
           </Select>
         </div>

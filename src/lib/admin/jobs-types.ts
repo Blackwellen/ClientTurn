@@ -139,6 +139,14 @@ export type JobSummary = {
   /** Completion rate over the window, 0-1. Null when nothing finished. */
   completionRate: number | null;
   previousTotal: number;
+  /**
+   * The per-bucket series, the type donut and the lag chart come from a
+   * windowed row fetch that PostgREST caps (max rows). True when the window
+   * holds more jobs than that fetch returned: the counts above are still exact
+   * (head counts), but the shapes describe only the newest `sampleSize` jobs.
+   */
+  sampled: boolean;
+  sampleSize: number;
   /** Per-bucket counts across the window, for the KPI sparklines. */
   series: {
     total: number[];

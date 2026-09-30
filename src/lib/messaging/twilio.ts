@@ -75,6 +75,20 @@ export function resolveTwilioSids(input: {
   return { accountSid: null, authSid: configured };
 }
 
+/**
+ * The password for REST Basic auth: an API key (`SK…`) authenticates with its
+ * own secret, the account SID with the account auth token. Falls back to the
+ * auth token when no key secret is configured, so a deployment that has only
+ * ever set the token behaves exactly as before.
+ */
+export function restSecretFor(
+  authSid: string,
+  secrets: { apiKeySecret: string | null | undefined; authToken: string | null | undefined },
+): string {
+  if (authSid.startsWith("SK") && secrets.apiKeySecret) return secrets.apiKeySecret;
+  return secrets.authToken ?? "";
+}
+
 /** The same decision, against this deployment's environment. */
 function resolveSids(): { accountSid: string | null; authSid: string | null } {
   return resolveTwilioSids({
@@ -110,10 +124,11 @@ export function twilioCredentials(): TwilioCredentials | null {
   const { accountSid, authSid } = resolveSids();
   if (!accountSid) return null;
 
+  const sid = authSid ?? accountSid;
   return {
     accountSid,
-    authSid: authSid ?? accountSid,
-    authToken: env.authToken!,
+    authSid: sid,
+    authToken: restSecretFor(sid, { apiKeySecret: env.apiKeySecret, authToken: env.authToken }),
     smsFrom: env.smsFrom,
     messagingServiceSid: env.messagingServiceSid,
     whatsappFrom: env.whatsappFrom,

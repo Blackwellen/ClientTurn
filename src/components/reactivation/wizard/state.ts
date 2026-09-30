@@ -428,13 +428,19 @@ export function readDraft(channel: WizardChannel): WizardState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<WizardState>;
     if (!parsed || typeof parsed !== "object") return null;
+    const restoredFilters = {
+      ...DEFAULT_AUDIENCE_FILTER,
+      ...(parsed.audienceFilters ?? {}),
+    };
+    // A draft saved before `importedList` existed still describes an imported
+    // list; without the flag its age filter empties the audience.
+    if (parsed.audienceSource === "csv" && parsed.csvUpload && restoredFilters.sourceId) {
+      restoredFilters.importedList = true;
+    }
     return {
       ...initialWizardState(channel),
       ...parsed,
-      audienceFilters: {
-        ...DEFAULT_AUDIENCE_FILTER,
-        ...(parsed.audienceFilters ?? {}),
-      },
+      audienceFilters: restoredFilters,
     };
   } catch {
     return null;

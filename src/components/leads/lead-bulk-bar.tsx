@@ -40,7 +40,7 @@ import {
   runLeadBulkAction,
   type BulkLeadInput,
 } from "@/lib/leads/bulk-actions";
-import type { WorkspaceMember } from "@/lib/leads/types";
+import { assignableMembers, type WorkspaceMember } from "@/lib/leads/types";
 
 const ICONS: Record<BulkActionKind, React.ComponentType<{ className?: string }>> = {
   assign: UserPlus,
@@ -384,7 +384,7 @@ function AssignDialog({
             onChange={(event) => setUserId(event.target.value)}
           >
             <option value="">Unassigned</option>
-            {members.map((member) => (
+            {assignableMembers(members).map((member) => (
               <option key={member.userId} value={member.userId}>
                 {member.name}
               </option>

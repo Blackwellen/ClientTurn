@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CircleHelp, Mail } from "lucide-react";
 import { getAffiliateAccount } from "@/lib/affiliates/portal";
+import { COMPANY } from "@/lib/marketing/company";
 import {
   describeAttribution,
   describeCommission,
@@ -95,7 +96,9 @@ export default async function AffiliateHelpPage() {
                 and we can find your account straight away.
               </p>
               <a
-                href="mailto:partners@clientturn.com"
+                // One of the two monitored mailboxes (company.ts); there is no
+                // separate partners@ inbox.
+                href={`mailto:${COMPANY.supportEmail}?subject=${encodeURIComponent(`Partner ${affiliate.reference}`)}`}
                 className="mt-3 inline-flex h-10 items-center rounded-[9px] bg-accent-500 px-4 text-[13.5px] font-semibold text-brand-midnight hover:bg-[#a6e238]"
               >
                 Email the partner team

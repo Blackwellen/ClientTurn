@@ -292,7 +292,7 @@ export default function PricingPage() {
             <Reveal delay={0.08}>
               <PublicCard className="pub-cell">
                 <div className="mb-6 flex items-center justify-between gap-3">
-                  <h3>Included verified prospects a month</h3>
+                  <h2>Included verified prospects a month</h2>
                   <StatePill tone="muted">By plan</StatePill>
                 </div>
                 <Columns

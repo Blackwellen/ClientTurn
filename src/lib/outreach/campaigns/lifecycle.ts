@@ -6,6 +6,7 @@ import {
   assertTransition,
   autoPauseReason,
   CampaignTransitionError,
+  reviewPassedByActivation,
   type AutoPauseSignals,
 } from "../campaign-state";
 import type { CampaignPriority, CampaignStatus } from "../types";
@@ -99,6 +100,16 @@ export async function transition(input: {
   }
 
   const now = new Date().toISOString();
+  // "Start after manual review" launches a campaign READY with
+  // review_before_outreach set, and the dispatcher refuses to send while that
+  // flag is set. A person activating it from READY *is* that review. Nothing
+  // cleared the flag, so the recommended launch mode produced an ACTIVE
+  // campaign that never sent a single email (2026-09-29).
+  const reviewPassed = reviewPassedByActivation({
+    from,
+    to: input.to,
+    actorUserId: input.actorUserId ?? null,
+  });
   const timestamps: Record<string, string | null> = {};
   if (input.to === "ACTIVE") {
     timestamps.paused_at = null;
@@ -113,6 +124,7 @@ export async function transition(input: {
     .update({
       status: input.to,
       pause_reason: input.to === "PAUSED" ? (input.reason ?? null) : null,
+      ...(reviewPassed ? { review_before_outreach: false } : {}),
       ...timestamps,
     })
     .eq("business_id", input.businessId)
@@ -151,7 +163,7 @@ export async function transition(input: {
 
   // Resuming a campaign that sends automatically should start sending again;
   // one waiting on review should not, whatever resumed it.
-  if (input.to === "ACTIVE" && !campaign.review_before_outreach) {
+  if (input.to === "ACTIVE" && (!campaign.review_before_outreach || reviewPassed)) {
     await enqueue(
       "outreach.dispatch",
       { campaignId: input.campaignId, businessId: input.businessId },

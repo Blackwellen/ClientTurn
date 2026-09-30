@@ -55,7 +55,10 @@ export default async function UnsubscribePage({
       ? { kind: "error" }
       : !subject
         ? { kind: "invalid" }
-        : status === "done"
+        : // Read from the record, never from `?status=done` alone: a crafted
+          // link must not tell someone they are unsubscribed when they are
+          // not. A reused link after unsubscribing shows the same answer.
+          subject.unsubscribed
           ? { kind: "done", business: subject.business }
           : { kind: "confirm", business: subject.business, token };
 
@@ -95,7 +98,7 @@ export default async function UnsubscribePage({
             </h1>
             <p className="mt-2 text-[14px] leading-relaxed text-[#5B6B82]">
               You will not receive any more marketing messages from{" "}
-              {result.business}. If you are in the middle of arranging work with
+              {result.business}. If you are already in a conversation with
               them, they can still reply to you directly.
             </p>
           </>

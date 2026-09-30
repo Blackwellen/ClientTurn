@@ -23,7 +23,13 @@ const PALETTE = [
 ];
 
 function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Letters and digits only: a name typed as "<img ..." or "(Sales) Jo"
+  // rendered "<Q" / "(J" in the badge (surface QA 2026-09-30).
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

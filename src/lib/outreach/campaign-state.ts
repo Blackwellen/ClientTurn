@@ -151,3 +151,20 @@ export function autoPauseReason(signals: AutoPauseSignals): AutoPauseReason | nu
   }
   return null;
 }
+
+/**
+ * Whether a status change is the person's review of a campaign launched with
+ * "Start after manual review" (READY + review_before_outreach).
+ *
+ * Only a person activating it from READY passes the review. A resume from
+ * PAUSED keeps whatever the campaign had, and nothing a system actor does
+ * (auto-optimisation, the pause monitor) may lift a review gate on a person's
+ * behalf.
+ */
+export function reviewPassedByActivation(input: {
+  from: CampaignStatus;
+  to: CampaignStatus;
+  actorUserId: string | null;
+}): boolean {
+  return input.from === "READY" && input.to === "ACTIVE" && Boolean(input.actorUserId);
+}

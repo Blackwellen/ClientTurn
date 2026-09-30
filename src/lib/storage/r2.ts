@@ -5,9 +5,11 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
+  HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { serverEnv } from "@/lib/env";
+import { probeStorageBucket, type StorageProbeResult } from "@/lib/storage/r2-health";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -53,6 +55,12 @@ function r2() {
   client ??= new S3Client({
     region: "auto",
     endpoint: serverEnv.r2.endpoint,
+    // SDK v3.729+ adds a default CRC32 checksum to every PutObject, and on a
+    // presigned URL it is the checksum of an EMPTY body (x-amz-checksum-crc32=
+    // AAAAAA==) because the browser supplies the body later. Any real upload
+    // then fails the checksum. Only send checksums an operation requires.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: serverEnv.r2.accessKeyId,
       secretAccessKey: serverEnv.r2.secretAccessKey!,
@@ -111,18 +119,31 @@ export async function createUploadUrl(
   );
 }
 
-export async function createDownloadUrl(key: string, expiresIn = 300) {
+export async function createDownloadUrl(
+  key: string,
+  expiresIn = 300,
+  options: { forceDownload?: boolean } = {},
+) {
   return getSignedUrl(
     r2(),
     new GetObjectCommand({
       Bucket: serverEnv.r2.bucket,
       Key: key,
       // Logos uploaded before SVG was refused: still render in an <img>, but
-      // a direct open downloads instead of executing (audit 15 §3).
-      ...(isSvgKey(key) ? { ResponseContentDisposition: "attachment" } : {}),
+      // a direct open downloads instead of executing (audit 15 §3). Callers
+      // serving files a customer uploaded (support attachments) force a
+      // download so nothing renders on the storage origin.
+      ...(isSvgKey(key) || options.forceDownload
+        ? { ResponseContentDisposition: "attachment" }
+        : {}),
     }),
     { expiresIn },
   );
+}
+
+/** Raster images a browser shows inertly; everything else is downloaded. */
+export function isInlineSafeImageKey(key: string): boolean {
+  return /\.(png|jpe?g|webp)$/i.test(key);
 }
 
 /** True for an object stored with an .svg name. */
@@ -202,4 +223,29 @@ export async function listObjectKeys(prefix: string, max = 1000): Promise<string
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (token && keys.length < max);
   return keys;
+}
+
+/**
+ * Read-only reachability probe for Admin → System → Readiness: one HeadBucket
+ * on the configured bucket. Returns a state only (r2-health.ts), never the
+ * bucket name, endpoint or provider message.
+ */
+export async function probeStorage(): Promise<StorageProbeResult> {
+  const configured = Boolean(
+    serverEnv.r2.endpoint && serverEnv.r2.accessKeyId && serverEnv.r2.secretAccessKey,
+  );
+  return probeStorageBucket({
+    configured,
+    head: () => r2().send(new HeadBucketCommand({ Bucket: serverEnv.r2.bucket })),
+  });
+}
+
+/** Presence-only facts about the storage configuration, for readiness evidence. */
+export function storageConfigPresence(): { credentialsSet: boolean; bucketNamed: boolean } {
+  return {
+    credentialsSet: Boolean(
+      serverEnv.r2.endpoint && serverEnv.r2.accessKeyId && serverEnv.r2.secretAccessKey,
+    ),
+    bucketNamed: Boolean(process.env.R2_BUCKET),
+  };
 }

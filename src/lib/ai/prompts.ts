@@ -268,7 +268,10 @@ export const PROMPT_BODIES: Record<TaskType, string> = {
     "exact phrasing, so the search matches provider vocabularies.\n" +
     "- If the request is missing something a search genuinely needs (a place, an " +
     "industry, or who to contact), set clarifying_question to one short question " +
-    "and leave those fields out of plan_patch.\n" +
+    "and leave those fields out of plan_patch. Ask only for what the message " +
+    "does not already say: a place, industry or role in the customer's own " +
+    "words (for example \"within 40 miles of Bournemouth\") belongs in the plan, " +
+    "and a missing business profile is never a reason to ask.\n" +
     "- breadth is your honest read on whether the criteria will return roughly " +
     "the number asked for: TOO_BROAD, GOOD, TOO_NARROW, or UNKNOWN.\n" +
     "- summary_lines is the short label/value list shown in the chat, for " +

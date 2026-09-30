@@ -33,7 +33,8 @@ export async function recordInMailSentAction(input: unknown): Promise<Result<{ i
   if (!parsed.success || (!parsed.data.prospectId && !parsed.data.leadId)) {
     return { ok: false, error: "Choose the prospect or lead the InMail went to." };
   }
-  const workspace = await requireRole("member");
+  const workspace = await requireRole("member").catch(() => null);
+  if (!workspace) return { ok: false, error: "Your role can view InMail but not record it." };
 
   // A Free LinkedIn account cannot send InMail, so there is nothing to record.
   const tier = await workspaceLinkedInTier(workspace.businessId).catch(() => null);
@@ -92,7 +93,8 @@ export async function recordInMailSentAction(input: unknown): Promise<Result<{ i
 export async function recordInMailReplyAction(input: unknown): Promise<Result> {
   const parsed = z.object({ inmailId: z.uuid(), repliedAt: z.iso.datetime().optional() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid request." };
-  const workspace = await requireRole("member");
+  const workspace = await requireRole("member").catch(() => null);
+  if (!workspace) return { ok: false, error: "Your role can view InMail but not record it." };
 
   const { data, error } = await db()
     .from("inmail_sends")
@@ -118,7 +120,8 @@ export async function recordInMailReplyAction(input: unknown): Promise<Result> {
 
 /** The workspace's derived InMail balance, under its LinkedIn subscription's rules. */
 export async function inMailBalanceAction(): Promise<Result<InMailBalance>> {
-  const workspace = await requireRole("viewer");
+  const workspace = await requireRole("viewer").catch(() => null);
+  if (!workspace) return { ok: false, error: "InMail credits could not be read." };
   const { data, error } = await db()
     .from("inmail_sends")
     .select("sent_at, replied_at")

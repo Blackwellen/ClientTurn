@@ -419,7 +419,9 @@ export async function getGettingStarted(
       supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId),
+        .eq("business_id", businessId)
+        // "A real lead": onboarding's test lead used to tick this off.
+        .eq("is_test", false),
       supabase
         .from("business_settings")
         .select("booking_mode, booking_url")
@@ -470,11 +472,16 @@ export async function getGettingStarted(
       label: "Choose how leads book",
       description: "A calendar connection, or a booking link you provide.",
       href: "/app/settings?section=workspace",
-      done: Boolean(
-        automations.data?.booking_url ||
-          (automations.data?.booking_mode &&
-            automations.data.booking_mode !== "handover"),
-      ),
+      // The same rule as the activation check (onboarding/provision.ts):
+      // handing qualified leads to a person is a configured choice, and the
+      // dashboard's own "Booking destination: Configured" card says so. This
+      // used to read "to do" beside that card for every handover workspace.
+      done:
+        (automations.data?.booking_mode ?? "handover") === "handover" ||
+        Boolean(automations.data?.booking_url) ||
+        live.some(
+          (row) => row.provider_type === automations.data?.booking_mode && row.status === "HEALTHY",
+        ),
     },
     {
       id: "first-lead",

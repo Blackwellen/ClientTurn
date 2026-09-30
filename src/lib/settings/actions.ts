@@ -27,6 +27,7 @@ import {
   objectKey,
 } from "@/lib/storage/r2";
 import { passwordSchema } from "@/lib/validation/auth";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import {
   BOOKING_MODES,
@@ -141,7 +142,7 @@ export async function updateBusinessProfile(input: {
 }): Promise<ActionResult> {
   const parsed = businessSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check the details you entered.");
+    return fail(friendlyIssue(parsed.error, "Check the details you entered."));
   }
   if (
     !isAcceptedIndustry(parsed.data.industry)
@@ -190,13 +191,22 @@ export async function createLogoUploadUrl(input: {
   size: number;
 }): Promise<{ ok: true; url: string; key: string } | { ok: false; error: string }> {
   const parsed = logoSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "That file cannot be uploaded." };
+  if (!parsed.success) {
+    return { ok: false, error: "Choose a PNG, JPG or WebP image up to 10MB." };
+  }
 
   const guard = await requireSettingsAdmin();
   if (!guard.ok) return { ok: false, error: guard.error };
 
+  // A rejected file is the user's to fix, not an outage: say what is allowed
+  // rather than falling into the "not available right now" branch below.
   try {
     assertUploadAllowed("logo", parsed.data.contentType, parsed.data.size);
+  } catch {
+    return { ok: false, error: "Choose a PNG, JPG or WebP image up to 10MB." };
+  }
+
+  try {
     const key = objectKey(guard.workspace.businessId, "logo", parsed.data.filename);
     const url = await createUploadUrl(key, parsed.data.contentType, 300, parsed.data.size);
     return { ok: true, url, key };
@@ -270,11 +280,15 @@ export async function removeBusinessLogo(): Promise<ActionResult> {
 
 const serviceSchema = z.object({
   id: z.uuid().optional(),
-  name: z.string().trim().min(2, "Enter a service name").max(80),
+  name: z
+    .string()
+    .trim()
+    .min(2, "Enter a service name")
+    .max(80, "Keep the service name to 80 characters or fewer"),
   description: z
     .string()
     .trim()
-    .max(400)
+    .max(400, "Keep the description to 400 characters or fewer")
     .transform((value) => (value === "" ? null : value)),
   averageValue: z
     .string()
@@ -304,7 +318,7 @@ export async function saveService(input: {
 }): Promise<ActionResult> {
   const parsed = serviceSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check the service details.");
+    return fail(friendlyIssue(parsed.error, "Check the service details."));
   }
 
   let pricing: { pricing_visibility: PricingVisibility; public_price_text: string | null } | null =
@@ -462,7 +476,7 @@ export async function updateMessagingSettings(input: {
 }): Promise<ActionResult> {
   const parsed = messagingSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check your messaging settings.");
+    return fail(friendlyIssue(parsed.error, "Check your messaging settings."));
   }
 
   const guard = await requireSettingsAdmin();
@@ -529,7 +543,7 @@ export async function updateSlackChannel(input: {
 }): Promise<ActionResult> {
   const parsed = slackChannelSchema.safeParse(input.channelId);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Enter a valid Slack channel ID.");
+    return fail(friendlyIssue(parsed.error, "Enter a valid Slack channel ID."));
   }
 
   const guard = await requireIntegrationManager();
@@ -642,7 +656,7 @@ export async function updateBookingSettings(input: {
 }): Promise<ActionResult> {
   const parsed = bookingSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check your booking settings.");
+    return fail(friendlyIssue(parsed.error, "Check your booking settings."));
   }
   const eventType =
     typeof input.calendlyEventType === "string"
@@ -922,7 +936,7 @@ export async function deleteWorkspace(confirmation: string): Promise<ActionResul
   if (!guard.ok) return fail(guard.error);
   const { workspace } = guard;
 
-  if (confirmation.trim() !== workspace.businessName) {
+  if (typeof confirmation !== "string" || confirmation.trim() !== workspace.businessName) {
     return fail("The name you typed does not match this workspace.");
   }
 
@@ -983,7 +997,7 @@ export async function updateProfile(input: {
 }): Promise<ActionResult> {
   const parsed = profileSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check your details.");
+    return fail(friendlyIssue(parsed.error, "Check your details."));
   }
 
   const workspace = await requireWorkspace();
@@ -1029,10 +1043,18 @@ export async function changePassword(input: {
 }): Promise<ActionResult> {
   const parsed = passwordChangeSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check your new password.");
+    return fail(friendlyIssue(parsed.error, "Check your new password."));
   }
 
   const workspace = await requireWorkspace();
+
+  // Verifying the current password is a sign-in attempt; bound it so a
+  // hijacked session cannot use this form to guess the password.
+  const limit = await checkRateLimit("auth:password_change", workspace.userId);
+  if (!limit.allowed) {
+    return fail("Too many attempts. Wait a few minutes and try again.");
+  }
+
   const supabase = await createClient();
 
   const { data: profile } = await supabase
@@ -1147,10 +1169,15 @@ export async function connectProviderToken(
   const parsed = z.enum(TOKEN_PROVIDER_TYPES).safeParse(providerType);
   if (!parsed.success) return fail("That connection type is not supported.");
 
+  if (typeof token !== "string") return fail("That token does not look right.");
   const trimmedToken = token.trim();
-  if (trimmedToken.length < 10) return fail("That token does not look right.");
+  if (trimmedToken.length < 10 || trimmedToken.length > 512) {
+    return fail("That token does not look right.");
+  }
 
-  const guard = await requireSettingsAdmin();
+  // Connecting is gated by the integrations capability (0172), like every
+  // other connection change, not by the admin role.
+  const guard = await requireIntegrationManager();
   if (!guard.ok) return fail(guard.error);
   const { workspace } = guard;
 
@@ -1176,7 +1203,7 @@ export async function disconnectIntegration(
   const parsed = z.enum(PROVIDER_TYPES).safeParse(providerType);
   if (!parsed.success) return fail("That connection could not be found.");
 
-  const guard = await requireSettingsAdmin();
+  const guard = await requireIntegrationManager();
   if (!guard.ok) return fail(guard.error);
   const { workspace } = guard;
 
@@ -1316,7 +1343,7 @@ export async function saveWorkspaceSettings(input: {
 }): Promise<ActionResult> {
   const parsed = workspaceSettingsSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check the details you entered.");
+    return fail(friendlyIssue(parsed.error, "Check the details you entered."));
   }
   if (
     !isAcceptedIndustry(parsed.data.industry)
@@ -1446,7 +1473,7 @@ export async function testConnection(
 
 /** The Refresh control on Settings → Connections. */
 export async function refreshConnectionHealth(): Promise<ActionResult> {
-  const guard = await requireSettingsAdmin();
+  const guard = await requireIntegrationManager();
   if (!guard.ok) return fail(guard.error);
 
   const { runIntegrationHealthChecks } = await import(

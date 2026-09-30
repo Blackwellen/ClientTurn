@@ -32,6 +32,12 @@ export async function resolveLocation(
   }
 
   const name = (location.city ?? location.region ?? "").trim().toLowerCase();
+  // No place at all (just a country): never geocoded. Geocoding "GB" returns
+  // the middle of Great Britain, which then read as a resolved search centre
+  // (a real planner turn, 2026-09-30: "within 15 miles of Bournemouth" ran
+  // around Lancashire and found nothing). Left unresolved, the plan is not
+  // runnable and the panel asks for the place.
+  if (!name) return { ...location, lat: null, lon: null, resolved: false };
   const known = KNOWN_CENTRES[name];
   if (known) {
     return { ...location, lat: known.lat, lon: known.lon, resolved: true };

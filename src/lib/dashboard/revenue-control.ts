@@ -268,6 +268,9 @@ export async function getRevenueControl(
           (key) =>
             row[`${key}_state`] === "FAIL" || row[`${key}_state`] === "MISSING",
         );
+        // Failing authentication is a warning even when bounces are low;
+        // otherwise the tile reads "Healthy" above "SPF not passing".
+        if (failing.length && rank[worst] < rank.WARNING) worst = "WARNING";
         if (row.health_state !== "HEALTHY" || failing.length) {
           attention.push(
             failing.length

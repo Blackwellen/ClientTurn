@@ -18,7 +18,7 @@ const TERMS_VERSION_LABEL = new Date(`${TERMS_VERSION}T00:00:00Z`).toLocaleDateS
 });
 
 const description =
-  "The contract between Blackwellen Limited and the business using ClientTurn: subscriptions, the 14-day free trial (card required, nothing charged until it ends), fees and VAT, refunds and cancellation, messaging compliance, liability and termination. Governed by the law of England and Wales.";
+  "The contract between Blackwellen Limited and businesses using ClientTurn: subscriptions, the free trial, fees and VAT, refunds, cancellation, messaging compliance and liability.";
 
 export const metadata: Metadata = {
   title: "Terms of Service",

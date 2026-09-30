@@ -60,7 +60,7 @@ function StepUpForm({
             <ShieldCheck className="text-warning-600 size-4" />
           </span>
           <p className="text-content-secondary text-[13px]">
-            This action changes a customer workspace. Re-enter your password
+            This action changes live platform data. Re-enter your password
             and the current code from your authenticator app. The confirmation
             lasts 30 minutes.
           </p>

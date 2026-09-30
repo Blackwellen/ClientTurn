@@ -89,22 +89,33 @@ export function FunnelCard({
           {/* Column chart on wide screens: the shape of the drop-off is the
               point, and a row of bars reads it faster than a list. */}
           <ol className="hidden h-[180px] items-end gap-2 sm:flex" aria-hidden>
-            {stages.map((stage, index) => (
-              <li
-                key={stage.key}
-                className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5"
-              >
-                <span className="lr-tabular text-[12.5px] font-semibold text-content">
-                  {stage.count.toLocaleString("en-GB")}
-                </span>
-                <span
-                  className={cn("w-full rounded-t-md", FUNNEL_TONES[index % FUNNEL_TONES.length])}
-                  style={{
-                    height: `${Math.max(3, (stage.shareOfTop ?? 0) * 100)}%`,
-                  }}
-                />
-              </li>
-            ))}
+            {stages.map((stage, index) => {
+              // The bar's percentage height needs a parent with a definite
+              // height: the <li> fills the 180px row and the plot area is the
+              // flex-1 box under a reserved strip for the figure. Before, the
+              // <li> was content-sized, so every bar computed to 0px and the
+              // chart rendered as empty space above the numbers.
+              const height = Math.max(3, (stage.shareOfTop ?? 0) * 100);
+              return (
+                <li key={stage.key} className="flex h-full min-w-0 flex-1 flex-col pt-5">
+                  <div className="relative w-full flex-1">
+                    <span
+                      className={cn(
+                        "absolute inset-x-0 bottom-0 rounded-t-md",
+                        FUNNEL_TONES[index % FUNNEL_TONES.length],
+                      )}
+                      style={{ height: `${height}%` }}
+                    />
+                    <span
+                      className="lr-tabular absolute inset-x-0 text-center text-[12.5px] font-semibold text-content"
+                      style={{ bottom: `calc(${height}% + 4px)` }}
+                    >
+                      {stage.count.toLocaleString("en-GB")}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
           <ol className="mt-1.5 hidden gap-2 sm:flex" aria-hidden>
             {stages.map((stage) => (
@@ -154,15 +165,19 @@ export function FunnelCard({
   );
 }
 
+// One hue, deepening toward "won": a funnel is one quantity narrowing, not
+// eight categories. Only tokens that exist (globals.css defines accent 50-900);
+// the previous info-300/400, warning-300 and success-300/400 classes had no
+// token behind them, so five of the eight bars rendered transparent.
 const FUNNEL_TONES = [
-  "bg-info-400",
-  "bg-info-300",
-  "bg-purple-400",
-  "bg-pink-300",
-  "bg-warning-300",
-  "bg-success-300",
-  "bg-success-400",
-  "bg-success-600",
+  "bg-accent-200",
+  "bg-accent-300",
+  "bg-accent-400",
+  "bg-accent-500",
+  "bg-accent-600",
+  "bg-accent-700",
+  "bg-accent-800",
+  "bg-accent-900",
 ];
 
 /* ------------------------------------------------------------ source donut */

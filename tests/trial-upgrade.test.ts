@@ -471,7 +471,9 @@ describe("trial upgrade mount points", () => {
 
   test("the banner and Billing settings offer the same instant upgrade, never a new checkout", () => {
     const banner = source("src/components/billing/billing-banner.tsx");
-    assert.match(banner, /canManageBilling && notice\.upgradeNow \? \(/);
+    // Owner-only actions row (restructured to stack at 390px, surface QA 2026-09-30).
+    assert.match(banner, /canManageBilling && \(notice\.upgradeNow \|\| notice\.action\) \? \(/);
+    assert.match(banner, /notice\.upgradeNow \? \(/);
     assert.match(banner, /<UpgradeNowButton /);
     const settings = source("src/components/settings/billing/billing-settings.tsx");
     assert.match(settings, /\{trialing \? \([\s\S]*?<UpgradeNowButton/);

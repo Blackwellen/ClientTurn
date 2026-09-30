@@ -51,7 +51,7 @@ export function OverviewHeader({
           role="group"
           aria-label="Time range"
           aria-busy={pending || undefined}
-          className="inline-flex items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5"
+          className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5"
         >
           {ADMIN_RANGES.map((option) => {
             const active = option === range;

@@ -4,12 +4,12 @@ import * as React from "react";
 import {
   motion,
   useInView,
-  useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
   type Variants,
 } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import { cn } from "@/lib/cn";
 
 /**

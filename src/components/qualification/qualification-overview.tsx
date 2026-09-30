@@ -46,7 +46,7 @@ export function QualificationOverview({
           <h3 className="text-content text-[13px] font-semibold">
             Qualification results
           </h3>
-          <dl className="mt-2.5 flex flex-wrap gap-2">
+          <dl className="mt-2.5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             {QUALIFICATION_STAT_ORDER.map((key) => {
               const meta = QUALIFICATION_STAT_META[key];
               return (

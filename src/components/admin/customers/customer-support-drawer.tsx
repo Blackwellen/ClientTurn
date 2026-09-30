@@ -28,6 +28,9 @@ import {
 import type { CustomerDetail, UsageCell } from "@/lib/admin/types";
 import type { SupportSignals } from "@/lib/admin/support-signals-types";
 import { CustomerSupportSignals } from "./customer-support-signals";
+import type { SystemCheckReport } from "@/lib/system-check/types";
+import { SystemCheckReportView } from "@/components/system-check/system-check-report";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 /* --------------------------------------------------------------- sections */
 
@@ -120,6 +123,7 @@ const CONNECTION_LABEL: Record<string, string> = {
 export function CustomerSupportDrawer({
   detail,
   signals,
+  systemCheck = null,
   pending,
   onClose,
   onResendOnboarding,
@@ -130,6 +134,8 @@ export function CustomerSupportDrawer({
   detail: CustomerDetail;
   /** Read-only support signals (0171-0175); null when they could not be loaded. */
   signals?: SupportSignals | null;
+  /** The customer's Settings -> System check, read-only; null when it could not be loaded. */
+  systemCheck?: SystemCheckReport | null;
   pending: string | null;
   onClose: () => void;
   onResendOnboarding: () => void;
@@ -245,7 +251,7 @@ export function CustomerSupportDrawer({
             {hasRelativePhrase(detail.createdAt) && (
               <span className="text-content-muted">
                 {" "}
-                ({formatRelative(detail.createdAt, { style: "ago" })})
+                (<RelativeTime value={detail.createdAt} options={{ style: "ago" }} />)
               </span>
             )}
           </Field>
@@ -293,6 +299,19 @@ export function CustomerSupportDrawer({
       </Section>
 
       {signals && <CustomerSupportSignals businessId={detail.id} signals={signals} />}
+
+      <section className="border-t border-line-subtle px-5 py-4" aria-labelledby="support-system-check">
+        <h3 id="support-system-check" className="mb-3 text-[13.5px] font-semibold text-content">
+          System check (read only)
+        </h3>
+        {systemCheck ? (
+          <SystemCheckReportView report={systemCheck} readOnly headingLevel={4} />
+        ) : (
+          <p role="alert" className="text-[12.5px] text-danger-700">
+            The system check could not be loaded right now.
+          </p>
+        )}
+      </section>
 
       <Section title="Plan &amp; usage">
         <div className="mb-3 flex items-start justify-between gap-4">
@@ -350,7 +369,7 @@ export function CustomerSupportDrawer({
                     </p>
                   ) : (
                     <p className="truncate text-[11.5px] text-content-subtle">
-                      Last sync {formatRelative(integration.lastSuccessAt, { style: "ago" })}
+                      Last sync <RelativeTime value={integration.lastSuccessAt} options={{ style: "ago" }} />
                     </p>
                   )}
                 </div>
@@ -400,7 +419,7 @@ export function CustomerSupportDrawer({
                   {event.label}
                 </span>
                 <span className="shrink-0 text-[11.5px] whitespace-nowrap text-content-muted">
-                  {formatRelative(event.createdAt, { style: "ago" })}
+                  <RelativeTime value={event.createdAt} options={{ style: "ago" }} />
                 </span>
               </li>
             ))}
@@ -432,7 +451,7 @@ export function CustomerSupportDrawer({
                     {error.message}
                   </p>
                   <p className="text-[11.5px] text-content-subtle">
-                    {error.area} · {formatRelative(error.occurredAt, { style: "ago" })}
+                    {error.area} · <RelativeTime value={error.occurredAt} options={{ style: "ago" }} />
                   </p>
                 </div>
                 <SeverityBadge severity={error.severity} />

@@ -176,7 +176,7 @@ export function AiPermissionsCard({
   const discountOn = draft.capabilities.discount;
 
   return (
-    <Card>
+    <Card id="ai-permissions" className="scroll-mt-24">
       <CardHeader>
         <SectionHeader
           icon={ShieldCheck}

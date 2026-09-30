@@ -1,6 +1,7 @@
 "use server";
 
 import { workspaceCan } from "@/lib/auth/permissions";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -158,7 +159,7 @@ export async function createCampaign(
   const parsed = campaignDraftSchema.safeParse(input);
   if (!parsed.success) {
     return fail(
-      parsed.error.issues[0]?.message ?? "That campaign is not valid.",
+      friendlyIssue(parsed.error, "That campaign is not valid."),
     );
   }
   const draft = parsed.data;
@@ -669,7 +670,7 @@ export async function updateCampaignDetails(
 ): Promise<ActionResult<{ id: string }>> {
   const parsed = campaignEditSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Those details are not valid.");
+    return fail(friendlyIssue(parsed.error, "Those details are not valid."));
   }
 
   const access = await requireCampaignAccess();

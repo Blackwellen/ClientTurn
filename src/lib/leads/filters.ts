@@ -32,7 +32,7 @@ export const QUICK_FILTERS = [
   { value: "active", label: "Active", caption: "In progress" },
   { value: "attention", label: "Needs Attention", caption: "Require follow-up" },
   { value: "qualified", label: "Qualified", caption: "Ready to book" },
-  { value: "booked", label: "Booked", caption: "Converted to jobs" },
+  { value: "booked", label: "Booked", caption: "Meeting booked" },
 ] as const;
 
 export type QuickFilter = (typeof QUICK_FILTERS)[number]["value"];

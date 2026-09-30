@@ -151,10 +151,59 @@ export function tokensIn(template: string): string[] {
  * again at send time as a second line of defence.
  */
 export function unknownTokens(template: string, surface: MergeSurface): string[] {
-  return tokensIn(template).filter((token) => {
-    const field = mergeField(token);
-    return !field || !field.surfaces.includes(surface);
-  });
+  return [
+    ...tokensIn(template).filter((token) => {
+      const field = mergeField(token);
+      return !field || !field.surfaces.includes(surface);
+    }),
+    ...singleBraceTokens(template),
+  ];
+}
+
+/** `{first_name}`: a merge field written with one brace, which nothing fills. */
+const SINGLE_BRACE_PATTERN = /(?<!\{)\{\s*([a-z][a-z0-9_]*)\s*\}(?!\})/gi;
+
+/**
+ * Tokens written with single braces (`{first_name}`, `{service}`). They look
+ * like merge fields to the person writing them and are not: `renderTemplate`
+ * only fills `{{...}}`, so they used to be sent to the lead verbatim ("Hi
+ * {first_name}, ..." from the demo workspace's own follow-up, 2026-09-30).
+ * Reported as `{key}` so the person sees exactly what to correct.
+ */
+export function singleBraceTokens(template: string): string[] {
+  return [...new Set([...template.matchAll(SINGLE_BRACE_PATTERN)].map((m) => `{${m[1].toLowerCase()}}`))];
+}
+
+/**
+ * The sentence shown when a template has tokens nothing can fill.
+ *
+ * `unknownTokens` reports a single-brace token already braced (`{first_name}`)
+ * and a double-brace one bare (`nickname`). Wrapping both in `{{...}}` printed
+ * "{{{first_name}}}", which told nobody what to fix. A single-brace token names
+ * its correction instead.
+ */
+export function describeUnknownTokens(unknown: string[]): string {
+  // A single-brace token only gets a "use double braces" hint when the name is
+  // a real field; `{nickname}` -> `{{nickname}}` would only swap one error
+  // for another.
+  const isKnownSingle = (token: string) =>
+    token.startsWith("{") && Boolean(mergeField(token.slice(1, -1)));
+  const single = unknown.filter(isKnownSingle);
+  const other = unknown.filter((token) => !isKnownSingle(token));
+  const parts: string[] = [];
+  if (other.length > 0) {
+    parts.push(
+      `Unknown merge ${other.length === 1 ? "field" : "fields"}: ${other
+        .map((token) => (token.startsWith("{") ? token : `{{${token}}}`))
+        .join(", ")}`,
+    );
+  }
+  if (single.length > 0) {
+    parts.push(
+      `Merge fields need double braces: ${single.map((token) => `${token} → {${token}}`).join(", ")}`,
+    );
+  }
+  return parts.join(". ");
 }
 
 export type RenderOutcome =
@@ -196,6 +245,9 @@ export function renderTemplate(
     }
     return field.fallback;
   });
+
+  // A single-brace token is never sent: it pauses the step like a missing field.
+  missing.push(...singleBraceTokens(template));
 
   return missing.length > 0
     ? { ok: false, missing: [...new Set(missing)] }

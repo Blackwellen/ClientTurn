@@ -18,6 +18,8 @@ import { AiSellingSection } from "./_sections/ai-selling-section";
 import { QuotesSection } from "./_sections/quotes-section";
 import { VoiceSection } from "./_sections/voice-section";
 import { SecuritySection } from "./_sections/security-section";
+import { SystemCheckSection } from "./_sections/system-check-section";
+import { SystemCheckSkeleton } from "@/components/system-check/system-check-report";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -37,7 +39,9 @@ export default async function SettingsPage({
   const section = parseSettingsSection(params.section);
 
   const fallback =
-    section === "team" ? (
+    section === "system-check" ? (
+      <SystemCheckSkeleton />
+    ) : section === "team" ? (
       <SettingsTableSkeleton />
     ) : (
       <SettingsFormSkeleton
@@ -67,6 +71,7 @@ export default async function SettingsPage({
         {section === "developer" && <DeveloperSection />}
         {section === "data-controls" && <DataControlsSection />}
         {section === "billing" && <BillingSection bundle={params.bundle} />}
+        {section === "system-check" && <SystemCheckSection />}
       </React.Suspense>
     </div>
   );

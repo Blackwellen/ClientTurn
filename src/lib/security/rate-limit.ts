@@ -95,6 +95,12 @@ export const RATE_LIMITS = {
   // Audit log export (Settings -> Data Controls), per signed-in user. Each one
   // can stream up to a year of history, so it is bounded tighter than CSVs.
   "app:audit_export": { limit: 5, windowSeconds: 3600 },
+  // Support attachment upload URLs, per user. Each one is a presigned 10MB PUT
+  // into our bucket; a ticket carries a handful at most (surface QA 2026-09-30).
+  "support:upload": { limit: 30, windowSeconds: 3600 },
+  // Change password in Settings verifies the current password first, so this
+  // bounds guessing it from a hijacked session (surface QA 2026-09-30).
+  "auth:password_change": { limit: 5, windowSeconds: 900 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;

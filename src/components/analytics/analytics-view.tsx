@@ -156,7 +156,7 @@ export function AnalyticsView({
       <nav
         data-tour="analytics-views"
         aria-label="Analytics views"
-        className="flex items-center gap-1 overflow-x-auto border-b border-line"
+        className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line"
       >
         {VIEWS.map((item) => (
           <button
@@ -333,7 +333,10 @@ function ChannelCard({ rows, wide }: { rows: ChannelRow[]; wide?: boolean }) {
       className={wide ? "xl:col-span-3" : undefined}
     >
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] text-left text-[13px]">
+        {/* In the overview's one-third column the card shows the four core
+            figures and fits without a scrollbar; the full six-column table
+            is the Outreach view's wide card. */}
+        <table className={cn("w-full text-left text-[13px]", wide && "min-w-[36rem]")}>
           <caption className="sr-only">
             Messages sent, delivery rate, reply rate and opt-outs by channel.
           </caption>
@@ -343,8 +346,12 @@ function ChannelCard({ rows, wide }: { rows: ChannelRow[]; wide?: boolean }) {
               <th scope="col" className="pb-2 text-right font-medium">Sent</th>
               <th scope="col" className="pb-2 text-right font-medium">Delivery</th>
               <th scope="col" className="pb-2 text-right font-medium">Replies</th>
-              <th scope="col" className="pb-2 text-right font-medium">Replies / delivered</th>
-              <th scope="col" className="pb-2 text-right font-medium">Opt-outs</th>
+              {wide && (
+                <>
+                  <th scope="col" className="pb-2 text-right font-medium">Replies / delivered</th>
+                  <th scope="col" className="pb-2 text-right font-medium">Opt-outs</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-line-subtle">
@@ -362,12 +369,16 @@ function ChannelCard({ rows, wide }: { rows: ChannelRow[]; wide?: boolean }) {
                 <td className="lr-tabular py-2 text-right text-content-secondary">
                   {row.replies.toLocaleString("en-GB")}
                 </td>
-                <td className="lr-tabular py-2 text-right text-content-secondary">
-                  {percent(row.repliesPerDelivered)}
-                </td>
-                <td className="lr-tabular py-2 text-right text-content-secondary">
-                  {row.optOuts.toLocaleString("en-GB")}
-                </td>
+                {wide && (
+                  <>
+                    <td className="lr-tabular py-2 text-right text-content-secondary">
+                      {percent(row.repliesPerDelivered)}
+                    </td>
+                    <td className="lr-tabular py-2 text-right text-content-secondary">
+                      {row.optOuts.toLocaleString("en-GB")}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>

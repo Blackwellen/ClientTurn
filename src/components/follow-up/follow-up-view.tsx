@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { formatTimezoneLabel } from "@/lib/dates";
+import { TIMEZONES } from "@/lib/settings/types";
 import { loadReengagementSettings } from "@/lib/reengagement/service";
 import { ContactFrequencyCard } from "./contact-frequency-card";
 import {
@@ -175,6 +177,7 @@ export async function FollowUpView({
             policyAllows: channelContext.policyAllows,
             smsConnected: channelContext.smsConnected,
             whatsappEnabled: channelContext.whatsappEnabled,
+            whatsappOnPlan: channelContext.whatsappOnPlan,
             whatsappTemplateReady: channelContext.whatsappTemplateReady,
             policyName: channelContext.policyName,
             senders: channelContext.senders,
@@ -193,7 +196,13 @@ export async function FollowUpView({
       {filters.tab === "settings" && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="space-y-4">
-            <QuietHoursCard quietHours={quietHours} canEdit={canEdit} />
+            <QuietHoursCard
+              quietHours={quietHours}
+              canEdit={canEdit}
+              timezoneLabels={Object.fromEntries(
+                [...TIMEZONES, quietHours.timezone].map((zone) => [zone, formatTimezoneLabel(zone)]),
+              )}
+            />
             <ContactFrequencyCard
               caps={reengagement.caps}
               notNowEnabled={reengagement.notNowEnabled}

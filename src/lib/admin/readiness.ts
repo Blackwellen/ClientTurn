@@ -7,6 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_OPERATIONS, implementedOperations } from "@/lib/services";
 import { MCP_SCOPES } from "@/lib/mcp/tools";
 import { serverEnv } from "@/lib/env";
+import { probeStorage, storageConfigPresence } from "@/lib/storage/r2";
+import { storageReadiness } from "@/lib/storage/r2-health";
 
 /**
  * Platform readiness (Programme §20).
@@ -105,6 +107,7 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
     integrationsTotal,
     usageRows,
     subscriptions,
+    storageProbe,
   ] = await Promise.all([
     rlsEnabledCount(),
     publicTableCount(),
@@ -141,12 +144,18 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
     safeCount(() =>
       db.from("platform_error_triage").select("*", HEAD).neq("status", "RESOLVED"),
     ),
-    safeCount(() => db.from("integrations").select("*", HEAD).eq("status", "CONNECTED")),
-    safeCount(() => db.from("integrations").select("*", HEAD)),
+    // The column's vocabulary is HEALTHY/DEGRADED/ACTION_REQUIRED/
+    // DISCONNECTED/TESTING (0008). It used to count "CONNECTED", which never
+    // exists, so every connection read as unhealthy ("0/8"). DISCONNECTED is
+    // a connection nobody has made (or one removed on purpose), not a fault.
+    safeCount(() => db.from("integrations").select("*", HEAD).eq("status", "HEALTHY")),
+    safeCount(() => db.from("integrations").select("*", HEAD).neq("status", "DISCONNECTED")),
     safeCount(() => db.from("usage_events").select("*", HEAD).gte("occurred_at", week)),
     safeCount(() =>
       db.from("subscriptions").select("*", HEAD).in("status", ["ACTIVE", "TRIALING"]),
     ),
+    // Never throws (r2-health.ts), so one slow bucket cannot sink the page.
+    probeStorage(),
   ]);
 
   const declared = SERVICE_OPERATIONS.length;
@@ -212,7 +221,9 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
           ? attention(
               `${mcpDenials} refusals in 7 days across ${mcpClients} connections — likely a misconfigured client, or a scope that was never granted.`,
             )
-          : ready(`${mcpClients} active connections, ${mcpDenials} refusals in 7 days.`)),
+          : ready(
+              `${mcpClients} active ${mcpClients === 1 ? "connection" : "connections"}, ${mcpDenials} ${mcpDenials === 1 ? "refusal" : "refusals"} in 7 days.`,
+            )),
       evidence: [
         { label: "Active connections", value: `${mcpClients}` },
         { label: "Refusals (7d)", value: `${mcpDenials}` },
@@ -303,6 +314,13 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
         },
         { label: "Stripe (test)", value: serverEnv.stripe.secretKey ? "set" : "missing" },
       ],
+    },
+    {
+      key: "storage",
+      label: "File storage",
+      // One HeadBucket, read-only. Presence and HTTP status only: the bucket
+      // name, endpoint and keys never reach the page.
+      ...storageReadiness(storageProbe, storageConfigPresence()),
     },
     {
       key: "disaster_recovery",

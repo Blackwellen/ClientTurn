@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { describeUnknownTokens } from "@/lib/messaging/merge-fields";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -275,9 +276,7 @@ export async function publishAutomation(input: {
   ];
   if (unknown.length > 0) {
     return fail(
-      `Unknown merge ${unknown.length === 1 ? "field" : "fields"}: ${unknown
-        .map((token) => `{{${token}}}`)
-        .join(", ")}. Publishing is blocked until they are removed.`,
+      `${describeUnknownTokens(unknown)}. Publishing is blocked until they are fixed.`,
     );
   }
 

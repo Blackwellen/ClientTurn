@@ -60,7 +60,7 @@ import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "How It Works";
 const description =
-  "One conversion system from first signal to final action: inbound follow-up and qualification, outbound sourcing and permitted outreach, decision rules you configure, enforced stop conditions and end-to-end measurement.";
+  "How ClientTurn works: inbound follow-up and qualification, outbound sourcing and permitted outreach, rules you configure, enforced stop conditions and end-to-end measurement.";
 const path = "/how-it-works";
 
 const siteUrl = (

@@ -77,15 +77,8 @@ export function AffiliateLoginForm({
         error={fieldError("password")}
       />
 
-      <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2.5 text-[13.5px] text-[var(--auth-text-muted)]">
-          <input
-            type="checkbox"
-            name="keepSignedIn"
-            className="size-[18px] cursor-pointer rounded-[5px] border border-white/25 bg-[var(--auth-input-bg)] accent-[var(--auth-lime)]"
-          />
-          Keep me signed in
-        </label>
+      {/* No "keep me signed in" box: nothing read it (surface QA 2026-09-30). */}
+      <div className="-mt-1 flex items-center justify-end">
         <Link
           href="/forgot-password"
           className="text-[13.5px] font-semibold text-[var(--auth-lime)] underline-offset-4 hover:underline"

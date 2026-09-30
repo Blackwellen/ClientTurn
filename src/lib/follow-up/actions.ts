@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { describeUnknownTokens } from "@/lib/messaging/merge-fields";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -157,8 +159,10 @@ export async function saveContactFrequency(input: unknown): Promise<ActionResult
   const parsed = contactFrequencySchema.safeParse(input);
   if (!parsed.success) {
     return fail(
-      parsed.error.issues[0]?.message ??
+      friendlyIssue(
+        parsed.error,
         `Limits must be within ${FREQUENCY_CAP_BOUNDS.perDay.min}-${FREQUENCY_CAP_BOUNDS.perDay.max} a day, ${FREQUENCY_CAP_BOUNDS.perWeek.min}-${FREQUENCY_CAP_BOUNDS.perWeek.max} a week and ${FREQUENCY_CAP_BOUNDS.per30Days.min}-${FREQUENCY_CAP_BOUNDS.per30Days.max} per 30 days.`,
+      ),
     );
   }
   const workspace = await admin();
@@ -206,7 +210,7 @@ export async function sendFollowUpTest(
 ): Promise<ActionResult> {
   const parsed = testSendSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Check the test message.");
+    return fail(friendlyIssue(parsed.error, "Check the test message."));
   }
 
   const workspace = await admin();
@@ -238,9 +242,7 @@ export async function sendFollowUpTest(
   const unknown = findUnknownMergeFields(parsed.data.body);
   if (unknown.length > 0) {
     return fail(
-      `Unknown merge ${unknown.length === 1 ? "field" : "fields"}: ${unknown
-        .map((token) => `{{${token}}}`)
-        .join(", ")}.`,
+      `${describeUnknownTokens(unknown)}.`,
     );
   }
 

@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerBody } from "@/components/ui/drawer";
+import { AdminDrawerHeader } from "@/components/admin/drawer-header";
 import { Input, Select } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -28,6 +29,7 @@ import {
   SUBSCRIPTION_STATUS_TONE,
   type SubscriptionDetail,
 } from "@/lib/admin/billing-types";
+import { askReason } from "@/components/admin/admin-prompt";
 
 const TABS = ["Overview", "Billing", "Entitlements", "Usage", "Events"] as const;
 type Tab = (typeof TABS)[number];
@@ -91,22 +93,25 @@ export function SubscriptionDrawer({
       open
       onClose={onClose}
       size="lg"
+      bodyClassName="p-0"
       title={subscription.businessName}
       header={
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="truncate text-[16px] font-semibold text-content">
-              {subscription.businessName}
-            </h2>
-            <Badge tone={SUBSCRIPTION_STATUS_TONE[subscription.status]} dot>
-              {SUBSCRIPTION_STATUS_LABEL[subscription.status]}
-            </Badge>
+        <AdminDrawerHeader onClose={onClose}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="truncate text-[16px] font-semibold text-content">
+                {subscription.businessName}
+              </h2>
+              <Badge tone={SUBSCRIPTION_STATUS_TONE[subscription.status]} dot>
+                {SUBSCRIPTION_STATUS_LABEL[subscription.status]}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[12.5px] text-content-muted">
+              {subscription.domain ?? "No domain recorded"} · Customer since{" "}
+              {formatDate(subscription.createdAt)}
+            </p>
           </div>
-          <p className="mt-1 text-[12.5px] text-content-muted">
-            {subscription.domain ?? "No domain recorded"} · Customer since{" "}
-            {formatDate(subscription.createdAt)}
-          </p>
-        </div>
+        </AdminDrawerHeader>
       }
     >
       <div className="border-b border-line px-5">
@@ -222,8 +227,8 @@ export function SubscriptionDrawer({
                     subtitle="Keeps access until the period ends"
                     destructive
                     disabled={!subscription.canCancelAtPeriodEnd}
-                    onClick={() => {
-                      const reason = window.prompt(
+                    onClick={async () => {
+                      const reason = await askReason(
                         "Why is this subscription being cancelled? Recorded against your account.",
                       );
                       if (reason && reason.trim().length >= 5) onCancel(reason.trim());

@@ -1,6 +1,7 @@
 "use client";
 
 import { unlockPlanLabel } from "@/lib/billing/plans";
+import { describeUnknownTokens } from "@/lib/messaging/merge-fields";
 import * as React from "react";
 import Link from "next/link";
 import { Send } from "lucide-react";
@@ -149,8 +150,7 @@ export function TestFollowUpPanel({
           </div>
           {unknown.length > 0 && (
             <p className="text-danger-600 text-[12px]">
-              Unknown merge {unknown.length === 1 ? "field" : "fields"}:{" "}
-              {unknown.map((token) => `{{${token}}}`).join(", ")}
+              {describeUnknownTokens(unknown)}
             </p>
           )}
         </div>

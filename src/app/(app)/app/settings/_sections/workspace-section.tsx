@@ -9,6 +9,7 @@ import {
   getMessagingSettings,
   listServices,
 } from "@/lib/settings/queries";
+import { TIMEZONES, timezoneLabel } from "@/lib/settings/types";
 import { EmptyState } from "@/components/ui/feedback";
 import { WorkspaceSettings } from "@/components/settings/workspace/workspace-settings";
 import { MessagingForm } from "@/components/settings/messaging-form";
@@ -51,6 +52,7 @@ export async function WorkspaceSection() {
       businessHours={messaging.businessHours}
       services={services}
       canManage={canManage}
+      timezoneLabels={Object.fromEntries(TIMEZONES.map((zone) => [zone, timezoneLabel(zone)]))}
     >
       {/* Messaging behaviour, booking behaviour and the workspace danger zone
           stay inside Workspace: the V3 IA removed their standalone pages, and

@@ -2,6 +2,9 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { normaliseCompaniesHouseKey } from "@/lib/find-leads/companies-house-key";
 import { providerJson, unconfigured } from "./http";
+import { safeFetchText } from "@/lib/security/safe-fetch";
+import { isPathAllowed, parseRobots } from "../../website-signals";
+import { companyNumbersFromText, isDomainPlaceholderName } from "../../company-number";
 import {
   isRecognisedRegistryType,
   subscriberTypeForRegistryEntry,
@@ -193,6 +196,83 @@ export async function lookupCompany(name: string): Promise<RegistryVerdict> {
   };
 }
 
+/** The register entry for a company number, as a verdict (same rules as a name match). */
+export async function lookupCompanyByNumber(companyNumber: string): Promise<RegistryVerdict> {
+  const apiKey = key();
+  if (!apiKey || !companyNumber.trim()) return UNRESOLVED;
+  const result = await providerJson<{
+    company_number?: string;
+    company_name?: string;
+    company_status?: string;
+    type?: string;
+  }>({
+    url: `https://api.company-information.service.gov.uk/company/${encodeURIComponent(companyNumber)}`,
+    headers: { Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}` },
+  });
+  if (!result.ok || !result.data.company_number) return UNRESOLVED;
+  const title = result.data.company_name ?? null;
+  const type = (result.data.type ?? "").toLowerCase();
+  const status = result.data.company_status ?? null;
+  const number = result.data.company_number;
+  if (!isRecognisedRegistryType(type)) {
+    return {
+      ...UNRESOLVED,
+      companyNumber: number,
+      registeredName: title,
+      status,
+      companyType: result.data.type ?? null,
+      reason: `Its website gives company number ${number} ("${title}"), but its register type (${result.data.type}) is not one the corporate-subscriber exemption clearly covers, so it is left for a person to confirm.`,
+    };
+  }
+  if (status && status !== "active") {
+    return {
+      subscriberType: "UNKNOWN",
+      companyNumber: number,
+      registeredName: title,
+      status,
+      companyType: result.data.type ?? null,
+      reason: `Its website gives company number ${number} ("${title}"), but the register shows it as "${status}" rather than active.`,
+    };
+  }
+  return {
+    subscriberType: subscriberTypeForRegistryEntry(type, number),
+    companyNumber: number,
+    registeredName: title,
+    status,
+    companyType: result.data.type ?? null,
+    reason: `Its own website gives company number ${number}; the Companies House register confirms "${title}", an active ${result.data.type}.`,
+  };
+}
+
+/** Pages a UK company's registered number is usually printed on (the footer of each). */
+const IDENTITY_PATHS = ["/", "/contact", "/about"];
+
+/**
+ * The company number a company publishes on its own site, read politely
+ * (robots.txt, SSRF-guarded fetcher, at most three pages). Null when none is
+ * stated. See `company-number.ts` for why this replaces a name search for a
+ * company Google Places found.
+ */
+async function companyNumberFromWebsite(domain: string): Promise<string | null> {
+  const robotsResult = await safeFetchText(`https://${domain}/robots.txt`);
+  const robots = robotsResult.ok ? parseRobots(robotsResult.body) : { allow: [], disallow: [], sitemaps: [] };
+  for (const path of IDENTITY_PATHS) {
+    if (!isPathAllowed(robots, path)) continue;
+    const page = await safeFetchText(`https://${domain}${path}`);
+    if (!page.ok || !page.body) continue;
+    // Not stripHtml: that caps the text at 30k characters, and the number is
+    // in the footer, at the very end of a long page.
+    const text = page.body
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&");
+    const [number] = companyNumbersFromText(text);
+    if (number) return number;
+  }
+  return null;
+}
+
 /**
  * Enriches companies with their register identity.
  *
@@ -209,9 +289,18 @@ async function enrichCompanies(input: {
   const startedAt = Date.now();
 
   for (const company of input.companies) {
-    if (!company.name) continue;
+    if (!company.name && !company.domain) continue;
 
-    const verdict = await lookupCompany(company.name);
+    // A Places company is still named by its domain, which no register entry
+    // is ever called: read the number the company prints on its own website
+    // and look that up instead. A real trading name is searched as before.
+    let verdict = UNRESOLVED;
+    if (company.domain && isDomainPlaceholderName(company.name, company.domain)) {
+      const number = await companyNumberFromWebsite(company.domain);
+      if (number) verdict = await lookupCompanyByNumber(number);
+    } else if (company.name) {
+      verdict = await lookupCompany(company.name);
+    }
     if (!verdict.companyNumber) continue;
 
     records.push({

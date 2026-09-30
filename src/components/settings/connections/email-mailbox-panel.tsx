@@ -261,7 +261,7 @@ export function EmailMailboxPanel({
   const presetNote = MAILBOX_PRESETS.find((entry) => entry.id === preset)?.note;
 
   return (
-    <Card>
+    <Card id="mailbox" className="scroll-mt-24">
       <CardHeader>
         <SectionHeader
           icon={Mail}

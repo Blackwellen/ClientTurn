@@ -52,6 +52,8 @@ export const OBSERVABILITY_EVENTS = [
   // push alerts and their failures (src/lib/ops/alerts.ts)
   "ops.alert",
   "ops.error",
+  // the /contact-sales notification email (skipped or failed; the enquiry itself is already recorded)
+  "marketing.enquiry_notify",
 ] as const;
 
 export type ObservabilityEvent = (typeof OBSERVABILITY_EVENTS)[number];

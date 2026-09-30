@@ -6,13 +6,14 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Label, Textarea } from "@/components/ui/form";
 import { useAdminAction } from "@/components/admin/use-admin-action";
-import { formatRelative } from "@/lib/dates";
+
 import { formatNumber } from "@/lib/admin/format";
 import {
   pauseWorkspaceLinkedInAssist,
   resumeWorkspaceLinkedInAssist,
 } from "@/lib/admin/support-signals-actions";
 import type { SignalLoad, SupportSignals } from "@/lib/admin/support-signals-types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 /**
  * The support drawer's read-only signals for the 2026-09-28 features. The
@@ -112,7 +113,7 @@ function LinkedInBlock({ businessId, load }: { businessId: string; load: Support
           <>
             {data.hold && (
               <p role="status" className="mb-2 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-[12px] text-warning-700">
-                Paused by support {formatRelative(data.hold.heldAt, { style: "ago" })}: {data.hold.reason}
+                Paused by support <RelativeTime value={data.hold.heldAt} options={{ style: "ago" }} />: {data.hold.reason}
               </p>
             )}
             <dl>

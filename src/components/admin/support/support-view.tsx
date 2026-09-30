@@ -16,7 +16,7 @@ import { useAdminParams } from "@/components/admin/use-admin-params";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { cn } from "@/lib/cn";
 import { titleise } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+
 import {
   QUEUE_LABELS,
   SUPPORT_QUEUES,
@@ -30,6 +30,8 @@ import {
   replyToTicket,
   setTicketStatus,
 } from "@/lib/admin/support-actions";
+import { RelativeTime } from "@/components/admin/relative-time";
+import { formatRelative } from "@/lib/dates";
 
 /**
  * Admin → Support (V4 §39).
@@ -254,7 +256,7 @@ function TicketListItem({
             </Badge>
           )}
           <span className="text-[11.5px] text-content-subtle">
-            {titleise(ticket.category)} · {formatRelative(ticket.updatedAt, { style: "ago" })}
+            {titleise(ticket.category)} · <RelativeTime value={ticket.updatedAt} options={{ style: "ago" }} />
           </span>
         </div>
       </button>
@@ -350,7 +352,9 @@ function TicketThread({
             {customer.plan && (
               <span>
                 {titleise(customer.plan)}
-                {customer.status && customer.status !== "active"
+                {/* "Trial · Trialing" said the same thing twice. */}
+                {customer.status &&
+                !["active", "trialing"].includes(customer.status.toLowerCase())
                   ? ` · ${titleise(customer.status)}`
                   : ""}
               </span>
@@ -393,7 +397,7 @@ function TicketThread({
                     ? (message.authorName ?? "Customer")
                     : (message.authorName ?? "ClientTurn support")}
                   {" · "}
-                  {formatRelative(message.createdAt, { style: "ago" })}
+                  <RelativeTime value={message.createdAt} options={{ style: "ago" }} />
                   {message.channel === "EMAIL" && " · by email"}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-[13px] text-content">
@@ -442,7 +446,7 @@ function TicketThread({
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11.5px] text-content-subtle">
               {mode === "reply" ? (
-                "Stored on the ticket and delivered by the mail worker."
+                "The customer sees this reply on their ticket in the app. No email is sent from here."
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-warning-700">
                   <Lock className="size-3.5" aria-hidden />
@@ -475,7 +479,7 @@ function TicketThread({
               <li key={note.id} className="px-4 py-3 sm:px-5">
                 <div className="flex items-center gap-2">
                   <span className="text-[11.5px] text-content-subtle">
-                    {formatRelative(note.createdAt, { style: "ago" })}
+                    <RelativeTime value={note.createdAt} options={{ style: "ago" }} />
                   </span>
                   {note.isAiDraft && (
                     <Badge tone="purple" dense>

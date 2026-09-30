@@ -22,6 +22,19 @@ const KIND_ICON = {
   workspace_health: { icon: CircleAlert, className: "text-danger-600" },
 } as const;
 
+/**
+ * "View all" goes to the Customers filter that matches what is listed: it
+ * used to open the past-due filter even when the only items were broken
+ * connections, which showed an empty list.
+ */
+function viewAllHref(items: ActionRequiredRow[]): string {
+  if (items.some((row) => row.kind === "payment_failed")) return "/admin/customers?filter=past_due";
+  if (items.some((row) => row.kind === "integration_error" || row.kind === "workspace_health")) {
+    return "/admin/customers?filter=connection_issue";
+  }
+  return "/admin/customers";
+}
+
 export function ActionRequiredPanel({ items }: { items: ActionRequiredRow[] }) {
   return (
     <Panel
@@ -29,7 +42,7 @@ export function ActionRequiredPanel({ items }: { items: ActionRequiredRow[] }) {
       tone="warning"
       title="Action required"
       description="Items that need your attention."
-      action={<PanelLink href="/admin/customers?filter=past_due">View all</PanelLink>}
+      action={<PanelLink href={viewAllHref(items)}>View all</PanelLink>}
     >
       {items.length === 0 ? (
         <PanelEmpty>Nothing needs your attention right now.</PanelEmpty>

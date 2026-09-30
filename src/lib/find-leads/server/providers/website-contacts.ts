@@ -3,6 +3,7 @@ import { safeFetchText } from "@/lib/security/safe-fetch";
 import { runTask } from "@/lib/ai/model-router";
 import type { WebsiteContactsResult } from "@/lib/ai/schemas";
 import { normaliseEmail } from "@/lib/prospects/dedupe";
+import { isPathAllowed, parseRobots, type RobotsRules } from "../../website-signals";
 import {
   type CompanyCandidate,
   type ContactCandidate,
@@ -64,6 +65,9 @@ const CONTACT_PATHS = [
 /** Bounded per domain: this runs across every surviving company in a run. */
 const PAGES_PER_DOMAIN = 3;
 
+/** Sites read at once. Each still gets robots.txt first and at most PAGES_PER_DOMAIN pages. */
+const CONCURRENT_SITES = 4;
+
 /** Enough to hold a team page; far short of a document that would cost real tokens. */
 const MAX_CHARS_PER_PAGE = 12_000;
 
@@ -91,6 +95,11 @@ function toText(html: string): string {
     .slice(0, MAX_CHARS_PER_PAGE);
 }
 
+async function readRobots(domain: string): Promise<RobotsRules> {
+  const result = await safeFetchText(`https://${domain}/robots.txt`);
+  return result.ok ? parseRobots(result.body) : { allow: [], disallow: [], sitemaps: [] };
+}
+
 async function findContacts(input: {
   companies: CompanyCandidate[];
   roles: string[];
@@ -104,17 +113,24 @@ async function findContacts(input: {
     return { ok: true, records: [], costMinor: 0, cursor: null, latencyMs: 0, errorCode: null };
   }
 
+  const businessId = input.businessId;
   const records: ContactCandidate[] = [];
   const startedAt = Date.now();
 
-  for (const company of input.companies) {
-    if (records.length >= input.limit) break;
-    if (!company.domain) continue;
+  const one = async (company: CompanyCandidate): Promise<ContactCandidate[]> => {
+    const found: ContactCandidate[] = [];
+    if (!company.domain) return found;
 
     const pages: string[] = [];
+    // The header comment has always promised a robots-respecting fetch, and
+    // this adapter never read robots.txt (2026-09-29): a site that disallows
+    // /team was read anyway. Same rule as website-intent: no robots.txt, or
+    // an unreadable one, is permission; a Disallow for us or for * is not.
+    const robots = await readRobots(company.domain);
 
     for (const path of CONTACT_PATHS) {
       if (pages.length >= PAGES_PER_DOMAIN) break;
+      if (!isPathAllowed(robots, path)) continue;
 
       const result = await safeFetchText(`https://${company.domain}${path}`);
       // A missing page is the normal case -- most sites have two of these seven
@@ -126,13 +142,13 @@ async function findContacts(input: {
       if (text.length > 200) pages.push(`Page ${path}:\n${text}`);
     }
 
-    if (pages.length === 0) continue;
+    if (pages.length === 0) return found;
 
     const extraction = await runTask<WebsiteContactsResult>({
       taskType: "website_contacts",
-      businessId: input.businessId,
+      businessId,
       // Stable per company per run window, so a retried run is charged once.
-      idempotencyKey: `website-contacts:${input.businessId}:${company.domain}`,
+      idempotencyKey: `website-contacts:${businessId}:${company.domain}`,
       maxOutputTokens: 900,
       context: [
         `Company: ${company.name}`,
@@ -149,7 +165,7 @@ async function findContacts(input: {
         .join("\n"),
     });
 
-    if (!extraction.data) continue;
+    if (!extraction.data) return found;
 
     for (const person of extraction.data.people.slice(0, MAX_CONTACTS_PER_COMPANY)) {
       if (!person.first_name && !person.last_name) continue;
@@ -166,7 +182,7 @@ async function findContacts(input: {
       const sameDomain =
         email !== null && email.endsWith(`@${company.domain.toLowerCase()}`);
 
-      records.push({
+      found.push({
         externalId: null,
         firstName: person.first_name?.trim() || null,
         lastName: person.last_name?.trim() || null,
@@ -177,9 +193,29 @@ async function findContacts(input: {
         companyDomain: company.domain,
       });
 
-      if (records.length >= input.limit) break;
     }
-  }
+    return found;
+  };
+
+  // Four companies at a time (2026-09-30). Serial, a real run of 31 companies
+  // spent 20+ minutes here: each site is up to eight 10-second fetches. Still
+  // polite: robots.txt first, at most PAGES_PER_DOMAIN pages, one site per
+  // worker. Results keep the companies' order; no new site is started once
+  // enough contacts are in hand.
+  const results: ContactCandidate[][] = new Array(input.companies.length);
+  let next = 0;
+  let collected = 0;
+  const worker = async () => {
+    while (next < input.companies.length && collected < input.limit) {
+      const index = next++;
+      const found = await one(input.companies[index]);
+      results[index] = found;
+      collected += found.length;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENT_SITES, input.companies.length) }, worker));
+  for (const found of results) if (found) records.push(...found);
+  records.splice(input.limit);
 
   return {
     ok: true,

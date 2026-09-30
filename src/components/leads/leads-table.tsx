@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatPhoneDisplay } from "@/lib/phone-display";
 import {
   AlertCircle,
   ArrowDown,
@@ -215,7 +216,7 @@ export function LeadsTable({
                         )}
                       </div>
                       <p className="truncate text-[11px] text-content-muted">
-                        {[row.email, row.phone].filter(Boolean).join(" • ") ||
+                        {[row.email, formatPhoneDisplay(row.phone)].filter(Boolean).join(" • ") ||
                           "No contact details"}
                       </p>
                       {row.postcode && (

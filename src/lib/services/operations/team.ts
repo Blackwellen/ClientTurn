@@ -119,25 +119,40 @@ async function deliverInvite(input: {
   invitedAt: Date;
 }): Promise<{ userId: string | null; emailed: boolean }> {
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(input.email, {
-    redirectTo: `${serverEnv.siteUrl}/login`,
-  });
+  const redirectTo = `${serverEnv.siteUrl}/login`;
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(input.email, { redirectTo });
   if (!error && data?.user) return { userId: data.user.id, emailed: true };
-  if (!input.hasAccount) return { userId: null, emailed: false };
+
+  // Supabase's own mailer refused (its rate limit, or the address). For a new
+  // address, create the same one-time invite link without sending anything and
+  // email it through Resend instead, so the invite still arrives.
+  let userId: string | null = null;
+  let acceptLink: string | undefined;
+  if (!input.hasAccount) {
+    const { data: link, error: linkError } = await admin.auth.admin.generateLink({
+      type: "invite",
+      email: input.email,
+      options: { redirectTo },
+    });
+    if (linkError || !link?.user || !link.properties?.action_link) return { userId: null, emailed: false };
+    userId = link.user.id;
+    acceptLink = link.properties.action_link;
+  }
 
   const { data: business, error: businessError } = await admin
     .from("businesses")
     .select("name")
     .eq("id", input.businessId)
     .maybeSingle();
-  if (businessError) return { userId: null, emailed: false };
+  if (businessError) return { userId, emailed: false };
   const emailed = await sendExistingAccountInvite({
     to: input.email,
     workspaceName: business?.name ?? "a workspace",
     role: input.role,
     invitedAt: input.invitedAt,
+    acceptLink,
   });
-  return { userId: null, emailed };
+  return { userId, emailed };
 }
 
 const NOT_EMAILED_WARNING = {

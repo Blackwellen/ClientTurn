@@ -166,6 +166,37 @@ function rowFromRecord(r: ProvisioningRecord): Record<string, unknown> {
 }
 
 /** The workspace's live number record (sender.ts WorkspaceNumber), or null. */
+/**
+ * The next step a call agreed ("Call back Wed 30 Sept, 18:00: after work"),
+ * as a note on the lead a person sees on the lead page.
+ *
+ * It used to be written to `leads.next_action`, which since 0134 holds only
+ * the engine's next-best-action code (a CHECK constraint): every write was
+ * rejected and the result never read, so a call-back agreed on a call was
+ * recorded nowhere (live wiring harness, 2026-09-29). The same step is not
+ * noted twice in a row (post-call runs on call_ended and call_analyzed).
+ */
+export async function recordLeadNextStep(businessId: string, leadId: string, step: string): Promise<boolean> {
+  const body = `Next step from an AI call: ${step}`.replace(/\s+/g, " ").trim().slice(0, 1000);
+  const client = db();
+  const { data: last } = await client
+    .from("lead_notes")
+    .select("body")
+    .eq("business_id", businessId)
+    .eq("lead_id", leadId)
+    .eq("author_kind", "AGENT")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if ((last as { body?: string } | null)?.body === body) return false;
+  const { error } = await client.from("lead_notes").insert({ business_id: businessId, lead_id: leadId, body, author_kind: "AGENT" });
+  if (error) {
+    console.error("[voice] next step note failed", { leadId, message: error.message });
+    return false;
+  }
+  return true;
+}
+
 export async function readWorkspaceNumber(businessId: string): Promise<(WorkspaceNumber & { id: string; needsAttention: boolean; rejectionReason: string | null; activatedAt: string | null; releaseAfter: string | null }) | null> {
   const { data, error } = await db()
     .from("business_numbers")
@@ -687,7 +718,7 @@ const repo: VoiceRepo = {
   },
 
   async setLeadNextAction(input) {
-    await db().from("leads").update({ next_action: input.nextAction.slice(0, 500) }).eq("business_id", input.businessId).eq("id", input.leadId);
+    await recordLeadNextStep(input.businessId, input.leadId, input.nextAction);
   },
 
   async loadNumberRecord(businessId) {

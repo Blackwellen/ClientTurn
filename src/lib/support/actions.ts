@@ -4,10 +4,12 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import {
   assertUploadAllowed,
   createUploadUrl,
   createDownloadUrl,
+  isInlineSafeImageKey,
   objectKey,
 } from "@/lib/storage/r2";
 import { getStatusSummary } from "@/lib/status/service";
@@ -119,6 +121,13 @@ export async function createAttachmentUploadUrl(
 
   const workspace = await requireWorkspace();
 
+  // Each call mints a presigned 10MB PUT into our bucket, so it is bounded
+  // per user rather than left open to a script.
+  const limit = await checkRateLimit("support:upload", workspace.userId);
+  if (!limit.allowed) {
+    return fail("That is a lot of uploads. Try again in a little while.");
+  }
+
   try {
     assertUploadAllowed("support", parsed.data.contentType, parsed.data.size);
   } catch {
@@ -167,7 +176,14 @@ export async function getAttachmentUrl(
   );
   if (!ticket) return fail("That attachment could not be found.");
 
-  return ok({ url: await createDownloadUrl(data.storage_key) });
+  // No scanner runs yet, so PENDING is served too. What keeps that safe is
+  // the disposition: anything but a raster image downloads rather than
+  // rendering on the storage origin.
+  return ok({
+    url: await createDownloadUrl(data.storage_key, 300, {
+      forceDownload: !isInlineSafeImageKey(data.storage_key),
+    }),
+  });
 }
 
 /** Links uploaded objects to the message that carries them. */
@@ -191,8 +207,9 @@ async function attachFiles(input: {
       filename: key.split("-").slice(1).join("-") || key.split("/").pop() || "attachment",
       storage_key: key,
       uploaded_by: input.userId,
-      // PENDING until the platform's scanner clears it; the reader refuses to
-      // hand out a URL before then.
+      // PENDING until a scanner clears it. No scanner exists yet (surface QA
+      // 2026-09-30): the reader refuses BLOCKED/FAILED and serves anything
+      // that is not a raster image as a download, never inline.
       scan_state: "PENDING" as const,
     }));
 

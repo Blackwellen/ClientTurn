@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatPhoneDisplay } from "@/lib/phone-display";
 import { AlertCircle, AlertTriangle, Mail, MoreVertical, Phone } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { StatusBadge } from "@/components/ui/badge";
@@ -85,7 +86,12 @@ export function LeadCard({
             aria-label="Needs attention"
           />
         )}
-        <h3 className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-6 text-content">
+        {/* Two lines before clipping: a status badge and the menu left
+            "Tomasz ..." and "Marcus Bella..." in the four-column grid. */}
+        <h3
+          className="line-clamp-2 min-w-0 flex-1 break-words text-[16px] font-semibold leading-6 text-content"
+          title={name}
+        >
           {name}
         </h3>
         {/* Dense and sentence case, as everywhere else the lead status shows:
@@ -125,7 +131,7 @@ export function LeadCard({
           <dt className="sr-only">Phone</dt>
           <Phone className="size-3.5 shrink-0 text-content-subtle" aria-hidden />
           <dd className="truncate text-content-secondary">
-            {row.phone ?? <span className="text-content-subtle">Not provided</span>}
+            {row.phone ? formatPhoneDisplay(row.phone) : <span className="text-content-subtle">Not provided</span>}
           </dd>
         </div>
         <div className="flex min-w-0 items-center gap-2">

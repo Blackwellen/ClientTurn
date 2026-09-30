@@ -34,3 +34,34 @@ export function monthlyRevenue(input: { mrrMinor: number | string | null | undef
   const list = listMonthlyPrice(input.plan, input.interval);
   return list > 0 ? { gbp: list, source: "list_price" } : { gbp: 0, source: "none" };
 }
+
+/**
+ * What one subscription contributes to MRR: the ONE definition every admin
+ * surface uses (owner, 2026-09-30).
+ *
+ *   - Only subscriptions that bill: status ACTIVE or PAST_DUE (past due is
+ *     still owed recurring revenue until it churns). Trials and cancelled
+ *     subscriptions contribute nothing.
+ *   - Only subscriptions actually charged through Stripe. A workspace with no
+ *     Stripe subscription (the owner's own, demos, comped or manually granted
+ *     plans) is "complimentary": it is on a plan but pays nothing, so it
+ *     counts £0. Filling in its list price is what inflated admin MRR.
+ *   - The amount is what Stripe bills a month (`mrr_minor`, from paid
+ *     invoices: after discounts, before VAT, annual / 12). Only a Stripe-billed
+ *     subscription with no paid invoice yet (its first period) falls back to
+ *     list price, marked as such.
+ */
+export type MrrContributionSource = MrrSource | "complimentary" | "not_billing";
+
+export function mrrContribution(input: {
+  status: string;
+  stripeSubscriptionId: string | null | undefined;
+  mrrMinor: number | string | null | undefined;
+  plan: string;
+  interval: string | null;
+}): { gbp: number; source: MrrContributionSource } {
+  if (input.status !== "ACTIVE" && input.status !== "PAST_DUE") return { gbp: 0, source: "not_billing" };
+  if (!input.stripeSubscriptionId) return { gbp: 0, source: "complimentary" };
+  const revenue = monthlyRevenue({ mrrMinor: input.mrrMinor, plan: input.plan, interval: input.interval });
+  return { gbp: Math.round(revenue.gbp * 100) / 100, source: revenue.source };
+}

@@ -25,9 +25,14 @@ export type UnsubscribeResult =
   | { ok: true; business: string }
   | { ok: false; reason: "invalid" | "error" };
 
+/**
+ * `unsubscribed` is whether this record has already opted out. The page reads
+ * it so `?status=done` can only show "You've been unsubscribed" when that is
+ * true (surface QA 2026-09-30: the query string alone used to decide).
+ */
 type Subject =
-  | { kind: "lead"; id: string; businessId: string; email: string | null; business: string }
-  | { kind: "prospect"; id: string; businessId: string; email: string | null; business: string };
+  | { kind: "lead"; id: string; businessId: string; email: string | null; business: string; unsubscribed: boolean }
+  | { kind: "prospect"; id: string; businessId: string; email: string | null; business: string; unsubscribed: boolean };
 
 function businessName(value: unknown): string {
   const business = value as { name?: string } | null;
@@ -52,7 +57,7 @@ export async function findUnsubscribeSubject(
   // whole query, so the selected columns stay fully typed.
   const { data: lead, error: leadError } = await admin
     .from("leads")
-    .select("id, business_id, email, businesses ( name )")
+    .select("id, business_id, email, opted_out, businesses ( name )")
     .eq("unsubscribe_token" as "id", token)
     .maybeSingle();
   if (leadError) return "error";
@@ -64,6 +69,7 @@ export async function findUnsubscribeSubject(
       businessId: lead.business_id,
       email: lead.email,
       business: businessName(lead.businesses),
+      unsubscribed: lead.opted_out === true,
     };
   }
 
@@ -71,7 +77,7 @@ export async function findUnsubscribeSubject(
   // same one-click unsubscribe, and it has to actually work.
   const { data: prospect, error: prospectError } = await admin
     .from("prospects")
-    .select("id, business_id, email, businesses ( name )")
+    .select("id, business_id, email, status, businesses ( name )")
     .eq("unsubscribe_token" as "id", token)
     .maybeSingle();
   if (prospectError) return "error";
@@ -83,6 +89,7 @@ export async function findUnsubscribeSubject(
     businessId: prospect.business_id,
     email: prospect.email,
     business: businessName(prospect.businesses),
+    unsubscribed: prospect.status === "UNSUBSCRIBED",
   };
 }
 

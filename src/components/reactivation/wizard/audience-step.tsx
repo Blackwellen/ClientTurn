@@ -412,11 +412,11 @@ export function AudienceStep({
                     // Importing a file is itself the choice of source, so the
                     // card selects rather than making the user click twice.
                     patch({ audienceSource: "csv", csvUpload: result });
-                    patchFilters({ sourceId: result.sourceId, olderThanDays: 1 });
+                    patchFilters({ sourceId: result.sourceId, importedList: true });
                   }}
                   onRemoved={() => {
                     patch({ csvUpload: null });
-                    patchFilters({ sourceId: undefined });
+                    patchFilters({ sourceId: undefined, importedList: false });
                   }}
                   onBusyChange={onCsvBusyChange}
                 />
@@ -448,6 +448,9 @@ export function AudienceStep({
             description="Narrow down your audience with filters. Only leads that match all selected criteria will be included."
           >
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {/* An imported list is used whatever its age: its contacts are
+                  created at import, so an age filter would empty it. */}
+              {!filters.importedList && (
               <FilterField icon={Clock} label="Older than" htmlFor="filter-older">
                 {/* A short list of sensible windows rather than a free number:
                     the answer is always "a few months", and a typed 4000 only
@@ -470,7 +473,7 @@ export function AudienceStep({
                     (option) => option.value === filters.olderThanDays,
                   ) ? null : (
                     <option value={filters.olderThanDays}>
-                      {filters.olderThanDays} days
+                      {filters.olderThanDays} {filters.olderThanDays === 1 ? "day" : "days"}
                     </option>
                   )}
                   {LEAD_AGE_OPTIONS.map((option) => (
@@ -480,6 +483,7 @@ export function AudienceStep({
                   ))}
                 </Select>
               </FilterField>
+              )}
 
               <FilterField
                 icon={BarChart3}

@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { REACTIVATION_VIEW_COOKIE } from "./view-cookie";
 
-const VIEW_KEY = "clientturn.reactivation.view";
+const VIEW_KEY = REACTIVATION_VIEW_COOKIE;
 const VIEW_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /**
@@ -116,4 +117,3 @@ function persistView(view: string) {
   }
 }
 
-export const REACTIVATION_VIEW_COOKIE = VIEW_KEY;

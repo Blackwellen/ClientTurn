@@ -107,6 +107,29 @@ export function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? titleise(provider);
 }
 
+/**
+ * One Action-required line for every unhealthy connection a workspace has,
+ * naming each provider. It used to show only the first connection's raw error
+ * ("Token has been expired or revoked.") with no provider, so an operator
+ * could not tell which of four broken connections it meant, and the top bar
+ * counted four items while the Overview listed one.
+ */
+export function integrationActionDetail(
+  rows: { provider_type: string; status: string; last_error_message: string | null }[],
+): string {
+  const names = [...new Set(rows.map((row) => providerLabel(row.provider_type)))];
+  const list =
+    names.length <= 1
+      ? (names[0] ?? "A connection")
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const allDisconnected = rows.every((row) => row.status === "DISCONNECTED");
+  const verb = allDisconnected
+    ? names.length > 1 ? "are disconnected" : "is disconnected"
+    : names.length > 1 ? "need reconnecting" : "needs reconnecting";
+  const reason = rows.find((row) => row.last_error_message)?.last_error_message?.trim();
+  return reason ? `${list} ${verb}: ${reason}` : `${list} ${verb}`;
+}
+
 const JOB_LABELS: Record<string, string> = {
   "lead.process": "Process lead",
   "lead_source.poll": "Sync leads",
@@ -122,12 +145,38 @@ const JOB_LABELS: Record<string, string> = {
   "notification.slack": "Slack notification",
   "notification.slack_digest": "Slack daily digest",
   "slack.interaction": "Slack button click",
+  "whatsapp.template_sync": "WhatsApp template sync",
   "usage.aggregate": "Usage aggregation",
   "retention.cleanup": "Retention cleanup",
   "cost.rollup_daily": "Daily cost rollup",
   "cost.rollup_monthly": "Monthly cost rollup",
   "economics.margin_check": "Margin check",
   "crm.push": "CRM sync",
+  "crm.pull": "CRM import",
+  "reengage.sweep": "Re-engagement sweep",
+  "reengage.trigger": "Re-engagement trigger",
+  "social.tick": "Social scheduler",
+  "social.advance": "Social post step",
+  "outreach.tick": "Outreach scheduler",
+  "outreach.dispatch": "Outreach send",
+  "outreach.optimize": "Outreach optimiser",
+  "intent.sweep": "Intent sweep",
+  "voice.reconcile": "Voice reconcile",
+  "voice.dial": "Voice call",
+  "voice.post_call": "Voice post-call",
+  "voice.webhook_ingest": "Voice webhook",
+  "quote.render_pdf": "Quote PDF",
+  "quote.nudge": "Quote reminder",
+  "quote.expire": "Quote expiry",
+  "event.dispatch": "Domain event dispatch",
+  "webhook.dispatch": "Outgoing webhook",
+  "email.sender_health": "Sender health check",
+  "domain.health_check": "Domain health check",
+  "recurring_search.tick": "Saved search refresh",
+  "business.analyse": "Business analysis",
+  "affiliate.ledger": "Affiliate ledger",
+  "billing.daily": "Daily billing check",
+  "billing.workspace_deletion": "Workspace deletion",
 };
 
 export function jobLabel(type: string): string {
@@ -135,8 +184,12 @@ export function jobLabel(type: string): string {
 }
 
 export function titleise(value: string): string {
-  const spaced = value.replace(/[._-]+/g, " ").trim();
+  let spaced = value.replace(/[._-]+/g, " ").trim();
   if (!spaced) return value;
+  // Enum values arrive upper-case ("WAITING_CUSTOMER", "TRIALING") and used
+  // to render as shouted text. Lower-case them first, but leave short
+  // acronyms ("SMS", "API") alone.
+  if (/^[A-Z0-9 ]+$/.test(spaced) && /[A-Z]{4,}/.test(spaced)) spaced = spaced.toLowerCase();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 

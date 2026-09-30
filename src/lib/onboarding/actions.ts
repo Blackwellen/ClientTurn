@@ -31,7 +31,13 @@ import {
 } from "@/lib/settings/actions";
 import { saveQuestion, deleteQuestion, saveRule } from "@/lib/qualification/actions";
 import { saveAutomationDraft, publishAutomation } from "@/lib/automations/actions";
-import { getMessagingProvider } from "@/lib/messaging/registry";
+import { sendFollowUpTest } from "@/lib/follow-up/actions";
+import {
+  isPermittedTestRecipient,
+  normaliseTestDestination,
+  TEST_RECIPIENT_ERROR,
+} from "@/lib/follow-up/test-send-recipients";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { normalisePhone } from "@/lib/messaging/types";
 import { getIntegrationsView } from "@/lib/integrations/queries";
 
@@ -314,6 +320,9 @@ export async function sendFollowUpTestMessage(input: {
   channel: "sms" | "whatsapp";
   message: string;
 }): Promise<SendTestMessageResult> {
+  const channel = z.enum(["sms", "whatsapp"]).safeParse(input?.channel);
+  if (!channel.success) return { ok: false, error: "Choose SMS or WhatsApp." };
+
   const workspace = await workspaceOrFail();
   if (!workspace) return { ok: false, error: "You do not have permission to do this." };
 
@@ -332,20 +341,19 @@ export async function sendFollowUpTestMessage(input: {
     };
   }
 
-  const message = input.message.trim().slice(0, 500);
-  if (!message) return { ok: false, error: "Write a message before sending a test." };
-
-  const provider = getMessagingProvider();
-  const result = await provider.send({
-    businessId: workspace.businessId,
+  // The same path as the Follow-Up page's test send, rather than a second
+  // copy of it. This one used to call the provider directly: no rate limit
+  // (a real carrier, real cost, and the number is whatever the owner typed in
+  // step 1), no entitlement or trial allowance check, no suppression check,
+  // merge fields sent unrendered as literal {{first_name}}, and provider
+  // errors shown verbatim (surface QA 2026-09-30).
+  const result = await sendFollowUpTest({
+    channel: channel.data,
     to,
-    body: message,
-    sendKey: `onboarding-test-message:${workspace.businessId}:${Date.now()}`,
-    channel: input.channel,
+    body: typeof input?.message === "string" ? input.message.slice(0, 1200) : "",
   });
-
-  if (!result.ok) return { ok: false, error: result.errorMessage };
-  return { ok: true, provider: result.provider };
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, provider: channel.data === "whatsapp" ? "WhatsApp" : "SMS" };
 }
 
 /* ------------------------------------------------------------- step 4 --- */
@@ -465,13 +473,68 @@ export type TestLeadResult =
   | { ok: false; error: string };
 
 /** Runs a synthetic lead through the real pipeline so setup is proven, not assumed. */
+const testLeadSchema = z
+  .object({
+    name: z.string().trim().max(80).optional(),
+    phone: z.string().trim().max(30).optional(),
+    serviceId: z.union([z.uuid(), z.literal("")]).optional(),
+    message: z.string().trim().max(500).optional(),
+  })
+  .optional();
+
 export async function runTestLead(
-  overrides?: TestLeadOverrides,
+  input?: TestLeadOverrides,
 ): Promise<TestLeadResult> {
+  const parsedInput = testLeadSchema.safeParse(input);
+  if (!parsedInput.success) return { ok: false, error: "Check the test lead details and try again." };
+  const overrides: TestLeadOverrides | undefined = parsedInput.data
+    ? { ...parsedInput.data, serviceId: parsedInput.data.serviceId || undefined }
+    : undefined;
+
   const workspace = await workspaceOrFail();
   if (!workspace) return { ok: false, error: "You do not have permission to set this up." };
 
+  // The test lead runs the real pipeline, so its phone gets the real opening
+  // text and follow-up sequence. It used to accept any number typed into the
+  // form: a way to text a stranger from the workspace's sender, outside any
+  // consent record. It now reaches only the workspace itself, the same rule
+  // as the Follow-Up test send (surface QA 2026-09-30). Leaving the field
+  // blank uses a reserved Ofcom drama number that belongs to nobody.
+  const limit = await checkRateLimit("followup:test", workspace.businessId);
+  if (!limit.allowed) {
+    return {
+      ok: false,
+      error: `Too many test leads. Try again in ${Math.max(1, Math.ceil(limit.retryAfterSeconds / 60))} minute(s).`,
+    };
+  }
+
   const admin = createAdminClient();
+  const typedPhone = overrides?.phone?.trim();
+  if (typedPhone) {
+    const destination = normaliseTestDestination("sms", typedPhone);
+    if (!destination) return { ok: false, error: "Enter a valid phone number, or leave it blank." };
+    const [{ data: business }, { data: members }] = await Promise.all([
+      admin.from("businesses").select("phone").eq("id", workspace.businessId).maybeSingle(),
+      admin
+        .from("business_members")
+        .select("user_id")
+        .eq("business_id", workspace.businessId)
+        .eq("status", "active"),
+    ]);
+    const memberIds = (members ?? []).map((member) => member.user_id);
+    const { data: memberProfiles } = memberIds.length
+      ? await admin.from("profiles").select("phone, email").in("id", memberIds)
+      : { data: [] };
+    if (
+      !isPermittedTestRecipient("sms", destination, {
+        businessPhone: business?.phone ?? null,
+        members: memberProfiles ?? [],
+      })
+    ) {
+      return { ok: false, error: TEST_RECIPIENT_ERROR };
+    }
+  }
+
   const { data: profile } = await admin
     .from("profiles")
     .select("first_name")
@@ -583,7 +646,7 @@ export async function prefillFromWebsite(raw: unknown): Promise<PrefillResult> {
   const workspace = await workspaceOrFail();
   if (!workspace) return { ok: false, error: "You do not have permission to set this up." };
 
-  const page = await safeFetchText(website);
+  const page = await safeFetchText(website, { truncate: true });
   if (!page.ok) {
     return {
       ok: false,

@@ -26,6 +26,7 @@ const STATE_META: Record<
     icon: React.ComponentType<{ className?: string }>;
     chip: string;
     dot: string;
+    iconClass: string;
   }
 > = {
   READY: {
@@ -33,24 +34,28 @@ const STATE_META: Record<
     icon: ShieldCheck,
     chip: "border-success-100 bg-success-50 text-success-700",
     dot: "bg-success-500",
+    iconClass: "text-success-600",
   },
   ATTENTION: {
     label: "Needs attention",
     icon: AlertTriangle,
     chip: "border-warning-100 bg-warning-50 text-warning-700",
     dot: "bg-warning-500",
+    iconClass: "text-warning-600",
   },
   BLOCKED: {
     label: "Blocking",
     icon: OctagonX,
     chip: "border-danger-100 bg-danger-50 text-danger-700",
     dot: "bg-danger-500",
+    iconClass: "text-danger-600",
   },
   UNKNOWN: {
     label: "Not measurable here",
     icon: CircleHelp,
     chip: "border-line bg-surface-sunken text-content-secondary",
     dot: "bg-content-subtle",
+    iconClass: "text-content-subtle",
   },
 };
 
@@ -63,6 +68,7 @@ export function SystemReadinessView({ report }: { report: ReadinessReport }) {
         icon={ShieldCheck}
         title="Release readiness"
         description="Measured from the running system each time this page loads. Nothing here is ticked by hand."
+        contentClassName="px-4 pb-4 sm:px-5"
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Tally label="Ready" value={summary.ready} tone="READY" />
@@ -129,7 +135,7 @@ function AreaRow({ area }: { area: ReadinessArea }) {
     <section className="rounded-xl border border-line bg-surface p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2.5">
-          <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-content-secondary" />
+          <Icon aria-hidden className={`mt-0.5 size-4 shrink-0 ${meta.iconClass}`} />
           <div className="min-w-0">
             <h3 className="text-[13.5px] font-semibold text-content">{area.label}</h3>
             <p className="mt-0.5 text-[12.5px] text-content-secondary">{area.detail}</p>

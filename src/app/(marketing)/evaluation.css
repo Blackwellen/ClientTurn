@@ -207,6 +207,7 @@
   container-type: inline-size;
 }
 
+.pub-cell h2,
 .pub-cell h3 {
   font-size: 1rem;
   font-weight: 600;

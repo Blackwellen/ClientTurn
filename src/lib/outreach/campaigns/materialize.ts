@@ -34,6 +34,11 @@ export type MaterializeOutcome = {
 export async function materializeAudience(input: {
   businessId: string;
   campaignId: string;
+  /**
+   * Only these prospects (a sourcing run's auto-contact enrolment). Absent =
+   * the campaign's whole audience, as the launch builds it.
+   */
+  onlyProspectIds?: string[];
 }): Promise<MaterializeOutcome> {
   const admin = createAdminClient();
   const empty: MaterializeOutcome = {
@@ -73,11 +78,14 @@ export async function materializeAudience(input: {
   const room = Math.max(0, (campaign?.prospects_per_run ?? 0) - enrolled.size);
   if (room === 0) return empty;
 
+  if (input.onlyProspectIds && input.onlyProspectIds.length === 0) return empty;
+
   const candidates = await loadCandidates({
     businessId: input.businessId,
     campaignId: input.campaignId,
     draft,
     limit: Math.min(BATCH, room) + enrolled.size,
+    onlyProspectIds: input.onlyProspectIds,
   });
 
   const fresh = candidates.filter((row) => !enrolled.has(row.id)).slice(0, Math.min(BATCH, room));
@@ -230,6 +238,7 @@ async function loadCandidates(input: {
   campaignId: string;
   draft: CampaignDraft;
   limit: number;
+  onlyProspectIds?: string[];
 }): Promise<Candidate[]> {
   const admin = createAdminClient();
   const { draft } = input;
@@ -253,6 +262,7 @@ async function loadCandidates(input: {
   // already working; a prospect being contacted twice at once is the fastest
   // way to burn a domain.
   query = query.or(`campaign_id.is.null,campaign_id.eq.${input.campaignId}`);
+  if (input.onlyProspectIds) query = query.in("id", input.onlyProspectIds);
 
   const { data } = await query;
 

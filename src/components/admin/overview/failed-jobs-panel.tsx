@@ -2,8 +2,9 @@ import * as React from "react";
 import Link from "next/link";
 import { ChevronRight, CircleAlert } from "lucide-react";
 import { Panel, PanelEmpty, PanelLink } from "@/components/admin/ui";
-import { formatRelative } from "@/lib/dates";
+
 import type { FailedJobRow } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
   return (
@@ -25,7 +26,7 @@ export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
           <table className="w-full table-fixed border-collapse">
             <thead>
               <tr className="border-y border-line-subtle bg-surface-sunken/60">
-                <th scope="col" className="h-8 w-[150px] px-5 text-left text-[11.5px] font-medium text-content-muted">
+                <th scope="col" className="h-8 w-[190px] px-5 text-left text-[11.5px] font-medium text-content-muted">
                   Job type
                 </th>
                 <th scope="col" className="h-8 w-[170px] px-3 text-left text-[11.5px] font-medium text-content-muted">
@@ -45,9 +46,10 @@ export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
             <tbody className="divide-y divide-line-subtle">
               {jobs.map((row) => (
                 <tr key={row.id} className="hover:bg-surface-hover">
-                  <td className="px-5 py-2">
+                  <td className="truncate px-5 py-2">
                     <Link
                       href={row.href}
+                      title={row.jobLabel}
                       className="text-[12.5px] font-medium whitespace-nowrap text-content hover:text-content-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-accent"
                     >
                       {row.jobLabel}
@@ -69,7 +71,7 @@ export function FailedJobsPanel({ jobs }: { jobs: FailedJobRow[] }) {
                     <span className="block truncate">{row.error}</span>
                   </td>
                   <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                    {formatRelative(row.occurredAt, { style: "ago" })}
+                    <RelativeTime value={row.occurredAt} options={{ style: "ago" }} />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <ChevronRight className="inline size-4 text-content-subtle" aria-hidden />

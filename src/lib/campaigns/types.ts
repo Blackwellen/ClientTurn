@@ -102,6 +102,12 @@ export const audienceFilterSchema = z.object({
     .min(1)
     .max(MAX_OLDER_THAN_DAYS)
     .default(DEFAULT_OLDER_THAN_DAYS),
+  /**
+   * The audience is a list imported for this campaign. Its contacts were
+   * created at import time, so a lead-age filter would exclude every one of
+   * them until the next day (surface QA 2026-09-30); age is not applied.
+   */
+  importedList: z.boolean().default(false),
   /** Only leads that have never replied to anything. */
   noReply: z.boolean().default(false),
   /** Only leads explicitly marked lost. */
@@ -121,6 +127,7 @@ export type AudienceFilter = z.infer<typeof audienceFilterSchema>;
 export const DEFAULT_AUDIENCE_FILTER: AudienceFilter = {
   statuses: [],
   olderThanDays: DEFAULT_OLDER_THAN_DAYS,
+  importedList: false,
   noReply: true,
   markedLost: false,
   notBooked: true,

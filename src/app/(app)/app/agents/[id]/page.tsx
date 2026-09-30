@@ -38,6 +38,7 @@ import { loadAgentOfferTarget, loadCatalogueOptions } from "@/lib/commercial/rul
 import { WHOLE_CATALOGUE } from "@/lib/agents/offer-target";
 import type { AgentOfferView } from "@/components/agents/agent-tabs";
 import { loadAgentVoiceAvailability } from "@/lib/agents/voice-calls-guard";
+import { paidEnrichmentEnabled } from "@/lib/find-leads/paid-enrichment";
 import { agentCallingScope } from "@/lib/agents/voice-calls";
 
 export const metadata: Metadata = { title: "Agent" };
@@ -151,7 +152,7 @@ export default async function AgentPage({
             <p className="text-[11.5px] uppercase tracking-wide text-content-muted">
               {agentTypeLabel(agent.agentType)}
             </p>
-            <h1 className="mt-0.5 truncate text-[24px] font-semibold tracking-[-0.02em] text-content">
+            <h1 className="mt-0.5 line-clamp-2 break-words text-[22px] font-semibold tracking-[-0.02em] text-content sm:truncate sm:text-[24px]">
               {agent.name}
             </h1>
             <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-content-muted">
@@ -194,7 +195,12 @@ export default async function AgentPage({
         <OverviewTab agent={agent} activity={activity} runCount={runs.length} />
       )}
       {tab === "leads" && <LeadsTab leads={leads} />}
-      {tab === "queue" && <QueueTab queue={queue} runs={runs} canDecideCalls={hasRole(workspace.role, "member")} />}
+      {tab === "queue" && <QueueTab
+          queue={queue}
+          runs={runs}
+          canDecideCalls={hasRole(workspace.role, "member")}
+          listsForReview={agent.autonomy !== "AUTO"}
+        />}
       {tab === "sources" && <SourcesTab sources={sources} />}
       {tab === "campaign" && <CampaignTab agent={agent} />}
       {tab === "activity" && <ActivityTab activity={activity} />}
@@ -206,6 +212,8 @@ export default async function AgentPage({
           plans={plans}
           offer={offer}
           voiceAvailability={voiceAvailability}
+          // Resolved conflict 7: the paid vendors behind this source are off.
+          unavailableSources={paidEnrichmentEnabled() ? [] : ["DATA_PROVIDER"]}
         />
       )}
     </div>

@@ -1,6 +1,8 @@
 import "server-only";
 import { unlockPlanLabel } from "@/lib/billing/plans";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/database.types";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import {
   PROVIDERS,
@@ -40,8 +42,14 @@ export function platformConfigured(provider: ProviderType) {
 
 export async function getIntegrationsView(
   businessId: string,
+  /**
+   * Defaults to the signed-in person's own (RLS) client. Admin -> Customers'
+   * read-only System check passes the service-role client, after its own
+   * platform-admin check, to see the same cards for one workspace.
+   */
+  options: { client?: SupabaseClient<Database> } = {},
 ): Promise<IntegrationsView> {
-  const supabase = await createClient();
+  const supabase = options.client ?? (await createClient());
 
   const [integrationsResult, objectsResult, entitlements] = await Promise.all([
     supabase

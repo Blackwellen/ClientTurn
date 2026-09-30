@@ -121,12 +121,14 @@ export async function assignLead(input: {
   if (userId) {
     const { data: member } = await admin
       .from("business_members")
-      .select("user_id")
+      .select("user_id, role")
       .eq("business_id", workspace.businessId)
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle();
     if (!member) return fail("That person is not a member of this workspace.");
+    // Viewers are read-only, so they can't own a lead.
+    if (member.role === "viewer") return fail("Viewers can't be assigned leads. Change their role in Settings, Team first.");
   }
 
   const lead = await loadLead(workspace, parsed.data.leadId);

@@ -2,6 +2,7 @@
 
 import { allowedNextStatuses } from "@/lib/leads/status-transitions";
 import * as React from "react";
+import { formatPhoneDisplay } from "@/lib/phone-display";
 import {
   AlertTriangle,
   BarChart3,
@@ -23,6 +24,7 @@ import { QUALIFICATION_OUTCOME_LABEL as OUTCOME } from "@/lib/qualification/outc
 import { formatDateTime, formatRelative } from "@/lib/dates";
 import { statusNeedsReason } from "@/lib/leads/detail-page";
 import {
+  assignableMembers,
   attentionReasonLabel,
   type LeadCapabilities,
   type LeadDetail,
@@ -51,7 +53,7 @@ function IconRow({
   return (
     <div className="flex min-w-0 items-start gap-2.5">
       <Icon className="mt-px size-4 shrink-0 text-content-subtle" aria-hidden />
-      <div className="min-w-0 text-[13px] text-content">{children}</div>
+      <div className="min-w-0 flex-1 text-[13px] text-content">{children}</div>
     </div>
   );
 }
@@ -141,7 +143,7 @@ function SummaryCard({
           {icon}
         </span>
         <div className="min-w-0">
-          <h4 className="truncate text-[12px] font-semibold text-content-secondary">
+          <h4 className="text-[12px] leading-tight font-semibold text-content-secondary">
             {title}
           </h4>
           <p className="truncate text-[13px] font-semibold text-content" title={headline}>
@@ -264,7 +266,7 @@ export function LeadSummarySection({
             <ColumnHeading>Contact details</ColumnHeading>
             <div className="space-y-2.5">
               <IconRow icon={User}>
-                <span className="truncate">
+                <span className="block truncate">
                   {[lead.first_name, lead.last_name].filter(Boolean).join(" ") ||
                     "Name not provided"}
                 </span>
@@ -275,7 +277,7 @@ export function LeadSummarySection({
                     href={`tel:${lead.phone}`}
                     className="rounded-xs hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent"
                   >
-                    {lead.phone}
+                    {formatPhoneDisplay(lead.phone)}
                   </a>
                 ) : (
                   <span className="text-content-subtle">Not provided</span>
@@ -301,7 +303,7 @@ export function LeadSummarySection({
             <ColumnHeading>Service interested in</ColumnHeading>
             <div className="space-y-2.5">
               <IconRow icon={Home}>
-                <span className="truncate">
+                <span className="block truncate">
                   {lead.services?.name ?? (
                     <span className="text-content-subtle">No service recorded</span>
                   )}
@@ -356,7 +358,7 @@ export function LeadSummarySection({
               }
             >
               <option value="">Unassigned</option>
-              {members.map((member) => (
+              {assignableMembers(members, lead.assigned_user_id).map((member) => (
                 <option key={member.userId} value={member.userId}>
                   {member.name}
                 </option>

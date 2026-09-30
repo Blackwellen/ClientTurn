@@ -28,7 +28,11 @@ export function NoticeStack({
   if (visible.length === 0 && collapsed.length === 0) return null;
 
   return (
-    <div className={cn("mx-4 mt-3 space-y-2 sm:mx-6", className)}>
+    // Rendered inside the app's <main>, which already carries the page
+    // gutter: its own side margins indented every notice past the page
+    // content, and with no bottom gap the page heading sat against it
+    // (surface QA 2026-09-30).
+    <div className={cn("mb-5 space-y-2", className)}>
       {visible}
       {collapsed.length > 0 ? (
         <>

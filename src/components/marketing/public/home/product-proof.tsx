@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import { BarChart3, CalendarDays, MessageSquareText, Search, Target, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { trackEngagement } from "@/lib/marketing/track";

@@ -36,7 +36,11 @@ export default async function AffiliateAppLayout({
   if (!user) redirect("/affiliates/login?redirect=/affiliates/app");
 
   const affiliate = await getAffiliateAccount();
-  if (!affiliate) redirect("/affiliates");
+  // No partner record yet: the application is unfinished. Signing in from the
+  // partner door used to land here and bounce to the public programme page,
+  // so a partner who had just confirmed their email never reached the
+  // application form (surface QA 2026-09-30).
+  if (!affiliate) redirect("/affiliates/onboarding");
 
   // Self-referral screening (affiliate audit 17): the network and device a
   // partner uses the portal from, as keyed hashes only, after the response.

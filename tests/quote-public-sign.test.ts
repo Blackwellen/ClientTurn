@@ -180,6 +180,18 @@ describe("token handling", () => {
     assert.equal((await handleQuoteSignRequest(deps, TOKEN, headers(), body())).status, 409);
   });
 
+  test("a declined, expired, withdrawn or draft quote cannot be signed by POSTing to the route directly", async () => {
+    // Surface QA 2026-09-30: state tampering. The page hides the sign form for
+    // these, so the only way in is a hand-made POST; it must record nothing.
+    for (const quoteStatus of ["DECLINED", "EXPIRED", "WITHDRAWN", "DRAFT"] as const) {
+      const { deps, log } = harness({ quoteStatus });
+      const result = await handleQuoteSignRequest(deps, TOKEN, headers(), body());
+      assert.equal(result.status, 409, quoteStatus);
+      assert.deepEqual(log.accepts, [], quoteStatus);
+      assert.equal(log.signatures.length, 0, quoteStatus);
+    }
+  });
+
   test("a document whose stored model no longer matches its hash is never signed", async () => {
     const { deps, log } = harness({ renderHash: "0".repeat(64) });
     assert.equal((await handleQuoteSignRequest(deps, TOKEN, headers(), body())).status, 409);

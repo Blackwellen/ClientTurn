@@ -16,6 +16,7 @@ export const ERROR_AREAS = [
   "Meta",
   "Jobs",
   "Webhook",
+  "Integrations",
   "Database",
   "API",
 ] as const;
@@ -65,6 +66,16 @@ export function areaForProvider(provider: string): ErrorArea {
 }
 
 /**
+ * A workspace connection's error (integrations.last_error_*). Distinct from
+ * `areaForProvider`, which files an unknown *webhook* provider under Webhook:
+ * a revoked Google Ads or Salesforce token used to be filed there too, as a
+ * LOW "Webhook" error, although it stops that workspace's lead sync.
+ */
+export function areaForIntegration(provider: string): ErrorArea {
+  return PROVIDER_AREA[provider] ?? "Integrations";
+}
+
+/**
  * Severity is a property of the area and the failure mode, not of a log level
  * we do not have. A deadlock or a billing failure costs the business money;
  * a single delivery retry does not.
@@ -78,6 +89,7 @@ const AREA_SEVERITY: Record<ErrorArea, ErrorSeverity> = {
   Meta: "MEDIUM",
   Jobs: "MEDIUM",
   Webhook: "LOW",
+  Integrations: "HIGH",
   Database: "CRITICAL",
   API: "HIGH",
 };
@@ -158,6 +170,7 @@ const AREA_PREFIX: Record<ErrorArea, string> = {
   Meta: "META",
   Jobs: "JOB",
   Webhook: "WEB",
+  Integrations: "INT",
   Database: "DB",
   API: "API",
 };

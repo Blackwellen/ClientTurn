@@ -25,12 +25,13 @@ import {
   UsageCellView,
 } from "@/components/admin/ui";
 import { initialsOf } from "@/lib/admin/format";
-import { formatDate, formatRelative } from "@/lib/dates";
+import { formatDate } from "@/lib/dates";
 import type {
   CustomerListResult,
   CustomerRow,
   CustomerSort,
 } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 type SortableKey = CustomerSort;
 
@@ -212,7 +213,7 @@ export function CustomerTable({
                       {formatDate(row.joinedAt)}
                     </td>
                     <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.lastActivityAt, { style: "ago" })}
+                      <RelativeTime value={row.lastActivityAt} options={{ style: "ago" }} />
                     </td>
                     <td
                       className="px-2.5 py-2 text-right"

@@ -34,6 +34,22 @@ export function toDayString(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * The window a freshly chosen "Custom" range starts from: the same span as the
+ * preset it replaces, ending today. Without it, choosing Custom sent
+ * `range=custom` with no dates, `resolveRange` fell back to 30 days, and the
+ * date inputs never appeared, so a custom range could not be picked at all.
+ */
+export function defaultCustomRange(
+  current: RangeKey,
+  now = new Date(),
+): { from: string; to: string } {
+  const days = current === "custom" ? 30 : PRESET_DAYS[current];
+  const to = toDayString(now);
+  const from = toDayString(new Date(now.getTime() - (days - 1) * 864e5));
+  return { from, to };
+}
+
 export function resolveRange(params: {
   range?: string;
   from?: string;
@@ -357,7 +373,11 @@ export function formatRelativeShort(value: DateInput, options: ZoneOption = {}) 
 
 /** "6 Aug 2026 – 4 Sep 2026". `to` is exclusive, so the last day is to − 1ms. */
 export function formatRangeLabel(range: ResolvedRange) {
-  return `${formatDate(range.from)} – ${formatDate(new Date(range.to.getTime() - 1))}`;
+  // A custom range is whole UTC days (`parseDay`), so it is labelled in UTC:
+  // in BST the exclusive end, 23:59:59Z, is already the next day, and a range
+  // picked as 1-30 Sept read "1 Sept - 1 Oct".
+  const zone = range.key === "custom" ? { timeZone: "UTC" } : {};
+  return `${formatDate(range.from, zone)} – ${formatDate(new Date(range.to.getTime() - 1), zone)}`;
 }
 
 /** Day heading used to group notification and timeline rows. */

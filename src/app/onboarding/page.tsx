@@ -8,6 +8,7 @@ import {
 import { activatePendingInvites } from "@/lib/auth/invites";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enforceWorkspaceSecurity } from "@/lib/auth/account-security";
 import { onboardingIncomplete } from "@/lib/app/health";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { needsCheckout } from "@/lib/billing/lifecycle";
@@ -59,6 +60,13 @@ export default async function OnboardingPage() {
     return <NoWorkspace email={user.email ?? ""} />;
   }
   if (!onboardingIncomplete(workspace)) redirect("/app");
+
+  // Two-factor and the workspace idle timeout, as on every /app page. This
+  // page reads the workspace non-enforcingly (it must handle "no workspace
+  // yet"), so a password-only (AAL1) session of an account with an
+  // authenticator could open setup and read its configuration without the
+  // code (surface QA 2026-09-30). Its Server Actions were already enforced.
+  await enforceWorkspaceSecurity(workspace.businessId);
 
   // Card and terms before setup (8.10): onboarding follows a confirmed trial.
   const entitlements = await getEntitlements(workspace.businessId);

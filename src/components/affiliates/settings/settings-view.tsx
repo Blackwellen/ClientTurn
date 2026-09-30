@@ -362,7 +362,24 @@ function AccountSection({
           </div>
         </Panel>
 
-        {affiliate.status === "ACTIVE" && (
+        {/* "All set" only when payouts can actually be sent. It used to show for
+            every active partner, beside a "Not connected" payout method and a
+            tax profile marked "Action required". */}
+        {affiliate.status === "ACTIVE" && affiliate.payoutReadiness !== "READY" && (
+          <div className="flex items-start gap-2.5 rounded-[11px] border border-warning-100 bg-warning-50 px-4 py-3.5">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-700" aria-hidden />
+            <div>
+              <p className="text-[13.5px] font-semibold text-warning-700">
+                Finish your payout setup
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-warning-700">
+                You can refer customers now. Connect a payout account and complete your tax
+                details in Payments and Tax Information so commission can be sent to you.
+              </p>
+            </div>
+          </div>
+        )}
+        {affiliate.status === "ACTIVE" && affiliate.payoutReadiness === "READY" && (
           <div className="flex items-start gap-2.5 rounded-[11px] border border-success-100 bg-success-50 px-4 py-3.5">
             <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-700" aria-hidden />
             <div>

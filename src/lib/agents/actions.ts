@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { z } from "zod";
 import { runOperation } from "@/lib/services";
 import { revalidatePath } from "next/cache";
@@ -59,11 +60,16 @@ function uiContext(workspace: Workspace) {
   };
 }
 
-async function adminOrError(): Promise<Workspace | null> {
+async function roleOrNull(minimum: "admin" | "member"): Promise<Workspace | null> {
   try {
-    return await requireRole("admin");
-  } catch {
-    return null;
+    return await requireRole(minimum);
+  } catch (error) {
+    // Only a role refusal means "not an admin". Anything else (a sign-in
+    // redirect, a lapsed session, a transient database error) must surface as
+    // itself: reporting it as "you need admin access" to an owner sent QA
+    // looking for a permissions bug that was not there.
+    if (error instanceof Error && error.message === "FORBIDDEN") return null;
+    throw error;
   }
 }
 
@@ -79,7 +85,7 @@ export async function saveAgent(
     return { error: "Check the agent name, sources and limits, then try again." };
   }
 
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { error: "You need workspace admin access to create an agent." };
   const value = parsed.data;
 
@@ -154,7 +160,7 @@ export async function saveAgentVoiceCalls(
 ): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> {
   const parsed = voiceCallsSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Set a daily call limit between 1 and 100." };
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
   const result = await runOperation(
     "agent.set_voice_calls",
@@ -172,7 +178,7 @@ export async function saveAgentVoiceCalls(
  * audited). Never called implicitly by switching an agent's calls on.
  */
 export async function allowAiCallsAction(): Promise<{ ok: true } | { ok: false; error: string }> {
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { ok: false, error: "Only an owner or admin can change what the AI may do." };
   const result = await runOperation("ai_settings.allow_calls", { acknowledge: true }, uiContext(workspace));
   if (!result.success) return { ok: false, error: result.message };
@@ -189,9 +195,9 @@ export async function saveAgentOfferTarget(
 ): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
   const parsed = targetActionSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check what the agent sells and try again." };
+    return { ok: false, error: friendlyIssue(parsed.error, "Check what the agent sells and try again.") };
   }
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
   const { id, ...target } = parsed.data;
   const result = await runOperation("agent.set_offer_target", { agentId: id, ...target }, uiContext(workspace));
@@ -224,7 +230,7 @@ export async function updateAgent(
     return { ok: false, error: "The monthly limit must be at least the daily limit." };
   }
 
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { ok: false, error: "You need workspace admin access to change this agent." };
   const value = parsed.data;
 
@@ -262,7 +268,7 @@ export async function controlAgent(id: unknown, command: unknown) {
     .safeParse({ id, command });
   if (!parsed.success) return { error: "Invalid agent control." };
 
-  const workspace = await adminOrError();
+  const workspace = await roleOrNull("admin");
   if (!workspace) return { error: "You need workspace admin access to change this agent." };
 
   const db = createAdminClient();
@@ -306,10 +312,8 @@ export async function deleteAgent(
   const parsed = z.object({ id: z.uuid() }).safeParse({ id });
   if (!parsed.success) return { ok: false, error: "Invalid agent." };
 
-  let workspace;
-  try {
-    workspace = await requireRole("admin");
-  } catch {
+  const workspace = await roleOrNull("admin");
+  if (!workspace) {
     return { ok: false, error: "You need workspace admin access to delete this agent." };
   }
 
@@ -342,12 +346,8 @@ const decideCallSchema = z.object({ itemId: z.uuid(), decision: z.enum(["APPROVE
 export async function decideAgentCallAction(input: unknown): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const parsed = decideCallSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That call request could not be found." };
-  let workspace: Workspace;
-  try {
-    workspace = await requireRole("member");
-  } catch {
-    return { ok: false, error: "Viewers can't approve calls." };
-  }
+  const workspace = await roleOrNull("member");
+  if (!workspace) return { ok: false, error: "Viewers can't approve calls." };
   const result = await runOperation("agent.decide_call", parsed.data, uiContext(workspace));
   if (!result.success) return { ok: false, error: result.message };
   revalidatePath("/app/agents", "layout");

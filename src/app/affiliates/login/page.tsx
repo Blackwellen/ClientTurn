@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { partnerPath } from "@/lib/affiliates/partner-path";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/auth-card";
 import { getUser } from "@/lib/auth/session";
@@ -16,22 +17,6 @@ export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-/**
- * The partner login only ever lands inside the partner portal. A generic
- * same-origin check would make this page a redirector into the customer app,
- * which is not what a partner is signing in for.
- */
-function partnerPath(value: string | undefined): string {
-  const fallback = "/affiliates/app";
-  if (!value) return fallback;
-  if (value.startsWith("//")) return fallback;
-  // Only the partner surfaces, and never this page itself — that would be a
-  // sign-in loop.
-  if (value.startsWith("/affiliates/login")) return fallback;
-  if (value !== "/affiliates" && !value.startsWith("/affiliates/")) return fallback;
-  return value;
 }
 
 export default async function AffiliateLoginPage({

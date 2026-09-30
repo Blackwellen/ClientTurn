@@ -67,6 +67,8 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
 
   const startedLabel = run.startedAt
     ? formatInZone(run.startedAt, {
+        day: "numeric",
+        month: "short",
         hour: "2-digit",
         minute: "2-digit",
       })
@@ -87,12 +89,21 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
             </Badge>
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] text-content-muted">
-            {startedLabel && <span>Started today at {startedLabel}</span>}
-            <span aria-hidden>·</span>
-            <span>
-              Using {run.providerCount} provider{run.providerCount === 1 ? "" : "s"}
-            </span>
-            <span aria-hidden>·</span>
+            {startedLabel && (
+              <>
+                {/* Was "Started today at", whatever day the run started. */}
+                <span>Started {startedLabel}</span>
+                <span aria-hidden>·</span>
+              </>
+            )}
+            {run.providerCount > 0 && (
+              <>
+                <span>
+                  Using {run.providerCount} provider{run.providerCount === 1 ? "" : "s"}
+                </span>
+                <span aria-hidden>·</span>
+              </>
+            )}
             <span className="tabular-nums">Target {run.targetVerified} prospects</span>
           </p>
         </div>
@@ -140,6 +151,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
               progressPercent={run.progressPercent}
               currentStageNumber={run.currentStageNumber}
               startedAtLabel={startedLabel}
+              runStatus={run.status}
             />
           </div>
 

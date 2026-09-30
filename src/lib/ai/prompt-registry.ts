@@ -25,11 +25,15 @@ type RegistryEntry = { promptKey: TaskType; version: number; systemPrompt: strin
  *   v4 / v2 (2026-09-26, qualification intelligence, design 08 §B.16):
  *     agent_decision        follows the NBA strategy block's "move" (engine LIVE)
  *     answer_extraction     multi-dimension candidates with verbatim evidence spans
+ *   v2 (2026-09-29, Find Leads repair):
+ *     search_planning       never asks for what the message already says; a
+ *                           missing business profile is not a reason to ask
  */
 export const PROMPT_VERSIONS: Partial<Record<TaskType, number>> = {
   agent_decision: 4,
   answer_extraction: 2,
   intent_classification: 2,
+  search_planning: 2,
   variant_generation: 2,
 };
 

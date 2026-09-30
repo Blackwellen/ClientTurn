@@ -15,7 +15,7 @@ import {
   type ReactivationView as ViewMode,
 } from "@/lib/campaigns/reactivation-filters";
 import { ReactivationView } from "@/components/reactivation/reactivation-view";
-import { REACTIVATION_VIEW_COOKIE } from "@/components/reactivation/use-reactivation-params";
+import { REACTIVATION_VIEW_COOKIE } from "@/components/reactivation/view-cookie";
 
 export const metadata: Metadata = { title: "Reactivation" };
 export const dynamic = "force-dynamic";

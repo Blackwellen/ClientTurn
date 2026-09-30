@@ -164,7 +164,7 @@ export function AppSurface({
       {title && (
         <div className="fl-app-head">
           <div>
-            <h4>{title}</h4>
+            <h3>{title}</h3>
             {subtitle && <small>{subtitle}</small>}
           </div>
           {actions}

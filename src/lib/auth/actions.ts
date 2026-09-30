@@ -9,6 +9,7 @@ import { attributeSignup } from "@/lib/affiliates/attribution";
 import { recordTermsAcceptance, requestOrigin } from "@/lib/billing/terms-acceptance";
 import { activatePendingInvites } from "./invites";
 import { destinationForUser, sanitizeRedirectPath } from "./destination";
+import { isRecoverySession } from "./recovery-session";
 import { provisionCustomerWorkspace } from "./provision";
 import { UNNAMED_WORKSPACE } from "./workspace-name";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
@@ -372,8 +373,15 @@ export async function updatePassword(
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // getUser() verified the token with Supabase; its claims say how the
+  // session was created. Only the emailed reset link's own session may set a
+  // password here: any other signed-in session changes it in Settings, which
+  // asks for the current password (recovery-session.ts).
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!user || !isRecoverySession(session?.access_token)) {
     return {
       ok: false,
       error:

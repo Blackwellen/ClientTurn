@@ -222,6 +222,15 @@ export function matchAnswer(
     return { value: text || null, text };
   }
 
+  // A choice or timing question with no options configured has nothing to
+  // match against, so the reply is the answer, as for a text question.
+  // Workspaces seeded before the editor required two options (the dev seed's
+  // "How soon do you need the work done?", a required timing question) could
+  // otherwise never be answered on any channel, and every lead stayed PENDING.
+  if (question.options.length === 0) {
+    return { value: text || null, text };
+  }
+
   // single_choice and timing: exact value, exact label, or a numbered pick.
   const exact = question.options.find(
     (option) =>
@@ -235,6 +244,54 @@ export function matchAnswer(
   }
 
   return { value: null, text };
+}
+
+/** Lower case, currency signs, thousands separators and punctuation removed, spaces collapsed. */
+function spokenForm(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[£$€]/g, "")
+    .replace(/(\d),(?=\d{3}\b)/g, "$1")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * An answer given in speech (a voice call's record_fact), matched against the
+ * question's configured options. Deterministic, and never looser than it has
+ * to be: matchAnswer first; then, for a choice or timing question, the ONE
+ * option whose label (or value) appears whole in what they said, the longest
+ * label winning when one contains another; for a yes / no question, a reply
+ * that starts with a plain yes or no ("no, we rent it"). Anything else is
+ * unmatched (null), which the engine treats as REVIEW, never a decision.
+ */
+export function matchSpokenAnswer(question: QuestionRecord, reply: string): { value: string | null; text: string } {
+  const direct = matchAnswer(question, reply);
+  if (direct.value !== null) return direct;
+  const text = reply.trim();
+  const said = ` ${spokenForm(text)} `;
+  if (question.responseType === "yes_no") {
+    const first = said.trim().split(" ")[0] ?? "";
+    if (["yes", "yeah", "yep", "correct", "absolutely", "definitely"].includes(first)) return { value: "yes", text };
+    if (["no", "nope", "nah"].includes(first)) return { value: "no", text };
+    return { value: null, text };
+  }
+  if (question.responseType !== "single_choice" && question.responseType !== "timing") return direct;
+  const hits = question.options
+    .map((option) => {
+      const forms = [spokenForm(option.label), spokenForm(option.value.replace(/_/g, " "))].filter((f) => f.length >= 2);
+      const hit = forms.find((f) => said.includes(` ${f} `));
+      return hit ? { option, form: hit } : null;
+    })
+    .filter((h): h is { option: { value: string; label: string }; form: string } => h !== null)
+    .sort((a, b) => b.form.length - a.form.length);
+  if (hits.length === 0) return { value: null, text };
+  // Another option named that the winner's own words do not contain ("design
+  // and build" for Design / Build) is ambiguous: unmatched, never a guess.
+  // One inside the other ("website with a shop" over "website") is not.
+  const [best, ...rest] = hits;
+  if (rest.some((h) => !` ${best.form} `.includes(` ${h.form} `))) return { value: null, text };
+  return { value: best.option.value, text };
 }
 
 /** The outbound wording of a question, with numbered options when it has them. */

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton } from "./button";
+import { Input } from "./form";
 import { Overlay, useBodyScrollLock, useEscape, useFocusTrap } from "./drawer";
 
 const SIZES = {
@@ -131,6 +132,11 @@ export type ConfirmDialogProps = {
   loading?: boolean;
   /** Optional controls under the text (a channel choice, an extra option). */
   children?: React.ReactNode;
+  /**
+   * For irreversible actions: the word the person must type before the
+   * confirm button works (compared case-insensitively, trimmed).
+   */
+  confirmationPhrase?: string;
 };
 
 export function ConfirmDialog({
@@ -145,12 +151,19 @@ export function ConfirmDialog({
   variant = "default",
   loading = false,
   children,
+  confirmationPhrase,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = React.useState(false);
+  const [typed, setTyped] = React.useState("");
   const pending = loading || busy;
+  const phraseId = React.useId();
+  const phraseMatches =
+    !confirmationPhrase ||
+    typed.trim().toLowerCase() === confirmationPhrase.trim().toLowerCase();
   const Icon = variant === "default" ? Info : AlertTriangle;
 
   async function handleConfirm() {
+    if (!phraseMatches) return;
     setBusy(true);
     try {
       await onConfirm();
@@ -179,6 +192,7 @@ export function ConfirmDialog({
             variant={variant === "danger" ? "danger" : "primary"}
             size="sm"
             loading={pending}
+            disabled={!phraseMatches}
             onClick={handleConfirm}
           >
             {confirmLabel}
@@ -199,6 +213,21 @@ export function ConfirmDialog({
           <p className="text-[13px] text-content">{scope}</p>
           <p className="text-[13px] text-content-muted">{consequence}</p>
           {children && <div className="pt-1.5">{children}</div>}
+          {confirmationPhrase && (
+            <div className="space-y-1.5 pt-1.5">
+              <label htmlFor={phraseId} className="block text-[13px] text-content">
+                Type <span className="font-semibold">{confirmationPhrase}</span> to confirm
+              </label>
+              <Input
+                id={phraseId}
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending}
+              />
+            </div>
+          )}
         </div>
       </div>
     </Modal>

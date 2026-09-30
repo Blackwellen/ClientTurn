@@ -337,7 +337,9 @@ function refusal(tool: string, code: string, call: ToolCallRow | null, now: Date
   const t = call
     ? timeFields(call, now)
     : { time_level: "GREEN" as TimeLevel, time_instruction: TIME_INSTRUCTIONS.GREEN, seconds_left: 0 };
-  const bookingOff = code === "NOT_PERMITTED" && (tool === "check_availability" || tool === "book_meeting");
+  // Booking off, or this lead not bookable yet (the create_booking gate, checked
+  // before any time is offered): one sentence and the call-back step instead.
+  const bookingOff = (code === "NOT_PERMITTED" || code === "NOT_READY_TO_BOOK") && (tool === "check_availability" || tool === "book_meeting");
   return {
     ok: false,
     tool,

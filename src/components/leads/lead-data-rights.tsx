@@ -189,6 +189,7 @@ function DataRightsConfirm({
       consequence={copy.consequence}
       confirmLabel={copy.confirmLabel}
       variant={copy.variant}
+      confirmationPhrase={mode === "DELETE" ? "ERASE" : undefined}
     >
       {mode === "SUPPRESS" && (
         <div className="grid gap-3 sm:grid-cols-2">

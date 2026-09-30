@@ -17,7 +17,7 @@ import {
 import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
-  "ClientTurn's customer Data Processing Agreement under Article 28 UK GDPR: our obligations as processor, security measures, sub-processors, international transfers, breach notification, deletion and audit.";
+  "ClientTurn's Article 28 UK GDPR Data Processing Agreement: processor obligations, security, sub-processors, international transfers, breach notification, deletion and audit.";
 
 export const metadata: Metadata = {
   title: "Data Processing Agreement",

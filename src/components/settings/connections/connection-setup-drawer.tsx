@@ -184,7 +184,11 @@ export function ConnectionSetupDrawer({
                   {definition.accountLabel}
                 </dt>
                 <dd className="min-w-0 truncate text-content">
-                  {reference ?? "Not connected yet"}
+                  {/* A connected provider with no stored account name (a
+                      platform-managed channel such as SMS) is connected, not
+                      "not connected yet", which is what this said beside a
+                      Healthy badge. */}
+                  {reference ?? (model.connected ? "Connected" : "Not connected yet")}
                 </dd>
               </div>
               <div className="flex items-baseline gap-3">
@@ -194,7 +198,9 @@ export function ConnectionSetupDrawer({
                 <dd className="min-w-0 text-content">
                   {integration?.lastSuccessAt
                     ? formatRelative(integration.lastSuccessAt)
-                    : "No successful sync yet"}
+                    : model.connected
+                      ? "Not recorded yet"
+                      : "No successful sync yet"}
                 </dd>
               </div>
               {integration?.lastErrorAt && (

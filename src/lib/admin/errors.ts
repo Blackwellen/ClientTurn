@@ -1,6 +1,7 @@
 import "server-only";
 import {
   areaForJobType,
+  areaForIntegration,
   areaForProvider,
   fingerprintFor,
   referenceFor,
@@ -110,7 +111,7 @@ async function collectRawErrors(
   for (const row of integrations.data ?? []) {
     if (!row.last_error_at) continue;
     raw.push({
-      area: areaForProvider(row.provider_type),
+      area: areaForIntegration(row.provider_type),
       businessId: row.business_id,
       message: truncate(
         row.last_error_message ??

@@ -1,7 +1,7 @@
 import "server-only";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
-import { monthlyRevenue } from "@/lib/billing/revenue";
-import { domainFromWebsite, jobLabel } from "./format";
+import { mrrContribution } from "@/lib/billing/revenue";
+import { domainFromWebsite, integrationActionDetail, jobLabel } from "./format";
 import { getProviderHealth } from "./providers";
 import {
   adminRead,
@@ -126,12 +126,21 @@ function cumulativeSeries(
 async function realMrrNow(supabase: AdminClient): Promise<number | null> {
   const { data, error } = await (supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
     .from("subscriptions")
-    .select("plan, billing_interval, mrr_minor")
+    .select("plan, status, billing_interval, mrr_minor, stripe_subscription_id")
     .in("status", ["ACTIVE", "PAST_DUE"])
     .limit(20_000);
   if (error) return null;
-  return ((data ?? []) as { plan: string; billing_interval: string | null; mrr_minor: number | string | null }[]).reduce(
-    (total, row) => total + monthlyRevenue({ mrrMinor: row.mrr_minor, plan: row.plan, interval: row.billing_interval }).gbp,
+  type Row = { plan: string; status: string; billing_interval: string | null; mrr_minor: number | string | null; stripe_subscription_id: string | null };
+  return ((data ?? []) as Row[]).reduce(
+    (total, row) =>
+      total +
+      mrrContribution({
+        status: row.status,
+        stripeSubscriptionId: row.stripe_subscription_id,
+        mrrMinor: row.mrr_minor,
+        plan: row.plan,
+        interval: row.billing_interval,
+      }).gbp,
     0,
   );
 }
@@ -205,9 +214,10 @@ export async function getAdminOverview(
   const listMrr = cumulativeSeries(forMetric("paying"), window, (row) =>
     monthlyValueOf(row.plan, row.billing_interval || null),
   );
-  // The headline is what paying subscriptions are actually billed (0165
-  // `mrr_minor`, from paid Stripe invoices: discounts applied, before VAT),
-  // list price only where no invoice is recorded yet. The trend line has no
+  // The headline is billing/revenue.ts `mrrContribution`: what Stripe-billed
+  // subscriptions are actually charged (0165 `mrr_minor`: discounts applied,
+  // before VAT), list price only for a Stripe subscription still on its first
+  // period; complimentary workspaces (no Stripe subscription) count £0. The trend line has no
   // per-day history of real amounts, so it is the list-price line scaled to
   // today's real figure.
   const realNow = await realMrrNow(supabase);
@@ -485,24 +495,25 @@ async function buildActionRequired(
     });
   }
 
-  const seenIntegration = new Set<string>();
+  // One row per workspace, naming every unhealthy connection (rows arrive
+  // newest error first, so the first row carries the latest time).
+  const integrationsByBusiness = new Map<string, IntegrationRow[]>();
   for (const row of integrations) {
-    if (seenIntegration.has(row.business_id)) continue;
     if (row.status === "DEGRADED" && !row.last_error_at) continue;
-    seenIntegration.add(row.business_id);
-    const business = businessById.get(row.business_id);
+    const list = integrationsByBusiness.get(row.business_id) ?? [];
+    list.push(row);
+    integrationsByBusiness.set(row.business_id, list);
+  }
+  for (const [businessId, list] of integrationsByBusiness) {
+    const business = businessById.get(businessId);
     rows.push({
-      id: `integration-${row.business_id}`,
+      id: `integration-${businessId}`,
       kind: business?.status === "suspended" ? "workspace_health" : "integration_error",
-      businessId: row.business_id,
-      businessName: nameOf(row.business_id),
-      detail: truncate(
-        row.last_error_message ??
-          `${row.provider_type} connection ${row.status === "DISCONNECTED" ? "disconnected" : "needs attention"}`,
-        80,
-      ),
-      occurredAt: row.last_error_at,
-      href: supportHref(row.business_id),
+      businessId,
+      businessName: nameOf(businessId),
+      detail: truncate(integrationActionDetail(list), 120),
+      occurredAt: list[0].last_error_at,
+      href: supportHref(businessId),
     });
   }
 

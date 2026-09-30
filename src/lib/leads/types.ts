@@ -11,6 +11,18 @@ export type WorkspaceMember = {
   role: string;
 };
 
+/**
+ * Members a lead can be assigned to. Viewers are read-only, so they are left
+ * out (the server refuses them too), except a viewer who already owns the lead,
+ * so the picker still shows who that is.
+ */
+export function assignableMembers(
+  members: WorkspaceMember[],
+  currentUserId?: string | null,
+): WorkspaceMember[] {
+  return members.filter((member) => member.role !== "viewer" || member.userId === currentUserId);
+}
+
 export type LeadSourceRef = {
   id: string;
   provider: string;

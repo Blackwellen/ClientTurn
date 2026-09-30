@@ -83,7 +83,7 @@ function Tile({
         <p className="lr-tabular text-content mt-0.5 text-[18px] leading-6 font-semibold">
           {value}
         </p>
-        <p className="text-content-subtle mt-0.5 truncate text-[11.5px]">
+        <p className="text-content-subtle mt-0.5 line-clamp-2 text-[11.5px] leading-snug">
           {detail}
         </p>
       </div>
@@ -305,7 +305,11 @@ export function RevenueControlSection({ data }: { data: RevenueControlData }) {
             value={
               budget.data.ceilingGbp === null
                 ? gbp(budget.data.spentGbp, 2)
-                : `${gbp(budget.data.spentGbp, 2)} / ${gbp(budget.data.ceilingGbp)}`
+                : `${gbp(budget.data.spentGbp, 2)} / ${gbp(
+                    budget.data.ceilingGbp,
+                    // A ceiling under a pound, or with pence, must not round to "£0".
+                    Number.isInteger(budget.data.ceilingGbp) ? 0 : 2,
+                  )}`
             }
             detail={
               budget.data.ceilingGbp === null
@@ -399,14 +403,19 @@ function RevenueFunnel({ state }: { state: RevenueControlData["funnel"] }) {
                 <p className="lr-tabular text-content text-[17px] font-semibold">
                   {stage.tracked ? count(stage.count) : "—"}
                 </p>
-                <p className="text-content-subtle flex items-center gap-1 text-[11px]">
+                <p className="text-content-subtle flex flex-col items-start gap-0.5 text-[11px] leading-snug">
                   {index === 0 ? (
                     "Cohort"
                   ) : !stage.tracked ? (
                     "Not tracked"
                   ) : stage.step ? (
                     <>
-                      {formatSampledRate(stage.step)} of previous
+                      <span>
+                        <span className="lr-tabular whitespace-nowrap">
+                          {formatSampledRate(stage.step)}
+                        </span>{" "}
+                        of previous
+                      </span>
                       {stage.step.lowSample && (
                         <Badge
                           dense

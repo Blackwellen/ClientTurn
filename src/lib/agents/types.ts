@@ -437,8 +437,35 @@ const AUTONOMY_DESCRIPTIONS: Record<Autonomy, string> = {
   AUTO: "Prospects that match your approved plan go straight to your active acquisition campaign (needs a verified sender and an active campaign), and stalled qualified leads are handed back to follow-up. Every message is still checked before it sends. Re-engagement campaigns are always left as drafts for you to launch.",
 };
 
-export function autonomyDescription(value: Autonomy): string {
-  return AUTONOMY_DESCRIPTIONS[value] ?? "";
+/**
+ * The same three settings, described for what this agent actually does. The
+ * shared text talks about prospects and Find Leads, which a closing or
+ * re-engagement agent never touches (surface QA 2026-09-30).
+ */
+const AUTONOMY_BY_TYPE: Partial<Record<AgentType, Partial<Record<Autonomy, string>>>> = {
+  BOOKING: {
+    REVIEW_ALL:
+      "Qualified leads that have stalled are listed in the agent's Queue for you to chase. Nothing is sent for you. Safest, and slowest.",
+    REVIEW_NEW:
+      "Qualified leads that have stalled are listed in the agent's Queue for you to chase. Nothing is sent for you.",
+    AUTO: "Qualified leads that have stalled are handed back to follow-up, which checks every message against opt-outs, quiet hours and channel rules before it sends. Leads a quote or checkout link is already chasing are left alone.",
+  },
+  REENGAGEMENT: {
+    REVIEW_ALL: "Drafts one re-engagement campaign at a time from your quiet leads. It never launches one: you review and launch it.",
+    REVIEW_NEW: "Drafts one re-engagement campaign at a time from your quiet leads. It never launches one: you review and launch it.",
+    AUTO: "Drafts one re-engagement campaign at a time from your quiet leads. Campaigns are always left as drafts for you to launch.",
+  },
+};
+
+export function autonomyDescription(value: Autonomy, agentType?: AgentType): string {
+  return (agentType && AUTONOMY_BY_TYPE[agentType]?.[value]) ?? AUTONOMY_DESCRIPTIONS[value] ?? "";
+}
+
+/** "Review new companies only" means nothing to an agent that finds no companies. */
+export function autonomyOptionsFor(agentType: AgentType): Autonomy[] {
+  return agentType === "SOURCING" || agentType === "COMBINED"
+    ? ["REVIEW_ALL", "REVIEW_NEW", "AUTO"]
+    : ["REVIEW_ALL", "AUTO"];
 }
 
 const CADENCE_LABELS: Record<Cadence, string> = {
@@ -460,12 +487,43 @@ const QUEUE_TYPE_LABELS: Record<QueueItemType, string> = {
   REVIEW: "Waiting for review",
   PROMOTE: "Move to Leads",
   OUTREACH: "Send outreach",
-  BOOKING: "Book appointment",
+  BOOKING: "Chase to its goal",
   REENGAGE: "Re-engage",
 };
 
 export function queueTypeLabel(value: QueueItemType): string {
   return QUEUE_TYPE_LABELS[value] ?? value;
+}
+
+const QUEUE_STATUS_LABELS: Record<QueueStatus, string> = {
+  PENDING: "Queued",
+  IN_PROGRESS: "Working",
+  DONE: "Done",
+  FAILED: "Failed",
+  BLOCKED: "Waiting for you",
+  CANCELLED: "Cancelled",
+  SKIPPED: "Skipped",
+};
+
+/** Words for a queue status; the enum itself read as "in progress" / "pending". */
+export function queueStatusLabel(status: QueueStatus): string {
+  return QUEUE_STATUS_LABELS[status] ?? status;
+}
+
+/**
+ * Where a queue item's subject lives, so the row can be opened. Null for a
+ * subject type with no page of its own.
+ */
+export function queueSubjectHref(subjectType: string | null, subjectId: string | null): string | null {
+  if (!subjectId) return null;
+  switch ((subjectType ?? "").toUpperCase()) {
+    case "LEAD":
+      return `/app/leads/${subjectId}`;
+    case "PROSPECT":
+      return `/app/find-leads?view=prospects&prospect=${subjectId}`;
+    default:
+      return null;
+  }
 }
 
 export function queueStatusTone(
@@ -540,7 +598,7 @@ export function readinessProblems(agent: {
     problems.push("No sources are switched on. Choose at least one in the agent's settings.");
   } else if (!usable.some((key) => key === "GOOGLE_PLACES" || key === "DATA_PROVIDER")) {
     problems.push(
-      "No source can find new companies. Switch on Google Places or Business contact data.",
+      "No source can find new companies. Switch on Google Places.",
     );
   }
   return problems;

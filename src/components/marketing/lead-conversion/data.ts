@@ -153,10 +153,10 @@ export const SEQUENCE: SequenceStep[] = [
 ];
 
 export const QUESTIONS = [
-  { label: "What type of project is this?", type: "Single select" },
+  { label: "Which service are you interested in?", type: "Single select" },
   { label: "What is your budget?", type: "Single select" },
   { label: "When are you looking to start?", type: "Single select" },
-  { label: "Property location", type: "Text input" },
+  { label: "Company website", type: "Text input" },
   { label: "Any additional information?", type: "Long text" },
 ] as const;
 

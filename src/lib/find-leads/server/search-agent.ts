@@ -86,6 +86,7 @@ function buildContext(input: {
     "",
     "PLAN FIELD NAMES YOU MAY PATCH",
     "industries, locations, company, decisionMakerRoles, intent, signals, segment, exclusions, minimumGrade, targetVerifiedProspects, conversionGoal",
+    'LOCATION SHAPE (each entry of locations): {"country": "GB", "city": string|null, "region": string|null, "radiusKm": integer|null}. Put the town in city (or a county in region) and convert miles to kilometres (1 mile = 1.609 km), for example "within 15 miles of Bournemouth" is {"country": "GB", "city": "Bournemouth", "region": null, "radiusKm": 24}.',
     "",
     "BUYING SIGNAL TYPES (signals.intentTypes, and segment conditions' types)",
     INTENT_TYPES_FOR_AGENT,

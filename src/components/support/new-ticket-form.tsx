@@ -55,6 +55,9 @@ export function NewTicketForm({
   const [uploading, setUploading] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // A rejected file is reported under the drop zone, where the person is
+  // looking, not beside the Send button at the bottom of the panel.
+  const [attachError, setAttachError] = React.useState<string | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -67,16 +70,16 @@ export function NewTicketForm({
 
     const invalid = attachmentError(file);
     if (invalid) {
-      setError(invalid);
+      setAttachError(invalid);
       return;
     }
     if (files.length >= 3) {
-      setError("You can attach up to three files.");
+      setAttachError("You can attach up to three files.");
       return;
     }
 
     setUploading(true);
-    setError(null);
+    setAttachError(null);
     try {
       const prepared = await createAttachmentUploadUrl({
         filename: file.name,
@@ -85,7 +88,7 @@ export function NewTicketForm({
       });
 
       if (!prepared.ok) {
-        setError(prepared.error);
+        setAttachError(prepared.error);
         return;
       }
 
@@ -96,13 +99,13 @@ export function NewTicketForm({
       });
 
       if (!response.ok) {
-        setError("That file could not be uploaded. Please try again.");
+        setAttachError("That file could not be uploaded. Please try again.");
         return;
       }
 
       setFiles((current) => [...current, { name: file.name, key: prepared.data.key }]);
     } catch {
-      setError("That file could not be uploaded. Please try again.");
+      setAttachError("That file could not be uploaded. Please try again.");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -251,6 +254,8 @@ export function NewTicketForm({
             onChange={(event) => void upload(event.target.files)}
           />
         </div>
+
+        <FormError message={attachError} />
 
         {files.length > 0 && (
           <ul className="space-y-1.5">

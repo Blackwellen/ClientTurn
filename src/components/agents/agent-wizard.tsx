@@ -13,6 +13,7 @@ import {
   AGENT_TYPES,
   SOURCE_DEFINITIONS,
   autonomyDescription,
+  autonomyOptionsFor,
   autonomyLabel,
   cadenceLabel,
   sourcesForType,
@@ -257,8 +258,8 @@ export function AgentWizard({
                         </Badge>
                       )}
                       {blocked && (
-                        <Badge tone="warning" dense>
-                          needs setup
+                        <Badge tone={availability?.status === "UNAVAILABLE" ? "neutral" : "warning"} dense>
+                          {availability?.status === "UNAVAILABLE" ? "not available" : "needs setup"}
                         </Badge>
                       )}
                     </span>
@@ -278,12 +279,9 @@ export function AgentWizard({
 
           {usesSources && (
             <div className="mt-5 space-y-3 border-t border-line-subtle pt-4">
+              {/* The Select is Field's only child so it receives the label id. */}
               <Field label="Approved search plan" hint="Targeting follows this plan. Leave blank to save a draft.">
-                <Select
-                  value={strategyId}
-                  onChange={(event) => setStrategyId(event.target.value)}
-                  
-                >
+                <Select value={strategyId} onChange={(event) => setStrategyId(event.target.value)}>
                   <option value="">No plan yet: save as draft</option>
                   {plans.map((plan) => (
                     <option key={plan.id} value={plan.id}>
@@ -291,13 +289,13 @@ export function AgentWizard({
                     </option>
                   ))}
                 </Select>
-                <Link
-                  href="/app/find-leads"
-                  className="mt-1.5 inline-block text-[11.5px] text-content-accent underline-offset-4 hover:underline"
-                >
-                  Build and approve a plan in Find Leads
-                </Link>
               </Field>
+              <Link
+                href="/app/find-leads"
+                className="-mt-1 inline-block text-[11.5px] text-content-accent underline-offset-4 hover:underline"
+              >
+                Build and approve a plan in Find Leads
+              </Link>
 
               <p className="text-[11.5px] text-content-muted">
                 The agent finds and verifies a work email address for each prospect. It never
@@ -346,21 +344,19 @@ export function AgentWizard({
               )}
             </div>
 
-            <Field label="Approval">
+            {/* One child, so Field can hand the Select its label id; with the
+                description as a second child the select had no name. */}
+            <Field label="Approval" hint={autonomyDescription(autonomy, type)}>
               <Select
                 value={autonomy}
                 onChange={(event) => setAutonomy(event.target.value as Autonomy)}
-                
               >
-                {(["REVIEW_ALL", "REVIEW_NEW", "AUTO"] as Autonomy[]).map((value) => (
+                {autonomyOptionsFor(type).map((value) => (
                   <option key={value} value={value}>
                     {autonomyLabel(value)}
                   </option>
                 ))}
               </Select>
-              <span className="mt-1.5 block text-[11.5px] text-content-muted">
-                {autonomyDescription(autonomy)}
-              </span>
             </Field>
 
             {voiceAvailability && callsApply && (

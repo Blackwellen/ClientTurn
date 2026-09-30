@@ -78,7 +78,7 @@ const FEATURES: Record<AuthVariant, AuthFeature[]> = {
     { icon: Wallet, title: "Get paid on a schedule", description: "Monthly payouts once approved commission clears the minimum." },
   ],
   admin: [
-    { icon: ShieldAlert, title: "Step-up on every change", description: "Confirm your password before anything mutates." },
+    { icon: ShieldAlert, title: "Step-up on every change", description: "Your password and a fresh authenticator code before anything changes." },
     { icon: ScrollText, title: "Written to the audit log", description: "Every operator action is attributable." },
     { icon: Server, title: "Platform-wide visibility", description: "Customers, usage, margins and system health." },
   ],

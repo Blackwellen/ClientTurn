@@ -62,6 +62,9 @@ describe("settings sections", () => {
         "developer",
         "data-controls",
         "billing",
+        // System check (2026-09-29): troubleshooting, last because it reads
+        // every section above it.
+        "system-check",
       ],
     );
   });

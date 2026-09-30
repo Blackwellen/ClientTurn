@@ -120,6 +120,12 @@ export function UpcomingBookingsCard({
             description="Appointments appear here as soon as a qualified lead books a slot."
           />
         ) : (
+          <>
+          {awaitingOutcome.length > 0 && rows.length > 0 && (
+            <p className="text-content-muted mb-1.5 text-[11px] font-semibold tracking-[0.04em] uppercase">
+              Coming up
+            </p>
+          )}
           <ul className="divide-line-subtle divide-y">
             {rows.map((row) => {
               const { weekday, day } = dateBlock(row.startsAt, timezone);
@@ -135,10 +141,8 @@ export function UpcomingBookingsCard({
                       </span>
                     </span>
 
-                    <span className="text-content lr-tabular w-[6.5rem] shrink-0 text-[12.5px] font-medium whitespace-nowrap">
-                      {timeRange(row, timezone)}
-                    </span>
-
+                    {/* Same two-line rhythm as the "Did these happen?" and
+                        Awaiting confirmation rows: name, then time · service. */}
                     <span className="min-w-0 flex-1">
                       <Link
                         href={`/app/leads?lead=${row.leadId}`}
@@ -146,8 +150,9 @@ export function UpcomingBookingsCard({
                       >
                         {row.leadName}
                       </Link>
-                      <span className="text-content-muted block truncate text-[12px]">
-                        {row.serviceName ?? "No service set"}
+                      <span className="text-content-muted lr-tabular block truncate text-[12px]">
+                        {timeRange(row, timezone)}
+                        {` · ${row.serviceName ?? "No service set"}`}
                       </span>
                     </span>
 
@@ -180,6 +185,7 @@ export function UpcomingBookingsCard({
               );
             })}
           </ul>
+          </>
         )}
       </CardContent>
     </Card>

@@ -23,6 +23,7 @@ export function BusinessIdentityCard({
   hasLogo,
   onLogoChange,
   errors,
+  timezoneLabels,
 }: {
   draft: IdentityDraft;
   onChange: (next: Partial<IdentityDraft>) => void;
@@ -31,6 +32,10 @@ export function BusinessIdentityCard({
   hasLogo: boolean;
   onLogoChange: (previewUrl: string | null) => void;
   errors: Partial<Record<keyof IdentityDraft, string>>;
+  /** Labels computed once on the server. The offset comes from each
+   *  runtime's own tz database, and Node's and the browser's disagree for
+   *  some zones (Casablanca), which broke hydration of this select. */
+  timezoneLabels?: Record<string, string>;
 }) {
   return (
     <Card>
@@ -124,7 +129,7 @@ export function BusinessIdentityCard({
               >
                 {TIMEZONES.map((zone) => (
                   <option key={zone} value={zone}>
-                    {timezoneLabel(zone)}
+                    {timezoneLabels?.[zone] ?? timezoneLabel(zone)}
                   </option>
                 ))}
               </Select>

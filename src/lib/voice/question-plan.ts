@@ -168,6 +168,28 @@ export function boundPlan(input: readonly PlanQuestion[]): PlanQuestion[] {
   return plan;
 }
 
+/**
+ * The configured question a plan key names, as buildQuestionPlan keyed it:
+ * `Q.<question id>` for a question with no dimension, else the dimension of
+ * the configured question that applies to the lead's service (its own
+ * question first, then the workspace-wide one, each by position). Null for a
+ * catalogue default the workspace never configured: nothing for the
+ * deterministic engine to judge, so the answer stays a fact.
+ */
+export function questionForPlanKey<Q extends ConfiguredQuestionLite>(key: string, configured: readonly Q[], leadServiceId: string | null): Q | null {
+  const id = /^Q\.(.+)$/.exec(key.trim())?.[1] ?? null;
+  const applies = (q: Q) => q.serviceId === null || (leadServiceId !== null && q.serviceId === leadServiceId);
+  if (id) return configured.find((q) => q.id === id && applies(q)) ?? null;
+  const dim = key.trim().toUpperCase();
+  const byPosition = (a: Q, b: Q) => a.position - b.position;
+  const withDim = configured.filter((q) => applies(q) && (q.dimensionKey ?? "").toUpperCase() === dim);
+  return (
+    withDim.filter((q) => leadServiceId !== null && q.serviceId === leadServiceId).sort(byPosition)[0] ??
+    withDim.filter((q) => q.serviceId === null).sort(byPosition)[0] ??
+    null
+  );
+}
+
 /** The known dimension keys from the brief's "Label: value" known list (catalogue labels). */
 export function knownDimensionsFromLabels(known: readonly string[]): string[] {
   const byLabel = new Map<string, string>(

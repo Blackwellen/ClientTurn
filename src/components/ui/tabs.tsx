@@ -78,7 +78,10 @@ export function Tabs({
       aria-label={label}
       onKeyDown={onKeyDown}
       className={cn(
-        "flex items-center gap-1 border-b border-line overflow-x-auto",
+        // The baseline is an inset shadow, not a border the active tab
+        // overlaps with -1px: with overflow-x set, overflow-y becomes auto,
+        // and that 1px overlap showed a vertical scrollbar beside the tabs.
+        "flex items-center gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-line)]",
         className,
       )}
     >
@@ -97,7 +100,7 @@ export function Tabs({
             onClick={() => onChange(item.value)}
             className={cn(
               "relative inline-flex items-center gap-1.5 whitespace-nowrap",
-              "px-3 h-9 text-[13px] font-medium -mb-px border-b-2",
+              "px-3 h-9 text-[13px] font-medium border-b-2",
               "transition-colors duration-[var(--lr-duration-fast)]",
               "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-accent",
               "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -168,7 +171,7 @@ export function TabLink({
       aria-current={active ? "page" : undefined}
       className={cn(
         "relative inline-flex items-center gap-1.5 whitespace-nowrap",
-        "px-3 h-9 text-[13px] font-medium -mb-px border-b-2",
+        "px-3 h-9 text-[13px] font-medium border-b-2",
         "transition-colors duration-[var(--lr-duration-fast)]",
         "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-accent",
         active
@@ -194,7 +197,10 @@ export function TabLinkBar({
   return (
     <nav
       className={cn(
-        "flex items-center gap-1 border-b border-line overflow-x-auto",
+        // The baseline is an inset shadow, not a border the active tab
+        // overlaps with -1px: with overflow-x set, overflow-y becomes auto,
+        // and that 1px overlap showed a vertical scrollbar beside the tabs.
+        "flex items-center gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-line)]",
         className,
       )}
       {...props}

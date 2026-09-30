@@ -34,10 +34,15 @@ import { factDimensionSchema } from "@/lib/qualification-intelligence/types";
 import { writeQualificationFact, writeIntentSignals, enqueueReassessment } from "@/lib/qualification-intelligence/service";
 import { buildSignalWrite, extractTextSignals } from "@/lib/qualification-intelligence/signals";
 import { recordVoiceSuppression } from "@/lib/policy/suppression";
-import { queueNotification } from "@/lib/jobs/handlers/shared";
+import { loadBusinessContext, loadLead, queueNotification } from "@/lib/jobs/handlers/shared";
+import { applyQualification, loadAdaptiveSelection, loadQuestions, recordInferredAnswers } from "@/lib/jobs/handlers/qualify";
+import { matchSpokenAnswer } from "@/lib/qualification/next-question";
+import { ENGINE_BOOKABLE_LIFECYCLES } from "@/lib/agent/policy";
+import { engineBookingReadiness } from "@/lib/agent/qi-turn";
+import { questionForPlanKey } from "../question-plan";
 import { cancelQueuedCall, requestCall } from "../runtime-core";
 import { localWhen } from "../post-call";
-import { serverVoiceDeps } from "../server-deps";
+import { recordLeadNextStep, serverVoiceDeps } from "../server-deps";
 import { spokenSlotChoice, spokenSlotLabel, spokenWhen } from "../spoken-time";
 import type { VoiceToolArgs } from "./definitions";
 import { callPermissionsFromContext, type PortOutcome, type ToolPermissions, type ToolCallRow } from "./core";
@@ -214,21 +219,80 @@ export async function recordFact(businessId: string, a: VoiceToolArgs<"record_fa
       ),
     );
   }
-  // A fact the lead confirmed back is written as an AI_ASSIST INFERRED fact
-  // (resolved conflict 1: the AI never confirms). Unconfirmed words stay as
-  // signals only; the deterministic engine decides what they mean.
+  // The answer to a configured question goes where a text reply's answer goes
+  // (live wiring fix 2026-09-29: call answers only ever became facts the
+  // engine never reads, so a call never moved qualification_state or
+  // completeness). The plan key names the question (question-plan.ts); the
+  // candidate value is re-validated by the deterministic matcher (resolved
+  // conflict 1: the model extracts, the rules decide); an unmatched value is
+  // stored without a value, which the engine reads as REVIEW. Then the engine
+  // runs, exactly as after a text reply (orchestrator.ts).
+  const [questions, lead] = await Promise.all([loadQuestions(businessId), loadLead(call.lead_id)]);
+  const question = lead ? questionForPlanKey(a.dimension, questions, lead.service_id) : null;
+  let answerMatched: boolean | null = null;
+  let verdict: string | null = null;
+  let options: string[] = [];
+  if (question && lead) {
+    const matched = matchSpokenAnswer(question, a.value);
+    answerMatched = matched.value !== null;
+    options = question.options.map((o) => o.label);
+    const existing = await db()
+      .from("qualification_answers")
+      .select("answer_value")
+      .eq("business_id", businessId)
+      .eq("lead_id", call.lead_id)
+      .eq("question_id", question.id)
+      .maybeSingle();
+    const had = (existing.data as { answer_value: string | null } | null)?.answer_value ?? null;
+    // A clear answer already given is never replaced by an unclear one.
+    if (answerMatched || !had) {
+      const { error } = await db()
+        .from("qualification_answers")
+        .upsert(
+          {
+            business_id: businessId,
+            lead_id: call.lead_id,
+            question_id: question.id,
+            answer_value: matched.value,
+            answer_text: a.value.slice(0, 500),
+            // The model heard and extracted it; the matcher re-validated it (Q-D1).
+            source: "ai_assist",
+            confidence: answerMatched ? (a.confirmed ? 0.95 : 0.85) : 0,
+            answered_at: now,
+          },
+          { onConflict: "lead_id,question_id" },
+        );
+      if (error) throw new Error(`record_fact: answer write failed: ${error.message}`);
+    }
+    const business = await loadBusinessContext(businessId);
+    const fresh = await loadLead(call.lead_id);
+    if (business && fresh) {
+      // What the lead's own details already answer (the service they picked,
+      // their postcode) is recorded first, as after a text reply
+      // (message-inbound.ts), so the engine judges the whole picture.
+      try {
+        const selection = await loadAdaptiveSelection({ businessId, lead: fresh, questions });
+        await recordInferredAnswers(businessId, fresh.id, selection.inferred);
+      } catch (error) {
+        console.error("[voice] record_fact: inferred answers skipped", { callId: call.id, message: error instanceof Error ? error.message : String(error) });
+      }
+      const { output } = await applyQualification(business, fresh);
+      verdict = output.result;
+    }
+  }
+
+  // The same words as a qualification fact (INFERRED, AI_ASSIST: the AI never
+  // confirms), against the question it answers, for the shared memory and the
+  // next text turn. Unconfirmed is lower confidence, not dropped.
   const dimension = factDimensionSchema.safeParse(a.dimension.toUpperCase());
-  // A configured question with no dimension is keyed `Q.<question id>` in the
-  // call's question plan (question-plan.ts): its confirmed answer is an
-  // UNMAPPED fact against that question, for the engine to match.
-  const questionId = /^Q\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(a.dimension)?.[1] ?? null;
+  const questionId = question?.id ?? /^Q\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(a.dimension)?.[1] ?? null;
   let factWritten = false;
-  if (a.confirmed && ((dimension.success && dimension.data !== "UNMAPPED") || questionId)) {
+  if ((dimension.success && dimension.data !== "UNMAPPED") || questionId) {
     try {
       await writeQualificationFact(businessId, {
         lead_id: call.lead_id,
         service_id: null,
-        dimension: questionId ? "UNMAPPED" : dimension.success ? dimension.data : "UNMAPPED",
+        dimension: dimension.success ? dimension.data : "UNMAPPED",
         value: a.value.slice(0, 500),
         value_normalised: null,
         state: "INFERRED",
@@ -236,24 +300,74 @@ export async function recordFact(businessId: string, a: VoiceToolArgs<"record_fa
         source_ref: `voice_call:${call.id}`,
         question_id: questionId,
         question_intent_key: null,
-        confidence: 0.9,
+        confidence: a.confirmed ? 0.9 : 0.85,
         observed_at: now,
         valid_until: null,
         verified_at: null,
         set_by: null,
       });
       factWritten = true;
-    } catch {
+    } catch (error) {
+      console.error("[voice] record_fact: fact write failed", { callId: call.id, message: error instanceof Error ? error.message : String(error) });
       factWritten = false;
     }
   }
-  await enqueueReassessment(businessId, call.lead_id, `voice_call:${call.id}`);
-  return { ok: true, say: null, data: { recorded: text.slice(0, 200), fact_written: factWritten, signals: signals.length }, operation: "qualification.fact" };
+  await enqueueReassessment(businessId, call.lead_id, `voice_call:${call.id}:${a.dimension}`);
+  // An answer none of the options matched: ask once more with the choices
+  // (the text path's clarification, handover-policy.ts), never a guess.
+  const next =
+    answerMatched === false && options.length > 0
+      ? `That answer did not match a choice. Ask once more, simply, offering: ${options.slice(0, 5).join(", or ")}. Then call record_fact again with their choice.`
+      : null;
+  return {
+    ok: true,
+    say: null,
+    data: {
+      recorded: text.slice(0, 200),
+      fact_written: factWritten,
+      signals: signals.length,
+      question_id: question?.id ?? null,
+      answer_matched: answerMatched,
+      qualification: verdict,
+      ...(next ? { next } : {}),
+    },
+    operation: "qualification.fact",
+  };
+}
+
+/**
+ * Whether the text agent's create_booking gate would let this lead be booked
+ * now (agent/policy.ts evaluateToolGate: a qualified lifecycle, or the
+ * engine's own booking-readiness on an earlier lifecycle). Checked BEFORE
+ * times are offered: the live-wiring harness (2026-09-29) found a call that
+ * offered real times, the lead chose one, and book_meeting was then refused
+ * DENIED_POLICY ("I could not confirm that time") because the lead was still
+ * qualifying. A time is never offered that the call cannot book.
+ */
+async function bookingReadiness(l: Loaded): Promise<{ ready: boolean; engineReady: boolean; reason: string }> {
+  const lifecycle = l.context.lifecycle;
+  if (lifecycle === "QUALIFIED" || lifecycle === "BOOKING_PENDING" || lifecycle === "BOOKED") return { ready: true, engineReady: false, reason: lifecycle };
+  const { data } = await db()
+    .from("lead_assessments")
+    .select("nba")
+    .eq("business_id", l.call.business_id)
+    .eq("lead_id", l.call.lead_id)
+    .eq("is_current", true)
+    .maybeSingle();
+  const nba = ((data as { nba?: unknown } | null)?.nba ?? null) as Parameters<typeof engineBookingReadiness>[0];
+  // The NBA itself is the engine's booking decision (CTA_BOOK is only planned
+  // once its booking gate is met), so no further dimension gate is applied here.
+  const engine = engineBookingReadiness(nba, { gateDimensions: [], requiredDimensions: [] });
+  const engineReady = engine.ready && ENGINE_BOOKABLE_LIFECYCLES.includes(lifecycle);
+  return { ready: engineReady, engineReady, reason: engineReady ? "ENGINE_READY" : `${lifecycle}: ${engine.reason}` };
 }
 
 export async function checkAvailability(businessId: string, a: VoiceToolArgs<"check_availability"> & { callId: string }): Promise<PortOutcome> {
   const l = await load(businessId, a.callId);
   if (!l) return refused("NOT_FOUND", "");
+  const readiness = await bookingReadiness(l);
+  // The core turns this into "a colleague will arrange a time" plus the next step (a call-back window).
+  if (!readiness.ready) return refused("NOT_READY_TO_BOOK", "", "booking.availability");
   const result = await getCalendarAvailability(toolContext(l), {
     date: a.date ?? null,
     dayPart: a.day_part ?? null,
@@ -294,12 +408,19 @@ export async function bookMeeting(businessId: string, a: VoiceToolArgs<"book_mee
   if (!l) return refused("NOT_FOUND", "");
   const claim = await claimForCall(l, "BOOKING", bookingActionKey(businessId, l.call.lead_id, slot.start));
   if (!claim.ok) return refused("LEAD_HELD", "A colleague is working on your booking right now and will confirm it with you.", "booking.create");
-  const booked = await createBooking(toolContext(l, { availabilityConfirmed: true }), {
+  const readiness = await bookingReadiness(l);
+  const booked = await createBooking(toolContext(l, { availabilityConfirmed: true, engineBookingReady: readiness.engineReady }), {
     startsAt: slot.start,
     endsAt: slot.end,
     slotLabel: slot.label,
     bufferMinutes: l.context.booking.bookingBufferMinutes,
     calendarIntegrationId: l.context.booking.meetingType?.calendarIntegrationId ?? null,
+    // Calendly books on its own side, and a call cannot hand the lead a web
+    // page: the time they chose on the call is held as a request for a
+    // colleague to confirm (the manual path), never dropped. Harness
+    // 2026-09-29: with Calendly, every chosen time ended "I could not confirm
+    // that time" and nothing was recorded.
+    providerBooksItself: "hold_as_request",
   });
   if (!booked.ok) {
     return refused(
@@ -519,6 +640,7 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
   await supersedeCallbacks(businessId, call.id, "CALLBACK_SUPERSEDED");
   const atIso = at && Number.isFinite(at.getTime()) ? at.toISOString() : null;
   const note = a.note?.trim() || null;
+  let aiRefused: string | null = null;
   if (a.by === "AI" && at && Number.isFinite(at.getTime())) {
     const route = (["QUALIFICATION", "BOOKING_CLOSE", "DIRECT_CLOSE", "NURTURE", "REACTIVATION"] as const).find((r) => r === call.route) ?? "QUALIFICATION";
     const queued = await requestCall(serverVoiceDeps(), {
@@ -537,11 +659,15 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
         operation: "voice.request_call",
       };
     }
-    // Not callable then (hours, caps): a person arranges it instead.
+    // Not callable then (hours, caps, entitlement): a person arranges it
+    // instead, and the reason is kept on the tool row for the operator.
+    aiRefused = queued.ok ? null : queued.reason;
   }
   // In the workspace's own zone: the UTC slice read an hour early all summer.
   const when = atIso ? localWhen(atIso, tz) : "a time that suits them";
-  await db().from("leads").update({ next_action: `Call back ${when}${a.note ? `: ${a.note}` : ""}`.slice(0, 500) }).eq("business_id", businessId).eq("id", call.lead_id);
+  // A durable note a person sees on the lead (leads.next_action holds only the
+  // engine's code since 0134, so the old write here was silently rejected).
+  await recordLeadNextStep(businessId, call.lead_id, `Call back ${when}${a.note ? `: ${a.note}` : ""}`);
   await queueNotification({
     businessId,
     type: "lead_attention",
@@ -553,7 +679,7 @@ export async function scheduleCallback(businessId: string, a: VoiceToolArgs<"sch
   return {
     ok: true,
     say: spoken ? `A colleague will call you back at ${spoken}.` : a.note ? "A colleague will call you back then." : "A colleague will call you back.",
-    data: { by: "PERSON", when, at_iso: atIso, note },
+    data: { by: "PERSON", when, at_iso: atIso, note, ...(aiRefused ? { ai_callback_refused: aiRefused } : {}) },
     operation: "lead.next_action",
   };
 }
@@ -573,11 +699,7 @@ export async function optOut(businessId: string, a: VoiceToolArgs<"opt_out"> & {
     if (l) await applySuppression(toolContext(l, { optOutRecognised: true }), { reason: "opt_out", scope: "all" });
     // A call-back or "a colleague will email you" set earlier in THIS call is
     // void: nothing is sent or rung once they objected (owner decision 2026-09-28).
-    await db()
-      .from("leads")
-      .update({ next_action: "Opted out on an AI call: no further contact." })
-      .eq("business_id", businessId)
-      .eq("id", call.lead_id);
+    await recordLeadNextStep(businessId, call.lead_id, "Opted out on an AI call: no further contact.");
   }
   return {
     ok: true,

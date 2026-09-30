@@ -102,7 +102,11 @@ export function PartnerSignUpForm() {
         <input
           type="checkbox"
           name="terms"
-          required
+          // Not `required`: an unticked required box is announced as
+          // "invalid" before anyone has submitted. The server checks it and
+          // the error below is tied to the box instead.
+          aria-invalid={fieldError("terms") ? true : undefined}
+          aria-describedby={fieldError("terms") ? "partner-terms-error" : undefined}
           className="mt-0.5 size-[18px] shrink-0 cursor-pointer rounded-[5px] border border-white/25 bg-[var(--auth-input-bg)] accent-[var(--auth-lime)]"
         />
         <span>
@@ -124,7 +128,7 @@ export function PartnerSignUpForm() {
         </span>
       </label>
       {fieldError("terms") && (
-        <p className="text-[12.5px] text-[var(--auth-danger-text)]">
+        <p id="partner-terms-error" className="text-[12.5px] text-[var(--auth-danger-text)]">
           {fieldError("terms")}
         </p>
       )}

@@ -54,6 +54,7 @@ import {
   type BillingView,
   type BillingViewData,
 } from "@/lib/admin/billing-types";
+import { askReason } from "@/components/admin/admin-prompt";
 
 const KPIS: {
   key: "totalSubscriptions" | "active" | "trials" | "pastDue" | "cancelled";
@@ -131,6 +132,14 @@ export function BillingView({
               <div className="mt-2 flex items-end justify-between gap-2">
                 <span className="text-[11.5px] text-content-muted">
                   {formatMoney(summary.mrr)} MRR
+                  {summary.complimentary > 0 && (
+                    <span
+                      className="block"
+                      title="On a paid plan with no Stripe subscription (your own, demo or comped workspaces). They count £0 towards MRR."
+                    >
+                      {summary.complimentary} complimentary
+                    </span>
+                  )}
                 </span>
                 <Sparkline values={summary.mrrSeries} tone="positive" width={80} height={22} />
               </div>
@@ -700,8 +709,8 @@ function CreditsView({
                         variant="ghost"
                         size="sm"
                         disabled={pending === `reverse:${entry.id}`}
-                        onClick={() => {
-                          const reason = window.prompt(
+                        onClick={async () => {
+                          const reason = await askReason(
                             "Why is this credit being reversed? Recorded against your account.",
                           );
                           if (reason && reason.trim().length >= 5) {

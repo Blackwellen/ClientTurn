@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import {
   autonomyDescription,
+  autonomyOptionsFor,
   autonomyLabel,
   cadenceLabel,
   sourcesForType,
@@ -26,6 +27,7 @@ import { updateAgent } from "@/lib/agents/actions";
 export function AgentSettingsForm({
   agent,
   plans,
+  unavailableSources = [],
 }: {
   agent: {
     id: string;
@@ -40,6 +42,8 @@ export function AgentSettingsForm({
     searchStrategyId: string | null;
   };
   plans: { id: string; name: string }[];
+  /** Switched off platform-wide (e.g. paid enrichment); never offered. */
+  unavailableSources?: SourceKey[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -47,7 +51,9 @@ export function AgentSettingsForm({
   const [notice, setNotice] = React.useState("");
 
   const usesSources = agent.agentType === "SOURCING" || agent.agentType === "COMBINED";
-  const selectable = sourcesForType(agent.agentType);
+  const selectable = sourcesForType(agent.agentType).filter(
+    (source) => !unavailableSources.includes(source.key),
+  );
 
   const [name, setName] = React.useState(agent.name);
   const [description, setDescription] = React.useState(agent.description ?? "");
@@ -131,9 +137,9 @@ export function AgentSettingsForm({
         />
       </Field>
 
-      <Field label="Approval" hint={autonomyDescription(autonomy)}>
+      <Field label="Approval" hint={autonomyDescription(autonomy, agent.agentType)}>
         <Select value={autonomy} onChange={(event) => setAutonomy(event.target.value as Autonomy)}>
-          {(["REVIEW_ALL", "REVIEW_NEW", "AUTO"] as Autonomy[]).map((value) => (
+          {[...new Set<Autonomy>([...autonomyOptionsFor(agent.agentType), autonomy])].map((value) => (
             <option key={value} value={value}>
               {autonomyLabel(value)}
             </option>

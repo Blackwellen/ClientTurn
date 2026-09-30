@@ -186,12 +186,21 @@ export function FollowUpStep({
             Sender setup
           </OSectionTitle>
           <div className="space-y-3">
-            <OField label="Phone number">
+            <OField
+              label="Sending number"
+              hint={
+                initial.businessPhone
+                  ? `Test messages go to your business phone, ${initial.businessPhone}.`
+                  : "Add your business phone in step 1 to receive a test message."
+              }
+            >
               <div className="flex h-10 items-center gap-1.5 rounded-[7px] border border-[rgba(150,170,190,0.32)] bg-[#0b141d] pr-1.5 pl-3">
                 <span className="min-w-0 flex-1 truncate text-[13px] text-[#eef2f7]">
-                  {/* SMS runs on ClientTurn's number until you add your own, so
-                      "Not set" beside "Connected" read as a contradiction. */}
-                  {initial.businessPhone || (initial.smsConnected ? "ClientTurn's sending number" : "Not set")}
+                  {/* SMS goes out from ClientTurn's number until you add your
+                      own. The business phone used to sit here beside
+                      "Connected", which read as if texts were sent from it;
+                      it is where a test lands, so it is the hint below. */}
+                  {initial.smsConnected ? "ClientTurn's sending number" : "Not set"}
                 </span>
                 <OBadge tone={initial.smsConnected ? "success" : "neutral"} className="shrink-0 px-1.5 whitespace-nowrap">
                   {initial.smsConnected ? "Connected" : "Setup required"}

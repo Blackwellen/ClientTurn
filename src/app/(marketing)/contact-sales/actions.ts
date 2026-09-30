@@ -4,8 +4,13 @@ import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { COMPANY_SIZES, LEAD_VOLUME_OPTIONS, USE_CASES, CURRENT_SYSTEMS } from "@/lib/marketing/sales-enquiry-options";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { recordMarketingEvent } from "@/lib/marketing/record";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { formBotVerdict } from "@/lib/security/form-bot-check";
+import { formatSalesEnquiryEmail, type SalesEnquiryFields } from "@/lib/marketing/sales-enquiry-email";
+import { COMPANY } from "@/lib/marketing/company";
+import { serverEnv } from "@/lib/env";
+import { obs } from "@/lib/observability/log";
 
 /**
  * The sales enquiry form.
@@ -25,10 +30,6 @@ export type EnquiryResult =
 
 /** How long a form must have been on screen before a submission is credible. */
 const MIN_FILL_SECONDS = 3;
-
-/** Submissions allowed from one address in the window below. */
-const RATE_LIMIT = 5;
-const RATE_WINDOW_MINUTES = 60;
 
 const schema = z.object({
   firstName: z.string().trim().min(1, "Enter your first name.").max(80),
@@ -80,27 +81,47 @@ async function callerKey(): Promise<string> {
   return createHash("sha256").update(`contact-sales:${address}`).digest("hex").slice(0, 32);
 }
 
-/** True when this caller has already submitted more than the window allows. */
+/**
+ * True when this caller is over the `marketing:enquiry` bucket (5 an hour).
+ *
+ * The shared Postgres limiter, which counts atomically. It replaced a count of
+ * this caller's earlier `marketing_events` rows, which two concurrent
+ * submissions could both pass (surface QA 2026-09-30). Fails open like every
+ * non-credential bucket: the honeypot and timing checks still apply.
+ */
 async function overRateLimit(key: string): Promise<boolean> {
-  const since = new Date(
-    Date.now() - RATE_WINDOW_MINUTES * 60 * 1000,
-  ).toISOString();
+  const result = await checkRateLimit("marketing:enquiry", key);
+  return !result.allowed;
+}
 
+/**
+ * Emails the enquiry to the sales mailbox, Reply-To the enquirer. The enquiry
+ * is already recorded when this runs, so a delivery failure is logged, never
+ * shown to the person who asked.
+ */
+async function notifySales(input: SalesEnquiryFields): Promise<void> {
+  const key = serverEnv.resend.apiKey;
+  if (!key) {
+    obs.warn("marketing.enquiry_notify", { outcome: "skipped", reason: "no_resend_key" });
+    return;
+  }
+  const { subject, text, replyTo } = formatSalesEnquiryEmail(input);
   try {
-    const supabase = createAdminClient();
-    const { count, error } = await supabase
-      .from("marketing_events")
-      .select("id", { count: "exact", head: true })
-      .eq("event_name", "sales_enquiry")
-      .eq("metadata->>caller", key)
-      .gte("occurred_at", since);
-
-    if (error) return false;
-    return (count ?? 0) >= RATE_LIMIT;
-  } catch {
-    // A limiter that cannot read must not become an outage on the form. The
-    // honeypot and timing checks still apply.
-    return false;
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: serverEnv.resend.from,
+        to: [COMPANY.supportEmail],
+        reply_to: replyTo,
+        subject,
+        text,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) obs.warn("marketing.enquiry_notify", { outcome: "failed", status: response.status });
+  } catch (error) {
+    obs.warn("marketing.enquiry_notify", { outcome: "failed", error: error instanceof Error ? error.message : "unknown" });
   }
 }
 
@@ -113,18 +134,18 @@ export async function submitSalesEnquiry(
    * database. Both are silent successes: telling a script which check it
    * failed is telling it how to pass next time.
    */
-  const honeypot = formData.get("company_website_confirm");
-  if (typeof honeypot === "string" && honeypot.trim().length > 0) {
-    return { ok: true };
-  }
-
-  const startedAt = Number(formData.get("startedAt"));
-  if (
-    Number.isFinite(startedAt) &&
-    startedAt > 0 &&
-    Date.now() - startedAt < MIN_FILL_SECONDS * 1000
-  ) {
-    return { ok: true };
+  const verdict = formBotVerdict({
+    honeypot: formData.get("company_website_confirm"),
+    startedAt: formData.get("startedAt"),
+    minSeconds: MIN_FILL_SECONDS,
+  });
+  if (verdict === "honeypot" || verdict === "too-fast") return { ok: true };
+  if (verdict === "no-timing") {
+    // Also what a browser without JavaScript sends: say so, never drop it silently.
+    return {
+      ok: false,
+      error: `We could not send the form from this browser. Please reload the page and try again, or email ${COMPANY.supportEmail}.`,
+    };
   }
 
   const parsed = schema.safeParse({
@@ -167,7 +188,7 @@ export async function submitSalesEnquiry(
     return {
       ok: false,
       error:
-        "You have sent several enquiries recently. Email us directly and we will pick it up from there.",
+        `You have sent several enquiries recently. Email ${COMPANY.supportEmail} and we will pick it up from there.`,
     };
   }
 
@@ -205,10 +226,10 @@ export async function submitSalesEnquiry(
   } catch {
     return {
       ok: false,
-      error:
-        "We could not submit your enquiry. Please try again, or email sales directly.",
+      error: `We could not submit your enquiry. Please try again, or email ${COMPANY.supportEmail}.`,
     };
   }
 
+  await notifySales(input);
   return { ok: true };
 }

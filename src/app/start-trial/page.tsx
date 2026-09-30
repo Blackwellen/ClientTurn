@@ -9,9 +9,11 @@ import { confirmCheckoutReturn } from "@/lib/billing/subscription-sync";
 import { requestOrigin } from "@/lib/billing/terms-acceptance";
 import { needsCheckout, trialOffer, type SubscriptionRowLike } from "@/lib/billing/lifecycle";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enforceWorkspaceSecurity } from "@/lib/auth/account-security";
 import { planOrder, ANNUAL_DISCOUNT_PERCENT } from "@/lib/billing/plans";
 import { TERMS_PATH } from "@/lib/marketing/terms-version";
 import { Logo } from "@/components/ui/logo";
+import { signOut } from "@/lib/auth/actions";
 import { ToastProvider } from "@/components/ui/toast";
 import { StartTrialPicker, type PickerPlan } from "@/components/billing/start-trial-picker";
 
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+async function signOutToLogin() {
+  "use server";
+  await signOut("/login");
+}
 
 const searchSchema = z.object({
   session_id: z.string().regex(/^cs_[A-Za-z0-9_]+$/).optional(),
@@ -43,6 +50,9 @@ export default async function StartTrialPage({
   const user = await requireUser();
   const workspace = await getActiveWorkspace();
   if (!workspace) redirect("/onboarding");
+  // Two-factor and idle timeout before billing, as on every /app page
+  // (surface QA 2026-09-30).
+  await enforceWorkspaceSecurity(workspace.businessId);
 
   const raw = await searchParams;
   const params = searchSchema.safeParse({
@@ -111,7 +121,20 @@ export default async function StartTrialPage({
   return (
     <ToastProvider>
       <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-10 sm:px-6">
-        <Logo href={null} height={48} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Logo href={null} height={48} />
+          {/* A way out: this page has no app shell, so without it the only
+              exit for someone not ready to add a card was closing the tab. */}
+          <form action={signOutToLogin} className="flex items-center gap-3 text-[12.5px] text-[#96a1b3]">
+            <span className="hidden max-w-[240px] truncate sm:inline">{user.email}</span>
+            <button
+              type="submit"
+              className="rounded-[9px] border border-[rgba(150,170,190,0.35)] px-3 py-1.5 font-medium text-[#eef2f7] transition-colors hover:border-[var(--auth-lime)] hover:text-[var(--auth-lime)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--auth-lime)]"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
         <h1 className="mt-6 text-[26px] font-semibold tracking-[-0.01em] text-[#f8fafc]">{heading}</h1>
         <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-[#96a1b3]">
           {offer.kind === "trial_days"

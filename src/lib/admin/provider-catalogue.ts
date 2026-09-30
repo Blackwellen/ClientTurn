@@ -24,6 +24,12 @@ export type CatalogueEntry = {
   credentialRef: string;
   requiredEnv: string[];
   defaultUnitBasis: UnitBasis;
+  /**
+   * Set when the provider is switched off by an owner decision rather than by
+   * a missing key, so it reads as "Disabled by policy" (neutral) instead of a
+   * red "Offline" that asks an operator to fix something deliberate.
+   */
+  disabledByPolicy?: string;
 };
 
 export const PROVIDER_CATALOGUE: CatalogueEntry[] = [
@@ -139,6 +145,7 @@ export const PROVIDER_CATALOGUE: CatalogueEntry[] = [
     credentialRef: "env:APOLLO_API_KEY",
     requiredEnv: ["APOLLO_API_KEY"],
     defaultUnitBasis: "RECORD",
+    disabledByPolicy: "Paid enrichment vendors stay off in production (owner decision 2026-09-28).",
   },
   {
     provider: "hunter",
@@ -148,6 +155,7 @@ export const PROVIDER_CATALOGUE: CatalogueEntry[] = [
     credentialRef: "env:HUNTER_API_KEY",
     requiredEnv: ["HUNTER_API_KEY"],
     defaultUnitBasis: "RECORD",
+    disabledByPolicy: "Paid enrichment vendors stay off in production (owner decision 2026-09-28).",
   },
   {
     provider: "clearbit",
@@ -162,6 +170,7 @@ export const PROVIDER_CATALOGUE: CatalogueEntry[] = [
     credentialRef: "env:CLEARBIT_API_KEY",
     requiredEnv: ["CLEARBIT_API_KEY"],
     defaultUnitBasis: "RECORD",
+    disabledByPolicy: "Paid enrichment vendors stay off in production (owner decision 2026-09-28).",
   },
   {
     provider: "zerobounce",

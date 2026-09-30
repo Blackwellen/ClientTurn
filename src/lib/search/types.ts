@@ -220,6 +220,7 @@ const SETTINGS_KEYWORDS: Record<string, string[]> = {
   developer: ["api", "api keys", "webhooks", "mcp"],
   "data-controls": ["gdpr", "privacy", "retention", "suppression", "compliance"],
   billing: ["plan", "subscription", "invoices", "usage", "upgrade"],
+  "system-check": ["troubleshooting", "not working", "health", "status", "diagnostics", "why"],
 };
 
 /**

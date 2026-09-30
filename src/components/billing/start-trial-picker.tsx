@@ -96,7 +96,7 @@ export function StartTrialPicker({
                 <h2 className="text-[16px] font-semibold text-[#f8fafc]">{plan.name}</h2>
                 {plan.recommended ? (
                   <span className="rounded-full bg-[rgba(183,243,74,0.14)] px-2 py-0.5 text-[11px] font-semibold text-[var(--auth-lime)]">
-                    Most chosen
+                    Recommended
                   </span>
                 ) : null}
               </div>
@@ -153,8 +153,8 @@ export function StartTrialPicker({
         })}
       </div>
 
-      <p className="mt-5 flex items-center gap-2 text-[12px] text-[#96a1b3]">
-        <Lock className="size-3.5" aria-hidden />
+      <p className="mt-5 flex items-start gap-2 text-[12px] leading-relaxed text-[#96a1b3]">
+        <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         Card details are entered on Stripe&apos;s secure checkout and never reach ClientTurn. During the trial,
         trial limits apply whichever plan you choose; the plan&apos;s full limits start with your first payment.
       </p>

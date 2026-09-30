@@ -213,6 +213,13 @@ describe("per-workspace margin from fixture usage", () => {
     assert.equal(subscriptionRevenue(null, last).monthly, 0);
   });
 
+  test("a complimentary workspace (no Stripe subscription) earns £0 and pays no Stripe fee", () => {
+    const comped = subscriptionRevenue(sub({ billed: false }), last);
+    assert.equal(comped.monthly, 0);
+    assert.equal(comped.stripeFee, 0);
+    close(subscriptionRevenue(sub({ billed: true }), last).monthly as number, 199);
+  });
+
   test("WhatsApp sends the ledger counted but the messages table did not categorise are priced at marketing", () => {
     const [w] = periodEconomics(
       [{ businessId: "w", name: "W", subscription: sub(), usage: usage({ businessId: "w", waOutLedger: 5, waUtility: 2 }) }],

@@ -75,7 +75,11 @@ export function SummaryStatCard({
             {value}
           </p>
           {trend && (
+            // The figure is all-time; the trend compares the last 30 days
+            // with the 30 before. Next to "2", a bare "-100%" read as a
+            // contradiction, so the window is stated, not only announced.
             <span
+              title="Last 30 days compared with the 30 days before"
               className={cn(
                 "inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium",
                 trend.direction === "up" ? "text-success-600" : "text-danger-600",
@@ -83,7 +87,8 @@ export function SummaryStatCard({
             >
               <TrendIcon className="size-2.5" aria-hidden />
               <span className="lr-tabular">{trend.value}</span>
-              <span className="sr-only">vs. the previous 30 days</span>
+              <span className="font-normal text-content-subtle">30d</span>
+              <span className="sr-only">in the last 30 days compared with the 30 days before</span>
             </span>
           )}
         </div>

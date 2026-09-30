@@ -396,6 +396,26 @@ export async function setRowClassification(
  * operator override, and re-checks suppression immediately before insert — a
  * contact who opted out between upload and commit must not be imported.
  */
+/** The workspace's one CSV `lead_sources` row, created on first import. */
+async function resolveCsvSource(businessId: string): Promise<string | null> {
+  const db = createAdminClient();
+  const { data: existing } = await db
+    .from("lead_sources")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("provider", "csv")
+    .is("form_id", null)
+    .limit(1)
+    .maybeSingle();
+  if (existing) return existing.id;
+  const { data: created } = await db
+    .from("lead_sources")
+    .insert({ business_id: businessId, provider: "csv", source_name: "CSV import" })
+    .select("id")
+    .single();
+  return created?.id ?? null;
+}
+
 export async function commitImport(importId: unknown): Promise<ActionResult> {
   const parsed = z.uuid().safeParse(importId);
   if (!parsed.success) return { ok: false, error: "Invalid import." };
@@ -446,6 +466,11 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
   const importMapping = storedMapping((job as { mapping_json?: unknown }).mapping_json);
   const pick = await categoryPicker(workspace.businessId);
 
+  // Every imported lead is attributed to the workspace's CSV source. Without
+  // it the leads had no source_id: "Unknown" on the lead card and the lead
+  // page, and missing from Source performance (surface QA 2026-09-30).
+  const csvSourceId = await resolveCsvSource(workspace.businessId);
+
   for (const row of candidates) {
     const decision = (row.user_classification ?? row.classification) as RowClassification;
     const email = normaliseEmail(row.email);
@@ -487,7 +512,9 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
           {
             // A suppressed contact is skipped, as before, not imported.
             onSuppressed: "REFUSE",
+            leadSourceId: csvSourceId,
             insertExtras: {
+              source_id: csvSourceId,
               notes: row.notes,
               created_by_user_id: workspace.userId,
               // Never started automatically unless the operator asked:
@@ -597,6 +624,28 @@ export async function commitImport(importId: unknown): Promise<ActionResult> {
           .single();
 
         if (error || !prospect) throw new Error("insert failed");
+
+        // Where the record came from, where the cold-send policy and the
+        // Article 14 line read it. Without this row every imported prospect's
+        // first cold email was refused as "origin unknown" (2026-09-29).
+        // Logged, never fatal: the prospect exists either way and simply
+        // stays in review.
+        {
+          const { error: provenanceError } = await db.from("prospect_data_sources").insert({
+            business_id: workspace.businessId,
+            prospect_id: prospect.id,
+            company_id: company?.id ?? null,
+            field_name: email ? "email" : "contact",
+            value_json: { email, importId: job.id, rowNumber: (row as { row_number?: number }).row_number ?? null } as never,
+            provider: "import",
+            source_type: "IMPORT",
+            confidence: 0.8,
+            policy_tags: ["CUSTOMER_SUPPLIED", "BASIS:CUSTOMER_ASSERTED"] as never,
+          });
+          if (provenanceError) {
+            console.error("[imports] provenance not recorded", { importId: job.id, message: provenanceError.message });
+          }
+        }
 
         // Company facts from the customer's own data (renewal, headcount,
         // technologies) become intent evidence on the prospect. Never fails

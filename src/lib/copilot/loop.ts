@@ -30,6 +30,7 @@ import {
 } from "./types";
 import { runTool, type ToolContext, type ToolOutcome } from "./tool-service";
 import { legacyToolSchema } from "./legacy-schemas";
+import { cleanCopilotReply } from "./reply-text";
 import {
   buildTurnMessages,
   copilotSystemPrompt,
@@ -545,12 +546,7 @@ function promptCharsOf(turns: ToolTurn[]): number {
  * asking.
  */
 function cleanReply(content: string | null): string {
-  if (!content) return "I could not work that out.";
-  return content
-    .replace(/\*\*/g, "")
-    .replace(/^#+\s*/gm, "")
-    .replace(/^[-*]\s+/gm, "")
-    .trim();
+  return cleanCopilotReply(content);
 }
 
 async function meter(

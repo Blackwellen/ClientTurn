@@ -182,8 +182,14 @@ export function existingAccountInviteEmail(input: {
   role: AssignableRole;
   invitedAt: Date;
   siteUrl: string;
+  /**
+   * A new address's one-time invite link (from Supabase's generateLink), used
+   * when Supabase's own mailer refused to send the invite. Without it the
+   * person is told to sign in with an account they already have.
+   */
+  acceptLink?: string;
 }): { subject: string; text: string; link: string } {
-  const link = `${input.siteUrl.replace(/\/$/, "")}/login`;
+  const link = input.acceptLink ?? `${input.siteUrl.replace(/\/$/, "")}/login`;
   const expires = new Date(input.invitedAt.getTime() + INVITE_TTL_MS).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -199,7 +205,9 @@ export function existingAccountInviteEmail(input: {
       "",
       `You've been invited to join ${input.workspaceName} on ClientTurn as ${article} ${input.role}.`,
       "",
-      "To accept, sign in with this email address:",
+      input.acceptLink
+        ? "To accept, open this link and choose a password:"
+        : "To accept, sign in with this email address:",
       link,
       "",
       `The invitation expires on ${expires}. If you weren't expecting it, you can ignore this email.`,

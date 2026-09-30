@@ -12,6 +12,7 @@ import {
   useFocusTrap,
 } from "@/components/ui/drawer";
 import { SkipLink, MainRegion } from "@/components/ui/skip-link";
+import { ToastProvider } from "@/components/ui/toast";
 import { AffiliateSidebarContent } from "./affiliate-sidebar";
 import { AffiliateTopBar } from "./affiliate-top-bar";
 import type { SearchEntry } from "./affiliate-search";
@@ -108,77 +109,83 @@ export function AffiliatePortalShell({
     router.push("/affiliates/app/settings?section=account");
   }, [router]);
 
+  // The portal's own toast host. The profile menu, links, resources and
+  // settings all call useToast(), and nothing above this shell provided one,
+  // so every signed-in partner hit "useToast must be used within a
+  // ToastProvider" on /affiliates/app (wave 5 QA, 2026-09-30).
   return (
-    <div className="min-h-screen bg-bg">
-      <SkipLink />
-      <aside
-        aria-label="Affiliate portal sidebar"
-        className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden border-r border-[var(--ct-shell-sidebar-border)] lg:block",
-          "transition-[width] duration-[var(--lr-duration-base)] ease-[var(--lr-ease)] motion-reduce:transition-none",
-        )}
-        style={{ width }}
-      >
-        <AffiliateSidebarContent
-          collapsed={collapsed}
-          status={status}
-          onToggleCollapse={toggleCollapse}
-          onOpenProfile={openProfile}
-        />
-      </aside>
+    <ToastProvider>
+      <div className="min-h-screen bg-bg">
+        <SkipLink />
+        <aside
+          aria-label="Affiliate portal sidebar"
+          className={cn(
+            "fixed inset-y-0 left-0 z-30 hidden border-r border-[var(--ct-shell-sidebar-border)] lg:block",
+            "transition-[width] duration-[var(--lr-duration-base)] ease-[var(--lr-ease)] motion-reduce:transition-none",
+          )}
+          style={{ width }}
+        >
+          <AffiliateSidebarContent
+            collapsed={collapsed}
+            status={status}
+            onToggleCollapse={toggleCollapse}
+            onOpenProfile={openProfile}
+          />
+        </aside>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <Overlay onClick={() => setMobileOpen(false)} />
-          <div
-            ref={mobileNavRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Affiliate navigation"
-            className="absolute inset-y-0 left-0 border-r border-[var(--ct-shell-sidebar-border)] animate-[lr-fade-in_var(--lr-duration-base)_var(--lr-ease)]"
-            style={{ width: "min(86vw, 320px)" }}
-          >
-            <div className="absolute right-2 top-3 z-10">
-              <IconButton
-                size="sm"
-                label="Close navigation"
-                onClick={() => setMobileOpen(false)}
-                className="text-[var(--ct-shell-text-muted)] hover:bg-[var(--ct-shell-hover)] hover:text-white"
-              >
-                <X className="size-4" />
-              </IconButton>
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <Overlay onClick={() => setMobileOpen(false)} />
+            <div
+              ref={mobileNavRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Affiliate navigation"
+              className="absolute inset-y-0 left-0 border-r border-[var(--ct-shell-sidebar-border)] animate-[lr-fade-in_var(--lr-duration-base)_var(--lr-ease)]"
+              style={{ width: "min(86vw, 320px)" }}
+            >
+              <div className="absolute right-2 top-3 z-10">
+                <IconButton
+                  size="sm"
+                  label="Close navigation"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-[var(--ct-shell-text-muted)] hover:bg-[var(--ct-shell-hover)] hover:text-white"
+                >
+                  <X className="size-4" />
+                </IconButton>
+              </div>
+              <AffiliateSidebarContent
+                collapsed={false}
+                status={status}
+                onNavigate={() => setMobileOpen(false)}
+                onOpenProfile={openProfile}
+              />
             </div>
-            <AffiliateSidebarContent
-              collapsed={false}
-              status={status}
-              onNavigate={() => setMobileOpen(false)}
-              onOpenProfile={openProfile}
-            />
           </div>
-        </div>
-      )}
-
-      <div
-        className={cn(
-          "lg:pl-[var(--lr-shell-pad)]",
-          "transition-[padding-left] duration-[var(--lr-duration-base)] ease-[var(--lr-ease)] motion-reduce:transition-none",
         )}
-        style={{ "--lr-shell-pad": width } as React.CSSProperties}
-      >
-        <AffiliateTopBar
-          onOpenNav={() => setMobileOpen(true)}
-          status={status}
-          connectState={connectState}
-          payoutReadiness={payoutReadiness}
-          notifications={notifications}
-          user={user}
-          reference={reference}
-          searchIndex={searchIndex}
-        />
-        <MainRegion className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
-          {children}
-        </MainRegion>
+
+        <div
+          className={cn(
+            "lg:pl-[var(--lr-shell-pad)]",
+            "transition-[padding-left] duration-[var(--lr-duration-base)] ease-[var(--lr-ease)] motion-reduce:transition-none",
+          )}
+          style={{ "--lr-shell-pad": width } as React.CSSProperties}
+        >
+          <AffiliateTopBar
+            onOpenNav={() => setMobileOpen(true)}
+            status={status}
+            connectState={connectState}
+            payoutReadiness={payoutReadiness}
+            notifications={notifications}
+            user={user}
+            reference={reference}
+            searchIndex={searchIndex}
+          />
+          <MainRegion className="w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+            {children}
+          </MainRegion>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

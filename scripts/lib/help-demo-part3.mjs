@@ -192,7 +192,7 @@ async function ensureReactivation() {
       channel: "sms",
       description: "Leads who asked about a website over six months ago and never booked.",
       audience_label: "Enquiries older than 6 months, not booked",
-      message_template: "Hi {first_name}, it's Alex at Blackwellen. You asked about a new website a while ago. Is it still on the cards this year? Reply STOP to opt out.",
+      message_template: "Hi {{first_name}}, it's Alex at Blackwellen. You asked about a new website a while ago. Is it still on the cards this year? Reply STOP to opt out.",
       filter_config: { olderThanDays: 180, noReply: true, notBooked: true },
       estimated_audience_size: 14,
       created_by: ctx.users.owner,
@@ -205,7 +205,7 @@ async function ensureReactivation() {
       status: "COMPLETED",
       channel: "email",
       subject_template: "Still thinking about Shopify?",
-      message_template: "Hi {first_name}, we spoke earlier in the year about moving your store to Shopify. We have availability in October if the timing now works. Alex",
+      message_template: "Hi {{first_name}}, we spoke earlier in the year about moving your store to Shopify. We have availability in October if the timing now works. Alex",
       description: "Past Shopify enquiries that went quiet.",
       audience_label: "Shopify enquiries, no reply in 60 days",
       estimated_audience_size: 3,
@@ -802,9 +802,9 @@ async function ensureFollowUp() {
     published_by: ctx.users.owner,
   });
   const steps = [
-    [0, "sms", null, "Hi {first_name}, it's Alex at Blackwellen. Thanks for your enquiry about {service}. Is now a good time for a couple of quick questions?"],
-    [86400, "email", "Your enquiry with Blackwellen", "Hi {first_name},\n\nThanks again for getting in touch about {service}. If it's easier, you can pick a time for a 30-minute discovery call here: {booking_link}\n\nAlex"],
-    [259200, "whatsapp", null, "Hi {first_name}, just checking in on your {service} enquiry. Would a quick call this week help?"],
+    [0, "sms", null, "Hi {{first_name}}, it's Alex at Blackwellen. Thanks for your enquiry about {{service_name}}. Is now a good time for a couple of quick questions?"],
+    [86400, "email", "Your enquiry with Blackwellen", "Hi {{first_name}},\n\nThanks again for getting in touch about {{service_name}}. If it's easier, you can pick a time for a 30-minute discovery call here: {{booking_link}}\n\nAlex"],
+    [259200, "whatsapp", null, "Hi {{first_name}}, just checking in on your {{service_name}} enquiry. Would a quick call this week help?"],
   ];
   for (const [i, [delay, channel, subject, template]] of steps.entries()) {
     await h.insert("automation_steps", { version_id: version.id, position: i + 1, delay_seconds: delay, channel, subject, template, enabled: true });

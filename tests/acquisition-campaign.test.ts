@@ -5,6 +5,7 @@ import {
   DEFAULT_STEP_DELAYS_DAYS,
   ESTIMATE_BANDS,
   GRADES,
+  estimateBandLabel,
   MAX_SEQUENCE_STEPS,
   WIZARD_STEP_KEYS,
   campaignDraftSchema,
@@ -887,9 +888,12 @@ describe("estimated results", () => {
   });
 
   test("the bands are the ones the card labels", () => {
-    assert.deepEqual(ESTIMATE_BANDS.reply, [0.15, 0.25]);
-    assert.deepEqual(ESTIMATE_BANDS.qualified, [0.05, 0.1]);
-    assert.deepEqual(ESTIMATE_BANDS.conversion, [0.03, 0.07]);
+    // Realistic UK B2B cold-email ranges (2026-09-30), not the 15-25% first draft.
+    assert.deepEqual(ESTIMATE_BANDS.reply, [0.03, 0.08]);
+    assert.deepEqual(ESTIMATE_BANDS.qualified, [0.01, 0.03]);
+    assert.deepEqual(ESTIMATE_BANDS.conversion, [0.005, 0.015]);
+    assert.equal(estimateBandLabel(ESTIMATE_BANDS.reply), "3–8%");
+    assert.equal(estimateBandLabel(ESTIMATE_BANDS.conversion), "0.5–1.5%");
   });
 });
 

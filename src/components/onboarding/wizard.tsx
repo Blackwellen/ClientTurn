@@ -96,7 +96,12 @@ export function OnboardingWizard({
       }
     } finally {
       setSaveExitPending(false);
-      router.push("/app");
+      // Not /app: until setup is finished the app layout sends every /app
+      // request straight back here, so "Save & exit" used to land the owner
+      // on the next wizard step instead of letting them leave. Progress is
+      // saved server-side and the wizard resumes at this step on the next
+      // visit (surface QA 2026-09-30).
+      router.push("/");
       router.refresh();
     }
   }

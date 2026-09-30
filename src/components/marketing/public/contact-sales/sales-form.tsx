@@ -39,13 +39,27 @@ export function SalesForm() {
   const [message, setMessage] = React.useState("");
   const [started, setStarted] = React.useState(false);
   const errorRef = React.useRef<HTMLDivElement>(null);
-  const startedAt = React.useRef<HTMLInputElement>(null);
-
   // Set once on mount: the server compares it against submission time to
-  // reject a form filled faster than a person could fill it.
+  // reject a form filled faster than a person could fill it. Kept in a ref and
+  // added to the FormData on submit: it used to live in a hidden input written
+  // directly, and React put its `defaultValue=""` back on the next re-render
+  // (the first keystroke in Message), so every real submission arrived without
+  // it (surface QA 2026-09-30).
+  const startedAt = React.useRef(0);
   React.useEffect(() => {
-    if (startedAt.current) startedAt.current.value = String(Date.now());
+    startedAt.current = Date.now();
   }, []);
+
+  // Submitted through a transition rather than `<form action>`: React resets
+  // an action form after every submission, which wiped everything the person
+  // had typed whenever the server answered with a validation error.
+  const [, startSubmit] = React.useTransition();
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (startedAt.current > 0) formData.set("startedAt", String(startedAt.current));
+    startSubmit(() => action(formData));
+  }
 
   const attribution = React.useMemo(
     () => (typeof window === "undefined" ? null : captureAttribution()),
@@ -91,7 +105,7 @@ export function SalesForm() {
     fieldError(name) ? `${name}-error` : undefined;
 
   return (
-    <form action={action} className="pub-form-card" onInput={onFirstInput} noValidate>
+    <form onSubmit={onSubmit} className="pub-form-card" onInput={onFirstInput} noValidate>
       <h2>Request a call</h2>
       <p className="pub-form-intro">
         Tell us a bit about your business and we will be in touch to arrange a
@@ -367,8 +381,6 @@ export function SalesForm() {
           autoComplete="off"
         />
       </div>
-
-      <input type="hidden" name="startedAt" ref={startedAt} defaultValue="" />
       <input
         type="hidden"
         name="anonymousId"

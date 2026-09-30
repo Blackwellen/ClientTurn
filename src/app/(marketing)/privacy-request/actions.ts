@@ -8,6 +8,8 @@ import {
   verifyRequestToken,
 } from "@/lib/data-rights/privacy-requests";
 import { PRIVACY_REQUEST_TYPES } from "@/lib/data-rights/types";
+import { COMPANY } from "@/lib/marketing/company";
+import { formBotVerdict } from "@/lib/security/form-bot-check";
 
 /**
  * The public data-subject request form (/privacy-request).
@@ -47,13 +49,19 @@ export async function submitPrivacyRequest(
   formData: FormData,
 ): Promise<PrivacyRequestFormResult> {
   // Bot checks answer with a plausible success so a script learns nothing.
-  const honeypot = formData.get("website_confirm");
-  if (typeof honeypot === "string" && honeypot.trim().length > 0) {
-    return { ok: true, reference: "DSR-PENDING" };
-  }
-  const startedAt = Number(formData.get("startedAt"));
-  if (Number.isFinite(startedAt) && startedAt > 0 && Date.now() - startedAt < MIN_FILL_SECONDS * 1000) {
-    return { ok: true, reference: "DSR-PENDING" };
+  const verdict = formBotVerdict({
+    honeypot: formData.get("website_confirm"),
+    startedAt: formData.get("startedAt"),
+    minSeconds: MIN_FILL_SECONDS,
+  });
+  if (verdict === "honeypot" || verdict === "too-fast") return { ok: true, reference: "DSR-PENDING" };
+  if (verdict === "no-timing") {
+    // Also what a browser without JavaScript sends: a data-rights request must
+    // never be dropped silently, so the person is told where else to send it.
+    return {
+      ok: false,
+      error: `We could not send the form from this browser. Please reload the page and try again, or email ${COMPANY.legalEmail}.`,
+    };
   }
 
   const parsed = schema.safeParse({
@@ -79,7 +87,7 @@ export async function submitPrivacyRequest(
     return {
       ok: false,
       error:
-        "Several requests have come from here recently. Please try again later, or email privacy@clientturn.co.uk.",
+        `Several requests have come from here recently. Please try again later, or email ${COMPANY.legalEmail}.`,
     };
   }
 
@@ -96,7 +104,7 @@ export async function submitPrivacyRequest(
   } catch {
     return {
       ok: false,
-      error: "We could not record your request. Please try again, or email privacy@clientturn.co.uk.",
+      error: `We could not record your request. Please try again, or email ${COMPANY.legalEmail}.`,
     };
   }
 }
@@ -112,7 +120,7 @@ export async function confirmPrivacyRequest(token: string): Promise<VerifyResult
   const invalid: VerifyResult = {
     ok: false,
     error:
-      "This link is not valid or has expired. Submit the request again, or email privacy@clientturn.co.uk.",
+      `This link is not valid or has expired. Submit the request again, or email ${COMPANY.legalEmail}.`,
   };
   if (!parsed.success) return invalid;
 

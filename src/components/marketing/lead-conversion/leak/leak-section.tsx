@@ -71,7 +71,7 @@ const CARDS = [
           <span>2h ago</span>
         </div>
         <p className="lcp-leak-quote">
-          “Hi, I’d like a quote for a new roof…”
+          “Hi, we’d like a quote for a website rebuild…”
         </p>
       </>
     ),

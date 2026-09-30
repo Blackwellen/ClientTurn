@@ -16,6 +16,7 @@ import {
   classifyRow,
   flagSentence,
   guessMapping,
+  liveImportTally,
   summarise,
   type ImportField,
   type ParsedRow,
@@ -285,6 +286,9 @@ export function ImportWizard() {
     });
   }
 
+  /** The four tiles with the operator's decisions applied. */
+  const liveTally = staged ? liveImportTally(staged.review.counts, staged.review.rows) : null;
+
   /** Rows the operator has decided, plus the confident ones the server decided. */
   const decidedForImport = staged
     ? staged.review.counts.IMPORT_AS_LEAD +
@@ -498,7 +502,7 @@ export function ImportWizard() {
           description={
             staged.review.counts.REVIEW === 0
               ? "Nothing needs a decision. Every row was classified against your live workspace."
-              : `${staged.review.counts.REVIEW.toLocaleString("en-GB")} of ${staged.review.totalRows.toLocaleString("en-GB")} rows need a decision.`
+              : `${liveTally!.REVIEW.toLocaleString("en-GB")} of ${staged.review.totalRows.toLocaleString("en-GB")} rows need a decision.`
           }
         >
           <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -507,7 +511,7 @@ export function ImportWizard() {
             ).map((key) => (
               <div key={key} className="rounded-lg border border-line bg-surface p-3">
                 <p className="text-[19px] font-semibold tabular-nums text-content">
-                  {staged.review.counts[key]}
+                  {liveTally![key]}
                 </p>
                 <p className="mt-0.5 text-[11.5px] text-content-muted">
                   {CLASSIFICATION_LABELS[key]}

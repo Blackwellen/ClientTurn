@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useInView, useReducedMotion } from "motion/react";
+import { useInView } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 
 /**
  * Steps a demo through `count` stages and loops.

@@ -139,7 +139,7 @@ export function DonutChart({
               className="size-2 shrink-0 rounded-full"
               style={{ background: slice.color ?? seriesColor(index) }}
             />
-            <span className="min-w-0 flex-1 truncate text-content-secondary">
+            <span className="min-w-0 flex-1 truncate text-content-secondary" title={slice.label}>
               {slice.label}
             </span>
             <span className="lr-tabular shrink-0 text-content">

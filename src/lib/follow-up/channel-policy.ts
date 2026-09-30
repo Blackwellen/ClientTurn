@@ -37,8 +37,15 @@ export type WarmChannelContext = {
   policyAllows: Record<Channel, boolean>;
   /** Twilio (or equivalent) is connected for SMS. */
   smsConnected: boolean;
-  /** WhatsApp is on the plan AND has an approved template configured. */
+  /** WhatsApp is on the plan AND connected for this workspace. */
   whatsappEnabled: boolean;
+  /**
+   * WhatsApp is on the plan, connected or not. Separate from
+   * `whatsappEnabled` so an unconnected Pro workspace is told to connect it,
+   * not that its plan lacks it (surface QA 2026-09-30). Absent = treat
+   * `whatsappEnabled` as the plan answer, as before.
+   */
+  whatsappOnPlan?: boolean;
   whatsappTemplateReady: boolean;
 };
 
@@ -122,12 +129,20 @@ function smsAvailability(context: WarmChannelContext): ChannelAvailability {
 }
 
 function whatsappAvailability(context: WarmChannelContext): ChannelAvailability {
-  if (!context.whatsappEnabled) {
+  if (!(context.whatsappOnPlan ?? context.whatsappEnabled)) {
     return {
       channel: "whatsapp",
       available: false,
       verdict: "Not on your plan",
       warning: "WhatsApp is not included in your current plan.",
+    };
+  }
+  if (!context.whatsappEnabled) {
+    return {
+      channel: "whatsapp",
+      available: false,
+      verdict: "Not connected",
+      warning: "Connect WhatsApp in Settings → Connections before using WhatsApp steps.",
     };
   }
   if (!context.policyAllows.whatsapp) {

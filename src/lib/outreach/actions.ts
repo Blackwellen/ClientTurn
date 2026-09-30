@@ -4,6 +4,8 @@ import { workspaceCan } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { transition } from "./campaigns/lifecycle";
+import { reviewPassedByActivation } from "./campaign-state";
+import type { CampaignStatus } from "./types";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
@@ -247,6 +249,15 @@ export async function launchCampaignAction(
 
   if (!step) return fail("This campaign has no message to send.");
 
+  // A person pressing Launch on a READY campaign is the manual review that
+  // "Start after manual review" waits for (reviewPassedByActivation). Leaving
+  // the flag set made the campaign ACTIVE and permanently silent.
+  const reviewPassed = reviewPassedByActivation({
+    from: campaign.status as CampaignStatus,
+    to: "ACTIVE",
+    actorUserId: access.workspace.userId,
+  });
+
   await admin
     .from("outreach_campaigns")
     .update({
@@ -255,6 +266,7 @@ export async function launchCampaignAction(
       launched_by: access.workspace.userId,
       launched_at: new Date().toISOString(),
       paused_at: null,
+      ...(reviewPassed ? { review_before_outreach: false } : {}),
     })
     .eq("business_id", access.workspace.businessId)
     .eq("id", id.data);
@@ -269,7 +281,7 @@ export async function launchCampaignAction(
 
   // A campaign set to review-before-outreach is active but does not send; the
   // dispatcher refuses it, so queueing would be a wasted job.
-  if (!campaign.review_before_outreach) {
+  if (!campaign.review_before_outreach || reviewPassed) {
     await enqueue(
       "outreach.dispatch",
       { campaignId: id.data, businessId: access.workspace.businessId },

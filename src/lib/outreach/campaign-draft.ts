@@ -2,7 +2,7 @@ import { z } from "zod";
 // Relative, not aliased: this module is unit-tested directly by the node test
 // runner, which does not resolve `@/`. The same reason `outreach/templates.ts`
 // keeps its imports relative.
-import { fieldsForSurface, unknownTokens } from "../messaging/merge-fields.ts";
+import { describeUnknownTokens, fieldsForSurface, unknownTokens } from "../messaging/merge-fields.ts";
 
 /**
  * The acquisition campaign draft (V4 section 16-17).
@@ -701,9 +701,7 @@ export function validateOutreach(draft: CampaignDraft): FieldErrors {
       ...unknownMergeFields(step.body),
     ];
     if (unknown.length > 0) {
-      errors[`step-${step.position}-body`] = `Unknown merge field: ${unknown
-        .map((field) => `{{${field}}}`)
-        .join(", ")}`;
+      errors[`step-${step.position}-body`] = describeUnknownTokens(unknown);
     }
   }
 
@@ -807,15 +805,23 @@ export function stepIsComplete(errors: FieldErrors): boolean {
  * Reference estimates for the review card.
  *
  * Presented as ranges, never as a single number, because a point forecast
- * reads as a promise. The bands are the wide, honest ones the design labels
- * (replies 15-25%, qualified 5-10%, conversion 3-7%) and the card says
- * plainly that they are estimates.
+ * reads as a promise. Every band is a share of the prospects contacted, and
+ * sits in the range typical of UK B2B cold email (low single-digit reply
+ * rates). The first design used 15-25% replies, which set expectations several
+ * times too high (changed 2026-09-30). The card says plainly they are
+ * estimates, and its labels are built from these numbers.
  */
 export const ESTIMATE_BANDS = {
-  reply: [0.15, 0.25],
-  qualified: [0.05, 0.1],
-  conversion: [0.03, 0.07],
+  reply: [0.03, 0.08],
+  qualified: [0.01, 0.03],
+  conversion: [0.005, 0.015],
 } as const;
+
+/** "3–8%" for a band, for the review card's labels. */
+export function estimateBandLabel(range: readonly [number, number]): string {
+  const pct = (value: number) => `${Number((value * 100).toFixed(1))}`;
+  return `${pct(range[0])}–${pct(range[1])}%`;
+}
 
 export type EstimateRange = { low: number; high: number };
 

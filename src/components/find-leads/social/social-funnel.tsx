@@ -42,7 +42,7 @@ export function SocialFunnelPanel({
         </p>
       </div>
 
-      <ol className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ol className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {funnel.stages.map((stage, index) => (
           <li key={stage.key} className="min-w-0 rounded-lg border border-line bg-surface-subtle p-3.5">
             <Tooltip content={stage.hint}>

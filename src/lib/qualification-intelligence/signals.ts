@@ -292,6 +292,20 @@ export function statedDateFrom(text: string, now: Date): string | null {
   return isoDate(now.getTime() + days * DAY_MS);
 }
 
+/** Immediacy words: `timelineDays` buckets these as "within 7 days" before anything else. */
+const IMMEDIACY = /\b(asap|as soon as possible|immediately|right away|urgent|urgently|now|today|this week)\b/;
+
+/**
+ * Whether `statedDateFrom` found a date the lead actually named (a month, a
+ * number of days/weeks/months, "next month"), rather than the urgency bucket
+ * it resolves "asap" or "today" to. Only a named date may become a deadline.
+ */
+export function statedDateIsExplicit(text: string): boolean {
+  const lower = normalise(text);
+  if (MONTH_PATTERN.test(lower)) return true;
+  return !IMMEDIACY.test(lower) && timelineDays(lower) !== null;
+}
+
 /** When a NOT_NOW means to come back, ISO; default INTENT_THRESHOLDS.NOT_NOW_DEFAULT_DAYS (decay.ts). */
 export function resumeAtFrom(text: string, now: Date): string | null {
   const lower = normalise(text);
@@ -465,7 +479,21 @@ export function extractTextSignals(text: string, now: Date): TextSignalHit[] {
     if (stated) {
       const days = Math.max(0, (Date.parse(stated) - now.getTime()) / DAY_MS);
       const strength = days <= 30 ? 0.8 : days <= 90 ? 0.6 : days <= 180 ? 0.4 : 0.2;
-      add(hit("TIMEFRAME", strength, 0.8, `Gave a timeframe (${stated})`, original.slice(0, 60), { statedDate: stated }));
+      // "Today", "ASAP", "now": urgency, not a date. The 7-day bucket is a
+      // scoring band, and recording it as the lead's stated date planned a
+      // "you wanted this by <date>" check-in the lead never asked for (a voice
+      // lead's "Today." to "which day suits you?", 2026-09-28).
+      const explicit = statedDateIsExplicit(original);
+      add(
+        hit(
+          "TIMEFRAME",
+          strength,
+          0.8,
+          explicit ? `Gave a timeframe (${stated})` : "Wants it straight away",
+          original.slice(0, 60),
+          explicit ? { statedDate: stated } : {},
+        ),
+      );
     }
   }
 

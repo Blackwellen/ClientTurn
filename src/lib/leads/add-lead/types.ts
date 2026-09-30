@@ -138,7 +138,7 @@ export function conversionDestination(
   switch (goal) {
     case "BOOK_APPOINTMENT":
       return {
-        title: "Booking → Booking",
+        title: "Booking → Your booking flow",
         detail:
           "This lead will be routed straight to your booking flow once qualified.",
       };
@@ -540,6 +540,22 @@ export function isDirty(state: AddLeadState): boolean {
 
 export type FieldErrors = Record<string, string>;
 
+/**
+ * The server's limits (`contactPayloadSchema`), checked on step 1 too. Without
+ * them a 300-character name passed every step and was only refused by the
+ * final Create with a generic error, three steps after the mistake.
+ */
+export const CONTACT_LIMITS = {
+  firstName: 80,
+  lastName: 80,
+  company: 160,
+  email: 200,
+  mobile: 40,
+  telephone: 40,
+  postcode: 16,
+  address: 300,
+} as const;
+
 export function validateContactStep(state: ContactState): FieldErrors {
   const errors: FieldErrors = {};
 
@@ -547,6 +563,12 @@ export function validateContactStep(state: ContactState): FieldErrors {
   if (!state.lastName.trim()) errors.lastName = "Enter a last name.";
   if (!state.company.trim()) {
     errors.company = "Enter the company or business name.";
+  }
+  for (const [field, max] of Object.entries(CONTACT_LIMITS)) {
+    const value = state[field as keyof typeof CONTACT_LIMITS];
+    if (!errors[field] && typeof value === "string" && value.trim().length > max) {
+      errors[field] = `Keep this under ${max} characters.`;
+    }
   }
 
   const email = state.email.trim();
@@ -593,6 +615,8 @@ export function validateEnquiryStep(state: EnquiryState): FieldErrors {
     errors.source = "Choose where this enquiry came from.";
   } else if (sourceDetailRequired(state.source) && !state.sourceDetail.trim()) {
     errors.sourceDetail = "Add the detail behind this source.";
+  } else if (state.sourceDetail.trim().length > 300) {
+    errors.sourceDetail = "Keep this under 300 characters.";
   }
 
   if (state.estimatedValue.trim()) {
@@ -837,14 +861,14 @@ export function routingReadiness(input: {
 const trimmed = (max: number) => z.string().trim().max(max);
 
 export const contactPayloadSchema = z.object({
-  firstName: trimmed(80).min(1),
-  lastName: trimmed(80).min(1),
-  company: trimmed(160).min(1),
-  email: trimmed(200),
-  mobile: trimmed(40),
-  telephone: trimmed(40),
-  postcode: trimmed(16).min(1),
-  address: trimmed(300),
+  firstName: trimmed(CONTACT_LIMITS.firstName).min(1),
+  lastName: trimmed(CONTACT_LIMITS.lastName).min(1),
+  company: trimmed(CONTACT_LIMITS.company).min(1),
+  email: trimmed(CONTACT_LIMITS.email),
+  mobile: trimmed(CONTACT_LIMITS.mobile),
+  telephone: trimmed(CONTACT_LIMITS.telephone),
+  postcode: trimmed(CONTACT_LIMITS.postcode).min(1),
+  address: trimmed(CONTACT_LIMITS.address),
 });
 
 export const enquiryPayloadSchema = z.object({

@@ -91,6 +91,7 @@ Use exactly one of these slugs (the folder name and the `category` value):
 | `compliance` | Compliance | Consent, PECR, opt-outs, suppression, data rights |
 | `billing` | Billing | Subscriptions, plans, usage, top-up credits |
 | `sales-knowledge` | Sales knowledge | Sales methods, industry scoring, sales technique and psychology (evidence-graded) |
+| `troubleshooting` | Troubleshooting | Something isn't working: why, and the fix. Start each article from **Settings → System check** |
 | `faq` | FAQ | Short answers to common questions |
 
 ## 4. Body

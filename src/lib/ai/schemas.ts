@@ -48,6 +48,21 @@ export const FAST_STRUCTURED_TASKS = new Set<TaskType>([
   "website_contacts",
 ]);
 
+/**
+ * Tasks whose answer carries a `confidence` the router bands (automatic /
+ * assisted / review). Not the same set as FAST_STRUCTURED_TASKS, which is a
+ * routing decision (nano). `website_contacts` is fast and structured but has
+ * no confidence field: while banding keyed on FAST_STRUCTURED_TASKS its
+ * missing confidence read as "review" and the router returned `data: null`
+ * for every call, so contact discovery from company websites found nobody,
+ * ever, while each call was still billed (2026-09-29).
+ */
+export const CONFIDENCE_BANDED_TASKS = new Set<TaskType>([
+  "intent_classification",
+  "answer_extraction",
+  "social_reply_classification",
+]);
+
 export const leadIntentSchema = z.object({
   intent: z.enum([
     "SERVICE_ENQUIRY",

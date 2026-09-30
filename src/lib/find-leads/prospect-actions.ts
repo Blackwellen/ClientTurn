@@ -517,9 +517,19 @@ export async function enrichProspectContactAction(
   input: unknown,
 ): Promise<ActionResult<{ found: boolean; verification: string | null }>> {
   const parsed = z
-    .object({ prospectId: z.uuid(), channel: z.enum(["EMAIL", "PHONE"]) })
+    // EMAIL only. A telephone number is never collected from an enrichment
+    // provider (CLAUDE.md resolved conflict 6), so "PHONE" is refused here.
+    .object({ prospectId: z.uuid(), channel: z.literal("EMAIL") })
     .safeParse(input);
-  if (!parsed.success) return fail("That prospect could not be found.");
+  if (!parsed.success) {
+    const phone =
+      typeof input === "object" && input !== null && (input as { channel?: unknown }).channel === "PHONE";
+    return fail(
+      phone
+        ? "ClientTurn does not look up phone numbers. Cold outreach is email only."
+        : "That prospect could not be found.",
+    );
+  }
 
   const access = await requireProspectAdmin();
   if (!access.ok) return access;

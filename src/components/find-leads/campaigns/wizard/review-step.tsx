@@ -24,7 +24,9 @@ import { cn } from "@/lib/cn";
 import {
   PROMOTION_RULES,
   PROSPECT_SOURCES,
+  ESTIMATE_BANDS,
   conversionGoalMeta,
+  estimateBandLabel,
   estimateResults,
   formatCount,
   successEventLabel,
@@ -278,22 +280,23 @@ export function ReviewStep({
 
           <SummaryCard icon={BarChart3} title="Estimated results" tone="warning">
             <p className="mb-2.5 text-[11.5px] leading-snug text-content-muted">
-              Based on your settings and historical performance.
+              Fixed reference ranges applied to your audience size. They do not use
+              your own history yet.
             </p>
             <Detail
               label="Prospects to contact"
               value={formatCount(estimates.prospectsToContact)}
             />
             <Detail
-              label="Estimated replies (15–25%)"
+              label={`Estimated replies (${estimateBandLabel(ESTIMATE_BANDS.reply)})`}
               value={`${formatCount(estimates.replies.low)} – ${formatCount(estimates.replies.high)}`}
             />
             <Detail
-              label="Estimated qualified (5–10%)"
+              label={`Estimated qualified (${estimateBandLabel(ESTIMATE_BANDS.qualified)})`}
               value={`${formatCount(estimates.qualified.low)} – ${formatCount(estimates.qualified.high)}`}
             />
             <Detail
-              label={`Estimated ${goal?.label.toLowerCase() ?? "conversions"} (3–7%)`}
+              label={`Estimated ${goal?.label.toLowerCase() ?? "conversions"} (${estimateBandLabel(ESTIMATE_BANDS.conversion)})`}
               value={`${formatCount(estimates.conversions.low)} – ${formatCount(estimates.conversions.high)}`}
             />
             {/* Ranges, and said plainly. A point forecast reads as a promise. */}

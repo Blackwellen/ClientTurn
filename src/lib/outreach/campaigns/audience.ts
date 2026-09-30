@@ -397,6 +397,9 @@ export async function loadWizardOptions(
       .select("id, title, icp_profile_id, updated_at")
       .eq("business_id", businessId)
       .eq("status", "ACTIVE")
+      // Only a search with a plan can target anything. Blank "New search"
+      // sessions listed four identical, useless options (surface QA).
+      .not("latest_strategy_id", "is", null)
       .order("updated_at", { ascending: false })
       .limit(50),
     admin

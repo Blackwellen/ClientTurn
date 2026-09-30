@@ -93,7 +93,12 @@ export function StatusLegend() {
 export function StatusGroup({ group }: { group: StatusGroupData }) {
   return (
     <section aria-labelledby={`group-${group.key}`}>
-      <h3 id={`group-${group.key}`} className="sr-only">
+      {/* Visible, so a group of one reads as a group rather than a hole in
+          the grid (it was screen-reader-only). */}
+      <h3
+        id={`group-${group.key}`}
+        className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-content-subtle"
+      >
         {group.name}
       </h3>
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

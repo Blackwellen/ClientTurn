@@ -454,6 +454,35 @@ const FORBIDDEN_EXCLUSION_KEYS = new Set(["optedOut", "suppressed"]);
  * field name must not have it silently persisted into `strategy_json`, where a
  * later schema change might start honouring it.
  */
+const MILES_TO_KM = 1.609344;
+
+/**
+ * One agent-written location, in the plan's own shape. Accepts the obvious
+ * aliases a model reaches for (place/name/town/location for city, county for
+ * region, radiusMiles/radius_miles/miles for a radius in miles). Null when it
+ * names no place: a location that is only a country is not a search area.
+ */
+export function normaliseAgentLocation(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") {
+    return typeof raw === "string" && raw.trim() ? { country: "GB", city: raw.trim(), region: null, radiusKm: null } : null;
+  }
+  const r = raw as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : null);
+  const city = text(r.city) ?? text(r.town) ?? text(r.place) ?? text(r.name) ?? text(r.location);
+  const region = text(r.region) ?? text(r.county);
+  if (!city && !region) return null;
+  const km = num(r.radiusKm) ?? num(r.radius_km);
+  const miles = num(r.radiusMiles) ?? num(r.radius_miles) ?? num(r.miles) ?? num(r.radius);
+  const radiusKm = km ?? (miles !== null ? miles * MILES_TO_KM : null);
+  return {
+    country: text(r.country) ?? "GB",
+    city,
+    region,
+    radiusKm: radiusKm === null ? null : Math.min(500, Math.max(0, Math.round(radiusKm))),
+  };
+}
+
 export function mergePlanPatch(
   current: SearchPlan,
   patch: Record<string, unknown>,
@@ -489,6 +518,13 @@ export function mergePlanPatch(
     }
 
     // A segment is replaced whole: half of one is a different question.
+
+    // Locations the model wrote in its own words ("name", "radiusMiles") are
+    // read, not silently stripped to an empty {country: "GB"} that then
+    // geocoded to the middle of Great Britain. One with no place is dropped.
+    if (key === "locations" && Array.isArray(value)) {
+      candidate = value.map(normaliseAgentLocation).filter((l): l is Record<string, unknown> => l !== null);
+    }
 
     if (key === "linkedin" && value && typeof value === "object") {
       candidate = { ...current.linkedin, ...(value as Record<string, unknown>) };

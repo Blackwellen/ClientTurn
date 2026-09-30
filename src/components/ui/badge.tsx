@@ -497,6 +497,17 @@ export const AUTOMATION_RULE_STATE = {
   OFF: { label: "Off", tone: "neutral" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 
+/**
+ * Settings -> System check (lib/system-check/model.ts): green ready, red
+ * needs attention (action required), grey off by choice, amber not checked.
+ */
+export const SYSTEM_CHECK_STATUS = {
+  READY: { label: "Ready", tone: "success" },
+  ATTENTION: { label: "Needs attention", tone: "danger" },
+  OFF: { label: "Off by choice", tone: "neutral" },
+  UNKNOWN: { label: "Couldn't check", tone: "warning" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
 const MAPS = {
   intent_state: INTENT_STATE,
   nba_action: NBA_ACTION,
@@ -537,6 +548,7 @@ const MAPS = {
   banner_state: BANNER_STATE,
   automation_run: AUTOMATION_RUN_STATUS,
   automation_rule: AUTOMATION_RULE_STATE,
+  system_check: SYSTEM_CHECK_STATUS,
 } satisfies Record<string, StatusMap>;
 
 export type StatusKind = keyof typeof MAPS;

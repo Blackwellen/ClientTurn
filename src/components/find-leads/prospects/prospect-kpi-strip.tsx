@@ -32,10 +32,10 @@ export function ProspectKpiStrip({
   return (
     <div
       className={cn(
-        // Five across on a wide screen as the reference shows; two on a tablet;
-        // one on a phone, where five columns would shrink the numbers past
-        // legibility.
-        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5",
+        // Five across on a wide screen as the reference shows; three on a
+        // laptop; two on a phone (the odd fifth card spans the row), where one
+        // column pushed the prospect list a full screen below the fold.
+        "grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1",
         className,
       )}
     >

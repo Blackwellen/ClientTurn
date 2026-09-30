@@ -257,16 +257,26 @@ export function TextField({
   );
 }
 
+/**
+ * Mirrors `passwordSchema` exactly: these three are the rule the server
+ * enforces. The checklist used to list uppercase, lowercase and a special
+ * character as well, which the server never required, so a password could
+ * show two unticked "requirements" and still be accepted (surface QA
+ * 2026-09-30).
+ */
 const REQUIREMENTS: { label: string; test: (v: string) => boolean }[] = [
   { label: "At least 8 characters", test: (v) => v.length >= 8 },
-  { label: "One uppercase letter", test: (v) => /[A-Z]/.test(v) },
-  { label: "One lowercase letter", test: (v) => /[a-z]/.test(v) },
-  { label: "One number", test: (v) => /[0-9]/.test(v) },
-  { label: "One special character", test: (v) => /[^A-Za-z0-9]/.test(v) },
+  { label: "At least one letter", test: (v) => /[A-Za-z]/.test(v) },
+  { label: "At least one number", test: (v) => /[0-9]/.test(v) },
 ];
 
-/** Visual guidance only — the binding rule remains `passwordSchema` (8+
- * chars, a letter and a number); this checklist never gates submission. */
+/** Not required; shown as advice beneath the rules. */
+const RECOMMENDED: { label: string; test: (v: string) => boolean }[] = [
+  { label: "12+ characters, mixed case or a symbol", test: (v) => v.length >= 12 && (/[^A-Za-z0-9]/.test(v) || (/[a-z]/.test(v) && /[A-Z]/.test(v))) },
+];
+
+/** Visual guidance only; the binding rule is `passwordSchema` on the server.
+ * The checklist never gates submission. */
 export function PasswordRequirements({ value }: { value: string }) {
   return (
     <ul
@@ -276,7 +286,8 @@ export function PasswordRequirements({ value }: { value: string }) {
         border: "1px solid rgba(255,255,255,0.07)",
       }}
     >
-      {REQUIREMENTS.map((req) => {
+      {[...REQUIREMENTS, ...RECOMMENDED].map((req, index) => {
+        const optional = index >= REQUIREMENTS.length;
         const met = req.test(value);
         return (
           <li
@@ -294,7 +305,13 @@ export function PasswordRequirements({ value }: { value: string }) {
               strokeWidth={3}
               aria-hidden
             />
-            {req.label}
+            {optional ? (
+              <span>
+                {req.label} <span className="text-[var(--auth-text-subtle)]">(recommended)</span>
+              </span>
+            ) : (
+              req.label
+            )}
           </li>
         );
       })}

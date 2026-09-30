@@ -16,6 +16,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
@@ -72,8 +73,7 @@ export async function publishQualification(
   const parsed = publishDraftSchema.safeParse(input);
   if (!parsed.success) {
     return fail(
-      parsed.error.issues[0]?.message ??
-        "Some questions are not valid. Fix the highlighted rows and try again.",
+      friendlyIssue(parsed.error, "Some questions are not valid. Fix the highlighted rows and try again."),
     );
   }
 

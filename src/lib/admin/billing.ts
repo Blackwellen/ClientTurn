@@ -1,7 +1,7 @@
 import "server-only";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { listRecentInvoices } from "@/lib/billing/invoices";
-import { monthlyRevenue } from "@/lib/billing/revenue";
+import { monthlyRevenue, mrrContribution } from "@/lib/billing/revenue";
 import { domainFromWebsite, titleise } from "./format";
 import {
   adminRead,
@@ -83,11 +83,6 @@ async function mrrByBusiness(supabase: AdminClient, businessIds?: string[]): Pro
   );
 }
 
-/** MRR only counts subscriptions that are actually billing. */
-function contributesToMrr(status: string): boolean {
-  return status === "ACTIVE" || status === "PAST_DUE";
-}
-
 type SubscriptionRecord = {
   id: string;
   business_id: string;
@@ -115,9 +110,13 @@ function toRow(
   mrrMinor: number | null = null,
 ): SubscriptionRow {
   const status = record.status as SubscriptionStatus;
-  const mrr = contributesToMrr(status)
-    ? monthlyPriceFor(record.plan, record.billing_interval, mrrMinor)
-    : 0;
+  const mrr = mrrContribution({
+    status,
+    stripeSubscriptionId: record.stripe_subscription_id,
+    mrrMinor,
+    plan: record.plan,
+    interval: record.billing_interval,
+  }).gbp;
 
   return {
     id: record.id,
@@ -205,13 +204,22 @@ async function buildSummary(
   const [{ data }, realMrr] = await Promise.all([
     supabase
       .from("subscriptions")
-      .select("business_id, plan, status, billing_interval, cancelled_at, created_at")
+      .select("business_id, plan, status, billing_interval, cancelled_at, created_at, stripe_subscription_id")
       .limit(20_000),
     mrrByBusiness(supabase),
   ]);
 
   const rows = data ?? [];
   let mrr = 0;
+  let complimentary = 0;
+  const contributionOf = (row: (typeof rows)[number]) =>
+    mrrContribution({
+      status: row.status,
+      stripeSubscriptionId: row.stripe_subscription_id,
+      mrrMinor: realMrr.get(row.business_id) ?? null,
+      plan: row.plan,
+      interval: row.billing_interval,
+    });
   let active = 0;
   let trials = 0;
   let pastDue = 0;
@@ -224,9 +232,9 @@ async function buildSummary(
     else if (row.status === "PAST_DUE" || row.status === "UNPAID") pastDue += 1;
     else if (row.status === "CANCELLED") cancelled += 1;
 
-    const value = contributesToMrr(row.status)
-      ? monthlyPriceFor(row.plan, row.billing_interval, realMrr.get(row.business_id) ?? null)
-      : 0;
+    const contribution = contributionOf(row);
+    if (contribution.source === "complimentary") complimentary += 1;
+    const value = contribution.gbp;
     mrr += value;
 
     const slot = byPlan.get(row.plan) ?? { count: 0, mrr: 0 };
@@ -255,7 +263,7 @@ async function buildSummary(
       window.buckets - 1,
       Math.floor((created - window.start.getTime()) / window.bucketMs),
     );
-    mrrSeries[index] += monthlyPriceFor(row.plan, row.billing_interval, realMrr.get(row.business_id) ?? null);
+    mrrSeries[index] += contributionOf(row).gbp;
   }
 
   return {
@@ -265,6 +273,7 @@ async function buildSummary(
     pastDue,
     cancelled,
     mrr,
+    complimentary,
     churnRate30d: baseAtStart === 0 ? null : churned / baseAtStart,
     mrrSeries,
     byPlan: [...byPlan.entries()]

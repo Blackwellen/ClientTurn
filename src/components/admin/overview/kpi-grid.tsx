@@ -135,7 +135,9 @@ function AdminStatCard({
             className="block w-full"
           />
           <span className="sr-only">
-            {`${metric.label} across the period, from ${formatNumber(metric.series[0])} to ${formatNumber(metric.series[metric.series.length - 1])}.`}
+            {/* Per-interval points, not the headline total: saying "from 0 to 1"
+                beside a total of 2 read as a contradiction. */}
+            {`${metric.label} trend: ${formatNumber(metric.series[0])} in the first interval, ${formatNumber(metric.series[metric.series.length - 1])} in the latest.`}
           </span>
         </div>
       )}

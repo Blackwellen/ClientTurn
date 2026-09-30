@@ -104,7 +104,9 @@ export function OnboardingWizard({
     const all = validateDraft(draft);
     if (all.length > 0) {
       setShowProblems(true);
-      setFormError(all[0]);
+      // The problems list already shows this step's issues; repeating the
+      // first one as a form error printed "Accept the programme terms" twice.
+      setFormError(problems.includes(all[0]) ? undefined : all[0]);
       return;
     }
 
@@ -135,10 +137,9 @@ export function OnboardingWizard({
       <Progress step={step} />
 
       <div className="mt-7">
-        <p className="text-[12.5px] font-bold tracking-[0.2em] text-[var(--auth-lime)] uppercase">
-          Step {stepIndex(step) + 2} of {ONBOARDING_STEPS.length + 1}
-        </p>
-        <h1 className="mt-3 text-[28px] leading-[1.08] font-bold tracking-[-0.025em] text-[var(--auth-text)] sm:text-[32px]">
+        {/* No "Step 2 of 6" eyebrow here any more: it counted account
+            creation and sat under the bar's "1 of 5". The count is on the bar. */}
+        <h1 className="text-[28px] leading-[1.08] font-bold tracking-[-0.025em] text-[var(--auth-text)] sm:text-[32px]">
           {STEP_META[step].title}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--auth-text-muted)]">
@@ -349,7 +350,9 @@ export function OnboardingWizard({
         )}
 
         {showProblems && problems.length > 0 && (
-          <ul className="space-y-1 rounded-[12px] border border-[var(--auth-danger)] bg-[rgba(255,90,90,0.08)] px-4 py-3 text-[13px] text-[var(--auth-danger-text)]">
+          // role="alert": the list appeared silently for screen-reader users,
+          // so Continue seemed to do nothing (surface QA 2026-09-30).
+          <ul role="alert" className="space-y-1 rounded-[12px] border border-[var(--auth-danger)] bg-[rgba(255,90,90,0.08)] px-4 py-3 text-[13px] text-[var(--auth-danger-text)]">
             {problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
@@ -357,7 +360,7 @@ export function OnboardingWizard({
         )}
 
         {formError && (
-          <p className="rounded-[12px] border border-[var(--auth-danger)] bg-[rgba(255,90,90,0.08)] px-4 py-3 text-[13px] text-[var(--auth-danger-text)]">
+          <p role="alert" className="rounded-[12px] border border-[var(--auth-danger)] bg-[rgba(255,90,90,0.08)] px-4 py-3 text-[13px] text-[var(--auth-danger-text)]">
             {formError}
           </p>
         )}
@@ -432,9 +435,9 @@ function Progress({ step }: { step: OnboardingStep }) {
   return (
     <div>
       <div className="flex items-center justify-between text-[12px] text-[var(--auth-text-subtle)]">
-        <span>{STEP_META[step].title}</span>
+        <span>Partner application</span>
         <span>
-          {stepIndex(step) + 1} of {ONBOARDING_STEPS.length}
+          Step {stepIndex(step) + 1} of {ONBOARDING_STEPS.length}
         </span>
       </div>
       <div

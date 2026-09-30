@@ -341,7 +341,7 @@ async function ensureSettings(businessId, users) {
         privacy_contact_email: `privacy@${DEMO.domain}`,
         prospect_countries: ["GB"],
         prospect_type: "B2B",
-        allowed_sources: ["BUSINESS_WEBSITE", "COMPANIES_HOUSE", "CUSTOMER_CRM"],
+        allowed_sources: ["BUSINESS_WEBSITE", "PUBLIC_CORPORATE_REGISTER", "CONNECTED_CRM"], // ALLOWED_SOURCE_KINDS values; the old "COMPANIES_HOUSE"/"CUSTOMER_CRM" matched nothing, so every sourced record read NOT_PERMITTED
         marketing_lawful_basis: "LEGITIMATE_INTERESTS",
         lawful_basis_note: "B2B outreach to incorporated companies about web design services relevant to their role.",
         basis_reviewed_at: ago(30),

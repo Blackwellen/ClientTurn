@@ -28,6 +28,7 @@ import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { loadDraft } from "./campaigns/draft";
 import { mergeValuesFor, renderTemplate } from "./templates";
 import { loadProspectEmailOrigins } from "@/lib/find-leads/server/email-origin-store";
+import { withinSendWindow } from "./send-window";
 
 /**
  * Cold outreach dispatch (V4 section 17, section 18.27).
@@ -101,6 +102,33 @@ export async function dispatchCampaign(input: {
   // on after the campaign started.
   if (campaign.review_before_outreach) {
     return { ...EMPTY, haltReason: "REVIEW_REQUIRED" };
+  }
+
+  // The campaign's own send window, which nothing enforced (send-window.ts).
+  // Outside it nothing is claimed or sent; the recipients stay due and the
+  // sequence scheduler's sweep wakes the campaign again once it opens.
+  {
+    const { data: scheduling } = await admin
+      .from("outreach_campaigns")
+      .select("*")
+      .eq("business_id", input.businessId)
+      .eq("id", input.campaignId)
+      .maybeSingle();
+    const window = (scheduling ?? {}) as unknown as {
+      send_timezone?: string | null;
+      send_window_start?: string | null;
+      send_window_end?: string | null;
+    };
+    if (
+      !withinSendWindow({
+        at: new Date(),
+        timeZone: window.send_timezone,
+        start: window.send_window_start,
+        end: window.send_window_end,
+      })
+    ) {
+      return { ...EMPTY, haltReason: "OUTSIDE_SEND_WINDOW", more: true };
+    }
   }
 
   const steps = await loadSteps(input.businessId, campaign.active_sequence_id);
@@ -310,7 +338,7 @@ export async function dispatchCampaign(input: {
 
     if (verdict.outcome !== "ELIGIBLE") {
       blocked += 1;
-      await recordBlocked(input, run.id, prospect.id, verdict.reasonCode);
+      await recordBlocked(input, run.id, prospect.id, verdict.reasonCode, verdict.reason);
       continue;
     }
 
@@ -344,7 +372,7 @@ export async function dispatchCampaign(input: {
 
     if (decision.outcome !== "ALLOWED") {
       blocked += 1;
-      await recordBlocked(input, run.id, prospect.id, decision.reasonCode);
+      await recordBlocked(input, run.id, prospect.id, decision.reasonCode, decision.message);
       continue;
     }
 
@@ -930,6 +958,8 @@ async function recordBlocked(
   runId: string,
   prospectId: string,
   reasonCode: string,
+  /** The check's own sentence (policy messages never name providers or costs). */
+  reason?: string,
 ): Promise<void> {
   const admin = createAdminClient();
   const context = { businessId: input.businessId, campaignId: input.campaignId, runId, prospectId, reasonCode };
@@ -956,7 +986,11 @@ async function recordBlocked(
       .from("prospects")
       .update({
         outreach_eligibility: reasonCode === "BLOCKED_OPT_OUT" ? "SUPPRESSED" : "REVIEW",
-        eligibility_reason: "Contactability changed before this message was sent",
+        // The specific reason, so the prospect drawer says why this person
+        // was held back rather than one generic line for every case.
+        eligibility_reason: reason?.trim()
+          ? `Not sent: ${reason.trim()}`.slice(0, 500)
+          : "Contactability changed before this message was sent",
       })
       .eq("business_id", input.businessId)
       .eq("id", prospectId),

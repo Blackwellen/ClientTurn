@@ -82,7 +82,11 @@ export function SourcePerformanceCard({ rows }: { rows: SourceSnapshotRow[] }) {
                 <TableRow key={row.key} className="group relative h-8 has-[a:focus-visible]:outline has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-content-accent">
                   <TableCell className="px-2">
                     <span className="flex items-center gap-2">
-                      <SourceIcon provider={row.provider} className="shrink-0" />
+                      {/* A fixed slot keeps names aligned when a provider
+                          has no icon (SourceIcon renders nothing then). */}
+                      <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+                        <SourceIcon provider={row.provider} />
+                      </span>
                       {/* The row opens Leads filtered to this source, which is
                           what the chevron in the design promises. */}
                       <Link

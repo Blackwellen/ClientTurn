@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { fieldsForSurface } from "../messaging/merge-fields.ts";
+import { describeUnknownTokens, fieldsForSurface } from "../messaging/merge-fields.ts";
 import { MAX_EMAIL_SUBJECT_LENGTH } from "../automations/types.ts";
 
 export const FOLLOW_UP_VIEWS = ["follow-up", "qualification", "linkedin"] as const;
@@ -313,6 +313,8 @@ export function validateSequence(
   options: {
     unknownTokensFor: (template: string) => string[];
     whatsappEnabled: boolean;
+    /** On the plan but maybe not connected; see `WarmChannelContext`. */
+    whatsappOnPlan?: boolean;
     /** Channels the workspace can currently offer at all. */
     available?: Record<string, boolean>;
   },
@@ -368,21 +370,24 @@ export function validateSequence(
     if (unknown.length > 0) {
       issues.push({
         key: `${step.key}-tokens`,
-        message: `${label} uses ${unknown
-          .map((token) => `{{${token}}}`)
-          .join(", ")}, which cannot be filled in.`,
+        message: `${label}: ${describeUnknownTokens(unknown)}.`,
       });
     }
-    if (step.channel === "whatsapp" && !options.whatsappEnabled) {
+    const whatsappBlocked = step.channel === "whatsapp" && !options.whatsappEnabled;
+    if (whatsappBlocked) {
       issues.push({
         key: `${step.key}-channel`,
-        message: `${label} uses WhatsApp, which is not on your plan.`,
+        message:
+          (options.whatsappOnPlan ?? options.whatsappEnabled)
+            ? `${label} uses WhatsApp, which is not connected yet.`
+            : `${label} uses WhatsApp, which is not on your plan.`,
       });
     }
     // A channel that is not usable at all is a configuration error worth
     // blocking on. Per-lead availability is a different question and is
-    // answered at send time, never here.
-    if (options.available && options.available[step.channel] === false) {
+    // answered at send time, never here. Not repeated for a WhatsApp step
+    // already reported above: two lines for one problem read as two problems.
+    if (!whatsappBlocked && options.available && options.available[step.channel] === false) {
       issues.push({
         key: `${step.key}-unavailable`,
         message: `${label} uses ${step.channel === "sms" ? "SMS" : step.channel === "email" ? "Email" : "WhatsApp"}, which is not available for this workspace right now.`,

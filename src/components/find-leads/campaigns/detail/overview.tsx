@@ -509,12 +509,16 @@ function Funnel({
   stages: { key: string; label: string; value: number; percent: number | null }[];
 }) {
   const top = Math.max(...stages.map((stage) => stage.value), 1);
+  // One sequential ramp of the brand accent (stages are ordered, not
+  // categories), ending in the "healthy" green for the outcome stage. The
+  // previous info/success/warning-400 classes had no token behind them and
+  // rendered as no fill at all.
   const colours = [
-    "bg-info-400",
-    "bg-purple-400",
-    "bg-purple-300",
-    "bg-success-400",
-    "bg-warning-400",
+    "bg-accent-700",
+    "bg-accent-600",
+    "bg-accent-500",
+    "bg-accent-400",
+    "bg-accent-300",
     "bg-success-500",
   ];
 

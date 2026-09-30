@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   Terminal,
+  Wrench,
 } from "lucide-react";
 import type { HelpIconKey } from "@/lib/help/categories";
 
@@ -35,6 +36,7 @@ export const HELP_ICONS: Record<HelpIconKey, React.ComponentType<{ className?: s
   "credit-card": CreditCard,
   "graduation-cap": GraduationCap,
   "circle-help": CircleHelp,
+  wrench: Wrench,
 };
 
 export function helpIcon(key: string | null | undefined) {

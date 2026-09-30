@@ -1,4 +1,5 @@
 import "server-only";
+import { isBookingConfigured } from "@/lib/system-check/model";
 import { rate } from "@/lib/analytics/v4-metrics";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
@@ -354,10 +355,10 @@ export const getLeadCapabilities = cache(
         .map((row) => row.provider_type),
     );
 
-    const bookingProvider = settings?.booking_mode;
-    const booking = Boolean(
-      settings?.booking_url ||
-        (bookingProvider && connected.has(bookingProvider)),
+    // The one booking-readiness rule, shared with Settings -> System check.
+    const booking = isBookingConfigured(
+      { bookingMode: settings?.booking_mode, bookingUrl: settings?.booking_url },
+      connected,
     );
 
     return {

@@ -6,8 +6,9 @@ import { Play, ShieldAlert } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { EventStatusBadge } from "@/components/admin/ui";
-import { formatDateTime, formatRelative } from "@/lib/dates";
+import { formatDateTime } from "@/lib/dates";
 import type { EventDetail } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -82,7 +83,7 @@ export function EventDetailDrawer({
           <Row label="Received">
             {formatDateTime(detail.receivedAt, { year: true })}{" "}
             <span className="text-content-muted">
-              ({formatRelative(detail.receivedAt, { style: "ago" })})
+              (<RelativeTime value={detail.receivedAt} options={{ style: "ago" }} />)
             </span>
           </Row>
           <Row label="Processed">

@@ -75,6 +75,14 @@ export const SETTINGS_SECTIONS = [
     label: "Billing & Usage",
     description: "Plan, usage and invoices",
   },
+  {
+    // Troubleshooting (2026-09-29): one live checklist of why each engine is
+    // or isn't working, each row linking to the setting that fixes it. A
+    // Settings section, not a new destination.
+    id: "system-check",
+    label: "System check",
+    description: "What's working, and what to fix",
+  },
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];

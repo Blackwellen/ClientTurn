@@ -134,6 +134,7 @@ export async function getFollowUpChannelContext(
     policyAllows,
     smsConnected,
     whatsappEnabled,
+    whatsappOnPlan: entitlements.whatsappEnabled,
     whatsappTemplateReady,
     available: {
       email: policyAllows.email && senderAvailable,

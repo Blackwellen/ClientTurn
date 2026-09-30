@@ -289,24 +289,33 @@ export default async function DashboardPage({
         />
       </React.Suspense>
 
+      {/* Two columns until 2xl: the booking cards stack beside Recent leads
+          rather than leaving Upcoming bookings alone on a half-empty row. */}
       <div className="grid gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
         <RecentLeadsCard leads={data.recentLeads} />
-        <PendingBookingsCard
-          rows={pendingBookings.rows}
-          total={pendingBookings.total}
-          failed={pendingBookings.failed}
-          timezone={workspace.timezone}
-        />
-        <UpcomingBookingsCard
-          rows={bookings.rows}
-          awaitingOutcome={awaitingOutcome.rows}
-          timezone={workspace.timezone}
-          destinationConfigured={destination.configured}
-        />
+        <div className="grid content-start gap-3.5 2xl:contents">
+          <PendingBookingsCard
+            rows={pendingBookings.rows}
+            total={pendingBookings.total}
+            failed={pendingBookings.failed}
+            timezone={workspace.timezone}
+          />
+          <UpcomingBookingsCard
+            rows={bookings.rows}
+            awaitingOutcome={awaitingOutcome.rows}
+            timezone={workspace.timezone}
+            destinationConfigured={destination.configured}
+          />
+        </div>
       </div>
 
-      <div className="grid gap-3.5 xl:grid-cols-3">
-        <SourcePerformanceCard rows={data.sources} />
+      {/* Source performance has seven columns; a third of a 1440px screen
+          truncated every source name to one letter. It takes the full width
+          until there is room for three tables side by side. */}
+      <div className="grid gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="lg:col-span-2 2xl:col-span-1">
+          <SourcePerformanceCard rows={data.sources} />
+        </div>
         <FollowUpPerformanceCard metrics={data.followUp} />
         <ReactivationPerformanceCard
           campaigns={campaigns.slice(0, RECENT_CAMPAIGNS)}

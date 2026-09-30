@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpDown, LayoutGrid, Search, SlidersHorizontal, Table2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, LayoutGrid, Search, SlidersHorizontal, Table2 } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
 import {
@@ -74,6 +74,8 @@ export function ProspectToolbar({
 }) {
   const params = useFindLeadsParams();
   const filterCount = activeFilterCount(filters);
+  const [chipsOpen, setChipsOpen] = React.useState(false);
+  const chipRowId = React.useId();
 
   // Uncontrolled with a debounce: typing must not push a history entry per
   // keystroke, and a controlled input would re-render the whole table on each
@@ -157,10 +159,32 @@ export function ProspectToolbar({
         <ViewSwitch mode={mode} onChange={onModeChange} />
       </div>
 
+      {/* On a phone the fourteen chips filled a whole screen above the first
+          prospect, so they sit behind a disclosure there. */}
+      <button
+        type="button"
+        onClick={() => setChipsOpen((open) => !open)}
+        aria-expanded={chipsOpen}
+        aria-controls={chipRowId}
+        className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg px-1 text-[12.5px] font-medium text-content-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-content-accent sm:hidden"
+      >
+        {chipsOpen ? "Hide quick filters and sort" : "Quick filters and sort"}
+        <ChevronDown
+          className={cn("size-3.5 transition-transform", chipsOpen && "rotate-180")}
+          aria-hidden
+        />
+      </button>
+
       {/* The chip row. Two lines on a laptop, wrapping to more on a tablet —
           never a horizontal scroller, which hides filters people then cannot
           find. */}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div
+        id={chipRowId}
+        className={cn(
+          "mt-3 flex-wrap items-center gap-2 sm:flex",
+          chipsOpen ? "flex" : "hidden",
+        )}
+      >
         <FilterChip
           label="ICP"
           options={options.icpProfiles.map((p) => ({ value: p.id, label: p.name }))}

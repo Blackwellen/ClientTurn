@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { animate, motion, useMotionValue, useTransform } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import { Check, Copy, PhoneCall, RotateCcw, Sparkles, UserRound } from "lucide-react";
 import {
   AUTO_ENROLMENT,

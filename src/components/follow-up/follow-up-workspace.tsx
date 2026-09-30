@@ -39,6 +39,7 @@ export type ChannelContextView = {
   policyAllows: Record<Channel, boolean>;
   smsConnected: boolean;
   whatsappEnabled: boolean;
+  whatsappOnPlan?: boolean;
   whatsappTemplateReady: boolean;
   policyName: string;
   senders: SenderHealth[];
@@ -136,6 +137,7 @@ export function FollowUpWorkspace({
   const issues = validateSequence(steps, {
     unknownTokensFor: findUnknownMergeFields,
     whatsappEnabled: context.whatsappEnabled,
+    whatsappOnPlan: context.whatsappOnPlan,
     available: context.available,
   });
 
@@ -241,7 +243,7 @@ export function FollowUpWorkspace({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
         {/* ------------------------------------------------ sequence */}
         <Card className="min-w-0">
-          <CardHeader className="items-center border-b-0 px-5 pt-5 pb-0">
+          <CardHeader className="flex-col items-start border-b-0 px-5 pt-5 pb-0 sm:flex-row sm:items-center">
             <SectionHeader
               icon={FileText}
               tone="info"
@@ -264,6 +266,7 @@ export function FollowUpWorkspace({
               canEdit={canEdit}
               available={context.available}
               whatsappEnabled={context.whatsappEnabled}
+              whatsappOnPlan={context.whatsappOnPlan ?? context.whatsappEnabled}
               onChange={setSteps}
               onAdd={addStep}
             />
@@ -320,6 +323,7 @@ export function FollowUpWorkspace({
               policyAllows: context.policyAllows,
               smsConnected: context.smsConnected,
               whatsappEnabled: context.whatsappEnabled,
+              whatsappOnPlan: context.whatsappOnPlan,
               whatsappTemplateReady: context.whatsappTemplateReady,
               policyName: context.policyName,
               senders: context.senders,

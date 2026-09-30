@@ -1,11 +1,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatInZone } from "@/lib/dates";
 import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { FALLBACK_UNIT_COST_MINOR } from "../cost-model";
 import { loadUnitCosts } from "./budget";
 import { providersFor, unhealthyProviders } from "./providers/registry";
 import type { CompanyCandidate } from "./providers/types";
-import { assessEmail, assessPhone, lawfulBasisFor } from "../contact-legality";
+import { assessEmail, lawfulBasisFor, provenanceTypeForProvider } from "../contact-legality";
 import { originForProvider, type EmailOrigin } from "../email-origin";
 import { recordEmailOrigin } from "./email-origin-store";
 import {
@@ -165,9 +166,12 @@ export async function researchRefreshState(
       ...base,
       allowed: false,
       nextAllowedAt,
-      reason: `This prospect was refreshed in the last ${RESEARCH_COOLDOWN_HOURS} hours. Research is available again on ${new Date(
-        nextAllowedAt,
-      ).toLocaleString("en-GB")}.`,
+      reason: `This prospect was refreshed in the last ${RESEARCH_COOLDOWN_HOURS} hours. Research is available again on ${formatInZone(nextAllowedAt, {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}.`,
     };
   }
 
@@ -363,7 +367,7 @@ export async function refreshProspectResearch(
         field_name: field,
         value_json: { value: patch[field] } as never,
         provider: provider.key,
-        source_type: "LICENSED_PROVIDER",
+        source_type: provenanceTypeForProvider(provider.key) ?? "LICENSED_PROVIDER",
         confidence: 0.8,
         policy_tags: [`BASIS:${lawfulBasisFor(provider.key)}`] as never,
         obtained_at: new Date().toISOString(),
@@ -451,6 +455,18 @@ export async function enrichProspectContact(
   userId: string | null,
 ): Promise<EnrichContactOutcome> {
   const admin = createAdminClient();
+
+  // Resolved conflict 6 (CLAUDE.md): a telephone number is never collected
+  // from an enrichment provider. Refused before any allowance or spend.
+  if (channel !== "EMAIL") {
+    return {
+      ok: false,
+      error: "ClientTurn does not look up phone numbers. Cold outreach is email only.",
+      found: false,
+      verification: null,
+      costMinor: 0,
+    };
+  }
 
   const entitlements = await getV4Entitlements(businessId);
   if (!entitlements.sourcingEnabled) {
@@ -747,7 +763,7 @@ export async function enrichProspectContact(
         subscriberType: legality.subscriberType,
       } as never,
       provider: finder.key,
-      source_type: "LICENSED_PROVIDER",
+      source_type: provenanceTypeForProvider(finder.key) ?? "LICENSED_PROVIDER",
       confidence: 0.7,
       obtained_at: new Date().toISOString(),
     });
@@ -768,121 +784,8 @@ export async function enrichProspectContact(
     return { ok: true, error: null, found: true, verification: "UNKNOWN", costMinor: cost };
   }
 
-  /* ------------------------------------------------------------- phone */
-  const finders = providersFor("CONTACT_DISCOVERY", unhealthy).filter(
-    (provider) => typeof provider.findContacts === "function",
-  );
-  if (finders.length === 0) {
-    return fail(
-      "SKIPPED_GATE",
-      "PROVIDER_NOT_CONFIGURED",
-      "No contact-discovery provider is available right now. Nothing has been charged.",
-    );
-  }
-
-  const finder = finders[0];
-  let phone: string | null = null;
-
-  try {
-    const response = await finder.findContacts!({
-      companies: [
-        {
-          externalId: null,
-          name: company.name,
-          domain: company.domain,
-          websiteUrl: null,
-          industry: null,
-          employeeCount: null,
-          companySize: null,
-          description: null,
-          location: {},
-        } as never,
-      ],
-      roles: prospect.role_title ? [prospect.role_title] : [],
-      limit: 5,
-    });
-
-    const surname = (prospect.last_name ?? "").trim().toLowerCase();
-    phone =
-      (response.records ?? []).find(
-        (row) => surname && (row.lastName ?? "").trim().toLowerCase() === surname,
-      )?.phone ?? null;
-  } catch {
-    return fail("FAILED", "PROVIDER_ERROR", "The discovery provider could not be reached.");
-  }
-
-  if (!phone) {
-    return fail(
-      "NOT_FOUND",
-      "NO_MATCH",
-      "No phone number could be found for this person. Nothing has been changed.",
-    );
-  }
-
-  // The same gate the email path runs, with the harder judgement. A UK mobile
-  // may be a company line or a sole trader's personal phone, and only the
-  // second needs TPS screening -- so it is kept and sent for review rather than
-  // either refused outright or quietly treated as a corporate number.
-  const legality = assessPhone(phone, true);
-
-  if (legality.verdict === "REFUSED") {
-    return fail("NOT_FOUND", "NO_MATCH", legality.reason);
-  }
-
-  const cost = finder.freeOfCharge
-    ? 0
-    : Math.ceil(unitCosts.CONTACT_DISCOVERY ?? FALLBACK_UNIT_COST_MINOR.CONTACT_DISCOVERY);
-
-  await admin
-    .from("prospects")
-    .update({
-      phone_e164: phone,
-      subscriber_type: legality.subscriberType,
-      ...(legality.verdict === "REVIEW"
-        ? {
-            outreach_eligibility: "REVIEW",
-            eligibility_reason: legality.reason,
-          }
-        : {}),
-      last_activity_at: new Date().toISOString(),
-    })
-    .eq("business_id", businessId)
-    .eq("id", prospectId);
-
-  await admin.from("prospect_data_sources").insert({
-    business_id: businessId,
-    prospect_id: prospectId,
-    company_id: company.id,
-    field_name: "phone_e164",
-    value_json: {
-      value: phone,
-      legality: legality.code,
-      subscriberType: legality.subscriberType,
-    } as never,
-    provider: finder.key,
-    source_type: "LICENSED_PROVIDER",
-    confidence: 0.65,
-    policy_tags: [`BASIS:${lawfulBasisFor(finder.key)}`] as never,
-    obtained_at: new Date().toISOString(),
-  });
-
-  if (attempt) {
-    await admin
-      .from("prospect_enrichments")
-      .update({
-        status: "SUCCESS",
-        cost_minor: cost,
-        result_json: { requestedBy: userId, channel, provider: finder.key } as never,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", attempt.id);
-  }
-
-  await ledgerSpend(businessId, finder.key, cost, attempt?.id ?? null);
-
-  // A discovered phone number does not become a usable cold channel. UK policy
-  // blocks cold SMS regardless, and the policy engine decides that — not this.
-  return { ok: true, error: null, found: true, verification: null, costMinor: cost };
+  // Unreachable while `channel` is EMAIL-only; kept so a widened type fails closed.
+  return { ok: false, error: "That channel cannot be enriched.", found: false, verification: null, costMinor: 0 };
 }
 
 /** The append-only ledger the admin cost views read. */

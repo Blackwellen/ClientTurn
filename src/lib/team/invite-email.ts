@@ -13,6 +13,8 @@ export async function sendExistingAccountInvite(input: {
   workspaceName: string;
   role: AssignableRole;
   invitedAt: Date;
+  /** A new account's one-time invite link; see existingAccountInviteEmail. */
+  acceptLink?: string;
 }): Promise<boolean> {
   const key = serverEnv.resend.apiKey;
   if (!key) return false;
@@ -22,6 +24,7 @@ export async function sendExistingAccountInvite(input: {
     role: input.role,
     invitedAt: input.invitedAt,
     siteUrl: serverEnv.siteUrl,
+    acceptLink: input.acceptLink,
   });
 
   try {

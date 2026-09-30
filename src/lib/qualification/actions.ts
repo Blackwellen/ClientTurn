@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { z } from "zod";
 import {
   hasRole,
@@ -386,7 +387,7 @@ export async function getQuestionMapping(input: { questionId: string }): Promise
  */
 export async function saveQuestionMapping(input: QuestionMapping): Promise<ActionResult> {
   const parsed = questionMappingSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Check the mapping.");
+  if (!parsed.success) return fail(friendlyIssue(parsed.error, "Check the mapping."));
   const workspace = await editor();
   if (!workspace) return fail("You do not have permission to change qualification questions.");
 

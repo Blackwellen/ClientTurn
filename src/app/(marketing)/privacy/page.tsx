@@ -17,7 +17,7 @@ import {
 import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const description =
-  "How Blackwellen Limited handles personal data in ClientTurn, under the UK GDPR, the Data Protection Act 2018 and PECR — for account holders, and for the leads our customers process. Includes our Article 28 processing terms and our sub-processor register.";
+  "How Blackwellen Limited handles personal data in ClientTurn under the UK GDPR, the Data Protection Act 2018 and PECR, for account holders and for the leads our customers process.";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",

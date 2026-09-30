@@ -323,7 +323,7 @@ export const SECTION_TOURS: readonly SectionTour[] = [
     {
       id: "date-range",
       title: "Choose the period",
-      body: "Every number on this page follows this range: Last 7, 30 or 90 days, or Custom.",
+      body: "The headline numbers, the funnels and the performance tables follow this range: Last 7, 30 or 90 days, or Custom. Lists of what needs doing now always show current state.",
       targets: ["dashboard-date-range"],
       placement: "bottom",
     },

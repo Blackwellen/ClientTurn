@@ -11,7 +11,7 @@ import { Panel, PanelEmpty } from "@/components/admin/ui";
 import { StepUpDialog } from "@/components/admin/step-up-dialog";
 import { useToast } from "@/components/ui/toast";
 import { formatMoney, titleise } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+
 import type {
   AdminAffiliateDetail,
   AdminFlagRow,
@@ -32,6 +32,8 @@ import {
   updateProgrammeSettings,
   updateTiers,
 } from "@/lib/admin/affiliate-actions";
+import { RelativeTime } from "@/components/admin/relative-time";
+import { askReason, confirmAction } from "@/components/admin/admin-prompt";
 
 /**
  * Admin -> Affiliates, the programme controls added by affiliate audit 17:
@@ -154,8 +156,8 @@ export function PayoutRowActions({ row, pending, run }: { row: AdminPayoutRow; p
           size="xs"
           variant="secondary"
           loading={busy("send-payout")}
-          onClick={() => {
-            if (!window.confirm(`Send ${formatMoney(row.amountMinor / 100)} to ${row.affiliateName} through Stripe Connect now?`)) return;
+          onClick={async () => {
+            if (!await confirmAction(`Send ${formatMoney(row.amountMinor / 100)} to ${row.affiliateName} through Stripe Connect now?`)) return;
             void run(`send-payout:${row.id}`, () => sendPayout({ payoutId: row.id }), "Sent.");
           }}
         >
@@ -172,8 +174,8 @@ export function PayoutRowActions({ row, pending, run }: { row: AdminPayoutRow; p
           size="xs"
           variant="ghost"
           loading={busy("cancel-payout")}
-          onClick={() => {
-            const reason = window.prompt("Why is this payout being cancelled? Its commission goes back to the partner's balance.");
+          onClick={async () => {
+            const reason = await askReason("Why is this payout being cancelled? Its commission goes back to the partner's balance.");
             if (!reason) return;
             void run(`cancel-payout:${row.id}`, () => cancelPayoutAction({ payoutId: row.id, reason }), "Cancelled.");
           }}
@@ -207,7 +209,7 @@ export function FlagsQueue({ rows, pending, run }: { rows: AdminFlagRow[]; pendi
                   {row.affiliateName} <span className="text-content-subtle">referred</span> {row.businessName ?? "a deleted workspace"}
                 </p>
                 <p className="text-[12px] text-content-muted">
-                  {titleise(row.referralStatus)} · held for {titleise(row.heldReason ?? "review")} · {formatRelative(row.createdAt, { style: "ago" })}
+                  {titleise(row.referralStatus)} · held for {titleise(row.heldReason ?? "review")} · <RelativeTime value={row.createdAt} options={{ style: "ago" }} />
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {row.signals.length === 0 ? (
@@ -226,8 +228,8 @@ export function FlagsQueue({ rows, pending, run }: { rows: AdminFlagRow[]; pendi
                   size="xs"
                   variant="secondary"
                   loading={pending === `clear:${row.referralId}`}
-                  onClick={() => {
-                    const note = window.prompt("Why is this referral legitimate? Recorded in the audit log.");
+                  onClick={async () => {
+                    const note = await askReason("Why is this referral legitimate? Recorded in the audit log.");
                     if (!note) return;
                     void run(`clear:${row.referralId}`, () => reviewReferralFlag({ referralId: row.referralId, decision: "CLEAR", note }), "Cleared.");
                   }}
@@ -238,8 +240,8 @@ export function FlagsQueue({ rows, pending, run }: { rows: AdminFlagRow[]; pendi
                   size="xs"
                   variant="ghost"
                   loading={pending === `confirm:${row.referralId}`}
-                  onClick={() => {
-                    const note = window.prompt("Why is this referral not eligible? Recorded in the audit log.");
+                  onClick={async () => {
+                    const note = await askReason("Why is this referral not eligible? Recorded in the audit log.");
                     if (!note) return;
                     void run(`confirm:${row.referralId}`, () => reviewReferralFlag({ referralId: row.referralId, decision: "CONFIRM", note }), "Confirmed.");
                   }}
@@ -451,7 +453,7 @@ export function AffiliateDetailPanel({ detail, pending, run }: { detail: AdminAf
             <ul className="space-y-1 pt-1 text-[12px] text-content-muted">
               {detail.tierHistory.slice(0, 5).map((entry, index) => (
                 <li key={index}>
-                  {titleise(entry.fromTier ?? "none")} → {titleise(entry.toTier)} · {titleise(entry.reason)} · {formatRelative(entry.createdAt, { style: "ago" })}
+                  {titleise(entry.fromTier ?? "none")} → {titleise(entry.toTier)} · {titleise(entry.reason)} · <RelativeTime value={entry.createdAt} options={{ style: "ago" }} />
                 </li>
               ))}
             </ul>

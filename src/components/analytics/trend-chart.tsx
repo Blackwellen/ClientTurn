@@ -165,7 +165,9 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
             key={index}
             x={x(index)}
             y={HEIGHT - 6}
-            textAnchor="middle"
+            // The last tick sits on the right edge of the plot; centred, half
+            // its label fell outside the viewBox ("30 S…").
+            textAnchor={index === points.length - 1 && points.length > 1 ? "end" : "middle"}
             className="fill-current text-content-subtle"
             style={{ fontSize: "9px" }}
           >

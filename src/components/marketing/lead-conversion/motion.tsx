@@ -3,13 +3,13 @@
 import * as React from "react";
 import {
   motion,
-  useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
   type Transition,
   type Variants,
 } from "motion/react";
+import { useReducedMotion } from "@/components/marketing/use-reduced-motion";
 import { cn } from "@/lib/cn";
 
 /**

@@ -134,7 +134,7 @@ const STAGES: Stage[] = [
           <FragRow
             icon={Users}
             title="Sourced prospect"
-            sub="Riverside Homes"
+            sub="Kestrel Commerce"
             meta="2m ago"
             dot
           />
@@ -250,7 +250,7 @@ const STAGES: Stage[] = [
               James Taylor
             </span>
             <span className="block truncate text-[9.5px] text-[var(--pub-text-muted)]">
-              Acme Construction
+              Brightline Software
             </span>
           </span>
         </div>

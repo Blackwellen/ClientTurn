@@ -35,7 +35,7 @@ import {
   type RoutingState,
 } from "@/lib/leads/add-lead/types";
 import type { WizardService } from "@/lib/leads/add-lead/queries";
-import type { WorkspaceMember } from "@/lib/leads/types";
+import { assignableMembers, type WorkspaceMember } from "@/lib/leads/types";
 import { RailCard, RailNote, SummaryRow, StepHeading } from "./pieces";
 
 const CREATE_STEPS = [
@@ -120,7 +120,7 @@ export function RouteStartStep({
                 onChange={(event) => onChange({ assigneeId: event.target.value })}
               >
                 <option value="">Unassigned</option>
-                {members.map((member) => (
+                {assignableMembers(members, routing.assigneeId).map((member) => (
                   <option key={member.userId} value={member.userId}>
                     {member.name}
                   </option>

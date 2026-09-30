@@ -52,6 +52,7 @@ import {
   type JobsViewData,
   type JobStatusFilter,
 } from "@/lib/admin/jobs-types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 export function JobStatusBadge({ status }: { status: JobRow["status"] }) {
   return (
@@ -143,7 +144,11 @@ export function SystemJobsView({
       {/* ------------------------------------------------------------ KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {KPI.map((card) => {
-          const value = summary[card.key];
+          // Failed counts dead-lettered jobs too: they are failures that ran
+          // out of retries, and the card read "0" beside a non-empty
+          // dead-letter queue.
+          const value =
+            card.key === "failed" ? summary.failed + summary.deadLettered : summary[card.key];
           const ratio =
             card.key === "total"
               ? summary.previousTotal === 0
@@ -154,7 +159,7 @@ export function SystemJobsView({
             card.key === "completed" && summary.completionRate !== null
               ? `${Math.round(summary.completionRate * 1000) / 10}% of finished`
               : card.key === "failed" && summary.total > 0
-                ? `${Math.round((summary.failed / summary.total) * 1000) / 10}% of window`
+                ? `${Math.round(((summary.failed + summary.deadLettered) / summary.total) * 1000) / 10}% of window`
                 : card.key === "running" && summary.total > 0
                   ? `${Math.round((summary.running / summary.total) * 1000) / 10}% of window`
                   : null;
@@ -196,6 +201,9 @@ export function SystemJobsView({
                     <span className="text-content-muted">{share ?? "—"}</span>
                   )}
                 </p>
+                {/* The series is drawn from the capped row sample; on a
+                    sampled window its shape would be a false spike. */}
+                {!summary.sampled && (
                 <Sparkline
                   values={summary.series[card.key]}
                   tone={
@@ -208,6 +216,7 @@ export function SystemJobsView({
                   width={90}
                   height={24}
                 />
+                )}
               </div>
             </div>
           );
@@ -226,7 +235,7 @@ export function SystemJobsView({
             <MultiLineChart
               labels={lagLabels}
               formatValue={(value) => `${Math.round(value)}m`}
-              emptyMessage="No jobs were claimed in this window."
+              emptyMessage="No claim times in this window. Jobs finished before 30 Sept 2026 did not keep their start time, so lag shows only for jobs claimed since then."
               series={[
                 {
                   label: "Critical",
@@ -252,7 +261,11 @@ export function SystemJobsView({
           icon={ListChecks}
           tone="info"
           title="Jobs by type"
-          description="Share of the window by handler."
+          description={
+            summary.sampled
+              ? `Share of the latest ${formatNumber(summary.sampleSize)} jobs by handler.`
+              : "Share of the window by handler."
+          }
         >
           <div className="px-4 pb-4 sm:px-5">
             {data.byType.length === 0 ? (
@@ -263,9 +276,12 @@ export function SystemJobsView({
                   label: slice.label,
                   value: slice.count,
                 }))}
-                totalLabel="Total"
+                totalLabel={summary.sampled ? "Latest" : "Total"}
                 size={150}
                 thickness={20}
+                // Wrap below the ring rather than squeeze the legend to
+                // single letters ("V…", "S…") in a narrow column.
+                legendClassName="min-w-[13rem]"
               />
             )}
           </div>
@@ -310,8 +326,11 @@ export function SystemJobsView({
                       <span className="block truncate text-[13px] font-medium text-content">
                         {group.label}
                       </span>
-                      <span className="block truncate text-[11.5px] text-content-subtle">
-                        Oldest {formatRelative(group.oldestAt, { style: "ago" })}
+                      <span
+                        suppressHydrationWarning
+                        className="block truncate text-[11.5px] text-content-subtle"
+                      >
+                        Oldest <RelativeTime value={group.oldestAt} options={{ style: "ago" }} />
                       </span>
                     </span>
                   </button>
@@ -537,10 +556,18 @@ export function SystemJobsView({
                         <td className="lr-tabular px-4 py-2.5 text-[12.5px] text-content-secondary">
                           {job.attempts} / {job.maxAttempts}
                         </td>
-                        <td className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted">
-                          {formatRelative(job.createdAt, { style: "ago" })}
+                        {/* Relative times tick between the server render and
+                            hydration ("just now" -> "1 minute ago"). */}
+                        <td
+                          suppressHydrationWarning
+                          className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted"
+                        >
+                          <RelativeTime value={job.createdAt} options={{ style: "ago" }} />
                         </td>
-                        <td className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted">
+                        <td
+                          suppressHydrationWarning
+                          className="px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-muted"
+                        >
                           {job.startedAt ? formatRelative(job.startedAt, { style: "ago" }) : "—"}
                         </td>
                         <td className="lr-tabular px-4 py-2.5 text-[12.5px] whitespace-nowrap text-content-secondary">

@@ -325,10 +325,18 @@ export async function getAvailability(
       };
     }
 
+    // Calendly refuses a range that does not start in the future ("start_time
+    // must be in the future"): `now` is already past by the time it arrives.
+    // A named day more than a week out moves the (7-day) window to that day,
+    // or it would be read as "nothing free".
+    const soonest = from.getTime() + 60_000;
+    const namedDay = request.date ? Date.parse(`${request.date}T00:00:00Z`) - 86_400_000 : NaN;
+    const calendlyFrom = new Date(Number.isFinite(namedDay) ? Math.max(soonest, namedDay) : soonest);
+    if (calendlyFrom.getTime() >= to.getTime()) return { ok: true, slots: [], provider: "calendly" };
     const result = await calendlyAvailableSlots(
       connection.integrationId,
       eventTypeUri,
-      from,
+      calendlyFrom,
       to,
       request.timezone,
     );

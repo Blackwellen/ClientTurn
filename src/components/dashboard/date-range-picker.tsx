@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Check, ChevronDown } from "lucide-react";
-import { RANGE_OPTIONS, type RangeKey } from "@/lib/dates";
+import { RANGE_OPTIONS, defaultCustomRange, type RangeKey } from "@/lib/dates";
 import { DropdownItem, DropdownMenu } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
@@ -60,7 +60,10 @@ export function DateRangePicker({
             aria-label="From date"
             value={from}
             max={to || undefined}
-            onChange={(event) => apply({ from: event.target.value || null })}
+            required
+            // Clearing a date would drop back to the 30-day preset and hide
+            // these inputs mid-edit; an empty value is simply not applied.
+            onChange={(event) => event.target.value && apply({ from: event.target.value })}
             className="h-9 w-[9.5rem] text-[13px]"
           />
           <span className="text-content-subtle text-[13px]">to</span>
@@ -69,7 +72,8 @@ export function DateRangePicker({
             aria-label="To date"
             value={to}
             min={from || undefined}
-            onChange={(event) => apply({ to: event.target.value || null })}
+            required
+            onChange={(event) => event.target.value && apply({ to: event.target.value })}
             className="h-9 w-[9.5rem] text-[13px]"
           />
         </div>
@@ -106,7 +110,9 @@ export function DateRangePicker({
             onSelect={() =>
               apply(
                 option.value === "custom"
-                  ? { range: "custom" }
+                  ? value === "custom"
+                    ? { range: "custom" }
+                    : { range: "custom", ...defaultCustomRange(value) }
                   : { range: option.value, from: null, to: null },
               )
             }

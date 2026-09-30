@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { describeUnknownTokens } from "@/lib/messaging/merge-fields";
 import { CalendarDays, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -247,8 +248,7 @@ export function BookingReminderCard({
             </div>
             {unknown.length > 0 && (
               <p className="text-danger-600 text-[12px]">
-                Unknown merge {unknown.length === 1 ? "field" : "fields"}:{" "}
-                {unknown.map((token) => `{{${token}}}`).join(", ")}
+                {describeUnknownTokens(unknown)}
               </p>
             )}
           </div>

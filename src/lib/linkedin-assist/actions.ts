@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -50,7 +51,7 @@ async function run<T>(
 ): Promise<LinkedInActionResult<T>> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "That request is not valid." };
+    return { ok: false, error: friendlyIssue(parsed.error, "That request is not valid.") };
   }
   const workspace = await member();
   if (!workspace) return { ok: false, error: "You do not have permission to do that." };

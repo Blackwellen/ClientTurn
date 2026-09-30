@@ -65,7 +65,7 @@ export function BookingForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <Card>
+      <Card id="booking" className="scroll-mt-24">
         <CardHeader>
           <SectionHeader
             icon={CalendarClock}

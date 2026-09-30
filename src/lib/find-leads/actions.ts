@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { PROMOTION_RELATIONSHIP_CHOICES } from "./types";
-import { requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
+import {
+  APPROVABLE_ELIGIBILITIES,
+  APPROVABLE_STATUSES,
+  approvalBlockedReason,
+} from "./prospect-approval";
+import { hasRole, requireRole, requireWorkspace, type ActiveWorkspace } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { assertCapability, getV4Entitlements } from "@/lib/billing/v4-entitlements";
@@ -22,6 +27,7 @@ import {
   saveStrategy,
 } from "./server/sessions";
 import { runSearchAgentTurn } from "./server/search-agent";
+import { composeSearchReply } from "./search-reply";
 import { resolveBudget } from "./server/budget";
 import { estimateRunCost } from "./cost-model";
 import { resolvePlanLocations } from "./server/locations";
@@ -84,6 +90,23 @@ async function requireFindLeads(): Promise<
   return { ok: true, workspace };
 }
 
+/**
+ * Planning access: members and above. A search session is a write (it stores
+ * messages, a plan and a title) and a message runs the planning model, so a
+ * read-only viewer must not reach it. Surface QA 2026-09-30 found a viewer
+ * could rename, archive and duplicate sessions.
+ */
+async function requireFindLeadsPlanner(): Promise<
+  { ok: true; workspace: ActiveWorkspace } | { ok: false; error: string }
+> {
+  const access = await requireFindLeads();
+  if (!access.ok) return access;
+  if (!hasRole(access.workspace.role, "member")) {
+    return fail("Your role can view searches but not change them.");
+  }
+  return access;
+}
+
 /** Write access: admin and above. Sourcing spends money. */
 async function requireFindLeadsAdmin(): Promise<
   { ok: true; workspace: ActiveWorkspace } | { ok: false; error: string }
@@ -136,7 +159,7 @@ function titleFromMessage(message: string): string {
 export async function createSearchSessionAction(
   firstMessage?: unknown,
 ): Promise<ActionResult<{ sessionId: string }>> {
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const message = firstMessage === undefined ? null : messageSchema.safeParse(firstMessage);
@@ -180,7 +203,7 @@ export async function sendSearchMessageAction(
   if (!id.success) return fail("That search session could not be found.");
   if (!text.success) return fail("Type a message first.");
 
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const session = await loadOwnedSession(access.workspace.businessId, id.data);
@@ -204,9 +227,7 @@ export async function sendSearchMessageAction(
     businessId: access.workspace.businessId,
     sessionId: id.data,
     role: "ASSISTANT",
-    content: turn.clarifyingQuestion
-      ? `${turn.reply}\n\n${turn.clarifyingQuestion}`
-      : turn.reply,
+    content: composeSearchReply(turn.reply, turn.clarifyingQuestion),
     structured: turn.planChanged ? { planSummary: turn.summaryLines } : null,
   });
 
@@ -294,7 +315,7 @@ export async function updateSearchPlanAction(
   const parsed = searchPlanSchema.safeParse(plan);
   if (!parsed.success) return fail("Those search criteria are not valid.");
 
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const session = await loadOwnedSession(access.workspace.businessId, id.data);
@@ -339,7 +360,7 @@ export async function renameSearchSessionAction(
   const name = z.string().trim().min(1).max(120).safeParse(title);
   if (!id.success || !name.success) return fail("That name cannot be used.");
 
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const session = await loadOwnedSession(access.workspace.businessId, id.data);
@@ -364,7 +385,7 @@ export async function archiveSearchSessionAction(
   const id = z.uuid().safeParse(sessionId);
   if (!id.success) return fail("That search session could not be found.");
 
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const session = await loadOwnedSession(access.workspace.businessId, id.data);
@@ -389,7 +410,7 @@ export async function duplicateSearchSessionAction(
   const id = z.uuid().safeParse(sessionId);
   if (!id.success) return fail("That search session could not be found.");
 
-  const access = await requireFindLeads();
+  const access = await requireFindLeadsPlanner();
   if (!access.ok) return access;
 
   const created = await duplicateSession({
@@ -873,35 +894,37 @@ export async function approveProspectAction(
   const admin = createAdminClient();
   const { data: prospect } = await admin
     .from("prospects")
-    .select("id, status, outreach_eligibility")
+    .select("id, status, outreach_eligibility, promoted_to_lead_id")
     .eq("business_id", access.workspace.businessId)
     .eq("id", id.data)
     .maybeSingle();
 
   if (!prospect) return fail("That prospect could not be found.");
 
-  if (prospect.outreach_eligibility === "SUPPRESSED") {
-    return fail("This prospect has opted out and cannot be contacted.");
-  }
-  if (prospect.outreach_eligibility !== "ELIGIBLE") {
-    return fail(
-      "This prospect's contactability has not been confirmed, so it cannot be approved yet.",
-    );
-  }
-  if (prospect.status === "SUPPRESSED" || prospect.status === "UNSUBSCRIBED") {
-    return fail("This prospect has opted out and cannot be contacted.");
-  }
+  // One rule for this action, the bulk action and the drawer's button
+  // (prospect-approval.ts): approval resolves a REVIEW, never a suppression.
+  const blocked = approvalBlockedReason({
+    status: prospect.status,
+    outreachEligibility: prospect.outreach_eligibility,
+    promotedToLeadId: prospect.promoted_to_lead_id,
+  });
+  if (blocked) return fail(blocked);
 
   const { data: updated } = await admin
     .from("prospects")
     .update({
       status: "APPROVED",
+      // The human decision, on the record it was made about (as the bulk
+      // action does). The dispatcher still re-checks the law before sending.
+      outreach_eligibility: "ELIGIBLE",
       approved_by: access.workspace.userId,
       approved_at: new Date().toISOString(),
     })
     .eq("business_id", access.workspace.businessId)
     .eq("id", id.data)
-    .in("status", ["READY", "REVIEW", "VERIFIED"])
+    .in("status", [...APPROVABLE_STATUSES])
+    .in("outreach_eligibility", [...APPROVABLE_ELIGIBILITIES])
+    .is("promoted_to_lead_id", null)
     .select("status");
 
   if (!updated?.length) {

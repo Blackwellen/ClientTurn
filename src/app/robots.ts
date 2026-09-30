@@ -19,6 +19,9 @@ const disallow = [
   "/onboarding",
   "/r/",
   "/unsubscribe/",
+  // Public quote links carry a bearer token; they are noindex too, but a
+  // crawler that finds one in a referrer log has no business fetching it.
+  "/q/",
 ];
 
 const aiCrawlers = [

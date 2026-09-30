@@ -335,10 +335,61 @@ export async function getJobsView(
     .gte("created_at", window.previousStart.toISOString())
     .lt("created_at", window.start.toISOString());
 
-  const summary = summarise(all, window.buckets, window.start.getTime(), window.bucketMs, previousTotal ?? 0);
+  // Exact counts for the KPI cards. The row fetch above is capped by the
+  // API's max-rows (1,000), so counting its rows reported "1,000 jobs, -98%"
+  // and "0 failed" on a window holding 77,000 jobs and six dead letters.
+  const windowStart = window.start.toISOString();
+  const countState = async (states: string[] | null): Promise<number> => {
+    let query = supabase
+      .from("jobs")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", windowStart);
+    if (states) query = query.in("state", states);
+    const { count } = await query;
+    return count ?? 0;
+  };
+  const [exactTotal, exactCompleted, exactFailed, exactRunning, exactDead, exactCancelled] =
+    await Promise.all([
+      countState(null),
+      countState(["completed"]),
+      countState(["failed"]),
+      countState(["running"]),
+      countState(["dead"]),
+      countState(["cancelled"]),
+    ]);
+
+  const sampledSummary = summarise(all, window.buckets, window.start.getTime(), window.bucketMs, previousTotal ?? 0);
+  const finished = exactCompleted + exactFailed + exactDead;
+  const summary: JobSummary = {
+    ...sampledSummary,
+    total: exactTotal,
+    completed: exactCompleted,
+    failed: exactFailed,
+    running: exactRunning,
+    deadLettered: exactDead,
+    cancelled: exactCancelled,
+    queued: Math.max(
+      0,
+      exactTotal - exactCompleted - exactFailed - exactRunning - exactDead - exactCancelled,
+    ),
+    completionRate: finished === 0 ? null : exactCompleted / finished,
+    sampled: exactTotal > all.length,
+    sampleSize: all.length,
+  };
   const queueLag = buildQueueLag(all, window.buckets, window.start.getTime(), window.bucketMs);
   const byType = buildTypeSlices(all);
-  const deadLetter = buildDeadLetter(all);
+  // Dead letters are read on their own: in the capped sample above, older
+  // dead-lettered jobs fell outside it and the queue under-reported.
+  const { data: deadRows } = await supabase
+    .from("jobs")
+    .select(
+      "id, type, state, priority, attempts, run_at, locked_at, completed_at, created_at, last_error, cancelled_at",
+    )
+    .gte("created_at", windowStart)
+    .eq("state", "dead")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  const deadLetter = buildDeadLetter((deadRows ?? []) as WindowRow[]);
 
   const list = await listJobs(supabase, filters);
   const detail = detailId ? await getJobDetail(supabase, detailId) : null;
@@ -410,6 +461,8 @@ function summarise(
     deadLettered,
     completionRate: finished === 0 ? null : completed / finished,
     previousTotal,
+    sampled: false,
+    sampleSize: rows.length,
     series,
   };
 }

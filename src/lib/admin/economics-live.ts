@@ -75,7 +75,7 @@ async function workspaceFacts(): Promise<WorkspaceFacts> {
     admin.from("businesses").select("id, name").limit(20_000),
     admin
       .from("subscriptions")
-      .select("business_id, plan, status, billing_interval, created_at, cancelled_at, trial_ends_at")
+      .select("business_id, plan, status, billing_interval, created_at, cancelled_at, trial_ends_at, stripe_subscription_id")
       .limit(20_000),
   ]);
   if (businesses.error) throw new EconomicsUnavailableError(businesses.error.message);
@@ -107,6 +107,7 @@ async function workspaceFacts(): Promise<WorkspaceFacts> {
           cancelledAt: row.cancelled_at,
           trialEndsAt: row.trial_ends_at,
           mrrMinor: mrrBy.get(row.business_id) ?? null,
+          billed: Boolean(row.stripe_subscription_id),
         },
       ]),
     ),

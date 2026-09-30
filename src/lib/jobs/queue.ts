@@ -197,7 +197,9 @@ export async function completeJob(jobId: string) {
       .update({
         state: "completed",
         completed_at: new Date().toISOString(),
-        locked_at: null,
+        // locked_at is kept: it is when this attempt started, so duration
+        // (completed_at - locked_at) and queue lag (locked_at - run_at) stay
+        // measurable. The stalled-job reaper only looks at state 'running'.
         locked_by: null,
       })
       .eq("id", jobId),

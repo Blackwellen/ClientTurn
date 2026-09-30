@@ -49,7 +49,11 @@ export function AuthShell({
         <div className="relative min-w-0">
           <AuthBrandPanel variant={variant} />
         </div>
-        <div className="relative z-10 flex justify-center lg:justify-end">{children}</div>
+        {/* Below lg the columns stack; the form comes first so a phone user
+            does not scroll past the whole brand panel to sign in. */}
+        <div className="relative z-10 order-first flex justify-center lg:order-none lg:justify-end">
+          {children}
+        </div>
       </div>
     </div>
   );

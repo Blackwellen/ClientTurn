@@ -10,10 +10,8 @@ import { RecentCustomersPanel } from "@/components/admin/overview/recent-custome
 import { ActionRequiredPanel } from "@/components/admin/overview/action-required-panel";
 import { FailedJobsPanel } from "@/components/admin/overview/failed-jobs-panel";
 import { CustomersView } from "@/components/admin/customers/customers-view";
-import {
-  SYSTEM_VIEW_DESCRIPTION,
-  SystemViewSwitch,
-} from "@/components/admin/system/system-view-switch";
+import { SystemViewSwitch } from "@/components/admin/system/system-view-switch";
+import { SYSTEM_VIEW_DESCRIPTION } from "@/lib/admin/system-views";
 import { SystemHealthView } from "@/components/admin/system/system-health-view";
 import { SystemEventsView } from "@/components/admin/system/system-events-view";
 import { SystemErrorsView } from "@/components/admin/system/system-errors-view";

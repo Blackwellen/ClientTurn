@@ -89,6 +89,9 @@ export function SupportPopout() {
         onClick={() => setOpen((current) => !current)}
         className={cn(
           "group fixed bottom-5 right-5 z-40 flex size-15 items-center justify-center rounded-full",
+          // Copilot's composer sits in the same corner: the launcher covered
+          // its Send button. Copilot is itself help, so the launcher steps aside.
+          "[body:has(#clientturn-copilot)_&]:hidden",
           // Landscape phones are ~375px tall: a 60px button there covers
           // toolbar controls mid-scroll, so it shrinks to a 44px target.
           "[@media(max-height:500px)]:bottom-3 [@media(max-height:500px)]:right-3 [@media(max-height:500px)]:size-11",

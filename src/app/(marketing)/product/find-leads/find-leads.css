@@ -1039,6 +1039,7 @@
   background: var(--fl-app-top);
   border-bottom: 1px solid var(--fl-line-soft);
 }
+.fl-app-head h3,
 .fl-app-head h4 {
   margin: 0;
   font-size: 15px;

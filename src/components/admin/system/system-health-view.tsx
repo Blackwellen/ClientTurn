@@ -32,8 +32,9 @@ import {
   formatNumber,
   formatUptime,
 } from "@/lib/admin/format";
-import { formatDateTime, formatRelative } from "@/lib/dates";
+import { formatDateTime } from "@/lib/dates";
 import type { SystemHealth } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 const SUMMARY: {
   key: keyof SystemHealth["summary"];
@@ -298,7 +299,7 @@ export function SystemHealthView({ health }: { health: SystemHealth }) {
                         {formatNumber(row.failed)}
                       </td>
                       <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                        {formatRelative(row.lastRunAt, { style: "ago" })}
+                        <RelativeTime value={row.lastRunAt} options={{ style: "ago" }} />
                       </td>
                       <td className="px-3 py-2">
                         <QueueStatusBadge status={row.status} />

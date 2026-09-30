@@ -1,6 +1,7 @@
 "use client";
 
 import { unlockPlanLabel } from "@/lib/billing/plans";
+import { describeUnknownTokens } from "@/lib/messaging/merge-fields";
 import * as React from "react";
 import {
   ArrowDown,
@@ -74,6 +75,7 @@ export function SequenceEditor({
   canEdit,
   available,
   whatsappEnabled,
+  whatsappOnPlan = whatsappEnabled,
   onChange,
   onAdd,
 }: {
@@ -82,6 +84,8 @@ export function SequenceEditor({
   /** Which channels the workspace can currently offer at all. */
   available: Record<Channel, boolean>;
   whatsappEnabled: boolean;
+  /** On the plan, connected or not: picks "connect it first" over "upgrade". */
+  whatsappOnPlan?: boolean;
   onChange: (next: DraftStep[]) => void;
   onAdd: () => void;
 }) {
@@ -149,6 +153,7 @@ export function SequenceEditor({
             canEdit={canEdit}
             available={available}
             whatsappEnabled={whatsappEnabled}
+            whatsappOnPlan={whatsappOnPlan}
             textareaRef={(element) => {
               templateRefs.current[step.key] = element;
             }}
@@ -302,6 +307,7 @@ function SequenceRow({
   canEdit,
   available,
   whatsappEnabled,
+  whatsappOnPlan,
   textareaRef,
   getRef,
   onPatch,
@@ -315,6 +321,7 @@ function SequenceRow({
   canEdit: boolean;
   available: Record<Channel, boolean>;
   whatsappEnabled: boolean;
+  whatsappOnPlan: boolean;
   textareaRef: (element: HTMLTextAreaElement | null) => void;
   getRef: () => React.RefObject<HTMLTextAreaElement | null>;
   onPatch: (next: Partial<DraftStep>) => void;
@@ -388,7 +395,9 @@ function SequenceRow({
                 >
                   {CHANNEL_LABEL[channel]}
                   {channel === "whatsapp" && !whatsappEnabled
-                    ? `: ${unlockPlanLabel("whatsapp")}`
+                    ? whatsappOnPlan
+                      ? ": connect it first"
+                      : `: ${unlockPlanLabel("whatsapp")}`
                     : ""}
                 </option>
               ))}
@@ -463,9 +472,7 @@ function SequenceRow({
                 ? "Every email step needs a subject line."
                 : empty
                   ? "This step has no message."
-                  : `Unknown merge ${
-                      unknown.length === 1 ? "field" : "fields"
-                    }: ${unknown.map((token) => `{{${token}}}`).join(", ")}`}
+                  : describeUnknownTokens(unknown)}
             </p>
           )}
         </div>

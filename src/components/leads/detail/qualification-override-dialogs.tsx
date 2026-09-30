@@ -71,6 +71,17 @@ function isoFromLocal(value: string): string | undefined {
   return Number.isNaN(at.getTime()) ? undefined : at.toISOString();
 }
 
+/**
+ * A "holds until" / "resume on" time must be in the future. Checked here so it
+ * is said beside the field, in words; the service refuses it too, but its
+ * message ("until: The date must be in the future.") arrived as a bare toast.
+ */
+function pastDateError(value: string): string | null {
+  const iso = isoFromLocal(value);
+  if (!iso) return null;
+  return new Date(iso).getTime() <= Date.now() ? "Pick a date and time in the future." : null;
+}
+
 function localInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -234,12 +245,18 @@ export function IntentOverrideDialog({ leadId, current }: { leadId: string; curr
   const [reason, setReason] = React.useState("");
   const [until, setUntil] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [untilError, setUntilError] = React.useState<string | null>(null);
   const { run, pending } = useRun();
   const [minDate, setMinDate] = React.useState("");
 
   const submit = async () => {
     if (reason.trim().length < 3) {
       setError("Say why, in a few words.");
+      return;
+    }
+    const past = pastDateError(until);
+    if (past) {
+      setUntilError(past);
       return;
     }
     const ok = await run(() => overrideIntentAction({ leadId, state, reason, until: isoFromLocal(until) }));
@@ -301,6 +318,7 @@ export function IntentOverrideDialog({ leadId, current }: { leadId: string; curr
           <FormField
             label={state === "NOT_NOW" ? "Resume on" : "Holds until (optional)"}
             htmlFor="intent-override-until"
+            error={untilError ?? undefined}
             hint={
               state === "NOT_NOW"
                 ? "Follow-up waits until then. Left blank, it waits 60 days."
@@ -312,7 +330,10 @@ export function IntentOverrideDialog({ leadId, current }: { leadId: string; curr
               type="datetime-local"
               min={minDate}
               value={until}
-              onChange={(event) => setUntil(event.target.value)}
+              onChange={(event) => {
+                setUntil(event.target.value);
+                setUntilError(null);
+              }}
             />
           </FormField>
         </div>
@@ -347,6 +368,7 @@ export function NbaOverrideDialog({
   const [until, setUntil] = React.useState("");
   const [handover, setHandover] = React.useState<(typeof NBA_HANDOVER_REASONS)[number]>("POLICY");
   const [error, setError] = React.useState<string | null>(null);
+  const [untilError, setUntilError] = React.useState<string | null>(null);
   const { run, pending } = useRun();
   const [minDate, setMinDate] = React.useState("");
   const negative = intentState === "NEGATIVE";
@@ -358,7 +380,12 @@ export function NbaOverrideDialog({
       return;
     }
     if (action === "WAIT" && !until) {
-      setError("Say when to resume.");
+      setUntilError("Say when to resume.");
+      return;
+    }
+    const past = pastDateError(until);
+    if (past) {
+      setUntilError(past);
       return;
     }
     const ok = await run(() =>
@@ -448,13 +475,17 @@ export function NbaOverrideDialog({
             label={action === "WAIT" ? "Resume on" : "Holds until (optional)"}
             htmlFor="nba-override-until"
             required={action === "WAIT"}
+            error={untilError ?? undefined}
           >
             <Input
               id="nba-override-until"
               type="datetime-local"
               min={minDate}
               value={until}
-              onChange={(event) => setUntil(event.target.value)}
+              onChange={(event) => {
+                setUntil(event.target.value);
+                setUntilError(null);
+              }}
             />
           </FormField>
         </div>

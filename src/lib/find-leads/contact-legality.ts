@@ -517,14 +517,78 @@ export const PROVIDER_LAWFUL_BASIS: Record<string, LawfulBasis> = {
   "tiktok-commercial-content": "PUBLIC_REGISTER",
   meta_engagement: "FIRST_PARTY_ENGAGEMENT",
   "meta-engagement": "FIRST_PARTY_ENGAGEMENT",
+  tiktok_engagement: "FIRST_PARTY_ENGAGEMENT",
+  // The two free first-party sources the B2B ICP runs on (CLAUDE.md resolved
+  // conflicts 5 and 7). They were missing, so every record they produced was
+  // tagged BASIS:UNKNOWN.
+  website_contacts: "PUBLISHED_BY_SUBJECT",
+  website_signals: "PUBLISHED_BY_SUBJECT",
+  companies_house: "PUBLIC_REGISTER",
+  contracts_finder: "PUBLIC_REGISTER",
   import: "CUSTOMER_ASSERTED",
   manual: "CUSTOMER_ASSERTED",
+  manual_prospect: "CUSTOMER_ASSERTED",
   user: "CUSTOMER_ASSERTED",
 };
 
 export function lawfulBasisFor(provider: string | null | undefined): LawfulBasis {
   if (!provider) return "UNKNOWN";
   return PROVIDER_LAWFUL_BASIS[provider.trim().toLowerCase()] ?? "UNKNOWN";
+}
+
+/**
+ * `prospect_data_sources.source_type` for data a provider supplied.
+ *
+ * The cold-send policy (`verdictForSources`) reads these rows: no row means
+ * UNKNOWN (human review, never sent), and a row whose type the workspace does
+ * not permit means BLOCKED. Two defects met here (2026-09-29):
+ *
+ *   * the sourcing run wrote no per-prospect row at all, so every sourced
+ *     prospect's first cold email was refused as "origin unknown", even after
+ *     a person approved it, and its Article 14 line could not be built;
+ *   * enrichment and research wrote LICENSED_PROVIDER for everything,
+ *     including Companies House and the company's own website, so a workspace
+ *     that (correctly) permits only first-party sources had its records
+ *     refused as "source not permitted".
+ *
+ * Null for a provider nobody has classified: the caller writes no row, which
+ * keeps the record at UNKNOWN (review) rather than guessing a basis.
+ */
+export type ProvenanceSourceType =
+  | "WEBSITE"
+  | "REGISTRY"
+  | "LICENSED_PROVIDER"
+  | "CRM"
+  | "IMPORT"
+  | "FIRST_PARTY"
+  | "PUBLIC_FEED"
+  | "MANUAL";
+
+const PROVIDER_SOURCE_TYPE: Record<string, ProvenanceSourceType> = {
+  website_contacts: "WEBSITE",
+  website_signals: "WEBSITE",
+  website_intent: "WEBSITE",
+  companies_house: "REGISTRY",
+  contracts_finder: "PUBLIC_FEED",
+  meta_ad_library: "PUBLIC_FEED",
+  tiktok_commercial_content: "PUBLIC_FEED",
+  meta_engagement: "FIRST_PARTY",
+  tiktok_engagement: "FIRST_PARTY",
+  meta_webhook: "FIRST_PARTY",
+  linkedin_list_import: "IMPORT",
+  linkedin_sales_navigator: "IMPORT",
+  import: "IMPORT",
+  manual: "MANUAL",
+  manual_prospect: "MANUAL",
+  user: "MANUAL",
+  apollo: "LICENSED_PROVIDER",
+  hunter: "LICENSED_PROVIDER",
+  clearbit: "LICENSED_PROVIDER",
+};
+
+export function provenanceTypeForProvider(provider: string | null | undefined): ProvenanceSourceType | null {
+  if (!provider) return null;
+  return PROVIDER_SOURCE_TYPE[provider.trim().toLowerCase().replace(/-/g, "_")] ?? null;
 }
 
 export const LAWFUL_BASIS_LABELS: Record<LawfulBasis, string> = {

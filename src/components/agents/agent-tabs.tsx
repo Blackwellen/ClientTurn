@@ -11,7 +11,9 @@ import {
   autonomyDescription,
   autonomyLabel,
   cadenceLabel,
+  queueStatusLabel,
   queueStatusTone,
+  queueSubjectHref,
   queueTypeLabel,
   readinessProblems,
   severityTone,
@@ -19,6 +21,7 @@ import {
   type AgentActivityRow,
   type AgentQueueRow,
   type AgentSourceRow,
+  type SourceKey,
 } from "@/lib/agents/types";
 import type { AgentDetail } from "@/lib/agents/queries";
 import { AgentSettingsForm } from "./agent-settings-form";
@@ -74,7 +77,7 @@ export function OverviewTab({
 }) {
   return (
     <div className="space-y-5">
-      <div className={cn("grid gap-4 sm:grid-cols-2", isSourcing(agent.agentType) && "lg:grid-cols-4")}>
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", isSourcing(agent.agentType) && "lg:grid-cols-4")}>
         {isSourcing(agent.agentType) && (
           <>
             <StatCard label="Found this week" value={agent.prospects7d} />
@@ -104,7 +107,7 @@ export function OverviewTab({
           <div className="space-y-3">
             <p className="flex items-start gap-2 text-[12.5px] text-content-secondary">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-content-accent" aria-hidden />
-              {autonomyDescription(agent.autonomy)}
+              {autonomyDescription(agent.autonomy, agent.agentType)}
             </p>
 
             <dl className="space-y-2 border-t border-line-subtle pt-3 text-[12.5px]">
@@ -218,11 +221,17 @@ export function QueueTab({
   queue,
   runs,
   canDecideCalls = false,
+  listsForReview = false,
 }: {
   queue: AgentQueueRow[];
   runs: { id: string; title: string | null; status: string; targetVerified: number }[];
   /** A member or above: may approve or decline an agent's AI call. */
   canDecideCalls?: boolean;
+  /**
+   * The agent is not set to run automatically, so a queued lead is one it
+   * listed for a person to chase, not one it will act on itself.
+   */
+  listsForReview?: boolean;
 }) {
   // Blocked work first: an agent waiting for a person is the single most
   // actionable thing on this page.
@@ -273,7 +282,7 @@ export function QueueTab({
         ) : (
           <ul className="divide-y divide-line-subtle">
             {rest.map((item) => (
-              <QueueRow key={item.id} item={item} />
+              <QueueRow key={item.id} item={item} listsForReview={listsForReview} />
             ))}
           </ul>
         )}
@@ -282,15 +291,39 @@ export function QueueTab({
   );
 }
 
-function QueueRow({ item, canDecideCalls = false }: { item: AgentQueueRow; canDecideCalls?: boolean }) {
+function QueueRow({
+  item,
+  canDecideCalls = false,
+  listsForReview = false,
+}: {
+  item: AgentQueueRow;
+  canDecideCalls?: boolean;
+  listsForReview?: boolean;
+}) {
   const reason = item.blockedReason ?? item.errorMessage;
   const callApproval = isCallApprovalItem(item);
+
+  const href = queueSubjectHref(item.subjectType, item.subjectId);
+  const title = item.subjectLabel || queueTypeLabel(item.itemType);
 
   return (
     <li className="flex items-start justify-between gap-3 py-2.5">
       <div className="min-w-0">
-        <p className="truncate text-[13px] text-content">
-          {item.subjectLabel || queueTypeLabel(item.itemType)}
+        {href ? (
+          <Link
+            href={href}
+            className="block truncate text-[13px] font-medium text-content hover:text-content-accent hover:underline underline-offset-4"
+          >
+            {title}
+          </Link>
+        ) : (
+          <p className="truncate text-[13px] font-medium text-content">{title}</p>
+        )}
+        {/* What the agent means to do with it, and when: a bare name and
+            "pending" told nobody why the row was there. */}
+        <p className="mt-0.5 text-[12px] text-content-muted">
+          {item.subjectLabel ? `${queueTypeLabel(item.itemType)} · ` : ""}
+          Added {formatDateTime(item.createdAt)}
         </p>
         {reason && (
           <p className="mt-0.5 flex items-start gap-1.5 text-[12px] text-content-muted">
@@ -303,8 +336,10 @@ function QueueRow({ item, canDecideCalls = false }: { item: AgentQueueRow; canDe
           <p className="mt-0.5 text-[12px] text-content-muted">A member, admin or owner can approve this call.</p>
         )}
       </div>
-      <Badge tone={queueStatusTone(item.status)} dense dot>
-        {item.status.toLowerCase().replace(/_/g, " ")}
+      <Badge tone={queueStatusTone(item.status)} dense dot className="shrink-0">
+        {listsForReview && item.status === "PENDING" && (item.itemType === "BOOKING" || item.itemType === "REENGAGE")
+          ? "Listed for you"
+          : queueStatusLabel(item.status)}
       </Badge>
     </li>
   );
@@ -470,11 +505,14 @@ export function SettingsTab({
   plans,
   offer = null,
   voiceAvailability = null,
+  unavailableSources = [],
 }: {
   agent: AgentDetail["agent"];
   canManage: boolean;
   controls: React.ReactNode;
   plans: { id: string; name: string }[];
+  /** Sources switched off platform-wide; not offered in the form. */
+  unavailableSources?: SourceKey[];
   offer?: AgentOfferView | null;
   /** "Phone leads with AI" (0176). Null = not read (the panel says so). */
   voiceAvailability?: AgentVoiceAvailability | null;
@@ -501,7 +539,7 @@ export function SettingsTab({
 
       <Panel title="Configuration">
         {canManage ? (
-          <AgentSettingsForm agent={agent} plans={plans} />
+          <AgentSettingsForm agent={agent} plans={plans} unavailableSources={unavailableSources} />
         ) : (
           <dl className="grid gap-4 sm:grid-cols-2">
             <Field label="Schedule" value={cadenceLabel(agent.cadence)} />

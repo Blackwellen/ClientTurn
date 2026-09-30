@@ -5,7 +5,8 @@ import { CheckCircle2, KeyRound, ShieldAlert, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
+import { Drawer, DrawerBody } from "@/components/ui/drawer";
+import { AdminDrawerHeader } from "@/components/admin/drawer-header";
 import { Input, Select, Switch } from "@/components/ui/form";
 import { IconTile, ProviderMark } from "@/components/admin/ui";
 import { formatNumber } from "@/lib/admin/format";
@@ -19,6 +20,7 @@ import {
   type ProviderDetail,
   type UnitBasis,
 } from "@/lib/admin/platform-settings-types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 const TABS = ["Overview", "Configuration", "Capabilities", "Monitoring", "Credentials"] as const;
 type Tab = (typeof TABS)[number];
@@ -102,28 +104,31 @@ export function ProviderDrawer({
       open
       onClose={onClose}
       size="lg"
+      bodyClassName="p-0"
       title={provider.label}
       header={
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <ProviderMark provider={provider.provider} />
-            <h2 className="truncate text-[16px] font-semibold text-content">
-              {provider.label}
-            </h2>
-            <Badge tone={PROVIDER_HEALTH_TONE[provider.status]} dot>
-              {PROVIDER_HEALTH_LABEL[provider.status]}
-            </Badge>
+        <AdminDrawerHeader onClose={onClose}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <ProviderMark provider={provider.provider} />
+              <h2 className="truncate text-[16px] font-semibold text-content">
+                {provider.label}
+              </h2>
+              <Badge tone={PROVIDER_HEALTH_TONE[provider.status]} dot>
+                {PROVIDER_HEALTH_LABEL[provider.status]}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[12.5px] text-content-muted">
+              {PROVIDER_TYPE_LABEL[provider.type]}
+              {provider.lastCheckedAt
+                ? ` · last checked ${formatRelative(provider.lastCheckedAt, { style: "ago" })}`
+                : ""}
+            </p>
           </div>
-          <p className="mt-1 text-[12.5px] text-content-muted">
-            {PROVIDER_TYPE_LABEL[provider.type]}
-            {provider.lastCheckedAt
-              ? ` · last checked ${formatRelative(provider.lastCheckedAt, { style: "ago" })}`
-              : ""}
-          </p>
-        </div>
+        </AdminDrawerHeader>
       }
       footer={
-        <DrawerFooter className="gap-2">
+        <>
           <Button
             disabled={ceilingBelowCost || pending === `provider:${provider.provider}`}
             onClick={() =>
@@ -151,7 +156,7 @@ export function ProviderDrawer({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-        </DrawerFooter>
+        </>
       }
     >
       <div className="border-b border-line px-5">
@@ -435,7 +440,7 @@ export function ProviderDrawer({
                     <li key={index} className="text-[12.5px]">
                       <p className="text-content">{change.summary}</p>
                       <p className="text-[11.5px] text-content-subtle">
-                        {formatRelative(change.at, { style: "ago" })} · {change.by ?? "system"}
+                        <RelativeTime value={change.at} options={{ style: "ago" }} /> · {change.by ?? "system"}
                       </p>
                     </li>
                   ))}

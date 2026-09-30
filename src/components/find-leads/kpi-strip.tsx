@@ -47,9 +47,9 @@ export function FindLeadsKpiStrip({
       className={cn(
         "grid gap-3",
         // Four across on a wide screen, matching the reference; two on a
-        // tablet; a single column on a phone, where a four-up strip would
-        // shrink the numbers past legibility.
-        "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+        // tablet and a phone. A four-up strip would shrink the numbers past
+        // legibility on a phone; one column pushed the page a screen down.
+        "grid-cols-2 xl:grid-cols-4",
         className,
       )}
     >

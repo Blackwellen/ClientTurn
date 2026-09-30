@@ -5,10 +5,11 @@ import { Archive, CheckCircle2, Globe2, ShieldCheck, Upload } from "lucide-react
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
+import { Drawer, DrawerBody } from "@/components/ui/drawer";
+import { AdminDrawerHeader } from "@/components/admin/drawer-header";
 import { IconTile } from "@/components/admin/ui";
 import { formatNumber } from "@/lib/admin/format";
-import { formatDate, formatRelative } from "@/lib/dates";
+import { formatDate } from "@/lib/dates";
 import {
   POLICY_CHANNEL_LABEL,
   POLICY_STANCE_LABEL,
@@ -17,6 +18,7 @@ import {
   POLICY_STATUS_TONE,
   type PolicyDetail,
 } from "@/lib/admin/compliance-types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 const TABS = ["Overview", "Rules", "Applicability", "History"] as const;
 type Tab = (typeof TABS)[number];
@@ -60,22 +62,25 @@ export function PolicyDetailDrawer({
       open
       onClose={onClose}
       size="lg"
+      bodyClassName="p-0"
       title={`${policy.name} (${policy.version})`}
       header={
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="truncate text-[16px] font-semibold text-content">
-              {policy.name} ({policy.version})
-            </h2>
-            <Badge tone={POLICY_STATUS_TONE[policy.status]} dot>
-              {POLICY_STATUS_LABEL[policy.status]}
-            </Badge>
+        <AdminDrawerHeader onClose={onClose}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="truncate text-[16px] font-semibold text-content">
+                {policy.name} ({policy.version})
+              </h2>
+              <Badge tone={POLICY_STATUS_TONE[policy.status]} dot>
+                {POLICY_STATUS_LABEL[policy.status]}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[12.5px] text-content-muted">{policy.scope}</p>
           </div>
-          <p className="mt-1 text-[12.5px] text-content-muted">{policy.scope}</p>
-        </div>
+        </AdminDrawerHeader>
       }
       footer={
-        <DrawerFooter className="gap-2">
+        <>
           <Button
             onClick={() => onPublish(policy.id)}
             disabled={!policy.canPublish || pending === `publish:${policy.id}`}
@@ -93,7 +98,7 @@ export function PolicyDetailDrawer({
             <Archive className="size-3.5" aria-hidden />
             Archive version
           </Button>
-        </DrawerFooter>
+        </>
       }
     >
       <div className="border-b border-line px-5">
@@ -303,7 +308,7 @@ export function PolicyDetailDrawer({
                   <div className="min-w-0">
                     <p className="text-[12.5px] text-content">{change.summary}</p>
                     <p className="text-[11.5px] text-content-subtle">
-                      {formatRelative(change.at, { style: "ago" })}
+                      <RelativeTime value={change.at} options={{ style: "ago" }} />
                     </p>
                   </div>
                 </li>

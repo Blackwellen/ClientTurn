@@ -173,7 +173,17 @@ const XML_CONTENT = ["application/xml", "text/xml"];
  */
 export async function safeFetchText(
   raw: string,
-  options: { allowXml?: boolean } = {},
+  options: {
+    allowXml?: boolean;
+    /**
+     * Keep the first MAX_BYTES instead of refusing a larger page. For callers
+     * that only read the top of a page (onboarding's prefill reads the <head>):
+     * modern marketing home pages pass 1.5 MB with inlined script data, and
+     * refusing them made "Fill in from website" fail on ordinary sites
+     * (surface QA 2026-09-30). Memory stays bounded either way.
+     */
+    truncate?: boolean;
+  } = {},
 ): Promise<SafeFetchResult> {
   const allowed = options.allowXml ? [...ALLOWED_CONTENT, ...XML_CONTENT] : ALLOWED_CONTENT;
   let target = raw;
@@ -215,9 +225,9 @@ export async function safeFetchText(
       }
 
       const declared = Number(response.headers.get("content-length") ?? 0);
-      if (declared > MAX_BYTES) return { ok: false, code: "RESPONSE_TOO_LARGE" };
+      if (declared > MAX_BYTES && !options.truncate) return { ok: false, code: "RESPONSE_TOO_LARGE" };
 
-      const body = await readBounded(response);
+      const body = await readBounded(response, Boolean(options.truncate));
       if (body === null) return { ok: false, code: "RESPONSE_TOO_LARGE" };
 
       return { ok: true, url: check.url.toString(), contentType, body };
@@ -239,7 +249,7 @@ export async function safeFetchText(
  * stream unbounded data into our memory — so the cap is enforced on the actual
  * bytes read, not on the header.
  */
-async function readBounded(response: Response): Promise<string | null> {
+async function readBounded(response: Response, truncate = false): Promise<string | null> {
   const reader = response.body?.getReader();
   if (!reader) return "";
 
@@ -250,11 +260,14 @@ async function readBounded(response: Response): Promise<string | null> {
     const { done, value } = await reader.read();
     if (done) break;
     if (!value) continue;
-    total += value.byteLength;
-    if (total > MAX_BYTES) {
+    if (total + value.byteLength > MAX_BYTES) {
       await reader.cancel().catch(() => {});
-      return null;
+      if (!truncate) return null;
+      chunks.push(value.subarray(0, MAX_BYTES - total));
+      total = MAX_BYTES;
+      break;
     }
+    total += value.byteLength;
     chunks.push(value);
   }
 

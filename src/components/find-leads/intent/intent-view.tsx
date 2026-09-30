@@ -167,7 +167,9 @@ function IntentKpiStrip({ data }: { data: IntentViewData }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+    // Five across from a laptop up (three left a two-card orphan row), two on
+    // a phone with the odd fifth spanning, matching the Prospects strip.
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1">
       {cards.map((card) => (
         <div
           key={card.key}

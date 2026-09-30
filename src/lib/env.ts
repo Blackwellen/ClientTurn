@@ -142,6 +142,14 @@ export const serverEnv = {
      * `AC…` value, because that is what every REST path is built from.
      */
     apiKeySid: optional("TWILIO_API_KEY_SID"),
+    /**
+     * The API key's own secret, which is what authenticates REST calls made
+     * with `apiKeySid`. The account auth token does not: pairing `SK…` with it
+     * returns 70051 "The authorization with Key failed", and that is what every
+     * production SMS send returned (2026-09-30). `authToken` stays the
+     * account token, because Twilio signs webhooks with it.
+     */
+    apiKeySecret: optional("TWILIO_API_KEY_SECRET") ?? optional("TWILIO_CLIENT_SECRET"),
     authToken: optional("TWILIO_AUTH_TOKEN") ?? optional("TWILIO_CLIENT_SECRET"),
     smsFrom: optional("TWILIO_SMS_FROM") ?? optional("TWILIO_PHONE_NUMBER"),
     messagingServiceSid: optional("TWILIO_MESSAGING_SERVICE_SID"),

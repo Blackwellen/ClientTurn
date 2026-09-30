@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { friendlyIssue } from "@/lib/validation/friendly-issue";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole, type ActiveWorkspace } from "@/lib/auth/session";
@@ -45,7 +46,7 @@ const createSchema = z.object({
 
 export async function createCampaignExperiment(input: unknown): Promise<ExperimentActionResult> {
   const parsed = createSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That test is not valid." };
+  if (!parsed.success) return { ok: false, error: friendlyIssue(parsed.error, "That test is not valid.") };
   const workspace = await admin();
   if (!workspace) return { ok: false, error: "Only an admin can set up an A/B test." };
 
@@ -104,7 +105,7 @@ const promotionSchema = z.object({
 
 export async function setCampaignExperimentPromotion(input: unknown): Promise<ExperimentActionResult> {
   const parsed = promotionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That request is not valid." };
+  if (!parsed.success) return { ok: false, error: friendlyIssue(parsed.error, "That request is not valid.") };
   const workspace = await admin();
   if (!workspace) return { ok: false, error: "Only an admin or owner can promote or roll back a variant." };
   const result = await runOperation(

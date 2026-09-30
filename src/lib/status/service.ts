@@ -37,6 +37,7 @@ import type {
   StatusService,
   StatusSnapshot,
 } from "./types";
+import { queueStatus } from "./types";
 
 /* ------------------------------------------------------------- definitions */
 
@@ -332,12 +333,7 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
     const queueStatuses = definition.jobTypes
       .map((type) => jobStats.get(type))
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-      .map((entry) => {
-        const share = entry.total > 0 ? entry.failed / entry.total : 0;
-        if (share >= 0.25) return "OUTAGE" as const;
-        if (share >= 0.05) return "DEGRADED" as const;
-        return "OPERATIONAL" as const;
-      });
+      .map((entry) => queueStatus(entry.failed, entry.total));
 
     const signals = [...providerStatuses, ...queueStatuses];
 
@@ -486,11 +482,14 @@ export async function getStatusSnapshot(): Promise<StatusSnapshot> {
       ? "MAINTENANCE"
       : outages > 0
         ? "OUTAGE"
-        : degraded >= 2
-          ? "OUTAGE"
-          : degraded > 0
-            ? "DEGRADED"
-            : "OPERATIONAL";
+        : // Degraded services are a degraded platform, however many there are.
+          // Promoting two to "experiencing an outage" published an outage
+          // headline while every card below said Operational or Degraded
+          // (surface QA 2026-09-30); only a service that is actually down
+          // earns that word.
+          degraded > 0
+          ? "DEGRADED"
+          : "OPERATIONAL";
 
   const newestProbe = probeRows[0]?.checked_at ?? null;
 

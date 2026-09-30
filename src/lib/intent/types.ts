@@ -171,10 +171,12 @@ export const CATEGORY_TEMPLATES: {
     scoreImpact: 15,
   },
   {
-    name: "New construction or renovation",
-    description: "A building project that needs the kind of work you do.",
-    signalTypes: ["PLANNING_DATA", "NEWS_FEED"],
-    freshnessDays: 120,
+    // Was "New construction or renovation", a home-services starter. The ICP
+    // is B2B (CLAUDE.md resolved conflict 5): agencies, studios, SaaS.
+    name: "Website relaunch or rebrand",
+    description: "The company is rebuilding its site or brand, which often brings in new suppliers.",
+    signalTypes: ["COMPANY_WEBSITE", "NEWS_FEED"],
+    freshnessDays: 90,
     scoreImpact: 12,
   },
   {

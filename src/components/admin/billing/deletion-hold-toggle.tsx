@@ -4,6 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { setDeletionHold } from "@/lib/admin/workspace-deletion-actions";
+import { askReason, confirmAction } from "@/components/admin/admin-prompt";
 
 /** Hold or release one workspace's scheduled day-90 deletion. */
 export function DeletionHoldToggle({
@@ -20,15 +21,15 @@ export function DeletionHoldToggle({
   const { toast } = useToast();
   const [pending, startTransition] = React.useTransition();
 
-  function onClick() {
+  async function onClick() {
     let reason: string | undefined;
     if (!held) {
-      const answer = window.prompt(
+      const answer = await askReason(
         `Why hold the deletion of "${businessName}"? For example a payment dispute or a legal hold. This is recorded in the audit log.`,
       );
       if (!answer || answer.trim().length < 3) return;
       reason = answer.trim();
-    } else if (!window.confirm(`Release the hold on "${businessName}"? Its deletion schedule resumes at the next daily run.`)) {
+    } else if (!await confirmAction(`Release the hold on "${businessName}"? Its deletion schedule resumes at the next daily run.`)) {
       return;
     }
     startTransition(async () => {

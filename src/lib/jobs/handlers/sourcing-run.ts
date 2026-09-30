@@ -46,7 +46,11 @@ import {
   registeredNameUpdate,
 } from "@/lib/find-leads/server/company-provenance";
 import type { UnitCosts } from "@/lib/find-leads/cost-model";
-import { assessContacts, lawfulBasisFor } from "@/lib/find-leads/contact-legality";
+import {
+  assessContacts,
+  lawfulBasisFor,
+  provenanceTypeForProvider,
+} from "@/lib/find-leads/contact-legality";
 import {
   applyStrictness,
   type SourcingStrictness,
@@ -76,6 +80,7 @@ import { checkSuppressionBatch } from "@/lib/policy/suppression";
 import { evaluateAllChannels } from "@/lib/policy/service";
 import type { Grade } from "@/lib/prospects/types";
 import { selectEnrollable } from "@/lib/agents/policy";
+import { materializeAudience } from "@/lib/outreach/campaigns/materialize";
 import { originForProvider } from "@/lib/find-leads/email-origin";
 import { recordEmailOrigin } from "@/lib/find-leads/server/email-origin-store";
 
@@ -105,6 +110,11 @@ const TIME_BUDGET_MS = 45_000;
 /** Provider batch sizes. Small enough that a failure loses little. */
 const COMPANY_BATCH = 20;
 const CONTACT_BATCH = 20;
+
+/** Contacts gathered for a target of verified prospects: five per wanted, at least 25. */
+export function contactCeiling(target: number): number {
+  return Math.max(25, Math.ceil(target) * 5);
+}
 const ENRICH_BATCH = 15;
 const VERIFY_BATCH = 25;
 const INTENT_BATCH = 25;
@@ -463,7 +473,7 @@ async function executeStage(
     case "FINDING_COMPANIES":
       return findCompanies(context, checkpoint);
     case "FINDING_CONTACTS":
-      return findContacts(context);
+      return findContacts(context, checkpoint);
     case "PRE_FILTERING":
       return preFilter(context);
     case "ENRICHING":
@@ -720,7 +730,7 @@ async function recordCompanyFound(
 
 /* ---------------------------------------------------- 4. finding contacts */
 
-async function findContacts(context: RunContext): Promise<StageSummary> {
+async function findContacts(context: RunContext, checkpoint: Checkpoint): Promise<StageSummary> {
   if (!capabilityAvailable("CONTACT_DISCOVERY", context.unhealthy)) {
     await raiseIssue(context, {
       severity: "ERROR",
@@ -733,9 +743,30 @@ async function findContacts(context: RunContext): Promise<StageSummary> {
   }
 
   const companies = await loadRunCompanies(context);
+  // Resumed invocations continue from the saved offset. They used to restart
+  // at company 0: a real run that took three invocations read every website
+  // three times, paid for each extraction three times and stored every person
+  // three times (75 rows for 25 people, 2026-09-30). The contacts already
+  // stored count toward the ceiling.
+  const startOffset = checkpoint.stage === "FINDING_CONTACTS" ? (checkpoint.offset ?? 0) : 0;
   let contacts = 0;
+  if (startOffset > 0) {
+    const { count } = await createAdminClient()
+      .from("prospects")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", context.businessId)
+      .eq("source_run_id", context.runId);
+    contacts = count ?? 0;
+  }
+  // Enough candidates for the target, with room for the ones later stages
+  // drop (duplicates, personal mailboxes, low grades), and no more. Without a
+  // ceiling a real run asked for 3 prospects mined all 31 companies it found
+  // and stored 350 contacts, an AI extraction and up to eight page fetches per
+  // company for records nobody asked for (2026-09-30).
+  const ceiling = contactCeiling(context.target);
 
-  for (let index = 0; index < companies.length; index += CONTACT_BATCH) {
+  for (let index = startOffset; index < companies.length; index += CONTACT_BATCH) {
+    if (contacts >= ceiling) break;
     await assertContinuable(context);
     const slice = companies.slice(index, index + CONTACT_BATCH);
 
@@ -769,7 +800,7 @@ async function findContacts(context: RunContext): Promise<StageSummary> {
             },
           })),
           roles: context.plan.decisionMakerRoles,
-          limit: slice.length * 3,
+          limit: Math.min(slice.length * 3, ceiling - contacts),
           // Without these the LinkedIn adapter cannot read the customer's own
           // imported list, and a partner search ignores the plan's filters.
           businessId: context.businessId,
@@ -840,6 +871,24 @@ async function insertProspect(
   // arrives with the person's own act behind it.
   const contacts = assessContacts({ email, phone: null }, true);
 
+  // One person once per run, even if a batch is processed twice (a worker
+  // that died between inserting and checkpointing).
+  {
+    let seen = admin
+      .from("prospects")
+      .select("id")
+      .eq("business_id", context.businessId)
+      .eq("source_run_id", context.runId);
+    seen = contacts.email
+      ? seen.eq("email", contacts.email)
+      : seen
+          .eq("first_name", candidate.firstName ?? "")
+          .eq("last_name", candidate.lastName ?? "")
+          .eq("company_id", companyId ?? "00000000-0000-0000-0000-000000000000");
+    const { data: already } = await seen.limit(1);
+    if (already && already.length > 0) return false;
+  }
+
   const { data: prospect, error } = await admin
     .from("prospects")
     .insert({
@@ -895,6 +944,41 @@ async function insertProspect(
       id: prospect.id,
       origin: candidate.emailOrigin ?? originForProvider(provider),
     });
+  }
+
+  // Where this person's details came from, on the prospect itself. The cold
+  // send policy and the Article 14 line both read these rows; without one the
+  // first email to every sourced prospect was refused as "origin unknown",
+  // even after a person approved it (2026-09-29). A provider nobody has
+  // classified writes nothing and the record stays in review.
+  const sourceType = provenanceTypeForProvider(provider);
+  if (sourceType) {
+    const { error: provenanceError } = await admin.from("prospect_data_sources").insert({
+      business_id: context.businessId,
+      prospect_id: prospect.id,
+      company_id: companyId,
+      field_name: contacts.email ? "email" : "contact",
+      value_json: {
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        roleTitle: candidate.roleTitle,
+        email: contacts.email,
+        subscriberType: contacts.subscriberType,
+        runId: context.runId,
+      } as never,
+      provider: provider ?? "unknown",
+      source_type: sourceType,
+      source_url: candidate.companyDomain ? `https://${candidate.companyDomain}` : null,
+      confidence: 0.8,
+      policy_tags: ["B2B_SOURCING", `BASIS:${lawfulBasisFor(provider)}`] as never,
+    });
+    if (provenanceError) {
+      console.error("[sourcing.run] provenance not recorded", {
+        runId: context.runId,
+        prospectId: prospect.id,
+        message: provenanceError.message,
+      });
+    }
   }
 
   await admin.from("sourcing_run_results").insert([
@@ -1115,7 +1199,9 @@ async function enrich(context: RunContext): Promise<StageSummary> {
         field_name: "company_profile",
         value_json: record as never,
         provider: outcome.provider ?? "unknown",
-        source_type: "LICENSED_PROVIDER",
+        // Companies House is a register, not a licensed vendor. Labelling it
+        // LICENSED_PROVIDER made a first-party-only workspace refuse it.
+        source_type: provenanceTypeForProvider(outcome.provider) ?? "LICENSED_PROVIDER",
         confidence: 0.8,
         // "Who supplied this" and "what were we permitted to do with it" are
         // different questions, and only the first had an answer. The basis is
@@ -2415,6 +2501,8 @@ async function enrolAndDispatch(
     return;
   }
 
+  const enrolledIds: string[] = [];
+
   if (context.enrolment === "KNOWN_COMPANIES") {
     const { data: ready, error: readyError } = await admin
       .from("prospects")
@@ -2446,14 +2534,16 @@ async function enrolAndDispatch(
     );
 
     if (enrol.length > 0) {
-      const { error: enrolError } = await admin
+      const { data: enrolled, error: enrolError } = await admin
         .from("prospects")
         .update({ campaign_id: campaign.id })
         .eq("business_id", context.businessId)
         .in("id", enrol)
         .eq("status", "READY")
-        .is("campaign_id", null);
+        .is("campaign_id", null)
+        .select("id");
       if (enrolError) throw enrolError;
+      enrolledIds.push(...(enrolled ?? []).map((row) => row.id));
     }
 
     if (held.length > 0) {
@@ -2468,16 +2558,32 @@ async function enrolAndDispatch(
     if (enrol.length === 0) return;
   } else {
     // Only records that are still READY and ELIGIBLE right now.
-    const { error: enrolError } = await admin
+    const { data: enrolled, error: enrolError } = await admin
       .from("prospects")
       .update({ campaign_id: campaign.id })
       .eq("business_id", context.businessId)
       .eq("source_run_id", context.runId)
       .eq("status", "READY")
       .eq("outreach_eligibility", "ELIGIBLE")
-      .is("campaign_id", null);
+      .is("campaign_id", null)
+      .select("id");
     if (enrolError) throw enrolError;
+    enrolledIds.push(...(enrolled ?? []).map((row) => row.id));
   }
+  if (enrolledIds.length === 0) return;
+
+  // Setting `prospects.campaign_id` is membership, not a place in the send
+  // queue: the dispatcher reads due `outreach_recipient_runs`, and nothing
+  // created one for these prospects, so auto-contact sent nothing
+  // (2026-09-29). The audience builder is the one path that creates them,
+  // with the eligibility snapshot, so it is run here rather than copied.
+  // Restricted to exactly the prospects enrolled above: a held prospect (a
+  // new company under "review new companies only") must not be swept in.
+  await materializeAudience({
+    businessId: context.businessId,
+    campaignId: campaign.id,
+    onlyProspectIds: enrolledIds,
+  });
 
   await enqueue(
     "outreach.dispatch",

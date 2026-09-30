@@ -146,6 +146,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // No `X-Powered-By: Next.js`: it tells a scanner the framework for free.
+  poweredByHeader: false,
   // The browser Sentry DSN (public by design). Empty when SENTRY_DSN is unset,
   // which keeps src/instrumentation-client.ts from loading the SDK at all.
   env: {

@@ -71,6 +71,7 @@ export function WorkspaceSettings({
   businessHours,
   services,
   canManage,
+  timezoneLabels,
   children,
 }: {
   profile: BusinessProfile;
@@ -78,6 +79,8 @@ export function WorkspaceSettings({
   businessHours: BusinessHours;
   services: ServiceRow[];
   canManage: boolean;
+  /** Server-computed timezone labels, so the select hydrates cleanly. */
+  timezoneLabels?: Record<string, string>;
   /** Messaging, booking and danger-zone cards, rendered under Services so
    *  they keep the same column and width as the rest of Workspace. */
   children?: React.ReactNode;
@@ -174,6 +177,7 @@ export function WorkspaceSettings({
             hasLogo={Boolean(profile.logoKey) || Boolean(logoPreview)}
             onLogoChange={setLogoPreview}
             errors={errors}
+            timezoneLabels={timezoneLabels}
           />
 
           <BusinessHoursEditor

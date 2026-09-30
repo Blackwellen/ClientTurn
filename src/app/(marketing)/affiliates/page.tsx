@@ -32,7 +32,8 @@ const affiliatesBreadcrumbJsonLd = {
 };
 
 export const metadata: Metadata = {
-  title: `${affiliatesTitle} | ClientTurn`,
+  // The root layout's template adds " | ClientTurn"; adding it here doubled it.
+  title: affiliatesTitle,
   description: affiliatesDescription,
   keywords: [
     "ClientTurn affiliate programme",

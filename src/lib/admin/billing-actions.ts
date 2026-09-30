@@ -212,7 +212,7 @@ export async function cancelAtPeriodEnd(input: {
     return {
       ok: true,
       message: effectiveOn
-        ? `Set to cancel on ${formatInZone(effectiveOn, "date")}. Access continues until then.`
+        ? `Set to cancel on ${formatInZone(effectiveOn, { day: "numeric", month: "short", year: "numeric" })}. Access continues until then.`
         : "Set to cancel at the end of the current period.",
     };
   });
@@ -565,7 +565,7 @@ export async function grantEntitlement(input: {
     revalidatePath("/admin/billing");
     return {
       ok: true,
-      message: `Granted until ${formatInZone(expires, "date")}. It expires automatically.`,
+      message: `Granted until ${formatInZone(expires, { day: "numeric", month: "short", year: "numeric" })}. It expires automatically.`,
     };
   });
 }
@@ -695,7 +695,7 @@ export async function extendTrial(input: {
     revalidatePath("/admin/billing");
     return {
       ok: true,
-      message: `Trial extended to ${formatInZone(newEnd, "date")}.`,
+      message: `Trial extended to ${formatInZone(newEnd, { day: "numeric", month: "short", year: "numeric" })}.`,
     };
   });
 }

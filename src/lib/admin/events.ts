@@ -1,5 +1,6 @@
 import "server-only";
 import { jobLabel, providerLabel, titleise } from "./format";
+import { formatInZone } from "@/lib/dates";
 import {
   adminRead,
   namesFor,
@@ -357,7 +358,10 @@ async function jobDetail(
       { key: "Job type", value: row.type },
       { key: "State", value: row.state },
       { key: "Attempts", value: `${row.attempts} of ${row.max_attempts}` },
-      { key: "Next run", value: redactValue("run_at", row.run_at) },
+      {
+        key: "Next run",
+        value: row.run_at ? formatInZone(row.run_at, "datetime") : "—",
+      },
       { key: "Internal id", value: row.id },
     ],
     payloadPreview: row.payload

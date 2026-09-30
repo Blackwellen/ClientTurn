@@ -312,7 +312,10 @@ describe("admin MRR uses real Stripe amounts", () => {
   test("admin billing, customers, overview and economics read it", () => {
     assert.match(read("src/lib/admin/billing.ts"), /monthlyRevenue\(/);
     assert.match(read("src/lib/admin/customers.ts"), /monthlyRevenue\(/);
-    assert.match(read("src/lib/admin/overview.ts"), /monthlyRevenue\(/);
+    // Overview's headline goes through mrrContribution, which prices with
+    // monthlyRevenue and also leaves out complimentary (non-Stripe) plans.
+    assert.match(read("src/lib/admin/overview.ts"), /mrrContribution\(/);
+    assert.match(read("src/lib/billing/revenue.ts"), /export function mrrContribution[\s\S]*monthlyRevenue\(/);
     assert.match(read("src/lib/admin/economics-live.ts"), /mrr_minor/);
     assert.match(read("src/app/api/webhooks/stripe/route.ts"), /recordPaidInvoice\(/);
   });

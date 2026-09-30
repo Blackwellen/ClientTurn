@@ -307,3 +307,24 @@ export function classificationTone(
   if (value === "REVIEW") return "warning";
   return "neutral";
 }
+
+/**
+ * The review step's four tiles, with the operator's decisions applied.
+ *
+ * The server's counts are the classification before anyone decided anything.
+ * Shown as they were, a row moved from "Needs review" to "Lead" left the tiles
+ * at "0 lead, 5 need review" while the button said "Import 3 records" (surface
+ * QA 2026-09-30). `rows` are the review rows the operator can decide.
+ */
+export function liveImportTally(
+  counts: ImportSummary,
+  rows: { classification: RowClassification; userClassification: Exclude<RowClassification, "REVIEW"> | null }[],
+): ImportSummary {
+  const tally: ImportSummary = { ...counts };
+  for (const row of rows) {
+    if (!row.userClassification || row.userClassification === row.classification) continue;
+    tally[row.classification] = Math.max(0, tally[row.classification] - 1);
+    tally[row.userClassification] += 1;
+  }
+  return tally;
+}

@@ -11,7 +11,6 @@ import {
   Plus,
   Target,
   Trash2,
-  Unlock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,30 +227,39 @@ export function BusinessProfileSection({
                         size="xs"
                         variant="ghost"
                         title="Confirm this is right"
+                        aria-label={`Confirm ${factKeyLabel(fact.factKey)}`}
                         onClick={() => run(() => verifyFact(fact.id))}
                       >
-                        <BadgeCheck className="size-3.5" />
+                        <BadgeCheck className="size-3.5" aria-hidden />
                       </Button>
                     )}
                     <Button
                       size="xs"
                       variant="ghost"
                       title={fact.locked ? "Allow automatic updates" : "Lock this fact"}
+                      aria-label={
+                        fact.locked ? `Unlock ${factKeyLabel(fact.factKey)}` : `Lock ${factKeyLabel(fact.factKey)}`
+                      }
+                      aria-pressed={fact.locked}
                       onClick={() => run(() => setFactLocked(fact.id, !fact.locked))}
                     >
+                      {/* The icon shows the action: an open padlock to unlock
+                          a locked fact, a closed one to lock it. Both states
+                          used to show an open padlock (Unlock / LockOpen). */}
                       {fact.locked ? (
-                        <Unlock className="size-3.5" />
+                        <LockOpen className="size-3.5" aria-hidden />
                       ) : (
-                        <LockOpen className="size-3.5" />
+                        <Lock className="size-3.5" aria-hidden />
                       )}
                     </Button>
                     <Button
                       size="xs"
                       variant="ghost"
                       title="Delete"
+                      aria-label={`Delete ${factKeyLabel(fact.factKey)}`}
                       onClick={() => run(() => deleteFact(fact.id))}
                     >
-                      <Trash2 className="size-3.5" />
+                      <Trash2 className="size-3.5" aria-hidden />
                     </Button>
                   </div>
                 )}

@@ -14,7 +14,8 @@ import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/form";
-import { Drawer, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
+import { Drawer, DrawerBody } from "@/components/ui/drawer";
+import { AdminDrawerHeader } from "@/components/admin/drawer-header";
 import { IconTile, ProviderMark } from "@/components/admin/ui";
 import { formatDateTime, formatRelative } from "@/lib/dates";
 import {
@@ -76,32 +77,35 @@ export function JobDetailDrawer({
       open
       onClose={onClose}
       size="lg"
+      bodyClassName="p-0"
       title={job.shortId}
       header={
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="lr-tabular truncate text-[16px] font-semibold text-content">
-              {job.shortId}
-            </h2>
-            <Badge tone={JOB_STATUS_TONE[job.status]} dot>
-              {JOB_STATUS_LABEL[job.status]}
-            </Badge>
+        <AdminDrawerHeader onClose={onClose}>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="lr-tabular truncate text-[16px] font-semibold text-content">
+                {job.shortId}
+              </h2>
+              <Badge tone={JOB_STATUS_TONE[job.status]} dot>
+                {JOB_STATUS_LABEL[job.status]}
+              </Badge>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-content-muted">
+              <span className="font-medium text-content-secondary">{job.typeLabel}</span>
+              <span className="flex items-center gap-1.5">
+                <ProviderMark provider={job.provider} />
+                {job.providerLabel}
+              </span>
+              <Badge tone={JOB_PRIORITY_TONE[job.priorityBand]} className="px-2">
+                {JOB_PRIORITY_LABEL[job.priorityBand]} priority
+              </Badge>
+              <span>Created {formatDateTime(job.createdAt, { year: true })}</span>
+            </div>
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-content-muted">
-            <span className="font-medium text-content-secondary">{job.typeLabel}</span>
-            <span className="flex items-center gap-1.5">
-              <ProviderMark provider={job.provider} />
-              {job.providerLabel}
-            </span>
-            <Badge tone={JOB_PRIORITY_TONE[job.priorityBand]} className="px-2">
-              {JOB_PRIORITY_LABEL[job.priorityBand]} priority
-            </Badge>
-            <span>Created {formatDateTime(job.createdAt, { year: true })}</span>
-          </div>
-        </div>
+        </AdminDrawerHeader>
       }
       footer={
-        <DrawerFooter className="gap-2">
+        <>
           <Button
             onClick={() => onRetry(job.id, acceptedRepeat || undefined)}
             disabled={retryDisabled}
@@ -128,7 +132,7 @@ export function JobDetailDrawer({
             <Trash2 className="size-3.5" aria-hidden />
             Move to DLQ
           </Button>
-        </DrawerFooter>
+        </>
       }
     >
       <div className="border-b border-line px-5">

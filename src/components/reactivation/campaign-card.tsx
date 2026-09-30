@@ -82,7 +82,12 @@ export function CampaignCard({
         <CampaignIcon icon={campaign.icon} />
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-semibold leading-5 text-content">
+          {/* Two lines before clipping: at five cards a row one line cut
+              "Summer Shopify win-back" to "Summer Shopify wi…". */}
+          <h3
+            className="line-clamp-2 break-words text-[15px] font-semibold leading-5 text-content"
+            title={campaign.name}
+          >
             {campaign.name}
           </h3>
           <div className="mt-1.5">

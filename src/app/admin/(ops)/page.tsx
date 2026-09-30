@@ -8,6 +8,8 @@ import { ProviderHealthPanel } from "@/components/admin/overview/provider-health
 import { RecentCustomersPanel } from "@/components/admin/overview/recent-customers-panel";
 import { ActionRequiredPanel } from "@/components/admin/overview/action-required-panel";
 import { FailedJobsPanel } from "@/components/admin/overview/failed-jobs-panel";
+import { requirePlatformAdmin } from "@/lib/admin/guard";
+import { adminGreeting } from "@/lib/admin/greeting";
 
 export const dynamic = "force-dynamic";
 
@@ -21,23 +23,6 @@ const paramsSchema = z.object({
  * That makes the first paint correct and stable across renders.
  */
 const PLATFORM_TZ = "Europe/London";
-
-function platformHour(now: Date): number {
-  return Number(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: PLATFORM_TZ,
-      hour: "2-digit",
-      hour12: false,
-    }).format(now),
-  );
-}
-
-function greetingFor(now: Date): string {
-  const hour = platformHour(now);
-  if (hour < 12) return "Good morning, Admin";
-  if (hour < 18) return "Good afternoon, Admin";
-  return "Good evening, Admin";
-}
 
 function stampFor(now: Date): string {
   const date = new Intl.DateTimeFormat("en-GB", {
@@ -66,13 +51,15 @@ export default async function AdminOverviewPage({
     Array.isArray(value) ? value[0] : value;
 
   const { range } = paramsSchema.parse({ range: first(raw.range) });
+  // Cached per request: the layout has already run the same check.
+  const operator = await requirePlatformAdmin();
   const overview = await getAdminOverview(range);
   const now = new Date(overview.generatedAt);
 
   return (
     <div className="space-y-5">
       <OverviewHeader
-        greeting={greetingFor(now)}
+        greeting={adminGreeting(now, operator.firstName)}
         stamp={stampFor(now)}
         range={range}
       />

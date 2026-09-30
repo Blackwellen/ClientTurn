@@ -64,7 +64,7 @@ import { OG_IMAGES, TWITTER_IMAGES } from "@/lib/marketing/seo";
 
 const title = "Results";
 const description =
-  "See what ClientTurn measures: the full journey from prospect to won, source attribution, acquisition and outreach performance, and conversion rates — so you know what turns into business and what does not.";
+  "What ClientTurn measures: the journey from prospect to won, source attribution, acquisition, outreach and conversion rates, so you know what turns into business.";
 const path = "/results";
 
 const siteUrl = (
@@ -581,9 +581,9 @@ export default function ResultsPage() {
                         </thead>
                         <tbody className="text-[var(--pub-text-secondary)]">
                           {[
-                            ["Property managers Q4", 124, 32, 9],
-                            ["Facilities managers", 98, 18, 6],
-                            ["Commercial builders", 76, 12, 4],
+                            ["SaaS founders Q4", 124, 32, 9],
+                            ["Ecommerce brands", 98, 18, 6],
+                            ["Accountancy firms", 76, 12, 4],
                           ].map(([name, leads, qualified, won]) => (
                             <tr
                               key={String(name)}

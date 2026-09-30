@@ -195,7 +195,16 @@ const LONDON_TIME = new Intl.DateTimeFormat("en-GB", {
 /** "Sat 25 Oct, 01:30 BST". Every time an operator or customer reads is London time. */
 export function formatLondon(iso: string | null | undefined): string {
   const at = ms(iso);
-  return at === null ? "" : LONDON_DISPLAY.format(new Date(at));
+  if (at === null) return "";
+  // A window in another year said only "Tue 1 Jan" (admin QA 2026-09-30), and
+  // some ICU builds print winter time as "GMT+0".
+  const text = tidyZone(LONDON_DISPLAY.format(new Date(at)));
+  const year = new Date(at).getUTCFullYear();
+  return year === new Date().getUTCFullYear() ? text : text.replace(/,/, ` ${year},`);
+}
+
+function tidyZone(text: string): string {
+  return text.replace(/GMT\+0\b/, "GMT");
 }
 
 /** "14:30 GMT" when the time is today in London, else the full form. */
@@ -204,7 +213,7 @@ export function formatLondonShort(iso: string | null | undefined, now: Date): st
   if (at === null) return "";
   const same = utcToLondonLocal(new Date(at).toISOString()).slice(0, 10) ===
     utcToLondonLocal(now.toISOString()).slice(0, 10);
-  return same ? LONDON_TIME.format(new Date(at)) : LONDON_DISPLAY.format(new Date(at));
+  return same ? tidyZone(LONDON_TIME.format(new Date(at))) : formatLondon(iso);
 }
 
 /** "2h 05m" / "4m 09s" / "3d 2h" — the admin countdown. */

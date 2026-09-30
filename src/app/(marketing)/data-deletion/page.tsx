@@ -1,4 +1,5 @@
 import * as React from "react";
+import { COMPANY } from "@/lib/marketing/company";
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -66,9 +67,9 @@ export default async function DataDeletionPage({
             You can also ask us directly at{" "}
             <a
               className="text-content-accent underline-offset-4 hover:underline"
-              href="mailto:privacy@clientturn.co.uk"
+              href={`mailto:${COMPANY.legalEmail}`}
             >
-              privacy@clientturn.co.uk
+              {COMPANY.legalEmail}
             </a>{" "}
             and we will handle it without a code.
           </p>
@@ -84,9 +85,9 @@ export default async function DataDeletionPage({
           not sure, email{" "}
           <a
             className="text-content-accent underline-offset-4 hover:underline"
-            href="mailto:privacy@clientturn.co.uk"
+            href={`mailto:${COMPANY.legalEmail}`}
           >
-            privacy@clientturn.co.uk
+            {COMPANY.legalEmail}
           </a>
           .
         </p>
@@ -131,9 +132,9 @@ export default async function DataDeletionPage({
             records inside it &mdash; if that is what you want, email{" "}
             <a
               className="text-content-accent underline-offset-4 hover:underline"
-              href="mailto:privacy@clientturn.co.uk"
+              href={`mailto:${COMPANY.legalEmail}`}
             >
-              privacy@clientturn.co.uk
+              {COMPANY.legalEmail}
             </a>{" "}
             and we will confirm before doing anything irreversible.
           </p>
@@ -151,7 +152,7 @@ const STATUS_COPY: Record<string, string> = {
   NOTHING_TO_DELETE:
     "Your request is complete. We held nothing connected to that account, so there was nothing to remove.",
   FAILED:
-    "Something went wrong completing your request, and we have been alerted. Please email privacy@clientturn.co.uk so we can finish it by hand.",
+    `Something went wrong completing your request, and we have been alerted. Please email ${COMPANY.legalEmail} so we can finish it by hand.`,
 };
 
 type DeletionRequest = {

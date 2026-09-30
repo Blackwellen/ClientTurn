@@ -39,6 +39,25 @@ export type World = {
 
 export let world: World | null = null;
 
+/**
+ * Binds the harness to an EXISTING workspace instead of creating one (the demo
+ * workspace, tests/stories/find-leads-engagement.test.ts). Such a workspace
+ * must already have `businesses.job_claims_paused = true`, which is what keeps
+ * the deployed worker off its jobs; the parking guard is therefore disabled,
+ * because it would otherwise re-park jobs other people queued there. Nothing
+ * is torn down by `teardownWorld` for an adopted world: the caller cleans up
+ * only what it created.
+ */
+export function adoptWorld(existing: World) {
+  world = existing;
+  adopted = true;
+  setTestBusiness(existing.businessId);
+}
+let adopted = false;
+export function isAdoptedWorld() {
+  return adopted;
+}
+
 export function mustWorld(): World {
   if (!world) throw new Error("world not set up");
   return world;
@@ -239,7 +258,7 @@ function noteParked(rows: { id: string; type: string; created_at: string }[], at
  * runs on the guard thread (guard-worker.mjs); runJobs calls this directly.
  */
 async function guardSweep() {
-  if (guardInFlight >= GUARD_CONCURRENCY || !world) return;
+  if (guardInFlight >= GUARD_CONCURRENCY || !world || adopted) return;
   guardInFlight += 1;
   try {
     const now = new Date().toISOString();
@@ -269,7 +288,7 @@ let guardThread: Worker | null = null;
 let stallTimer: NodeJS.Timeout | null = null;
 
 export function startGuard() {
-  if (guardThread || !world) return;
+  if (guardThread || !world || adopted) return;
   guardThread = new Worker(new URL("./guard-worker.mjs", import.meta.url), {
     // Plain JS with no hooks: none of the run's loaders or test flags.
     execArgv: [],
@@ -495,22 +514,30 @@ function defaultAi(taskType: string, user: string): unknown {
   }
 }
 
+/** The task type of an Azure chat request body (by its system prompt). */
+export async function aiTaskOf(body: string): Promise<{ taskType: string; system: string; user: string }> {
+  const parsed = JSON.parse(body) as { messages: { role: string; content: string }[] };
+  const system = parsed.messages.find((m) => m.role === "system")?.content ?? "";
+  const user = parsed.messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
+  return { taskType: await taskTypeOf(system), system, user };
+}
+
+/** The scripted model's answer to an Azure chat request body. */
+export async function scriptedAiResponse(body: string): Promise<Response> {
+  const { taskType, system, user } = await aiTaskOf(body);
+  const response = aiScript?.(taskType, user) ?? defaultAi(taskType, user);
+  aiCalls.push({ taskType, system, user, response });
+  return json({
+    choices: [{ message: { role: "assistant", content: JSON.stringify(response) }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 900, completion_tokens: 90, prompt_tokens_details: { cached_tokens: 0 } },
+  });
+}
+
 export function installProviderFakes() {
   registerFake({
     name: "azure",
     match: (url) => url.hostname.endsWith("openai.azure.com"),
-    respond: async (_url, _method, body) => {
-      const parsed = JSON.parse(body) as { messages: { role: string; content: string }[] };
-      const system = parsed.messages.find((m) => m.role === "system")?.content ?? "";
-      const user = parsed.messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
-      const taskType = await taskTypeOf(system);
-      const response = aiScript?.(taskType, user) ?? defaultAi(taskType, user);
-      aiCalls.push({ taskType, system, user, response });
-      return json({
-        choices: [{ message: { role: "assistant", content: JSON.stringify(response) }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 900, completion_tokens: 90, prompt_tokens_details: { cached_tokens: 0 } },
-      });
-    },
+    respond: async (_url, _method, body) => scriptedAiResponse(body),
   });
 
   registerFake({
@@ -724,6 +751,7 @@ async function idsOf(table: string, filter: (q: IdQuery) => IdQuery): Promise<{ 
  * and returned with the SQL that finishes it.
  */
 export async function teardownWorld(): Promise<TeardownResult> {
+  if (adopted) throw new Error("teardownWorld deletes the whole workspace; an adopted world is cleaned by its own test file");
   const w = mustWorld();
   const stages: TeardownStage[] = [];
   const errors: string[] = [];

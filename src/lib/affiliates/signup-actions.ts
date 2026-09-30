@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, clientIdentifier } from "@/lib/security/rate-limit";
+import { passwordSchema } from "@/lib/validation/auth";
 
 /**
  * Partner account creation (V4 §29).
@@ -42,14 +43,10 @@ const schema = z.object({
     .min(1, "Enter your email address")
     .email("Enter a valid email address")
     .max(160),
-  password: z
-    .string()
-    .min(8, "Use at least 8 characters")
-    .max(128)
-    .regex(/[a-z]/, "Include a lowercase letter")
-    .regex(/[A-Z]/, "Include an uppercase letter")
-    .regex(/[0-9]/, "Include a number")
-    .regex(/[^A-Za-z0-9]/, "Include a special character"),
+  // The one password rule for every door: partner and customer accounts
+  // share a credential store, and a partner resets through the same
+  // /reset-password as a customer, so a stricter rule here was never binding.
+  password: passwordSchema,
   terms: z.literal("on", {
     message: "Accept the terms to continue",
   }),
@@ -61,6 +58,10 @@ function str(form: FormData, key: string): string {
 }
 
 async function originUrl(): Promise<string> {
+  // The configured site URL first, as customer signup does: the Host header
+  // is client-controlled and this value goes into an emailed link.
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configured) return configured.replace(/\/$/, "");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";

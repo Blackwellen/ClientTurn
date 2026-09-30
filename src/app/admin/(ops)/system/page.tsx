@@ -10,11 +10,8 @@ import {
   EVENT_STATUS_FILTERS,
   EVENT_TYPE_FILTERS,
 } from "@/lib/admin/types";
-import {
-  SYSTEM_VIEWS,
-  SYSTEM_VIEW_DESCRIPTION,
-  SystemViewSwitch,
-} from "@/components/admin/system/system-view-switch";
+import { SystemViewSwitch } from "@/components/admin/system/system-view-switch";
+import { SYSTEM_VIEWS, SYSTEM_VIEW_DESCRIPTION } from "@/lib/admin/system-views";
 import { SystemHealthView } from "@/components/admin/system/system-health-view";
 import { SystemEventsView } from "@/components/admin/system/system-events-view";
 import { SystemErrorsView } from "@/components/admin/system/system-errors-view";

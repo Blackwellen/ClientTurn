@@ -260,6 +260,13 @@
    Scoped tokens for the sign-up / sign-in / forgot / reset experience. This
    reads as true black, independent of the shell's midnight-neutral ramp
    above, per the approved auth mockups. */
+/* The auth, onboarding and start-trial pages are dark, but the body is the
+   light app canvas: overscroll and the strip under a page shorter than the
+   viewport flashed cloud-white beneath them (surface QA 2026-09-30). */
+html:has(.ct-auth),
+body:has(.ct-auth) {
+  background-color: #030609;
+}
 .ct-auth {
   color-scheme: dark;
   --auth-bg: #030609;

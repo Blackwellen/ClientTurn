@@ -70,7 +70,11 @@ export async function adminSignIn(
     .maybeSingle();
 
   if (profile?.platform_role !== "platform_admin") {
-    await supabase.auth.signOut();
+    // Only the session this attempt just created. The default (global) scope
+    // also revoked the customer's own sessions on every other device, so a
+    // customer who tried their login here was signed out of the app
+    // everywhere (surface QA 2026-09-30).
+    await supabase.auth.signOut({ scope: "local" });
     await recordAudit({
       businessId: null,
       actorUserId: data.user.id,
@@ -181,12 +185,45 @@ export async function confirmStepUp(
 
 const uuid = z.string().uuid();
 
+/**
+ * A suspension reason is audit evidence: required, trimmed, bounded. The
+ * dialog insists on one, but the action is callable directly, and it used to
+ * accept an empty string.
+ */
+const suspensionReason = z
+  .string()
+  .trim()
+  .min(3, "Give a reason of at least a few words.")
+  .max(500, "Keep the reason under 500 characters.");
+
+/** The status a suspension replaced, from its audit entry; "active" if unknown. */
+async function statusBeforeSuspension(
+  service: ReturnType<typeof createAdminClient>,
+  businessId: string,
+): Promise<"onboarding" | "active"> {
+  const { data } = await service
+    .from("audit_log")
+    .select("metadata")
+    .eq("business_id", businessId)
+    .eq("action", "admin.workspace_suspended")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const before = (data?.metadata as { status_before?: unknown } | null)?.status_before;
+  return before === "onboarding" ? "onboarding" : "active";
+}
+
 export async function suspendWorkspace(
   businessId: string,
   reason: string,
 ): Promise<AdminActionResult> {
   return guarded("admin.workspace_suspended", async (operator) => {
     const id = uuid.parse(businessId);
+    const parsedReason = suspensionReason.safeParse(reason);
+    if (!parsedReason.success) {
+      return { ok: false, error: parsedReason.error.issues[0]?.message ?? "Give a reason." };
+    }
+    reason = parsedReason.data;
     const service = createAdminClient();
 
     const { data: before } = await service
@@ -243,9 +280,12 @@ export async function unsuspendWorkspace(
       return { ok: false, error: "That workspace is not suspended." };
     }
 
+    // Back to what the suspension replaced: restoring a workspace that was
+    // still onboarding used to mark it "active" and skip its onboarding.
+    const restoreTo = await statusBeforeSuspension(service, id);
     const { error } = await service
       .from("businesses")
-      .update({ status: "active" })
+      .update({ status: restoreTo })
       .eq("id", id);
     if (error) return { ok: false, error: error.message };
 
@@ -256,7 +296,7 @@ export async function unsuspendWorkspace(
       action: "admin.workspace_unsuspended",
       entityType: "business",
       entityId: id,
-      metadata: { outcome: "ok", status_before: "suspended", status_after: "active" },
+      metadata: { outcome: "ok", status_before: "suspended", status_after: restoreTo },
     });
 
     revalidatePath("/admin/customers");

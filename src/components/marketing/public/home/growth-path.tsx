@@ -462,7 +462,7 @@ export function GrowthPathSection() {
 
                 <MiniPanel icon={Search} title="Target audience" meta="Define your ideal customer" x={428} y={27} width={209}>
                   <div className="flex flex-wrap" style={{ gap: u(6) }}>
-                    {["Construction", "Residential", "Property Developers"].map((chip) => (
+                    {["Ecommerce", "Shopify", "10-50 staff"].map((chip) => (
                       <span
                         key={chip}
                         className="pub-chip"
@@ -476,7 +476,7 @@ export function GrowthPathSection() {
 
                 <MiniPanel icon={ShieldCheck} title="Verified prospects" meta="High-quality, validated" x={249} y={BELOW_TEXT} width={194}>
                   <div className="pub-fragment" style={{ padding: u(7), borderRadius: u(9) }}>
-                    {["Smith Construction", "Riverside Homes", "Oakwood Developments"].map((name) => (
+                    {["Kestrel Commerce", "Fernbank Goods", "Halden & Co Store"].map((name) => (
                       <div key={name} className="flex items-center" style={{ gap: u(7), paddingBlock: u(4.5) }}>
                         <Building2
                           aria-hidden

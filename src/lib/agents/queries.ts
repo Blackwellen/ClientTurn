@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { LeadListRow } from "@/lib/leads/types";
 import { agentCallingScope } from "./voice-calls";
+import { paidEnrichmentEnabled } from "@/lib/find-leads/paid-enrichment";
 import { agentCallCounts, readAgentVoiceColumns } from "./voice-calls-guard";
 import {
   SOURCE_DEFINITIONS,
@@ -447,6 +448,11 @@ export const getAgentWizardOptions = cache(
       } else if (definition.key === "LINKEDIN_ADS" && !connected.has("linkedin_ads")) {
         status = "REQUIRES_SETUP";
         detail = definition.requires;
+      } else if (definition.key === "DATA_PROVIDER" && !paidEnrichmentEnabled()) {
+        // Resolved conflict 7: the paid vendors behind this source are off, so
+        // offering it would be a switch that finds nothing.
+        status = "UNAVAILABLE";
+        detail = "Switched off: contact details come from company websites and Companies House instead";
       } else if (
         definition.key === "CRM_SYNC" &&
         !["hubspot", "zoho_crm", "salesforce", "pipedrive"].some((p) => connected.has(p))

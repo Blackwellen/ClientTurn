@@ -12,6 +12,8 @@ export type PlatformOperator = {
   id: string;
   email: string;
   name: string;
+  /** For the Overview greeting; null when the profile has no first name. */
+  firstName: string | null;
 };
 
 export type PlatformOperatorSession = {
@@ -57,7 +59,12 @@ export const getPlatformOperatorSession = cache(
     ).length;
 
     return {
-      operator: { id: data.id, email: data.email ?? user.email ?? "", name },
+      operator: {
+        id: data.id,
+        email: data.email ?? user.email ?? "",
+        name,
+        firstName: data.first_name?.trim() || null,
+      },
       mfa: { verifiedFactorCount, currentAal },
     };
   },

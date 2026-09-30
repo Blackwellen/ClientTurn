@@ -145,6 +145,16 @@ function hostOf(args: unknown[]): string {
 
 const ALLOWED_SOCKET_HOSTS = new Set([SUPABASE_HOST, MANAGEMENT_HOST, "localhost", "127.0.0.1", "::1"]);
 
+/**
+ * Opens one real host through every layer (socket, DNS). Only the demo
+ * harness's REAL mode calls this (tests/stories/find-leads-engagement.test.ts,
+ * owner decision 2026-09-29: Companies House, capped Google Places and
+ * company-website GETs, capped Azure). The business stories never do.
+ */
+export function allowRealHost(host: string) {
+  ALLOWED_SOCKET_HOSTS.add(host.toLowerCase());
+}
+
 let socketsGuarded = false;
 function guardSockets() {
   if (socketsGuarded) return;

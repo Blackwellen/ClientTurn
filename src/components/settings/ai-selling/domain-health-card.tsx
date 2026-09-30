@@ -26,7 +26,7 @@ export function DomainHealthCard({
   ];
 
   return (
-    <Card>
+    <Card id="sending-domains" className="scroll-mt-24">
       <CardHeader>
         <SectionHeader
           icon={Globe}

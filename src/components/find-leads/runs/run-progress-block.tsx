@@ -2,7 +2,7 @@ import * as React from "react";
 import { AlertCircle, Check, Loader2, MinusCircle, Settings2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { STAGE_BY_KEY } from "@/lib/find-leads/stages";
-import { STAGE_STATUS_LABELS, type RunStageView } from "@/lib/find-leads/types";
+import { STAGE_STATUS_LABELS, type RunStageView, type RunStatus } from "@/lib/find-leads/types";
 import { formatInZone } from "@/lib/dates";
 
 /**
@@ -22,12 +22,19 @@ export function RunProgressBlock({
   progressPercent,
   currentStageNumber,
   startedAtLabel,
+  runStatus,
 }: {
   stages: RunStageView[];
   progressPercent: number;
   currentStageNumber: number;
   startedAtLabel: string | null;
+  /** Optional so older callers keep the stage-derived heading. */
+  runStatus?: RunStatus;
 }) {
+  // A queued run has not started: saying "started" and "working through" for
+  // a run still waiting for a worker misreported what was happening.
+  const started = stages.some((stage) => stage.status !== "PENDING");
+  const heading = headingFor(runStatus, started);
   return (
     <section className="rounded-xl border border-line bg-surface-sunken/50 p-4">
       <header className="flex items-start gap-3">
@@ -39,7 +46,7 @@ export function RunProgressBlock({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-[14px] font-semibold text-content">Sourcing run started</h3>
+            <h3 className="text-[14px] font-semibold text-content">{heading.title}</h3>
             {startedAtLabel && (
               <span className="shrink-0 text-[11px] tabular-nums text-content-subtle">
                 {startedAtLabel}
@@ -47,8 +54,7 @@ export function RunProgressBlock({
             )}
           </div>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-content-muted">
-            Working through 12 stages to find and qualify the best prospects for your
-            business.
+            {heading.detail}
           </p>
         </div>
       </header>
@@ -124,10 +130,6 @@ function StageRow({ stage }: { stage: RunStageView }) {
         )}
       </span>
 
-      <span className="w-4 shrink-0 text-[11.5px] tabular-nums text-content-subtle">
-        {stage.stage_number}
-      </span>
-
       <span
         className={cn(
           "w-[168px] shrink-0 truncate text-[12.5px] font-medium",
@@ -166,4 +168,28 @@ function StageRow({ stage }: { stage: RunStageView }) {
       </span>
     </li>
   );
+}
+
+function headingFor(status: RunStatus | undefined, started: boolean): { title: string; detail: string } {
+  switch (status) {
+    case "COMPLETED":
+      return { title: "Sourcing run finished", detail: "Every stage has run. The prospects it found are in Find Leads." };
+    case "CANCELLED":
+    case "PARTIAL":
+      return {
+        title: "Sourcing run stopped",
+        detail: "Stopped before it finished. Anything it found is kept; start a new run to keep looking.",
+      };
+    case "FAILED":
+      return { title: "Sourcing run stopped with a problem", detail: "The prospects found before it stopped are kept." };
+    case "PAUSED":
+      return { title: "Sourcing run paused", detail: "Nothing more is spent until you resume it." };
+    default:
+      return started
+        ? {
+            title: "Sourcing run started",
+            detail: "Working through 12 stages to find and qualify the best prospects for your business.",
+          }
+        : { title: "Sourcing run queued", detail: "Waiting to start. Nothing is spent until the first stage begins." };
+  }
 }

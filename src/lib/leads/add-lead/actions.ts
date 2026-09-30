@@ -25,6 +25,7 @@ import {
   parseEstimatedValue,
   permittedMessagingChannels,
   sourceProviderSlug,
+  sourceValueLabel,
   subscriberTypeFromCompanyName,
   type ContactabilityAssessment,
   type CreateLeadOutcome,
@@ -325,7 +326,7 @@ export async function createManualLead(
   if (routing.assigneeId) {
     const { data: member } = await admin
       .from("business_members")
-      .select("user_id")
+      .select("user_id, role")
       .eq("business_id", workspace.businessId)
       .eq("user_id", routing.assigneeId)
       .eq("status", "active")
@@ -334,6 +335,12 @@ export async function createManualLead(
       return {
         status: "ERROR",
         error: "That person is no longer a member of this workspace.",
+      };
+    }
+    if (member.role === "viewer") {
+      return {
+        status: "ERROR",
+        error: "Viewers can't be assigned leads. Choose someone else.",
       };
     }
     assigneeId = routing.assigneeId;
@@ -421,7 +428,12 @@ export async function createManualLead(
   const sourceId = await resolveManualSource(
     workspace.businessId,
     sourceProviderSlug(enquiry.source),
-    enquiry.sourceDetail || `Added manually (${enquiry.source})`,
+    // The human label ("Phone call"), never the enum ("PHONE_CALL"): this
+    // becomes the source name shown on the Dashboard and the lead.
+    enquiry.sourceDetail ||
+      (enquiry.source === "MANUAL"
+        ? "Added by hand"
+        : `${sourceValueLabel(enquiry.source)} (added by hand)`),
   );
 
   const notes = [
@@ -741,6 +753,26 @@ export async function createProspectFromWizard(input: {
 
   if (error || !prospect?.id) {
     return { status: "ERROR", error: "Could not add this person to Find Leads." };
+  }
+
+  // Provenance on the prospect: added by hand, on the customer's own basis.
+  // The cold-send policy reads this row; without it the record could never
+  // leave review (2026-09-29). Never fatal.
+  {
+    const { error: provenanceError } = await admin.from("prospect_data_sources").insert({
+      business_id: workspace.businessId,
+      prospect_id: prospect.id,
+      company_id: companyId,
+      field_name: "contact",
+      value_json: { email: normaliseEmail(parsed.data.email), sourceDetail: parsed.data.sourceDetail || null } as never,
+      provider: "manual_prospect",
+      source_type: "MANUAL",
+      confidence: 0.8,
+      policy_tags: ["CUSTOMER_SUPPLIED", "BASIS:CUSTOMER_ASSERTED"] as never,
+    });
+    if (provenanceError) {
+      console.error("[add-lead] prospect provenance not recorded", { prospectId: prospect.id, message: provenanceError.message });
+    }
   }
 
   await recordAudit({

@@ -166,7 +166,7 @@ export async function resolveAudience(
   if (filter.createdBefore) {
     query = query.lt("created_at", `${filter.createdBefore}T23:59:59.999Z`);
   }
-  if (filter.olderThanDays > 0) {
+  if (filter.olderThanDays > 0 && !filter.importedList) {
     query = query.lt(
       "created_at",
       new Date(now - filter.olderThanDays * 864e5).toISOString(),

@@ -133,11 +133,29 @@ export async function getActivationChecks(
         .eq("status", "PUBLISHED"),
       admin
         .from("leads")
-        .select("status")
+        .select("id, status")
         .eq("business_id", businessId)
         .eq("is_test", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
     ]);
+
+  // "Successful" means the test lead's opening message actually went out, not
+  // merely that a test lead row exists: a carrier or credential failure used
+  // to show "Test lead successful: Ready" beside a red "Auto-reply" step
+  // (surface QA 2026-09-30).
+  const testMessages = testLead.data
+    ? await admin
+        .from("messages")
+        .select("status")
+        .eq("business_id", businessId)
+        .eq("lead_id", testLead.data.id)
+        .eq("direction", "outbound")
+    : { data: [] as { status: string }[] };
+  const testStatuses = (testMessages.data ?? []).map((row) => String(row.status).toUpperCase());
+  const testSent = testStatuses.some((status) => status !== "FAILED");
+  const testFailed = testStatuses.length > 0 && !testSent;
 
   const providers = integrations.data ?? [];
   const bookingMode = settings.data?.booking_mode ?? "handover";
@@ -219,12 +237,16 @@ export async function getActivationChecks(
     {
       key: "test_lead",
       label: "Test lead successful",
-      passed: Boolean(testLead.data),
+      passed: Boolean(testLead.data) && testSent,
       // Not blocking: recommended before going live, but not required — a
       // workspace can still activate and run its first test afterwards.
-      detail: testLead.data
-        ? `Test lead status: ${testLead.data.status}`
-        : "Not run yet — send a test lead below.",
+      detail: !testLead.data
+        ? "Not run yet — send a test lead below."
+        : testFailed
+          ? "The opening message failed to send. Check Messaging in Settings → Connections, then run it again."
+          : testSent
+            ? `Test lead status: ${testLead.data.status}`
+            : "Waiting for the opening message to send.",
       blocking: false,
     },
   ];

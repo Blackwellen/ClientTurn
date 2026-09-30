@@ -42,6 +42,7 @@ import {
 } from "@/lib/find-leads/prospect-actions";
 import { addProspectWebsiteAction } from "@/lib/find-leads/linkedin-import-actions";
 import { formatMinor } from "@/lib/find-leads/plan";
+import { approvalBlockedReason } from "@/lib/find-leads/prospect-approval";
 import type { ResearchSummary } from "@/lib/find-leads/server/research-summary";
 import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/policy/types";
 import { shortAgo } from "@/lib/prospects/activity";
@@ -510,7 +511,24 @@ function Fact({
  * opened is not an acceptable rendering of one.
  */
 function ProspectGradeCard({ detail }: { detail: ProspectDetail }) {
-  const { score, prospect } = detail;
+  const { prospect } = detail;
+
+  // The list shows the grade stored on the prospect row. When that row has a
+  // grade but no current score record (older imports, seeded data), the card
+  // must still agree with the list rather than claim "not scored yet".
+  const score =
+    detail.score ??
+    (prospect.grade && prospect.score !== null
+      ? {
+          id: "",
+          scoreVersion: "",
+          totalScore: prospect.score,
+          grade: prospect.grade,
+          explanation: null,
+          createdAt: prospect.created_at,
+          factors: [],
+        }
+      : null);
 
   if (!score) {
     return (
@@ -695,23 +713,13 @@ function ContactabilityCard({ detail }: { detail: ProspectDetail }) {
         </p>
       )}
 
-      <div className="mt-3">
-        <EnrichButton
-          prospectId={prospect.id}
-          channel="PHONE"
-          hasValue={Boolean(prospect.phone_e164)}
-          disabled={prospect.outreach_eligibility === "SUPPRESSED"}
-          disabledReason={
-            prospect.outreach_eligibility === "SUPPRESSED"
-              ? "This prospect is suppressed and cannot be contacted on any channel"
-              : undefined
-          }
-        />
-        <p className="mt-1.5 text-[11px] text-content-subtle">
-          A found number is not a usable cold channel. UK policy blocks cold SMS, and the
-          policy engine decides that at send time.
-        </p>
-      </div>
+      {/* No "find phone number": a number is never collected from an
+          enrichment provider (CLAUDE.md resolved conflict 6). SMS and WhatsApp
+          only ever go to a mobile the person gave on a form themselves. */}
+      <p className="mt-3 text-[11px] text-content-subtle">
+        Cold outreach is email only. A phone number is used only when the person
+        gives it to you themselves.
+      </p>
     </Card>
   );
 }
@@ -734,7 +742,7 @@ function EnrichButton({
   disabledReason,
 }: {
   prospectId: string;
-  channel: "EMAIL" | "PHONE";
+  channel: "EMAIL";
   hasValue: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -743,12 +751,8 @@ function EnrichButton({
   const { toast } = useToast();
   const [pending, startTransition] = React.useTransition();
 
-  const noun = channel === "EMAIL" ? "email" : "phone number";
-  const label = hasValue
-    ? channel === "EMAIL"
-      ? "Re-verify"
-      : "Refresh"
-    : `Find ${noun}`;
+  const noun = "email";
+  const label = hasValue ? "Re-verify" : `Find ${noun}`;
 
   return (
     <Button
@@ -994,7 +998,9 @@ function ResearchView({ detail }: { detail: ProspectDetail }) {
                   {row.summary && (
                     <p className="mt-0.5 text-[12px] text-content-muted">{row.summary}</p>
                   )}
-                  <p className="mt-0.5 text-[11.5px] text-content-subtle">{row.provider}</p>
+                  <p className="mt-0.5 text-[11.5px] text-content-subtle">
+                    {researchProviderText(row.provider)}
+                  </p>
                 </div>
                 <Badge
                   tone={
@@ -1300,7 +1306,7 @@ function ActivityView({ detail }: { detail: ProspectDetail }) {
     {
       at: prospect.created_at,
       label: prospect.source_provider
-        ? `Sourced from ${prospect.source_provider}`
+        ? `Sourced from ${sourceProviderText(prospect.source_provider).toLowerCase()}`
         : "Sourced",
       actor: "System",
     },
@@ -1315,7 +1321,7 @@ function ActivityView({ detail }: { detail: ProspectDetail }) {
       : []),
     ...detail.research.map((row) => ({
       at: row.completedAt ?? prospect.created_at,
-      label: `Enriched: ${humanField(row.type)} (${row.provider})`,
+      label: `${humanField(row.type)} research: ${researchProviderText(row.provider).toLowerCase()}`,
       actor: "System",
     })),
     ...detail.verification.map((row) => ({
@@ -1384,7 +1390,6 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
   const [promoteOpen, setPromoteOpen] = React.useState(false);
 
   const prospect = detail.prospect;
-  const eligible = prospect.outreach_eligibility === "ELIGIBLE";
   const promoted = Boolean(prospect.promoted_to_lead_id);
   const approved = prospect.status === "APPROVED" || prospect.status === "OUTREACH_ACTIVE";
   const suppressed = prospect.outreach_eligibility === "SUPPRESSED";
@@ -1412,13 +1417,12 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
   // Why a control is unavailable is always visible. "Not eligible", "already a
   // lead" and "no reply yet" are different answers, and someone deciding what
   // to do next needs to know which one applies.
-  const approveReason = suppressed
-    ? "This prospect is suppressed and cannot be contacted"
-    : approved
-      ? "This prospect has already been approved"
-      : !eligible
-        ? "Contactability has not been confirmed for this prospect"
-        : undefined;
+  const approveReason =
+    approvalBlockedReason({
+      status: prospect.status,
+      outreachEligibility: prospect.outreach_eligibility,
+      promotedToLeadId: prospect.promoted_to_lead_id,
+    }) ?? undefined;
 
   // The same rule the database applies, so the button never offers a
   // promotion `promote_reviewed_prospect` would refuse.
@@ -1438,7 +1442,7 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
         <Button
           size="sm"
           loading={pending}
-          disabled={approved || !eligible || pending}
+          disabled={Boolean(approveReason) || pending}
           title={approveReason}
           onClick={() => run(() => approveProspectAction(prospect.id), "Approved for outreach.")}
         >
@@ -1469,9 +1473,12 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
           {promoted ? "Already a lead" : "Promote to lead"}
         </Button>
 
+        {/* Destructive, but not the recommended next step: an outlined danger
+            control, so the solid fill stays with the primary action. */}
         <Button
           size="sm"
-          variant="danger"
+          variant="secondary"
+          className="text-danger-700 hover:text-danger-700"
           disabled={suppressed || pending}
           title={suppressed ? "This prospect is already suppressed" : undefined}
           onClick={() => setSuppressOpen(true)}
@@ -1504,7 +1511,7 @@ function ProspectActionBar({ detail }: { detail: ProspectDetail }) {
         </DropdownMenu>
 
         <p className="w-full text-[11.5px] text-content-subtle">
-          {prospect.source_provider ? `Provider: ${prospect.source_provider} · ` : ""}
+          {prospect.source_provider ? `Source: ${sourceProviderText(prospect.source_provider)} · ` : ""}
           Created {formatInZone(prospect.created_at, "date")}
         </p>
       </div>
@@ -1737,4 +1744,17 @@ function formatValue(value: unknown): string {
     return String((value as Record<string, unknown>).value);
   }
   return JSON.stringify(value);
+}
+
+/** "company_website" reads as a database value; "Company website" does not. */
+function sourceProviderText(provider: string): string {
+  const words = provider.replace(/[_-]+/g, " ").trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Who ran an enrichment, in words: the internal provider keys mean nothing to a customer. */
+function researchProviderText(provider: string): string {
+  if (provider === "USER_REFRESH") return "Refreshed by you";
+  if (provider === "USER_ENRICH") return "Contact lookup by you";
+  return sourceProviderText(provider);
 }

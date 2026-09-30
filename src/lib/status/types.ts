@@ -24,6 +24,27 @@ export const STATUS_META: Record<
   MAINTENANCE: { label: "Maintenance", tone: "info" },
 };
 
+/**
+ * What a job queue's last 24 hours say about its service. Pure: tested
+ * directly (tests/public-wave6-qa.test.ts).
+ *
+ * A share alone is not evidence. Before surface QA 2026-09-30 one dead
+ * `message.send` out of three jobs was a 33% failure share, which published
+ * "ClientTurn is experiencing an outage" with SMS and Email marked Outage while
+ * both providers probed healthy. A queue now needs at least
+ * `MIN_FAILED_FOR_INCIDENT` failures before its share can degrade anything;
+ * below that, the provider probes (which are the direct evidence) decide.
+ */
+export const MIN_FAILED_FOR_INCIDENT = 3;
+
+export function queueStatus(failed: number, total: number): ServiceStatus {
+  if (failed < MIN_FAILED_FOR_INCIDENT || total <= 0) return "OPERATIONAL";
+  const share = failed / total;
+  if (share >= 0.25) return "OUTAGE";
+  if (share >= 0.05) return "DEGRADED";
+  return "OPERATIONAL";
+}
+
 export type StatusService = {
   key: string;
   name: string;

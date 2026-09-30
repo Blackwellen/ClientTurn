@@ -35,6 +35,9 @@ const SOURCE_KEYS = Object.values(SIGNAL_SOURCES)
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
+/** A viewer or member gets this answer, not an unhandled FORBIDDEN error page. */
+const DENIED = "Only owners and admins can change intent categories and monitors.";
+
 const categorySchema = z.object({
   id: z.union([z.uuid(), z.literal("")]).optional(),
   name: z.string().trim().min(2).max(80),
@@ -60,7 +63,8 @@ export async function saveIntentCategory(input: unknown): Promise<ActionResult> 
     return { ok: false, error: "Give the category a name and at least one signal source." };
   }
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireRole("admin").catch(() => null);
+  if (!workspace) return { ok: false, error: DENIED };
   const value = parsed.data;
   const db = createAdminClient();
 
@@ -150,16 +154,20 @@ export async function setIntentCategoryActive(
   const parsed = z.object({ id: z.uuid(), active: z.boolean() }).safeParse({ id, active });
   if (!parsed.success) return { ok: false, error: "Invalid request." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireRole("admin").catch(() => null);
+  if (!workspace) return { ok: false, error: DENIED };
   const db = createAdminClient();
 
-  const { error } = await db
+  const { data: updated, error } = await db
     .from("intent_categories")
     .update({ active: parsed.data.active })
     .eq("id", parsed.data.id)
-    .eq("business_id", workspace.businessId);
+    .eq("business_id", workspace.businessId)
+    .select("id");
 
   if (error) return { ok: false, error: "That category could not be updated." };
+  // Another workspace's id matches nothing: say so rather than report success.
+  if (!updated || updated.length === 0) return { ok: false, error: "That category could not be found." };
 
   // Pausing a category pauses its monitors: leaving them running would keep
   // spending on signals the category no longer scores.
@@ -190,7 +198,8 @@ export async function createIntentMonitor(input: unknown): Promise<ActionResult>
   const parsed = monitorSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the monitor settings and try again." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireRole("admin").catch(() => null);
+  if (!workspace) return { ok: false, error: DENIED };
   const value = parsed.data;
 
   // A monitor costs money every time it runs, so the plan limit is checked
@@ -290,7 +299,8 @@ export async function controlIntentMonitor(
     .safeParse({ id, command });
   if (!parsed.success) return { ok: false, error: "Invalid monitor control." };
 
-  const workspace = await requireRole("admin");
+  const workspace = await requireRole("admin").catch(() => null);
+  if (!workspace) return { ok: false, error: DENIED };
   const db = createAdminClient();
 
   if (parsed.data.command === "resume") {

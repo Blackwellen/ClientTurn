@@ -143,7 +143,9 @@ async function listProviders(
     const probe = latestProbe.get(entry.provider);
     const configured = credentialsPresent(entry.requiredEnv);
 
-    const status: ProviderHealthState = !configured
+    const status: ProviderHealthState = entry.disabledByPolicy
+      ? "DISABLED"
+      : !configured
       ? "OFFLINE"
       : probe
         ? (PROBE_STATUS_TO_HEALTH[probe.status] ?? "UNKNOWN")

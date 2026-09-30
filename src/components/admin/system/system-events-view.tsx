@@ -32,7 +32,7 @@ import { useAdminAction } from "@/components/admin/use-admin-action";
 import { EventDetailDrawer } from "./event-detail-drawer";
 import { safeRetryEvent } from "@/lib/admin/actions";
 import { formatNumber, providerLabel } from "@/lib/admin/format";
-import { formatRelative } from "@/lib/dates";
+
 import {
   ADMIN_RANGES,
   ADMIN_RANGE_LABEL,
@@ -46,6 +46,7 @@ import {
   type EventStatusFilter,
   type EventTypeFilter,
 } from "@/lib/admin/types";
+import { RelativeTime } from "@/components/admin/relative-time";
 
 const SUMMARY_DOT = {
   processed: "bg-success-500",
@@ -318,7 +319,7 @@ export function SystemEventsView({
                       {row.attempts}
                     </td>
                     <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.receivedAt, { style: "ago" })}
+                      <RelativeTime value={row.receivedAt} options={{ style: "ago" }} />
                     </td>
                     <td className="max-w-[220px] px-3 py-2 text-[12.5px] text-content-secondary">
                       <span className="block truncate">{row.lastError ?? "—"}</span>
@@ -426,7 +427,7 @@ export function SystemEventsView({
                       <span className="block truncate">{row.lastError ?? "—"}</span>
                     </td>
                     <td className="px-3 py-2 text-[12.5px] whitespace-nowrap text-content-muted">
-                      {formatRelative(row.receivedAt, { style: "ago" })}
+                      <RelativeTime value={row.receivedAt} options={{ style: "ago" }} />
                     </td>
                     <td className="lr-tabular px-3 py-2 text-[12.5px] text-content-secondary">
                       {row.attempts}
