@@ -150,7 +150,7 @@ export async function generateVariants(input: {
   if (result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN") {
     return {
       ok: false,
-      error: "This workspace's AI budget does not cover generating variants right now.",
+      error: "This workspace's AI credit limits do not cover generating variants right now.",
     };
   }
   if (result.skippedReason === "AI_UNAVAILABLE" || result.data === null) {

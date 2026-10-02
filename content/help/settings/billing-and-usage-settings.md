@@ -1,10 +1,10 @@
 ---
 title: Billing & Usage settings
-summary: A tour of the owner-only Billing & Usage section, including your plan and status, usage against every limit, prepaid credits, daily limits, AI tokens and invoices
+summary: A tour of the owner-only Billing & Usage section, including your plan and status, usage against every limit, prepaid credits, daily limits, AI credits and invoices
 category: settings
 keywords: [billing page, subscription status, current plan, invoices, stripe portal, manage billing, payment method, card, usage panel, message credits, ai allowance, prepaid credit, refundable, daily sending limits]
 order: 80
-updated: 2026-09-27
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/settings/billing-and-usage-settings-1.png
     alt: "Billing and Usage with the current plan, subscription status and usage this month"
@@ -26,7 +26,7 @@ screenshots:
 | **Monthly usage overview** | Prospects sourced, messages sent, intent monitors and search runs |
 | **Communication allocation** | How your message allowance is split between channels, and **Daily sending limits (all channels)** |
 | **Channel usage** and **Usage history** | Sent, delivery and replies per channel this month, and past months |
-| **AI allowance** | AI tokens used and left, roughly how many assistant replies remain, **Buy more tokens**, and **Recent top-ups** |
+| **AI credits** | AI credits used and left, your top-up balance, roughly how many assistant replies remain, **Buy more AI credits**, and **Recent top-ups** |
 | **Billing help** | Links to update your payment method, view invoices or contact support |
 
 The Stripe portal buttons become available once billing has started.

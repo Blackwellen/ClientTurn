@@ -210,7 +210,10 @@ function OverviewPanel({ view, trialNote, onNavigate }: VoicePanelsProps & { onN
           </Fact>
           <Fact label="Included minutes reset">{view.minutes.periodEnd ? formatDate(view.minutes.periodEnd) : "Not on a voice plan"}</Fact>
         </dl>
-        <p className="text-[12.5px] text-content-muted">{trialNote}</p>
+        {/* Only a trialling workspace needs the trial rule; a trial is shown the locked
+            state instead of these panels, so this is normally absent (QA 2026-09-30:
+            a paid Pro workspace was told "trials don't place live calls"). */}
+        {view.entitlement.reasons.includes("TRIAL_ACCOUNT") && <p className="text-[12.5px] text-content-muted">{trialNote}</p>}
       </PanelCard>
 
       {noMinutes && (

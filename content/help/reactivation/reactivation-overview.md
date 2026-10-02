@@ -36,7 +36,7 @@ Sending starts in the next permitted window, or at your scheduled time inside it
 - Use variables such as `{{first_name}}`, `{{business_name}}` and `{{service_name}}` with **Insert variable**. A message is not sent with an empty variable in place of a name.
 - SMS and WhatsApp messages can be up to 640 characters. Your opt-out line is added automatically, unless the message already mentions STOP.
 - Email is sent from your own connected mailbox, so replies come to your inbox. It carries an unsubscribe link.
-- **Personalise each message with AI** is off by default. It rewrites SMS and WhatsApp messages for each lead. A rewrite that fails your style checks, is too long, or would go over your AI budget is not used, and that lead gets your message exactly as written. Email is never personalised.
+- **Personalise each message with AI** is off by default. It rewrites SMS and WhatsApp messages for each lead. A rewrite that fails your style checks, is too long, or would go over your AI credit limits is not used, and that lead gets your message exactly as written. Email is never personalised.
 
 ## The follow-up
 

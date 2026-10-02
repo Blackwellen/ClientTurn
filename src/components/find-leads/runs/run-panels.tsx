@@ -139,17 +139,13 @@ export function RunBudgetCard({ budget }: { budget: RunBudgetView }) {
           <div>
             <h2 className="text-[14.5px] font-semibold text-content">Run budget</h2>
             <p className="text-[11.5px] text-content-muted">
-              Provider costs across all data sources
+              Share of this run&apos;s sourcing budget used
             </p>
           </div>
         </div>
         <div className="shrink-0 text-right">
-          {/* Formatted server-side. The browser never receives the raw
-              minor-unit figures these strings came from. */}
+          {/* A proportion only: provider spend is admin-only. */}
           <p className="text-[14px] font-semibold tabular-nums text-content">
-            {budget.spent} of {budget.cap}
-          </p>
-          <p className="text-[11.5px] tabular-nums text-content-muted">
             {budget.percentUsed}% used
           </p>
         </div>
@@ -174,7 +170,7 @@ export function RunBudgetCard({ budget }: { budget: RunBudgetView }) {
         </div>
         {budget.state === "BUDGET_LIMIT_REACHED" && (
           <p role="status" className="mt-2 text-[12px] font-medium text-warning-700">
-            This run paused because it reached its cost limit.
+            This run paused because it reached its budget limit.
           </p>
         )}
       </div>

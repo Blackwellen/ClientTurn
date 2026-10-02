@@ -16,7 +16,9 @@ import type { Channel } from "@/lib/messaging/types";
 import type { PolicyGate } from "@/lib/jobs/send-core";
 import { getEntitlements, getPeriodUsage, type Entitlements } from "./entitlements";
 import { getV4Entitlements } from "./v4-entitlements";
-import { getTokenStatus } from "./token-service";
+import { ensureTokenBalance } from "./token-service";
+import { tokensToCredits } from "./tokens";
+import { aiPurchasedRemaining } from "./refundability";
 import {
   consumeMessageCredits,
   getCreditBalances,
@@ -820,7 +822,9 @@ export async function getLimitsOverview(businessId: string): Promise<LimitsOverv
       whatsappTokensUsedSince(businessId, since),
       getPeriodUsage(businessId, entitlements.periodStart),
       getV4Entitlements(businessId),
-      getTokenStatus(businessId).catch(() => null),
+      ensureTokenBalance(businessId)
+        .then((b) => ({ ...b, granted: b.includedTokens + b.purchasedTokens, used: b.usedTokens }))
+        .catch(() => null),
       sentToday(businessId, "sms", now),
       sentToday(businessId, "whatsapp", now),
       sentToday(businessId, "email", now),
@@ -902,15 +906,16 @@ export async function getLimitsOverview(businessId: string): Promise<LimitsOverv
     row({
       key: "ai_tokens",
       metric: "ai_tokens",
-      label: "AI tokens",
-      unit: "tokens",
-      used: tokens?.used ?? 0,
-      limit: tokens?.granted ?? allowances.aiTokenAllowance,
+      // Shown in AI credits, never model tokens (owner decision, 2026-09-30).
+      label: "AI credits",
+      unit: "credits",
+      used: Math.ceil(tokensToCredits(tokens?.used ?? 0)),
+      limit: Math.floor(tokensToCredits(tokens?.granted ?? allowances.aiTokenAllowance)),
       plan: upsellPlan,
       upsellMetric: "ai_tokens",
       daily: null,
-      credits: tokens?.purchasedTokens ?? null,
-      atLimit: "The AI assistant pauses; follow-up and qualification rules keep running. Top up tokens to resume.",
+      credits: tokens ? Math.floor(tokensToCredits(aiPurchasedRemaining(tokens))) : null,
+      atLimit: "The AI assistant pauses; follow-up and qualification rules keep running. Top up AI credits to resume.",
     }),
     row({
       key: "users",

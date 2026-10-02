@@ -33,7 +33,7 @@ A hand-over is the last resort. It happens only when:
 | The assistant asked twice, in different words, and still could not get a usable answer | Normal |
 | The assistant could not write a safe reply after three attempts | Normal |
 | Your own settings say a person should take this case (for example **Hand over when qualification needs review**, which is off by default, or a rule in your [qualification policy](/help/qualifying/qualification-policy)) | Normal |
-| The AI budget for this conversation is used up | Normal |
+| The AI credit limit for this conversation is used up | Normal |
 
 "Are you a bot?" is not a hand-over. The assistant says plainly that it is your business's AI assistant, offers for a person to join if the lead would like, and carries on. It hands over only if the lead then asks for a person. It never claims or implies to be human.
 

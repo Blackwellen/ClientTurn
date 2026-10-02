@@ -78,4 +78,4 @@ Pause and stop are never held for approval, even when requested by an AI assista
 ## Related
 
 - [Agents run 24/7](/help/ai-agents/agents-run-24-7)
-- [AI budgets and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)
+- [AI credits and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)

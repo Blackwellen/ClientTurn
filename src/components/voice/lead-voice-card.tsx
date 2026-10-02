@@ -9,6 +9,9 @@ import { hasRole, type BusinessRole } from "@/lib/auth/session";
 import { leadPageHref } from "@/lib/leads/detail-page";
 import { loadLeadCalls, loadVoiceSettingsView } from "@/lib/voice/ui-queries";
 import { CallCard } from "./call-card";
+// Voice call cost is admin-only (owner decision, 2026-09-30): dropped before
+// a card reaches the browser, whatever the viewer's role.
+import { withoutCallCost } from "@/lib/serving-costs/customer-views";
 import { CallWithAiButton } from "./call-with-ai-button";
 import { callDisabledReason } from "@/lib/voice/call-button-state";
 
@@ -116,7 +119,7 @@ export async function LeadVoiceCard({
                 )}
               </div>
             )}
-            {latest && latest.inProgress && <CallCard card={latest} leadId={lead.id} canCancel={canCancel} compact />}
+            {latest && latest.inProgress && <CallCard card={withoutCallCost(latest)} leadId={lead.id} canCancel={canCancel} compact />}
             <div>
               <p className="text-[12px] font-medium text-content-muted">History</p>
               <ul className="mt-1.5 divide-y divide-line-subtle">
@@ -188,7 +191,7 @@ export async function LeadCallsTimeline({
         <span className="font-normal text-content-muted">({calls.data.length})</span>
       </h3>
       {calls.data.map((card) => (
-        <CallCard key={card.id} card={card} leadId={leadId} canCancel={canCancel} />
+        <CallCard key={card.id} card={withoutCallCost(card)} leadId={leadId} canCancel={canCancel} />
       ))}
     </section>
   );

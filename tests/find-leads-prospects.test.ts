@@ -62,7 +62,7 @@ import {
 function recorder() {
   const calls: { op: string; args: unknown[] }[] = [];
   const q: Record<string, (...args: unknown[]) => unknown> = {};
-  for (const op of ["eq", "in", "or", "gte", "lte", "ilike", "not", "is", "contains"]) {
+  for (const op of ["eq", "neq", "in", "or", "gte", "lte", "ilike", "not", "is", "contains"]) {
     q[op] = (...args: unknown[]) => {
       calls.push({ op, args });
       return q;
@@ -133,6 +133,7 @@ test("company filters are applied against the embedded company, not the prospect
   applyProspectFilters(
     q,
     parseProspectFilters({ industry: "Roofing", size_band: "50-200", location: "Poole" }),
+    { liveCampaignIds: [] },
   );
 
   const columns = calls.filter((call) => call.op === "in").map((call) => call.args[0]);
@@ -143,7 +144,7 @@ test("company filters are applied against the embedded company, not the prospect
 
 test("a search term cannot inject additional PostgREST predicates", () => {
   const { q, calls } = recorder();
-  applyProspectFilters(q, parseProspectFilters({ q: "acme,status.eq.APPROVED" }));
+  applyProspectFilters(q, parseProspectFilters({ q: "acme,status.eq.APPROVED" }), { liveCampaignIds: [] });
 
   const or = calls.find((call) => call.op === "or");
   assert.ok(or, "search should reach the builder");
@@ -404,8 +405,6 @@ function campaign(overrides: Partial<CampaignRow> = {}): CampaignRow {
     minimumGrade: "B",
     priority: 100,
     audience: { segment: null, locations: [], radiusMiles: null },
-    budgetCapMinor: 50_000,
-    budgetSpentMinor: 21_000,
     budgetPercent: 42,
     hasBudgetCap: true,
     ownerId: "u1",
@@ -502,10 +501,8 @@ test("an uncapped campaign has no budget percentage rather than zero", () => {
   const uncapped = campaign({
     hasBudgetCap: false,
     budgetPercent: null,
-    budgetCapMinor: null,
   });
   assert.equal(uncapped.budgetPercent, null);
-  assert.equal(uncapped.budgetCapMinor, null);
   assert.equal(
     complianceSummary({ campaigns: [uncapped], hasSender: true }).ok,
     true,

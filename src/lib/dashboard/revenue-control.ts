@@ -1,10 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResolvedRange } from "@/lib/dates";
-import { getEntitlements } from "@/lib/billing/entitlements";
-import { monthStart, USD_TO_GBP } from "@/lib/ai/budget";
+import { getCreditStatus, type CreditStatus } from "@/lib/billing/token-service";
 import {
   assembleRevenueFunnel,
   type RevenueFunnelKey,
@@ -46,7 +44,7 @@ export type RevenueControlData = {
         attention: string[];
       }
   >;
-  aiBudget: CardState<AiBudgetSnapshot>;
+  aiBudget: CardState<AiCreditSnapshot>;
   compliance: CardState<{
     reviewContactability: number;
     openMergeCandidates: number;
@@ -288,13 +286,7 @@ export async function getRevenueControl(
       };
     }),
 
-    card("AI budget", () =>
-      loadAiBudget(
-        createAdminClient() as unknown as Untyped,
-        businessId,
-        new Date(now),
-      ),
-    ),
+    card("AI credits", () => loadAiCredits(businessId)),
 
     card("Compliance", async () => {
       const [review, merges] = await Promise.all([
@@ -402,77 +394,13 @@ export async function countRevenueFunnel(
   };
 }
 
-export type AiBudgetSnapshot = {
-  spentGbp: number;
-  ceilingGbp: number | null;
-  ceilingSource: "workspace" | "plan" | "emergency" | null;
-};
-
 /**
- * Month-to-date AI spend against the ceiling that binds first. Service-role
- * client only: ai_budgets platform rows and ai_spend_snapshot are server-side.
+ * AI credits this month (owner decision, 2026-09-30: customers see AI usage in
+ * AI credits only, never money or model tokens). Read from the credit
+ * allowance ledger; the £ ceilings stay in Admin.
  */
-export async function loadAiBudget(
-  admin: Untyped,
-  businessId: string,
-  now: Date,
-): Promise<AiBudgetSnapshot> {
-  const [budgets, snapshot, entitlements] = await Promise.all([
-    admin
-      .from("ai_budgets")
-      .select("scope, business_id, plan_key, ceiling_minor")
-      .eq("enabled", true)
-      .in("scope", ["WORKSPACE_MONTH", "PLAN", "EMERGENCY"])
-      .or(`business_id.is.null,business_id.eq.${businessId}`),
-    admin.rpc("ai_spend_snapshot", {
-      target_business_id: businessId,
-      target_lead_id: null,
-      since: monthStart(now).toISOString(),
-    }),
-    getEntitlements(businessId).catch(() => null),
-  ]);
-  check(budgets);
-  if (snapshot.error) throw new Error(snapshot.error.message);
-  const row = ((Array.isArray(snapshot.data)
-    ? snapshot.data[0]
-    : snapshot.data) ?? {}) as {
-    workspace_cost_usd?: number | string;
-  };
-  const spentGbp = (Number(row.workspace_cost_usd) || 0) * USD_TO_GBP;
+export type AiCreditSnapshot = CreditStatus;
 
-  const rows = (budgets.data ?? []) as {
-    scope: string;
-    business_id: string | null;
-    plan_key: string | null;
-    ceiling_minor: number | string | null;
-  }[];
-  const pick = (scope: string, plan?: string | null) => {
-    const matching = rows.filter(
-      (r) =>
-        r.scope === scope &&
-        (scope !== "PLAN" || r.plan_key === plan) &&
-        r.ceiling_minor !== null,
-    );
-    // A workspace's own row overrides the platform default of the same scope.
-    const chosen =
-      matching.find((r) => r.business_id !== null) ??
-      matching.find((r) => r.business_id === null);
-    return chosen ? Number(chosen.ceiling_minor) / 100 : null;
-  };
-  const candidates: [number | null, "workspace" | "plan" | "emergency"][] = [
-    [pick("WORKSPACE_MONTH"), "workspace"],
-    [entitlements ? pick("PLAN", entitlements.plan) : null, "plan"],
-    [pick("EMERGENCY"), "emergency"],
-  ];
-  // The ceiling that binds first is the one to show.
-  const binding = candidates
-    .filter(
-      (c): c is [number, "workspace" | "plan" | "emergency"] => c[0] !== null,
-    )
-    .sort((a, b) => a[0] - b[0])[0];
-  return {
-    spentGbp,
-    ceilingGbp: binding ? binding[0] : null,
-    ceilingSource: binding ? binding[1] : null,
-  };
+export async function loadAiCredits(businessId: string): Promise<AiCreditSnapshot> {
+  return getCreditStatus(businessId);
 }

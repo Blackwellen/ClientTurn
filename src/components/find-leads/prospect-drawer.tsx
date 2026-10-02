@@ -41,7 +41,6 @@ import {
   suppressProspectAction,
 } from "@/lib/find-leads/prospect-actions";
 import { addProspectWebsiteAction } from "@/lib/find-leads/linkedin-import-actions";
-import { formatMinor } from "@/lib/find-leads/plan";
 import { approvalBlockedReason } from "@/lib/find-leads/prospect-approval";
 import type { ResearchSummary } from "@/lib/find-leads/server/research-summary";
 import { eligibilityLabel, eligibilityTone, relationshipLabel } from "@/lib/policy/types";
@@ -1112,9 +1111,7 @@ function ResearchControls({ detail }: { detail: ProspectDetail }) {
           <h3 className="text-[13px] font-semibold text-content">Research</h3>
           <p className="mt-0.5 text-[12px] text-content-muted">
             {state.allowed
-              ? `Re-checks this company with an enrichment provider. ${formatMinor(
-                  state.estimatedCostMinor,
-                )} of your budget, once per prospect per day.`
+              ? "Re-checks this company's details. Once per prospect per day."
               : state.reason}
           </p>
           {state.allowed && (
@@ -1163,9 +1160,7 @@ function ResearchControls({ detail }: { detail: ProspectDetail }) {
         open={confirmRefresh}
         onClose={() => setConfirmRefresh(false)}
         title="Refresh research for this prospect?"
-        scope={`This calls an enrichment provider and uses about ${formatMinor(
-          state.estimatedCostMinor,
-        )} of your sourcing budget.`}
+        scope="This re-checks the company's details and counts towards your workspace's daily refresh limit."
         consequence="Only fields the provider actually returns are updated. A blank answer never overwrites something you already know. It can be run again tomorrow."
         confirmLabel="Refresh research"
         loading={pending}

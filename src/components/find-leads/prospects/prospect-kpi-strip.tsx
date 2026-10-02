@@ -1,7 +1,8 @@
 import * as React from "react";
-import { BarChart3, Mail, Send, Target, TrendingUp, Users } from "lucide-react";
+import { BarChart3, Info, Mail, Send, Target, TrendingUp, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { ProspectKpi } from "@/lib/prospects/queries";
+import { Tooltip } from "@/components/ui/tooltip";
+import type { ProspectKpi } from "@/lib/prospects/prospect-counts";
 
 /**
  * The five counters above the Prospects inbox (V4 §12.2).
@@ -10,6 +11,9 @@ import type { ProspectKpi } from "@/lib/prospects/queries";
  * A trend is rendered only when the loader supplied one: "Ready for outreach"
  * is a state with no entry timestamp, so it has no honest previous-period
  * figure and shows nothing rather than a fabricated percentage.
+ *
+ * Each value and its tooltip come from `lib/prospects/prospect-counts.ts`, the
+ * same definitions the quick-filter chips count by.
  */
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -54,9 +58,20 @@ export function ProspectKpiStrip({
                 <Icon className="size-[18px]" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-[12.5px] font-medium text-content-secondary">
-                  {kpi.label}
-                </p>
+                <div className="flex min-w-0 items-start gap-1">
+                  <p className="min-w-0 text-[12.5px] font-medium leading-snug text-content-secondary">
+                    {kpi.label}
+                  </p>
+                  <Tooltip content={kpi.definition}>
+                    <button
+                      type="button"
+                      aria-label={`What counts as ${kpi.label.toLowerCase()}`}
+                      className="mt-0.5 inline-flex shrink-0 rounded text-content-subtle hover:text-content-secondary focus-visible:outline-2 focus-visible:outline-content-accent"
+                    >
+                      <Info className="size-3.5" aria-hidden />
+                    </button>
+                  </Tooltip>
+                </div>
                 <p className="mt-0.5 text-[24px] font-semibold leading-tight tabular-nums text-content">
                   {kpi.value.toLocaleString("en-GB")}
                 </p>

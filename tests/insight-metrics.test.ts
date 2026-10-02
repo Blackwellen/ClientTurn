@@ -7,6 +7,7 @@ import {
   formatRate,
   gatedRate,
   MIN_SAMPLE,
+  toCustomerVoiceAnalytics,
   type QuoteFact,
   type VoiceCallFact,
 } from "../src/lib/analytics/insight-metrics.ts";
@@ -165,6 +166,13 @@ describe("voice analytics", () => {
     assert.equal(noCost.costPerOutcome.perBooking, null);
   });
 
+  test("the customer view drops every voice cost and shows billed minutes", () => {
+    const view = toCustomerVoiceAnalytics(computeVoiceAnalytics([call(1, { bookedAfter: true })], []), 185);
+    assert.equal(view.minutesUsed, 3);
+    assert.ok(!("costPerOutcome" in view));
+    assert.doesNotMatch(JSON.stringify(view), /cost|Gbp/i);
+  });
+
   test("objections by type with a resolved share", () => {
     const a = computeVoiceAnalytics([call(1)], [
       { key: "price.too_high", handledOutcome: "RESOLVED", channel: "VOICE" },
@@ -177,7 +185,7 @@ describe("voice analytics", () => {
 });
 
 describe("ROI card: real data only", () => {
-  const base = { voiceSpendGbp: 115, qualified: 4, booked: 2, quotes: 1, sales: 1, model: "position" };
+  const base = { qualified: 4, booked: 2, quotes: 1, sales: 1, model: "position" };
 
   test("no minutes and no revenue: empty state with a reason", () => {
     const card = buildRoiCard({ ...base, voiceMinutes: 0, attributedRevenueMinor: {} });
@@ -194,17 +202,14 @@ describe("ROI card: real data only", () => {
     assert.equal(buildRoiCard({ ...base, voiceMinutes: 0, attributedRevenueMinor: { GBP: 50_000 } }).status, "empty");
   });
 
-  test("with both, the chain renders and the multiple is revenue over spend", () => {
+  test("with both, the chain renders in minutes and outcomes, with no voice money", () => {
     const card = buildRoiCard({ ...base, voiceMinutes: 42, attributedRevenueMinor: { GBP: 115_000 } });
     assert.equal(card.status, "ready");
     if (card.status === "ready") {
-      assert.equal(card.returnMultiple, 10);
-      assert.deepEqual(card.steps.map((s) => s.key), ["minutes", "spend", "qualified", "booked", "quotes", "sales", "revenue"]);
+      assert.deepEqual(card.steps.map((s) => s.key), ["minutes", "qualified", "booked", "quotes", "sales", "revenue"]);
+      // Voice spend and a return multiple are admin-only (owner decision 2026-09-30).
+      assert.ok(!("returnMultiple" in card));
+      assert.doesNotMatch(JSON.stringify(card.steps.filter((s) => s.key !== "revenue")), /£|spend|cost/i);
     }
-  });
-
-  test("unknown spend gives no multiple rather than an invented one", () => {
-    const card = buildRoiCard({ ...base, voiceSpendGbp: null, voiceMinutes: 42, attributedRevenueMinor: { GBP: 115_000 } });
-    assert.equal(card.status === "ready" && card.returnMultiple, null);
   });
 });

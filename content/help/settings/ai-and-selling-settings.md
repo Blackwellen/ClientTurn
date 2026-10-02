@@ -4,7 +4,7 @@ summary: Set how much the assistant researches and how readily it asks leads to 
 category: settings
 keywords: [what the ai may do, ai permissions, draft quotes, send quotes, offer discounts, discount limits, margin floor, approval, ai strategy, research depth, risk tolerance, ai budget, spend limit, sales behaviour, business type, archetype, sic 2026, sales motion, qualification depth, preferred methods, brand voice, forbidden phrases, example messages, legitimate interests assessment, lia, objections, reassurance, guarantees, case studies, try it]
 order: 40
-updated: 2026-09-28
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/settings/ai-and-selling-settings-1.png
     alt: "The AI strategy card with automation level, research depth and risk tolerance"
@@ -24,7 +24,7 @@ Whatever you choose here, the hard rules always apply: suppression and opt-outs,
 ## AI strategy
 
 - **Automation level** is shown here for reference. You change it, with the channels and handover rules, in **Settings → Workspace → AI assistant**. See [Workspace settings](/help/settings/workspace-settings).
-- **Research depth:** **Light** runs AI research (search planning, research summaries, reading company websites) on the cheapest AI tier allowed. **Standard** uses its usual tier. **Deep** may use one tier higher, only when your AI budgets and the lead's value allow it.
+- **Research depth:** **Light** runs AI research (search planning, research summaries, reading company websites) on the cheapest AI tier allowed. **Standard** uses its usual tier. **Deep** may use one tier higher, only when your AI credit limits and the lead's value allow it.
 - **Risk tolerance:** **Cautious** asks the lead to clarify whenever the assistant is not clearly confident it read the reply correctly. **Balanced** (the default) asks the lead to clarify when a reply is unclear, and passes the conversation to a person only as a last resort. **Assertive** keeps the same safety floor as Balanced: it never acts on a reply it could not read, and the hard rules still hand over. Confidence alone never hands a conversation over: after two unclear replies on the same point, a person takes it. See [The handoff brief](/help/booking-and-sales/handoff-brief).
 
 Choose **Save strategy**.
@@ -56,20 +56,22 @@ The assistant never works out a price itself. Every figure it gives comes from y
 
 AI quoting is included on every paid plan with AI assist. If it isn't on yours, the card says so. Choose **Save permissions**.
 
-## AI budget
+## AI credits
 
-Limits on what AI may cost. When a limit is reached, the AI step is skipped or handed to a person. Nothing is sent that would not have been sent anyway.
+AI use is counted in **AI credits**, ClientTurn's own unit. The card shows the credits used this period out of what you have (included plus top-ups) and the percentage, your plan's included credits and renewal date, and your top-up balance. It warns at 80% and 95%, and says when credits are used up.
+
+Beneath are your own limits, in AI credits. When a limit is reached, the AI step is skipped or handed to a person. Nothing is sent that would not have been sent anyway.
 
 | Limit | What it caps |
 |---|---|
-| Workspace monthly ceiling | AI cost for this workspace in a calendar month. Your plan's own ceiling still applies |
-| Per lead | AI cost on one lead over its lifetime |
-| Before a reply | AI cost on a lead before it has replied. Kept low on purpose |
-| Per opportunity | AI cost on a lead once it is an opportunity |
+| Workspace monthly limit | AI credits this workspace may use in a calendar month. Your plan's allowance still applies |
+| Per lead | AI credits one lead may use over its lifetime |
+| Before a reply | AI credits a lead may use before it has replied. Kept low on purpose |
+| Per opportunity | AI credits a lead may use once it is an opportunity |
 
-Each limit shows its default. You can lower a limit but not raise it above the platform default, and **Before a reply** cannot be more than **Per lead**. Clearing a limit puts the default back. The card also shows **Spent this month** and the **Platform hard stop**, which always applies. Choose **Save limits**.
+Each limit shows its default. You can lower a limit but not raise it above the default, and **Before a reply** cannot be more than **Per lead**. Clearing a limit puts the default back. Choose **Save limits**.
 
-This is separate from your AI token allowance. See [Usage and limits](/help/billing/usage-and-limits).
+To buy more AI credits, see [Top-up credits](/help/billing/top-up-credits) and [Usage and limits](/help/billing/usage-and-limits).
 
 ## Sales behaviour
 
@@ -104,7 +106,7 @@ The objections your business hears most and your own best answers. The assistant
 
 Under **Reassurance you stand behind**, add service levels, guarantees, case studies, testimonials you own and response-time commitments. The assistant quotes them as written, or not at all.
 
-**Try it** runs a message through the same matching, plan and checks the assistant uses and shows an example reply. It uses no AI tokens. See [Objection handling](/help/sales-knowledge/objection-handling).
+**Try it** runs a message through the same matching, plan and checks the assistant uses and shows an example reply. It uses no AI credits. See [Objection handling](/help/sales-knowledge/objection-handling).
 
 ## Competitors
 

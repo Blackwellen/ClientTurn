@@ -29,7 +29,7 @@ import {
   kmToMiles,
   milesToKm,
   signalsLabel,
-  type SearchPlan,
+  type CustomerSearchPlan,
 } from "@/lib/find-leads/plan";
 import { linkedinFilterLines } from "@/lib/find-leads/linkedin-filters";
 import type { SignalFeed } from "@/lib/find-leads/signals";
@@ -86,8 +86,8 @@ export function StructuredPlanPanel({
   liveFeeds = [],
   sessionId = null,
 }: {
-  plan: SearchPlan;
-  onChange: (next: SearchPlan) => void;
+  plan: CustomerSearchPlan;
+  onChange: (next: CustomerSearchPlan) => void;
   disabled: boolean;
   /** Free signal feeds live for this workspace; decides what is offered. */
   liveFeeds?: SignalFeed[];
@@ -250,7 +250,7 @@ export function StructuredPlanPanel({
   );
 }
 
-function companyValue(plan: SearchPlan): string {
+function companyValue(plan: CustomerSearchPlan): string {
   const { minEmployees: min, maxEmployees: max, organizationTypes } = plan.company;
   const size =
     min !== null && max !== null
@@ -280,14 +280,14 @@ function PlanEditDialog({
   onSave,
 }: {
   rowKey: RowKey | null;
-  plan: SearchPlan;
+  plan: CustomerSearchPlan;
   liveFeeds: SignalFeed[];
   sessionId: string | null;
   canImport: boolean;
   onClose: () => void;
-  onSave: (plan: SearchPlan) => void;
+  onSave: (plan: CustomerSearchPlan) => void;
 }) {
-  const [draft, setDraft] = React.useState<SearchPlan>(plan);
+  const [draft, setDraft] = React.useState<CustomerSearchPlan>(plan);
 
   const [previous, setPrevious] = React.useState({ rowKey, plan });
   if (previous.rowKey !== rowKey || previous.plan !== plan) {
@@ -546,7 +546,7 @@ function PlanEditDialog({
               id="minimum-grade"
               value={draft.minimumGrade}
               onChange={(event) =>
-                setDraft({ ...draft, minimumGrade: event.target.value as SearchPlan["minimumGrade"] })
+                setDraft({ ...draft, minimumGrade: event.target.value as CustomerSearchPlan["minimumGrade"] })
               }
             >
               {GRADES.map((grade) => (
@@ -587,7 +587,7 @@ function PlanEditDialog({
               id="review-mode"
               value={draft.reviewMode}
               onChange={(event) =>
-                setDraft({ ...draft, reviewMode: event.target.value as SearchPlan["reviewMode"] })
+                setDraft({ ...draft, reviewMode: event.target.value as CustomerSearchPlan["reviewMode"] })
               }
             >
               <option value="HUMAN_REVIEW">{REVIEW_MODE_LABELS.HUMAN_REVIEW}</option>
@@ -610,7 +610,7 @@ function PlanEditDialog({
               onChange={(event) =>
                 setDraft({
                   ...draft,
-                  conversionGoal: event.target.value as SearchPlan["conversionGoal"],
+                  conversionGoal: event.target.value as CustomerSearchPlan["conversionGoal"],
                 })
               }
             >

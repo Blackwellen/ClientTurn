@@ -620,6 +620,17 @@ registerLeadSourcePoller("meta", {
         typeof p.id === "string" && typeof p.access_token === "string",
       );
     } else {
+      // A dead token (OAuthException 190: expired, revoked, or the session
+      // invalidated by a password change) also fails /me/accounts. Read as
+      // "this is a page token", it fell through to the forms loop, every form
+      // call failed and was skipped, and the poll reported success: the
+      // owner's Meta connection showed Healthy while dead (2026-10-02). Fail
+      // the poll instead; lead-source-poll then asks Meta (debug_token) and
+      // flags Reconnect only if Meta confirms the token is invalid.
+      const failure = (await pagesResponse.clone().json().catch(() => null)) as { error?: { code?: number } } | null;
+      if (failure?.error?.code === 190) {
+        throw new Error("Meta refused the stored access token (OAuthException 190).");
+      }
       // Stored token is a page token — /me/accounts is not available.
       // Read the pageId we already resolved at connect time and use the token directly.
       const { data: intRow } = await admin

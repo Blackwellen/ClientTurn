@@ -12,6 +12,7 @@ import { PlanLimitState } from "@/components/ui/feedback";
 import { PermissionDenied } from "@/components/settings/notices";
 import { SectionLoadError } from "@/components/settings/ai-selling/section-load-error";
 import { VoiceSettingsPanels } from "@/components/settings/voice/voice-settings-panels";
+import { Notice } from "@/components/settings/voice/voice-shared";
 
 /**
  * Settings -> Voice (voice P2, gap map §44). One Settings section, not a new
@@ -29,7 +30,7 @@ import { VoiceSettingsPanels } from "@/components/settings/voice/voice-settings-
  * paused by ClientTurn, read-only for members and viewers, and empty states
  * inside the panels (no number yet, nothing in the timeline).
  */
-export async function VoiceSection({ panel }: { panel?: string | string[] }) {
+export async function VoiceSection({ panel, voicepack }: { panel?: string | string[]; voicepack?: string | string[] }) {
   const workspace = await requireWorkspace();
   const href = "/app/settings?section=voice";
 
@@ -83,7 +84,19 @@ export async function VoiceSection({ panel }: { panel?: string | string[] }) {
     );
   }
 
+  const packResult = Array.isArray(voicepack) ? voicepack[0] : voicepack;
   return (
+    <div className="space-y-4">
+      {packResult === "success" && (
+        <Notice tone="success" role="status">
+          Payment received. The minutes are added as soon as Stripe confirms it, usually within a minute; refresh to see them.
+        </Notice>
+      )}
+      {packResult === "cancelled" && (
+        <Notice tone="neutral" role="status">
+          Checkout was cancelled. Nothing was charged.
+        </Notice>
+      )}
     <VoiceSettingsPanels
       view={data}
       purchase={purchase}
@@ -93,5 +106,6 @@ export async function VoiceSection({ panel }: { panel?: string | string[] }) {
       trialNote={VOICE_TRIAL_NOTE}
       isOwner={hasRole(workspace.role, "owner")}
     />
+    </div>
   );
 }

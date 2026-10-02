@@ -176,7 +176,7 @@ describe("the Qualification policy card covers §20", () => {
     ["forbidden questions, picked from the library", /\["forbidden", "Never ask"[\s\S]*add a question from the library/],
     ["custom questions and the question editor", /\["custom", "Also ask"[\s\S]*\/app\/follow-up\?view=qualification/],
     ["unknown question keys are refused", /is not in the question library/],
-    ["AI budget link", /AI budget/],
+    ["AI credits link", /AI credits/],
     ["engine mode", /Engine mode/],
     ["offer profile", /OfferProfileSummary/],
     ["plan-limit state", /PlanLimitState/],

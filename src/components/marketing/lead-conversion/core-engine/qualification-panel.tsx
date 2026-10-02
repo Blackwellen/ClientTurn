@@ -86,7 +86,7 @@ export function QualificationPanel() {
             </dl>
             <div className="lcp-sample-extra">
               <small>Additional information</small>
-              <p>Looking for a 4 bedroom property…</p>
+              <p>We need a new site with a client login area…</p>
             </div>
             <div
               className="lcp-result"

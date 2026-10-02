@@ -160,7 +160,12 @@ describe("wiring", () => {
 
   test("direct refresh callers pass the integration id", () => {
     assert.match(read("src/lib/integrations/providers/zoho-crm.ts"), /refreshAccessToken\([^)]*\{ integrationId \}\)/);
-    assert.match(read("src/lib/integrations/providers/salesforce.ts"), /refreshAccessToken\([^)]*\{ integrationId \}\)/);
+  });
+
+  test("Salesforce refreshes through the shared accessor (compare-and-swap), including after a 401", () => {
+    const sf = read("src/lib/integrations/providers/salesforce.ts");
+    assert.doesNotMatch(sf, /refreshAccessToken\(/, "no direct refresh that bypasses the compare-and-swap");
+    assert.match(sf, /getLiveAccessToken\(integrationId, oauthConfig, \{ \.\.\.policy, rejectedAccessToken: accessToken \}\)/);
   });
 
   test("the app shell renders a Reconnect banner", () => {

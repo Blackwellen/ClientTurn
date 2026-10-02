@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { formatTokens } from "@/lib/billing/tokens";
+import { formatCreditAmount } from "@/lib/billing/tokens";
 import { whatsappCoverageText, WHATSAPP_TOKEN_RATE_TEXT } from "@/lib/billing/whatsapp-tokens";
 import { priceText, type PassiveAddOns } from "@/lib/billing/upsell-moments";
 import { setUpgradeSuggestionsAction } from "@/lib/billing/upsell-actions";
@@ -51,7 +51,7 @@ export function UpsellBillingCard({
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-content">Add more when you need it</h2>
           <p className="mt-0.5 text-[13px] text-content-muted">
-            AI token packs, WhatsApp tokens and plans. No overage: nothing is charged beyond what you choose to buy.
+            AI credit packs, WhatsApp tokens and plans. No overage: nothing is charged beyond what you choose to buy.
           </p>
         </div>
       </CardHeader>
@@ -59,16 +59,16 @@ export function UpsellBillingCard({
         {on && addOns ? (
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-line p-3">
-              <p className="font-semibold text-content">AI token packs</p>
+              <p className="font-semibold text-content">AI credit packs</p>
               <ul className="mt-1 space-y-0.5">
                 {addOns.tokenPacks.map((pack) => (
                   <li key={pack.key}>
-                    {formatTokens(pack.tokens)} for {GBP.format(pack.amountMinor / 100)}
+                    {formatCreditAmount(pack.tokens)} for {GBP.format(pack.amountMinor / 100)}
                   </li>
                 ))}
               </ul>
               <Link href="#ai-tokens" className="mt-2 inline-block text-content-accent hover:underline">
-                Buy AI tokens
+                Buy AI credits
               </Link>
             </div>
             <div className="rounded-lg border border-line p-3">
@@ -99,8 +99,8 @@ export function UpsellBillingCard({
               {addOns.next?.kind === "upgrade" ? (
                 <p className="mt-1">
                   {addOns.next.plan.name}: {NUMBER.format(addOns.next.plan.leadLimit)} new leads a month,{" "}
-                  {NUMBER.format(addOns.next.plan.userLimit)} users, {formatTokens(addOns.next.plan.aiTokenAllowance)} AI
-                  tokens, {priceText(addOns.next.plan, addOns.next.interval)}. Use the upgrade button in Plan above.
+                  {NUMBER.format(addOns.next.plan.userLimit)} users, {formatCreditAmount(addOns.next.plan.aiTokenAllowance)}
+                  , {priceText(addOns.next.plan, addOns.next.interval)}. Use the upgrade button in Plan above.
                 </p>
               ) : addOns.next?.kind === "contact_sales" ? (
                 <p className="mt-1">

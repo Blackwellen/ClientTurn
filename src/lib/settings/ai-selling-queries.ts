@@ -31,6 +31,7 @@ import {
   parseWorkspaceObjectionRows,
   type WorkspaceObjectionSet,
 } from "@/lib/sales-library/workspace-objections";
+import { creditLimitFromRow, platformDefaultCredits, type CeilingRow } from "@/lib/ai/credit-limits";
 
 /**
  * Reads behind Settings -> AI & selling and the `sales_settings.get`
@@ -224,60 +225,82 @@ export async function loadQualificationPolicyView(businessId: string, role: stri
 
 export type BudgetRowView = {
   scope: EditableBudgetScope;
-  /** The workspace's own ceiling, in pence; null = none set (default applies). */
-  workspaceMinor: number | null;
-  /** The platform default for this scope, in pence; null = no default. */
-  platformMinor: number | null;
+  /** The workspace's own limit in AI credits; null = none set (default applies). */
+  workspaceCredits: number | null;
+  /** The platform default for this scope in AI credits; null = no default. */
+  platformCredits: number | null;
 };
 
-export type BudgetView = {
-  rows: BudgetRowView[];
-  plan: { key: string; minor: number | null };
-  emergencyMinor: number | null;
+/**
+ * The customer's AI limits, in AI credits only. The plan's £ ceiling and the
+ * platform's £ hard stop are admin-only (owner decision, 2026-09-30) and are
+ * not part of this view.
+ */
+export type BudgetView = { rows: BudgetRowView[] };
+
+type BudgetDbRow = {
+  scope: string;
+  business_id: string | null;
+  ceiling_minor: number | null;
+  ceiling_tokens: number | null;
+  enabled: boolean;
 };
 
-export async function loadBudgetView(businessId: string, planKey: string): Promise<BudgetView> {
+function ceiling(row: BudgetDbRow | undefined): CeilingRow | null {
+  return row ? { ceilingMinor: num(row.ceiling_minor), ceilingTokens: num(row.ceiling_tokens) } : null;
+}
+
+function num(value: unknown): number | null {
+  const n = typeof value === "string" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+async function readEditableBudgetRows(businessId: string | null): Promise<BudgetDbRow[]> {
   const db = createAdminClient();
-  const { data, error } = await db
+  let query = db
     .from("ai_budgets")
-    .select("scope, business_id, plan_key, ceiling_minor, enabled")
-    .or(`business_id.is.null,business_id.eq.${businessId}`)
-    .in("scope", [...EDITABLE_BUDGET_SCOPES, "PLAN", "EMERGENCY"]);
+    .select("scope, business_id, ceiling_minor, ceiling_tokens, enabled")
+    .in("scope", [...EDITABLE_BUDGET_SCOPES]);
+  query = businessId === null ? query.is("business_id", null) : query.or(`business_id.is.null,business_id.eq.${businessId}`);
+  const { data, error } = await query;
   if (error) throw new Error(`ai_budgets read: ${error.message}`);
+  return ((data ?? []) as BudgetDbRow[]).filter((row) => row.enabled);
+}
 
-  const rows = (data ?? []).filter((row) => row.enabled);
-  const platform = (scope: string, plan?: string) =>
-    rows.find((row) => row.business_id === null && row.scope === scope && (plan === undefined || row.plan_key === plan))
-      ?.ceiling_minor ?? null;
-  const own = (scope: string) =>
-    rows.find((row) => row.business_id === businessId && row.scope === scope)?.ceiling_minor ?? null;
-
+export async function loadBudgetView(businessId: string): Promise<BudgetView> {
+  const rows = await readEditableBudgetRows(businessId);
   return {
     rows: EDITABLE_BUDGET_SCOPES.map((scope) => ({
       scope,
-      workspaceMinor: own(scope),
-      platformMinor: platform(scope),
+      // A row saved in pounds before credits existed reads back as credits.
+      workspaceCredits: creditLimitFromRow(
+        ceiling(rows.find((row) => row.business_id === businessId && row.scope === scope)),
+      ),
+      platformCredits: platformDefaultCredits(
+        scope,
+        ceiling(rows.find((row) => row.business_id === null && row.scope === scope)),
+      ),
     })),
-    plan: { key: planKey, minor: platform("PLAN", planKey) },
-    emergencyMinor: platform("EMERGENCY"),
   };
 }
 
-/** The platform default per editable scope, for the budget operation's checks. */
-export async function platformBudgetDefaults(): Promise<Partial<Record<EditableBudgetScope, number | null>>> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from("ai_budgets")
-    .select("scope, ceiling_minor")
-    .is("business_id", null)
-    .eq("enabled", true)
-    .in("scope", [...EDITABLE_BUDGET_SCOPES]);
-  if (error) throw new Error(`ai_budgets defaults read: ${error.message}`);
-  const out: Partial<Record<EditableBudgetScope, number | null>> = {};
-  for (const row of data ?? []) {
-    out[row.scope as EditableBudgetScope] = row.ceiling_minor;
+/**
+ * The platform default per editable scope, for the limit operation's checks:
+ * in credits, plus the raw £ default the per-lead rows keep as a backstop.
+ */
+export async function platformBudgetDefaults(): Promise<{
+  credits: Partial<Record<EditableBudgetScope, number | null>>;
+  minor: Partial<Record<EditableBudgetScope, number | null>>;
+}> {
+  const rows = await readEditableBudgetRows(null);
+  const credits: Partial<Record<EditableBudgetScope, number | null>> = {};
+  const minor: Partial<Record<EditableBudgetScope, number | null>> = {};
+  for (const scope of EDITABLE_BUDGET_SCOPES) {
+    const row = rows.find((r) => r.scope === scope);
+    credits[scope] = platformDefaultCredits(scope, ceiling(row));
+    minor[scope] = row ? num(row.ceiling_minor) : null;
   }
-  return out;
+  return { credits, minor };
 }
 
 /* --------------------------------------------------------------------- LIA */

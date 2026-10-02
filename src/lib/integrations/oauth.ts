@@ -5,6 +5,7 @@ import { serverEnv } from "@/lib/env";
 import type { ProviderType } from "./catalog";
 import { enqueue } from "@/lib/jobs/queue";
 import { OAuthRefreshError, RECONNECT_REQUIRED } from "./oauth-health";
+import { liveAccessToken, type LiveTokenOptions, type StoredSecret, type TokenRefreshPorts } from "./token-refresh-core";
 
 export { OAuthRefreshError } from "./oauth-health";
 
@@ -372,46 +373,70 @@ export async function storeConnection(params: {
 
 /**
  * Returns a live access token for a connected integration, refreshing it first
- * if it is expired or about to expire. Every job handler that calls a provider
- * goes through this rather than reading `access_token` directly, so a refresh
- * failure is caught in one place and surfaces as ACTION_REQUIRED.
+ * if it expires within `windowMs` (default five minutes). Every path that calls
+ * a provider goes through this rather than reading `access_token` directly, so
+ * a refresh failure is caught in one place and surfaces as ACTION_REQUIRED.
+ *
+ * The rule itself (compare-and-swap on the refresh token, refresh-token
+ * rotation, and reconnect only on a refused grant that nobody else has
+ * replaced) is `liveAccessToken` in token-refresh-core.ts.
  */
 export async function getLiveAccessToken(
   integrationId: string,
   config: OAuthConfig,
+  options: LiveTokenOptions = {},
 ): Promise<string> {
+  const result = await liveAccessToken(tokenRefreshPorts(config), integrationId, options);
+  return result.accessToken;
+}
+
+/**
+ * Marks a connection flagged "Reconnect" healthy again after the provider
+ * accepted a refresh (the sweep's recovery pass). Only a reconnect flag is
+ * cleared; a scope or configuration problem stays until it is fixed.
+ */
+export async function clearReconnectFlag(integrationId: string): Promise<boolean> {
   const admin = createAdminClient();
+  const { data } = await admin
+    .from("integrations")
+    .update({ status: "HEALTHY", last_error_at: null, last_error_code: null, last_error_message: null })
+    .eq("id", integrationId)
+    .eq("status", "ACTION_REQUIRED")
+    .eq("last_error_code", RECONNECT_REQUIRED.code)
+    .select("id");
+  return (data ?? []).length > 0;
+}
 
-  const { data: secret } = await admin
-    .from("integration_secrets")
-    .select("access_token, refresh_token, token_expires_at")
-    .eq("integration_id", integrationId)
-    .maybeSingle();
-
-  if (!secret?.access_token) {
-    throw new Error("No stored credential for this integration.");
-  }
-
-  const expiresAt = secret.token_expires_at ? new Date(secret.token_expires_at) : null;
-  const needsRefresh = expiresAt !== null && expiresAt.getTime() - Date.now() < 60_000;
-
-  if (!needsRefresh || !secret.refresh_token) {
-    return secret.access_token;
-  }
-
-  // A dead grant flips the connection to Reconnect inside refreshAccessToken.
-  const refreshed = await refreshAccessToken(config, secret.refresh_token, { integrationId });
-
-  await admin
-    .from("integration_secrets")
-    .update({
-      access_token: refreshed.accessToken,
-      refresh_token: refreshed.refreshToken,
-      token_expires_at: refreshed.expiresInSeconds
-        ? new Date(Date.now() + refreshed.expiresInSeconds * 1000).toISOString()
+/** The Supabase and provider wiring of `liveAccessToken`. */
+export function tokenRefreshPorts(config: OAuthConfig): TokenRefreshPorts {
+  const admin = createAdminClient();
+  return {
+    now: () => Date.now(),
+    async read(integrationId) {
+      const { data } = await admin
+        .from("integration_secrets")
+        .select("access_token, refresh_token, token_expires_at")
+        .eq("integration_id", integrationId)
+        .maybeSingle();
+      return (data as StoredSecret | null) ?? null;
+    },
+    // No integrationId here: the core decides whether a refused grant really
+    // means "reconnect" (it may be a rotation race another worker won).
+    refresh: (refreshToken) => refreshAccessToken(config, refreshToken),
+    classify: (error) =>
+      error instanceof OAuthRefreshError
+        ? { needsReconnect: error.needsReconnect, oauthError: error.oauthError, status: error.status }
         : null,
-    })
-    .eq("integration_id", integrationId);
-
-  return refreshed.accessToken;
+    async swap(integrationId, expectedRefreshToken, next) {
+      const { data, error } = await admin
+        .from("integration_secrets")
+        .update(next)
+        .eq("integration_id", integrationId)
+        .eq("refresh_token", expectedRefreshToken)
+        .select("integration_id");
+      if (error) throw new Error(`Could not store the refreshed token: ${error.message}`);
+      return (data ?? []).length > 0;
+    },
+    markReconnect: (integrationId, reason) => markReconnectRequired(integrationId, reason),
+  };
 }

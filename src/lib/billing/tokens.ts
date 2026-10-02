@@ -215,6 +215,90 @@ export function formatTokens(tokens: number): string {
   return String(Math.round(tokens));
 }
 
+// ------------------------------------------------------------- AI credits
+
+/**
+ * AI credits: the ONLY unit a customer sees for AI usage (owner decision,
+ * 2026-09-30: "internal site tokens like other sites", never model tokens and
+ * never money). The ledger (`ai_token_balances`, `ai_token_ledger`,
+ * `consume_ai_tokens`) still counts model tokens; every customer surface
+ * converts at this one fixed rate. 1 AI credit = 1,000 model tokens, so an
+ * assistant reply is about 2.75 credits and the Starter allowance is 1,000.
+ *
+ * Column names (`*_tokens`) are unchanged on purpose: this is a display unit.
+ */
+export const AI_CREDIT_UNIT = "AI credits";
+export const AI_TOKENS_PER_CREDIT = 1_000;
+
+/** Ledger tokens to credits (fractional; format with `formatCredits`). */
+export function tokensToCredits(tokens: number): number {
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  return tokens / AI_TOKENS_PER_CREDIT;
+}
+
+/** Whole credits to ledger tokens. */
+export function creditsToTokens(credits: number): number {
+  if (!Number.isFinite(credits) || credits <= 0) return 0;
+  return Math.round(credits * AI_TOKENS_PER_CREDIT);
+}
+
+/** Credits per assistant reply, for the "roughly N replies" line. */
+export const CREDITS_PER_REPLY = TOKENS_PER_CONVERSATION_TURN / AI_TOKENS_PER_CREDIT;
+
+/**
+ * 1234.5 -> "1,235"; 7.25 -> "7.3"; 0.04 -> "0.1" (anything used shows as at
+ * least 0.1, so a small call never reads as free); 0 -> "0".
+ */
+export function formatCredits(credits: number): string {
+  if (!Number.isFinite(credits) || credits <= 0) return "0";
+  if (credits < 10) {
+    const rounded = Math.max(Math.round(credits * 10) / 10, 0.1);
+    return rounded.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+  }
+  return Math.round(credits).toLocaleString("en-GB");
+}
+
+export type CreditSummary = {
+  /** The plan's included credits this period. */
+  includedCredits: number;
+  /** Bought credits still unspent (included credits are used first). */
+  topUpBalanceCredits: number;
+  usedCredits: number;
+  /** Included + bought this period: what "of Y" means. */
+  grantedCredits: number;
+  remainingCredits: number;
+  percentUsed: number;
+  state: TokenUsageState;
+  approximateRepliesLeft: number;
+};
+
+/** The customer view of a token balance: credits only, no model tokens. */
+export function summariseCredits(balance: TokenBalance): CreditSummary {
+  const summary = summariseTokens(balance);
+  const left = balance.includedTokens + balance.purchasedTokens - balance.usedTokens - balance.reservedTokens;
+  const topUpTokens = Math.max(Math.min(left, balance.purchasedTokens), 0);
+  return {
+    includedCredits: tokensToCredits(balance.includedTokens),
+    topUpBalanceCredits: tokensToCredits(topUpTokens),
+    usedCredits: tokensToCredits(summary.used),
+    grantedCredits: tokensToCredits(summary.granted),
+    remainingCredits: tokensToCredits(summary.remaining),
+    percentUsed: summary.percentUsed,
+    state: summary.state,
+    approximateRepliesLeft: summary.approximateTurnsLeft,
+  };
+}
+
+/** The dashboard tile: "AI credits this month: X of Y (Z%)". */
+export function creditTileText(summary: Pick<CreditSummary, "usedCredits" | "grantedCredits" | "percentUsed">): string {
+  return `${formatCredits(summary.usedCredits)} of ${formatCredits(summary.grantedCredits)} (${summary.percentUsed}%)`;
+}
+
+/** A pack or allowance in credits, e.g. "2,000 AI credits". */
+export function formatCreditAmount(tokens: number): string {
+  return `${formatCredits(tokensToCredits(tokens))} ${AI_CREDIT_UNIT}`;
+}
+
 export function formatPackPrice(pack: TokenPack): string {
   return `£${(pack.amountMinor / 100).toFixed(2)}`;
 }
@@ -225,4 +309,9 @@ export function formatPackPrice(pack: TokenPack): string {
  */
 export function tokensPerPound(pack: TokenPack): number {
   return pack.amountMinor === 0 ? 0 : Math.round(pack.tokens / (pack.amountMinor / 100));
+}
+
+/** Credits per £1 of pack price (a price, not a serving cost). */
+export function creditsPerPound(pack: TokenPack): number {
+  return Math.round(tokensToCredits(tokensPerPound(pack)));
 }

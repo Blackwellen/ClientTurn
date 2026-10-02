@@ -49,15 +49,15 @@ Some things are outside Copilot's reach entirely, whoever is asking:
 - **Send a message** to a lead, or **launch or resume a campaign**. It can draft a message for you to review and send.
 - **Suppress** anyone (add them to the do-not-contact list), **anonymise**, **erase** or **export** a person's data. Those stay with people, on the lead's **Data rights** tab.
 - **Delete an agent**.
-- **Create a lead**, change **AI budgets**, or **invite, remove or change the role of** team members.
+- **Create a lead**, change **AI credit limits**, or **invite, remove or change the role of** team members.
 - Run arbitrary database queries or web requests.
 
 ## When Copilot stops early
 
-Copilot uses your workspace's AI budget. If the budget does not allow another step, it stops and tells you what it did so far. Follow-up, qualification and sending keep working without it.
+Copilot uses your workspace's AI credits. If your credits or limits do not allow another step, it stops and tells you what it did so far. Follow-up, qualification and sending keep working without it.
 
 ## Related
 
 - [Copilot example prompts](/help/copilot/copilot-example-prompts)
 - [Your first Copilot session](/help/copilot/copilot-first-setup)
-- [AI budgets and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)
+- [AI credits and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)

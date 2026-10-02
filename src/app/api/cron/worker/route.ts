@@ -17,6 +17,7 @@ import { scheduleCrmPullSweep } from "@/lib/jobs/handlers/crm-pull";
 import { scheduleIntentSweep } from "@/lib/jobs/handlers/intent-sweep";
 import { scheduleReengageSweep } from "@/lib/jobs/handlers/reengage";
 import { scheduleVoiceReconcile } from "@/lib/jobs/handlers/voice";
+import { scheduleIntegrationTokenRefresh } from "@/lib/jobs/handlers/integration-token-refresh";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -98,6 +99,10 @@ async function runSchedulers(): Promise<void> {
     // Voice: one sweep per fifteen-minute bucket closes calls stuck live (a
     // crashed dial, a lost CALL_ENDED), which otherwise block the lead for good.
     contained("voice.reconcile", async () => { await scheduleVoiceReconcile(); }),
+    // Calendar tokens (Calendly lives two hours): one sweep per ten-minute
+    // bucket renews anything expiring within 30 minutes, so a quiet
+    // workspace's connection is live when a call or reply needs it.
+    contained("integration.token_refresh", async () => { await scheduleIntegrationTokenRefresh(); }),
   ]);
 }
 

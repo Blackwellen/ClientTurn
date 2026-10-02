@@ -6,7 +6,7 @@ import { listRecentInvoices } from "@/lib/billing/invoices";
 import { PermissionDenied } from "@/components/settings/notices";
 import { BillingSettings } from "@/components/settings/billing/billing-settings";
 import { AiTokenMeter } from "@/components/settings/ai-token-meter";
-import { getTokenStatus, listTokenPurchases } from "@/lib/billing/token-service";
+import { getCreditStatus, listTokenPurchases } from "@/lib/billing/token-service";
 import { getUsageOverview } from "@/lib/billing/usage-service";
 import { UsagePanel } from "@/components/settings/billing/usage-panel";
 import { getLimitsOverview } from "@/lib/billing/limits-service";
@@ -17,7 +17,7 @@ import { parseBundleParam } from "@/lib/billing/allowance-alerts";
 import { UpsellBillingCard } from "@/components/settings/billing/upsell-billing-card";
 import { passiveAddOns } from "@/lib/billing/upsell-moments";
 import { upgradeSuggestionsEnabled } from "@/lib/billing/upsell-service";
-import { TOKEN_PACK_LIST } from "@/lib/billing/tokens";
+import { TOKEN_PACK_LIST, tokensToCredits } from "@/lib/billing/tokens";
 
 export async function BillingSection({
   bundle,
@@ -39,11 +39,11 @@ export async function BillingSection({
     );
   }
 
-  const [billing, invoices, tokenStatus, tokenPurchases, usage, limits, creditPurchases, suggestionsOn] =
+  const [billing, invoices, creditStatus, tokenPurchases, usage, limits, creditPurchases, suggestionsOn] =
     await Promise.all([
       getBillingView(workspace.businessId),
       listRecentInvoices(workspace.businessId),
-      getTokenStatus(workspace.businessId),
+      getCreditStatus(workspace.businessId),
       listTokenPurchases(workspace.businessId),
       getUsageOverview(workspace.businessId),
       getLimitsOverview(workspace.businessId),
@@ -85,8 +85,16 @@ export async function BillingSection({
           goes when they want more of something. */}
       <div id="ai-tokens" className="scroll-mt-4">
         <AiTokenMeter
-          status={tokenStatus}
-          purchases={tokenPurchases}
+          status={creditStatus}
+          // Credits only reach the browser: never the ledger's model tokens.
+          purchases={tokenPurchases.map((purchase) => ({
+            id: purchase.id,
+            credits: tokensToCredits(purchase.tokens),
+            amountMinor: purchase.amountMinor,
+            status: purchase.status,
+            createdAt: purchase.createdAt,
+            refundState: purchase.refundState,
+          }))}
           canBuy={canManageBilling}
         />
       </div>

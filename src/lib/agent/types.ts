@@ -488,7 +488,7 @@ export const HANDOVER_REASON_LABEL: Record<HandoverReason, string> = {
   EMERGENCY: "The lead described an emergency",
   HIGH_VALUE: "A high-value enquiry your rules route to a person",
   NO_NEXT_QUESTION: "There is no next qualification question configured",
-  BUDGET_EXCEEDED: "The assistant's budget for this conversation is used up",
+  BUDGET_EXCEEDED: "The assistant's AI credit limit for this conversation is used up",
   READY_TO_BUY: "The lead is ready to buy and needs a person to close",
 };
 

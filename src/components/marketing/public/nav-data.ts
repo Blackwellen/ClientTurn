@@ -154,6 +154,7 @@ const SOLUTIONS_MENU: MegaColumn[] = [
       { label: "Ecommerce", href: ANCHORS.industries },
       { label: "Accountants", href: ANCHORS.industries },
       { label: "Law firms", href: ANCHORS.industries },
+      { label: "Consultancies", href: ANCHORS.industries },
     ],
   },
   {
@@ -231,6 +232,7 @@ export const FOOTER_SOLUTIONS: NavLink[] = [
   { label: "Ecommerce", href: ANCHORS.industries },
   { label: "Accountants", href: ANCHORS.industries },
   { label: "Law firms", href: ANCHORS.industries },
+  { label: "Consultancies", href: ANCHORS.industries },
   { label: "All industries", href: ANCHORS.industries },
 ];
 

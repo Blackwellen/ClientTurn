@@ -4,7 +4,7 @@ summary: How ClientTurn gets back in touch when a lead asked you to, when someon
 category: reactivation
 keywords: [re-engagement, not now, try me later, resume, check in, deadline, timeframe, no-show, missed meeting, rebook, win-back, lost deal, contact frequency, too many messages, dead lead, best time to send, cost-aware]
 order: 15
-updated: 2026-09-27
+updated: 2026-09-30
 ---
 
 Some follow-up should happen at a moment the lead chose, not when a timer fires. ClientTurn does three things on its own, and holds every automated message to one set of contact limits.
@@ -56,4 +56,4 @@ Check-ins and win-back go at the hour the lead has replied in before, or your le
 
 ## See the results
 
-**Analytics → Re-engagement performance** shows each of these, alongside sequences and campaigns: leads reached, meetings booked, sales won and their value, opt-outs and complaints, and cost in SMS segments and AI tokens. Reply rate is shown last and is not used to rank anything.
+**Analytics → Re-engagement performance** shows each of these, alongside sequences and campaigns: leads reached, meetings booked, sales won and their value, opt-outs and complaints, and usage in SMS segments and AI credits. Reply rate is shown last and is not used to rank anything.

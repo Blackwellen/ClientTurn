@@ -11,13 +11,14 @@ import { useToast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/app/page-header";
 import { startTokenTopUp } from "@/lib/billing/token-actions";
 import {
+  creditsPerPound,
+  formatCredits,
   formatPackPrice,
-  formatTokens,
   TOKEN_PACK_LIST,
   TOKEN_STATE_LABEL,
   TOKEN_STATE_TONE,
-  tokensPerPound,
-  type TokenSummary,
+  tokensToCredits,
+  type CreditSummary,
 } from "@/lib/billing/tokens";
 import {
   REFUND_STATE_LABEL,
@@ -25,34 +26,33 @@ import {
 } from "@/lib/billing/refundability";
 import { formatInZone } from "@/lib/dates";
 
-export type TokenMeterStatus = TokenSummary & {
+export type TokenMeterStatus = CreditSummary & {
   periodStart: string;
   periodEnd: string;
-  plan: string;
   blocked: boolean;
 };
 
 export type TokenPurchaseRow = {
   id: string;
-  packKey: string;
-  tokens: number;
+  /** The pack in AI credits (converted on the server). */
+  credits: number;
+  /** The price the customer paid (a price, not a serving cost). */
   amountMinor: number;
-  currency: string;
   status: string;
   createdAt: string;
   /**
    * FIFO refund state (refundability.ts): refundable only while none of the
-   * pack's tokens have been used. Refunds are issued by the owner in Stripe.
+   * pack's credits have been used. Refunds are issued by the owner in Stripe.
    */
   refundState?: RefundState;
 };
 
 /**
- * The AI allowance, and how to buy more.
+ * The AI allowance in AI credits, and how to buy more.
  *
- * Deliberately shows tokens and conversations — never a cost per token. What
- * a token costs the platform is internal; what a customer needs is how much
- * they have and roughly what it buys them.
+ * AI credits are ClientTurn's own unit (owner decision, 2026-09-30): never
+ * model tokens and never a cost. What a customer needs is how much they have
+ * and roughly what it buys them.
  */
 export function AiTokenMeter({
   status,
@@ -93,7 +93,7 @@ export function AiTokenMeter({
       <CardHeader>
         <SectionHeader
           icon={Sparkles}
-          title="AI allowance"
+          title="AI credits"
           description="What the assistant has used this period, and what is left."
           action={
             <Badge tone={TOKEN_STATE_TONE[status.state] as never}>
@@ -107,10 +107,10 @@ export function AiTokenMeter({
         <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-content text-[15px] font-semibold">
-              {formatTokens(status.remaining)} left
+              {formatCredits(status.remainingCredits)} AI credits left
             </span>
             <span className="text-muted text-[12.5px]">
-              {formatTokens(status.used)} of {formatTokens(status.granted)} used
+              {formatCredits(status.usedCredits)} of {formatCredits(status.grantedCredits)} used ({status.percentUsed}%)
             </span>
           </div>
 
@@ -120,7 +120,7 @@ export function AiTokenMeter({
             aria-valuenow={status.percentUsed}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="AI allowance used"
+            aria-label="AI credits used"
           >
             <div
               className={
@@ -135,21 +135,21 @@ export function AiTokenMeter({
           </div>
 
           <p className="text-muted text-[12.5px]">
-            Roughly {status.approximateTurnsLeft.toLocaleString("en-GB")} more assistant
-            replies. Your included allowance renews on {renewal}.
-            {status.purchasedTokens > 0
-              ? ` ${formatTokens(status.purchasedTokens)} of that is topped-up tokens, which carry over.`
+            Roughly {status.approximateRepliesLeft.toLocaleString("en-GB")} more assistant
+            replies. Your {formatCredits(status.includedCredits)} included credits renew on {renewal}.
+            {status.topUpBalanceCredits > 0
+              ? ` ${formatCredits(status.topUpBalanceCredits)} of what is left are topped-up credits, which carry over.`
               : ""}
           </p>
           <p className="text-muted text-[12.5px]">
-            This allowance counts AI use in tokens; the separate £ spending limits in{" "}
+            Your own AI credit limits (per workspace, per lead) are in{" "}
             <Link
               href="/app/settings?section=ai-selling"
               className="font-medium text-content-accent underline-offset-4 hover:underline"
             >
               AI &amp; selling
-            </Link>{" "}
-            also apply, and AI stops at whichever limit is reached first while your rules carry on.
+            </Link>
+            ; AI stops at whichever limit is reached first while your rules carry on.
           </p>
         </div>
 
@@ -164,10 +164,10 @@ export function AiTokenMeter({
         )}
 
         <div>
-          <h3 className="text-content mb-2 text-[13px] font-medium">Buy more tokens</h3>
+          <h3 className="text-content mb-2 text-[13px] font-medium">Buy more AI credits</h3>
           {!canBuy ? (
             <p className="text-muted text-[12.5px]">
-              Only the workspace owner can buy AI tokens.
+              Only the workspace owner can buy AI credits.
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-3">
@@ -178,13 +178,13 @@ export function AiTokenMeter({
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="text-content text-[13px] font-semibold">
-                      {formatTokens(pack.tokens)}
+                      {formatCredits(tokensToCredits(pack.tokens))} credits
                     </span>
                     {pack.bestValue && <Badge tone="accent">Best value</Badge>}
                   </div>
                   <span className="text-muted mt-0.5 text-[11.5px]">
                     {formatPackPrice(pack)} ·{" "}
-                    {formatTokens(tokensPerPound(pack))} per £1
+                    {creditsPerPound(pack).toLocaleString("en-GB")} credits per £1
                   </span>
                   <p className="text-muted mt-1 flex-1 text-[11.5px] leading-relaxed">
                     {pack.description}
@@ -205,10 +205,10 @@ export function AiTokenMeter({
             </div>
           )}
           <p className="text-muted mt-2 text-[11.5px]">
-            Topped-up tokens are prepaid, never expire and carry over between periods.
+            Topped-up AI credits are prepaid, never expire and carry over between periods.
             You are never billed for AI use you have not paid for. A pack can be refunded
-            only while none of its tokens have been used; your included allowance is always
-            used before topped-up tokens.
+            only while none of its credits have been used; your included credits are always
+            used before topped-up credits.
           </p>
         </div>
 
@@ -222,7 +222,7 @@ export function AiTokenMeter({
                   className="flex items-center justify-between gap-3 py-1.5 text-[12.5px]"
                 >
                   <span className="text-content">
-                    {formatTokens(purchase.tokens)} tokens
+                    {formatCredits(purchase.credits)} AI credits
                   </span>
                   <span className="text-muted">
                     £{(purchase.amountMinor / 100).toFixed(2)} ·{" "}
@@ -257,9 +257,9 @@ export function AiTokenMeter({
 
       <CardFooter>
         <p className="text-muted text-[11.5px]">
-          Tokens are consumed by assistant replies, reply interpretation and
+          AI credits are used by assistant replies, reply interpretation and
           conversation summaries. Deterministic follow-up and qualification never
-          consume any.
+          use any.
         </p>
       </CardFooter>
     </Card>

@@ -37,7 +37,7 @@ export const LEADS: Lead[] = [
   {
     initials: "JC",
     name: "James Carter",
-    email: "james@carterbuild.co.uk",
+    email: "james@carterstudio.co.uk",
     source: "Website",
     status: "New",
     tone: "new",
@@ -59,7 +59,7 @@ export const LEADS: Lead[] = [
   {
     initials: "DB",
     name: "Daniel Brooks",
-    email: "daniel@brookshomes.co.uk",
+    email: "daniel@brooksdigital.co.uk",
     source: "Google Ads",
     status: "Qualified",
     tone: "qualified",
@@ -81,7 +81,7 @@ export const LEADS: Lead[] = [
   {
     initials: "MR",
     name: "Michael Reed",
-    email: "michael@reedproperty.co.uk",
+    email: "michael@reedlegal.co.uk",
     source: "Instagram",
     status: "In follow-up",
     tone: "followup",
@@ -103,14 +103,14 @@ export const LEAD_TABS = [
 export const SELECTED_LEAD = {
   initials: "DB",
   name: "Daniel Brooks",
-  email: "daniel@brookshomes.co.uk",
+  email: "daniel@brooksdigital.co.uk",
   phone: "07812 345 678",
   avatar: ["#d6f0de", "#1f5c39"] as [string, string],
   facts: [
     { label: "Source", value: "Google Ads" },
-    { label: "Enquiry type", value: "New build" },
+    { label: "Enquiry type", value: "Website rebuild" },
     { label: "Location", value: "Bournemouth, UK" },
-    { label: "Budget", value: "£50k – £100k" },
+    { label: "Budget", value: "£10k – £25k" },
   ],
 };
 
@@ -161,8 +161,8 @@ export const QUESTIONS = [
 ] as const;
 
 export const SAMPLE_RESPONSE = [
-  { label: "Project type", value: "New build" },
-  { label: "Budget", value: "£50k - £100k" },
+  { label: "Project type", value: "Website rebuild" },
+  { label: "Budget", value: "£10k - £25k" },
   { label: "Timescale", value: "Within 3 months" },
   { label: "Location", value: "Bournemouth, UK" },
 ] as const;

@@ -24,7 +24,6 @@ import {
   OPTIMIZATION_DIMENSIONS,
   formatCount,
 } from "@/lib/outreach/campaign-draft";
-import { formatMoneyMinor } from "@/lib/outreach/types";
 import type { CampaignOverview } from "@/lib/outreach/campaigns/detail";
 import { CampaignControls } from "./controls";
 import { PerformanceChart } from "./performance-chart";
@@ -132,22 +131,22 @@ export function CampaignOverviewTab({
 
         {/* -------------------------------------------------- budget usage */}
         <Panel icon={Database} title="Budget usage" tone="purple">
-          {budget.capMinor === 0 ? (
+          {/* A proportion only. Provider spend in pounds is admin-only
+              (owner decision, 2026-09-30). */}
+          {!budget.capped ? (
             <p className="text-[12.5px] text-content-muted">
-              No provider budget was reserved for this campaign, so there is nothing to
-              spend against.
+              No sourcing budget was reserved for this campaign. Your plan allowances
+              still apply to every send.
             </p>
           ) : (
             <>
               <div className="flex items-baseline justify-between gap-3">
                 <p className="text-[20px] font-bold tabular-nums text-content">
-                  {formatMoneyMinor(budget.spentMinor)}{" "}
-                  <span className="text-content-muted">
-                    / {formatMoneyMinor(budget.capMinor)}
-                  </span>
+                  {budget.percentUsed ?? 0}%{" "}
+                  <span className="text-[13px] font-medium text-content-muted">used</span>
                 </p>
-                <span className="shrink-0 text-[12px] tabular-nums text-content-muted">
-                  {budget.percentUsed ?? 0}% used
+                <span className="shrink-0 text-[12px] text-content-muted">
+                  of this campaign&apos;s budget
                 </span>
               </div>
               <div
@@ -195,10 +194,7 @@ export function CampaignOverviewTab({
                       <span className="min-w-0 flex-1 truncate text-content-secondary">
                         {row.label}
                       </span>
-                      <span className="shrink-0 font-medium tabular-nums text-content">
-                        {formatMoneyMinor(row.minor)}
-                      </span>
-                      <span className="w-9 shrink-0 text-right tabular-nums text-content-muted">
+                      <span className="w-9 shrink-0 text-right font-medium tabular-nums text-content">
                         {row.percent}%
                       </span>
                     </li>

@@ -35,7 +35,8 @@ export type IdentityProblem =
   | { field: IdentityField; problem: "TOO_LONG" }
   | { field: "identificationContact"; problem: "PHONE_NOT_FREEPHONE" }
   | { field: "identificationContact"; problem: "ADDRESS_TOO_SHORT" }
-  | { field: IdentityField; problem: "CONTAINS_LINE_BREAK" };
+  | { field: IdentityField; problem: "CONTAINS_LINE_BREAK" }
+  | { field: IdentityField; problem: "CONTAINS_MARKUP" };
 
 export type IdentityReadiness = { ready: true; identity: CallerIdentity } | { ready: false; problems: IdentityProblem[] };
 
@@ -79,6 +80,14 @@ export function identityReadiness(input: Partial<Record<IdentityField, string | 
   for (const f of ["callingAsName", "legalEntityName", "personaName"] as const) {
     const v = input[f];
     if (v && /[\r\n]/.test(v)) problems.push({ field: f, problem: "CONTAINS_LINE_BREAK" });
+  }
+  // Every identity field is spoken word for word in the locked opener and the
+  // identity answer, and rides to Retell inside a dynamic variable. Markup or
+  // template braces ("<img ...>", "{{transfer_number}}") are never a business
+  // name or address, and braces would read as a Retell variable (QA 2026-09-30).
+  for (const f of ["callingAsName", "legalEntityName", "identificationContact", "personaName"] as const) {
+    const v = input[f];
+    if (v && /[<>{}]/.test(v)) problems.push({ field: f, problem: "CONTAINS_MARKUP" });
   }
   const persona = (input.personaName ?? "").trim();
   if (persona.length > LIMITS.personaName) problems.push({ field: "personaName", problem: "TOO_LONG" });

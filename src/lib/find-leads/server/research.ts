@@ -50,9 +50,9 @@ export type ResearchRefreshState = {
   /**
    * What a refresh would cost, in pence, at current price-book rates.
    *
-   * Shown so the decision is informed. This is the customer's own budget being
-   * spent on their own prospect — it is not a provider unit-cost disclosure,
-   * which stays admin-only.
+   * Server-only: used to attribute the cost. Never shown to the customer —
+   * serving costs are admin-only (owner decision, 2026-09-30), and the
+   * prospect detail strips it before the browser sees it.
    */
   estimatedCostMinor: number;
 };

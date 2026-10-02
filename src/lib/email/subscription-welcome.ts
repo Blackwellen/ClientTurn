@@ -13,7 +13,7 @@
  */
 
 import { PLANS, planThatUnlocks, type PlanDefinition, type PlanId } from "../billing/plans.ts";
-import { TOKEN_PACK_LIST, formatTokens } from "../billing/tokens.ts";
+import { TOKEN_PACK_LIST, formatCreditAmount } from "../billing/tokens.ts";
 import {
   WHATSAPP_TOKEN_PACKS,
   WHATSAPP_TOKENS_PER_MESSAGE,
@@ -64,7 +64,7 @@ function planIncludes(plan: PlanDefinition): string[] {
     `${NUMBER.format(plan.leadLimit)} new leads a month`,
     `${NUMBER.format(plan.smsSegmentAllowance)} UK SMS segments a month, enough for an instant first text to every lead`,
     "Unlimited follow up email from your own mailbox",
-    `${formatTokens(plan.aiTokenAllowance)} AI tokens a month for the assistant`,
+    `${formatCreditAmount(plan.aiTokenAllowance)} a month for the assistant`,
     users,
   ];
 }
@@ -80,11 +80,11 @@ export function welcomeSections(planId: string): WelcomeSection[] {
       bullets: planIncludes(plan),
     },
     {
-      heading: "AI token packs",
+      heading: "AI credit packs",
       paragraphs: [
-        "If the assistant uses its monthly AI tokens, it pauses until the allowance resets. Follow up and qualification rules keep running. A pack tops it up straight away, and bought tokens never expire.",
+        "If the assistant uses its monthly AI credits, it pauses until the allowance resets. Follow up and qualification rules keep running. A pack tops it up straight away, and bought AI credits never expire.",
       ],
-      bullets: TOKEN_PACK_LIST.map((pack) => `${formatTokens(pack.tokens)} AI tokens for ${gbp(pack.amountMinor / 100)}`),
+      bullets: TOKEN_PACK_LIST.map((pack) => `${formatCreditAmount(pack.tokens)} for ${gbp(pack.amountMinor / 100)}`),
     },
   ];
 
@@ -113,7 +113,7 @@ export function welcomeSections(planId: string): WelcomeSection[] {
     heading: "How to buy",
     paragraphs: [
       "Open Settings, then Billing, in ClientTurn. Packs are paid by card through Stripe and added as soon as the payment clears. There is no overage: nothing is charged beyond your plan and the packs you choose to buy.",
-      "Packs never expire. A pack cannot be refunded once any of its tokens are used.",
+      "Packs never expire. A pack cannot be refunded once any of what it added has been used.",
     ],
     bullets: [],
   });
@@ -155,7 +155,7 @@ export function subscriptionWelcomeEmail(input: {
 
   return {
     subject: `Your ClientTurn ${plan.name} plan is active`,
-    summary: `Your ${plan.name} plan is active. AI token packs${plan.whatsappEnabled ? " and WhatsApp tokens" : ""} are in Settings, Billing whenever you need more.`,
+    summary: `Your ${plan.name} plan is active. AI credit packs${plan.whatsappEnabled ? " and WhatsApp tokens" : ""} are in Settings, Billing whenever you need more.`,
     sections,
     text: textParts.join("\n"),
     html,

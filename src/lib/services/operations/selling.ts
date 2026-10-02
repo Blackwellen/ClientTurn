@@ -24,6 +24,7 @@ import {
   platformBudgetDefaults,
   SIC_SYSTEM,
 } from "@/lib/settings/ai-selling-queries";
+import { creditLimitFromRow, rowForCreditLimit } from "@/lib/ai/credit-limits";
 import { defineOperation, ServiceError, type HandlerInput } from "../runtime";
 
 /**
@@ -156,6 +157,7 @@ defineOperation("sales_settings.update", {
 
 /* ------------------------------------------------------------------ budget */
 
+/** AI limits in AI credits (owner decision, 2026-09-30). */
 type BudgetArgs = Partial<Record<EditableBudgetScope, number | null>>;
 
 defineOperation("ai_budget.update", {
@@ -172,18 +174,24 @@ defineOperation("ai_budget.update", {
 
     const { data: current, error: readError } = await db
       .from("ai_budgets")
-      .select("id, scope, ceiling_minor")
+      .select("id, scope, ceiling_minor, ceiling_tokens")
       .eq("business_id", context.businessId)
       .in("scope", [...EDITABLE_BUDGET_SCOPES]);
     if (readError) throw new ServiceError("UNAVAILABLE", "The current limits could not be read.");
 
+    // A row saved in pounds before credits existed reads back as credits.
     const before: Partial<Record<EditableBudgetScope, number | null>> = {};
-    for (const row of current ?? []) before[row.scope as EditableBudgetScope] = row.ceiling_minor;
+    for (const row of current ?? []) {
+      before[row.scope as EditableBudgetScope] = creditLimitFromRow({
+        ceilingMinor: row.ceiling_minor,
+        ceilingTokens: row.ceiling_tokens,
+      });
+    }
 
     // Checked against the values that will be in force afterwards, so a change
     // to one field cannot slip past a rule that relates it to another.
     const next = { ...before, ...args };
-    const problems = budgetProblems(next, defaults);
+    const problems = budgetProblems(next, defaults.credits);
     const first = Object.entries(problems)[0];
     if (first) throw new ServiceError("INVALID_INPUT", `${first[0]}: ${first[1]}`);
 
@@ -206,10 +214,13 @@ defineOperation("ai_budget.update", {
         continue;
       }
 
+      // Enforced in credits (ceiling_tokens); per-lead rows keep the platform
+      // £ default as a hidden backstop (lib/ai/credit-limits.ts).
+      const ceilings = rowForCreditLimit(scope, value, defaults.minor[scope] ?? null);
       if (existing) {
         const { error } = await db
           .from("ai_budgets")
-          .update({ ceiling_minor: value, enabled: true, updated_at: new Date().toISOString() })
+          .update({ ...ceilings, enabled: true, updated_at: new Date().toISOString() })
           .eq("id", existing.id)
           .eq("business_id", context.businessId);
         if (error) throw new ServiceError("CONFLICT", "That limit could not be saved.");
@@ -217,7 +228,7 @@ defineOperation("ai_budget.update", {
         const { error } = await db.from("ai_budgets").insert({
           business_id: context.businessId,
           scope,
-          ceiling_minor: value,
+          ...ceilings,
           budget_window: scope === "WORKSPACE_MONTH" ? "MONTH" : "LIFETIME",
           currency: "GBP",
           enabled: true,

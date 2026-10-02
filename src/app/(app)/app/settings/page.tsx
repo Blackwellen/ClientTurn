@@ -65,7 +65,7 @@ export default async function SettingsPage({
         {section === "business-profile" && <BusinessProfileSectionLoader />}
         {section === "ai-selling" && <AiSellingSection />}
         {section === "quotes" && <QuotesSection />}
-        {section === "voice" && <VoiceSection panel={params.panel} />}
+        {section === "voice" && <VoiceSection panel={params.panel} voicepack={params.voicepack} />}
         {section === "team" && <TeamSection />}
         {section === "security" && <SecuritySection />}
         {section === "developer" && <DeveloperSection />}

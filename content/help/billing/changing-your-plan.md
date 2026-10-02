@@ -4,7 +4,7 @@ summary: Upgrade straight away with prorated billing, downgrade at the end of th
 category: billing
 keywords: [upgrade, downgrade, no overage, go past allowance, switch plan, cancel subscription, proration, prorated, annual, monthly, billing portal, stripe portal, enterprise, contact sales, resubscribe]
 order: 50
-updated: 2026-09-27
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/billing/changing-your-plan-1.png
     alt: "The Current plan card with Upgrade to Pro and Manage billing (Stripe)"
@@ -57,9 +57,9 @@ When a cancellation is set to take effect at the end of the paid period, **Setti
 
 ## What changes when the plan changes
 
-- **Allowances** such as leads, SMS, AI tokens and users follow the new plan. See [Plans and what each includes](/help/billing/plans-and-pricing).
+- **Allowances** such as leads, SMS, AI credits and users follow the new plan. See [Plans and what each includes](/help/billing/plans-and-pricing).
 - **WhatsApp** is a paid add-on on Growth and above. On a move to Starter, WhatsApp sending is no longer available.
-- **Top-up credit and bought AI tokens** stay on your balance. They do not expire.
+- **Top-up credit and bought AI credits** stay on your balance. They do not expire.
 - **Seats:** if you have more people than the new plan allows, you cannot invite anyone else until you are under the limit. See [Team settings](/help/settings/team-settings).
 - **Over the new plan's limits:** a downgrade is always allowed and nothing is removed. From the day it applies, adding more of anything you are over (team members, sender identities, saved searches, intent monitors) is refused until you are back within the plan, and a campaign cannot launch while you have more active sender identities than the plan includes. When you schedule the downgrade you get a notification listing exactly what to reduce, and **Settings → Billing & Usage** shows the same list.
 

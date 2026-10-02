@@ -4,7 +4,7 @@ summary: Where to see your use against every limit this period and today, what h
 category: billing
 keywords: [usage, allowance, sms budget, sms cap, per-lead cap, sms for every step, email after first text, quota, limit reached, daily limit, monthly limit, daily cap, no overage, prepaid credit, top-up credit, lead limit, seats, 75%, 80%, 90%, 95%, running low, buy sms credits, sms running out, meter, paused, sending stopped, reactivation contacts]
 order: 25
-updated: 2026-09-27
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/billing/usage-and-limits-1.png
     alt: "The Usage and limits table with the This period, Today and At the limit columns marked"
@@ -38,7 +38,7 @@ When a limit reaches 80%, a card appears under its row with the options that app
 | SMS | Sends use top-up credit next. When that is used up too, SMS sending stops until the period resets or you buy more credit. See [What happens at zero](#running-low-on-sms-or-whatsapp) |
 | WhatsApp | WhatsApp has no included messages. It is a paid add-on on Growth and above, paid in WhatsApp tokens: 2 for a conversation reply or utility template, 5 for a marketing template. The row counts tokens. When there are too few tokens for the next message, WhatsApp sending stops until you buy more |
 | Email (outreach) | Outreach email stops at the allowance until the next period, or until you upgrade |
-| AI tokens | The assistant pauses. Follow-up and qualification rules keep running. Top up tokens to resume |
+| AI credits | The assistant pauses. Follow-up and qualification rules keep running. Top up AI credits to resume |
 | Team members | New invitations are refused until a seat is freed or the plan is upgraded. Pending invitations count as seats |
 | Saved searches | Active saved searches are counted. A new or resumed one is refused at the limit; pause or stop one to free a slot |
 | Sender identities | A new sending address is refused at the limit. Re-saving an existing identity is always allowed |
@@ -102,7 +102,7 @@ To change them, go to **Communication allocation → Daily sending limits (all c
 - **Communication allocation** lets you split your monthly message allowance between channels. It must total exactly 100%.
 - **Channel usage** shows messages sent, delivery and replies per channel this month.
 - **Usage history** shows past months.
-- **AI allowance** shows tokens used and left, roughly how many assistant replies remain, and when the included allowance renews.
+- **AI credits** shows AI credits used and left (and the percentage), your top-up balance, roughly how many assistant replies remain, and when the included credits renew.
 
 ## Running low on SMS or WhatsApp
 
@@ -139,7 +139,7 @@ Nothing is charged beyond what you have bought. There is no overage: the only wa
 
 ## Upgrade suggestions
 
-Now and then, ClientTurn suggests something that would help: an AI token pack when the assistant's tokens are at 80% or used up, WhatsApp tokens (or, on Starter, the plan that includes WhatsApp) when a lead asks to talk on WhatsApp, or the next plan when you keep reaching your lead cap, your seats or your verified prospects. After a good month you may see a short note about your booked meetings.
+Now and then, ClientTurn suggests something that would help: an AI credit pack when the assistant's tokens are at 80% or used up, WhatsApp tokens (or, on Starter, the plan that includes WhatsApp) when a lead asks to talk on WhatsApp, or the next plan when you keep reaching your lead cap, your seats or your verified prospects. After a good month you may see a short note about your booked meetings.
 
 They are kept rare on purpose:
 
@@ -155,7 +155,7 @@ To turn them off, go to **Settings → Billing & Usage → Add more when you nee
 ## Warnings you will see
 
 - The SMS and WhatsApp warnings described in [Running low on SMS or WhatsApp](#running-low-on-sms-or-whatsapp): a banner, a notification and an email at 75%, 90% and when nothing is left.
-- A notification when AI token use passes 80% and again at 95%.
+- A notification when AI credit use passes 80% and again at 95%.
 
 ## Related
 

@@ -49,9 +49,9 @@ Editing a plan never spends anything.
 
 ## 3. Start a sourcing run
 
-In **Sourcing controls**, set **Target verified prospects**, **Max provider cost** and **Minimum score**, and choose whether **Intent required**, **Auto-contact prospects** and **Review before outreach** apply.
+In **Sourcing controls**, set **Target verified prospects** and **Minimum score**, and choose whether **Intent required**, **Auto-contact prospects** and **Review before outreach** apply. Each verified prospect counts against your plan's monthly prospect allowance; there is no separate cost to set.
 
-No enrichment or provider spend happens until you choose **Start sourcing run**. Starting a run also approves the plan, which is what lets an agent or a recurring search reuse it later. Only owners and admins can start a run, and the button explains why if your allowance for the billing period cannot cover it.
+Nothing is sourced or enriched until you choose **Start sourcing run**. Starting a run also approves the plan, which is what lets an agent or a recurring search reuse it later. Only owners and admins can start a run, and the button explains why if your allowance for the billing period cannot cover it.
 
 The run page shows each stage as it works: understanding the target, planning, finding companies and contacts, pre-filtering, enriching, verifying emails, deduplicating, compliance, scoring, intent matching and preparing outreach.
 

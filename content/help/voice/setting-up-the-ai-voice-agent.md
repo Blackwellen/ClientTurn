@@ -4,7 +4,7 @@ summary: What the AI voice agent does, what it needs before it can call anyone, 
 category: voice
 keywords: [voice, ai calls, phone calls, calling agent, voice agent, dedicated number, calling number, caller id, calling identity, legal entity, freephone, twilio, regulatory review, call recording, calling hours, release number]
 order: 10
-updated: 2026-09-28
+updated: 2026-09-30
 ---
 
 The AI voice agent phones a lead for you. It calls from your own dedicated UK number, tells the person at the start that it is an AI assistant calling on behalf of your business, and has a short conversation to qualify the enquiry or move it towards a booking or a sale. What was said and decided is recorded on the lead.
@@ -99,7 +99,7 @@ A closing or combined agent can also phone leads for you automatically. Switch o
 
 Each call records its outcome and a summary, the transcript when the call provider supplies one, and the recording when recording is on. Recordings are stored privately and opened only through a link that expires after a few minutes. What the lead said is run through the same qualification and objection rules as their messages, so a call can move the lead's qualification in the same way a reply does.
 
-What the call cost ClientTurn is shown to owners and admins only.
+You see the minutes each call used and its outcome. Running costs are not shown.
 
 ## When a call reaches voicemail
 

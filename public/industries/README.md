@@ -1,17 +1,27 @@
-# Industry cover photography
+# Industry card imagery
 
-Every image here came from [Openverse](https://openverse.org) filtered to
-**CC0** / public-domain-mark results — the two licences that permit commercial
-use with **no attribution condition**, so the site carries no attribution debt
-it could silently break.
+The images behind the home page industries carousel
+(`src/components/marketing/public/home/industry-data.ts`). Every sector is
+inside the B2B ICP in `CLAUDE.md` (resolved conflict 5).
 
-`CREDITS.json` records the title, creator, licence and source page for each
-one anyway. Keep it in step if you replace an image.
+Two kinds of file live here:
 
-Each file is centre-cropped to 3:2 and saved as WebP at 1200x800, which is what
-the industry card needs: a 168px-tall banner sitting behind a gradient wash.
-They are referenced from `industry-data.ts` via the `image` field and are all
-lazy-loaded — the section is well below the fold.
+* **Photographs (`.webp`)** from [Openverse](https://openverse.org), filtered
+  to **CC0** / public-domain-mark results: the two licences that permit
+  commercial use with **no attribution condition**, so the site carries no
+  attribution debt it could silently break. Each is centre-cropped to 3:2 and
+  saved as WebP at 1200x800.
+* **Illustrations (`.svg`)** drawn for ClientTurn in the brand palette
+  (midnight `#0B1020`, lime `#B7F34A`, soft lime `#E7FFC0`, cloud `#F7F9FC`),
+  used where no fitting CC0 photograph exists. Same 1200x800 canvas. Next
+  serves an `.svg` source unoptimised, and the card skips the dimming it
+  applies to photographs.
 
-To swap one out: replace the `.webp`, update its `CREDITS.json` entry, and
-update `imageAlt` in `industry-data.ts` if the subject changed.
+`CREDITS.json` records the title, creator, licence and source for each one.
+Keep it in step if you replace or add an image.
+
+The card is a 168px-tall banner behind a gradient wash, so keep the subject in
+the middle band of the canvas.
+
+To swap one out: replace the file, update its `CREDITS.json` entry, and update
+`imageAlt` in `industry-data.ts` if the subject changed.

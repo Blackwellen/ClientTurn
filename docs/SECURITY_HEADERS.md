@@ -15,7 +15,7 @@ Set for every path in `next.config.ts` (`headers()`). Gap audit §3 and quick wi
 ## Why the full CSP is report-only
 
 A `script-src` worth enforcing needs per-request nonces threaded through the Next.js
-runtime (its inline bootstrap scripts) and the Three.js / Motion landing scene. A guessed
+runtime (its inline bootstrap scripts) and the GSAP / Motion landing animations. A guessed
 policy enforced today risks a blank landing page or a broken checkout. Report-only
 blocks nothing and shows every violation in the browser console, and in Sentry's security
 endpoint when `SENTRY_DSN` is set (`report-uri` is derived from the DSN). Tighten on that
@@ -53,7 +53,7 @@ The enforced directives are the three that cannot break a working page:
 | Stripe Checkout / Billing Portal | server action returns a Stripe-hosted URL; the browser navigates to it | No: top-level navigation, no Stripe.js on our pages, no framing |
 | Google sign-in | Supabase OAuth redirect to accounts.google.com and back | No: top-level navigation |
 | Retell voice | calls are placed by Retell over the phone network; no browser SDK is used | No (and `microphone=()` stays denied; allow `microphone=(self)` on one route if a web SDK is ever added) |
-| Landing page (Three.js / Motion) | scripts and WebGL from our own origin | No: `object-src` and `base-uri` only |
+| Landing page (GSAP / Motion, no WebGL since 2026-09-30) | scripts from our own origin | No: `object-src` and `base-uri` only |
 | Public quote page `/q/[token]` and its PDF | our own origin; PDF opened as a download/new tab | No |
 | Admin maintenance preview | `<iframe srcdoc sandbox>` inside our own page | No: `frame-ancestors` restricts who frames *us*; a srcdoc child inherits our policy and runs no script (sandbox) |
 | Integration OAuth connect flows | top-level redirects | No |

@@ -11,7 +11,10 @@ import {
 } from "../campaign-draft";
 import { EMPTY_FUNNEL, type CampaignFunnel, type CampaignStatus } from "../types";
 import { loadCampaignBudgetUsage } from "./budget";
-import type { CampaignBudgetUsage } from "../campaign-budget";
+import {
+  toCustomerCampaignBudget,
+  type CustomerCampaignBudget,
+} from "../campaign-budget";
 
 /**
  * Campaign Detail reads (V4 section 18).
@@ -74,7 +77,8 @@ export type CampaignOverview = {
   funnel: CampaignFunnel;
   kpis: CampaignKpis;
   stages: FunnelStage[];
-  budget: CampaignBudgetUsage;
+  /** A proportion only: provider spend in pounds is admin-only. */
+  budget: CustomerCampaignBudget;
   series: DailyPoint[];
   replies: RecentReply[];
   attention: AttentionItem[];
@@ -201,7 +205,7 @@ export async function loadCampaignOverview(
       p_business_id: businessId,
       p_campaign_id: campaignId,
     }),
-    loadCampaignBudgetUsage(businessId, campaignId),
+    loadCampaignBudgetUsage(businessId, campaignId).then(toCustomerCampaignBudget),
     admin.rpc("outreach_campaign_daily_series", {
       p_business_id: businessId,
       p_campaign_id: campaignId,
@@ -347,7 +351,8 @@ async function buildAttentionItems(input: {
   businessId: string;
   campaignId: string;
   funnel: CampaignFunnel;
-  budget: CampaignBudgetUsage;
+  /** A proportion only: provider spend in pounds is admin-only. */
+  budget: CustomerCampaignBudget;
   header: CampaignHeader;
 }): Promise<AttentionItem[]> {
   const admin = createAdminClient();
@@ -393,13 +398,11 @@ async function buildAttentionItems(input: {
       title: `Budget at ${percent}%`,
       detail:
         percent >= 100
-          ? "This campaign has reached its budget and has stopped spending."
-          : "You are approaching your budget limit.",
+          ? "This campaign has reached its budget limit."
+          : "This campaign is approaching its budget limit.",
       tone: percent >= 100 ? "danger" : "accent",
-      // "Increase" still goes through the same ceiling checks as everything
-      // else; it opens the control, it does not raise anything by itself.
       action: {
-        label: "Increase",
+        label: "View",
         href: `/app/find-leads/campaigns/${input.campaignId}?view=performance#budget`,
       },
     });
@@ -650,10 +653,8 @@ export type CampaignPerformanceView = {
   optOuts: number;
   /** Qualified over contacted, or null when nothing was sent. */
   conversionRate: number | null;
-  budget: CampaignBudgetUsage;
-  /** Pence per reply, null when there have been none. */
-  costPerReplyMinor: number | null;
-  costPerQualifiedMinor: number | null;
+  /** A proportion only: provider spend in pounds is admin-only. */
+  budget: CustomerCampaignBudget;
   series: DailyPoint[];
 };
 
@@ -673,7 +674,7 @@ export async function loadCampaignPerformance(
       p_business_id: businessId,
       p_campaign_id: campaignId,
     }),
-    loadCampaignBudgetUsage(businessId, campaignId),
+    loadCampaignBudgetUsage(businessId, campaignId).then(toCustomerCampaignBudget),
     admin.rpc("outreach_campaign_daily_series", {
       p_business_id: businessId,
       p_campaign_id: campaignId,
@@ -699,11 +700,9 @@ export async function loadCampaignPerformance(
     booked: Number(bookings.data ?? 0),
     optOuts: row.opt_out_count,
     conversionRate: contacted > 0 ? promoted / contacted : null,
+    // No cost per reply / per qualified lead: those are provider spend
+    // divided by outcomes, and serving costs are admin-only (2026-09-30).
     budget,
-    // Null rather than zero: dividing by nothing is unknown, and "£0 per
-    // reply" on a campaign with no replies reads as a bargain.
-    costPerReplyMinor: replies > 0 ? Math.round(budget.spentMinor / replies) : null,
-    costPerQualifiedMinor: promoted > 0 ? Math.round(budget.spentMinor / promoted) : null,
     series: ((series.data ?? []) as Record<string, unknown>[]).map((point) => ({
       day: String(point.day),
       contactsSent: Number(point.contacts_sent ?? 0),

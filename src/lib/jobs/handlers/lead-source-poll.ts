@@ -4,6 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PermanentJobError } from "@/lib/jobs/registry";
 import { enqueue } from "@/lib/jobs/queue";
 import type { ClaimedJob } from "@/lib/jobs/queue";
+import { pollFailureVerdict } from "@/lib/integrations/poll-failure";
+import { runMetaTokenCheck } from "@/lib/integrations/meta-token";
+import { META_TOKEN_PROVIDERS } from "@/lib/integrations/meta-token-core";
 import {
   getLeadSourcePoller,
   isPollableLeadSource,
@@ -53,14 +56,36 @@ export async function handleLeadSourcePoll(job: ClaimedJob) {
       .eq("id", integration.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Poll failed.";
-    await admin
-      .from("integrations")
-      .update({
-        status: "ACTION_REQUIRED",
-        last_error_at: new Date().toISOString(),
-        last_error_message: message,
-      })
-      .eq("id", integration.id);
+    const verdict = pollFailureVerdict(error);
+    if (verdict === "reconnect") {
+      // The refresh core already flagged it "Reconnect" (status, code, the
+      // customer-facing copy and the notification). Writing the provider's raw
+      // message over that copy ("Bad Request") told the owner nothing.
+      await admin
+        .from("integrations")
+        .update({ status: "ACTION_REQUIRED", last_error_at: new Date().toISOString() })
+        .eq("id", integration.id);
+    } else {
+      // A blip, a 5xx, a provider API change: the connection itself is not
+      // dead, so it is shown as degraded and the next poll retries. A
+      // connection already waiting for a reconnect keeps that state.
+      await admin
+        .from("integrations")
+        .update({
+          status: verdict === "action_required" ? "ACTION_REQUIRED" : "DEGRADED",
+          last_error_at: new Date().toISOString(),
+          last_error_code: verdict === "action_required" ? "poll_refused" : "poll_failed",
+          last_error_message: message,
+        })
+        .eq("id", integration.id)
+        .neq("status", "ACTION_REQUIRED");
+      // Meta has no refresh grant to fail, so a dead token surfaces only as a
+      // failed Graph call. Ask Meta about the token now (debug_token): it
+      // flags "Reconnect" only if Meta says the token itself is invalid.
+      if ((META_TOKEN_PROVIDERS as readonly string[]).includes(integration.provider_type)) {
+        await runMetaTokenCheck(integration.id).catch(() => null);
+      }
+    }
 
     if (error instanceof PermanentJobError) throw error;
     // A transient failure still reschedules below rather than killing polling.

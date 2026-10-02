@@ -43,6 +43,11 @@ export type HarnessOptions = {
   /** Which calendar the booking scenario uses. */
   calendars?: readonly ("google" | "calendly" | "none")[];
   verbose?: boolean;
+  /**
+   * REAL mode: sign with this key (the deployed RETELL_SECRET_KEY) instead of
+   * the fake one, and expect no provider fakes to be loaded.
+   */
+  retellKey?: string;
 };
 
 export type HarnessReport = { checks: Check[]; latencies: Latency[]; failures: Check[]; notes: string[] };
@@ -175,7 +180,7 @@ export class VoiceHarness {
     return { status: res.status, json, ms };
   }
 
-  signed(body: string, key = FAKE_RETELL_KEY): Record<string, string> {
+  signed(body: string, key = this.opts.retellKey ?? FAKE_RETELL_KEY): Record<string, string> {
     return { "x-retell-signature": signRetellBody(body, Date.now(), key) };
   }
 

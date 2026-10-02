@@ -168,8 +168,10 @@ export async function createVoicePackCheckout(
       payment_intent_data: {
         metadata: { kind: VOICE_PACK_METADATA_KIND, business_id: ctx.businessId, pack_key: pack.key, minutes: String(pack.minutes) },
       },
-      success_url: `${ctx.site}/app/settings?section=billing&voicepack=success`,
-      cancel_url: `${ctx.site}/app/settings?section=billing&voicepack=cancelled`,
+      // Back to where the pack was bought (Voice, Budget), which says what
+      // happened; Billing had no word about it (QA 2026-09-30).
+      success_url: `${ctx.site}/app/settings?section=voice&panel=budget&voicepack=success`,
+      cancel_url: `${ctx.site}/app/settings?section=voice&panel=budget&voicepack=cancelled`,
     });
     if (!session.url) return { ok: false, state: "error", error: "Could not start checkout. Try again." };
     return { ok: true, url: session.url, sessionId: session.id };

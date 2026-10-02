@@ -2,7 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Activity,
-  CircleDollarSign,
+  Gauge,
   Clock,
   Mail,
   MessageSquare,
@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/cn";
 import { formatCount, stepTiming, stepTitle } from "@/lib/outreach/campaign-draft";
-import { formatMoneyMinor } from "@/lib/outreach/types";
 import { gradeTone } from "@/lib/prospects/types";
 import type {
   AudienceFilter,
@@ -387,44 +386,51 @@ export function CampaignPerformanceTab({
         </div>
       </Panel>
 
-      <Panel
-        icon={CircleDollarSign}
-        title="Cost"
-        description="What this campaign has spent, and what each outcome cost."
-        tone="purple"
-      >
-        <dl className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-line bg-surface p-3">
-            <dd className="text-[18px] font-semibold leading-none tabular-nums text-content">
-              {formatMoneyMinor(performance.budget.spentMinor)}
-            </dd>
-            <dt className="mt-1 text-[11.5px] text-content-muted">
-              Spent of {formatMoneyMinor(performance.budget.capMinor)}
-            </dt>
-          </div>
-          <div className="rounded-lg border border-line bg-surface p-3">
-            <dd className="text-[18px] font-semibold leading-none tabular-nums text-content">
-              {performance.costPerReplyMinor === null
-                ? "—"
-                : formatMoneyMinor(performance.costPerReplyMinor)}
-            </dd>
-            <dt className="mt-1 text-[11.5px] text-content-muted">Cost per reply</dt>
-          </div>
-          <div className="rounded-lg border border-line bg-surface p-3">
-            <dd className="text-[18px] font-semibold leading-none tabular-nums text-content">
-              {performance.costPerQualifiedMinor === null
-                ? "—"
-                : formatMoneyMinor(performance.costPerQualifiedMinor)}
-            </dd>
-            <dt className="mt-1 text-[11.5px] text-content-muted">Cost per qualified lead</dt>
-          </div>
-        </dl>
-        {/* Null, not zero: dividing by nothing is unknown, and "£0 per reply"
-            on a campaign with no replies reads as a bargain. */}
-        <p className="mt-2 text-[11.5px] text-content-muted">
-          Cost per outcome is shown once there is at least one of that outcome.
-        </p>
-      </Panel>
+      {/* Budget as a proportion. Provider spend, cost per reply and cost per
+          qualified lead are serving costs, which are admin-only
+          (owner decision, 2026-09-30). */}
+      <div id="budget" className="scroll-mt-20">
+        <Panel
+          icon={Gauge}
+          title="Budget"
+          description="How much of this campaign's budget has been used."
+          tone="purple"
+        >
+          {!performance.budget.capped ? (
+            <p className="text-[12.5px] text-content-muted">
+              No sourcing budget was reserved for this campaign. Your plan allowances
+              still apply to every send.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-[18px] font-semibold leading-none tabular-nums text-content">
+                  {performance.budget.percentUsed ?? 0}% used
+                </p>
+              </div>
+              <div
+                className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken"
+                role="progressbar"
+                aria-valuenow={performance.budget.percentUsed ?? 0}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Budget used"
+              >
+                <div
+                  className={
+                    (performance.budget.percentUsed ?? 0) >= 100
+                      ? "h-full rounded-full bg-danger-500"
+                      : (performance.budget.percentUsed ?? 0) >= 80
+                        ? "h-full rounded-full bg-warning-500"
+                        : "h-full rounded-full bg-success-500"
+                  }
+                  style={{ width: `${performance.budget.percentUsed ?? 0}%` }}
+                />
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }

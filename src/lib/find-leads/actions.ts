@@ -16,7 +16,13 @@ import { EntitlementError } from "@/lib/billing/entitlements";
 import { savedSearchGate } from "@/lib/billing/allowance-gates";
 import { leadCapMessage, startWorkGate } from "@/lib/billing/lead-cap";
 import { leadCapacity, meterLeadIfNeeded } from "@/lib/billing/lead-meter";
-import { checkPlanReadiness, searchPlanSchema, type SearchPlan } from "./plan";
+import {
+  checkPlanReadiness,
+  searchPlanSchema,
+  toCustomerPlan,
+  type CustomerSearchPlan,
+  type SearchPlan,
+} from "./plan";
 import {
   appendMessage,
   archiveSession,
@@ -269,7 +275,6 @@ async function persistPlan(input: {
   const verdict = await resolveBudget({
     businessId: input.businessId,
     requestedTarget: input.plan.targetVerifiedProspects,
-    requestedCostCapMinor: input.plan.maxProviderCostMinor,
     intentEnabled,
   });
 
@@ -308,10 +313,12 @@ async function persistPlan(input: {
 export async function updateSearchPlanAction(
   sessionId: unknown,
   plan: unknown,
-): Promise<ActionResult<{ plan: SearchPlan }>> {
+): Promise<ActionResult<{ plan: CustomerSearchPlan }>> {
   const id = z.uuid().safeParse(sessionId);
   if (!id.success) return fail("That search session could not be found.");
 
+  // The browser never holds the provider cost cap (admin-only): a value it
+  // sends is ignored and the stored one is kept below.
   const parsed = searchPlanSchema.safeParse(plan);
   if (!parsed.success) return fail("Those search criteria are not valid.");
 
@@ -323,12 +330,14 @@ export async function updateSearchPlanAction(
 
   // Any new or edited location is resolved before it can become part of a
   // runnable plan.
-  const resolved = await resolvePlanLocations(parsed.data);
+  const resolved = await resolvePlanLocations({
+    ...parsed.data,
+    maxProviderCostMinor: session.plan.maxProviderCostMinor,
+  });
 
   const verdict = await resolveBudget({
     businessId: access.workspace.businessId,
     requestedTarget: resolved.targetVerifiedProspects,
-    requestedCostCapMinor: resolved.maxProviderCostMinor,
     intentEnabled: resolved.intent.categories.length > 0,
   });
 
@@ -349,7 +358,7 @@ export async function updateSearchPlanAction(
   });
 
   refresh(id.data);
-  return ok({ plan: clamped });
+  return ok({ plan: toCustomerPlan(clamped) });
 }
 
 export async function renameSearchSessionAction(
@@ -703,7 +712,6 @@ export async function createRecurringSearchAction(
   const budget = await resolveBudget({
     businessId: access.workspace.businessId,
     requestedTarget: parsed.data.targetPerRun,
-    requestedCostCapMinor: session.plan.maxProviderCostMinor,
     intentEnabled: session.plan.intent.categories.length > 0,
   });
 
@@ -1132,7 +1140,6 @@ export async function previewBudgetAction(
 ): Promise<
   ActionResult<{
     maxTarget: number;
-    maxProviderCostMinor: number;
     band: string;
     allowed: boolean;
     reason: string;
@@ -1147,13 +1154,12 @@ export async function previewBudgetAction(
   const verdict = await resolveBudget({
     businessId: access.workspace.businessId,
     requestedTarget: parsed.data.targetVerifiedProspects,
-    requestedCostCapMinor: parsed.data.maxProviderCostMinor,
     intentEnabled: parsed.data.intent.categories.length > 0,
   });
 
+  // No provider cost in the result: serving costs are admin-only.
   return ok({
     maxTarget: verdict.maxTarget,
-    maxProviderCostMinor: verdict.maxProviderCostMinor,
     band: verdict.band,
     allowed: verdict.allowed,
     reason: verdict.reason,

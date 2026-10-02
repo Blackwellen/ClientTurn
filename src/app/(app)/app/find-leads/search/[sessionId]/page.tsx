@@ -6,7 +6,7 @@ import { getV4Entitlements } from "@/lib/billing/v4-entitlements";
 import { getSession } from "@/lib/find-leads/server/sessions";
 import { resolveBudget } from "@/lib/find-leads/server/budget";
 import { liveSignalFeeds } from "@/lib/find-leads/server/signals";
-import { planWantsIntent } from "@/lib/find-leads/plan";
+import { planWantsIntent, toCustomerPlan } from "@/lib/find-leads/plan";
 import { SearchSessionView } from "@/components/find-leads/search/search-session-view";
 import { PlanLimitState } from "@/components/ui/feedback";
 import { PageHeader } from "@/components/app/page-header";
@@ -62,18 +62,17 @@ export default async function SearchSessionPage({
   const verdict = await resolveBudget({
     businessId: workspace.businessId,
     requestedTarget: session.plan.targetVerifiedProspects,
-    requestedCostCapMinor: session.plan.maxProviderCostMinor,
     intentEnabled: planWantsIntent(session.plan),
   });
 
   return (
     <SearchSessionView
-      session={session}
+      // The provider cost cap stays on the server (admin-only).
+      session={{ ...session, plan: toCustomerPlan(session.plan) }}
       canManage={hasRole(workspace.role, "admin")}
       liveFeeds={liveSignalFeeds()}
       initialBudget={{
         maxTarget: verdict.maxTarget,
-        maxProviderCostMinor: verdict.maxProviderCostMinor,
         allowed: verdict.allowed,
         reason: verdict.reason,
       }}

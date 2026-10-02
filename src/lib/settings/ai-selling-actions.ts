@@ -92,10 +92,10 @@ const budgetFormSchema = z.object(
 
 export async function saveBudgetsAction(input: unknown): Promise<SettingsActionResult> {
   const shape = budgetFormSchema.safeParse(input);
-  if (!shape.success) return { ok: false, error: "Check the amounts and try again." };
+  if (!shape.success) return { ok: false, error: "Check the limits and try again." };
   const parsed = parseBudgetForm(shape.data);
   if (!parsed.ok) {
-    return { ok: false, error: "Some amounts are not valid.", fieldErrors: parsed.errors };
+    return { ok: false, error: "Some limits are not valid.", fieldErrors: parsed.errors };
   }
   const workspace = await admin();
   if (!workspace) return { ok: false, error: DENIED };

@@ -119,7 +119,14 @@ export type BudgetRequest = {
   businessId: string;
   /** What the customer asked for. Treated as a request, never as authority. */
   requestedTarget: number;
-  requestedCostCapMinor: number;
+  /**
+   * An internal, lower provider cap for this run, in pence. Omitted on every
+   * customer path: the provider cost ceiling is not a customer field (serving
+   * costs are admin-only, owner decision 2026-09-30), so a customer plan runs
+   * against the platform ceiling. A plan's legacy `maxProviderCostMinor` is
+   * deliberately not passed, or a hidden default would silently cap targets.
+   */
+  requestedCostCapMinor?: number;
   intentEnabled?: boolean;
   /**
    * Verified prospects an in-flight run has already produced. Increase-target
@@ -200,7 +207,10 @@ export async function resolveBudget(
 
   // The enforceable cap: the customer never gets more than they asked for, and
   // never more than the system can fund.
-  const requestedCap = Math.max(0, Math.floor(requestedCostCapMinor));
+  const requestedCap =
+    requestedCostCapMinor === undefined
+      ? availableMinor
+      : Math.max(0, Math.floor(requestedCostCapMinor));
   const maxProviderCostMinor = Math.min(requestedCap, availableMinor);
 
   // Target is bounded by both the allowance (a head count) and the cap (money).

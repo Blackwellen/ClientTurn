@@ -668,9 +668,9 @@ export function MessageTimingStep({
                   <p className="text-content-muted mt-0.5 text-[12px]">
                     Off by default. When on, AI rewrites your message for each
                     lead using the same merge details. A rewrite that fails your
-                    style checks, runs too long or exceeds your AI budget is not
+                    style checks, runs too long or exceeds your AI credit limits is not
                     used: that lead gets your message exactly as written. Uses
-                    your AI allowance.
+                    your AI credits.
                   </p>
                 </div>
                 <Switch

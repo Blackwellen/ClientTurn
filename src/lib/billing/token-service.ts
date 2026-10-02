@@ -23,7 +23,9 @@ import { getEntitlements } from "./entitlements";
 import {
   AI_TOKEN_ALLOWANCE,
   nextWarningThreshold,
+  summariseCredits,
   summariseTokens,
+  type CreditSummary,
   TOKEN_PACKS,
   type TokenPackKey,
   type TokenSummary,
@@ -238,6 +240,29 @@ export async function getTokenStatus(businessId: string): Promise<TokenStatus> {
   };
 }
 
+export type CreditStatus = CreditSummary & { periodStart: string; periodEnd: string; blocked: boolean };
+
+/**
+ * The customer view of the allowance: AI credits only (owner decision,
+ * 2026-09-30). Every customer surface (Billing, AI & selling, the dashboard,
+ * `ai_usage.get`) reads this, never `getTokenStatus`.
+ */
+export async function getCreditStatus(businessId: string): Promise<CreditStatus> {
+  const balance = await ensureTokenBalance(businessId);
+  const credits = summariseCredits({
+    includedTokens: balance.includedTokens,
+    purchasedTokens: balance.purchasedTokens,
+    usedTokens: balance.usedTokens,
+    reservedTokens: balance.reservedTokens,
+  });
+  return {
+    ...credits,
+    periodStart: balance.periodStart,
+    periodEnd: balance.periodEnd,
+    blocked: credits.remainingCredits <= 0,
+  };
+}
+
 /**
  * The pre-flight check (read-only). Returns false when there is not enough
  * allowance left to safely attempt a call of this size -- the caller then
@@ -411,8 +436,8 @@ async function maybeWarn(businessId: string, periodStart: string): Promise<void>
     severity: summary.state === "EXHAUSTED" ? "error" : "warning",
     title:
       summary.remaining <= 0
-        ? "AI tokens used up"
-        : `AI tokens ${threshold}% used`,
+        ? "AI credits used up"
+        : `AI credits ${threshold}% used`,
     body:
       summary.remaining <= 0
         ? "The assistant has paused. Your follow-up and qualification rules keep running as normal. Top up to switch it back on."

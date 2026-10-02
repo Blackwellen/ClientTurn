@@ -31,7 +31,7 @@ Agents are different from the **conversation assistant**, which answers a lead's
 - **It never contacts anyone directly.** Messages go through your follow-up engine or campaigns, which re-check consent, suppression, opt-outs and quiet hours before every send.
 - **It cannot approve its own findings.** Approving a prospect is a person's decision; an agent can only reject one.
 - **It cannot delete anything or hide a problem.** It cannot disconnect a system or dismiss a failed event.
-- **Every run re-checks your subscription and AI budget.** If either says no, the run does not go ahead.
+- **Every run re-checks your subscription and AI credits.** If either says no, the run does not go ahead.
 
 ## Related
 

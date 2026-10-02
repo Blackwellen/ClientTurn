@@ -4,7 +4,7 @@ summary: The objection library the assistant uses, why it asks one clarifying qu
 category: sales-knowledge
 keywords: [objections, too expensive, better price, discount, price objection, not interested, send me information, security questionnaire, procurement, contract, playbook, rebuttal, underlying concern, just looking, not now, status quo, tied in, lock-in, your own objections, reassurance, try it]
 order: 50
-updated: 2026-09-27
+updated: 2026-09-30
 ---
 
 When a lead pushes back, the conversation assistant loads a **playbook** from the objection library. A playbook is not a script. It separates what the person *said* (the surface objection) from what they may *mean* (the underlying concern), because the right response depends on which concern it is — and guessing produces the canned rebuttal buyers hate.
@@ -77,7 +77,7 @@ In **Settings → AI & selling → Objections** you can add the objections your 
 
 The assistant uses your answer before its general playbook. It may put it in its own words to fit what the lead said, and it never adds a claim, figure or promise to it. Reassurance is quoted as you wrote it or not at all. Your text is checked when you save it: no emojis, dashes, deadlines or pressure wording.
 
-Use **Try it** to type what a lead might say and see which playbook fires, what the assistant is told and an example reply, with any problem flagged (for example a price you have not published). It runs offline and uses no AI tokens.
+Use **Try it** to type what a lead might say and see which playbook fires, what the assistant is told and an example reply, with any problem flagged (for example a price you have not published). It runs offline and uses no AI credits.
 
 ## How a playbook is chosen
 

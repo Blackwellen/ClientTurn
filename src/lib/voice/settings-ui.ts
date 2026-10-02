@@ -61,6 +61,7 @@ const IDENTITY_PROBLEM: Record<string, string> = {
   PHONE_NOT_FREEPHONE: "must be a UK freephone (0800 or 0808) number, or a postal address",
   ADDRESS_TOO_SHORT: "looks too short for a postal address",
   CONTAINS_LINE_BREAK: "must be on one line",
+  CONTAINS_MARKUP: "can't contain <, >, { or }",
 };
 
 /** "callingAsName:MISSING" -> "The name you call as is missing". */
@@ -129,6 +130,7 @@ export const STYLE_VIOLATION_TEXT: Readonly<Record<string, string>> = {
   CLAIMS_HUMAN: "It can't claim to be a person.",
   RESTATES_LOCKED_TEXT: "Don't repeat the fixed opening.",
   TOO_LONG: "Keep it to 240 characters.",
+  MARKUP: "Remove <, >, { and }.",
   EMPTY: "",
 };
 

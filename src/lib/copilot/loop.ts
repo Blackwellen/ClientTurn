@@ -520,7 +520,7 @@ function budgetStopped(
   if (steps.length === 0 && !awaiting) return degraded(correlationId, steps);
   return {
     reply:
-      "I had to stop there because this workspace's AI budget does not allow another step. Here is what I did.",
+      "I had to stop there because this workspace's AI credits or AI credit limits do not allow another step. Here is what I did.",
     steps,
     awaitingConfirmation: awaiting,
     degraded: true,

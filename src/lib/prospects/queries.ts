@@ -4,7 +4,21 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { OutreachEligibility } from "@/lib/policy/types";
-import { ACTIVE_INTENT_ONLY, applyProspectFilters, needsCompanyJoin } from "./filter-sql";
+import {
+  ACTIVE_INTENT_ONLY,
+  applyCountDefinition,
+  applyProspectFilters,
+  liveCampaignIdsFor,
+  needsCompanyJoin,
+} from "./filter-sql";
+import {
+  PROSPECT_COUNT_DEFINITIONS,
+  prospectKpisFrom,
+  quickCountsFrom,
+  type ProspectCountKey,
+  type ProspectCounts,
+  type ProspectKpi,
+} from "./prospect-counts";
 import {
   researchRefreshState,
   type ResearchRefreshState,
@@ -221,16 +235,33 @@ export async function listProspects(
   const from = (filters.page - 1) * filters.pageSize;
   const to = from + filters.pageSize - 1;
 
+  // The "Live intent" chip keeps only prospects with an unexpired intent
+  // match, by the same inner join its count uses.
+  const intentOnly = filters.quick === "intent";
+  const select =
+    (needsCompanyJoin(filters) ? LIST_SELECT_INNER : LIST_SELECT) +
+    (intentOnly ? ", live_intent:prospect_intent_matches!inner(id)" : "");
+
   let query = supabase
     .from("prospects")
-    .select(needsCompanyJoin(filters) ? LIST_SELECT_INNER : LIST_SELECT, { count: "exact" })
+    .select(select, { count: "exact" })
     .eq("business_id", businessId)
     .eq("is_test", false)
     // A promoted prospect lives in Leads now. Showing it in both places is the
     // fastest way to make the Prospect/Lead boundary meaningless.
     .is("promoted_to_lead_id", null);
 
-  query = applyProspectFilters(query, filters);
+  if (intentOnly) {
+    query = (query as unknown as { gt: (c: string, v: string) => typeof query }).gt(
+      "live_intent.expires_at",
+      new Date().toISOString(),
+    );
+  }
+
+  // Only the Ready chip needs live campaign ids; skip the read otherwise.
+  const liveCampaignIds =
+    filters.quick === "ready" ? await liveCampaignIdsFor(supabase, businessId) : [];
+  query = applyProspectFilters(query, filters, { liveCampaignIds });
 
   switch (filters.sort) {
     case "recent":
@@ -388,25 +419,57 @@ async function loadCampaignNames(
   return out;
 }
 
-/** Quick-filter chip counts, in one round trip rather than seven. */
-export const getProspectQuickCounts = cache(
-  async (businessId: string): Promise<ProspectQuickCounts> => {
+/**
+ * Every prospect count on Find Leads, by the definitions in
+ * `prospect-counts.ts`. Count-only (`head: true`) queries, so none of them
+ * transfers a row, and each applies exactly the predicates the list applies
+ * when the matching chip is selected. Chips and KPIs are both derived from
+ * this one result, so they cannot disagree.
+ */
+export const getProspectCounts = cache(
+  async (businessId: string): Promise<ProspectCounts> => {
     const supabase = await createClient();
-    const { data } = await supabase.rpc("prospect_quick_counts", {
-      p_business_id: businessId,
-    });
+    const now = new Date().toISOString();
+    // Ready and In campaigns read the real campaign status (prospect-counts.ts).
+    const context = { liveCampaignIds: await liveCampaignIdsFor(supabase, businessId) };
 
-    const row = Array.isArray(data) ? data[0] : null;
-    return {
-      all: row?.all_count ?? 0,
-      aGrade: row?.a_grade ?? 0,
-      intent: row?.intent ?? 0,
-      ready: row?.ready ?? 0,
-      contacted: row?.contacted ?? 0,
-      replied: row?.replied ?? 0,
-      review: row?.review ?? 0,
+    const countOf = async (key: ProspectCountKey): Promise<number> => {
+      const definition = PROSPECT_COUNT_DEFINITIONS[key];
+      let query = supabase
+        .from("prospects")
+        .select(
+          definition.requiresLiveIntent ? "id, live_intent:prospect_intent_matches!inner(id)" : "id",
+          { count: "exact", head: true },
+        )
+        .eq("business_id", businessId)
+        .eq("is_test", false);
+      query =
+        definition.scope === "converted"
+          ? query.not("promoted_to_lead_id", "is", null)
+          : query.is("promoted_to_lead_id", null);
+      if (definition.requiresLiveIntent) {
+        query = (query as unknown as { gt: (c: string, v: string) => typeof query }).gt(
+          "live_intent.expires_at",
+          now,
+        );
+      }
+      query = applyCountDefinition(query, key, context);
+      const { count, error } = await query;
+      // A failed count is an error, never a zero presented as a fact.
+      if (error) throw new Error(`prospects: count ${key}: ${error.message}`);
+      return count ?? 0;
     };
+
+    const keys = Object.keys(PROSPECT_COUNT_DEFINITIONS) as ProspectCountKey[];
+    const values = await Promise.all(keys.map(countOf));
+    return Object.fromEntries(keys.map((key, index) => [key, values[index]])) as ProspectCounts;
   },
+);
+
+/** Quick-filter chip counts: the shared counts, in the chips' shape. */
+export const getProspectQuickCounts = cache(
+  async (businessId: string): Promise<ProspectQuickCounts> =>
+    quickCountsFrom(await getProspectCounts(businessId)),
 );
 
 /* ----------------------------------------------------------------- drawer */
@@ -442,8 +505,12 @@ export type ProspectDetail = {
     verifiedAt: string;
   }[];
   conversationId: string | null;
-  /** Whether a research refresh may run now, and why not when it may not. */
-  researchRefresh: ResearchRefreshState;
+  /**
+   * Whether a research refresh may run now, and why not when it may not.
+   * Without `estimatedCostMinor`: what a refresh costs ClientTurn is a serving
+   * cost, and serving costs are admin-only (owner decision, 2026-09-30).
+   */
+  researchRefresh: Omit<ResearchRefreshState, "estimatedCostMinor">;
   /** The most recent stored AI synthesis, if one has been generated. */
   researchSummary: ResearchSummary | null;
   /** Connected social sending accounts, with what each has left today. */
@@ -668,7 +735,7 @@ export async function getProspectDetail(
       verifiedAt: row.verified_at,
     })),
     conversationId: prospectRaw.conversation_id,
-    researchRefresh,
+    researchRefresh: withoutRefreshCost(researchRefresh),
     researchSummary,
     socialAccounts,
     socialStates,
@@ -886,29 +953,15 @@ export async function getProspectScoring(
 
 /* --------------------------------------------------------------- inbox KPIs */
 
-export type ProspectKpi = {
-  key: string;
-  label: string;
-  value: number;
-  /**
-   * Change against the previous 30 days, as a fraction.
-   *
-   * Null where the schema cannot support the comparison honestly. "Ready for
-   * outreach" and "In campaigns" are *states*, not events: nothing records when
-   * a prospect entered them, so there is no previous-period figure to compare
-   * against and no trend is shown rather than a made-up one.
-   */
-  trend: number | null;
-};
+export type { ProspectKpi };
 
 const THIRTY_DAYS_MS = 30 * 864e5;
 
 /**
  * The five counters above the Prospects inbox (§12.2).
  *
- * Count-only queries — `head: true` with an exact count — so none of them
- * transfers a row. Ten narrow counts is far cheaper than one query that returns
- * the table and counts in JS, and every predicate here is covered by an index.
+ * Values come from `getProspectCounts`, the same result the chips read. Only
+ * the two trends need their own period counts.
  */
 export const getProspectKpis = cache(
   async (businessId: string): Promise<ProspectKpi[]> => {
@@ -925,30 +978,14 @@ export const getProspectKpis = cache(
         .eq("business_id", businessId)
         .eq("is_test", false);
 
-    const [
-      found,
-      foundCurrent,
-      foundPrior,
-      verified,
-      ready,
-      inCampaign,
-      converted,
-      convertedCurrent,
-      convertedPrior,
-    ] = await Promise.all([
-      base().is("promoted_to_lead_id", null),
-      base().gte("created_at", currentFrom),
-      base().gte("created_at", priorFrom).lt("created_at", currentFrom),
-      base().eq("verification_status", "VALID").is("promoted_to_lead_id", null),
-      base()
-        .in("status", ["READY", "APPROVED"])
-        .eq("outreach_eligibility", "ELIGIBLE")
-        .is("promoted_to_lead_id", null),
-      base().not("campaign_id", "is", null).is("promoted_to_lead_id", null),
-      base().not("promoted_to_lead_id", "is", null),
-      base().gte("promoted_at", currentFrom),
-      base().gte("promoted_at", priorFrom).lt("promoted_at", currentFrom),
-    ]);
+    const [counts, foundCurrent, foundPrior, convertedCurrent, convertedPrior] =
+      await Promise.all([
+        getProspectCounts(businessId),
+        base().is("promoted_to_lead_id", null).gte("created_at", currentFrom),
+        base().is("promoted_to_lead_id", null).gte("created_at", priorFrom).lt("created_at", currentFrom),
+        base().gte("promoted_at", currentFrom),
+        base().gte("promoted_at", priorFrom).lt("promoted_at", currentFrom),
+      ]);
 
     const change = (current: number | null, prior: number | null): number | null => {
       // Growth from nothing is undefined, not infinite. Showing "+100%" for a
@@ -958,39 +995,20 @@ export const getProspectKpis = cache(
       return ((current ?? 0) - prior) / prior;
     };
 
-    return [
-      {
-        key: "found",
-        label: "Prospects found",
-        value: found.count ?? 0,
-        trend: change(foundCurrent.count, foundPrior.count),
-      },
-      {
-        key: "verified",
-        label: "Verified contacts",
-        value: verified.count ?? 0,
-        trend: null,
-      },
-      {
-        key: "ready",
-        label: "Ready for outreach",
-        value: ready.count ?? 0,
-        trend: null,
-      },
-      {
-        key: "campaigns",
-        label: "In campaigns",
-        value: inCampaign.count ?? 0,
-        trend: null,
-      },
-      {
-        key: "converted",
-        label: "Converted to leads",
-        value: converted.count ?? 0,
-        trend: change(convertedCurrent.count, convertedPrior.count),
-      },
-    ];
+    return prospectKpisFrom(counts, {
+      found: change(foundCurrent.count, foundPrior.count),
+      converted: change(convertedCurrent.count, convertedPrior.count),
+    });
   },
 );
 
 export { ACTIVE_INTENT_ONLY };
+
+/** Drops the serving-cost estimate before the refresh state reaches the browser. */
+function withoutRefreshCost(
+  state: ResearchRefreshState,
+): Omit<ResearchRefreshState, "estimatedCostMinor"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { estimatedCostMinor, ...rest } = state;
+  return rest;
+}

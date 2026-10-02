@@ -51,7 +51,7 @@ In **Brand**, fill in what makes your messages yours:
 
 ## Keep it inside budget
 
-Set the **AI budget** limits so a busy month cannot surprise you, and use **Research depth: Light** if research is more than you need. See [AI budgets and model tiers](/help/ai-agents/ai-budgets-and-model-tiers).
+Set your **AI credits** limits so a busy month cannot surprise you, and use **Research depth: Light** if research is more than you need. See [AI credits and model tiers](/help/ai-agents/ai-budgets-and-model-tiers).
 
 ## Keep the facts right
 

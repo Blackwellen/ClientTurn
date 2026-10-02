@@ -3,8 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSchemaLag } from "@/lib/supabase/schema-lag";
 import { logEvent } from "@/lib/observability/log";
-import { USD_TO_GBP } from "@/lib/voice/cost";
-import { voiceRevenueLines, type LedgerSaleRow } from "@/lib/admin/voice-ops-model";
 import { attributeRevenue, JOURNEY_CHANNEL_LABEL, channelForSourceType } from "./attribution";
 import { loadRevenue, loadTouches } from "./revenue-journey-query";
 import {
@@ -15,8 +13,9 @@ import {
   type QuoteAnalytics,
   type QuoteAuthorKind,
   type QuoteFact,
+  toCustomerVoiceAnalytics,
+  type CustomerVoiceAnalytics,
   type RoiCard,
-  type VoiceAnalytics,
   type VoiceCallFact,
 } from "./insight-metrics";
 
@@ -249,42 +248,31 @@ async function loadCalls(businessId: string, bounds: Bounds): Promise<CallRow[]>
 export async function getVoiceAnalytics(
   businessId: string,
   bounds: Bounds,
+  // Kept for the call signature: no role sees voice cost here (admin-only).
   role: string,
-): Promise<InsightResult<VoiceAnalytics & { restrictedVisible: boolean; quality: { available: false; note: string } }>> {
+): Promise<InsightResult<CustomerVoiceAnalytics & { quality: { available: false; note: string } }>> {
   const quality = {
     available: false as const,
     note: "No call quality grades are recorded yet. Objection handling (resolved share) is the closest measured signal and is shown above.",
   };
   try {
+    void role;
     const calls = await loadCalls(businessId, bounds);
-    const restrictedVisible = canSeeRestricted(role);
+    const billedSeconds = calls.reduce((s, c) => s + (typeof c.billed_sec === "number" ? c.billed_sec : 0), 0);
     if (calls.length === 0) {
-      return { status: "ok", data: { ...computeVoiceAnalytics([], []), restrictedVisible, quality }, truncated: false };
+      return { status: "ok", data: { ...toCustomerVoiceAnalytics(computeVoiceAnalytics([], []), 0), quality }, truncated: false };
     }
     const callIds = calls.map((c) => c.id);
     const leadIds = [...new Set(calls.map((c) => c.lead_id))];
 
+    // Voice call cost is never read here: customers see minutes and outcomes
+    // only (owner decision, 2026-09-30). Admin has the cost ledger.
     const outcomes = new Map<string, string>();
-    const costByCall = new Map<string, number>();
     for (const ids of chunks(callIds)) {
-      const [o, costs] = await Promise.all([
-        read<{ voice_call_id: string; disposition: string }>(() =>
-          db().from("voice_call_outcomes").select("voice_call_id, disposition").eq("business_id", businessId).in("voice_call_id", ids),
-        ),
-        restrictedVisible
-          ? read<{ id: string; voice_call_id: string | null; total_cost: number | string; currency: string; reconciles_id: string | null }>(() =>
-              db().from("voice_cost_ledger").select("id, voice_call_id, total_cost, currency, reconciles_id").eq("business_id", businessId).in("voice_call_id", ids),
-            )
-          : Promise.resolve([]),
-      ]);
+      const o = await read<{ voice_call_id: string; disposition: string }>(() =>
+        db().from("voice_call_outcomes").select("voice_call_id, disposition").eq("business_id", businessId).in("voice_call_id", ids),
+      );
       for (const row of o) outcomes.set(row.voice_call_id, row.disposition);
-      const superseded = new Set(costs.map((c) => c.reconciles_id).filter(Boolean));
-      for (const c of costs) {
-        if (!c.voice_call_id || superseded.has(c.id)) continue;
-        const amount = Number(c.total_cost);
-        if (!Number.isFinite(amount)) continue;
-        costByCall.set(c.voice_call_id, (costByCall.get(c.voice_call_id) ?? 0) + (c.currency === "GBP" ? amount : amount * USD_TO_GBP));
-      }
     }
 
     // What happened after each call: bookings, quotes sent, recorded revenue.
@@ -336,7 +324,7 @@ export async function getVoiceAnalytics(
         endedAt: c.ended_at,
         durationSec: c.duration_sec,
         disposition: outcomes.get(c.id) ?? null,
-        costGbp: costByCall.has(c.id) ? (costByCall.get(c.id) as number) : null,
+        costGbp: null,
         bookedAfter: after(bookingsByLead.get(c.lead_id), at),
         quotedAfter: after(quotesByLead.get(c.lead_id), at),
         soldAfter: after(revenueByLead.get(c.lead_id), at),
@@ -355,11 +343,8 @@ export async function getVoiceAnalytics(
     );
     const objections: ObjectionFact[] = objectionRows.map((o) => ({ key: o.objection_key, handledOutcome: o.handled_outcome, channel: o.channel }));
 
-    const analytics = computeVoiceAnalytics(facts, objections);
-    if (!restrictedVisible) {
-      analytics.costPerOutcome = { restricted: true, totalCostGbp: null, perConnectedCall: null, perBooking: null, perQuote: null, perSale: null };
-    }
-    return { status: "ok", data: { ...analytics, restrictedVisible, quality }, truncated: calls.length >= MAX };
+    const analytics = toCustomerVoiceAnalytics(computeVoiceAnalytics(facts, objections), billedSeconds);
+    return { status: "ok", data: { ...analytics, quality }, truncated: calls.length >= MAX };
   } catch (error) {
     if (error instanceof SchemaLag) return { status: "not_set_up", message: "AI calling is not set up on this workspace's database yet." };
     logEvent("analytics.read_failed", { area: "voice_analytics", businessId, error }, "error");
@@ -372,7 +357,7 @@ export async function getVoiceAnalytics(
 export const ROI_MODEL = "position" as const;
 
 /**
- * The ROI chain for voice: minutes and spend -> qualified -> booked -> quotes
+ * The ROI chain for voice: minutes -> qualified -> booked -> quotes
  * -> sales -> revenue credited to calls (position-based). Renders only with
  * real minutes AND real recorded revenue (buildRoiCard).
  */
@@ -380,22 +365,9 @@ export async function getVoiceRoi(businessId: string, bounds: Bounds): Promise<I
   try {
     const calls = await loadCalls(businessId, bounds);
     const voiceMinutes = calls.reduce((s, c) => s + (typeof c.billed_sec === "number" ? c.billed_sec : 0), 0) / 60;
-    const ledger = await read<LedgerSaleRow>(() =>
-      db()
-        .from("voice_minute_ledger")
-        .select("business_id, kind, pack_delta_sec, included_delta_sec, created_at")
-        .eq("business_id", businessId)
-        .in("kind", ["PACK_PURCHASE", "PACK_REFUND", "PERIOD_GRANT"])
-        .gte("created_at", bounds.from.toISOString())
-        .lte("created_at", bounds.to.toISOString())
-        .limit(MAX),
-    );
-    const { lines } = voiceRevenueLines(ledger);
-    const spend = lines.length ? lines.reduce((s, l) => s + l.sign * l.priceGbp, 0) : null;
-
     const leadIds = [...new Set(calls.filter((c) => c.outcome && c.outcome !== "CANCELLED").map((c) => c.lead_id))];
     if (leadIds.length === 0) {
-      return { status: "ok", data: buildRoiCard({ voiceMinutes, voiceSpendGbp: spend, qualified: 0, booked: 0, quotes: 0, sales: 0, attributedRevenueMinor: {}, model: ROI_MODEL }), truncated: false };
+      return { status: "ok", data: buildRoiCard({ voiceMinutes, qualified: 0, booked: 0, quotes: 0, sales: 0, attributedRevenueMinor: {}, model: ROI_MODEL }), truncated: false };
     }
 
     let qualified = 0;
@@ -422,7 +394,6 @@ export async function getVoiceRoi(businessId: string, bounds: Bounds): Promise<I
       status: "ok",
       data: buildRoiCard({
         voiceMinutes,
-        voiceSpendGbp: spend,
         qualified,
         booked,
         quotes,

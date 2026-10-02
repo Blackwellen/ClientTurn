@@ -8,6 +8,10 @@ import {
   type ProspectQuickFilter,
 } from "@/lib/prospects/filters";
 import type { ProspectQuickCounts } from "@/lib/prospects/types";
+import {
+  PROSPECT_COUNT_DEFINITIONS,
+  QUICK_FILTER_COUNT_KEY,
+} from "@/lib/prospects/prospect-counts";
 
 /**
  * The seven quick filters above the inbox (V4 §12.3).
@@ -58,6 +62,9 @@ export function ProspectQuickFilters({
             type="button"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
+            // The same definition the KPI strip's tooltip shows
+            // (lib/prospects/prospect-counts.ts).
+            title={PROSPECT_COUNT_DEFINITIONS[QUICK_FILTER_COUNT_KEY[key]].definition}
             onClick={() => onChange(key)}
             className={cn(
               "inline-flex h-9 items-center gap-1.5 rounded-lg border px-4 text-[13px] font-medium transition-colors",

@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { applyCountDefinition, liveCampaignIdsFor } from "@/lib/prospects/filter-sql";
 import { loadEmailAccount } from "@/lib/email/store";
 import {
   EMPTY_FUNNEL,
@@ -30,6 +31,8 @@ export * from "./types";
 
 export async function listCampaigns(businessId: string): Promise<CampaignListData> {
   const supabase = await createClient();
+  // "Ready" excludes prospects in a live campaign by its real status.
+  const liveCampaignIds = await liveCampaignIdsFor(supabase, businessId);
 
   const [
     { data: rows },
@@ -60,13 +63,19 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
         .select("sequence_id")
         .eq("business_id", businessId)
         .eq("enabled", true),
-      supabase
-        .from("prospects")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .in("status", ["READY", "APPROVED"])
-        .is("campaign_id", null)
-        .is("promoted_to_lead_id", null),
+      // "Ready for outreach", by the one definition the Prospects chip and
+      // KPI use (lib/prospects/prospect-counts.ts). The banner links to that
+      // chip, so the two numbers must be the same number.
+      applyCountDefinition(
+        supabase
+          .from("prospects")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", businessId)
+          .eq("is_test", false)
+          .is("promoted_to_lead_id", null),
+        "ready",
+        { liveCampaignIds },
+      ),
       supabase
         .from("sender_identities")
         .select("id, email, display_name, status, cold_enabled, daily_send_cap, postal_footer")
@@ -86,12 +95,10 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
 
   const budgetByCampaign = new Map<
     string,
-    { capMinor: number | null; spentMinor: number; percent: number | null; hasCap: boolean }
+    { percent: number | null; hasCap: boolean }
   >();
   for (const row of budgetRows ?? []) {
     budgetByCampaign.set(row.campaign_id, {
-      capMinor: row.has_cap ? Number(row.budget_cap_minor) : null,
-      spentMinor: Number(row.budget_spent_minor ?? 0),
       percent: row.percent_used === null ? null : Number(row.percent_used),
       hasCap: row.has_cap,
     });
@@ -135,8 +142,6 @@ export async function listCampaigns(businessId: string): Promise<CampaignListDat
 
     return {
       audience: readAudience(row.audience_json, icp?.name ?? null),
-      budgetCapMinor: budget?.capMinor ?? null,
-      budgetSpentMinor: budget?.spentMinor ?? 0,
       budgetPercent: budget?.percent ?? null,
       hasBudgetCap: budget?.hasCap ?? false,
       ownerId: row.created_by,

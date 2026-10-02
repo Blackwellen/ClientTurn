@@ -25,8 +25,9 @@ import { INDUSTRIES, INDUSTRY_STRIP, type Industry } from "./industry-data";
  *
  * Two rows deep and scrolling sideways, as approved: `grid-flow-col` with
  * `grid-rows-2` fills column by column, so a page is three columns by two
- * rows and the arrows advance exactly one page. With sixteen sectors those
- * arrows have real work to do.
+ * rows and the arrows advance exactly one page. With eight sectors the
+ * arrows reveal the last two columns on desktop and page through the rest on
+ * smaller screens.
  *
  * The track is a native scroll region, so trackpad, touch and keyboard all
  * work whether or not the visitor uses the buttons.
@@ -71,6 +72,9 @@ const STAGE_ICONS: LucideIcon[] = [MessageSquareText, FileText, CalendarDays];
 
 function IndustryCard({ industry }: { industry: Industry }) {
   const stageLabels = ["Enquiry", "Qualify", industry.finalLabel];
+  // Illustrations are drawn on the dark palette already, so they skip the
+  // dimming a photograph needs. Next serves an .svg src unoptimised.
+  const isIllustration = industry.image?.endsWith(".svg") ?? false;
 
   return (
     <article className="pub-card pub-card-interactive group flex h-full min-w-0 flex-col overflow-hidden">
@@ -87,10 +91,16 @@ function IndustryCard({ industry }: { industry: Industry }) {
             // only began fetching once they arrived. These are ~40KB
             // optimised variants in the last section of the page, so loading
             // them up front costs little and removes the pop-in entirely.
+            // The two .svg illustrations are ~3KB each.
             loading="eager"
             // Toned back so the photograph sits in the dark palette rather
             // than punching a bright hole in it; it lifts slightly on hover.
-            className="object-cover brightness-[0.72] saturate-[0.85] transition-[transform,filter] duration-500 group-hover:scale-[1.03] group-hover:brightness-[0.82]"
+            className={cn(
+              "object-cover transition-[transform,filter] duration-500 group-hover:scale-[1.03]",
+              isIllustration
+                ? "brightness-95 group-hover:brightness-105"
+                : "brightness-[0.72] saturate-[0.85] group-hover:brightness-[0.82]",
+            )}
           />
         ) : (
           <Motif industry={industry} />
@@ -160,7 +170,7 @@ function IndustryCard({ industry }: { industry: Industry }) {
           ))}
         </ol>
 
-        {/* There is no per-sector page to link to, and inventing sixteen of
+        {/* There is no per-sector page to link to, and inventing eight of
             them to satisfy a label would be worse than labelling the link
             for where it actually goes. It goes to How It Works, which is
             what a visitor reading this card wants next. */}

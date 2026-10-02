@@ -1221,6 +1221,41 @@ Tests: `tests/voice-brief-matrix.test.ts` (432 synthetic briefs across three
 workspaces, each defect by name, the lint tested to fail, the endpoint and
 permission parity).
 
+### 16.18 Real-provider QA (2026-09-30 to 10-02)
+
+- **Settings → Voice on a real Pro workspace.** A TEST signup paid with the
+  Stripe TEST card reached every panel. Fixed: identity fields and the opener
+  line refuse `<`, `>`, `{`, `}` (they are spoken and sent as Retell
+  variables; `CONTAINS_MARKUP`, `MARKUP`); the refusal names the real problem
+  instead of always the freephone rule; a transfer number must be a class an
+  AI call may dial (UK geographic, mobile, 03; a +44 9 premium number was
+  accepted); the trial note shows only to a trial; a minute-pack checkout
+  returns to Voice → Budget and says what happened; the backchannel copy
+  matches the words sent; Save is full width on a phone (the support
+  launcher covered it). Tests: `tests/voice-settings-qa.test.ts`.
+- **Stripe TEST webhook endpoint.** `we_1UCPneA6uKArbe0IlcENQSUa`
+  (clientturn.com) subscribes only to subscription and invoice events, so
+  `checkout.session.completed` never arrives: voice packs, AI token top-ups
+  and SMS credit are never credited on TEST unless the event is forwarded.
+  The endpoint needs every type in the route's `HANDLED` set (owner action).
+- **Calendar tokens.** Calendly availability read the stored access token
+  directly and failed two hours after connecting; it now uses
+  `getLiveAccessToken`, and `integration.token_refresh` renews calendar
+  tokens 30 minutes ahead (docs/CRON.md). Calendly scopes are requested
+  explicitly (`CALENDLY_SCOPES`: users:read, event_types:read,
+  scheduled_events:read, webhooks:write), and a 403 "Insufficient scope"
+  marks the connection "Reconnect Calendly to grant access" (health check
+  and availability) instead of Healthy. Calendly migrates an old token to the
+  app's console scopes on refresh, so the developer-console app must list the
+  same scopes. Tests: `tests/oauth-token-refresh.test.ts`,
+  `tests/calendly-scopes.test.ts`.
+- **Harness REAL mode.** `scripts/voice-e2e/run.ts --real --base <url>`:
+  read-only Retell probes (agent, LLM, tools, number import, prompt drift),
+  each calendar connection through the app's accessor and health ping, and
+  the signed tool/webhook path with the real key on a synthetic call in the
+  paused demo workspace. A real conversation and the post-call chain are
+  proven only by a real call. The fake mode is unchanged.
+
 ### 16.13 Migration 0162 (written, NOT applied)
 
 `0162_voice_agent_tools.sql`: `voice_tool_calls` (member-read, service-role

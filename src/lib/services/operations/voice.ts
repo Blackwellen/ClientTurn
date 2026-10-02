@@ -7,7 +7,8 @@ import { createDownloadUrl } from "@/lib/storage/r2";
 import { defineOperation, ServiceError, type HandlerInput } from "../runtime";
 import { assertVoiceAllowed } from "@/lib/voice/entitlement";
 import { buildEntitlementSnapshot, withCallRequested } from "@/lib/voice/snapshot";
-import { identityReadiness } from "@/lib/voice/identity";
+import { identityReadiness, type IdentityProblem } from "@/lib/voice/identity";
+import { identityProblemText } from "@/lib/voice/settings-ui";
 import { ENTITLEMENT_MESSAGES } from "@/lib/voice/dial-decision";
 import { DEFAULT_CALLING_HOURS, parseCallingHoursConfig } from "@/lib/voice/calling-hours";
 import { VOICE_ROUTES } from "@/lib/voice/time-governor";
@@ -297,6 +298,18 @@ defineOperation("voice.settings_get", {
 
 /* ==================================================== settings_update */
 
+/**
+ * What is actually wrong with the calling identity, in the words the Settings
+ * panel uses. It used to say "a contact must be a postal address or a UK
+ * freephone number" whatever the problem was (QA 2026-09-30: a name with
+ * markup in it got the freephone message).
+ */
+function identityInvalidMessage(problems: readonly IdentityProblem[]): string {
+  const first = problems[0];
+  if (!first) return "Check your calling identity.";
+  return `Check your calling identity: ${identityProblemText(`${first.field}:${first.problem}`)}.`;
+}
+
 defineOperation("voice.settings_update", {
   schema: voiceSettingsUpdateSchema,
   async run({ args, context }: HandlerInput<VoiceSettingsUpdate>) {
@@ -319,12 +332,14 @@ defineOperation("voice.settings_update", {
         p.problem === "IDENTITY_INCOMPLETE"
           ? "Complete your calling identity (the name you call as, your legal entity and a contact address or freephone number) before switching voice on."
           : p.problem === "INVALID"
-            ? "Check your calling identity: a contact must be a postal address or a UK freephone (0800/0808) number."
+            ? identityInvalidMessage(p.identityProblems)
             : p.problem === "STYLE"
-              ? "The opener text can't claim to be a person, repeat the fixed opening, use emoji or dashes, or run past 240 characters."
+              ? "The opener text can't claim to be a person, repeat the fixed opening, use emoji, dashes, <, >, { or }, or run past 240 characters."
               : p.problem === "ALLOCATION"
                 ? "Route allocations must each be 0 to 100% and add up to no more than 100%."
-                : "Add a transfer number, or set transfers to never.";
+                : p.problem === "NOT_ALLOWED"
+                  ? "Transfers can go only to a UK landline, a UK mobile or an 03 number. Premium, personal (070), 084/087, freephone and international numbers are not allowed."
+                  : "Add a transfer number, or set transfers to never.";
       throw new ServiceError("INVALID_INPUT", message);
     }
 
@@ -623,13 +638,13 @@ async function cardsFor(businessId: string, role: string, rows: (CallCardRow & {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const client = db();
-  const admin = role === "owner" || role === "admin";
   const [outcomes, objections, leads, costs, transcripts, recordings] = await Promise.all([
     client.from("voice_call_outcomes").select("voice_call_id, disposition, summary, facts, next_action, callback_requested_for").eq("business_id", businessId).in("voice_call_id", ids),
     client.from("objection_events").select("voice_call_id, objection_key, handled_outcome").eq("business_id", businessId).in("voice_call_id", ids),
     client.from("leads").select("id, qualification_state").eq("business_id", businessId).in("id", [...new Set(rows.map((r) => r.lead_id))]),
-    // ClientTurn's cost: read only for an owner or admin, so it never leaves the server otherwise.
-    admin ? client.from("voice_cost_ledger").select("voice_call_id, total_cost, currency").eq("business_id", businessId).in("voice_call_id", ids) : Promise.resolve({ data: [], error: null }),
+    // ClientTurn's cost is platform-admin only and is never read here, so no
+    // workspace caller (UI, Copilot, MCP, API) can receive it.
+    Promise.resolve({ data: [], error: null }),
     withDetail ? client.from("voice_call_transcripts").select("voice_call_id, segments").eq("business_id", businessId).in("voice_call_id", ids) : Promise.resolve({ data: [], error: null }),
     withDetail ? client.from("voice_call_recordings").select("voice_call_id, status, object_key").eq("business_id", businessId).in("voice_call_id", ids) : Promise.resolve({ data: [], error: null }),
   ]);

@@ -18,7 +18,7 @@
  *   * Research depth, risk tolerance, qualification depth, preferred methods
  *     and example messages: one `workspace_sales_overrides` row, kind
  *     ARCHETYPE_SETTINGS, key '*' (the workspace-wide default).
- *   * Budgets: workspace rows in `ai_budgets` (0122).
+ *   * AI limits (in AI credits): workspace rows in `ai_budgets` (0122).
  *   * LIAs: `legitimate_interest_assessments` (0123).
  */
 
@@ -67,7 +67,7 @@ export const RESEARCH_DEPTH_COPY: Record<ResearchDepth, { label: string; descrip
   STANDARD: { label: "Standard", description: "AI research runs on its usual AI tier." },
   DEEP: {
     label: "Deep",
-    description: "AI research may use one AI tier higher, only when your AI budgets and the lead's value allow it.",
+    description: "AI research may use one AI tier higher, only when your AI credit limits and the lead's value allow it.",
   },
 };
 
@@ -288,101 +288,106 @@ export type SalesSettingsView = {
 
 /* ----------------------------------------------------------------- budgets */
 
+/*
+ * Customer AI limits are in AI credits (owner decision, 2026-09-30); see
+ * `lib/ai/credit-limits.ts` for how they are stored and enforced. Nothing in
+ * this block is money.
+ */
+
 export const EDITABLE_BUDGET_SCOPES = ["WORKSPACE_MONTH", "LEAD", "PRE_REPLY", "OPPORTUNITY"] as const;
 export type EditableBudgetScope = (typeof EDITABLE_BUDGET_SCOPES)[number];
 
 export const BUDGET_SCOPE_COPY: Record<EditableBudgetScope, { label: string; description: string }> = {
   WORKSPACE_MONTH: {
-    label: "Workspace monthly ceiling",
-    description: "The most AI may cost this workspace in a calendar month. Your plan's own ceiling still applies.",
+    label: "Workspace monthly limit",
+    description: "The most AI credits this workspace may use in a calendar month. Your plan's allowance still applies.",
   },
-  LEAD: { label: "Per lead", description: "The most AI may cost on one lead over its lifetime." },
+  LEAD: { label: "Per lead", description: "The most AI credits one lead may use over its lifetime." },
   PRE_REPLY: {
     label: "Before a reply",
-    description: "The most AI may cost on a lead before it has replied. Kept low on purpose.",
+    description: "The most AI credits a lead may use before it has replied. Kept low on purpose.",
   },
   OPPORTUNITY: {
     label: "Per opportunity",
-    description: "The most AI may cost on a lead once it is an opportunity.",
+    description: "The most AI credits a lead may use once it is an opportunity.",
   },
 };
 
-/** The largest amount any one budget field accepts: £100,000. */
-export const MAX_BUDGET_MINOR = 10_000_000;
+/** The largest limit any one field accepts, in AI credits. */
+export const MAX_CREDIT_LIMIT = 10_000_000;
 
 /**
- * "12.50" -> 1250 pence. Blank -> null (no workspace limit of its own).
- * Returns "invalid" for anything that is not a non-negative amount in pounds
- * with at most two decimal places.
+ * "1,500" -> 1500 credits. Blank -> null (no workspace limit of its own).
+ * Returns "invalid" for anything that is not a whole, non-negative number.
  */
-export function poundsToMinor(text: string): number | null | "invalid" {
-  const value = text.trim().replace(/^£/, "").replace(/,/g, "");
+export function parseCreditLimit(text: string): number | null | "invalid" {
+  const value = text.trim().replace(/,/g, "").replace(/\s*(ai\s*)?credits?$/i, "");
   if (value === "") return null;
-  if (!/^\d+(\.\d{1,2})?$/.test(value)) return "invalid";
-  const minor = Math.round(Number(value) * 100);
-  return Number.isSafeInteger(minor) && minor <= MAX_BUDGET_MINOR ? minor : "invalid";
+  if (!/^\d+$/.test(value)) return "invalid";
+  const credits = Number(value);
+  return Number.isSafeInteger(credits) && credits <= MAX_CREDIT_LIMIT ? credits : "invalid";
 }
 
-/** 1250 -> "£12.50". Null reads as "No limit". */
-export function formatMinor(minor: number | null | undefined): string {
-  if (minor === null || minor === undefined) return "No limit";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(minor / 100);
+/** 1500 -> "1,500 AI credits". Null reads as "No limit". */
+export function formatCreditLimit(credits: number | null | undefined): string {
+  if (credits === null || credits === undefined) return "No limit";
+  return `${Math.round(credits).toLocaleString("en-GB")} AI credits`;
 }
 
-/** Pence to the "12.50" a form field shows; null to blank. */
-export function minorToPounds(minor: number | null | undefined): string {
-  return minor === null || minor === undefined ? "" : (minor / 100).toFixed(2);
+/** Credits to the "1500" a form field shows; null to blank. */
+export function creditLimitToField(credits: number | null | undefined): string {
+  return credits === null || credits === undefined ? "" : String(Math.round(credits));
 }
 
-export type BudgetMinor = Record<EditableBudgetScope, number | null>;
+export type BudgetCredits = Record<EditableBudgetScope, number | null>;
 
 export const budgetUpdateSchema = z
   .object({
-    WORKSPACE_MONTH: z.number().int().min(0).max(MAX_BUDGET_MINOR).nullable(),
-    LEAD: z.number().int().min(0).max(MAX_BUDGET_MINOR).nullable(),
-    PRE_REPLY: z.number().int().min(0).max(MAX_BUDGET_MINOR).nullable(),
-    OPPORTUNITY: z.number().int().min(0).max(MAX_BUDGET_MINOR).nullable(),
+    WORKSPACE_MONTH: z.number().int().min(0).max(MAX_CREDIT_LIMIT).nullable(),
+    LEAD: z.number().int().min(0).max(MAX_CREDIT_LIMIT).nullable(),
+    PRE_REPLY: z.number().int().min(0).max(MAX_CREDIT_LIMIT).nullable(),
+    OPPORTUNITY: z.number().int().min(0).max(MAX_CREDIT_LIMIT).nullable(),
   })
   .partial()
-  .refine((value) => Object.keys(value).length > 0, "Name at least one budget to change.");
+  .refine((value) => Object.keys(value).length > 0, "Name at least one limit to change.");
 
 /**
- * Parses the budget form's pound strings into pence, with a message per bad
+ * Parses the limit form's strings into credits, with a message per bad
  * field. A blank field clears the workspace's own limit for that scope.
  */
 export function parseBudgetForm(
   form: Record<EditableBudgetScope, string>,
-): { ok: true; values: BudgetMinor } | { ok: false; errors: Partial<Record<EditableBudgetScope, string>> } {
-  const values = {} as BudgetMinor;
+): { ok: true; values: BudgetCredits } | { ok: false; errors: Partial<Record<EditableBudgetScope, string>> } {
+  const values = {} as BudgetCredits;
   const errors: Partial<Record<EditableBudgetScope, string>> = {};
   for (const scope of EDITABLE_BUDGET_SCOPES) {
-    const minor = poundsToMinor(form[scope] ?? "");
-    if (minor === "invalid") errors[scope] = "Enter an amount in pounds, like 12.50.";
-    else values[scope] = minor;
+    const credits = parseCreditLimit(form[scope] ?? "");
+    if (credits === "invalid") errors[scope] = "Enter a whole number of AI credits, like 500.";
+    else values[scope] = credits;
   }
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, values };
 }
 
 /**
- * Rules between the fields, checked against the platform defaults:
+ * Rules between the fields, checked against the platform defaults (all in
+ * credits):
  *
  *   * A workspace may tighten a per-lead limit, never loosen it past the
  *     platform default -- the same principle as an agent never widening the
- *     limits it runs under. The monthly ceiling is the workspace's own extra
- *     cap and may be any amount; the plan ceiling and the platform's hard stop
- *     still apply on top of it.
- *   * Spend before a reply cannot exceed spend on the whole lead.
+ *     limits it runs under. The monthly limit is the workspace's own extra
+ *     cap and may be any amount; the plan allowance still applies on top.
+ *   * Use before a reply cannot exceed use on the whole lead.
  */
 export function budgetProblems(
-  values: Partial<BudgetMinor>,
-  platformDefaults: Partial<BudgetMinor>,
+  values: Partial<BudgetCredits>,
+  platformDefaults: Partial<BudgetCredits>,
 ): Partial<Record<EditableBudgetScope, string>> {
   const problems: Partial<Record<EditableBudgetScope, string>> = {};
   for (const scope of ["LEAD", "PRE_REPLY", "OPPORTUNITY"] as const) {
     const value = values[scope];
     const ceiling = platformDefaults[scope];
     if (value !== null && value !== undefined && ceiling !== null && ceiling !== undefined && value > ceiling) {
-      problems[scope] = `This can be at most the platform limit of ${formatMinor(ceiling)}.`;
+      problems[scope] = `This can be at most the platform limit of ${formatCreditLimit(ceiling)}.`;
     }
   }
   const effective = (scope: "LEAD" | "PRE_REPLY") =>
@@ -390,7 +395,7 @@ export function budgetProblems(
   const preReply = effective("PRE_REPLY");
   const lead = effective("LEAD");
   if (!problems.PRE_REPLY && preReply !== null && lead !== null && preReply > lead) {
-    problems.PRE_REPLY = "Spend before a reply cannot be more than the per-lead limit.";
+    problems.PRE_REPLY = "The limit before a reply cannot be more than the per-lead limit.";
   }
   return problems;
 }

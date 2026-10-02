@@ -382,7 +382,7 @@ export const runToolSchema = z.object({
 export const COPILOT_CANNOT: { label: string; operations: string[] }[] = [
   { label: "send a message or outreach", operations: ["message.send"] },
   { label: "launch or resume a campaign", operations: ["campaign.launch", "campaign.resume"] },
-  { label: "change AI budgets", operations: ["ai_budget.update"] },
+  { label: "change AI credit limits", operations: ["ai_budget.update"] },
   { label: "add anyone to the do-not-contact list", operations: ["lead.suppress"] },
   {
     label: "anonymise, delete or export a person's data",

@@ -16,12 +16,12 @@ import type {
   RevenueControlData,
 } from "@/lib/dashboard/revenue-control";
 import { formatSampledRate } from "@/lib/analytics/revenue-surfaces";
-import { formatMetric } from "@/lib/analytics/v4-metrics";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/app/page-header";
 import { cn } from "@/lib/cn";
 import { formatInZone } from "@/lib/dates";
+import { creditTileText, formatCredits } from "@/lib/billing/tokens";
 
 /**
  * The Dashboard's "Revenue control" section: what, today, stands between the
@@ -299,37 +299,32 @@ export function RevenueControlSection({ data }: { data: RevenueControlData }) {
         )}
 
         {budget.status === "ok" ? (
+          // AI usage in AI credits only: no money, no model tokens (owner
+          // decision, 2026-09-30). The £ ceilings live in Admin.
           <Tile
             icon={Gauge}
-            label="AI budget this month"
-            value={
-              budget.data.ceilingGbp === null
-                ? gbp(budget.data.spentGbp, 2)
-                : `${gbp(budget.data.spentGbp, 2)} / ${gbp(
-                    budget.data.ceilingGbp,
-                    // A ceiling under a pound, or with pence, must not round to "£0".
-                    Number.isInteger(budget.data.ceilingGbp) ? 0 : 2,
-                  )}`
-            }
+            label="AI credits this month"
+            value={creditTileText(budget.data)}
             detail={
-              budget.data.ceilingGbp === null
-                ? "No monthly ceiling applies"
-                : `${formatMetric(budget.data.spentGbp / budget.data.ceilingGbp, "percent")} of the ${budget.data.ceilingSource} ceiling`
+              budget.data.state === "EXHAUSTED"
+                ? "Used up. Your rules keep running; top up to resume AI"
+                : budget.data.topUpBalanceCredits > 0
+                  ? `${formatCredits(budget.data.remainingCredits)} left, ${formatCredits(budget.data.topUpBalanceCredits)} of them topped up`
+                  : `${formatCredits(budget.data.remainingCredits)} left this period`
             }
+            href="/app/settings?section=billing#ai-tokens"
             tone={
-              budget.data.ceilingGbp === null
-                ? "neutral"
-                : budget.data.spentGbp >= budget.data.ceilingGbp
-                  ? "danger"
-                  : budget.data.spentGbp >= budget.data.ceilingGbp * 0.8
-                    ? "warning"
-                    : "success"
+              budget.data.state === "EXHAUSTED"
+                ? "danger"
+                : budget.data.state === "HEALTHY"
+                  ? "success"
+                  : "warning"
             }
           />
         ) : (
           <Unavailable
             icon={Gauge}
-            label="AI budget this month"
+            label="AI credits this month"
             state={budget}
           />
         )}

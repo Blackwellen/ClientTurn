@@ -8,7 +8,7 @@ import {
   BarChart3,
   CalendarClock,
   CircleAlert,
-  Coins,
+  Gauge,
   Mail,
   Megaphone,
   MessageSquare,
@@ -32,7 +32,6 @@ import {
   campaignStatusLabel,
   campaignStatusTone,
   complianceSummary,
-  formatMoneyMinor,
   formatRate,
   isSpendingStatus,
   launchBlockers,
@@ -168,7 +167,7 @@ export function CampaignsView({
               <strong className="font-semibold text-content">
                 {unassignedReady.toLocaleString("en-GB")}
               </strong>{" "}
-              approved prospect{unassignedReady === 1 ? "" : "s"} are not in a campaign yet.
+              {unassignedReady === 1 ? "prospect is" : "prospects are"} ready for outreach and not in a campaign yet.
             </p>
             <Link
               href="/app/find-leads?view=prospects&quick=ready"
@@ -271,10 +270,11 @@ function CampaignKpiStrip({ data }: { data: CampaignListData }) {
   const replies = campaigns.reduce((sum, c) => sum + c.funnel.replies, 0);
   const qualified = campaigns.reduce((sum, c) => sum + c.funnel.promoted, 0);
 
-  // Every campaign's consumption of its own budget, summed. Campaigns with no
-  // cap still spend, so they are included in the total — a figure that only
-  // counted capped campaigns would understate what the workspace has used.
-  const budgetSpentMinor = campaigns.reduce((sum, c) => sum + c.budgetSpentMinor, 0);
+  // Running campaigns at 80%+ of their budget. A count, not pounds: provider
+  // spend is admin-only (owner decision, 2026-09-30).
+  const nearBudget = campaigns.filter(
+    (c) => isSpendingStatus(c.status) && c.budgetPercent !== null && c.budgetPercent >= 80,
+  ).length;
 
   const cards = [
     { key: "active", icon: Megaphone, label: "Active campaigns", value: String(active) },
@@ -298,9 +298,9 @@ function CampaignKpiStrip({ data }: { data: CampaignListData }) {
     },
     {
       key: "budget",
-      icon: Coins,
-      label: "Budget used this month",
-      value: formatMoneyMinor(budgetSpentMinor),
+      icon: Gauge,
+      label: "Near budget limit",
+      value: String(nearBudget),
     },
   ];
 
@@ -738,17 +738,13 @@ function CampaignRowView({
 }
 
 /**
- * Budget usage: the amounts, then the proportion.
- *
- * The pounds come from `outreach_campaign_budget` (0055), a definer function
- * that returns a campaign's own cap and that campaign's consumption of it.
- * The withheld columns from 0041 are still withheld — provider unit economics
- * are not on this row, and nothing here is derived from them.
+ * Budget usage, as a proportion only. The pound amounts are provider spend,
+ * which is admin-only (owner decision, 2026-09-30) and never reaches the row.
  */
 function BudgetUsage({ campaign }: { campaign: CampaignRow }) {
   if (!campaign.hasBudgetCap || campaign.budgetPercent === null) {
     return (
-      <Tooltip content="No spend cap is set for this campaign. Your workspace and plan ceilings still apply to every send.">
+      <Tooltip content="No budget is reserved for this campaign. Your plan allowances and caps still apply to every send.">
         <span className="text-[11.5px] text-content-subtle">No cap</span>
       </Tooltip>
     );
@@ -759,17 +755,7 @@ function BudgetUsage({ campaign }: { campaign: CampaignRow }) {
 
   return (
     <div className="w-[116px]">
-      <p className="text-[12px] tabular-nums text-content">
-        <span className="font-semibold">
-          {formatMoneyMinor(campaign.budgetSpentMinor)}
-        </span>
-        <span className="text-content-muted">
-          {" / "}
-          {formatMoneyMinor(campaign.budgetCapMinor ?? 0)}
-        </span>
-      </p>
-
-      <div className="mt-1 flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <div
           className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-sunken"
           role="progressbar"
@@ -1003,13 +989,13 @@ function BudgetAllocationCard({ campaigns }: { campaigns: CampaignRow[] }) {
 
   return (
     <RailCard
-      icon={Coins}
+      icon={Gauge}
       title="Budget allocation"
       subtitle="(active campaigns)"
     >
       {active.length === 0 ? (
         <p className="text-[12.5px] text-content-muted">
-          No running campaign has a spend cap set. Your workspace and plan ceilings still
+          No running campaign has a budget reserved. Your plan allowances and caps still
           apply to every send.
         </p>
       ) : (
@@ -1041,13 +1027,6 @@ function BudgetAllocationCard({ campaigns }: { campaigns: CampaignRow[] }) {
               </span>
               <span className="w-9 shrink-0 text-right text-[11.5px] tabular-nums text-content-muted">
                 {campaign.budgetPercent}%
-              </span>
-              <span className="w-[6.5rem] shrink-0 text-right text-[11.5px] tabular-nums text-content-secondary">
-                {formatMoneyMinor(campaign.budgetSpentMinor)}
-                <span className="text-content-subtle">
-                  {" / "}
-                  {formatMoneyMinor(campaign.budgetCapMinor ?? 0)}
-                </span>
               </span>
             </li>
           ))}

@@ -22,8 +22,10 @@ import "server-only";
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getLiveAccessToken } from "@/lib/integrations/oauth";
+import { getLiveAccessToken, markReconnectRequired } from "@/lib/integrations/oauth";
+import { CALENDLY_SCOPE_MISSING, isInsufficientScope } from "@/lib/integrations/oauth-health";
 import { googleCalendarConfig } from "@/lib/integrations/providers/google-calendar";
+import { calendlyOAuthConfig } from "@/lib/integrations/providers/calendly";
 import {
   filterByDate,
   filterByDayPart,
@@ -165,14 +167,16 @@ async function calendlyAvailableSlots(
   to: Date,
   timezone: string,
 ): Promise<{ ok: true; slots: Slot[] } | { ok: false; detail: string }> {
-  const { data: secret } = await createAdminClient()
-    .from("integration_secrets")
-    .select("access_token")
-    .eq("integration_id", integrationId)
-    .maybeSingle();
-
-  if (!secret?.access_token) {
-    return { ok: false, detail: "No stored Calendly credential." };
+  // Through the refresh-aware accessor: a Calendly access token lives two
+  // hours, and reading the stored one directly failed silently once the
+  // connection was older than that (owner workspace, 2026-09-30).
+  const config = calendlyOAuthConfig();
+  if (!config) return { ok: false, detail: "Calendly is not configured on this environment." };
+  let token: string;
+  try {
+    token = await getLiveAccessToken(integrationId, config);
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : "Could not refresh the Calendly token." };
   }
 
   // Calendly caps the window at 7 days per request.
@@ -183,12 +187,20 @@ async function calendlyAvailableSlots(
   url.searchParams.set("start_time", from.toISOString());
   url.searchParams.set("end_time", cappedTo.toISOString());
 
-  const result = await fetchJson(url.toString(), {
-    method: "GET",
-    headers: { authorization: `Bearer ${secret.access_token}` },
-  });
-
-  if (!result.ok) return result;
+  const response = await fetch(url.toString(), { method: "GET", headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) }).catch(
+    (error: unknown) => error as Error,
+  );
+  if (response instanceof Error) return { ok: false, detail: response.message || "Provider request failed." };
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    // A token without event_types:read: say what fixes it, and show Reconnect.
+    if (isInsufficientScope(response.status, body)) {
+      await markReconnectRequired(integrationId, "scope", CALENDLY_SCOPE_MISSING).catch(() => undefined);
+      return { ok: false, detail: CALENDLY_SCOPE_MISSING.message };
+    }
+    return { ok: false, detail: `Provider returned ${response.status}.` };
+  }
+  const result = { ok: true as const, json: body };
 
   const collection = (result.json.collection ?? []) as {
     start_time?: string;

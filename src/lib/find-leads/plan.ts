@@ -183,6 +183,20 @@ export const searchPlanSchema = z.object({
 
 export type SearchPlan = z.infer<typeof searchPlanSchema>;
 
+/**
+ * The plan as the browser sees it. `maxProviderCostMinor` is a serving-cost
+ * cap in pence, which is admin-only (owner decision, 2026-09-30): it is
+ * stripped before a plan leaves the server and restored from the stored plan
+ * when one comes back (`updateSearchPlanAction`).
+ */
+export type CustomerSearchPlan = Omit<SearchPlan, "maxProviderCostMinor">;
+
+export function toCustomerPlan(plan: SearchPlan): CustomerSearchPlan {
+  const { maxProviderCostMinor: _cap, ...customer } = plan;
+  void _cap;
+  return customer;
+}
+
 /** One label/value row of the plan summary, rendered in chat and in the panel. */
 export type PlanSummaryLine = { label: string; value: string };
 
@@ -259,7 +273,7 @@ const PROBLEM_SENTENCES: Record<PlanProblem, string> = {
 };
 
 /** True when the plan asks for any buying signal, named or structured. */
-export function planWantsIntent(plan: SearchPlan): boolean {
+export function planWantsIntent(plan: CustomerSearchPlan): boolean {
   const { signals } = plan;
   return (
     plan.intent.categories.length > 0 ||
@@ -298,7 +312,7 @@ export function planProblemSentence(problem: PlanProblem): string {
   return PROBLEM_SENTENCES[problem] ?? "This plan needs more detail.";
 }
 
-export function checkPlanReadiness(plan: SearchPlan): PlanReadiness {
+export function checkPlanReadiness(plan: CustomerSearchPlan): PlanReadiness {
   const problems: PlanProblem[] = [];
 
   if (plan.industries.length === 0) problems.push("NO_INDUSTRY");

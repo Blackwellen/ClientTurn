@@ -2,7 +2,7 @@
 
 import { FormError } from "@/components/ui/feedback";
 import * as React from "react";
-import { Calculator, CircleDollarSign, Gauge, Info } from "lucide-react";
+import { Calculator, Gauge, Info, SlidersHorizontal } from "lucide-react";
 import { Input, Switch } from "@/components/ui/form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -11,7 +11,6 @@ import {
   type CampaignDraft,
   type FieldErrors,
 } from "@/lib/outreach/campaign-draft";
-import { formatMoneyMinor } from "@/lib/outreach/types";
 import {
   summariseCampaignBudget,
   type CampaignBudgetContext,
@@ -20,7 +19,7 @@ import { Meter, NoteBox, RailCard, SectionCard, SummaryRow, TickList } from "./p
 
 const THINGS_TO_KNOW = [
   "Limits help protect deliverability and your sender reputation",
-  "Provider costs are estimates and may vary by data provider",
+  "Sourcing and messages count against your plan allowances",
   "You'll be notified before any limits are reached",
   "There is no overage: at a limit the campaign stops until the next period",
   "Optimisation is off by default",
@@ -34,6 +33,11 @@ const THINGS_TO_KNOW = [
  * never buy more than the plan allows. There is no overage (owner decision,
  * 2026-09-27): at a limit the campaign stops, so no switch here can let it
  * run past one. The draft's `autoOverage` field stays false and is not shown.
+ *
+ * No money on this screen (owner decision, 2026-09-30): ClientTurn's serving
+ * costs — provider cost ceilings, cost per prospect, provider spend — are
+ * admin-only. The customer sets counts against their own allowances; the
+ * provider ceiling is applied server-side at launch.
  */
 export function BudgetStep({
   draft,
@@ -48,7 +52,7 @@ export function BudgetStep({
 }) {
   const { budget } = draft;
   const { ceilings } = context;
-  const summary = summariseCampaignBudget(draft, context.costPerProspectMinor);
+  const summary = summariseCampaignBudget(draft);
 
   const setBudget = (patch: Partial<CampaignDraft["budget"]>) =>
     onChange((current) => ({ ...current, budget: { ...current.budget, ...patch } }));
@@ -59,9 +63,9 @@ export function BudgetStep({
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_336px]">
       <SectionCard
-        icon={CircleDollarSign}
+        icon={SlidersHorizontal}
         title="Budget and limits"
-        description="Set how many prospects to reach, your budget and safety limits. These controls help you stay within your plan and protect deliverability."
+        description="Set how many prospects to reach and your safety limits. These controls help you stay within your plan and protect deliverability."
         bodyClassName="divide-y divide-line-subtle"
       >
         <LimitRow
@@ -114,41 +118,6 @@ export function BudgetStep({
         />
 
         <LimitRow
-          label="Provider cost ceiling"
-          description="Maximum spend on data enrichment and external providers for this campaign."
-          error={errors.providerCostCeilingMinor}
-          footnote={`Based on your plan limits. Estimated cost: ~${formatMoneyMinor(context.costPerProspectMinor)} per prospect.`}
-          control={
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-content-muted">
-                  £
-                </span>
-                <Input
-                  id="provider-ceiling"
-                  type="number"
-                  min={0}
-                  step={1}
-                  aria-label="Provider cost ceiling in pounds"
-                  aria-invalid={Boolean(errors.providerCostCeilingMinor)}
-                  value={Math.round(budget.providerCostCeilingMinor / 100)}
-                  onChange={(event) =>
-                    setBudget({
-                      providerCostCeilingMinor:
-                        number(event.target.value, 100000) * 100,
-                    })
-                  }
-                  className="w-32 pl-6 text-right tabular-nums"
-                />
-              </div>
-              <span className="shrink-0 text-[13px] tabular-nums text-content-muted">
-                / {formatMoneyMinor(ceilings.providerCeilingMinor)}
-              </span>
-            </div>
-          }
-        />
-
-        <LimitRow
           label="Communication allowance"
           description="Reserve messaging allowance from your tenant plan for this campaign."
           error={errors.communicationAllowance}
@@ -190,24 +159,13 @@ export function BudgetStep({
         <RailCard
           icon={Calculator}
           title="Budget summary"
-          description="Estimated usage for this campaign."
+          description="Estimated allowance usage for this campaign."
           tone="info"
         >
           <dl className="space-y-0">
             <SummaryRow
               label="Prospects to source"
               value={formatCount(summary.prospectsToSource)}
-            />
-            <SummaryRow
-              label="Estimated provider cost"
-              value={
-                <span>
-                  {formatMoneyMinor(summary.providerCostMinor)}
-                  <span className="block text-[11px] font-normal text-content-muted">
-                    (~{formatMoneyMinor(summary.costPerProspectMinor)} per prospect)
-                  </span>
-                </span>
-              }
             />
             <SummaryRow
               label="Outreach contacts"
@@ -219,20 +177,15 @@ export function BudgetStep({
                 <span>
                   {formatCount(summary.emailCredits)}
                   <span className="block text-[11px] font-normal text-content-muted">
-                    (from tenant allowance)
+                    (from your plan allowance)
                   </span>
                 </span>
               }
             />
           </dl>
-          <div className="mt-2 flex items-center justify-between rounded-lg bg-success-50 px-3 py-2.5">
-            <span className="text-[12.5px] font-medium text-content">
-              Total estimated cost
-            </span>
-            <span className="text-[14px] font-bold tabular-nums text-success-700">
-              {formatMoneyMinor(summary.totalCostMinor)}
-            </span>
-          </div>
+          <p className="mt-2 rounded-lg bg-success-50 px-3 py-2.5 text-[12px] leading-snug text-content-secondary">
+            These figures count against your plan allowances shown below.
+          </p>
         </RailCard>
 
         <RailCard icon={Gauge} title="Plan usage">
@@ -243,7 +196,7 @@ export function BudgetStep({
                 label={meter.label}
                 used={meter.used}
                 limit={meter.limit}
-                format={meter.money ? formatMoneyMinor : formatCount}
+                format={formatCount}
               />
             ))}
           </div>

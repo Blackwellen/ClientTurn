@@ -11,15 +11,18 @@ import { cn } from "@/lib/cn";
 import {
   GRADES,
   checkPlanReadiness,
-  formatMinor,
   planProblemSentence,
-  type SearchPlan,
+  type CustomerSearchPlan,
 } from "@/lib/find-leads/plan";
 import { startSourcingRunAction } from "@/lib/find-leads/actions";
 
 /**
  * Sourcing controls, and the one button in the product that authorises
  * provider spend.
+ *
+ * No money is shown here (owner decision, 2026-09-30): the provider cost
+ * ceiling is not a customer control. The run is bounded by the plan's prospect
+ * allowance, and the budget engine applies the platform ceiling server-side.
  *
  * The rule the whole panel serves (V4 §10.12): nothing here spends anything.
  * Every control below adjusts a plan that is inert until "Start sourcing run"
@@ -39,11 +42,10 @@ export function SourcingControls({
   saving,
 }: {
   sessionId: string;
-  plan: SearchPlan;
-  onChange: (plan: SearchPlan) => void;
+  plan: CustomerSearchPlan;
+  onChange: (plan: CustomerSearchPlan) => void;
   budget: {
     maxTarget: number;
-    maxProviderCostMinor: number;
     allowed: boolean;
     reason: string;
   };
@@ -80,10 +82,10 @@ export function SourcingControls({
           </span>
           <h2 className="text-[14.5px] font-semibold text-content">Sourcing controls</h2>
         </div>
-        <Tooltip content="Sourcing uses paid data providers. Your plan sets how much a run may use.">
+        <Tooltip content="Each verified prospect counts against your plan's monthly prospect allowance.">
           <span className="inline-flex items-center gap-1 text-[11.5px] text-content-muted">
             <Info className="size-3.5" aria-hidden />
-            Provider costs apply
+            Uses your prospect allowance
           </span>
         </Tooltip>
       </header>
@@ -116,31 +118,6 @@ export function SourcingControls({
           </div>
 
           <div>
-            <Label htmlFor="max-cost">Max provider cost</Label>
-            <Input
-              id="max-cost"
-              type="number"
-              min={0}
-              step={1}
-              disabled={!canManage}
-              value={(plan.maxProviderCostMinor / 100).toFixed(0)}
-              onChange={(event) =>
-                onChange({
-                  ...plan,
-                  maxProviderCostMinor: Math.max(0, Number(event.target.value) || 0) * 100,
-                })
-              }
-              className="mt-1"
-            />
-            {/* The ceiling shown is the enforceable one from the budget engine,
-                not the customer's request — so the number on screen is the
-                number the run will honour. */}
-            <p className="mt-1 text-[11.5px] text-content-muted">
-              Ceiling for this run · max {formatMinor(budget.maxProviderCostMinor)}
-            </p>
-          </div>
-
-          <div>
             <Label htmlFor="minimum-score">Minimum score</Label>
             <Select
               id="minimum-score"
@@ -149,7 +126,7 @@ export function SourcingControls({
               onChange={(event) =>
                 onChange({
                   ...plan,
-                  minimumGrade: event.target.value as SearchPlan["minimumGrade"],
+                  minimumGrade: event.target.value as CustomerSearchPlan["minimumGrade"],
                 })
               }
               className="mt-1"
@@ -203,7 +180,7 @@ export function SourcingControls({
         <Info className="mt-0.5 size-4 shrink-0 text-accent-600" aria-hidden />
         <div className="min-w-0 text-[12px] leading-relaxed">
           <p className="font-medium text-content">
-            No enrichment or provider spend will run until you start the sourcing run.
+            Nothing is sourced or enriched until you start the sourcing run.
           </p>
           <p className="text-content-secondary">
             You can review the results before any outreach is sent.

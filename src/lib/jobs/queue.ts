@@ -15,6 +15,7 @@ export type JobType =
   | "campaign.expand"
   | "campaign.send"
   | "integration.health_check"
+  | "integration.token_refresh"
   | "webhook.replay"
   | "webhook.dispatch"
   | "notification.send"

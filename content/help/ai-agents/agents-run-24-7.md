@@ -28,7 +28,7 @@ Every run re-checks the agent before it does anything. A run does not go ahead w
 
 - the agent is paused, stopped or deleted;
 - your subscription or plan no longer covers it;
-- your AI budget or allowance has been used up.
+- your AI credits, or one of your AI credit limits, have been used up.
 
 The reason appears on the agent's **Activity** tab.
 

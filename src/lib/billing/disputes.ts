@@ -8,6 +8,7 @@ import { enqueue } from "@/lib/jobs/queue";
 import { queueNotification } from "@/lib/jobs/handlers/shared";
 import { supabaseMinuteStore } from "@/lib/voice/minutes";
 import { voicePackRefund } from "@/lib/voice/pack-refund";
+import { tokensToCredits } from "@/lib/billing/tokens";
 import { stripe } from "./stripe";
 import { ensureTokenBalance } from "./token-service";
 import {
@@ -77,15 +78,16 @@ function idOf(value: unknown): string | null {
 }
 
 const KIND_LABEL: Record<PurchaseKind, { kind: string; unit: string }> = {
-  ai_tokens: { kind: "AI token pack", unit: "AI tokens" },
+  ai_tokens: { kind: "AI credit pack", unit: "AI credits" },
   message_credits: { kind: "top-up", unit: "credits" },
   voice_pack: { kind: "voice minute pack", unit: "voice minutes" },
   subscription: { kind: "subscription payment", unit: "units" },
   unknown: { kind: "payment", unit: "units" },
 };
 
-/** Seconds are stored for voice; the owner reads minutes. */
+/** Seconds are stored for voice, model tokens for AI; the owner reads minutes and AI credits. */
 function displayUnits(kind: PurchaseKind, units: number): number {
+  if (kind === "ai_tokens") return Math.floor(tokensToCredits(units));
   return kind === "voice_pack" ? Math.floor(units / 60) : units;
 }
 

@@ -400,6 +400,23 @@ export function computeVoiceAnalytics(calls: readonly VoiceCallFact[], objection
   };
 }
 
+/**
+ * What a customer sees of voice: minutes used and outcomes, never a cost
+ * (owner decision, 2026-09-30: "Hide voice call cost from customers"). The
+ * cost-per-outcome block is dropped here, not just hidden, so it cannot reach
+ * a browser; Admin reads voice costs from its own surfaces.
+ */
+export type CustomerVoiceAnalytics = Omit<VoiceAnalytics, "costPerOutcome"> & {
+  /** Billed voice minutes in the period: the unit the customer buys. */
+  minutesUsed: number;
+};
+
+export function toCustomerVoiceAnalytics(analytics: VoiceAnalytics, billedSeconds: number): CustomerVoiceAnalytics {
+  const { costPerOutcome: _cost, ...rest } = analytics;
+  void _cost;
+  return { ...rest, minutesUsed: Math.round(Math.max(billedSeconds, 0) / 60) };
+}
+
 /** "3m 12s". */
 export function formatDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return "—";
@@ -413,8 +430,6 @@ export function formatDuration(seconds: number | null): string {
 export type RoiInput = {
   /** Billed voice minutes in the period (settled ledger seconds / 60). */
   voiceMinutes: number;
-  /** ClientTurn spend in the period that we can evidence, GBP: voice packs bought. Null = unknown. */
-  voiceSpendGbp: number | null;
   qualified: number;
   booked: number;
   quotes: number;
@@ -425,14 +440,13 @@ export type RoiInput = {
   model: string;
 };
 
+/** The ROI chain in minutes and outcomes. No voice spend, no return multiple: voice money is admin-only. */
 export type RoiCard =
   | { status: "empty"; reason: string }
   | {
       status: "ready";
-      steps: { key: "minutes" | "spend" | "qualified" | "booked" | "quotes" | "sales" | "revenue"; label: string; value: string }[];
+      steps: { key: "minutes" | "qualified" | "booked" | "quotes" | "sales" | "revenue"; label: string; value: string }[];
       revenueMinor: Record<string, number>;
-      /** Revenue (GBP) / spend (GBP), only when both are real and in GBP. */
-      returnMultiple: number | null;
       model: string;
     };
 
@@ -455,7 +469,6 @@ export function buildRoiCard(input: RoiInput): RoiCard {
       reason: "No payment or won deal value has been recorded in this period. Revenue appears here once a payment is recorded; it is never estimated.",
     };
   }
-  const gbpRevenue = (input.attributedRevenueMinor.GBP ?? 0) / 100;
   const money = Object.entries(input.attributedRevenueMinor)
     .filter(([, v]) => v > 0)
     .map(([currency, v]) => new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(v / 100))
@@ -464,11 +477,6 @@ export function buildRoiCard(input: RoiInput): RoiCard {
     status: "ready",
     steps: [
       { key: "minutes", label: "Voice minutes", value: Math.round(input.voiceMinutes).toLocaleString("en-GB") },
-      {
-        key: "spend",
-        label: "Voice spend",
-        value: input.voiceSpendGbp === null ? "Not recorded" : new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(input.voiceSpendGbp),
-      },
       { key: "qualified", label: "Qualified", value: input.qualified.toLocaleString("en-GB") },
       { key: "booked", label: "Booked", value: input.booked.toLocaleString("en-GB") },
       { key: "quotes", label: "Quotes sent", value: input.quotes.toLocaleString("en-GB") },
@@ -476,10 +484,6 @@ export function buildRoiCard(input: RoiInput): RoiCard {
       { key: "revenue", label: "Attributed revenue", value: money },
     ],
     revenueMinor: input.attributedRevenueMinor,
-    returnMultiple:
-      input.voiceSpendGbp !== null && input.voiceSpendGbp > 0 && gbpRevenue > 0
-        ? Math.round((gbpRevenue / input.voiceSpendGbp) * 10) / 10
-        : null,
     model: input.model,
   };
 }

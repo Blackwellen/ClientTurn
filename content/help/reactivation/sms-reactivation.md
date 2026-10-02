@@ -54,7 +54,7 @@ Each text uses your plan's monthly SMS allowance first, then any SMS credits you
 
 ## Personalising with AI
 
-**Personalise each message with AI** can rewrite each text for the lead. A rewrite that fails your style checks, is too long, or would exceed your AI budget is not used, and the lead gets your original message.
+**Personalise each message with AI** can rewrite each text for the lead. A rewrite that fails your style checks, is too long, or would exceed your AI credit limits is not used, and the lead gets your original message.
 
 ## Related
 

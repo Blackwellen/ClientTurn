@@ -91,8 +91,13 @@ const HIDDEN_FACT = /(reason|prompt|thought|chain|internal|model|_raw|^_)/i;
 
 const LIVE_STATES = ["QUEUED", "DIALLING", "RINGING", "ANSWERED", "IN_CONVERSATION", "WRAPPING_UP", "TRANSFERRED"];
 
-export function canSeeCallCost(role: string): boolean {
-  return role === "owner" || role === "admin";
+/**
+ * A call's cost is ClientTurn's serving cost: platform admin only (owner
+ * decision 2026-09-30). No workspace role sees it, owners and admins included;
+ * customers see minutes used instead.
+ */
+export function canSeeCallCost(_role: string): boolean {
+  return false;
 }
 
 export function durationLabel(sec: number | null): string | null {

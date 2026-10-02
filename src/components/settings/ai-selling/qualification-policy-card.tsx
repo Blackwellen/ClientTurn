@@ -372,9 +372,9 @@ export function QualificationPolicyCard({
         </div>
 
         <p className="text-[12.5px] text-content-muted">
-          How many questions are asked (depth) is set in Sales behaviour, and how much AI may spend in{" "}
+          How many questions are asked (depth) is set in Sales behaviour, and how many AI credits it may use in{" "}
           <Link href="/app/settings?section=ai-selling" className="font-medium text-content-accent underline-offset-4 hover:underline">
-            AI budget
+            AI credits
           </Link>
           . Both apply here too.
         </p>

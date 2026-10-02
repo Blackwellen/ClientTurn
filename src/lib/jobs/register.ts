@@ -11,6 +11,7 @@ import { handleCampaignExpand } from "./handlers/campaign-expand";
 import { handleCampaignSend } from "./handlers/campaign-send";
 import { handleBookingSync } from "./handlers/booking-sync";
 import { handleIntegrationHealthCheck } from "./handlers/integration-health";
+import { handleIntegrationTokenRefresh } from "./handlers/integration-token-refresh";
 import { handleWebhookReplay } from "./handlers/webhook-replay";
 import { handleWebhookDispatch } from "./handlers/webhook-dispatch";
 import { handleNotificationSend } from "./handlers/notification-send";
@@ -114,6 +115,7 @@ export function registerJobHandlers() {
   registerHandler("campaign.send", handleCampaignSend);
   registerHandler("booking.sync", handleBookingSync);
   registerHandler("integration.health_check", handleIntegrationHealthCheck);
+  registerHandler("integration.token_refresh", handleIntegrationTokenRefresh);
   registerHandler("webhook.replay", handleWebhookReplay);
   registerHandler("webhook.dispatch", handleWebhookDispatch);
   registerHandler("notification.send", handleNotificationSend);

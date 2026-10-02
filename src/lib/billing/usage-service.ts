@@ -25,8 +25,8 @@ import {
  * spend beyond the account ceiling — all of which are re-derived here from plan
  * entitlements, never read from the browser.
  *
- * No provider cost appears in anything this module returns. Spend is the
- * customer's own billed spend; the wholesale price book stays server-side.
+ * No provider cost appears in anything this module returns: serving costs
+ * (the price book, `business_cost_daily`) are admin-only.
  */
 
 export type ChannelUsage = {
@@ -47,7 +47,6 @@ export type UsageMonth = {
   messagesSent: number;
   intentMonitors: number;
   searchRuns: number;
-  totalSpend: number;
   current: boolean;
 };
 
@@ -268,20 +267,12 @@ async function getUsageHistory(
   // by their first seven characters. The prospect and message reads were capped
   // at 50,000 each, so a workspace busy enough to care about its usage history
   // was the one whose history quietly stopped growing.
-  const [history, costs] = await Promise.all([
-    admin.rpc("usage_history_by_month", {
-      p_business_id: businessId,
-      p_from: fromIso,
-    }),
-    admin
-      .from("business_cost_daily")
-      .select("date, total_cost")
-      .eq("business_id", businessId)
-      .gte("date", fromIso.slice(0, 10))
-      // 400 days comfortably covers the six months asked for; this one was
-      // never at risk of truncating.
-      .limit(400),
-  ]);
+  // No spend column: `business_cost_daily` is ClientTurn's provider cost, a
+  // serving cost, which is admin-only (owner decision, 2026-09-30).
+  const history = await admin.rpc("usage_history_by_month", {
+    p_business_id: businessId,
+    p_from: fromIso,
+  });
 
   const prospectCounts = new Map<string, number>();
   const runCounts = new Map<string, number>();
@@ -291,12 +282,6 @@ async function getUsageHistory(
     prospectCounts.set(row.month, Number(row.prospects));
     runCounts.set(row.month, Number(row.sourcing_runs));
     messageCounts.set(row.month, Number(row.messages));
-  }
-
-  const spend = new Map<string, number>();
-  for (const row of costs.data ?? []) {
-    const key = row.date.slice(0, 7);
-    spend.set(key, (spend.get(key) ?? 0) + Number(row.total_cost ?? 0));
   }
 
   const currentKey = currentPeriodStart.slice(0, 7);
@@ -317,7 +302,6 @@ async function getUsageHistory(
       // different measure wearing the same label.
       intentMonitors: 0,
       searchRuns: runCounts.get(key) ?? 0,
-      totalSpend: spend.get(key) ?? 0,
       current: key === currentKey,
     });
   }

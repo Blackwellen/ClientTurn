@@ -185,7 +185,7 @@ export async function composeDraft(input: {
     return fallback("This workspace has used its AI allowance, so the standard message is shown.");
   }
   if (result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN") {
-    return fallback("This workspace reached its AI budget, so the standard message is shown.");
+    return fallback("This workspace reached its AI credit limit, so the standard message is shown.");
   }
   if (!result.data) return fallback(null);
 

@@ -8,7 +8,7 @@ import {
   welcomeJobKey,
 } from "../src/lib/email/subscription-welcome.ts";
 import { PLANS } from "../src/lib/billing/plans.ts";
-import { TOKEN_PACK_LIST, formatTokens } from "../src/lib/billing/tokens.ts";
+import { TOKEN_PACK_LIST, formatCreditAmount } from "../src/lib/billing/tokens.ts";
 import { WHATSAPP_TOKEN_PACKS, WHATSAPP_TOKENS_PER_MESSAGE } from "../src/lib/billing/whatsapp-tokens.ts";
 
 /**
@@ -52,14 +52,14 @@ describe("idempotency", () => {
 });
 
 describe("content", () => {
-  test("Growth: plan inclusions, AI token packs and WhatsApp token packs from the catalogue", () => {
+  test("Growth: plan inclusions, AI credit packs and WhatsApp token packs from the catalogue", () => {
     const email = subscriptionWelcomeEmail({ plan: "growth", siteUrl: SITE, firstName: "Alex" });
     const plan = PLANS.growth;
     assert.match(email.subject, /Growth/);
     assert.match(email.text, new RegExp(plan.leadLimit.toLocaleString("en-GB")));
-    assert.match(email.text, new RegExp(formatTokens(plan.aiTokenAllowance)));
+    assert.ok(email.text.includes(formatCreditAmount(plan.aiTokenAllowance)));
     for (const pack of TOKEN_PACK_LIST) {
-      assert.ok(email.text.includes(`${formatTokens(pack.tokens)} AI tokens for ${GBP(pack.amountMinor / 100)}`), pack.key);
+      assert.ok(email.text.includes(`${formatCreditAmount(pack.tokens)} for ${GBP(pack.amountMinor / 100)}`), pack.key);
     }
     for (const pack of WHATSAPP_TOKEN_PACKS) {
       assert.ok(email.text.includes(`${pack.tokens.toLocaleString("en-GB")} WhatsApp tokens for ${GBP(pack.priceGbp)}`), String(pack.tokens));
@@ -80,7 +80,7 @@ describe("content", () => {
     const email = subscriptionWelcomeEmail({ plan: "pro", siteUrl: SITE });
     assert.ok(email.text.includes(`${SITE}/app/settings?section=billing`));
     assert.ok(email.html.includes(`${SITE}/app/settings?section=billing`));
-    assert.match(email.text, /cannot be refunded once any of its tokens are used/);
+    assert.match(email.text, /cannot be refunded once any of what it added has been used/);
     assert.match(email.text, /no overage/i);
   });
 

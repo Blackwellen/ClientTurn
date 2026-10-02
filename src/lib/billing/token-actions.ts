@@ -22,7 +22,7 @@ import { stripe } from "./stripe";
 import { topUpCheckoutTerms } from "./checkout";
 import { automaticTaxEnabled, taxCheckoutParams } from "./tax";
 import { getTokenStatus, listTokenPurchases } from "./token-service";
-import { isTokenPackKey, TOKEN_PACKS, type TokenPackKey } from "./tokens";
+import { formatCreditAmount, isTokenPackKey, TOKEN_PACKS, type TokenPackKey } from "./tokens";
 
 export type TokenCheckoutResult =
   | { ok: true; url: string }
@@ -47,7 +47,7 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
   // Buying spends money, so it is an owner action, not an admin one.
   const workspace = await requireCapability("manage_billing").catch(() => null);
   if (!workspace) {
-    return { ok: false, error: "Only the workspace owner can buy AI tokens." };
+    return { ok: false, error: "Only the workspace owner can buy AI credits." };
   }
 
   const pack = TOKEN_PACKS[parsed.data.packKey as TokenPackKey];
@@ -93,7 +93,7 @@ export async function startTokenTopUp(input: unknown): Promise<TokenCheckoutResu
             unit_amount: pack.amountMinor,
             product_data: {
               name: `ClientTurn — ${pack.name}`,
-              description: `${pack.tokens.toLocaleString("en-GB")} AI tokens`,
+              description: formatCreditAmount(pack.tokens),
             },
           },
         },

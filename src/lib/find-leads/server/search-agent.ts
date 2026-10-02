@@ -217,7 +217,6 @@ export async function estimateForPlan(
   const verdict = await resolveBudget({
     businessId,
     requestedTarget: plan.targetVerifiedProspects,
-    requestedCostCapMinor: plan.maxProviderCostMinor,
     intentEnabled: plan.intent.categories.length > 0,
   });
 

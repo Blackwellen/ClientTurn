@@ -52,8 +52,10 @@ export function SaveFooter({
   if (!canEdit) return null;
   return (
     <>
-      {note && <p className="mr-auto text-[12px] text-content-muted">{note}</p>}
-      <Button size="sm" loading={saving} disabled={disabled} onClick={onSave}>
+      {note && <p className="mr-auto w-full text-[12px] text-content-muted sm:w-auto">{note}</p>}
+      {/* Full width on a phone: the support launcher sits over the bottom-right
+          corner, where a right-aligned Save was hidden (QA at 390px, 2026-10-02). */}
+      <Button size="sm" className="w-full sm:w-auto" loading={saving} disabled={disabled} onClick={onSave}>
         {label}
       </Button>
     </>

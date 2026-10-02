@@ -176,7 +176,7 @@ export function VoicePanel({ view }: { view: VoiceSettingsView }) {
       {slider("voice-profile-interruption", "Lets the lead interrupt", "Higher stops talking sooner when the lead speaks.", interruption, setInterruption, 0, 1, 0.05, (n) => `${Math.round(n * 100)}%`)}
       <label className="flex items-center gap-2 text-[13px] text-content-secondary">
         <input type="checkbox" className="size-4" checked={backchannel} disabled={readOnly} onChange={(e) => setBackchannel(e.target.checked)} />
-        Small listening sounds while the lead talks (&quot;right&quot;, &quot;I see&quot;)
+        Small listening sounds while the lead talks (&quot;mm&quot;, &quot;right&quot;)
       </label>
       <FormField label="Background sound" htmlFor="voice-profile-ambient" hint="None sounds cleanest on a phone line.">
         <select
@@ -326,7 +326,9 @@ export function RoutesPanel({ view, routeLabels }: { view: VoiceSettingsView; ro
               <div className="min-w-0">
                 <p className="text-[13.5px] font-medium text-content">{routeLabels[r.route] ?? r.route}</p>
                 <p className="text-[12px] text-content-muted">
-                  Aims for {r.targetMinutes} min, never more than {r.maxMinutes} min
+                  {r.maxMinutes > r.targetMinutes
+                    ? `Aims for ${r.targetMinutes} min, never more than ${r.maxMinutes} min`
+                    : `Up to ${r.maxMinutes} min`}
                 </p>
               </div>
             </div>

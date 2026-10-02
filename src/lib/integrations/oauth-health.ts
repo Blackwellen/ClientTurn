@@ -69,6 +69,38 @@ export function zohoScopeOutdated(scopes: readonly string[] | null | undefined):
   return !scopes.some((s) => s.trim() === ZOHO_REQUIRED_SCOPE);
 }
 
+/* ------------------------------------------------------------ calendly --- */
+
+/**
+ * The Calendly scopes ClientTurn asks for, one per endpoint it calls
+ * (developer.calendly.com/docs/authentication/scopes, read 2026-09-30):
+ *   users:read             GET /users/me (connect, health ping)
+ *   event_types:read       GET /event_types, GET /event_type_available_times (availability)
+ *   scheduled_events:read  the invitee.created / invitee.canceled webhook payloads
+ *   webhooks:write         POST and DELETE /webhook_subscriptions (includes webhooks:read)
+ * Calendly migrates a pre-scopes token to the app's configured scopes on its
+ * next refresh, so the app must also have these switched on in Calendly's
+ * developer console, or the grant stays narrower than this list.
+ */
+export const CALENDLY_SCOPES = ["users:read", "event_types:read", "scheduled_events:read", "webhooks:write"] as const;
+
+export const CALENDLY_SCOPE_MISSING = {
+  status: "ACTION_REQUIRED" as const,
+  code: "scope_missing",
+  message: "Reconnect Calendly to grant access: ClientTurn needs permission to read your event types and availability to offer real times.",
+};
+
+/**
+ * Calendly's answer when a token lacks a scope: HTTP 403 with
+ * `{ title: "Insufficient scope", required_scopes: [...] }`. A plain 403
+ * without that shape is left to the generic rules.
+ */
+export function isInsufficientScope(status: number, body: unknown): boolean {
+  if (status !== 403 || !body || typeof body !== "object") return false;
+  const b = body as { title?: unknown; required_scopes?: unknown; message?: unknown };
+  return (typeof b.title === "string" && /insufficient scope/i.test(b.title)) || Array.isArray(b.required_scopes);
+}
+
 /* ------------------------------------------------------------- pings --- */
 
 export type PingSpec = { url: string; headers: Record<string, string> };
@@ -90,7 +122,7 @@ export type PingSpec = { url: string; headers: Record<string, string> };
 export function pingSpec(
   provider: string,
   accessToken: string,
-  context: { apiDomain?: string | null; instanceUrl?: string | null } = {},
+  context: { apiDomain?: string | null; instanceUrl?: string | null; calendlyOrganizationUri?: string | null } = {},
 ): PingSpec | null {
   const bearer = { authorization: `Bearer ${accessToken}`, accept: "application/json" };
   switch (provider) {
@@ -100,6 +132,15 @@ export function pingSpec(
         headers: bearer,
       };
     case "calendly":
+      // The event types of the connected organisation: proves the token AND
+      // the event_types:read scope availability needs (/users/me passed on a
+      // token that could not read availability, so the card said Healthy).
+      if (context.calendlyOrganizationUri && /^https:\/\/api\.calendly\.com\/organizations\/[A-Za-z0-9-]+$/.test(context.calendlyOrganizationUri)) {
+        return {
+          url: `https://api.calendly.com/event_types?organization=${encodeURIComponent(context.calendlyOrganizationUri)}&count=1`,
+          headers: bearer,
+        };
+      }
       return { url: "https://api.calendly.com/users/me", headers: bearer };
     case "hubspot":
       return { url: "https://api.hubapi.com/crm/v3/objects/contacts?limit=1", headers: bearer };

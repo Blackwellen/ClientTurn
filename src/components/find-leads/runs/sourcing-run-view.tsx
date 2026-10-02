@@ -125,7 +125,7 @@ export function SourcingRunView({ initialRun }: { initialRun: RunView }) {
           className="rounded-lg border border-warning-100 bg-warning-50 px-4 py-3 text-[13px] text-warning-700"
         >
           {run.pausedReason === "BUDGET_LIMIT_REACHED"
-            ? "This run paused because it reached its cost limit. Raise the limit or start a new run to continue."
+            ? "This run paused because it reached its budget limit. Increase the target or start a new run to continue."
             : "This run is paused. Resume it to carry on from where it stopped. Nothing is repeated."}
         </p>
       )}

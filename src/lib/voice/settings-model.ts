@@ -25,6 +25,7 @@ import { buildLockedPreamble, validateEditableSuffix, type StyleViolation } from
 import { VOICE_ROUTES, ROUTE_TARGETS, type VoiceRouteKey } from "./time-governor.ts";
 import { validateAllocations } from "./budget.ts";
 import { COMPANY_NUMBER } from "./numbers/provisioning-details.ts";
+import { DIALLABLE_CLASSES, classifyDestination } from "./destinations.ts";
 
 export const VOICE_SETTINGS_SECTIONS = [
   "overview",
@@ -180,7 +181,8 @@ export type UpdateProblem =
   | { field: "identity"; problem: "INVALID"; identityProblems: IdentityProblem[] }
   | { field: "agent.openerSuffix"; problem: "STYLE"; violations: StyleViolation[] }
   | { field: "routes"; problem: "ALLOCATION"; reason: "OUT_OF_RANGE" | "SUM_OVER_100" }
-  | { field: "transfer.numberE164"; problem: "REQUIRED_FOR_MODE" };
+  | { field: "transfer.numberE164"; problem: "REQUIRED_FOR_MODE" }
+  | { field: "transfer.numberE164"; problem: "NOT_ALLOWED" };
 
 /**
  * The rules checked before a save, against the identity as it WILL be after
@@ -219,6 +221,14 @@ export function validateVoiceSettingsUpdate(update: VoiceSettingsUpdate, stored:
   }
   if (update.transfer && update.transfer.mode !== "NEVER" && !update.transfer.numberE164) {
     problems.push({ field: "transfer.numberE164", problem: "REQUIRED_FOR_MODE" });
+  }
+  // A transfer is a second outbound leg the platform pays for: only the
+  // classes an AI call may dial (UK geographic, UK mobile, 03), never a
+  // premium, 070/076, 084/087, freephone-priced or foreign number (toll fraud;
+  // QA 2026-09-30 found +44 909 accepted).
+  const transferTo = update.transfer?.numberE164;
+  if (transferTo && !DIALLABLE_CLASSES.includes(classifyDestination(transferTo))) {
+    problems.push({ field: "transfer.numberE164", problem: "NOT_ALLOWED" });
   }
   return problems;
 }

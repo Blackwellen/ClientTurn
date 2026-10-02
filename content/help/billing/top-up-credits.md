@@ -1,17 +1,17 @@
 ---
 title: Top-up credits for AI, SMS and WhatsApp
-summary: Buy AI token packs, SMS credit bundles and WhatsApp token packs mid-month, how they are used, and why they never expire
+summary: Buy AI credit packs, SMS credit bundles and WhatsApp token packs mid-month, how they are used, and why they never expire
 category: billing
-keywords: [top up, buy credits, token pack, sms bundle, whatsapp tokens, whatsapp token pack, whatsapp price, credit balance, purchased tokens, carry over, never expires, refund, refundable, non-refundable, prepaid, no overage, run out, extra messages, running low, recommended bundle, buy sms credits]
+keywords: [top up, buy credits, ai credits, ai credit pack, token pack, sms bundle, whatsapp tokens, whatsapp token pack, whatsapp price, credit balance, purchased tokens, carry over, never expires, refund, refundable, non-refundable, prepaid, no overage, run out, extra messages, running low, recommended bundle, buy sms credits]
 order: 30
-updated: 2026-09-27
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/billing/top-up-credits-1.png
     alt: "The Message credits card with the SMS credit and WhatsApp token balances, the bundles with Buy buttons and the refund notice"
     caption: "Buy SMS credit or WhatsApp tokens here; neither expires"
   - src: /help/screenshots/billing/top-up-credits-2.png
-    alt: "The AI allowance card with tokens left and the token packs, one marked Best value"
-    caption: "AI token packs top up the assistant's allowance and carry over"
+    alt: "The AI credits card with credits left and the AI credit packs, one marked Best value"
+    caption: "AI credit packs top up the assistant's allowance and carry over"
   - src: /help/screenshots/billing/top-up-credits-3.png
     alt: "The Message credits card on the Starter plan with SMS bundles only and the note that WhatsApp is a paid add-on on Growth and above"
     caption: "WhatsApp token packs appear only on plans with WhatsApp"
@@ -19,20 +19,22 @@ screenshots:
 
 When a monthly allowance is not enough, you can buy more at any point in the month without changing plan. Top-up credit is prepaid, and it is the only way to go past an allowance: there is no overage and nothing is billed after the fact. There are two kinds of top-up:
 
-- **AI token packs** add to the assistant's AI allowance.
+- **AI credit packs** add AI credits to the assistant's allowance.
 - **Message credits** add SMS segments, and **WhatsApp token packs** add WhatsApp tokens.
 
 Only the workspace **owner** can buy them. Both are one-off card payments through Stripe, and neither sets up a recurring charge.
 
-## AI token packs
+## AI credit packs
 
-| Pack | Tokens | Price |
+AI use is counted in **AI credits**, ClientTurn's own unit.
+
+| Pack | AI credits | Price |
 |---|---|---|
-| Small top-up | 500,000 | £15.00 |
-| Medium top-up (best value) | 2,000,000 | £49.00 |
-| Large top-up | 6,000,000 | £129.00 |
+| Small top-up | 500 | £15.00 |
+| Medium top-up (best value) | 2,000 | £49.00 |
+| Large top-up | 6,000 | £129.00 |
 
-As a rough guide, 1M tokens is about 360 assistant replies. That is a conservative guide, so you will often get more.
+As a rough guide, an assistant reply uses about 3 AI credits, so 1,000 credits is about 360 replies. That is a conservative guide, so you will often get more.
 
 ## SMS credit bundles
 
@@ -73,15 +75,15 @@ If you bought WhatsApp message credits before tokens were introduced, each one w
 ## How to buy
 
 1. Open **Settings → Billing & Usage**.
-2. For messages, go to **Message credits** and choose **Buy** next to a bundle. For AI, go to **AI allowance → Buy more tokens** and choose **Buy** next to a pack.
+2. For messages, go to **Message credits** and choose **Buy** next to a bundle. For AI, go to **AI credits → Buy more AI credits** and choose **Buy** next to a pack.
 3. Pay in the Stripe checkout. The notice **Non-refundable once any credit is used.** appears next to every **Buy** button. See [Refunds](#refunds).
 4. You come back to Billing & Usage. Only the workspace owner can buy credit. The credit is added once Stripe confirms the payment, usually within seconds.
 
 When SMS or WhatsApp is at 75% or more (counting top-up credit and WhatsApp tokens), the **Usage & limits** table also shows a button for the recommended bundle next to that limit, such as **Buy 500 for £115**. For other limits the buttons appear at 80%.
 
-When your subscription starts (after a trial or when you subscribe directly), the workspace owner gets one welcome email listing what the plan includes, the AI token packs and WhatsApp token packs with their prices (or, on Starter, that WhatsApp is available on Growth and above), and a link to Billing.
+When your subscription starts (after a trial or when you subscribe directly), the workspace owner gets one welcome email listing what the plan includes, the AI credit packs and WhatsApp token packs with their prices (or, on Starter, that WhatsApp is available on Growth and above), and a link to Billing.
 
-The **Add more when you need it** card in Billing & Usage lists the same packs at any time. From time to time you may also see a suggestion to buy a pack when the assistant's AI tokens are at 80% or used up, or when a lead asks to talk on WhatsApp. See [Upgrade suggestions](/help/billing/usage-and-limits#upgrade-suggestions).
+The **Add more when you need it** card in Billing & Usage lists the same packs at any time. From time to time you may also see a suggestion to buy a pack when the assistant's AI credits are at 80% or used up, or when a lead asks to talk on WhatsApp. See [Upgrade suggestions](/help/billing/usage-and-limits#upgrade-suggestions).
 
 ## When you are running low
 
@@ -105,16 +107,16 @@ A message is never split. Either all of its segments (or all of its WhatsApp tok
 
 There is no overage step. Nothing is ever charged beyond the credit you have bought.
 
-AI tokens work the same way. When tokens run out, the assistant pauses until you top up or the next period starts. Your follow-up sequences and qualification rules keep running while it is paused. Only the AI wording and interpretation stop.
+AI credits work the same way. When they run out, the assistant pauses until you top up or the next period starts. Your follow-up sequences and qualification rules keep running while it is paused. Only the AI wording and interpretation stop.
 
 ## Credit does not expire
 
 - **Message credits** and **WhatsApp tokens** stay on your balance until they are used.
-- **AI tokens you bought** carry over to the next period. Your plan's included tokens do not, because they are granted again each period. Included tokens are counted first, so what carries over is what is left of the tokens you bought.
+- **AI credits you bought** carry over to the next period. Your plan's included credits do not, because they are granted again each period. Included credits are used first, so what carries over is what is left of the credits you bought.
 
 ## Refunds
 
-Top-up credit (SMS bundles, WhatsApp token packs and AI token packs) is prepaid and does not expire.
+Top-up credit (SMS bundles, WhatsApp token packs and AI credit packs) is prepaid and does not expire.
 
 - A purchase can be refunded **only if none of its credit has been used**. Once any credit from a purchase has been used, that purchase is non-refundable.
 - Credit is used oldest purchase first. So the first purchase you made is the first to become non-refundable.

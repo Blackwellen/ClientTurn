@@ -108,21 +108,15 @@ export type CampaignRow = {
   priority: number;
   audience: CampaignAudience;
   /**
-   * The campaign's own budget, in pence, and how full it is.
+   * How full the campaign's budget is, as a proportion only.
    *
-   * These come from `outreach_campaign_budget` (0055) rather than from the
-   * columns directly: 0041 withholds `max_cost_minor` and `spent_cost_minor`
-   * from the browser role, and that grant is unchanged. What the definer
-   * function exposes is narrower than the grant covered — a cap the customer
-   * set and that campaign's consumption of it. Provider unit economics stay
-   * admin-only and are not returned.
+   * From `outreach_campaign_budget` (0055). The pound amounts it also returns
+   * are provider spend, which is admin-only (owner decision, 2026-09-30), so
+   * they are dropped here and never reach the browser.
    *
-   * Null cap means uncapped, and `budgetPercent` is null with it: rendering 0%
-   * for a campaign with no cap would read as "nothing spent", which is a
-   * different and false claim.
+   * No cap means `budgetPercent` is null: rendering 0% for a campaign with no
+   * cap would read as "nothing spent", which is a different and false claim.
    */
-  budgetCapMinor: number | null;
-  budgetSpentMinor: number;
   budgetPercent: number | null;
   hasBudgetCap: boolean;
   /** Who created it. Null for a campaign whose creator has left the workspace. */
@@ -271,7 +265,7 @@ export type CampaignListData = {
   campaigns: CampaignRow[];
   /** Distinct owners with at least one campaign, for the Owner filter. */
   owners: { id: string; name: string }[];
-  /** Prospects ready and approved but not yet in any campaign. */
+  /** "Ready for outreach" (lib/prospects/prospect-counts.ts): by definition not in a campaign. */
   unassignedReady: number;
   hasSender: boolean;
   senders: SenderIdentityRow[];

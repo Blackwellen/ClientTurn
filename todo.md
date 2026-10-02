@@ -4,7 +4,7 @@ Tick each box when it is done. Sections are in the order they unblock each other
 Evidence: `docs/revenue-engine/06-coverage-tracker.md`, `docs/revenue-engine/11-final-report.md`,
 `docs/revenue-engine/12-voice-quote-to-cash-gap-map.md`, `docs/economics.md`, `docs/VOICE.md`, `docs/MAINTENANCE.md`.
 
-_Last updated: 2026-09-28._
+_Last updated: 2026-10-02._
 
 ---
 
@@ -13,6 +13,11 @@ _Last updated: 2026-09-28._
 - [x] **Twilio auth token** — the working token from `.env.local` pushed to Vercel production (2026-09-28). `.env` still holds the dead one (harmless, `.env.local` wins).
 - [x] **Redeployed** 2026-09-28 (commits 2d7eea8…9f123c0 on `main`, commit author blackwellen1996@gmail.com); migrations 0143–0170 incl. 0148 applied and verified live.
 - [ ] **Re-run the owner SMS test** after deploy: reply → AI answers → text **STOP** → confirm the opt-out → text **START**. Then ask Claude to delete the test workspace `ZZ-OWNER-SMS-TEST 2026-09-27` (zero-rows proof).
+
+- [ ] **Push the surface-QA work** (commit e730c23 and later, 2026-09-30/10-02). Production SMS and WhatsApp template sync fail (Twilio 70051 / 401) until it is deployed; the voice answer/booking/call-back fixes only run in calls after it.
+- [ ] **Reconnect** in your workspace (Settings → Connections): **Meta** (token invalidated by a Facebook password change/security reset, though the card showed Healthy), **Google Calendar** and **Google Ads** (both refused by Google: `invalid_grant`). Salesforce, Zoho and Calendly were recovered by the new refresh code on 2026-10-02.
+- [ ] **Google Cloud OAuth consent screen → "In production".** Google Ads died ~7 days after connecting, which is what "Testing" mode does to refresh tokens; until it's published, every Google reconnect lasts a week.
+- [ ] **Real AI test call** after the push: say "add the voice grant" (24 h grant via `scripts/owner-voice-test-call.mjs`), answer on +447591079608 within calling hours (Mon–Fri 09:00–20:00, Sat 10:00–16:00), play the lead, pick a time, ask for a 6pm call-back. Claude checks the result and removes the grant.
 
 ## 2. Accounts, keys and settings — owner
 
@@ -28,11 +33,19 @@ _Last updated: 2026-09-28._
 - [ ] **Authorise the Stripe and Cloudflare MCP connectors** (claude.ai connector settings or `/mcp`) so Claude can check Stripe/R2 live. (O4)
 - [ ] `META_WHATSAPP_CONFIG_ID` if WhatsApp (direct) Embedded Signup will be offered. (O6)
 - [ ] **Vercel Pro** before taking paying customers (Hobby is non-commercial only). (O8)
+- [ ] **R2 storage:** `R2_ENDPOINT`, `R2_BUCKET=clientturn`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` for the `clientturn` bucket (an Object Read & Write token) in `.env.local` and Vercel. The local keys can't see `clientturn` or `leadrecover`, so logo uploads, CSV imports and support attachments fail. Check Admin → System → Readiness → File storage after deploy. Also add CORS for the app origins.
+- [ ] **Calendly developer console:** add scopes `users:read`, `event_types:read`, `scheduled_events:read`, `webhooks:write` to the ClientTurn OAuth app, then reconnect Calendly. Until then the AI can't read event types or availability ("Insufficient scope"). Then pick the meeting type and switch booking from human handover to Calendly.
+- [ ] **Stripe LIVE webhook** (ClientTurn's own endpoint, at launch) must subscribe to: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `customer.subscription.created/updated/deleted/trial_will_end`, `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`, `charge.refunded`, `charge.dispute.created`. TEST endpoint done 2026-10-02.
+- [ ] **Stripe TEST account branding** shows "Propvora" at checkout and on Connect onboarding; live checkout must use ClientTurn's own Stripe account.
+- [ ] `NEXT_PUBLIC_SITE_URL` in `.env.local` is `http://localhost:3000`; dev servers on other ports get Stripe and Supabase links back to :3000.
 
 ## 3. Decisions / checks — owner
 
 - [x] **Call opener approved by owner** (2026-09-28, no lawyer check): AI disclosure + who + why + "is now OK" + recording notice. ClientTurn named at the **end** of every call ("…you've been speaking with {business}'s AI assistant, powered by ClientTurn"), removable only with white-label.
 - [ ] **Read `/compliance`** before launch.
+- [ ] **Automatic AI calling (no approval step):** your decision 2026-09-30, refused by the permission classifier as removing a safeguard. Either set it yourself (Settings → AI & selling → Phone leads on; each agent → Settings → approval "Run automatically" + "Phone leads with AI" on) or add a permission rule so Claude can.
+- [ ] **Demo workspace cleanup:** 243 orphan dispatch jobs, 22 orphan events and the "Qa Tester" lead. The delete was blocked by the classifier; the SQL is in the 2026-10-02 chat (Supabase SQL editor). The 36 voice-minute rows stay (append-only ledger).
+- [ ] _Optional:_ rename the enterprise "Multi-location" nav link/copy; tighten the `worker-src blob:` CSP now Three.js is gone.
 - [ ] **Agent replies during quiet hours** — approved by you but blocked by the permission classifier as weakening a safeguard. Add a permission rule or apply the patch yourself.
 - [ ] **Existing customers** — tell any existing Growth/Pro customers about the new limits (0138 is live).
 - [ ] _Optional:_ voice prices under premium cards + 21% cost stress sit at 73.7–74.9% for the 250/500/1,000 packs and the £100 Pro item. Prices that clear it: £116 / £231 / £460 / £107. Kept as-is (standard cards clear 75%).
@@ -129,6 +142,7 @@ _Last updated: 2026-09-28._
 - [ ] Live business stories (08:02–19:30 UK) including the quote journey: all pass, zero rows left.
 - [x] Accessibility audit (WCAG 2.2 AA, 2026-09-28): 34 fixed, 0 critical/serious open; axe on 21 public routes; signed-in screens static only (`docs/ACCESSIBILITY_AUDIT_2026-09-28.md`). Open design calls: input border contrast, heading skips, badge tooltips by keyboard.
 - [ ] Performance and concurrency QA.
+- [x] **Integration token refresh audit (2026-10-02):** all 7 refreshable providers (Calendly, Google Calendar, Google Ads, Salesforce, Zoho, Slack, LinkedIn Ads) renew on use and 30 min ahead, rotation stored, race-safe, 6-hourly recovery of flagged connections; Meta/WhatsApp get a daily validity check, extension and a 10-day warning. Open: LinkedIn 365-day refresh-token warning.
 - [ ] Retake help screenshots flagged in `content/help/SCREENSHOTS.md`.
 - [ ] After deploy: `intent.sweep` every 6 h and every new job type completes with no dead jobs (`docs/CRON.md`).
 - [x] Final delivery report with a release-readiness score (`docs/revenue-engine/11-final-report.md`, "Update 2026-09-28"): **80/100, conditional release → green after the voice test call, one TEST checkout + quote-pay run, and Vercel Pro.**

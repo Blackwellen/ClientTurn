@@ -8,8 +8,8 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
-import type { SearchSessionView } from "@/lib/find-leads/types";
-import type { SearchPlan } from "@/lib/find-leads/plan";
+import type { CustomerSearchSessionView } from "@/lib/find-leads/types";
+import type { CustomerSearchPlan } from "@/lib/find-leads/plan";
 import type { SignalFeed } from "@/lib/find-leads/signals";
 import { SearchConversation } from "./search-conversation";
 import { StructuredPlanPanel } from "./structured-plan-panel";
@@ -41,12 +41,11 @@ export function SearchSessionView({
   canManage,
   liveFeeds = [],
 }: {
-  session: SearchSessionView;
+  session: CustomerSearchSessionView;
   /** Free signal feeds live for this workspace, for the signals editor. */
   liveFeeds?: SignalFeed[];
   initialBudget: {
     maxTarget: number;
-    maxProviderCostMinor: number;
     allowed: boolean;
     reason: string;
   };
@@ -54,7 +53,7 @@ export function SearchSessionView({
 }) {
   const router = useRouter();
   const { toast } = useToast();
-  const [plan, setPlan] = React.useState<SearchPlan>(session.plan);
+  const [plan, setPlan] = React.useState<CustomerSearchPlan>(session.plan);
   const [budget, setBudget] = React.useState(initialBudget);
   const [saving, startSaving] = React.useTransition();
 
@@ -65,7 +64,7 @@ export function SearchSessionView({
     setPlan(session.plan);
   }
 
-  const commit = (next: SearchPlan) => {
+  const commit = (next: CustomerSearchPlan) => {
     setPlan(next);
     startSaving(async () => {
       const result = await updateSearchPlanAction(session.id, next);

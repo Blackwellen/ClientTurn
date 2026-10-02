@@ -5,6 +5,7 @@ import {
   AI_TOKEN_ALLOWANCE,
   approximateTurns,
   estimateTokensForCall,
+  formatCreditAmount,
   formatTokens,
   isTokenPackKey,
   nextWarningThreshold,
@@ -262,12 +263,14 @@ describe("plan catalogue consistency", () => {
 
   test("the advertised feature line matches the granted allowance", () => {
     for (const plan of Object.values(PLANS)) {
-      const line = plan.features.find((feature) => feature.includes("AI tokens"));
-      assert.ok(line, `${plan.id} does not mention its AI token allowance`);
+      // Advertised in AI credits, the customer unit (owner decision 2026-09-30).
+      const line = plan.features.find((feature) => feature.includes("AI credits"));
+      assert.ok(line, `${plan.id} does not mention its AI credit allowance`);
       assert.ok(
-        line.includes(formatTokens(plan.aiTokenAllowance)),
-        `${plan.id} advertises "${line}" but grants ${formatTokens(plan.aiTokenAllowance)}`,
+        line.includes(formatCreditAmount(plan.aiTokenAllowance)),
+        `${plan.id} advertises "${line}" but grants ${formatCreditAmount(plan.aiTokenAllowance)}`,
       );
+      assert.doesNotMatch(line, /tokens/i);
     }
   });
 });

@@ -56,8 +56,11 @@ describe("dashboard figures (wave 4 findings)", () => {
     assert.match(source, /failedMessages: \(\(failedResult\.data[^\n]*\.filter\(notTestLead\)\.length/);
   });
 
-  test("a fractional AI ceiling is shown with pence, not rounded to £0", () => {
-    assert.match(read("src/components/dashboard/revenue-control-section.tsx"), /Number\.isInteger\(budget\.data\.ceilingGbp\) \? 0 : 2/);
+  test("the dashboard AI tile shows AI credits, never pounds (owner decision 2026-09-30)", () => {
+    const source = read("src/components/dashboard/revenue-control-section.tsx");
+    assert.match(source, /label="AI credits this month"/);
+    assert.match(source, /creditTileText\(budget\.data\)/);
+    assert.doesNotMatch(source, /spentGbp|ceilingGbp/);
   });
 });
 

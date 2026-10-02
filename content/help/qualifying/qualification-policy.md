@@ -34,7 +34,7 @@ Use **Applies to** to choose **The whole workspace** or one of your services. An
 | Escalate to a person when | Conditions that always bring a person in |
 | Never ask / Also ask | Question keys, one per line, like `BUDGET.RANGE` |
 
-How many questions are asked is set by **Qualification depth** in the Sales behaviour card, and how much AI may spend in the AI budget card. Both apply alongside the policy.
+How many questions are asked is set by **Qualification depth** in the Sales behaviour card, and how many AI credits it may use in the AI credits card. Both apply alongside the policy.
 
 > **Important:** A lead is only disqualified on a **confirmed** answer. If the matching value was only inferred, the assistant asks the lead to confirm it first, and a person reviews it only if they do not answer after being asked twice. Turn on **Send for review instead of disqualifying** to have matches flagged for a person to review: the assistant keeps the conversation going, but offers no booking or checkout until the review is cleared.
 

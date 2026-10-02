@@ -3,6 +3,7 @@ import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getLiveAccessToken, type OAuthConfig, type TokenResponse } from "@/lib/integrations/oauth";
 import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
+import { CALENDLY_SCOPES } from "@/lib/integrations/oauth-health";
 
 /**
  * Calendly — booking-source integration via OAuth2. Sends the customer's
@@ -15,11 +16,12 @@ import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
  * confirmed live against a real Calendly OAuth app created 2026-09-13:
  * - OAuth: authorize at `https://auth.calendly.com/oauth/authorize`, token at
  *   `https://auth.calendly.com/oauth/token`, standard authorization-code
- *   grant. Calendly's authorize endpoint documents no `scope` parameter — a
- *   connected app's scopes are fixed at app-creation time in the developer
- *   console (this app: `users:read`, `webhooks:read`, `webhooks:write`), not
- *   requested per authorization. `scope` is left empty below; confirmed live
- *   that Calendly ignores the empty param rather than rejecting it.
+ *   grant. UPDATED 2026-09-30: Calendly now has scoped permissions
+ *   (developer.calendly.com/docs/authentication/scopes). The authorize URL
+ *   takes a space-separated `scope`; we request CALENDLY_SCOPES
+ *   (oauth-health.ts), one per endpoint called. A pre-scopes token is
+ *   migrated to the app's console-configured scopes on its next refresh, so
+ *   the app in Calendly's developer console must list the same scopes.
  * - Identify: `GET /users/me` returns `{ resource: { uri, name,
  *   current_organization, ... } }`. `current_organization` is the
  *   organization URI needed to scope the webhook subscription below.
@@ -57,6 +59,11 @@ const AUTH_URL = "https://auth.calendly.com/oauth/authorize";
 const TOKEN_URL = "https://auth.calendly.com/oauth/token";
 const API_ROOT = "https://api.calendly.com";
 
+/** Calendly's OAuth client, for the refresh-aware token accessor (getLiveAccessToken). */
+export function calendlyOAuthConfig(): OAuthConfig | null {
+  return config();
+}
+
 function config(): OAuthConfig | null {
   const { clientId, clientSecret } = serverEnv.calendly;
   if (!clientId || !clientSecret) return null;
@@ -66,8 +73,11 @@ function config(): OAuthConfig | null {
     tokenUrl: TOKEN_URL,
     clientId,
     clientSecret,
-    // See header comment: Calendly's authorize endpoint has no scope param.
-    scope: "",
+    // Exactly the scopes the endpoints we call need (oauth-health.ts
+    // CALENDLY_SCOPES). Calendly added scoped permissions after this was
+    // first built with scope ""; a token refreshed since then carries only
+    // the app's configured scopes, which lacked event_types:read (2026-09-30).
+    scope: CALENDLY_SCOPES.join(" "),
   };
 }
 

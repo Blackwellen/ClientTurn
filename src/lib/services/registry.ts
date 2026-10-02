@@ -930,7 +930,7 @@ export const SERVICE_OPERATIONS = [
     risk: "READ",
     minimumRole: "member",
     scope: "analytics:read",
-    summary: "AI spend this month against the workspace's ceiling, by task",
+    summary: "AI credits used this month against the allowance and the workspace limit, by task",
     entityType: null,
   },
   {
@@ -1214,7 +1214,7 @@ export const SERVICE_OPERATIONS = [
     risk: "REVERSIBLE_WRITE",
     minimumRole: "admin",
     scope: "business:write",
-    summary: "Set this workspace's AI spending limits",
+    summary: "Set this workspace's AI limits, in AI credits",
     entityType: "business",
     callers: ["UI", "MCP", "API"],
   },

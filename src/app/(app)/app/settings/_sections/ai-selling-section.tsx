@@ -1,9 +1,7 @@
 import * as React from "react";
-import { randomUUID } from "node:crypto";
 import { hasRole, requireWorkspace } from "@/lib/auth/session";
 import { getEntitlements } from "@/lib/billing/entitlements";
 import { getAiBehaviour } from "@/lib/ai-settings/queries";
-import { runOperation } from "@/lib/services";
 import {
   listLias,
   loadBudgetView,
@@ -16,7 +14,8 @@ import {
 import { ScoringWeightsCard } from "@/components/settings/ai-selling/scoring-weights-card";
 import { ReadOnlyNotice } from "@/components/settings/notices";
 import { AiStrategyCard } from "@/components/settings/ai-selling/ai-strategy-card";
-import { BudgetCard, type SpendSnapshot } from "@/components/settings/ai-selling/budget-card";
+import { BudgetCard } from "@/components/settings/ai-selling/budget-card";
+import { getCreditStatus } from "@/lib/billing/token-service";
 import { SalesBehaviourCard } from "@/components/settings/ai-selling/sales-behaviour-card";
 import { BrandCard } from "@/components/settings/ai-selling/brand-card";
 import { ChannelsCard } from "@/components/settings/ai-selling/channels-card";
@@ -38,7 +37,7 @@ import { loadWorkspaceMotion } from "@/lib/opportunities/service";
  * Settings -> AI & selling (brief §74).
  *
  * Cards in the order a workspace sets them up: how much the assistant may do,
- * how much it may spend, how this business sells, how leads are scored, how it
+ * how many AI credits it may use, how this business sells, how leads are scored, how it
  * sounds, the objections it hears and its own answers, which channels it sends
  * on, and the compliance record behind contacting people.
  *
@@ -62,31 +61,13 @@ export async function AiSellingSection() {
   const canManage = hasRole(workspace.role, "admin");
   const entitlements = await getEntitlements(workspace.businessId);
 
-  const [behaviour, sales, budgets, spend, lias, senders] = await Promise.all([
+  const [behaviour, sales, budgets, credits, lias, senders] = await Promise.all([
     settle(() => getAiBehaviour(workspace.businessId)),
     settle(() => loadSalesSettings(workspace.businessId)),
-    settle(() => loadBudgetView(workspace.businessId, entitlements.plan)),
-    // Spend comes from the same operation Copilot and MCP read, which is
-    // member-only; a viewer is told that rather than shown a zero.
-    hasRole(workspace.role, "member")
-      ? runOperation<{ spentGbp: number; ceilingGbp: number | null; ceilingSource: string | null }>(
-          "ai_usage.get",
-          {},
-          {
-            businessId: workspace.businessId,
-            userId: workspace.userId,
-            role: workspace.role,
-            caller: "UI",
-            correlationId: randomUUID(),
-          },
-        ).then(
-          (result): SpendSnapshot =>
-            result.success
-              ? { state: "ok", ...result.data }
-              : { state: "error" },
-          (): SpendSnapshot => ({ state: "error" }),
-        )
-      : Promise.resolve<SpendSnapshot>({ state: "hidden" }),
+    settle(() => loadBudgetView(workspace.businessId)),
+    // AI credits used and left (the allowance ledger). Credits only: no money
+    // and no model tokens on a customer surface (owner decision, 2026-09-30).
+    settle(() => getCreditStatus(workspace.businessId)),
     settle(() => listLias(workspace.businessId)),
     settle(() => loadSenderHealth(workspace.businessId)),
   ]);
@@ -142,9 +123,9 @@ export async function AiSellingSection() {
       )}
 
       {budgets.ok ? (
-        <BudgetCard view={budgets.value} spend={spend} canManage={canManage} />
+        <BudgetCard view={budgets.value} credits={credits.ok ? credits.value : null} canManage={canManage} />
       ) : (
-        <SectionLoadError title="AI budget" />
+        <SectionLoadError title="AI credits" />
       )}
 
       {sales.ok ? (

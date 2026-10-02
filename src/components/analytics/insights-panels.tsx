@@ -15,7 +15,7 @@ import {
   type QuoteAnalytics,
   type Rate,
   type RoiCard,
-  type VoiceAnalytics,
+  type CustomerVoiceAnalytics,
 } from "@/lib/analytics/insight-metrics";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, ErrorState, SkeletonTable } from "@/components/ui/feedback";
@@ -77,7 +77,6 @@ function rateValue(rate: Rate): string {
 
 const hours = (h: number | null) => (h === null ? "—" : h < 48 ? `${Math.round(h * 10) / 10} h` : `${Math.round((h / 24) * 10) / 10} days`);
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n * 1000) / 10}%`);
-const gbp = (n: number | null) => (n === null ? "—" : new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n));
 const money = (map: Record<string, number>) =>
   Object.entries(map)
     .filter(([, v]) => v !== 0)
@@ -288,7 +287,7 @@ const VOICE_TITLE = "AI calls";
 export function VoiceAnalyticsPanel({
   result,
 }: {
-  result: InsightResult<VoiceAnalytics & { restrictedVisible: boolean; quality: { available: false; note: string } }>;
+  result: InsightResult<CustomerVoiceAnalytics & { quality: { available: false; note: string } }>;
 }) {
   const description = "Calls, connections and what they led to. Durations are the recorded call lengths only.";
   if (result.status !== "ok") {
@@ -316,11 +315,8 @@ export function VoiceAnalyticsPanel({
         <Stat label="Led to a booking" value={rateValue(v.conversion.booking)} hint={`of ${v.conversion.connectedLeads} leads reached`} />
         <Stat label="Led to a quote" value={rateValue(v.conversion.quote)} />
         <Stat label="Led to a sale" value={rateValue(v.conversion.sale)} />
-        {v.restrictedVisible ? (
-          <Stat label="Cost per booking" value={gbp(v.costPerOutcome.perBooking)} hint={`Call cost ${gbp(v.costPerOutcome.totalCostGbp)} · per sale ${gbp(v.costPerOutcome.perSale)}`} />
-        ) : (
-          <Stat label="Cost per outcome" value="Owners and admins only" tone="muted" />
-        )}
+        {/* Minutes, the unit you buy. Voice call cost is admin-only (owner decision, 2026-09-30). */}
+        <Stat label="Minutes used" value={v.minutesUsed.toLocaleString("en-GB")} hint="Billed voice minutes in this period" />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -383,7 +379,7 @@ export function VoiceAnalyticsPanel({
 const ROI_TITLE = "Return on AI calling";
 
 export function RoiPanel({ result, compact = false }: { result: InsightResult<RoiCard>; compact?: boolean }) {
-  const description = "Voice minutes and spend, through to revenue credited to calls. Shown only when there is real data.";
+  const description = "Voice minutes, through to revenue credited to calls. Shown only when there is real data.";
   const body = (() => {
     if (result.status !== "ok") return <NotReady status={result.status} message={result.message} />;
     const card = result.data;
@@ -402,7 +398,7 @@ export function RoiPanel({ result, compact = false }: { result: InsightResult<Ro
     }
     return (
       <>
-        <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7" aria-label="From voice minutes to revenue">
+        <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" aria-label="From voice minutes to revenue">
           {card.steps.map((step) => (
             <li key={step.key} className="min-w-0 rounded-lg border border-line-subtle bg-surface-sunken/40 px-3 py-2.5">
               <p className="truncate text-[11.5px] text-content-muted">{step.label}</p>
@@ -413,7 +409,6 @@ export function RoiPanel({ result, compact = false }: { result: InsightResult<Ro
         <p className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px] text-content-subtle">
           <Badge dense tone="info">Attributed</Badge>
           Revenue is recorded payments and won deal values, credited to calls with the {JOURNEY_MODEL_LABEL.position.toLowerCase()} model.
-          {card.returnMultiple !== null && <span className="font-medium text-content">{card.returnMultiple}x voice spend.</span>}
         </p>
       </>
     );

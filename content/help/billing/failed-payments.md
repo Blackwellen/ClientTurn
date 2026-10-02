@@ -4,12 +4,12 @@ summary: Three days of full access, then sending and AI pause while the charge i
 category: billing
 keywords: [failed payment, card declined, past due, dunning, retry, grace period, restricted, read-only, cancelled, update card, payment method]
 order: 40
-updated: 2026-09-26
+updated: 2026-09-30
 ---
 
 If a subscription charge fails, at the end of your trial or on a renewal, ClientTurn does not switch you off straight away.
 
-This page is about your **subscription**. If a one-off purchase fails (a top-up, an AI token pack or a voice minute pack), nothing else changes: the pack is simply not added, and your subscription, sending and voice carry on as normal.
+This page is about your **subscription**. If a one-off purchase fails (a top-up, an AI credit pack or a voice minute pack), nothing else changes: the pack is simply not added, and your subscription, sending and voice carry on as normal.
 
 ## The timeline
 

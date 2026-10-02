@@ -1,9 +1,9 @@
 import {
-  Building2,
+  BriefcaseBusiness,
   Calculator,
   Cpu,
+  LayoutTemplate,
   Megaphone,
-  Network,
   Scale,
   ShoppingBag,
   Target,
@@ -20,11 +20,13 @@ import {
  * the questions a business configures, which is exactly what the product
  * lets them change.
  *
- * Imagery: the repository ships no sector photography, and a marketing page
- * should not invent it. Each entry carries an optional `image` — set it to a
- * real asset path and the card renders the photograph instead of its tonal
- * motif, with no other change. Until then the motif keeps every card on the
- * dark palette rather than filling it with generic stock.
+ * Every sector is inside the ICP (CLAUDE.md, resolved conflict 5): UK
+ * agencies, web and design studios, SaaS, ecommerce and professional
+ * services. Home-service and property sectors were removed on 2026-09-30.
+ *
+ * Imagery lives in `public/industries/`: CC0 photographs (see CREDITS.json)
+ * and, where no fitting photograph exists, original on-brand SVG
+ * illustrations. Leave `image` unset and the card renders its tonal motif.
  */
 export type Industry = {
   id: string;
@@ -32,7 +34,7 @@ export type Industry = {
   category: string;
   icon: LucideIcon;
   promise: string;
-  /** Real photography, when it exists. Falls back to the tonal motif. */
+  /** A photograph (.webp) or illustration (.svg). Falls back to the tonal motif. */
   image?: string;
   imageAlt?: string;
   /** The motif's two stops. Distinct per sector, all within the dark palette. */
@@ -57,9 +59,33 @@ export const INDUSTRIES: Industry[] = [
     finalLabel: "Book",
   },
   {
+    id: "web-studios",
+    name: "Web & Design Studios",
+    category: "Web & design",
+    icon: LayoutTemplate,
+    promise: "Qualify scope, budget and launch date before a proposal.",
+    image: "/industries/web-studios.svg",
+    imageAlt: "An illustration of a website wireframe in a browser window, with a colour palette and a cursor.",
+    motif: ["#1f2a1a", "#080c06"],
+    stages: ["Project enquiry", "Scope, budget, launch date", "Discovery call"],
+    finalLabel: "Book",
+  },
+  {
+    id: "saas-sales",
+    name: "SaaS Companies",
+    category: "SaaS",
+    icon: Target,
+    promise: "Reply to demo requests in seconds and hand over only what fits.",
+    image: "/industries/saas-sales.webp",
+    imageAlt: "Colleagues reviewing notes and laptops around a meeting table.",
+    motif: ["#182338", "#070a14"],
+    stages: ["Demo request", "Company, role, use case", "Handover to sales"],
+    finalLabel: "Route",
+  },
+  {
     id: "technology",
     name: "Technology & IT",
-    category: "Professional services",
+    category: "IT services",
     icon: Cpu,
     promise: "Split support requests from new business.",
     image: "/industries/technology.webp",
@@ -67,18 +93,6 @@ export const INDUSTRIES: Industry[] = [
     motif: ["#1b2438", "#080b14"],
     stages: ["Inbound request", "Company, system, urgency", "Technical call"],
     finalLabel: "Book",
-  },
-  {
-    id: "saas-sales",
-    name: "Sales Teams",
-    category: "B2B sales",
-    icon: Target,
-    promise: "Reply in seconds and hand over only what fits.",
-    image: "/industries/saas-sales.webp",
-    imageAlt: "Colleagues reviewing notes and laptops around a meeting table.",
-    motif: ["#182338", "#070a14"],
-    stages: ["Demo request", "Company, role, need", "Handover to sales"],
-    finalLabel: "Route",
   },
   {
     id: "ecommerce",
@@ -117,28 +131,16 @@ export const INDUSTRIES: Industry[] = [
     finalLabel: "Book",
   },
   {
-    id: "property-services",
-    name: "Property Services",
-    category: "Property",
-    icon: Building2,
-    promise: "Separate valuations from viewings automatically.",
-    image: "/industries/property-services.webp",
-    imageAlt: "A white modern apartment block seen from below.",
-    motif: ["#14263a", "#060b14"],
-    stages: ["Property enquiry", "Address, intent, timing", "Valuation or viewing"],
-    finalLabel: "Book",
-  },
-  {
-    id: "multi-location",
-    name: "Multi-location Groups",
-    category: "Multi-site",
-    icon: Network,
-    promise: "Send every enquiry to the right branch, first time.",
-    image: "/industries/multi-location.webp",
-    imageAlt: "A dense city skyline of high-rise office buildings.",
+    id: "consultancies",
+    name: "Consultancies",
+    category: "Professional services",
+    icon: BriefcaseBusiness,
+    promise: "Qualify the challenge, decision-maker and timing before a discovery call.",
+    image: "/industries/consultancies.svg",
+    imageAlt: "An illustration of a strategy board with a two-by-two matrix and a rising line chart.",
     motif: ["#1a2c26", "#070f0c"],
-    stages: ["Enquiry received", "Location, service, urgency", "Branch handover"],
-    finalLabel: "Route",
+    stages: ["Consultancy enquiry", "Challenge, decision-maker, timing", "Discovery call"],
+    finalLabel: "Book",
   },
 ];
 

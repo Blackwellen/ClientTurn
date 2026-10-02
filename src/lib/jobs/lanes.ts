@@ -150,6 +150,7 @@ export const JOB_CLASSES: Partial<Record<JobType, JobClass>> = {
   "outreach.optimize": c("BULK", "slow", "outreach_sourcing"),
   "crm.pull": c("BULK", "long", "events_integrations"),
   "integration.health_check": c("BULK", "long", "events_integrations"),
+  "integration.token_refresh": c("BULK", "slow", "events_integrations"),
   "intent.sweep": c("BULK", "long", "lead_ingestion"),
   "billing.daily": c("BULK", "long", "payments_billing"),
   "affiliate.ledger": c("BULK", "long", "payments_billing"),

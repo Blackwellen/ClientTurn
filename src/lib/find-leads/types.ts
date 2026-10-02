@@ -1,5 +1,5 @@
 import type { StageKey, StageStatus } from "./stages";
-import type { PlanSummaryLine, SearchPlan } from "./plan";
+import type { CustomerSearchPlan, PlanSummaryLine, SearchPlan } from "./plan";
 
 /**
  * View models for the Find Leads workspace.
@@ -139,12 +139,10 @@ export const COUNTER_DEFINITIONS: {
 /* ----------------------------------------------------------------- budget */
 
 /**
- * The customer-facing budget view. `spent` and `cap` are formatted strings
- * produced server-side; there is deliberately no numeric provider cost here.
+ * The customer-facing budget view: a proportion and a state, never money.
+ * Provider spend is admin-only (owner decision, 2026-09-30).
  */
 export type RunBudgetView = {
-  spent: string;
-  cap: string;
   percentUsed: number;
   state: BudgetState;
 };
@@ -246,6 +244,9 @@ export type SearchMessageView = {
   planSummary: PlanSummaryLine[] | null;
   createdAt: string;
 };
+
+/** A session as the browser gets it: the plan without its provider cost cap. */
+export type CustomerSearchSessionView = Omit<SearchSessionView, "plan"> & { plan: CustomerSearchPlan };
 
 export type SearchSessionView = {
   id: string;

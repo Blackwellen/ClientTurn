@@ -1,6 +1,48 @@
 import "server-only";
 import type { ProspectFilters } from "./filters";
 import { orIlike } from "../supabase/ilike.ts";
+import {
+  anyOfToPostgrest,
+  LIVE_CAMPAIGN_STATUSES,
+  PROSPECT_COUNT_DEFINITIONS,
+  QUICK_FILTER_COUNT_KEY,
+  type ProspectCountKey,
+} from "./prospect-counts.ts";
+
+/**
+ * What a count needs that is not a prospects column: the workspace's live
+ * campaign ids (LIVE_CAMPAIGN_STATUSES), resolved once per request by
+ * `liveCampaignIdsFor`. Required, so no caller can silently treat every
+ * campaign as finished.
+ */
+export type CountContext = { liveCampaignIds: readonly string[] };
+
+/** Matches no row: `in.()` on an empty list is not portable PostgREST. */
+const NO_CAMPAIGN = "00000000-0000-0000-0000-000000000000";
+
+type CampaignReader = {
+  from: (table: "outreach_campaigns") => {
+    select: (columns: "id") => {
+      eq: (column: "business_id", value: string) => {
+        in: (column: "status", values: readonly string[]) => PromiseLike<{
+          data: { id: string }[] | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
+};
+
+/** The workspace's live campaign ids, for `CountContext`. Throws on a failed read. */
+export async function liveCampaignIdsFor(client: unknown, businessId: string): Promise<string[]> {
+  const { data, error } = await (client as CampaignReader)
+    .from("outreach_campaigns")
+    .select("id")
+    .eq("business_id", businessId)
+    .in("status", LIVE_CAMPAIGN_STATUSES);
+  if (error) throw new Error(`outreach_campaigns: live ids: ${error.message}`);
+  return (data ?? []).map((row) => row.id);
+}
 
 /**
  * Translates parsed prospect filters into PostgREST predicates.
@@ -26,16 +68,59 @@ export const ACTIVE_INTENT_ONLY = "expires_at.gt.now()";
  */
 type FilterOps = {
   eq: (column: string, value: string | number | boolean) => FilterOps;
+  neq: (column: string, value: string | number | boolean) => FilterOps;
   in: (column: string, values: readonly (string | number)[]) => FilterOps;
   gte: (column: string, value: string | number) => FilterOps;
+  is: (column: string, value: null) => FilterOps;
+  not: (column: string, operator: string, value: null) => FilterOps;
   or: (filters: string) => FilterOps;
 };
 
-const QUICK_STATUS: Record<string, string[]> = {
-  ready: ["READY"],
-  contacted: ["APPROVED", "OUTREACH_ACTIVE"],
-  replied: ["REPLIED"],
-};
+/**
+ * Applies one count definition from `prospect-counts.ts` as predicates.
+ *
+ * The chips, the KPI strip and the list behind each chip all go through this,
+ * so a chip's number and the rows it shows cannot drift apart. The inbox scope
+ * (not a test row, not promoted) and the live-intent join are the caller's:
+ * both depend on which select the caller built.
+ */
+export function applyCountDefinition<T>(query: T, key: ProspectCountKey, context: CountContext): T {
+  let q = query as FilterOps;
+  for (const clause of PROSPECT_COUNT_DEFINITIONS[key].clauses) {
+    if ("liveCampaign" in clause) {
+      const ids = context.liveCampaignIds;
+      if (clause.liveCampaign) {
+        q = q.in("campaign_id", ids.length > 0 ? ids : [NO_CAMPAIGN]);
+      } else if (ids.length > 0) {
+        // Not enrolled, or enrolled in a campaign that is not live.
+        q = q.or(`campaign_id.is.null,campaign_id.not.in.(${ids.join(",")})`);
+      }
+      continue;
+    }
+    if ("anyOf" in clause) {
+      q = q.or(anyOfToPostgrest(clause.anyOf));
+      continue;
+    }
+    switch (clause.op) {
+      case "eq":
+        q = q.eq(clause.column, clause.value);
+        break;
+      case "neq":
+        q = q.neq(clause.column, clause.value);
+        break;
+      case "in":
+        q = q.in(clause.column, clause.values);
+        break;
+      case "isNull":
+        q = q.is(clause.column, null);
+        break;
+      case "notNull":
+        q = q.not(clause.column, "is", null);
+        break;
+    }
+  }
+  return q as T;
+}
 
 /**
  * True when a filter reaches into the company row, which the caller must then
@@ -51,21 +136,17 @@ export function needsCompanyJoin(filters: ProspectFilters): boolean {
   );
 }
 
-export function applyProspectFilters<T>(query: T, filters: ProspectFilters): T {
+export function applyProspectFilters<T>(query: T, filters: ProspectFilters, context: CountContext): T {
   let q = query as FilterOps;
 
   /* Quick filters. These are the chips, and they are deliberately expressed as
    * ordinary predicates so they compose with the advanced panel rather than
    * replacing it. */
-  if (filters.quick === "a-grade") {
-    q = q.in("grade", ["A+", "A"]);
-  } else if (filters.quick === "review") {
-    q = q.or("status.eq.REVIEW,outreach_eligibility.eq.REVIEW");
-  } else if (QUICK_STATUS[filters.quick]) {
-    q = q.in("status", QUICK_STATUS[filters.quick]);
+  if (filters.quick !== "all") {
+    q = applyCountDefinition(q, QUICK_FILTER_COUNT_KEY[filters.quick], context);
   }
-  // `quick === "intent"` is handled by the caller, which needs a join against
-  // prospect_intent_matches rather than a column predicate.
+  // The live-intent part of `quick === "intent"` is applied by the caller,
+  // which needs an inner join against prospect_intent_matches.
 
   if (filters.grades.length > 0) q = q.in("grade", filters.grades);
   if (filters.statuses.length > 0) q = q.in("status", filters.statuses);

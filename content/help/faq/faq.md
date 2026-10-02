@@ -69,9 +69,9 @@ No. It is off in every workspace until an owner or admin turns it on in **Settin
 
 No. Every draft is checked before it is sent. It cannot mention an amount you have not published, offer a time that did not come from your calendar, say someone is booked unless the booking succeeded, or claim to be human. See [The conversation assistant](/help/ai-agents/the-conversation-assistant).
 
-### What happens when we run out of AI budget?
+### What happens when we run out of AI credits?
 
-The AI step is skipped or handed to a person. Follow-up sequences, qualification rules and sending use no AI, so they keep working. See [AI budgets and model tiers](/help/ai-agents/ai-budgets-and-model-tiers).
+The AI step is skipped or handed to a person. Follow-up sequences, qualification rules and sending use no AI, so they keep working. See [AI credits and model tiers](/help/ai-agents/ai-budgets-and-model-tiers).
 
 ### Can Copilot do anything I cannot?
 

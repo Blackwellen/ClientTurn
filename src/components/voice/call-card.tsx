@@ -15,15 +15,12 @@ import { cancelVoiceCallAction } from "@/lib/voice/actions";
  * One AI call, as the lead's conversation timeline and voice panel show it.
  *
  * Everything shown comes from the `CallCard` view model (lib/voice/call-view),
- * which has already dropped anything that looks like model reasoning and has
- * nulled the cost for anyone but an owner or admin. So the cost line is
- * rendered only when `costGbp !== null`: this component never decides who may
- * see it.
+ * which has already dropped anything that looks like model reasoning. Call
+ * cost is never shown to a customer (owner decision, 2026-09-30): minutes used
+ * and the outcome only. The server boundary (lead-voice-card) nulls it too.
  */
 
 const CANCELLABLE = new Set(["REQUESTED", "ELIGIBILITY_CHECKED", "QUEUED"]);
-
-const GBP = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: 2 });
 
 export function CallCard({
   card,
@@ -93,7 +90,6 @@ export function CallCard({
   }
   if (!compact) for (const fact of card.facts) details.push({ label: fact.label, value: fact.value });
   if (card.billedMinutes !== null) details.push({ label: "Minutes used", value: String(card.billedMinutes) });
-  if (card.costGbp !== null) details.push({ label: "Call cost", value: `${GBP.format(card.costGbp)} (owners and admins only)` });
 
   return (
     <article className="min-w-0 rounded-xl border border-line bg-surface shadow-xs" aria-label={`${card.direction} call`}>

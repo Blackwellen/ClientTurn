@@ -65,12 +65,9 @@ function card(viewerRole: string) {
 }
 
 describe("call card cost redaction", () => {
-  for (const role of ["owner", "admin"]) {
-    test(`${role} sees the provider cost`, () => {
-      assert.equal(card(role).costGbp, 0.42);
-    });
-  }
-  for (const role of ["member", "viewer", "", "unknown"]) {
+  // Serving cost is platform-admin only (owner decision 2026-09-30): no
+  // workspace role receives it, owners and admins included.
+  for (const role of ["owner", "admin", "member", "viewer", "", "unknown"]) {
     test(`${role || "no role"} never receives the cost`, () => {
       const c = card(role);
       assert.equal(c.costGbp, null);

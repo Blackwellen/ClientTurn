@@ -25,6 +25,7 @@ import { IntentPanel } from "./intent-panel";
 import { sourceStyle } from "@/components/leads/lead-source-badge";
 import { FactActions, SetFactDialog } from "./qualification-override-dialogs";
 import { Badge, StatusBadge } from "@/components/ui/badge";
+import { formatCredits, tokensToCredits } from "@/lib/billing/tokens";
 import { EmptyState, ErrorState, Skeleton, SkeletonTable } from "@/components/ui/feedback";
 import { formatDateTime, formatRelative } from "@/lib/dates";
 import { METHOD_EVIDENCE } from "@/lib/sales-library/method-router";
@@ -652,14 +653,13 @@ export async function ActivityTab({ businessId, leadId }: TabProps) {
 
 /* ---------------------------------------------------------------------- AI */
 
-function usd(value: number) {
-  return `$${value.toFixed(value < 0.01 && value > 0 ? 4 : 2)}`;
-}
-
 export async function AiTab({ businessId, leadId }: TabProps) {
   const result = await attempt(() => loadLeadAi(businessId, leadId));
   if (!result.ok) return <TabError leadId={leadId} tab="ai" what="AI activity" />;
-  const { agentRuns, aiRuns, totalCostUsd } = result.data;
+  // No AI cost here: what a model call costs ClientTurn is a serving cost, and
+  // serving costs are admin-only (owner decision, 2026-09-30). Usage is shown
+  // in AI credits, the customer's unit, never model tokens.
+  const { agentRuns, aiRuns } = result.data;
 
   if (agentRuns.length === 0 && aiRuns.length === 0) {
     return (
@@ -667,7 +667,7 @@ export async function AiTab({ businessId, leadId }: TabProps) {
         <EmptyState
           icon={Bot}
           title="No AI has worked on this lead"
-          description="When the assistant replies, classifies a message or extracts an answer for this lead, each run and its cost appears here."
+          description="When the assistant replies, classifies a message or extracts an answer for this lead, each run appears here."
         />
       </Panel>
     );
@@ -676,9 +676,8 @@ export async function AiTab({ businessId, leadId }: TabProps) {
   return (
     <div className="space-y-4">
       <p className="rounded-lg border border-line bg-surface px-4 py-3 text-[13px] text-content-secondary">
-        <span className="font-semibold text-content">{usd(totalCostUsd)}</span> estimated AI cost on this lead
-        across {aiRuns.length} {aiRuns.length === 1 ? "call" : "calls"}, as metered in US dollars at the
-        provider&apos;s list price.
+        <span className="font-semibold text-content">{aiRuns.length.toLocaleString("en-GB")}</span>{" "}
+        AI {aiRuns.length === 1 ? "call" : "calls"} on this lead.
       </p>
 
       <Section title="Assistant turns" count={agentRuns.length}>
@@ -694,7 +693,6 @@ export async function AiTab({ businessId, leadId }: TabProps) {
                   </Badge>
                   {run.outcome && <span>{run.outcome.replace(/_/g, " ").toLowerCase()}</span>}
                   {run.intent && <span className="text-content-muted">· intent {run.intent.toLowerCase()}</span>}
-                  <span className="text-content-muted">· {usd(run.costUsd)}</span>
                 </p>
                 {run.method && (
                   <p className="mt-1 text-[12.5px] text-content-secondary">
@@ -728,8 +726,7 @@ export async function AiTab({ businessId, leadId }: TabProps) {
               <tr>
                 <th className="px-4 py-2 font-medium">Task</th>
                 <th className="px-4 py-2 font-medium">When</th>
-                <th className="px-4 py-2 text-right font-medium">Tokens</th>
-                <th className="px-4 py-2 text-right font-medium">Cost</th>
+                <th className="px-4 py-2 text-right font-medium">AI credits</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line-subtle">
@@ -742,8 +739,7 @@ export async function AiTab({ businessId, leadId }: TabProps) {
                     )}
                   </td>
                   <td className="px-4 py-2 text-content-muted">{formatRelative(run.at)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{run.tokens.toLocaleString("en-GB")}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{usd(run.costUsd)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatCredits(tokensToCredits(run.tokens))}</td>
                 </tr>
               ))}
             </tbody>

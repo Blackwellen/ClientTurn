@@ -101,8 +101,11 @@ algorithms, commercial framing), the **Bible wins** unless listed under "Resolve
 
 - Public marketing brand is **ClientTurn** (user-directed rebrand). Use midnight
   `#0B1020`, lime `#B7F34A`, soft lime `#E7FFC0`, cloud `#F7F9FC`, and white.
-  The landing page uses a near-black (#050814) Three.js / Motion scroll experience with reduced-motion
-  and WebGL fallbacks. Existing backend identifiers and provisioned email addresses
+  The landing page is near-black (`--pub-bg`, #020409). Its hero
+  (`src/components/marketing/public/home/hero.tsx` + `hero-flow-map.tsx`) is server-rendered
+  HTML, CSS and SVG with no WebGL; GSAP (`scroll-draw.tsx`) and Motion only replay connectors
+  and reveals (reduced motion shows everything at once, see `public/reveal.tsx`), so nothing
+  depends on WebGL and there is no fallback to maintain. Three.js was removed on 2026-09-30. Existing backend identifiers and provisioned email addresses
   remain unchanged until replacements are supplied.
 
 - Every tenant table carries `business_id`. RLS on every browser-exposed table, no exceptions.

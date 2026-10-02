@@ -10,6 +10,8 @@ import { listSessions, type SessionGroup, groupSessions } from "./sessions";
 import { listRecentRuns, type RecentRun } from "./runs";
 import { readAcquisitionProfile, defaultWebsiteUrl } from "./profile";
 import { getAnalysisProgress } from "./analysis";
+import { getProspectCounts } from "@/lib/prospects/queries";
+import { PROSPECT_COUNT_DEFINITIONS } from "@/lib/prospects/prospect-counts";
 
 /**
  * Everything the Discover view needs, gathered in one pass.
@@ -52,10 +54,7 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
     analysis,
     defaultWebsite,
     searchesUsed,
-    prospectsFound,
-    verifiedContacts,
-    inOutreach,
-    converted,
+    prospectCounts,
     strategyRows,
     recurringRows,
   ] = await Promise.all([
@@ -65,10 +64,10 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
     getAnalysisProgress(businessId),
     defaultWebsiteUrl(businessId),
     getV4Usage(businessId, "search_run", entitlements.periodStart),
-    countProspects(businessId),
-    countProspects(businessId, { verified: true }),
-    countProspects(businessId, { statuses: ["OUTREACH_ACTIVE", "APPROVED"] }),
-    countProspects(businessId, { statuses: ["CONVERTED"] }),
+    // The same counts, by the same definitions, as the Prospects chips and
+    // KPI strip (lib/prospects/prospect-counts.ts). Request-cached, so the
+    // page pays for them once.
+    getProspectCounts(businessId),
     admin
       .from("search_strategies")
       .select("session_id")
@@ -112,29 +111,29 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
       },
       {
         key: "prospects",
-        label: "Prospects found",
-        value: prospectsFound.toLocaleString("en-GB"),
+        label: PROSPECT_COUNT_DEFINITIONS.found.label,
+        value: prospectCounts.found.toLocaleString("en-GB"),
         detail: null,
         tone: "success",
       },
       {
         key: "verified",
-        label: "Verified contacts",
-        value: verifiedContacts.toLocaleString("en-GB"),
+        label: PROSPECT_COUNT_DEFINITIONS.verified.label,
+        value: prospectCounts.verified.toLocaleString("en-GB"),
         detail: null,
         tone: "success",
       },
       {
         key: "outreach",
-        label: "In outreach",
-        value: inOutreach.toLocaleString("en-GB"),
+        label: PROSPECT_COUNT_DEFINITIONS.contacted.label,
+        value: prospectCounts.contacted.toLocaleString("en-GB"),
         detail: null,
         tone: "neutral",
       },
       {
         key: "converted",
         label: "Converted",
-        value: converted.toLocaleString("en-GB"),
+        value: prospectCounts.converted.toLocaleString("en-GB"),
         detail: null,
         tone: "success",
       },
@@ -172,23 +171,4 @@ export async function loadDiscoverData(businessId: string): Promise<DiscoverData
       resetsAt: entitlements.periodEnd,
     },
   };
-}
-
-/** Counts only; Discover never loads prospect rows. */
-async function countProspects(
-  businessId: string,
-  options: { statuses?: string[]; verified?: boolean } = {},
-): Promise<number> {
-  const admin = createAdminClient();
-  let query = admin
-    .from("prospects")
-    .select("id", { count: "exact", head: true })
-    .eq("business_id", businessId)
-    .eq("is_test", false);
-
-  if (options.statuses) query = query.in("status", options.statuses);
-  if (options.verified) query = query.eq("verification_status", "VALID");
-
-  const { count } = await query;
-  return count ?? 0;
 }

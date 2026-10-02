@@ -4,13 +4,10 @@ import {
   getV4Entitlements,
   getV4Usage,
 } from "@/lib/billing/v4-entitlements";
-import {
-  estimateRunCost,
-  PLATFORM_RUN_COST_CEILING_MINOR,
-} from "@/lib/find-leads/cost-model";
-import { loadUnitCosts } from "@/lib/find-leads/server/budget";
+import { PLATFORM_RUN_COST_CEILING_MINOR } from "@/lib/find-leads/cost-model";
 import {
   BUDGET_CATEGORY_LABELS,
+  effectiveProviderCostCeilingMinor,
   type BudgetCategory,
   type CampaignBudgetContext,
   type CampaignBudgetUsage,
@@ -40,6 +37,11 @@ export const CAMPAIGN_COST_CEILING_MINOR = PLATFORM_RUN_COST_CEILING_MINOR * 4; 
 /**
  * Everything Step 5 needs, resolved server-side.
  *
+ * This object is serialised to the browser, so it carries no money: serving
+ * costs (provider cost ceiling, cost per prospect, provider spend) are
+ * admin-only (owner decision, 2026-09-30). The provider ceiling is resolved
+ * separately by `resolveProviderCeilingMinor` and applied at launch.
+ *
  * `senderIdentityId` matters because the daily contact ceiling is the *lower*
  * of what the plan permits and what the chosen mailbox is warmed up to send.
  * A campaign configured above its mailbox's cap would simply stall each day.
@@ -53,11 +55,10 @@ export async function resolveCampaignBudgetContext(input: {
   const admin = createAdminClient();
   const entitlements = await getV4Entitlements(input.businessId);
 
-  const [prospectsUsed, emailsUsed, unitCosts, sender, committed] =
+  const [prospectsUsed, emailsUsed, sender] =
     await Promise.all([
       getV4Usage(input.businessId, "verified_prospect", entitlements.periodStart),
       getV4Usage(input.businessId, "email_sent", entitlements.periodStart),
-      loadUnitCosts(),
       input.senderIdentityId
         ? admin
             .from("sender_identities")
@@ -66,7 +67,6 @@ export async function resolveCampaignBudgetContext(input: {
             .eq("id", input.senderIdentityId)
             .maybeSingle()
         : Promise.resolve({ data: null }),
-      loadCommittedSpend(input.businessId, input.excludeCampaignId ?? null),
     ]);
 
   const prospectAllowance = entitlements.allowances.verified_prospect;
@@ -75,21 +75,11 @@ export async function resolveCampaignBudgetContext(input: {
   const prospectsRemaining = Math.max(0, prospectAllowance.hardLimit - prospectsUsed);
   const emailsRemaining = Math.max(0, emailAllowance.hardLimit - emailsUsed);
 
-  // Provider budget: what the platform permits, less what other campaigns have
-  // already committed. Committed, not spent — two campaigns each promising the
-  // whole budget is the failure this prevents.
-  const providerCeilingMinor = Math.max(
-    0,
-    Math.min(CAMPAIGN_COST_CEILING_MINOR, CAMPAIGN_COST_CEILING_MINOR - committed.reservedMinor),
-  );
-
   const mailboxCap = sender.data?.daily_send_cap ?? null;
   // With no mailbox chosen yet, fall back to the plan's own daily shape rather
   // than to an unbounded number.
   const planDailyCap = Math.max(1, Math.floor(emailAllowance.hardLimit / 30) || 200);
   const dailyContactMax = mailboxCap ? Math.min(mailboxCap, planDailyCap) : planDailyCap;
-
-  const perProspect = estimateRunCost(100, unitCosts).totalMinor / 100;
 
   return {
     ceilings: {
@@ -98,7 +88,6 @@ export async function resolveCampaignBudgetContext(input: {
       dailyContactMax,
       monthlyContactsRemaining: emailsRemaining,
       monthlyContactsLimit: emailAllowance.hardLimit,
-      providerCeilingMinor,
       communicationRemaining: emailsRemaining,
       communicationLimit: emailAllowance.hardLimit,
       // No overage on any metric (owner, 2026-09-27), so a campaign is never
@@ -111,33 +100,40 @@ export async function resolveCampaignBudgetContext(input: {
         label: "Prospects (monthly)",
         used: prospectsUsed,
         limit: prospectAllowance.hardLimit,
-        money: false,
       },
       {
         key: "emailContacts",
         label: "Email contacts (monthly)",
         used: emailsUsed,
         limit: emailAllowance.hardLimit,
-        money: false,
-      },
-      {
-        key: "providerSpend",
-        label: "Provider spend (monthly)",
-        used: committed.spentMinor,
-        limit: CAMPAIGN_COST_CEILING_MINOR,
-        money: true,
       },
       {
         key: "messageAllowance",
         label: "Total message allowance",
         used: emailsUsed,
         limit: emailAllowance.hardLimit,
-        money: false,
       },
     ],
-    costPerProspectMinor: Math.max(1, Math.round(perProspect)),
     dailyCapSource: mailboxCap && mailboxCap <= planDailyCap ? "MAILBOX" : "PLAN",
   };
+}
+
+/**
+ * The provider budget still available to one campaign, in pence. Server-only.
+ *
+ * What the platform permits, less what other campaigns have already committed.
+ * Committed, not spent: two campaigns each promising the whole budget is the
+ * failure this prevents.
+ */
+export async function resolveProviderCeilingMinor(
+  businessId: string,
+  excludeCampaignId: string | null,
+): Promise<number> {
+  const committed = await loadCommittedSpend(businessId, excludeCampaignId);
+  return Math.max(
+    0,
+    Math.min(CAMPAIGN_COST_CEILING_MINOR, CAMPAIGN_COST_CEILING_MINOR - committed.reservedMinor),
+  );
 }
 
 /** Provider money already spent and already promised by other campaigns. */
@@ -175,6 +171,11 @@ async function loadCommittedSpend(
  * Conditional on the values read, so two launches racing on the same remaining
  * allowance cannot both succeed. Reservations are re-checked at send time as
  * well: this stops over-commitment, the runtime stops over-spend.
+ *
+ * `providerCostCeilingMinor` is the draft's stored value — 0 for every draft
+ * made since the ceiling stopped being a customer field. It is resolved here
+ * to the remaining platform ceiling (or clamped to it), so the engine still
+ * reserves and enforces a hard provider ceiling the customer never sees.
  */
 export async function reserveCampaignBudget(input: {
   businessId: string;
@@ -184,19 +185,19 @@ export async function reserveCampaignBudget(input: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = createAdminClient();
 
-  const context = await resolveCampaignBudgetContext({
-    businessId: input.businessId,
-    senderIdentityId: null,
-    excludeCampaignId: input.campaignId,
-  });
+  const [context, remainingProviderMinor] = await Promise.all([
+    resolveCampaignBudgetContext({
+      businessId: input.businessId,
+      senderIdentityId: null,
+      excludeCampaignId: input.campaignId,
+    }),
+    resolveProviderCeilingMinor(input.businessId, input.campaignId),
+  ]);
 
-  if (input.providerCostCeilingMinor > context.ceilings.providerCeilingMinor) {
-    return {
-      ok: false,
-      error:
-        "Your remaining provider budget has changed. Lower this campaign's cost ceiling and try again.",
-    };
-  }
+  const providerCostCeilingMinor = effectiveProviderCostCeilingMinor(
+    input.providerCostCeilingMinor,
+    remainingProviderMinor,
+  );
   if (
     input.communicationAllowance > context.ceilings.communicationRemaining &&
     !context.ceilings.overageAvailable
@@ -211,7 +212,7 @@ export async function reserveCampaignBudget(input: {
   const { error } = await admin
     .from("outreach_campaigns")
     .update({
-      max_cost_minor: input.providerCostCeilingMinor,
+      max_cost_minor: providerCostCeilingMinor,
       reserved_allowance_minor: input.communicationAllowance,
       communication_allowance: input.communicationAllowance,
     })
@@ -227,7 +228,7 @@ export async function reserveCampaignBudget(input: {
         campaign_id: input.campaignId,
         business_id: input.businessId,
         communication_reserved: input.communicationAllowance,
-        provider_cost_reserved_minor: input.providerCostCeilingMinor,
+        provider_cost_reserved_minor: providerCostCeilingMinor,
       },
       { onConflict: "campaign_id" },
     );

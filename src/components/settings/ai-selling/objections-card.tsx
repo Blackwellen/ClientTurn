@@ -431,7 +431,7 @@ function TryIt() {
       </h3>
       <p className="text-[12.5px] text-content-muted">
         Type what a lead might say. This runs offline through the same matching, plan and checks the assistant uses, with
-        an example reply. It spends no AI tokens.
+        an example reply. It uses no AI credits.
       </p>
       <div className="grid gap-2 md:grid-cols-[1fr_9rem_auto]">
         <Input aria-label="What the lead says" maxLength={600} value={message} placeholder="Honestly it feels a bit expensive" onChange={(event) => setMessage(event.target.value)} />

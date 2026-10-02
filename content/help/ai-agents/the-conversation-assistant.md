@@ -74,6 +74,6 @@ Quiet hours, suppression and takeovers apply to the assistant exactly as to any 
 
 ## Related
 
-- [AI budgets and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)
+- [AI credits and model tiers](/help/ai-agents/ai-budgets-and-model-tiers)
 - [AI guides and best practice](/help/ai-agents/ai-guides-best-practice)
 - [The lead page](/help/finding-leads/the-lead-page)

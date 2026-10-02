@@ -51,6 +51,12 @@ usage, deliberately — a module used only by a test is still product-dead).
 `outcome-cards.tsx` · `pain-timeline.tsx` · `pricing.tsx` · `reactivation.tsx` ·
 `why-it-works.tsx` · `clientturn-story/ClientTurnStory.tsx` · `world/ClientTurnExperience.tsx`
 
+**Deleted 2026-09-30** (owner-directed marketing cleanup), together with `hero/`, `world/`,
+`clientturn-story/`, `hero-scene.ts`, `cta.tsx`, `logo.tsx`, `sections/shell.tsx`,
+`use-staged.ts` and the `three` / `@react-three/*` / `postprocessing` dependencies. The live
+hero is `components/marketing/public/home/hero.tsx` (HTML, CSS and SVG). The note below is
+kept for history.
+
 The last two are the Three.js scroll experience. **Check with the user before deleting those** —
 `CLAUDE.md` describes the landing page as *"a near-black (#050814) Three.js / Motion scroll
 experience"*, so if that is still the intended landing page these are not dead, they are

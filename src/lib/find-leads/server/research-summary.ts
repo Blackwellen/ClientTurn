@@ -178,7 +178,7 @@ export async function generateResearchSummary(
   if (result.skippedReason === "NO_TOKENS") {
     return {
       ok: false,
-      error: "Your workspace has no AI tokens left this period.",
+      error: "Your workspace has no AI credits left this period.",
     };
   }
   // The budget manager declined the spend (a ceiling, or the prospect's value
@@ -187,7 +187,7 @@ export async function generateResearchSummary(
   if (result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN") {
     return {
       ok: false,
-      error: "This workspace's AI budget does not cover a research summary right now.",
+      error: "This workspace's AI credit limits do not cover a research summary right now.",
     };
   }
   if (!result.data) {

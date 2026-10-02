@@ -33,7 +33,6 @@ import {
   type CampaignDraft,
   type WizardStepKey,
 } from "@/lib/outreach/campaign-draft";
-import { formatMoneyMinor } from "@/lib/outreach/types";
 import type { LaunchCheck } from "@/lib/outreach/campaign-validation";
 import type { CampaignWizardOptions } from "@/lib/outreach/campaigns/audience";
 import type { SenderHealth } from "@/lib/outreach/campaigns/sender";
@@ -266,10 +265,6 @@ export function ReviewStep({
             <Detail
               label="Monthly contacts"
               value={formatCount(draft.budget.monthlyContacts)}
-            />
-            <Detail
-              label="Provider cost ceiling"
-              value={formatMoneyMinor(draft.budget.providerCostCeilingMinor)}
             />
             <Detail
               label="Communication allowance"

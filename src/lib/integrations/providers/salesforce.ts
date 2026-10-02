@@ -3,10 +3,11 @@ import { crmCompanyField } from "@/lib/integrations/crm-pull/plan";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  refreshAccessToken,
+  getLiveAccessToken,
   type OAuthConfig,
   type TokenResponse,
 } from "@/lib/integrations/oauth";
+import { refreshPolicy } from "@/lib/integrations/token-refresh-core";
 import { registerOAuthProvider } from "@/lib/integrations/providers/registry";
 import {
   CrmPartialPushError,
@@ -55,10 +56,10 @@ import {
  *
  * Salesforce access tokens carry no fixed `expires_in` in the token response
  * (session lifetime is governed by the org's session-timeout policy, not a
- * token TTL), so `getLiveAccessToken`'s proactive refresh never fires for
- * this provider. Instead `pushWithRefresh` below refreshes reactively: it
- * retries exactly once after a 401, which is what Salesforce returns for an
- * expired/invalidated session (`INVALID_SESSION_ID`).
+ * token TTL). `getLiveAccessToken` records an assumed two-hour session
+ * (SALESFORCE_ASSUMED_SESSION_SECONDS) so the `integration.token_refresh`
+ * sweep renews it ahead of time, and `sfFetch` below still refreshes once on
+ * a 401 (`INVALID_SESSION_ID`) for an org with a shorter idle timeout.
  */
 
 const API_VERSION = "v59.0";
@@ -131,52 +132,25 @@ async function identify(token: TokenResponse) {
   };
 }
 
-async function getStoredCredential(
-  integrationId: string,
-): Promise<{ accessToken: string; refreshToken: string | null; instanceUrl: string }> {
+async function instanceUrlOf(integrationId: string): Promise<string> {
   const admin = createAdminClient();
-
-  const [{ data: secret }, { data: integration }] = await Promise.all([
-    admin
-      .from("integration_secrets")
-      .select("access_token, refresh_token")
-      .eq("integration_id", integrationId)
-      .maybeSingle(),
-    admin.from("integrations").select("config").eq("id", integrationId).maybeSingle(),
-  ]);
-
-  if (!secret?.access_token) {
-    throw new Error("No stored Salesforce credential for this integration.");
-  }
-
+  const { data: integration } = await admin.from("integrations").select("config").eq("id", integrationId).maybeSingle();
   const instanceUrl = (integration?.config as Record<string, unknown> | null)?.instanceUrl;
   if (typeof instanceUrl !== "string" || !instanceUrl) {
     throw new Error("Salesforce connection is missing its org URL; reconnect Salesforce.");
   }
-
-  return {
-    accessToken: secret.access_token,
-    refreshToken: secret.refresh_token,
-    instanceUrl,
-  };
-}
-
-async function persistRefreshedToken(integrationId: string, refreshed: TokenResponse) {
-  const admin = createAdminClient();
-  await admin
-    .from("integration_secrets")
-    .update({
-      access_token: refreshed.accessToken,
-      refresh_token: refreshed.refreshToken,
-    })
-    .eq("integration_id", integrationId);
+  return instanceUrl;
 }
 
 /**
- * Calls Salesforce with the stored token; on a 401 (expired/invalidated
- * session — `INVALID_SESSION_ID`) refreshes once and retries once. A second
- * 401 after a fresh token is a real auth failure, not a stale-token race, so
- * it is left to surface as the CRM push failure it is.
+ * Calls Salesforce with a live token (`getLiveAccessToken`, which records an
+ * assumed two-hour session so the sweep renews it ahead of time). On a 401
+ * (`INVALID_SESSION_ID`: the org's idle timeout ended the session sooner) it
+ * refreshes through the same compare-and-swap, naming the refused token so a
+ * refresh another worker already made is reused, and retries once. A second
+ * 401 after a fresh token is a real auth failure and surfaces as the CRM push
+ * failure it is. A refused grant marks the connection "Reconnect" inside the
+ * core; a blip never does.
  */
 async function sfFetch(
   integrationId: string,
@@ -184,7 +158,11 @@ async function sfFetch(
   path: string,
   init: { method: string; body?: unknown },
 ): Promise<{ ok: boolean; status: number; json: unknown }> {
-  const { accessToken, refreshToken, instanceUrl } = await getStoredCredential(integrationId);
+  const policy = refreshPolicy("salesforce");
+  const [instanceUrl, accessToken] = await Promise.all([
+    instanceUrlOf(integrationId),
+    getLiveAccessToken(integrationId, oauthConfig, policy),
+  ]);
 
   const call = (token: string) =>
     fetch(`${instanceUrl}${path}`, {
@@ -199,12 +177,11 @@ async function sfFetch(
   let response = await call(accessToken);
 
   if (response.status === 401) {
-    if (!refreshToken) {
+    const renewed = await getLiveAccessToken(integrationId, oauthConfig, { ...policy, rejectedAccessToken: accessToken });
+    if (renewed === accessToken) {
       throw new Error("Salesforce session expired and there is no refresh token; reconnect Salesforce.");
     }
-    const refreshed = await refreshAccessToken(oauthConfig, refreshToken, { integrationId });
-    await persistRefreshedToken(integrationId, refreshed);
-    response = await call(refreshed.accessToken);
+    response = await call(renewed);
   }
 
   // A 204 (No Content, returned by a successful Lead PATCH) has no JSON body.

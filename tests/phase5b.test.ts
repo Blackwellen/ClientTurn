@@ -27,16 +27,16 @@ import {
   brandVoiceSchema,
   budgetProblems,
   budgetUpdateSchema,
-  formatMinor,
+  formatCreditLimit,
+  creditLimitToField,
   liaProblems,
   liaReviewOverdue,
   liaSchema,
-  minorToPounds,
   parseBudgetForm,
   parseSellingPreferences,
   phrasesFromAvoid,
   phrasesFromText,
-  poundsToMinor,
+  parseCreditLimit,
   salesSettingsUpdateSchema,
 } from "../src/lib/settings/ai-selling.ts";
 import { leadScorePayload } from "../src/lib/jobs/handlers/payloads.ts";
@@ -327,24 +327,25 @@ describe("attribution", () => {
 /* ----------------------------------------------------------------- budget */
 
 describe("budget form validation", () => {
-  test("pounds become pence; blank means no limit of the workspace's own", () => {
-    assert.equal(poundsToMinor("12.50"), 1250);
-    assert.equal(poundsToMinor("£1,000"), 100000);
-    assert.equal(poundsToMinor(" 3 "), 300);
-    assert.equal(poundsToMinor(""), null);
-    for (const bad of ["-1", "1.234", "abc", "1e3", "100001"]) {
-      assert.equal(poundsToMinor(bad), "invalid", bad);
+  test("limits are whole AI credits; blank means no limit of the workspace's own", () => {
+    assert.equal(parseCreditLimit("1250"), 1250);
+    assert.equal(parseCreditLimit("1,000"), 1000);
+    assert.equal(parseCreditLimit(" 3 "), 3);
+    assert.equal(parseCreditLimit(""), null);
+    for (const bad of ["-1", "1.5", "abc", "1e3", "£12", "10000001"]) {
+      assert.equal(parseCreditLimit(bad), "invalid", bad);
     }
-    assert.equal(minorToPounds(1250), "12.50");
-    assert.equal(minorToPounds(null), "");
-    assert.equal(formatMinor(null), "No limit");
+    assert.equal(creditLimitToField(1250), "1250");
+    assert.equal(creditLimitToField(null), "");
+    assert.equal(formatCreditLimit(null), "No limit");
+    assert.equal(formatCreditLimit(1250), "1,250 AI credits");
   });
 
   test("a bad field is named rather than silently dropped", () => {
     const parsed = parseBudgetForm({ WORKSPACE_MONTH: "50", LEAD: "two", PRE_REPLY: "", OPPORTUNITY: "5" });
     assert.equal(parsed.ok, false);
     assert.deepEqual(Object.keys(parsed.ok ? {} : parsed.errors), ["LEAD"]);
-    const good = parseBudgetForm({ WORKSPACE_MONTH: "50", LEAD: "1.50", PRE_REPLY: "", OPPORTUNITY: "5" });
+    const good = parseBudgetForm({ WORKSPACE_MONTH: "5000", LEAD: "150", PRE_REPLY: "", OPPORTUNITY: "500" });
     assert.deepEqual(good.ok && good.values, { WORKSPACE_MONTH: 5000, LEAD: 150, PRE_REPLY: null, OPPORTUNITY: 500 });
   });
 
@@ -362,7 +363,7 @@ describe("budget form validation", () => {
     assert.equal(budgetProblems({ LEAD: 10, PRE_REPLY: 5 }, defaults).PRE_REPLY, undefined);
   });
 
-  test("the operation schema takes pence, and at least one field", () => {
+  test("the operation schema takes whole credits, and at least one field", () => {
     assert.equal(budgetUpdateSchema.safeParse({ LEAD: 150 }).success, true);
     assert.equal(budgetUpdateSchema.safeParse({ LEAD: null }).success, true);
     assert.equal(budgetUpdateSchema.safeParse({}).success, false);

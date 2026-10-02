@@ -6,7 +6,6 @@ import { estimateRunCost } from "../cost-model";
 import {
   checkPlanReadiness,
   describePlan,
-  formatMinor,
   planWantsIntent,
   type SearchPlan,
 } from "../plan";
@@ -154,7 +153,6 @@ export async function createRun(input: {
   const budget = await resolveBudget({
     businessId: input.businessId,
     requestedTarget: input.plan.targetVerifiedProspects,
-    requestedCostCapMinor: input.plan.maxProviderCostMinor,
     intentEnabled,
   });
 
@@ -488,12 +486,9 @@ export async function getRun(
     errorMessage: run.error_message,
     providerCount: providers.length,
     counters,
-    // Formatted server-side: §112 keeps raw provider figures out of the
-    // browser, and the customer's own cap in their own money is what belongs
-    // on the meter.
+    // A proportion only: provider spend and the run's pound ceiling are
+    // serving costs, which are admin-only (owner decision, 2026-09-30).
     budget: {
-      spent: formatMinor(spent),
-      cap: formatMinor(cap),
       percentUsed: cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0,
       state: run.budget_state as SourcingRunView["budget"]["state"],
     },

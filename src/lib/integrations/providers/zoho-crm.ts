@@ -124,6 +124,19 @@ function dcConfig(accountsServer: string | null, location: string | null): OAuth
   };
 }
 
+/**
+ * The refresh config for a stored connection: the data centre it connected
+ * to, read from `integration_secrets.extra`. Used by the token sweep and the
+ * health check, which otherwise only know the provider type.
+ */
+export function zohoRefreshConfig(extra: unknown): OAuthConfig | null {
+  const e = (extra ?? {}) as Record<string, unknown>;
+  return dcConfig(
+    typeof e.accounts_server === "string" ? e.accounts_server : null,
+    typeof e.location === "string" ? e.location : null,
+  );
+}
+
 function config(hint?: OAuthCallbackHint): OAuthConfig | null {
   if (!hint) return dcConfig(null, null);
   return dcConfig(

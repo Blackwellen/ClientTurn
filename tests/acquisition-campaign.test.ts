@@ -50,7 +50,11 @@ import {
   reviewCompleteness,
   type LaunchFacts,
 } from "../src/lib/outreach/campaign-validation.ts";
-import { summariseCampaignBudget } from "../src/lib/outreach/campaign-budget.ts";
+import {
+  effectiveProviderCostCeilingMinor,
+  summariseCampaignBudget,
+  toCustomerCampaignBudget,
+} from "../src/lib/outreach/campaign-budget.ts";
 import {
   MAX_COMPANY_ROWS,
   parseCompanyCsv,
@@ -72,7 +76,6 @@ const CEILINGS: BudgetCeilings = {
   dailyContactMax: 200,
   monthlyContactsRemaining: 4000,
   monthlyContactsLimit: 5000,
-  providerCeilingMinor: 200_000,
   communicationRemaining: 9000,
   communicationLimit: 10_000,
   overageAvailable: false,
@@ -357,10 +360,53 @@ describe("step 5 — budget and limits", () => {
     assert.ok(validateBudget(draft, CEILINGS).dailyContacts);
   });
 
-  test("a provider ceiling above the plan's is refused", () => {
+  test("the hidden provider ceiling never produces a customer-facing error", () => {
+    // Serving costs are admin-only (2026-09-30): the customer cannot see or
+    // edit this field, so it must never block the step. It is clamped at launch.
     const draft = completeDraft();
     draft.budget.providerCostCeilingMinor = 500_000;
-    assert.ok(validateBudget(draft, CEILINGS).providerCostCeilingMinor);
+    assert.equal(validateBudget(draft, CEILINGS).providerCostCeilingMinor, undefined);
+  });
+
+  test("a new draft reserves the whole remaining platform ceiling", () => {
+    assert.equal(effectiveProviderCostCeilingMinor(0, 200_000), 200_000);
+  });
+
+  test("an older draft's stored ceiling is kept, and clamped to what remains", () => {
+    assert.equal(effectiveProviderCostCeilingMinor(50_000, 200_000), 50_000);
+    assert.equal(effectiveProviderCostCeilingMinor(500_000, 200_000), 200_000);
+    assert.equal(effectiveProviderCostCeilingMinor(50_000, 0), 0);
+    assert.equal(effectiveProviderCostCeilingMinor(-5, 1_000), 1_000);
+  });
+
+  test("a stored draft without a provider ceiling still parses", () => {
+    const stored = JSON.parse(JSON.stringify(completeDraft()));
+    delete stored.budget.providerCostCeilingMinor;
+    const parsed = parseDraft(stored);
+    assert.equal(parsed.budget.providerCostCeilingMinor, 0);
+    assert.equal(parsed.budget.prospectsPerRun, 1000);
+  });
+
+  test("a stored draft with a provider ceiling keeps its value", () => {
+    const parsed = parseDraft(JSON.parse(JSON.stringify(completeDraft())));
+    assert.equal(parsed.budget.providerCostCeilingMinor, 50_000);
+  });
+
+  test("the customer budget view carries a proportion, never pounds", () => {
+    const view = toCustomerCampaignBudget({
+      capMinor: 50_000,
+      spentMinor: 21_000,
+      percentUsed: 42,
+      breakdown: [{ category: "DATA_ENRICHMENT", label: "Data enrichment", minor: 21_000, percent: 100 }],
+      empty: false,
+    });
+    assert.deepEqual(view, {
+      capped: true,
+      percentUsed: 42,
+      breakdown: [{ category: "DATA_ENRICHMENT", label: "Data enrichment", percent: 100 }],
+      empty: false,
+    });
+    assert.ok(!/minor/i.test(JSON.stringify(view)), "no minor-unit money field may reach the browser");
   });
 
   test("a monthly cap below the daily cap is refused", () => {
@@ -385,26 +431,16 @@ describe("step 5 — budget and limits", () => {
     );
   });
 
-  test("an existing-prospects campaign is quoted no sourcing cost", () => {
+  test("an existing-prospects campaign sources nobody", () => {
     const draft = completeDraft();
     draft.audience.source = "EXISTING_ONLY";
-    const summary = summariseCampaignBudget(draft, 35);
+    const summary = summariseCampaignBudget(draft);
     assert.equal(summary.prospectsToSource, 0);
-    assert.equal(summary.providerCostMinor, 0);
   });
 
-  test("the quoted provider cost never exceeds the campaign's own ceiling", () => {
-    const draft = completeDraft();
-    draft.budget.providerCostCeilingMinor = 10_000;
-    const summary = summariseCampaignBudget(draft, 35);
-    assert.ok(summary.providerCostMinor <= 10_000);
-  });
-
-  test("email credits are counted separately from money", () => {
-    const summary = summariseCampaignBudget(completeDraft(), 35);
-    // Allowance is a head count, not pounds; adding one into the other would
-    // double-charge the customer in the summary.
-    assert.equal(summary.totalCostMinor, summary.providerCostMinor);
+  test("the budget summary is allowance counts only, never money", () => {
+    const summary = summariseCampaignBudget(completeDraft());
+    assert.deepEqual(Object.keys(summary).sort(), ["emailCredits", "outreachContacts", "prospectsToSource"]);
     assert.equal(summary.emailCredits, summary.outreachContacts);
   });
 });

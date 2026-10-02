@@ -480,8 +480,13 @@ export const budgetSchema = z.object({
   prospectsPerRun: z.number().int().min(1).max(100000),
   dailyContacts: z.number().int().min(1).max(2000),
   monthlyContacts: z.number().int().min(1).max(200000),
-  /** In pence. Never rendered as a provider unit price. */
-  providerCostCeilingMinor: z.number().int().min(0).max(100_000_00),
+  /**
+   * In pence. Not shown to or set by the customer (serving costs are
+   * admin-only, 2026-09-30). 0 means "use the platform ceiling"; older drafts
+   * that stored a value keep it, clamped at launch. See
+   * `effectiveProviderCostCeilingMinor` in campaign-budget.ts.
+   */
+  providerCostCeilingMinor: z.number().int().min(0).max(100_000_00).default(0),
   communicationAllowance: z.number().int().min(0).max(1_000_000),
   autoOverage: z.boolean(),
   autoOptimize: z.boolean(),
@@ -730,8 +735,6 @@ export type BudgetCeilings = {
   dailyContactMax: number;
   monthlyContactsRemaining: number;
   monthlyContactsLimit: number;
-  /** min(plan budget remaining, admin ceiling), in pence. */
-  providerCeilingMinor: number;
   communicationRemaining: number;
   communicationLimit: number;
   /** True only when the *account* has switched overage on with a cap. */
@@ -754,9 +757,8 @@ export function validateBudget(draft: CampaignDraft, ceilings: BudgetCeilings): 
   if (budget.monthlyContacts < budget.dailyContacts) {
     errors.monthlyContacts = "The monthly cap cannot be lower than the daily cap.";
   }
-  if (budget.providerCostCeilingMinor > ceilings.providerCeilingMinor) {
-    errors.providerCostCeilingMinor = "That is above the ceiling your plan allows.";
-  }
+  // No provider cost check: that ceiling is not a customer field. It is
+  // resolved and clamped server-side at launch (reserveCampaignBudget).
   if (budget.communicationAllowance > ceilings.communicationRemaining && !budget.autoOverage) {
     errors.communicationAllowance = `You have ${ceilings.communicationRemaining.toLocaleString("en-GB")} messages remaining this month.`;
   }

@@ -326,7 +326,7 @@ export function UsagePanel({
                   75% and 90% of what you have (allowance plus top-up credit) and when it runs out, with
                   the bundle that covers the rest of the period. At zero that channel stops: automated
                   steps and AI replies go by email where the lead has an address, otherwise the lead
-                  is passed to your team. AI tokens notify at 80% and 95%.
+                  is passed to your team. AI credits notify at 80% and 95%.
                 </p>
               </div>
               <a
@@ -388,7 +388,7 @@ export function UsagePanel({
         <CardHeader className="border-b-0 px-5 pt-5 pb-0">
           <SectionHeader
             title="Usage history"
-            description="Your monthly usage and spending history."
+            description="Your monthly usage history."
             dense
           />
         </CardHeader>
@@ -396,7 +396,7 @@ export function UsagePanel({
           <div className="overflow-x-auto">
             <table className="w-full min-w-[38rem] text-left text-[13px]">
               <caption className="sr-only">
-                Prospects sourced, messages sent, search runs and spend by month.
+                Prospects sourced, messages sent and search runs by month.
               </caption>
               <thead>
                 <tr className="border-b border-line text-[11.5px] uppercase tracking-wide text-content-muted">
@@ -404,7 +404,6 @@ export function UsagePanel({
                   <th scope="col" className="pb-2 text-right font-medium">Prospects</th>
                   <th scope="col" className="pb-2 text-right font-medium">Messages</th>
                   <th scope="col" className="pb-2 text-right font-medium">Search runs</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Total spend</th>
                   <th scope="col" className="pb-2 text-right font-medium">Status</th>
                 </tr>
               </thead>
@@ -422,9 +421,6 @@ export function UsagePanel({
                     </td>
                     <td className="lr-tabular py-2 text-right text-content-secondary">
                       {month.searchRuns.toLocaleString("en-GB")}
-                    </td>
-                    <td className="lr-tabular py-2 text-right text-content-secondary">
-                      £{month.totalSpend.toFixed(2)}
                     </td>
                     <td className="py-2 text-right">
                       <Badge tone={month.current ? "info" : "neutral"} dense>

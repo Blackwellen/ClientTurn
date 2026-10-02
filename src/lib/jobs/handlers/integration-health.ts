@@ -10,14 +10,19 @@ import {
 } from "@/lib/messaging/twilio";
 import { getLiveAccessToken, markReconnectRequired } from "@/lib/integrations/oauth";
 import {
+  CALENDLY_SCOPE_MISSING,
   OAuthRefreshError,
   RECONNECT_REQUIRED,
+  isInsufficientScope,
   SCOPE_OUTDATED,
   classifyPing,
   pingSpec,
+  type PingSpec,
   zohoScopeOutdated,
 } from "@/lib/integrations/oauth-health";
 import { getOAuthProviderConfig } from "@/lib/integrations/providers/registry";
+import { refreshConfigFor } from "@/lib/integrations/refresh-config";
+import { refreshPolicy } from "@/lib/integrations/token-refresh-core";
 // Populates that registry. Without it `probeSlack` below sees no config for a
 // provider that is, in fact, configured -- the same class of bug `all.ts`
 // documents: a registry populated by import side effects is only as complete
@@ -47,6 +52,8 @@ type Probe = {
    * written by a check that synced nothing.
    */
   verified: boolean;
+  /** Meta / WhatsApp: the expiry a "token_expiring" warning is about (dedupes the notification). */
+  expiresAt?: string | null;
 };
 
 /** The provider answered. */
@@ -168,20 +175,23 @@ async function probeToken(integrationId: string, providerType = ""): Promise<Pro
     );
   }
 
-  // Meta issues no refresh token: its ~60-day token is renewed only by the
-  // person reconnecting. Flagged from ten days out so the card, and the
-  // notification below, say so while there is still time.
-  if (providerType === "meta") {
+  // Meta and WhatsApp Cloud issue no refresh token: the daily check in
+  // `integration.token_refresh` extends a long-lived token where Meta allows
+  // and records Meta's own expiry. Flagged from ten days out so the card, and
+  // the notification, say so while there is still time.
+  if (providerType === "meta" || providerType === "whatsapp_cloud") {
+    const name = providerType === "meta" ? "Meta" : "WhatsApp";
     const renewal = metaTokenRenewal(data.token_expires_at ?? null);
     if (renewal?.expired) {
-      return actionRequired("token_expired", "Meta access has expired. Reconnect Meta to keep receiving leads.");
+      return actionRequired("token_expired", `${name} access has expired. Reconnect ${name} to keep it working.`);
     }
     if (renewal?.warn) {
       return {
         status: "DEGRADED",
         errorCode: "token_expiring",
-        errorMessage: `Meta access expires in ${renewal.daysLeft} day${renewal.daysLeft === 1 ? "" : "s"}. Reconnect Meta to renew it; Meta does not renew it automatically.`,
+        errorMessage: `${name} access expires in ${renewal.daysLeft} day${renewal.daysLeft === 1 ? "" : "s"}. Reconnect ${name} to renew it; Meta does not renew it automatically.`,
         verified: false,
+        expiresAt: data.token_expires_at ?? null,
       };
     }
   }
@@ -288,15 +298,15 @@ async function probeLive(
   if (!secret?.access_token) return base;
 
   let token = secret.access_token;
+  // Zoho refreshes against the data centre it connected to (stored in
+  // `extra`); every other provider's token endpoint is fixed.
+  const refreshConfig = refreshConfigFor(providerType, secret.extra);
+  const policy = refreshPolicy(providerType);
   const expiresAt = secret.token_expires_at ? new Date(secret.token_expires_at).getTime() : null;
   if (expiresAt !== null && expiresAt - Date.now() < 60_000) {
-    // Zoho refreshes against the data centre it connected to, which only its
-    // own sync path knows. Its next sync proves the refresh; no ping here.
-    if (providerType === "zoho_crm") return base;
-    const config = getOAuthProviderConfig(providerType);
-    if (!config) return base;
+    if (!refreshConfig) return base;
     try {
-      token = await getLiveAccessToken(integrationId, config);
+      token = await getLiveAccessToken(integrationId, refreshConfig, policy);
     } catch (error) {
       if (error instanceof OAuthRefreshError && error.needsReconnect) {
         return actionRequired(RECONNECT_REQUIRED.code, RECONNECT_REQUIRED.message);
@@ -315,17 +325,55 @@ async function probeLive(
   const spec = pingSpec(providerType, token, {
     apiDomain: typeof extra.api_domain === "string" ? extra.api_domain : null,
     instanceUrl: typeof config.instanceUrl === "string" ? config.instanceUrl : null,
+    calendlyOrganizationUri: typeof config.organizationUri === "string" ? config.organizationUri : null,
   });
   if (!spec) return base;
 
+  const ping = (s: PingSpec) => fetch(s.url, { method: "GET", headers: s.headers, signal: AbortSignal.timeout(8_000) });
+  const pingContext = {
+    apiDomain: typeof extra.api_domain === "string" ? extra.api_domain : null,
+    instanceUrl: typeof config.instanceUrl === "string" ? config.instanceUrl : null,
+    calendlyOrganizationUri: typeof config.organizationUri === "string" ? config.organizationUri : null,
+  };
+
   try {
-    const response = await fetch(spec.url, {
-      method: "GET",
-      headers: spec.headers,
-      signal: AbortSignal.timeout(8_000),
-    });
+    let response = await ping(spec);
+    // A 401 on a token we hold a refresh grant for is not yet a dead
+    // connection: the session may simply have ended (Salesforce idles out on
+    // the org's timeout and states no lifetime). Refresh once through the
+    // shared compare-and-swap and ask again; only a refused refresh, or a
+    // second 401 with a fresh token, means a person must reconnect. This is
+    // what flagged the owner's Salesforce "Reconnect" on 2026-09-30.
+    if (response.status === 401 && refreshConfig) {
+      let renewed: string;
+      try {
+        renewed = await getLiveAccessToken(integrationId, refreshConfig, { ...policy, rejectedAccessToken: token });
+      } catch (error) {
+        if (error instanceof OAuthRefreshError && error.needsReconnect) {
+          return actionRequired(RECONNECT_REQUIRED.code, RECONNECT_REQUIRED.message);
+        }
+        return {
+          status: "DEGRADED",
+          errorCode: "refresh_failed",
+          errorMessage: "The provider did not answer a token refresh. It will be retried.",
+          verified: false,
+        };
+      }
+      const retry = renewed !== token ? pingSpec(providerType, renewed, pingContext) : null;
+      if (retry) response = await ping(retry);
+    }
     const verdict = classifyPing(response.status);
     if (verdict === "ok") return VERIFIED_OK;
+    // A token that works but lacks a scope the product needs (Calendly's
+    // event_types:read): "Reconnect to grant access", never "Healthy".
+    if (response.status === 403) {
+      const body = await response.clone().json().catch(() => null);
+      if (isInsufficientScope(response.status, body)) {
+        const copy = providerType === "calendly" ? CALENDLY_SCOPE_MISSING : { ...CALENDLY_SCOPE_MISSING, message: "Reconnect this connection to grant the access ClientTurn needs." };
+        await markReconnectRequired(integrationId, "scope", copy);
+        return actionRequired(copy.code, copy.message);
+      }
+    }
     if (verdict === "reconnect") {
       await markReconnectRequired(integrationId, String(response.status));
       return actionRequired(RECONNECT_REQUIRED.code, RECONNECT_REQUIRED.message);
@@ -432,12 +480,12 @@ export async function runIntegrationHealthChecks(params: {
         businessId: params.businessId,
         type: "integration_failure",
         severity: "warning",
-        title: "Reconnect Meta to keep leads arriving",
+        title: integration.provider_type === "whatsapp_cloud" ? "Reconnect WhatsApp to keep it working" : "Reconnect Meta to keep it working",
         body: result.errorMessage ?? undefined,
         entityType: "integration",
         entityId: integration.id,
         linkUrl: "/app/settings?section=connections",
-        dedupeKey: `meta_token_expiring:${integration.id}:${new Date().toISOString().slice(0, 7)}`,
+        dedupeKey: `meta_token_expiring:${integration.id}:${result.expiresAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 7)}`,
       });
     }
 

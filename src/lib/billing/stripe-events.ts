@@ -125,7 +125,7 @@ export function oneOffKindOf(metadataKind: string | null | undefined): OneOffChe
 }
 
 const ONE_OFF_LABEL: Record<OneOffCheckoutKind, string> = {
-  ai_tokens: "AI token pack",
+  ai_tokens: "AI credit pack",
   message_credits: "top-up",
   voice_pack: "voice minute pack",
 };

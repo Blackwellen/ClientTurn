@@ -150,7 +150,7 @@ export function validateFirstUtterance(utterance: string | null | undefined, exp
 
 // ------------------------------------------------------------- house style
 
-export type StyleViolation = "EMOJI" | "DASH" | "CLAIMS_HUMAN" | "RESTATES_LOCKED_TEXT" | "TOO_LONG" | "EMPTY";
+export type StyleViolation = "EMOJI" | "DASH" | "CLAIMS_HUMAN" | "RESTATES_LOCKED_TEXT" | "TOO_LONG" | "EMPTY" | "MARKUP";
 
 // Extended pictographs and the common emoji ranges.
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F000}-\u{1F2FF}\u{FE0F}]/u;
@@ -181,6 +181,9 @@ export function validateEditableSuffix(text: string, maxLength = 240): StyleViol
   if (/this is an ai assistant calling from/i.test(t) || /this call is recorded/i.test(t)) {
     out.push("RESTATES_LOCKED_TEXT");
   }
+  // Spoken after the locked opener and sent to Retell as a dynamic variable:
+  // markup or template braces ("{{transfer_number}}") are never speech (QA 2026-09-30).
+  if (/[<>{}]/.test(t)) out.push("MARKUP");
   return out;
 }
 

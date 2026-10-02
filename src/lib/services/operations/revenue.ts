@@ -17,7 +17,6 @@ import {
 } from "@/lib/jobs/handlers/shared";
 import {
   countRevenueFunnel,
-  loadAiBudget,
 } from "@/lib/dashboard/revenue-control";
 import {
   assembleRevenueFunnel,
@@ -25,6 +24,9 @@ import {
 } from "@/lib/analytics/revenue-surfaces";
 import { rangeBounds, type AnalyticsRange } from "@/lib/analytics/v4-queries";
 import { monthStart } from "@/lib/ai/budget";
+import { creditLimitFromRow } from "@/lib/ai/credit-limits";
+import { getCreditStatus } from "@/lib/billing/token-service";
+import { AI_CREDIT_UNIT, tokensToCredits } from "@/lib/billing/tokens";
 import { leadDisplayName } from "@/lib/leads/types";
 import { MergeError, resolveMergeCandidate } from "@/lib/identity/merge";
 import {
@@ -429,20 +431,24 @@ defineOperation("funnel.get", {
 
 defineOperation("ai_usage.get", {
   schema: z.object({}),
+  /**
+   * AI usage in AI credits only (owner decision, 2026-09-30): no money and no
+   * model tokens reach a customer, Copilot or an API caller. Admin keeps both.
+   */
   async run({ context }: HandlerInput<Record<string, never>>) {
     const now = new Date();
     const since = monthStart(now).toISOString();
     const client = db();
-    let budget;
+    let credits;
     try {
-      budget = await loadAiBudget(client, context.businessId, now);
+      credits = await getCreditStatus(context.businessId);
     } catch {
       throw new ServiceError("UNAVAILABLE", "AI usage is not available yet.");
     }
-    const [runs, decisions] = await Promise.all([
+    const [runs, decisions, limitRow] = await Promise.all([
       client
         .from("ai_runs")
-        .select("task_type, input_tokens, output_tokens, estimated_cost_usd")
+        .select("task_type, input_tokens, output_tokens")
         .eq("business_id", context.businessId)
         .gte("created_at", since)
         .limit(20000),
@@ -453,53 +459,62 @@ defineOperation("ai_usage.get", {
         .gte("created_at", since)
         .in("decision", ["SKIP", "HUMAN"])
         .limit(20000),
+      client
+        .from("ai_budgets")
+        .select("ceiling_minor, ceiling_tokens")
+        .eq("business_id", context.businessId)
+        .eq("scope", "WORKSPACE_MONTH")
+        .eq("enabled", true)
+        .maybeSingle(),
     ]);
     if (runs.error)
       throw new ServiceError("UNAVAILABLE", "AI usage could not be read.");
 
-    const byTask = new Map<
-      string,
-      { calls: number; tokens: number; costUsd: number }
-    >();
+    const byTask = new Map<string, { calls: number; tokens: number }>();
     for (const run of (runs.data ?? []) as {
       task_type: string;
       input_tokens: number;
       output_tokens: number;
-      estimated_cost_usd: number | string;
     }[]) {
-      const row = byTask.get(run.task_type) ?? {
-        calls: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+      const row = byTask.get(run.task_type) ?? { calls: 0, tokens: 0 };
       row.calls += 1;
       row.tokens += (run.input_tokens ?? 0) + (run.output_tokens ?? 0);
-      row.costUsd += Number(run.estimated_cost_usd) || 0;
       byTask.set(run.task_type, row);
     }
+    const limit = (limitRow.data ?? null) as
+      | { ceiling_minor: number | null; ceiling_tokens: number | null }
+      | null;
 
     return {
       data: {
         since,
-        spentGbp: Number(budget.spentGbp.toFixed(4)),
-        ceilingGbp: budget.ceilingGbp,
-        ceilingSource: budget.ceilingSource,
+        periodEnd: credits.periodEnd,
+        unit: AI_CREDIT_UNIT,
+        includedCredits: round1(credits.includedCredits),
+        topUpBalanceCredits: round1(credits.topUpBalanceCredits),
+        usedCredits: round1(credits.usedCredits),
+        grantedCredits: round1(credits.grantedCredits),
+        remainingCredits: round1(credits.remainingCredits),
+        percentUsed: credits.percentUsed,
+        state: credits.state,
+        // The workspace's own monthly limit, in credits; null = none set.
+        workspaceLimitCredits: limit
+          ? creditLimitFromRow({ ceilingMinor: limit.ceiling_minor, ceilingTokens: limit.ceiling_tokens })
+          : null,
         // Null when the decision log is not available, rather than zero.
         refusedThisMonth: decisions.error
           ? null
           : (decisions.data ?? []).length,
         byTask: [...byTask.entries()]
-          .map(([task, row]) => ({
-            task,
-            ...row,
-            costUsd: Number(row.costUsd.toFixed(6)),
-          }))
-          .sort((a, b) => b.costUsd - a.costUsd),
+          .map(([task, row]) => ({ task, calls: row.calls, credits: round1(tokensToCredits(row.tokens)) }))
+          .sort((a, b) => b.credits - a.credits),
       },
       entityId: null,
     };
   },
 });
+
+const round1 = (value: number) => Math.round(value * 10) / 10;
 
 /* -------------------------------------------------------- merge candidates */
 

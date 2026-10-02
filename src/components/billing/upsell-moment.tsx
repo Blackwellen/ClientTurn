@@ -8,7 +8,7 @@ import { Button, IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { formatTokens } from "@/lib/billing/tokens";
+import { formatCreditAmount } from "@/lib/billing/tokens";
 import { whatsappCoverageText } from "@/lib/billing/whatsapp-tokens";
 import { momentId, priceText, type UpsellCta, type UpsellMoment as Moment } from "@/lib/billing/upsell-moments";
 import { recordUpsellEventAction } from "@/lib/billing/upsell-actions";
@@ -23,7 +23,7 @@ const NUMBER = new Intl.NumberFormat("en-GB");
 export function ctaLabel(cta: UpsellCta): string {
   switch (cta.kind) {
     case "token_pack":
-      return `Buy ${formatTokens(cta.pack.tokens)} AI tokens for ${GBP.format(cta.pack.amountMinor / 100)}`;
+      return `Buy ${formatCreditAmount(cta.pack.tokens)} for ${GBP.format(cta.pack.amountMinor / 100)}`;
     case "whatsapp_pack":
       return `Buy ${NUMBER.format(cta.bundle.credits)} WhatsApp tokens for ${GBP.format(cta.bundle.priceGbp)}`;
     case "upgrade":
@@ -106,7 +106,7 @@ export function UpsellMoment({ moment, canBuy }: { moment: Moment; canBuy: boole
     cta.kind === "whatsapp_pack"
       ? `${whatsappCoverageText(cta.bundle.credits)}. WhatsApp tokens never expire; a pack is not refundable once any of its tokens are used.`
       : cta.kind === "token_pack"
-        ? "Bought tokens never expire; a pack is not refundable once any of its tokens are used."
+        ? "Bought AI credits never expire; a pack is not refundable once any of its credits are used."
         : null;
   const confirmText =
     cta.kind === "upgrade"

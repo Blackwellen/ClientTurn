@@ -4,7 +4,7 @@ summary: How the 14-day trial works, why a card and the terms are needed to star
 category: billing
 keywords: [trial, 14 days, upgrade now, upgrade early, end trial early, start plan today, card required, start trial, terms of service, trial limits, trial ends, first payment, cancel trial, no second trial, resubscribe]
 order: 20
-updated: 2026-09-27
+updated: 2026-09-30
 screenshots:
   - src: /help/screenshots/billing/free-trial-1.png
     alt: "The start-trial page with the Monthly and Yearly toggle, a Start trial button and the no charge today line"
@@ -42,7 +42,7 @@ Whichever plan you choose, the trial runs on these limits until the first paymen
 | UK SMS segments | 8 |
 | Follow-up email from your own mailbox | Not capped by the trial |
 | WhatsApp | Not included |
-| AI tokens | 50,000 (about 18 assistant replies) |
+| AI credits | 50 (about 18 assistant replies) |
 | Reactivation | Not included |
 | SMS top-up packs | Not available. Upgrade to get more SMS |
 

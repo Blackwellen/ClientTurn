@@ -2,6 +2,7 @@ import * as React from "react";
 import { Repeat } from "lucide-react";
 import type { ReengagementPerformance } from "@/lib/analytics/reengagement-query";
 import { formatGbp } from "@/lib/dates";
+import { formatCredits, tokensToCredits } from "@/lib/billing/tokens";
 import { EmptyState, ErrorState, SkeletonTable } from "@/components/ui/feedback";
 import { AnalyticsCard } from "./cards";
 
@@ -25,7 +26,7 @@ function pct(value: number | null): string {
 /**
  * Analytics -> Re-engagement performance. One row per loop: leads reached,
  * meetings, sales (with value), opt-outs and complaints, and cost (SMS
- * segments, AI tokens), with reply rate last and muted: it is context, not
+ * segments, AI credits), with reply rate last and muted: it is context, not
  * the score.
  */
 export function ReengagementPanel({ result }: { result: ReengagementPerformance }) {
@@ -42,7 +43,7 @@ export function ReengagementPanel({ result }: { result: ReengagementPerformance 
         <EmptyState
           icon={Repeat}
           title="No automated messages in this period"
-          description="Once follow-up sequences, reactivation campaigns or re-engagement check-ins send, their meetings, sales and costs appear here. Try a longer period."
+          description="Once follow-up sequences, reactivation campaigns or re-engagement check-ins send, their meetings, sales and usage appear here. Try a longer period."
           className="py-8"
         />
       </AnalyticsCard>
@@ -61,7 +62,7 @@ export function ReengagementPanel({ result }: { result: ReengagementPerformance 
               <th className="px-1 py-2 text-right font-medium">Sales won</th>
               <th className="px-1 py-2 text-right font-medium">Opt-outs / complaints</th>
               <th className="px-1 py-2 text-right font-medium">SMS segments</th>
-              <th className="px-1 py-2 text-right font-medium">AI tokens</th>
+              <th className="px-1 py-2 text-right font-medium">AI credits</th>
               <th className="px-1 py-2 text-right font-medium text-content-subtle">Reply rate</th>
             </tr>
           </thead>
@@ -79,7 +80,7 @@ export function ReengagementPanel({ result }: { result: ReengagementPerformance 
                   {loop.optOuts.toLocaleString("en-GB")} / {loop.complaints.toLocaleString("en-GB")}
                 </td>
                 <td className="px-1 py-2 text-right tabular-nums">{loop.smsSegments.toLocaleString("en-GB")}</td>
-                <td className="px-1 py-2 text-right tabular-nums">{loop.tokens.toLocaleString("en-GB")}</td>
+                <td className="px-1 py-2 text-right tabular-nums">{formatCredits(tokensToCredits(loop.tokens))}</td>
                 <td className="px-1 py-2 text-right tabular-nums text-content-subtle">{pct(loop.replyRate)}</td>
               </tr>
             ))}

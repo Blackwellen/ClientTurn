@@ -246,9 +246,9 @@ export function candidateMoments(facts: UpsellFacts): UpsellMoment[] {
       key: "ai_paused",
       offer: "ai_token_pack",
       surface: "modal",
-      title: "Your AI assistant is paused: its tokens are used up",
+      title: "Your AI assistant is paused: its AI credits are used up",
       body:
-        "Follow-up and qualification rules keep running, but the assistant will not reply to leads until you add AI tokens or your allowance resets. A top up pack restores it straight away.",
+        "Follow-up and qualification rules keep running, but the assistant will not reply to leads until you add AI credits or your allowance resets. A top up pack restores it straight away.",
       cta: { kind: "token_pack", pack: TOKEN_PACKS.top_up_medium },
     });
   } else if (facts.aiTokens && facts.aiTokens.percentUsed >= TOKEN_WARN_PERCENT) {
@@ -256,9 +256,9 @@ export function candidateMoments(facts: UpsellFacts): UpsellMoment[] {
       key: "ai_tokens_low",
       offer: "ai_token_pack",
       surface: "banner",
-      title: `AI tokens are ${facts.aiTokens.percentUsed}% used`,
+      title: `AI credits are ${facts.aiTokens.percentUsed}% used`,
       body:
-        "When they run out the assistant pauses until your allowance resets. A top up pack keeps it replying; bought tokens never expire.",
+        "When they run out the assistant pauses until your allowance resets. A top up pack keeps it replying; bought AI credits never expire.",
       cta: { kind: "token_pack", pack: TOKEN_PACKS.top_up_small },
     });
   }
@@ -391,7 +391,7 @@ export function candidateMoments(facts: UpsellFacts): UpsellMoment[] {
       variant: String(milestone),
       title: `You booked ${NUMBER.format(milestone)} meetings this period`,
       body: next
-        ? `Nice work. If volume keeps growing, ${next} gives you more leads, users and AI tokens.`
+        ? `Nice work. If volume keeps growing, ${next} gives you more leads, users and AI credits.`
         : "Nice work.",
       cta: tier,
     });

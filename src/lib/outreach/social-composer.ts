@@ -226,7 +226,7 @@ export async function composeSocialMessage(
       result.skippedReason === "NO_TOKENS"
         ? "This workspace has used its AI allowance, so the standard message was sent."
         : result.skippedReason === "BUDGET" || result.skippedReason === "BUDGET_HUMAN"
-          ? "This workspace reached its AI budget, so the standard message was sent."
+          ? "This workspace reached its AI credit limit, so the standard message was sent."
           : null,
     );
   }
