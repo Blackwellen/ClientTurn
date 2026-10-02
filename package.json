@@ -39,7 +39,7 @@
     "@supabase/supabase-js": "^2.115.0",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
-    "imapflow": "^1.7.8",
+    "imapflow": "^2.1.2",
     "lucide-react": "^1.41.0",
     "mailparser": "^3.9.20",
     "motion": "^13.2.0",
